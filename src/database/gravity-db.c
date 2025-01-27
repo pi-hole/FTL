@@ -2720,6 +2720,49 @@ void check_inaccessible_adlists(void)
 	sqlite3_finalize(query_stmt);
 }
 
+/**
+ * @brief Check if gravity was restored from a local backup.
+ *
+ * This function checks the "gravity_restored" property in the "info" table of the gravity database.
+ * If the property value is "false", it means gravity was not restored and the function returns.
+ * Any other value indicates that gravity was restored, and a log entry is created.
+ *
+ * @note If the gravity database is not available or an SQL error occurs during query preparation,
+ *       an error message is logged and the function returns.
+ */
+void check_restored_gravity(void)
+{
+	// Do not proceed when database is not available
+	if(!gravityDB_opened && !gravityDB_open())
+	{
+		log_err("check_restored_gravity(): Gravity database not available");
+		return;
+	}
+
+	const char *querystr = "SELECT value FROM info WHERE property = 'gravity_restored'";
+	sqlite3_stmt *query_stmt = NULL;
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &query_stmt, NULL);
+	if(rc != SQLITE_OK){
+		log_err("check_restored_gravity(): %s - SQL error prepare: %s", querystr, sqlite3_errstr(rc));
+		gravityDB_close();
+		return;
+	}
+
+	// Perform query
+	if((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
+	{
+		const char *restored = (const char*)sqlite3_column_text(query_stmt, 0);
+		if(strcmp(restored, "false") != 0)
+		{
+			// log to the message table
+			log_gravity_restored(restored);
+		}
+	}
+
+	// Finalize statement
+	sqlite3_finalize(query_stmt);
+}
+
 static sqlite3_int64 last_updated = -1;
 bool gravity_updated(void)
 {

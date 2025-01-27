@@ -103,6 +103,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "NTP";
 		case VERIFY_MESSAGE:
 			return "VERIFY";
+		case GRAVITY_RESTORED_MESSAGE:
+			return "GRAVITY_RESTORED";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -141,6 +143,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return NTP_MESSAGE;
 	else if (strcmp(typestr, "VERIFY") == 0)
 		return VERIFY_MESSAGE;
+	else if (strcmp(typestr, "GRAVITY_RESTORED") == 0)
+		return GRAVITY_RESTORED_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -255,6 +259,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_TEXT, // actual checksum
 			SQLITE_TEXT, // FTL commit hash
 			SQLITE_TEXT, // FTL architecture
+			SQLITE_NULL // not used
+		},
+		{
+			// GRAVITY_RESTORED_MESSAGE: The message column contains the status
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
 		}
 	};
@@ -975,6 +987,37 @@ static void format_verify_message(char *plain, const int sizeof_plain, char *htm
 	free(escaped_arch);
 }
 
+static void format_gravity_restored_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                            const char *status)
+{
+	const bool failed = strcmp(status, "failed") == 0;
+
+	if(snprintf(plain, sizeof_plain, "Gravity database restore %s", failed ? "failed" : "successful") > sizeof_plain)
+		log_warn("format_gravity_restored_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	if(failed)
+	{
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-red\">failed</strong><br><br>Please check your filesystem for corruption, and your disk space for availability.") > sizeof_html)
+			log_warn("format_gravity_restored_message(): Buffer too small to hold HTML message, warning truncated");
+	}
+	else
+	{
+		char *escaped_status = escape_html(status);
+
+		// Return early if memory allocation failed
+		if(escaped_status == NULL)
+			return;
+
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-green\">successful</strong><br>The gravity database was restored using the automatic backup created on %s<br><br>Please check your filesystem for corruption, and your disk space for availability.", escaped_status) > sizeof_html)
+
+		free(escaped_status);
+	}
+}
+
 int count_messages(const bool filter_dnsmasq_warnings)
 {
 	int count = 0;
@@ -1250,6 +1293,16 @@ bool format_messages(cJSON *array)
 
 				format_verify_message(plain, sizeof(plain), html, sizeof(html),
 				                      message, expected, actual, hash, arch);
+
+				break;
+			}
+
+			case GRAVITY_RESTORED_MESSAGE:
+			{
+				const char *status = (const char*)sqlite3_column_text(stmt, 3);
+
+				format_gravity_restored_message(plain, sizeof(plain), html, sizeof(html),
+				                                status);
 
 				break;
 			}
@@ -1545,5 +1598,19 @@ void log_verify_message(const char *expected, const char *actual)
 
 	// Log to database
 	add_message(VERIFY_MESSAGE, buf, expected, actual, GIT_HASH, FTL_ARCH);
+
+}
+
+void log_gravity_restored(const char *status)
+{
+	// Create message
+	char buf[2048];
+	format_gravity_restored_message(buf, sizeof(buf), NULL, 0, status);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database
+	add_message_no_args(GRAVITY_RESTORED_MESSAGE, status);
 
 }
