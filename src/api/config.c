@@ -959,7 +959,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		int idx = 0;
 		for(; idx < cJSON_GetArraySize(new_item->v.json); idx++)
 		{
-			cJSON *elem = cJSON_GetArrayItem(new_item->v.json, idx);
+			const cJSON *elem = cJSON_GetArrayItem(new_item->v.json, idx);
 			if(elem != NULL && elem->valuestring != NULL &&
 				strcmp(elem->valuestring, new_item_str) == 0)
 			{

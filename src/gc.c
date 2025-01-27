@@ -45,7 +45,21 @@
 // default: 10 seconds
 #define CPU_AVERAGE_INTERVAL 10
 
+// Global boolean indicating whether garbage collection is requested at the next
+// opportunity
 bool doGC = false;
+
+// The garbage collection interval [seconds]
+// Default: 600 seconds (10 minutes)
+static unsigned int GCinterval = 600;
+// Delay applied to the garbage collecting [seconds]
+// Default: 60 seconds (one minute before the end of the interval set above)
+// The delay is applied to the garbage collection interval to avoid
+// garbage collection to run on, e.g., a full hour boundary when other
+// tasks are scheduled to run on the host (e.g., cron-jobs) as - during
+// garbage collection - DNS resolution may be delayed for up to few
+// seconds on really slow systems
+static unsigned int GCdelay = 60;
 
 // Recycle old clients and domains in our internal data structure
 // This has the side-effect of recycling intermediate domains
@@ -274,10 +288,10 @@ static void reset_rate_limiting(void)
 
 static time_t lastRateLimitCleaner = 0;
 // Returns how many more seconds until the current rate-limiting interval is over
-time_t get_rate_limit_turnaround(const unsigned int rate_limit_count)
+int get_rate_limit_turnaround(const unsigned int rate_limit_count)
 {
 	const unsigned int how_often = rate_limit_count/config.dns.rateLimit.count.v.ui;
-	return (time_t)config.dns.rateLimit.interval.v.ui*how_often - (time(NULL) - lastRateLimitCleaner);
+	return (int)((long)config.dns.rateLimit.interval.v.ui * how_often) - (time(NULL) - lastRateLimitCleaner);
 }
 
 static int check_space(const char *file, unsigned int LastUsage)
@@ -324,7 +338,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	doGC = false;
 	// Update lastGCrun timer
 	if(lastGCrun != NULL)
-		*lastGCrun = now - GCdelay - (now - GCdelay)%GCinterval;
+		*lastGCrun = now + GCdelay - (now + GCdelay)%GCinterval;
 
 	// Lock FTL's data structure, since it is likely that it will be changed here
 	// Requests should not be processed/answered when data is about to change
@@ -336,7 +350,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(!flush)
 	{
 		// Normal GC run
-		mintime -= GCdelay + config.webserver.api.maxHistory.v.ui;
+		mintime -= - GCdelay + config.webserver.api.maxHistory.v.ui;
 
 		// Align the start time of this GC run to the GCinterval. This will also align with the
 		// oldest overTime interval after GC is done.
@@ -530,7 +544,36 @@ static bool check_files_on_same_device(const char *path1, const char *path2)
 	return s1.st_dev == s2.st_dev;
 }
 
-static bool is_debugged = false;
+/**
+ * @brief Set the garbage collection interval dynamically based on the
+ *        webserver.api.maxHistory configuration.
+ *
+ * This function adjusts the garbage collection (GC) interval depending on the
+ * value of `webserver.api.maxHistory`. The default GC interval is ten minutes.
+ * However, if `webserver.api.maxHistory` is set to zero, indicating that the
+ * user wants to keep as few queries as possible in the history, the GC interval
+ * is reduced to one minute. Despite this reduction, a small number of queries
+ * are still retained to correlate replies with their corresponding queries. We
+ * also set the GC delay to ten seconds to ensure that the GC thread does not
+ * run at the top of the hour, which is a common time for other tasks to run on
+ * the host.
+ *
+ * This function is called during the initialization of the FTL engine by
+ * initOverTime()
+ *
+ * @return The current, possibly altered, GC interval in seconds.
+ */
+unsigned int set_gc_interval(void)
+{
+	if(config.webserver.api.maxHistory.v.ui == 0)
+	{
+		GCinterval = 60;
+		GCdelay = 10;
+	}
+
+	return GCinterval;
+}
+
 void *GC_thread(void *val)
 {
 	(void)val; // Mark parameter as unused
@@ -547,6 +590,9 @@ void *GC_thread(void *val)
 	// Remember disk usage
 	unsigned int LastLogStorageUsage = 0;
 	unsigned int LastDBStorageUsage = 0;
+
+	// Whether an external tracer has been detected
+	bool is_debugged = false;
 
 	bool db_and_log_on_same_dev = false;
 	db_and_log_on_same_dev = check_files_on_same_device(config.files.database.v.s, config.files.log.ftl.v.s);
@@ -601,7 +647,7 @@ void *GC_thread(void *val)
 		if(killed)
 			break;
 
-		if(now - GCdelay - lastGCrun >= GCinterval || doGC)
+		if(now + GCdelay - lastGCrun >= GCinterval || doGC)
 			runGC(now, &lastGCrun, false);
 
 		// Intermediate cancellation-point

@@ -602,7 +602,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 
 static int iface_allowed_v6(struct in6_addr *local, int prefix, 
 			    int scope, int if_index, int flags, 
-			    int preferred, int valid, void *vparam)
+			    unsigned int preferred, unsigned int valid, void *vparam)
 {
   union mysockaddr addr;
   struct in_addr netmask; /* dummy */
@@ -653,7 +653,7 @@ static int iface_allowed_v4(struct in_addr local, int if_index, char *label,
 /*
  * Clean old interfaces no longer found.
  */
-static void clean_interfaces()
+static void clean_interfaces(void)
 {
   struct irec *iface;
   struct irec **up = &daemon->interfaces;
@@ -842,12 +842,12 @@ again:
 
   param.spare = spare;
   
-  ret = iface_enumerate(AF_INET6, &param, iface_allowed_v6);
+  ret = iface_enumerate(AF_INET6, &param, (callback_t){.af_inet6=iface_allowed_v6});
   if (ret < 0)
     goto again;
   else if (ret)
     {
-      ret = iface_enumerate(AF_INET, &param, iface_allowed_v4);
+      ret = iface_enumerate(AF_INET, &param, (callback_t){.af_inet=iface_allowed_v4});
       if (ret < 0)
 	goto again;
     }
@@ -1607,10 +1607,6 @@ void check_servers(int no_loop_check)
 
   for (count = 0, serv = daemon->servers; serv; serv = serv->next)
     {
-      /* Init edns_pktsz for newly created server records. */
-      if (serv->edns_pktsz == 0)
-	serv->edns_pktsz = daemon->edns_pktsz;
-      
 #ifdef HAVE_DNSSEC
       if (option_bool(OPT_DNSSEC_VALID))
 	{ 
@@ -1861,46 +1857,3 @@ void newaddress(time_t now)
     relay->iface_index = 0;
 #endif
 }
-
-
-static int callback_v4(struct in_addr local, int if_index, char *label,
-			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
-			    {
-            log_info("callback_v4");
-            // Log the interface information
-            log_info("Interface: %s", label);
-            log_info("IP Address: %s", inet_ntoa(local));
-            log_info("Netmask: %s", inet_ntoa(netmask));
-            log_info("Broadcast: %s", inet_ntoa(broadcast));
-            log_info("Interface Index: %d", if_index);
-				return 1;
-			    }
-
-
-static int callback_v6(struct in6_addr *local, int prefix, 
-			    int scope, int if_index, int flags, 
-			    int preferred, int valid, void *vparam)
-			    {
-            log_info("callback_v6");
-            // Log the interface information
-            char ip[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, local, ip, INET6_ADDRSTRLEN);
-            log_info("IP Address: %s", ip);
-            log_info("Prefix: %d", prefix);
-            log_info("Scope: %d", scope);
-            log_info("Interface Index: %d", if_index);
-            log_info("Flags: %d", flags);
-            log_info("Preferred: %d", preferred);
-            log_info("Valid: %d", valid);
-				return 1;
-			    }
-
-extern int iface_enumerate(int family, void *parm, int (*callback)());
-void test_enumerate(void)
-{
-  log_info("test_enumerate 4");
-	iface_enumerate(AF_INET, NULL, callback_v4);
-  log_info("test_enumerate 6");
-	iface_enumerate(AF_INET6, NULL, callback_v6);
-  log_info("test_enumerate done");
-};

@@ -690,10 +690,10 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 	free(escaped_message);
 }
 
-static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const unsigned int count, const unsigned int interval, const time_t turnaround)
+static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const int count, const int interval, const int turnaround)
 {
-	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %lu second%s",
-			clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %d second%s",
+	            clientIP, turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
 		log_warn("format_rate_limit_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -706,8 +706,8 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 	if(escaped_clientIP == NULL)
 		return;
 
-	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %lu second%s (current limit: %u queries per %u seconds)",
-			escaped_clientIP, (unsigned long int)turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
+	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %d second%s (current limit: %d queries per %d seconds)",
+	            escaped_clientIP, turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
 		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_clientIP);
@@ -1021,7 +1021,10 @@ end_of_count_messages: // Close database connection
 bool format_messages(cJSON *array)
 {
 	if(FTLDBerror())
+	{
+		log_err("format_messages() - Database not available");
 		return false;
+	}
 
 	sqlite3 *db;
 	// Open database connection
@@ -1047,7 +1050,10 @@ bool format_messages(cJSON *array)
 		// Create JSON object
 		cJSON *item = cJSON_CreateObject();
 		if(item == NULL)
+		{
+			log_err("format_messages() - Failed to create JSON object");
 			break;
+		}
 
 		// Add ID
 		cJSON_AddNumberToObject(item, "id", sqlite3_column_int(stmt, 0));
@@ -1119,9 +1125,9 @@ bool format_messages(cJSON *array)
 			case RATE_LIMIT_MESSAGE:
 			{
 				const char *clientIP = (const char*)sqlite3_column_text(stmt, 3);
-				const unsigned int count = sqlite3_column_int(stmt, 4);
-				const unsigned int interval = sqlite3_column_int(stmt, 5);
-				const time_t turnaround = sqlite3_column_int(stmt, 6);
+				const int count = sqlite3_column_int(stmt, 4);
+				const int interval = sqlite3_column_int(stmt, 5);
+				const int turnaround = sqlite3_column_int(stmt, 6);
 
 				format_rate_limit_message(plain, sizeof(plain), html, sizeof(html),
 				                          clientIP, count, interval, turnaround);
@@ -1257,13 +1263,21 @@ bool format_messages(cJSON *array)
 		// Add the plain message
 		cJSON *pstring = cJSON_CreateString(plain);
 		if(pstring == NULL)
-			return item;
+		{
+			log_err("format_messages() - Failed to create plain message string from %s", plain);
+			cJSON_Delete(item);
+			break;
+		}
 		cJSON_AddItemToObject(item, "plain", pstring);
 
 		// Add the HTML message
 		cJSON *hstring = cJSON_CreateString(html);
 		if(hstring == NULL)
-			return item;
+		{
+			log_err("format_messages() - Failed to create HTML message string from %s", html);
+			cJSON_Delete(item);
+			break;
+		}
 		cJSON_AddItemToObject(item, "html", hstring);
 
 		// Add the message to the array
@@ -1361,7 +1375,7 @@ void logg_fatal_dnsmasq_message(const char *message)
 
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
 {
-	const time_t turnaround = get_rate_limit_turnaround(rate_limit_count);
+	const int turnaround = get_rate_limit_turnaround(rate_limit_count);
 
 	// Create message
 	char buf[2048];

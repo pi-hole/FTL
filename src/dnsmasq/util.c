@@ -45,13 +45,13 @@ static u32 in[12];
 static u32 out[8];
 static int outleft = 0;
 
-void rand_init()
+void rand_init(void)
 {
   int fd = open(RANDFILE, O_RDONLY);
   
   if (fd == -1 ||
-      !read_write(fd, (unsigned char *)&seed, sizeof(seed), 1) ||
-      !read_write(fd, (unsigned char *)&in, sizeof(in), 1))
+      !read_write(fd, (unsigned char *)&seed, sizeof(seed), RW_READ) ||
+      !read_write(fd, (unsigned char *)&in, sizeof(in), RW_READ))
     die(_("failed to seed the random number generator: %s"), NULL, EC_MISC);
   
   close(fd);
@@ -123,7 +123,7 @@ int rr_on_list(struct rrlist *list, unsigned short rr)
 {
   while (list)
     {
-      if (list->rr == rr)
+      if (list->rr != 0 && list->rr == rr)
 	return 1;
 
       list = list->next;
@@ -769,27 +769,48 @@ int retry_send(ssize_t rc)
   return 0;
 }
 
+/* rw = 0 -> write
+   rw = 1 -> read
+   rw = 2 -> write once
+   rw = 3 -> read once
+
+   "once" fails on EAGAIN, as this a timeout.
+   This indicates a timeout of a TCP socket.
+*/
 int read_write(int fd, unsigned char *packet, int size, int rw)
 {
   ssize_t n, done;
   
   for (done = 0; done < size; done += n)
     {
-      do { 
-	if (rw)
-	  n = read(fd, &packet[done], (size_t)(size - done));
-	else
-	  n = write(fd, &packet[done], (size_t)(size - done));
-	
-	if (n == 0)
-	  return 0;
-	
-      } while (retry_send(n) || errno == ENOMEM || errno == ENOBUFS);
-
-      if (errno != 0)
+      if (rw & 1)
+	n = read(fd, &packet[done], (size_t)(size - done));
+      else
+	n = write(fd, &packet[done], (size_t)(size - done));
+      
+      if (n == 0)
 	return 0;
+
+      if (n == -1)
+	{
+	  n = 0; /* don't mess with counter when we loop. */
+
+	  if (errno == EINTR || errno == ENOMEM || errno == ENOBUFS)
+	    continue;
+
+	  if (errno == EAGAIN || errno == EWOULDBLOCK)
+	    {
+	      /* "once" variant */
+	      if (rw & 2)
+		return 0;
+
+	      continue;
+	    }
+
+	  return 0;
+	}
     }
-     
+          
   return 1;
 }
 
@@ -798,11 +819,25 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 {
   /* On Linux, use the /proc/ filesystem to find which files
      are actually open, rather than iterate over the whole space,
-     for efficiency reasons. If this fails we drop back to the dumb code. */
-#ifdef HAVE_LINUX_NETWORK 
+     for efficiency reasons.
+
+     On *BSD, the same facility is found at /dev/fd.
+
+     If this fails we drop back to the dumb code.
+  */
+
+#ifdef HAVE_LINUX_NETWORK
+#define FDESCFS "/proc/self/fd"
+#endif
+
+#ifdef HAVE_BSD_NETWORK
+#define FDESCFS "/dev/fd"
+#endif
+
+#ifdef FDESCFS
   DIR *d;
   
-  if ((d = opendir("/proc/self/fd")))
+  if ((d = opendir(FDESCFS)))
     {
       struct dirent *de;
 

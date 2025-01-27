@@ -52,14 +52,6 @@
 // Constant socket buffer length
 #define SOCKETBUFFERLEN 1024
 
-// How often do we garbage collect (to ensure we only have data fitting to the MAXLOGAGE defined above)? [seconds]
-// Default: 600 (10 minute intervals)
-#define GCinterval 600
-
-// Delay applied to the garbage collecting [seconds]
-// Default: -60 (one minute before the end of the interval set above)
-#define GCdelay (-60)
-
 // How many client connection do we accept at once?
 #define MAXCONNS 255
 
@@ -70,8 +62,8 @@
 #define MAXLOGAGE 24
 
 // Interval for overTime data [seconds]
-// Default: same as GCinterval
-#define OVERTIME_INTERVAL GCinterval
+// Default: 600 (10 minutes)
+#define OVERTIME_INTERVAL 600
 
 // How many overTime slots do we need?
 // This is the maximum log age divided by the overtime interval
@@ -146,6 +138,12 @@
 // Default: 30 (seconds)
 #define QPS_AVGLEN 30
 
+// How long should IPv6 client host name resolution be postponed?
+// This is done to ensure that the network table had time to catch up on new
+// clients in the network
+// Default: 2 x database.DBinterval (seconds) = 120 s
+#define DELAY_V6_RESOLUTION 2*config.database.DBinterval.v.ui
+
 // Use out own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
@@ -167,7 +165,8 @@
 #define vsnprintf(buffer, maxlen, format, args) FTLvsnprintf(__FILE__, __FUNCTION__,  __LINE__, buffer, maxlen, format, args)
 #define write(fd, buf, n) FTLwrite(fd, buf, n, __FILE__,  __FUNCTION__,  __LINE__)
 #define accept(sockfd, addr, addrlen) FTLaccept(sockfd, addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
-#define recv(sockfd, buf, len, flags) FTLrecv(sockfd, buf, len, flags, __FILE__,  __FUNCTION__,  __LINE__)
+#define recv(sockfd, buf, len, flags) FTLrecv(sockfd, buf, len, flags, true, __FILE__,  __FUNCTION__,  __LINE__)
+#define recv_nowarn(sockfd, buf, len, flags) FTLrecv(sockfd, buf, len, flags,false,  __FILE__,  __FUNCTION__,  __LINE__)
 #define recvfrom(sockfd, buf, len, flags, src_addr, addrlen) FTLrecvfrom(sockfd, buf, len, flags, src_addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
 #define sendto(sockfd, buf, len, flags, dest_addr, addrlen) FTLsendto(sockfd, buf, len, flags, dest_addr, addrlen, __FILE__,  __FUNCTION__,  __LINE__)
 #define select(nfds, readfds, writefds, exceptfds, timeout) FTLselect(nfds, readfds, writefds, exceptfds, timeout, __FILE__,  __FUNCTION__,  __LINE__)
@@ -201,5 +200,8 @@
 
 #define max(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
 #define min(a,b) ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
+
+// defined in cache.c
+const char *edestr(int ede);
 
 #endif // FTL_H

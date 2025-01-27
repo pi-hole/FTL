@@ -1000,12 +1000,18 @@ static void initConfig(struct config *conf)
 	conf->webserver.acl.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.port.k = "webserver.port";
-	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443. If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
+	conf->webserver.port.h = "Ports to be used by the webserver.\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. [::]:80 will bind to port 80 IPv6 only.\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The '+' notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n If the port is TLS/SSL, a letter 's' (secure) must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.\n When specifying 'o' (optional) behind a port, inability to use this port is not considered an error. For instance, specifying \"80o,8080o\" will allow the webserver to listen on either 80, 8080, both or even none of the two ports. This flag may be combined with 'r' and 's' like \"80or,443os,8080,4443s\" (80 redirecting to SSL if available, 443 encrypted if available, 8080 mandatory and unencrypted, 4443 mandatory and encrypted).\n If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
 	conf->webserver.port.a = cJSON_CreateStringReference("comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
-	conf->webserver.port.d.s = (char*)"80,[::]:80,443s,[::]:443s";
+	conf->webserver.port.d.s = (char*)"80o,[::]:80o,443so,[::]:443so";
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
+
+	conf->webserver.threads.k = "webserver.threads";
+	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n The default value of 0 means that the number of threads is automatically determined by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on 8 cores). Any other value specifies the number of threads explicitly. A hard-coded maximum of 64 threads is enforced for this option.\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.";
+	conf->webserver.threads.t = CONF_UINT;
+	conf->webserver.threads.d.ui = 0;
+	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
@@ -1605,6 +1611,103 @@ static void reset_config_default(struct conf_item *conf_item)
 	}
 }
 
+
+/**
+ * @brief Determine and set default webserver ports if not imported from setupVars.conf.
+ *
+ * @param conf Pointer to the configuration structure.
+ */
+static void get_web_port(struct config *conf)
+{
+	// Determine default webserver ports if not imported from setupVars.conf
+	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
+	{
+		log_info("Webserver ports already imported from setupVars.conf, skipping default port detection");
+		return;
+	}
+
+	// else:
+	// Check if ports 80/TCP and 443/TCP are already in use
+	const in_port_t http_port = port_in_use(80) ? 8080 : 80;
+	const in_port_t https_port = port_in_use(443) ? 8443 : 443;
+
+	// Create a string with the default ports
+	// Allocate memory for the string
+	char *ports = calloc(32, sizeof(char));
+	if(ports == NULL)
+	{
+		log_err("Unable to allocate memory for default ports string");
+		return;
+	}
+	// Create the string
+	snprintf(ports, 32, "%do,%dos", http_port, https_port);
+
+	// Append IPv6 ports if IPv6 is enabled
+	const bool have_ipv6 = ipv6_enabled();
+	if(have_ipv6)
+		snprintf(ports + strlen(ports), 32 - strlen(ports),
+			",[::]:%do,[::]:%dos", http_port, https_port);
+
+	// Set default values for webserver ports
+	if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
+		free(conf->webserver.port.v.s);
+	conf->webserver.port.v.s = ports;
+	conf->webserver.port.t = CONF_STRING_ALLOCATED;
+
+	log_info("Config initialized with webserver ports %d (HTTP) and %d (HTTPS), IPv6 support is %s",
+	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
+}
+
+bool migrate_config_v6(void)
+{
+	// Check if MIGRATION_TARGET_V6 exists and is a directory
+	// Ideally, this directory should be created by the installer but users
+	// may have deleted it manually and it is necessary for restoring
+	// Teleporter files
+	create_migration_target_v6();
+
+	// If the migration target does not exist, we need to migrate the config
+	log_info("Migrating config to Pi-hole v6.0 format");
+
+	// Initialize config with default values
+	initConfig(&config);
+
+	// If no previous config file could be read, we are likely either running
+	// for the first time or we are upgrading from a version prior to v6.0
+	// In this case, we try to read the legacy config files
+	const char *path = "";
+	if((path = readFTLlegacy(&config)) != NULL)
+	{
+		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
+		log_info("Moving %s to %s", path, target);
+		if(rename(path, target) != 0)
+			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
+	}
+	else
+		log_info("No legacy config file found, using defaults");
+
+	// Import bits and pieces from legacy config files
+	// setupVars.conf
+	importsetupVarsConf();
+	// 04-pihole-static-dhcp.conf
+	read_legacy_dhcp_static_config();
+	// 05-pihole-custom-cname.conf
+	read_legacy_cnames_config();
+	// custom.list
+	read_legacy_custom_hosts_config();
+
+	// Determine and set default webserver ports if not imported from
+	// setupVars.conf
+	get_web_port(&config);
+
+	// Initialize the TOML config file
+	writeFTLtoml(true);
+	write_dnsmasq_config(&config, false, NULL);
+	write_custom_list();
+
+	return true;
+}
+
 bool readFTLconf(struct config *conf, const bool rewrite)
 {
 	// Initialize config with default values
@@ -1643,33 +1746,6 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	if(!rewrite)
 		return false;
 
-	// Check if MIGRATION_TARGET_V6 exists and is a directory
-	// Ideally, this directory should be created by the installer but users
-	// may have deleted it manually and it is necessary for restoring
-	// Teleporter files
-	create_migration_target_v6();
-
-	// If no previous config file could be read, we are likely either running
-	// for the first time or we are upgrading from a version prior to v6.0
-	// In this case, we try to read the legacy config files
-	const char *path = "";
-	if((path = readFTLlegacy(conf)) != NULL)
-	{
-		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
-		log_info("Moving %s to %s", path, target);
-		if(rename(path, target) != 0)
-			log_warn("Unable to move %s to %s: %s", path, target, strerror(errno));
-	}
-	// Import bits and pieces from legacy config files
-	// setupVars.conf
-	importsetupVarsConf();
-	// 04-pihole-static-dhcp.conf
-	read_legacy_dhcp_static_config();
-	// 05-pihole-custom-cname.conf
-	read_legacy_cnames_config();
-	// custom.list
-	read_legacy_custom_hosts_config();
-
 	// When we reach this point but the FTL TOML config file exists, it may
 	// contain errors such as syntax errors, etc. We move it into a
 	// ".broken" location so it can be revisited later
@@ -1680,39 +1756,9 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine default webserver ports if not imported from setupVars.conf
-	if(!(config.webserver.port.f & FLAG_CONF_IMPORTED))
-	{
-		// Check if ports 80/TCP and 443/TCP are already in use
-		const in_port_t http_port = port_in_use(80) ? 8080 : 80;
-		const in_port_t https_port = port_in_use(443) ? 8443 : 443;
-
-		// Create a string with the default ports
-		// Allocate memory for the string
-		char *ports = calloc(32, sizeof(char));
-		if(ports == NULL)
-		{
-			log_err("Unable to allocate memory for default ports string");
-			return false;
-		}
-		// Create the string
-		snprintf(ports, 32, "%d,%ds", http_port, https_port);
-
-		// Append IPv6 ports if IPv6 is enabled
-		const bool have_ipv6 = ipv6_enabled();
-		if(have_ipv6)
-			snprintf(ports + strlen(ports), 32 - strlen(ports),
-				",[::]:%d,[::]:%ds", http_port, https_port);
-
-		// Set default values for webserver ports
-		if(conf->webserver.port.t == CONF_STRING_ALLOCATED)
-			free(conf->webserver.port.v.s);
-		conf->webserver.port.v.s = ports;
-		conf->webserver.port.t = CONF_STRING_ALLOCATED;
-
-		log_info("Config initialized with webserver ports %d (HTTP) and %d (HTTPS), IPv6 support is %s",
-		         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
-	}
+	// Determine and set default webserver ports if not imported from
+	// setupVars.conf
+	get_web_port(&config);
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);

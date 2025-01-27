@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v5.25.2-1921-gd3948088-dirty)
+# Pi-hole configuration file (v5.25.2-2439-g93521615-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2024-06-15 09:10:13 UTC
+# Last updated on 2025-01-01 12:33:13 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -634,23 +634,43 @@
   # bind to port 80 IPv6 only.
   # In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the
   # configuration "80,[::]:80" (create one socket for IPv4 and one for IPv6 only), or
-  # "+80" (create one socket for both, IPv4 and IPv6). The + notation to use IPv4 and
+  # "+80" (create one socket for both, IPv4 and IPv6). The '+' notation to use IPv4 and
   # IPv6 will only work if no network interface is specified. Depending on your
   # operating system version and IPv6 network environment, some configurations might not
   # work as expected, so you have to test to find the configuration most suitable for
   # your needs. In case "+80" does not work for your environment, you need to use
   # "80,[::]:80".
-  # If the port is TLS/SSL, a letter 's' must be appended, for example, "80,443s" will
-  # open port 80 and port 443, and connections on port 443 will be encrypted. For
-  # non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected
-  # ports will redirect all their traffic to the first configured SSL port. For example,
-  # if webserver.port is "80r,443s", then all HTTP traffic coming at port 80 will be
-  # redirected to HTTPS port 443. If this value is not set (empty string), the web
-  # server will not be started and, hence, the API will not be available.
+  # If the port is TLS/SSL, a letter 's' (secure) must be appended, for example,
+  # "80,443s" will open port 80 and port 443, and connections on port 443 will be
+  # encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in
+  # redirect). Redirected ports will redirect all their traffic to the first configured
+  # SSL port. For example, if webserver.port is "80r,443s", then all HTTP traffic coming
+  # at port 80 will be redirected to HTTPS port 443.
+  # When specifying 'o' (optional) behind a port, inability to use this port is not
+  # considered an error. For instance, specifying "80o,8080o" will allow the webserver
+  # to listen on either 80, 8080, both or even none of the two ports. This flag may be
+  # combined with 'r' and 's' like "80or,443os,8080,4443s" (80 redirecting to SSL if
+  # available, 443 encrypted if available, 8080 mandatory and unencrypted, 4443
+  # mandatory and encrypted).
+  # If this value is not set (empty string), the web server will not be started and,
+  # hence, the API will not be available.
   #
   # Possible values are:
   #     comma-separated list of <[ip_address:]port>
-  port = "80,[::]:80,443s,[::]:443s"
+  port = "80o,[::]:80o,443so,[::]:443so"
+
+  # Maximum number of worker threads allowed.
+  # The Pi-hole web server handles each incoming connection in a separate thread.
+  # Therefore, the value of this option is effectively the number of concurrent HTTP
+  # connections that can be handled. Any other connections are queued until they can be
+  # processed by a unoccupied thread.
+  # The default value of 0 means that the number of threads is automatically determined
+  # by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on
+  # 8 cores). Any other value specifies the number of threads explicitly. A hard-coded
+  # maximum of 64 threads is enforced for this option.
+  # The total number of threads you see may be lower than the configured value as
+  # threads are only created when needed due to incoming connections.
+  threads = 0
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
@@ -960,7 +980,7 @@
   # with an individual query, and the IP address of the requestor. This setting is only
   # effective if dns.queryLogging is enabled, too. This option is only useful for
   # debugging and is not recommended for normal use.
-  extraLogging = false
+  extraLogging = true ### CHANGED, default = false
 
   # Put configuration into read-only mode. This will prevent any changes to the
   # configuration file via the API or CLI. This setting useful when a configuration is
@@ -1117,8 +1137,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 150 total entries out of which 95 entries are default
-# --> 55 entries are modified
+# 151 total entries out of which 95 entries are default
+# --> 56 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
 #   - debug.api

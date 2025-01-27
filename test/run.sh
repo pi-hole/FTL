@@ -109,6 +109,9 @@ echo "FTL verbose version (CLI): "
 echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
 
+# Install py3-dnspython
+apk add --no-cache py3-dnspython
+
 # Run tests
 $BATS -p "test/test_suite.bats"
 RET=$?

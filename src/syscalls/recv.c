@@ -15,7 +15,7 @@
 #include <sys/socket.h>
 
 #undef recv
-ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, const char *func, const int line)
+ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const bool warn, const char *file, const char *func, const int line)
 {
 	ssize_t ret = 0;
 	do
@@ -33,7 +33,7 @@ ssize_t FTLrecv(int sockfd, void *buf, size_t len, int flags, const char *file, 
 
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
-	if(ret < 0)
+	if(warn && ret < 0)
 		log_warn("Could not recv() in %s() (%s:%i): %s",
 		         func, file, line, strerror(errno));
 
