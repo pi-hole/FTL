@@ -308,10 +308,10 @@ static int parse_rdnss(const uint8_t *opt)
 		if(inet_ntop(AF_INET6, opt + (16 * i + 8), str, sizeof (str)) == NULL)
 			return -1;
 
-		printf("  Recursive DNS server: %s\n", str);
+		printf("  Recursive DNS server %u/%u: %s\n", i + 1, optlen, str);
 	}
 
-	printf("   DNS server lifetime:");
+	printf("  DNS server lifetime:");
 	print_u8_time(opt);
 	return 0;
 }
@@ -694,8 +694,12 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		{
 			// Ignore EAGAIN as we can retry
 			if (errno != EAGAIN)
+			{
+				start_lock();
 				printf("Error while receiving Router Advertisements on %s: %s\n",
 				       ifname, strerror(errno));
+				end_lock();
+			}
 			continue;
 		}
 
@@ -780,8 +784,10 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	   (const struct sockaddr *)&dst,
 	   sizeof(dst)) != plen)
 	{
+		start_lock();
 		printf("Error while sending Router Solicitation on %s: %s\n",
 		       ifname, strerror(errno));
+		end_lock();
 		close(fd);
 		return -1;
 	}
@@ -797,8 +803,10 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	if(val < 0)
 	{
 		// Error
+		start_lock();
 		printf("Error while receiving Router Advertisements on %s: %s\n",
 		       ifname, strerror(errno));
+		end_lock();
 		close(fd);
 		return -1;
 	}
