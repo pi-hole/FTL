@@ -27,8 +27,13 @@ bool nlroutes(cJSON *routes, const bool detailed);
 bool nladdrs(cJSON *interfaces, const bool detailed);
 bool nllinks(cJSON *interfaces, const bool detailed);
 
-
-#define BUFLEN		4096
+// Netlink expects that the user buffer will be at least 8kB or a page size of
+// the CPU architecture, whichever is bigger. Particular Netlink families may,
+// however, require a larger buffer. 32kB buffer is recommended for most
+// efficient handling of dumps (larger buffer fits more dumped objects and
+// therefore fewer recvmsg() calls are needed).
+// (see https://www.kernel.org/doc/html/v6.1/userspace-api/netlink/intro.html)
+#define BUFLEN		(32 * 1024)
 
 #define for_each_nlmsg(n, buf, len)					\
 	for (n = (struct nlmsghdr*)buf;					\

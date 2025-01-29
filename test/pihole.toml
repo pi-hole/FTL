@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v5.25.2-2439-g93521615-dirty)
+# Pi-hole configuration file (v5.25.2-2556-g3cf56990-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-01-01 12:33:13 UTC
+# Last updated on 2025-01-25 17:33:51 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -1131,14 +1131,17 @@
   # Print information about NTP synchronization
   ntp = true ### CHANGED, default = false
 
+  # Print information about netlink communication and parsing
+  netlink = true ### CHANGED, default = false
+
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 151 total entries out of which 95 entries are default
-# --> 56 entries are modified
+# 152 total entries out of which 95 entries are default
+# --> 57 entries are modified
 # 2 entries are forced through environment:
 #   - misc.nice
 #   - debug.api

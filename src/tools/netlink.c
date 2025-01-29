@@ -12,6 +12,8 @@
 #include "netlink.h"
 #include "netlink_consts.h"
 #include "log.h"
+// struct config
+#include "config/config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,15 +28,15 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 	// Assemble the message according to the netlink protocol
 	struct nlmsghdr *nl;
 	nl = (struct nlmsghdr*)(void*)buf;
-	nl->nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+	// Prepare the netlink message header
+	nl->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ACK;
 
 	if(nlmsg_type == RTM_GETADDR)
 	{
 		// Request address information
 		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
 
-		struct ifaddrmsg *ifa;
-		ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
+		struct ifaddrmsg *ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
 		ifa->ifa_family = AF_LOCAL;
 	}
 	else if(nlmsg_type == RTM_GETROUTE)
@@ -42,8 +44,7 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 		// Request route information
 		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 
-		struct rtmsg *rt;
-		rt = (struct rtmsg*)NLMSG_DATA(nl);
+		struct rtmsg *rt = (struct rtmsg*)NLMSG_DATA(nl);
 		rt->rtm_family = AF_LOCAL;
 	}
 	else if(nlmsg_type == RTM_GETLINK)
@@ -51,8 +52,7 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 		// Request link information
 		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 
-		struct ifinfomsg *link;
-		link = (struct ifinfomsg*)NLMSG_DATA(nl);
+		struct ifinfomsg *link = (struct ifinfomsg*)NLMSG_DATA(nl);
 		link->ifi_family = AF_UNSPEC;
 	}
 	nl->nlmsg_type = nlmsg_type;
@@ -71,18 +71,31 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 
 static ssize_t nlgetmsg(int fd, struct sockaddr_nl *sa, void *buf, size_t len)
 {
-	struct iovec iov;
-	struct msghdr msg;
-	iov.iov_base = buf;
-	iov.iov_len = len;
-
-	memset(&msg, 0, sizeof(msg));
+	// Prepare struct msghdr for receiving, iov is the buffer
+	struct iovec iov = { .iov_base = buf, .iov_len = len };
+	struct msghdr msg = { 0 };
 	msg.msg_name = sa;
 	msg.msg_namelen = sizeof(*sa);
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
 
-	return recvmsg(fd, &msg, 0);
+	// Receive netlink message from kernel
+	const ssize_t rcv = recvmsg(fd, &msg, 0);
+
+	// Netlink sockets are datagram sockets rather than stream sockets,
+	// meaning that each message must be received in its entirety by a
+	// single recvmsg() system call. If the provided buffer is too short,
+	// the message will be truncated and the MSG_TRUNC flag set
+	if(msg.msg_flags & MSG_TRUNC)
+		log_warn("Netlink message truncated!");
+
+	// Upon truncation the remaining part of the message is discarded and
+	// cannot be retrieved - this information is lost. We, nonetheless,
+	// return the truncated message to the caller, as it still contains
+	// partial information
+	// Additional checking during parsing will log additional warnings,
+	// indicating how much (at least) of the message was truncated
+	return rcv;
 }
 
 static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *routes, const bool detailed)
@@ -207,8 +220,7 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 					if (rtnhflags[i].flag & rtnh->rtnh_flags)
 						cJSON_AddStringReferenceToArray(nhflags, rtnhflags[i].name);
 				cJSON_AddItemToObject(route, "mflags", nhflags);
-				if(detailed)
-					cJSON_AddNumberToObject(route, "imflags", rtnh->rtnh_flags);
+				cJSON_AddNumberToObject(route, "imflags", rtnh->rtnh_flags);
 
 				cJSON_AddNumberToObject(multipath, "hops", rtnh->rtnh_hops); // Nexthop priority
 				if_indextoname(rtnh->rtnh_ifindex, ifname);
@@ -229,7 +241,7 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			{
 				if(!detailed)
 					break;
-				struct rta_mfc_stats *mfc = (struct rta_mfc_stats*)RTA_DATA(rta);
+				const struct rta_mfc_stats *mfc = (struct rta_mfc_stats*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, "mfcs_packets", mfc->mfcs_packets);
 				cJSON_AddNumberToObject(route, "mfcs_bytes", mfc->mfcs_bytes);
 				cJSON_AddNumberToObject(route, "mfcs_wrong_if", mfc->mfcs_wrong_if);
@@ -240,7 +252,7 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			{
 				if(!detailed)
 					break;
-				struct rta_cacheinfo *ci = (struct rta_cacheinfo*)RTA_DATA(rta);
+				const struct rta_cacheinfo *ci = (struct rta_cacheinfo*)RTA_DATA(rta);
 				// Get seconds the system is already up ("uptime")
 				struct timespec wall_clock;
 				clock_gettime(CLOCK_REALTIME, &wall_clock);
@@ -278,6 +290,18 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 	// The default route is the one which does not have a "dst" attribute
 	if(cJSON_GetObjectItem(route, "dst") == NULL)
 		cJSON_AddStringToObject(route, "dst", "default");
+
+	// Debug output
+	if(config.debug.netlink.v.b)
+	{
+		const cJSON* dst = cJSON_GetObjectItem(route, "dst");
+		const cJSON *via = cJSON_GetObjectItem(route, "via");
+
+		log_debug(DEBUG_NETLINK, "Parsing IPv%d route: table %u is %s via %s",
+		          rt->rtm_family == AF_INET ? 4 : 6,
+		          rt->rtm_table, dst ? dst->valuestring : "N/A",
+		          via ? via->valuestring : "direct");
+	}
 
 	cJSON_AddItemToArray(routes, route);
 	return 0;
@@ -412,7 +436,7 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 
 			case IFA_CACHEINFO:
 			{
-				struct ifa_cacheinfo *ci = (struct ifa_cacheinfo*)RTA_DATA(rta);
+				const struct ifa_cacheinfo *ci = (struct ifa_cacheinfo*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, "prefered", ci->ifa_prefered);
 				cJSON_AddNumberToObject(addr, "valid", ci->ifa_valid);
 				// Get seconds the system is already up ("uptime")
@@ -472,10 +496,22 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 	if(!ifname[0])
 		if_indextoname(ifa->ifa_index, ifname);
 
+	// Debug output
+	if(config.debug.netlink.v.b)
+	{
+		const cJSON *address = cJSON_GetObjectItem(addr, "address");
+		const cJSON *prefixlen = cJSON_GetObjectItem(addr, "prefixlen");
+		log_debug(DEBUG_NETLINK, "Parsing %s address of iface %u (%s): %s/%d",
+		          family_name(ifa->ifa_family), ifa->ifa_index, ifname,
+		          address ? address->valuestring : "N/A",
+		          prefixlen ? prefixlen->valueint : -1);
+	}
+
 	// Return early if the interface is not in the list of known interfaces
 	cJSON *ifobj = cJSON_GetObjectItem(links, ifname);
 	if(ifobj == NULL)
 	{
+		log_debug(DEBUG_NETLINK, "Interface %s undefined, skipping", ifname);
 		cJSON_Delete(addr);
 		return 0;
 	}
@@ -631,7 +667,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				// See description of the individual statistics
 				// below in the IFLA_STATS64 case
 				jstats = JSON_NEW_OBJECT();
-				struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
+				const struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
 				{
 					// Warning: May be overflown if the interface has been up for a long time
 					// and has transferred a lot of data as 32 bits are used for the counters
@@ -689,7 +725,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_STATS64:
 			{
 				jstats64 = JSON_NEW_OBJECT();
-				struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
+				const struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
 				{
 					char prefix[2] = { 0 };
 					double formatted_size;
@@ -924,9 +960,9 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				if (vfinfo->rta_type != IFLA_VF_INFO)
 					break;
 
-				struct ifla_vf_mac *vf_mac;
-				struct ifla_vf_broadcast *vf_broadcast;
-				struct ifla_vf_tx_rate *vf_tx_rate;
+				const struct ifla_vf_mac *vf_mac;
+				const struct ifla_vf_broadcast *vf_broadcast;
+				const struct ifla_vf_tx_rate *vf_tx_rate;
 				struct rtattr *vf[IFLA_VF_MAX + 1] = {};
 
 				parse_rtattr_nested(vf, IFLA_VF_MAX, vfinfo);
@@ -1058,6 +1094,9 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 	else if(jstats)
 		cJSON_AddItemToObject(link, "stats", jstats);
 
+	log_debug(DEBUG_NETLINK, "Parsing link %d -> %s",
+	          ifi->ifi_index, ifname);
+
 	// Add the link to the object
 	cJSON_AddItemToObject(links, ifname, link);
 
@@ -1069,38 +1108,83 @@ static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool deta
 	struct nlmsghdr *nl = NULL;
 	for_each_nlmsg(nl, buf, len)
 	{
-		if (nl->nlmsg_type == NLMSG_ERROR)
+		log_debug(DEBUG_NETLINK, "Parsing Netlink message (type %u, len %u/%zu, flags 0x%x, sqe %u)",
+		          nl->nlmsg_type, nl->nlmsg_len, len, nl->nlmsg_flags, nl->nlmsg_seq);
+
+		// Check if the message dump got interrupted
+		// Some of the data structures kernel uses for storing objects
+		// make it hard to provide an atomic snapshot of all the objects
+		// in a dump (without impacting the fast-paths updating them).
+		// Kernel may set the NLM_F_DUMP_INTR flag on any message in a
+		// dump (including the NLMSG_DONE message) if the dump was
+		// interrupted and may be inconsistent (e.g. missing objects).
+		// User space should retry the dump if it sees the flag set.
+		if(nl->nlmsg_flags & NLM_F_DUMP_INTR)
+			log_info("Netlink message dump interrupted, some information may be missing");
+
+		// Evaluate the message type
+		if (nl->nlmsg_type == RTM_NEWROUTE)
 		{
-			log_info("error");
-			return -1;
-		}
-		else if (nl->nlmsg_type == RTM_NEWROUTE)
-		{
-			struct rtmsg *rt;
-			rt = (struct rtmsg*)NLMSG_DATA(nl);
+			struct rtmsg *rt = (struct rtmsg*)NLMSG_DATA(nl);
 			nlparsemsg_route(rt, RTM_RTA(rt), RTM_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else if (nl->nlmsg_type == RTM_NEWADDR)
 		{
-			struct ifaddrmsg *ifa;
-			ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
+			struct ifaddrmsg *ifa = (struct ifaddrmsg*)NLMSG_DATA(nl);
 			nlparsemsg_address(ifa, IFA_RTA(ifa), IFA_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else if (nl->nlmsg_type == RTM_NEWLINK)
 		{
-			struct ifinfomsg *ifi;
-			ifi = (struct ifinfomsg*)NLMSG_DATA(nl);
+			struct ifinfomsg *ifi = (struct ifinfomsg*)NLMSG_DATA(nl);
 			nlparsemsg_link(ifi, IFLA_RTA(ifi), IFLA_PAYLOAD(nl), json, detailed);
 			continue;
 		}
 		else
 		{
-			log_err("unknown nlmsg_type: %d", nl->nlmsg_type);
+			log_warn("Unknown Netlink message type: %d", nl->nlmsg_type);
 		}
 
 	}
+
+	// Print message properties in debug mode
+	if(config.debug.netlink.v.b)
+	{
+		const char *nltype = "";
+		if(nl->nlmsg_type == NLMSG_DONE)
+			nltype = " (NLMSG_DONE)";
+		else if(nl->nlmsg_type == NLMSG_ERROR)
+			nltype = " (NLMSG_ERROR)";
+		else if(nl->nlmsg_type == NLMSG_NOOP)
+			nltype = " (NLMSG_NOOP)";
+		else if(nl->nlmsg_type == NLMSG_OVERRUN)
+			nltype = " (NLMSG_OVERRUN)";
+		else if(nl->nlmsg_type == RTM_NEWROUTE)
+			nltype = " (RTM_NEWROUTE)";
+		else if(nl->nlmsg_type == RTM_NEWADDR)
+			nltype = " (RTM_NEWADDR)";
+		else if(nl->nlmsg_type == RTM_NEWLINK)
+			nltype = " (RTM_NEWLINK)";
+
+		log_debug(DEBUG_NETLINK, "Returning next nl_msg_type: %u%s, remaining len: %u/%zu",
+		          nl->nlmsg_type, nltype, nl->nlmsg_len, len);
+	}
+
+	// Return human-readable warning if receive buffer is too small
+	if(nl->nlmsg_len > len)
+		log_warn("Netlink message (type %u) length exceeds buffer length (%u > %zu), some information will be missing",
+		         nl->nlmsg_type, nl->nlmsg_len, len);
+
+	// Evaluate DONE and ERROR messages only in debug mode
+	if(config.debug.netlink.v.b && (nl->nlmsg_type == NLMSG_ERROR || nl->nlmsg_type == NLMSG_DONE))
+	{
+		// Evaluate the error code (negative errno or 0 for acknowledgements)
+		const struct nlmsgerr *msgerr = (struct nlmsgerr*)NLMSG_DATA(nl);
+		const char *msgtype = nl->nlmsg_type == NLMSG_ERROR ? "error" : "done";
+		log_debug(DEBUG_NETLINK, "netlink %s: %s (%d)", msgtype, strerror(-msgerr->error), msgerr->error);
+	}
+
 	return nl->nlmsg_type;
 }
 
@@ -1110,7 +1194,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	const int fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if(fd < 0)
 	{
-		log_info("socket error: %s", strerror(errno));
+		log_err("netlink socket error: %s", strerror(errno));
 		return -1;
 	}
 
@@ -1121,23 +1205,65 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size));
 	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buffer_size, sizeof(buffer_size));
 
-	struct sockaddr_nl sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.nl_family = AF_NETLINK;
+	// Enable NETLINK_EXT_ACK
+	int on = 1;
+	setsockopt(fd, SOL_NETLINK, NETLINK_EXT_ACK, &on, sizeof(on));
 
-	if(!nlrequest(fd, &sa, type))
+	// Prepare source address
+	struct sockaddr_nl local = { 0 };
+	local.nl_family = AF_NETLINK;
+	local.nl_pid = 0; // Port ID, 0 = assigned automatically by bind()
+	local.nl_groups = 0; // unicast
+
+	// Prepare destination address
+	struct sockaddr_nl kernel = { 0 };
+	kernel.nl_family = AF_NETLINK;
+	kernel.nl_pid = 0; // Kernel
+	kernel.nl_groups = 0; // unicast
+
+	// Bind the socket to the netlink address
+	bind(fd, (struct sockaddr*)&local, sizeof(local));
+
+	// Send the request
+	log_debug(DEBUG_NETLINK, "Calling nlrequest(type = %d)", type);
+	if(!nlrequest(fd, &kernel, type))
 	{
-		log_info("nlrequest error: %s", strerror(errno));
+		log_err("nlrequest error: %s", strerror(errno));
 		close(fd);
 		return -1;
 	}
 
-	uint32_t nl_msg_type;
-	do {
-		char buf[BUFLEN];
-		ssize_t len = nlgetmsg(fd, &sa, buf, BUFLEN);
-		nl_msg_type = parse_nl_msg(buf, len, json, detailed);
-	} while (nl_msg_type != NLMSG_DONE && nl_msg_type != NLMSG_ERROR);
+	// Receive and parse the response, continue until we receive a
+	// NLMSG_DONE which indicates the end of the message (we explicitly
+	// request it via NLM_F_DUMP). We do NOT set NLM_F_ACK as we do not
+	// want to receive an ERROR-typed ACK message here.
+	while(true)
+	{
+		char buf[BUFLEN] = { 0 };
+		log_debug(DEBUG_NETLINK, "Calling nlgetmsg(type = %d)", type);
+		ssize_t len = nlgetmsg(fd, &kernel, buf, BUFLEN);
+		if(len < 0)
+		{
+			log_err("nlgetmsg error: %s", strerror(errno));
+			close(fd);
+			return -1;
+		}
+
+		// Parse the contained messages
+		log_debug(DEBUG_NETLINK, "Calling parse_nl_msg (len = %zd)", len);
+		const uint32_t nl_msg_type = parse_nl_msg(buf, len, json, detailed);
+
+		// Break if nothing was received or the last received message
+		// was either a NLMSG_DONE or NLMSG_ERROR message. The latter
+		// indicates an error and the error code is contained in the
+		// message. Also break if the message type is NLMSG_OVERRUN
+		// which indicates that the socket buffer has overflown.
+		if(len == 0 ||
+		   nl_msg_type == NLMSG_DONE ||
+		   nl_msg_type == NLMSG_ERROR ||
+		   nl_msg_type == NLMSG_OVERRUN)
+			break;
+	}
 
 	close(fd);
 	return 0;
@@ -1146,15 +1272,18 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 
 bool nlroutes(cJSON *routes, const bool detailed)
 {
+	log_debug(DEBUG_NETLINK, "Called nlroutes");
 	return nlquery(RTM_GETROUTE, routes, detailed);
 }
 
 bool nladdrs(cJSON *interfaces, const bool detailed)
 {
+	log_debug(DEBUG_NETLINK, "Called nladdrs");
 	return nlquery(RTM_GETADDR, interfaces, detailed);
 }
 
 bool nllinks(cJSON *interfaces, const bool detailed)
 {
+	log_debug(DEBUG_NETLINK, "Called nllinks");
 	return nlquery(RTM_GETLINK, interfaces, detailed);
 }

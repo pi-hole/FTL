@@ -594,6 +594,8 @@ components:
                   type: boolean
                 ntp:
                   type: boolean
+                netlink:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -825,6 +827,7 @@ components:
             extra: false
             reserved: false
             ntp: false
+            netlink: false
             all: false
     config_one:
       summary: One option
