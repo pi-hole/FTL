@@ -452,7 +452,15 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Update number of domains and update timestamp on this list
-	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, abp_entries = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
+	// The `date_updated` column is updated conditionally using a `CASE`
+	// expression. If the `status` column of the row is `1` (= list has been
+	// updated), the `date_updated` column is set to the current timestamp.
+	// This is achieved by using the `strftime` function to get the current
+	// time in seconds since the Unix epoch and casting it to an integer. If
+	// the `status` is not `1` (we used a cached list either because there
+	// are no changes or the download failed), the `date_updated` column
+	// retains its existing value.
+	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, abp_entries = ?, date_updated = CASE WHEN status = 1 THEN cast(strftime('%s', 'now') as int) ELSE date_updated END WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",
