@@ -239,6 +239,27 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
 	  qlen--, qdomain++;
     }
 
+  my_syslog(LOG_INFO, "Acceptable servers for domain \"%s\" are (IDs %d - %d):", domain, nlow, nhigh-1);
+  for(unsigned int i = nlow; i < nhigh; i++)
+  {
+     unsigned int port = 0;
+     char name[INET6_ADDRSTRLEN] = "N/A";
+     if(daemon->serverarray[i]->addr.sa.sa_family == AF_INET)
+     {
+       inet_ntop(AF_INET, &daemon->serverarray[i]->addr.in.sin_addr, name, INET6_ADDRSTRLEN);
+       port = ntohs(daemon->serverarray[i]->addr.in.sin_port);
+     }
+     else if(daemon->serverarray[i]->addr.sa.sa_family == AF_INET6)
+     {
+       inet_ntop(AF_INET6, &daemon->serverarray[i]->addr.in6.sin6_addr, name, INET6_ADDRSTRLEN);
+       port = ntohs(daemon->serverarray[i]->addr.in6.sin6_port);
+     }
+    if(daemon->serverarray[i]->domain[0])
+      my_syslog(LOG_INFO, "  * %s#%u (%u) because it is explicitly configured for domain \"%s\"", name, port, i, daemon->serverarray[i]->domain);
+    else
+      my_syslog(LOG_INFO, "  * %s#%u (%u) because it is usable for any domain", name, port, i);
+  }
+
   /* domain has no dots, and we have at least one server configured to handle such,
      These servers always sort to the very end of the array. 
      A configured server eg server=/lan/ will take precdence. */

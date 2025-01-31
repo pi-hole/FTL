@@ -485,6 +485,12 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  if (option_bool(OPT_CONNTRACK))
 	    set_outgoing_mark(forward, fd);
 #endif
+	char server_name[INET6_ADDRSTRLEN] = { 0 };
+	  if(srv->addr.sa.sa_family == AF_INET)
+	    inet_ntop(AF_INET, &srv->addr.in.sin_addr, server_name, INET6_ADDRSTRLEN);
+	  else
+	    inet_ntop(AF_INET6, &srv->addr.in6.sin6_addr, server_name, INET6_ADDRSTRLEN);
+	my_syslog(LOG_INFO, "forwarding query to %s, configured for domain \"%s\"", server_name, srv->domain[0] ? srv->domain : "<any>");
 	  if (retry_send(sendto(fd, (char *)header, plen, 0,
 				&srv->addr.sa,
 				sa_len(&srv->addr))))
