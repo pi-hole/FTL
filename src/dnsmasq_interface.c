@@ -3786,10 +3786,9 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
-void FTL_connection_error(const char *reason, const union mysockaddr *addr)
+void FTL_connection_error(const char *reason, const union mysockaddr *addr, const int errnum)
 {
-	// Make a private copy of the error
-	const int errnum = errno;
+	// Get the error message
 	const char *error = strerror(errnum);
 
 	// Set log priority
