@@ -2796,7 +2796,8 @@ unsigned char *tcp_request(int confd, time_t now,
     }
 
   blockdata_free(saved_question);
-  
+  check_log_writer(1);
+
   return packet;
 }
 
