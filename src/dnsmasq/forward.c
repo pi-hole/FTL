@@ -386,7 +386,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->flags = fwd_flags;
 
 #ifdef HAVE_DNSSEC
-      if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
+      if (option_bool(OPT_DNSSEC_VALID))
 	{
 	  plen = add_do_bit(header, plen, ((unsigned char *) header) + daemon->edns_pktsz);
 	  
@@ -998,8 +998,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	    status = dnssec_validate_ds(now, header, plen, daemon->namebuff, daemon->keyname, forward->class, &orig->validate_counter);
 	  else
 	    status = dnssec_validate_reply(now, header, plen, daemon->namebuff, daemon->keyname, &forward->class, 
-					   !option_bool(OPT_DNSSEC_IGN_NS) && (forward->sentto->flags & SERV_DO_DNSSEC),
-					   NULL, NULL, NULL, &orig->validate_counter);
+					   !option_bool(OPT_DNSSEC_IGN_NS), NULL, NULL, NULL, &orig->validate_counter);
 	  
 	  if (STAT_ISEQUAL(status, STAT_ABANDONED))
 	    log_resource = 1;
@@ -1324,7 +1323,7 @@ void reply_query(int fd, time_t now)
 #ifdef HAVE_DNSSEC
   if (option_bool(OPT_DNSSEC_VALID))
     {
-      if ((forward->sentto->flags & SERV_DO_DNSSEC) && !(forward->flags & FREC_CHECKING_DISABLED))
+      if (!(forward->flags & FREC_CHECKING_DISABLED))
 	{
 	  dnssec_validate(forward, header, n, STAT_OK, now);
 	  return;
@@ -2377,8 +2376,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
 	new_status = dnssec_validate_ds(now, header, n, name, keyname, class, validatecount);
       else
 	new_status = dnssec_validate_reply(now, header, n, name, keyname, &class,
-					   !option_bool(OPT_DNSSEC_IGN_NS) && (server->flags & SERV_DO_DNSSEC),
-					   NULL, NULL, NULL, validatecount);
+					   !option_bool(OPT_DNSSEC_IGN_NS), NULL, NULL, NULL, validatecount);
       
       if (!STAT_ISEQUAL(new_status, STAT_NEED_DS) && !STAT_ISEQUAL(new_status, STAT_NEED_KEY) && !STAT_ISEQUAL(new_status, STAT_ABANDONED))
 	break;
@@ -2740,7 +2738,7 @@ unsigned char *tcp_request(int confd, time_t now,
 		    start = master->last_server;
 		  
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && (master->flags & SERV_DO_DNSSEC))
+		  if (option_bool(OPT_DNSSEC_VALID))
 		    {
 		      size = add_do_bit(header, size, ((unsigned char *) header) + 65536);
 		      
@@ -2769,7 +2767,7 @@ unsigned char *tcp_request(int confd, time_t now,
 			  
 			  if (checking_disabled || (header->hb4 & HB4_CD))
 			    no_cache_dnssec = 1;
-			  else if (master->flags & SERV_DO_DNSSEC)
+			  else
 			    {
 			      int keycount = daemon->limit[LIMIT_WORK]; /* Limit to number of DNSSEC questions, to catch loops and avoid filling cache. */
 			      int validatecount = daemon->limit[LIMIT_CRYPTO]; 
