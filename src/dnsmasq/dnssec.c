@@ -1004,49 +1004,57 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
   unsigned long ttl;
   union all_addr a;
 
-  if (ntohs(header->qdcount) != 1 ||
-      !(p = skip_name(p, header, plen, 4)))
-    return STAT_BOGUS;
-  
-  GETSHORT(qtype, p);
-  GETSHORT(qclass, p);
-
-  if (qtype != T_DS || qclass != class)
-    return STAT_BOGUS;
-
-  /* A SERVFAIL answer has been seen to a DS query not at start of authority,
+   /* A SERVFAIL answer has been seen to a DS query not at start of authority,
      so treat it as such and continue to search for a DS or proof of no existence
      further down the tree. */
   if (RCODE(header) == SERVFAIL)
     servfail = neganswer = nons = 1;
   else
-    {
-      rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl, validate_counter);
+    rc = dnssec_validate_reply(now, header, plen, name, keyname, NULL, 0, &neganswer, &nons, &neg_ttl, validate_counter);
   
+  p = (unsigned char *)(header+1);
+  if (ntohs(header->qdcount) != 1 ||
+      !extract_name(header, plen, &p, name, EXTR_NAME_EXTRACT, 4))
+    return STAT_BOGUS;
+  
+  GETSHORT(qtype, p);
+  GETSHORT(qclass, p);
+  
+  if (qtype != T_DS || qclass != class)
+    return STAT_BOGUS;
+
+  if (!servfail)
+    {
       if (STAT_ISEQUAL(rc, STAT_INSECURE))
 	{
-	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
-	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
-	  return STAT_BOGUS | DNSSEC_FAIL_INDET;
+	  if (lookup_domain(name, F_DOMAINSRV, NULL, NULL))
+	    {
+	      my_syslog(LOG_INFO, _("Insecure reply received for DS %s, assuming non-DNSSEC domain-specific server."), name);
+	      neganswer = 1;
+	      nons = 0; /* If we're faking a DS, fake one with an NS. */
+	      neg_ttl = DNSSEC_ASSUMED_DS_TTL;
+	    }
+	  else
+	    {
+	      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS - not secure", 0);
+	      return STAT_BOGUS | DNSSEC_FAIL_INDET;
+	    }
 	}
-      
-      p = (unsigned char *)(header+1);
-      if (!extract_name(header, plen, &p, name, EXTR_NAME_EXTRACT, 4))
-	return STAT_BOGUS;
-
-      p += 4; /* qtype, qclass */
-      
-      /* If the key needed to validate the DS is on the same domain as the DS, we'll
-	 loop getting nowhere. Stop that now. This can happen of the DS answer comes
-	 from the DS's zone, and not the parent zone. */
-      if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+      else
 	{
-	  log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
-	  return STAT_BOGUS;
+	  if (STAT_ISEQUAL(rc, STAT_NEED_KEY) && hostname_isequal(name, keyname))
+	    {
+	      /* If the key needed to validate the DS is on the same domain as the DS, we'll
+		 loop getting nowhere. Stop that now. This can happen of the DS answer comes
+		 from the DS's zone, and not the parent zone. */
+	      log_query(F_NOEXTRA | F_UPSTREAM, name, NULL, "BOGUS DS", 0);
+	      return STAT_BOGUS;
+	    }
+
+	  if (!STAT_ISEQUAL(rc, STAT_SECURE))
+	    return rc;
 	}
-  
-      if (!STAT_ISEQUAL(rc, STAT_SECURE))
-	return rc;
     }
   
   if (!neganswer)
@@ -1136,9 +1144,19 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
       /* We only cache validated DS records, DNSSECOK flag hijacked 
 	 to store presence/absence of NS. */
       if (nons)
-	flags &= ~F_DNSSECOK;
+	{
+	  if (lookup_domain(name, F_DOMAINSRV, NULL, NULL))
+	    {
+	      my_syslog(LOG_WARNING, _("Negative DS reply without NS record received for %s, assuming non-DNSSEC domain-specific server."), name);
+	      nons = 0;
+	    }
+	  else
+	    /* We only cache validated DS records, DNSSECOK flag hijacked 
+	       to store presence/absence of NS. */
+	    flags &= ~F_DNSSECOK;
+	}
     }
-  
+
   cache_start_insert();
   
   /* Use TTL from NSEC for negative cache entries */
@@ -2162,7 +2180,9 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	/* NXDOMAIN or NODATA reply, unanswered question is (name, qclass, qtype) */
 	
 	/* For anything other than a DS record, this situation is OK if either
-	   the answer is in an unsigned zone, or there's a NSEC records. */
+	   the answer is in an unsigned zone, or there's NSEC records.
+	   For a DS record, we return INSECURE, which almost always turns
+	   into BOGUS in the caller. */
 	if ((rc_nsec = prove_non_existence(header, plen, keyname, name, qtype, qclass, NULL, nons, nsec_ttl, validate_counter)) != 0)
 	  {
 	    if (rc_nsec & DNSSEC_FAIL_WORK)
@@ -2170,7 +2190,7 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 
 	    /* Empty DS without NSECS */
 	    if (qtype == T_DS)
-	      return STAT_BOGUS | rc_nsec;
+	      return STAT_INSECURE;
 	    
 	    if ((rc_nsec & (DNSSEC_FAIL_NONSEC | DNSSEC_FAIL_NSEC3_ITERS)) &&
 		!STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))

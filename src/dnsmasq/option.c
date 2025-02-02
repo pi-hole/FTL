@@ -5340,7 +5340,8 @@ err:
 	
 	new->class = C_IN;
 	new->name = NULL;
-
+	new->digestlen = 0;
+	
 	if ((comma = split(arg)) && (algo = split(comma)))
 	  {
 	    int class = 0;
@@ -5358,29 +5359,37 @@ err:
 		algo = split(comma);
 	      }
 	  }
-		  
-       	if (!comma || !algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
-	    !atoi_check16(comma, &new->keytag) || 
-	    !atoi_check8(algo, &new->algo) ||
-	    !atoi_check8(digest, &new->digest_type) ||
-	    !(new->name = canonicalise_opt(arg)))
+	
+	if (!(new->name = canonicalise_opt(arg)))
 	  ret_err_free(_("bad trust anchor"), new);
-	    
-	/* Upper bound on length */
-	len = (2*strlen(keyhex))+1;
-	new->digest = opt_malloc(len);
-	unhide_metas(keyhex);
-	/* 4034: "Whitespace is allowed within digits" */
-	for (cp = keyhex; *cp; )
-	  if (isspace((unsigned char)*cp))
-	    for (cp1 = cp; *cp1; cp1++)
-	      *cp1 = *(cp1+1);
-	  else
-	    cp++;
-	if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+
+	if (comma)
 	  {
-	    free(new->name);
-	    ret_err_free(_("bad HEX in trust anchor"), new);
+	    if (!algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
+		!atoi_check16(comma, &new->keytag) || 
+		!atoi_check8(algo, &new->algo) ||
+		!atoi_check8(digest, &new->digest_type))
+	      {
+		free(new->name);
+		ret_err_free(_("bad trust anchor"), new);
+	      }
+	    
+	    /* Upper bound on length */
+	    len = (2*strlen(keyhex))+1;
+	    new->digest = opt_malloc(len);
+	    unhide_metas(keyhex);
+	    /* 4034: "Whitespace is allowed within digits" */
+	    for (cp = keyhex; *cp; )
+	      if (isspace((unsigned char)*cp))
+		for (cp1 = cp; *cp1; cp1++)
+		  *cp1 = *(cp1+1);
+	      else
+		cp++;
+	    if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+	      {
+		free(new->name);
+		ret_err_free(_("bad HEX in trust anchor"), new);
+	      }
 	  }
 	
 	new->next = daemon->ds;

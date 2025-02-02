@@ -939,7 +939,8 @@ int main_dnsmasq (int argc, char **argv)
 	my_syslog(LOG_INFO, _("DNSSEC signature timestamps not checked until system time valid"));
 
       for (ds = daemon->ds; ds; ds = ds->next)
-	my_syslog(LOG_INFO, _("configured with trust anchor for %s keytag %u"),
+	my_syslog(LOG_INFO,
+		  ds->digestlen == 0 ? _("configured with negative trust anchor for %s") : _("configured with trust anchor for %s keytag %u"),
 		  ds->name[0] == 0 ? "<root>" : ds->name, ds->keytag);
     }
 #endif

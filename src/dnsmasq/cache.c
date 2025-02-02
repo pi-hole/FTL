@@ -1465,11 +1465,17 @@ void cache_reload(void)
 	cache->flags = F_FORWARD | F_IMMORTAL | F_DS | F_CONFIG | F_NAMEP;
 	cache->ttd = daemon->local_ttl;
 	cache->name.namep = ds->name;
-	cache->addr.ds.keylen = ds->digestlen;
-	cache->addr.ds.algo = ds->algo;
-	cache->addr.ds.keytag = ds->keytag;
-	cache->addr.ds.digest = ds->digest_type;
 	cache->uid = ds->class;
+	if (ds->digestlen != 0)
+	  {
+	    cache->addr.ds.keylen = ds->digestlen;
+	    cache->addr.ds.algo = ds->algo;
+	    cache->addr.ds.keytag = ds->keytag;
+	    cache->addr.ds.digest = ds->digest_type;
+	  }
+	else
+	  cache->flags |= F_NEG | F_DNSSECOK | F_NO_RR;
+	
 	cache_hash(cache);
 	make_non_terminals(cache);
       }

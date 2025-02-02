@@ -346,7 +346,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      else
 			{
 			  /* --local=/domain/, only return if we don't need a server. */
-			  if (flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER))
+			  if (flags & (F_DOMAINSRV | F_SERVER))
 			    nhigh = i;
 			}
 		    }
