@@ -2117,12 +2117,12 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  daemon->serverarray[first]->last_server = start;
 	  serv->flags &= ~SERV_GOT_TCP;
 	}
-      
+      int iii = 0;
       /* We us the _ONCE veriant of read_write() here because we've set a timeout on the tcp socket
 	 and wish to abort if the whole data is not read/written within the timeout. */      
-	if ((!data_sent && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
-	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
-	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
+	if ((!data_sent && (iii = 1) && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
+	  ((iii = 2) && !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE)) ||
+	  ((iii = 3) && !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE)))
 	{
 	  const int errnum = errno;
 	  close(serv->tcpfd);
@@ -2135,6 +2135,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  else
 	  /**** Pi-hole modification ****/
 	  {
+	    my_syslog(LOG_INFO, "Failed at %s, data_sent: %s", iii == 1 ? "sending question" : iii == 2 ? "receiving length" : iii == 3 ? "receiving payload" : "unknown", data_sent ? "true" : "false");
 	    FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr, errnum);
 	    continue;
 	  }
