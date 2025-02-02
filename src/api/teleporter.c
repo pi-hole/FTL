@@ -753,6 +753,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 			.archive_name = "setupVars.conf",
 			.destination = config.files.setupVars.v.s
 		},{
+			.archive_name = "dnsmasq.d/04-pihole-static-dhcp.conf",
+			.destination = DNSMASQ_STATIC_LEASES
+		},{
 			.archive_name = "dnsmasq.d/05-pihole-custom-cname.conf",
 			.destination = DNSMASQ_CNAMES
 		}
