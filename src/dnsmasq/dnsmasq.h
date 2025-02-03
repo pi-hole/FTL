@@ -282,7 +282,8 @@ struct event_desc {
 #define OPT_CACHE_RR       71
 #define OPT_LOCALHOST_SERVICE  72
 #define OPT_LOG_PROTO      73
-#define OPT_LAST           74
+#define OPT_NO_0x20        74
+#define OPT_LAST           75
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )

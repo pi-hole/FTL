@@ -25,6 +25,7 @@
    return = 0 -> error
    return = 1 -> extract OK, compare OK, flip OK
    return = 2 -> extract OK, compare failed.
+   return = 3 -> extract OK, compare failed but only on case.
 */
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int func, unsigned int parm)
@@ -141,9 +142,21 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		    
 		    if (case_insens && c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
+
+		    if (!case_insens && retvalue != 2 && c1 != c2)
+		      {
+			if (c1 >= 'A' && c1 <= 'Z')
+			  c1 += 'a' - 'A';
+			
+			if (c2 >= 'A' && c2 <= 'Z')
+			  c2 += 'a' - 'A';
+			
+			if (c1 == c2)
+			  retvalue = 3;
+		      }
 		    
 		    if (c1 != c2)
-		      retvalue =  2;
+		      retvalue = 2;
 		  }
 	      }
 	    
