@@ -1557,13 +1557,13 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			force_next_DNS_reply = dns_cache->force_reply;
 			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
-			break;
 
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
 		case QUERY_EXTERNAL_BLOCKED_NXRA:
 		case QUERY_EXTERNAL_BLOCKED_EDE15:
-
+		{
+			bool shortcircuit = true;
 			switch(blocking_status)
 			{
 				case QUERY_UNKNOWN:
@@ -1586,6 +1586,15 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 					break;
 				case QUERY_EXTERNAL_BLOCKED_IP:
 					blockingreason = "blocked upstream with known address";
+					// We do not want to short-circuit this
+					// query as to get the address contained
+					// in the upstream reply being sent
+					// downstream to the client.
+					// Otherwise, Pi-hole's short-circuiting
+					// would reply to the client with the
+					// configured blocking mode (probably
+					// NULL)
+					shortcircuit = false;
 					break;
 				case QUERY_EXTERNAL_BLOCKED_NULL:
 					blockingreason = "blocked upstream with NULL address";
@@ -1605,8 +1614,8 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 
 			force_next_DNS_reply = dns_cache->force_reply;
 			query_blocked(query, domain, client, blocking_status);
-			return true;
-			break;
+			return shortcircuit;
+		}
 
 		case QUERY_CACHE:
 		case QUERY_FORWARDED:
@@ -1626,7 +1635,6 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 				query->flags.allowed = true;
 
 			return false;
-			break;
 	}
 
 	// Skip all checks and continue if we hit already at least one allowlist in the chain
@@ -2387,10 +2395,12 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		const double mean = upstream->rtime / upstream->responses;
 		upstream->rtuncertainty += (mean - query->response)*(mean - query->response);
 
-		// Only proceed if query is not already known
-		// to have been blocked upstream
-		if(query->status == QUERY_EXTERNAL_BLOCKED_IP ||
-		   query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
+		// Only proceed if query is not already known to have been
+		// blocked upstream AND short-circuited.
+		// Note: The reply needs to be analyzed further in case of
+		// QUERY_EXTERNAL_BLOCKED_IP as this is a "normal" upstream
+		// reply and we need to process it further (DNSSEC status, etc.)
+		if(query->status == QUERY_EXTERNAL_BLOCKED_NULL ||
 		   query->status == QUERY_EXTERNAL_BLOCKED_NXRA ||
 		   query->status == QUERY_EXTERNAL_BLOCKED_EDE15)
 		{
@@ -2989,8 +2999,13 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
 		{
 			FTL_blocked_upstream_by_addr(new_qstatus, id, file, line);
 
-			// Query is blocked
-			return 1;
+			// Query is blocked upstream
+
+			// Return true for any status except known blocking page
+			// IP address to short-circut the answer. In the latter case,
+			// we want to continue processing the query to get the correct
+			// reply downstream to the requesting client.
+			return new_qstatus != QUERY_EXTERNAL_BLOCKED_IP;
 		}
 	}
 
