@@ -720,7 +720,7 @@ static void read_regex_table(const enum regex_type regexid)
 
 	// Get number of lines in the regex table
 	num_regex[regexid] = 0;
-	int count = gravityDB_count(tableID);
+	const int count = gravityDB_count(tableID, false);
 
 	if(count == 0)
 	{

@@ -710,24 +710,52 @@ components:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed domains
-                      example: 10
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed domains (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed domains (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied domains
-                      example: 3
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied domains (total)
+                          example: 4
+                        enabled:
+                          type: integer
+                          description: Number of denied domains (enabled)
+                          example: 2
                 regex:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed regex filters
-                      example: 4
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed regex filters (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed regex filters (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied regex filters
-                      example: 2
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied regex filters (total)
+                          example: 10
+                        enabled:
+                          type: integer
+                          description: Number of denied regex filters (enabled)
+                          example: 2
             privacy_level:
               type: integer
               description: Currently used privacy level

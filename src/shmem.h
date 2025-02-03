@@ -66,12 +66,24 @@ typedef struct {
 		int lists;
 		struct {
 			struct {
-				int exact;
-				int regex;
+				struct {
+					int total;
+					int enabled;
+				} exact;
+				struct {
+					int total;
+					int enabled;
+				} regex;
 			} allowed;
 			struct {
-				int exact;
-				int regex;
+				struct {
+					int total;
+					int enabled;
+				} exact;
+				struct {
+					int total;
+					int enabled;
+				} regex;
 			} denied;
 		} domains;
 	} database;
