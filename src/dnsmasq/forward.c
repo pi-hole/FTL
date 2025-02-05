@@ -102,11 +102,10 @@ int send_from(int fd, int nowild, char *packet, size_t len,
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
 	{
-	  const int errnum = errno;
-	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	  /********** Pi-hole modification **********/
-	  FTL_connection_error("failed to send UDP reply", to, errnum);
+	  FTL_connection_error("failed to send UDP reply", to);
 	  /******************************************/
+	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	}
 #endif
       return 0;
@@ -523,9 +522,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	    }
 	    /**** Pi-hole modification ****/
 	    else
-	    {
-	      FTL_connection_error("failed to send UDP request", &srv->addr, errno);
-	    }
+	      FTL_connection_error("failed to send UDP request", &srv->addr);
 	    /******************************/
 	}
       
@@ -2051,7 +2048,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    break;
 	}
       
-      serv = daemon->serverarray[start];
+      *servp = serv = daemon->serverarray[start];
       
     retry:
       blockdata_retrieve(saved_question, qsize, header);
@@ -2096,19 +2093,19 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH || errno == EINPROGRESS || errno == ECONNREFUSED)
 	    fatal = 1;
-	  /**** Pi-hole modification ****/
-	  if (errno != 0)
-	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr, errno);
-	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
 	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	    failed:
 	      /**** Pi-hole modification ****/
-	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr, errno);
+	      FTL_connection_error("TCP connection failed", &serv->addr);
 	      /******************************/
+
+	      int port = prettyprint_addr(&serv->addr, daemon->addrbuff);
+	      my_syslog(LOG_DEBUG|MS_DEBUG, _("TCP connection failed to %s#%d"), daemon->addrbuff, port);
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
 	      continue;
@@ -2124,21 +2121,17 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
 	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
 	{
-	  const int errnum = errno;
-	  close(serv->tcpfd);
-	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
 	     else try next. This avoids DoS from a server which accepts
 	     connections and then closes them. */
 	  if (serv->flags & SERV_GOT_TCP)
-	    goto retry;
+	    {
+	      close(serv->tcpfd);
+	      serv->tcpfd = -1;
+	      goto retry;
+	    }
 	  else
-	  /**** Pi-hole modification ****/
-	  {
-	    FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr, errnum);
-	    continue;
-	  }
-	  /******************************/
+	    goto failed;
 	}
 
       /* If the question section of the reply doesn't match the question we sent, then

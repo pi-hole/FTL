@@ -3801,8 +3801,11 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
-void FTL_connection_error(const char *reason, const union mysockaddr *addr, const int errnum)
+void FTL_connection_error(const char *reason, const union mysockaddr *addr)
 {
+	// Backup errno
+	const int errnum = errno;
+
 	// Get the error message
 	const char *error = strerror(errnum);
 
@@ -3811,7 +3814,7 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 
 	// If this is a TCP connection error and errno == 0, this isn't a
 	// connection error but the remote side closed the connection
-	if(errnum == 0 && strstr(reason, "TCP(read_write)") != NULL)
+	if(errnum == 0 && strcmp(reason, "TCP connection failed") == 0)
 	{
 		error = "Connection prematurely closed by remote server";
 		priority = LOG_INFO;
@@ -3853,6 +3856,9 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 		if(server != NULL)
 			free(server);
 	}
+
+	// Restore errno
+	errno = errnum;
 }
 
 /**
