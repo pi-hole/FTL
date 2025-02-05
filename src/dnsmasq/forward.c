@@ -2099,12 +2099,14 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	     trying again in non-FASTOPEN mode. */
 	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	      int port;
+	      
 	    failed:
 	      /**** Pi-hole modification ****/
 	      FTL_connection_error("TCP connection failed", &serv->addr);
 	      /******************************/
 
-	      int port = prettyprint_addr(&serv->addr, daemon->addrbuff);
+	      port = prettyprint_addr(&serv->addr, daemon->addrbuff);
 	      my_syslog(LOG_DEBUG|MS_DEBUG, _("TCP connection failed to %s#%d"), daemon->addrbuff, port);
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
