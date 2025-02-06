@@ -12,12 +12,12 @@
 
 const char * __attribute__ ((const)) git_version(void)
 {
-	return "v5.25.2-2602-g6cee9a01";
+	return "v5.25.2-2605-g04807af5";
 }
 
 const char * __attribute__ ((const)) git_date(void)
 {
-	return "2025-02-06 06:08:01 +0100";
+	return "2025-02-06 16:01:57 +0000";
 }
 const char * __attribute__ ((const)) git_branch(void)
 {
@@ -30,7 +30,7 @@ const char * __attribute__ ((const)) git_tag(void)
 
 const char * __attribute__ ((const)) git_hash(void)
 {
-	return "6cee9a01";
+	return "04807af5";
 }
 
 const char * __attribute__ ((const)) ftl_arch(void)
