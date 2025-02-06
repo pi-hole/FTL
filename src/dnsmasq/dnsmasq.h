@@ -789,6 +789,7 @@ struct dyndir {
 #define FREC_DO_QUESTION       64
 #define FREC_HAS_PHEADER      128
 #define FREC_GONE_TO_TCP      256
+#define FREC_ANSWER           512
 
 struct frec {
   struct frec_src {

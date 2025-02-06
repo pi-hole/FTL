@@ -1158,7 +1158,7 @@ void reply_query(int fd, time_t now)
   GETSHORT(rrtype, p); 
   GETSHORT(class, p);
 
-  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), 0, 0)))
+  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
     return;
 
   filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last);
@@ -3215,6 +3215,16 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 {
   struct frec *f;
   struct dns_header *header;
+  int compare_mode = EXTR_NAME_COMPARE;
+
+  /* Only compare case-sensitive when matching frec to a an recieved anwer,
+     not when looking for a duplicated question. */
+  if (flags & FREC_ANSWER)
+    {
+      flags &= ~FREC_ANSWER;
+      if (!option_bool(OPT_NO_0x20))
+	compare_mode = EXTR_NAME_NOCASE;
+    }
   
   for (f = daemon->frec_list; f; f = f->next)
     if (f->sentto &&
@@ -3226,7 +3236,7 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 	int hclass, hrrtype, rc;
 
 	/* Case sensitive compare for DNS-0x20 encoding. */
-	if ((rc = extract_name(header, f->stash_len, &p, target, option_bool(OPT_NO_0x20) ? EXTR_NAME_COMPARE : EXTR_NAME_NOCASE, 4)))
+	if ((rc = extract_name(header, f->stash_len, &p, target, compare_mode, 4)))
 	  {
 	    GETSHORT(hrrtype, p);
 	    GETSHORT(hclass, p);
