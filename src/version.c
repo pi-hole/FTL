@@ -12,12 +12,12 @@
 
 const char * __attribute__ ((const)) git_version(void)
 {
-	return "v5.25.2-2601-g8fe4ecd0-dirty";
+	return "v5.25.2-2602-g6cee9a01";
 }
 
 const char * __attribute__ ((const)) git_date(void)
 {
-	return "2025-02-06 06:07:12 +0100";
+	return "2025-02-06 06:08:01 +0100";
 }
 const char * __attribute__ ((const)) git_branch(void)
 {
@@ -30,7 +30,7 @@ const char * __attribute__ ((const)) git_tag(void)
 
 const char * __attribute__ ((const)) git_hash(void)
 {
-	return "8fe4ecd0-dirty";
+	return "6cee9a01";
 }
 
 const char * __attribute__ ((const)) ftl_arch(void)
@@ -40,5 +40,5 @@ const char * __attribute__ ((const)) ftl_arch(void)
 
 const char * __attribute__ ((const)) ftl_cc(void)
 {
-	return "cc (Alpine 14.2.0) 14.2.0";
+	return "cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0";
 }
