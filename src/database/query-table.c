@@ -1230,7 +1230,7 @@ void DB_read_queries(void)
 		if(type < 100)
 		{
 			// Mapped query type
-			if(type >= TYPE_A && type < TYPE_MAX)
+			if(type >= TYPE_NONE && type < TYPE_MAX)
 				query->type = type;
 			else
 			{

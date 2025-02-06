@@ -360,7 +360,7 @@ void tftp_request(struct listener *listen, time_t now)
     }
   
   p = packet + 2;
-  end = packet + len;
+  end = packet + 2 + len;
   
   if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
       !(filename = next(&p, end)) ||

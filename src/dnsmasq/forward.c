@@ -102,11 +102,10 @@ int send_from(int fd, int nowild, char *packet, size_t len,
       /* If interface is still in DAD, EINVAL results - ignore that. */
       if (errno != EINVAL)
 	{
-	  const int errnum = errno;
-	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	  /********** Pi-hole modification **********/
-	  FTL_connection_error("failed to send UDP reply", to, errnum);
+	  FTL_connection_error("failed to send UDP reply", to, -1);
 	  /******************************************/
+	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	}
 #endif
       return 0;
@@ -206,6 +205,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
       struct frec_src *src;
+      struct dns_header *saved_header;
+      unsigned int casediff = 0;
+      unsigned int *bitvector = NULL;
       
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == ntohs(header->id) && 
@@ -230,6 +232,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	    {
 	      daemon->frec_src_count++;
 	      daemon->free_frec_src->next = NULL;
+	      daemon->free_frec_src->encode_bigmap = NULL;
 	    }
 	  
 	  /* If we've been spammed with many duplicates, return REFUSED. */
@@ -246,6 +249,54 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 		free_frec(forward);
 	      goto reply;
 	    }
+
+	  /* Find a bitmap of case differences between the query send upstream and this one,
+	     so we can reply to each query with the correct case pattern.
+	     Since we need this to get back the exact case pattern of each query when doing
+	     query combining, we have to handle the (rare) case that there are case differences
+	     beyond the first 32 letters.
+	     If that happens we have to allocate memory to save it, and the casediff variable
+	     holds the length of that array.
+	     Mismatches beyond 32 letters are rare because most queries are all lowercase and
+	     we only scramble the first 32 letters for security reasons.
+
+	     Note the two names are guaranteed to be the same length and differ only in the case
+	     of letters. */
+	  if ((saved_header = blockdata_retrieve(forward->stash, forward->stash_len, NULL)) &&
+	      extract_request(saved_header, forward->stash_len, daemon->workspacename, NULL))
+	    {
+	      unsigned int i, gobig = 0;
+	      char *s1, *s2;
+
+#define BITS_IN_INT (sizeof(unsigned int) * 8)
+	      
+	    big_redo:
+	      for (s1 = daemon->namebuff, s2 = daemon->workspacename, i = 0; *s1; s1++, s2++)
+		{
+		  char c1 = *s1, c2 = *s2;
+		  
+		  if ((c1 >= 'a' && c1 <= 'z') || (c1 >= 'A' && c1 <= 'Z'))
+		    {
+		      if ((c1 & 0x20) ^ (c2 & 0x20))
+			{
+			  if (bitvector)
+			    bitvector[i/BITS_IN_INT] |= 1<<(i%BITS_IN_INT);
+			  else if (i >= BITS_IN_INT)
+			    gobig = 1; /* More than 32 */
+			  else
+			    casediff |= 1<<i;
+			}
+		      i++;
+		    }
+		}
+
+	      if (gobig && !bitvector)
+		{
+		  casediff = (i/BITS_IN_INT) + 1; /* length of array */
+		  if ((bitvector = whine_malloc(casediff)))
+		    goto big_redo;
+		}
+	    }
 	  
 	  src = daemon->free_frec_src;
 	  daemon->free_frec_src = src->next;
@@ -257,6 +308,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->log_id = daemon->log_id;
 	  src->iface = dst_iface;
 	  src->fd = udpfd;
+	  src->encode_bitmap = casediff;
+	  src->encode_bigmap = bitvector;
+	  
 	  src->udp_pkt_size = (unsigned short)replylimit;
 
 	  /* closely spaced identical queries cannot be a try and a retry, so
@@ -338,9 +392,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->new_id = get_id();
       header->id = ntohs(forward->new_id);
       
-      forward->encode_bitmap = rand32();
+      forward->frec_src.encode_bitmap = option_bool(OPT_NO_0x20) ? 0 : rand32();
       p = (unsigned char *)(header+1);
-      if (!extract_name(header, plen, &p, NULL, EXTR_NAME_FLIP, forward->encode_bitmap))
+      if (!extract_name(header, plen, &p, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
 	goto reply;
       
       /* Keep copy of query for retries and move to TCP */
@@ -523,9 +577,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	    }
 	    /**** Pi-hole modification ****/
 	    else
-	    {
-	      FTL_connection_error("failed to send UDP request", &srv->addr, errno);
-	    }
+	      FTL_connection_error("failed to send UDP request", &srv->addr, -1);
 	    /******************************/
 	}
       
@@ -1038,7 +1090,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  new->flags &= ~(FREC_DNSKEY_QUERY | FREC_DS_QUERY);
 		  new->flags |= flags;
 		  new->forwardall = 0;
-		  new->encode_bitmap = 0;
+		  new->frec_src.encode_bitmap = 0;
 
 		  forward->next_dependent = NULL;
 		  new->dependent = forward; /* to find query awaiting new one. */
@@ -1161,7 +1213,7 @@ void reply_query(int fd, time_t now)
   GETSHORT(rrtype, p); 
   GETSHORT(class, p);
 
-  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), 0, 0)))
+  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
     return;
 
   filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last);
@@ -1270,7 +1322,7 @@ void reply_query(int fd, time_t now)
   
   /* Flip the bits back in the query name. */
   p = (unsigned char *)(header+1);
-  if (!extract_name(header, n, &p, NULL, EXTR_NAME_FLIP, forward->encode_bitmap))
+  if (!extract_name(header, n, &p, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
     return;
       
 #ifdef HAVE_DNSSEC
@@ -1290,6 +1342,51 @@ void reply_query(int fd, time_t now)
 #endif
   
     return_reply(now, forward, header, n, STAT_OK); 
+}
+
+static void xor_array(unsigned int *arg1, unsigned int *arg2, unsigned int len)
+{
+  unsigned int i;
+
+  for (i = 0; i < len; i++)
+    arg1[i] ^= arg2[i];
+}
+
+/* Call extract_name() to flip case of query in packet according to the XOR of the bit maps help in arg1 and arg2 */
+static void flip_queryname(struct dns_header *header, ssize_t len, struct frec_src *arg1, struct frec_src *arg2)
+{
+  unsigned char *p = (unsigned char *)(header+1);
+  unsigned int *arg1p, *arg2p, arg1len, arg2len, *swapp, swap;
+
+   /* Two cases: bitmap is single 32 bit int, or it's arbitrary-length array of 32bit ints.
+      The two args may be different and of different lengths.
+      The shorter gets notionally extended with zeros. */
+    
+  if (arg1->encode_bigmap)
+    arg1p = arg1->encode_bigmap, arg1len = arg1->encode_bitmap;
+  else
+    arg1p = &arg1->encode_bitmap, arg1len = 1;
+
+  if (arg2->encode_bigmap)
+    arg2p = arg2->encode_bigmap, arg2len = arg2->encode_bitmap;
+  else
+    arg2p = &arg2->encode_bitmap, arg2len = 1;
+
+  /* make arg1 the longer, if they differ. */
+  if (arg2len > arg1len)
+    {
+      swap = arg1len;
+      swapp = arg1p;
+      arg1len = arg2len;
+      arg1p = arg2p;
+      arg2len = swap;
+      arg2p = swapp;
+    }
+
+  /* XOR on shorter length, flip on longer, operate on longer */
+  xor_array(arg1p, arg2p, arg2len);
+  extract_name(header, len, &p, (char *)arg1p, EXTR_NAME_FLIP, arg1len);
+  xor_array(arg1p, arg2p, arg2len); /* restore */
 }
 
 void return_reply(time_t now, struct frec *forward, struct dns_header *header, ssize_t n, int status)
@@ -1381,10 +1478,10 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 			  !(forward->flags & FREC_HAS_PHEADER), &forward->frec_src.source,
 			  ((unsigned char *)header) + daemon->edns_pktsz, ede)))
     {
-      struct frec_src *src;
+      struct frec_src *src, *prev;
       int do_trunc;
-      
-      for (do_trunc = 0, src = &forward->frec_src; src; src = src->next)
+            
+      for (do_trunc = 0, prev = NULL, src = &forward->frec_src; src; prev = src, src = src->next)
 	{
 	  header->id = htons(src->orig_id);
 	  
@@ -1397,6 +1494,13 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 		report_addresses(header, nn, mark);
 	    }
 #endif
+	  
+	  /* You will have to draw diagrams and scratch your head to convince yourself
+	     that this works. Bear in mind that the flip to upstream state has already been undone,
+	     for the original query so nothing needs to be done, but subsequent queries' flips
+	     were recorded relative to the flipped name sent upstream. */
+	  if (prev)
+	    flip_queryname(header, nn, prev, src);
 	  
 	  if (src->fd != -1)
 	    {
@@ -1421,7 +1525,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 		}
 	    }
 	}
-      
+
       /* The packet is too big for one or more requestors, send them a truncated answer. */
       if (do_trunc)
 	{
@@ -1433,7 +1537,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  header->arcount = htons(0);
 	  header->hb3 |= HB3_TC;
 	  new = resize_packet(header, nn, pheader, hlen);
-
+	  
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  daemon->log_source_addr = &forward->frec_src.source;
 	  log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
@@ -1441,19 +1545,28 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  /* Pi-hole modification */
 	  int first_ID = -1;
 
-	  for (src = &forward->frec_src; src; src = src->next)
-	    if (src->fd != -1 && nn > src->udp_pkt_size)
-	      {
-		header->id = htons(src->orig_id);
-		send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, new, 
-			  &src->source, &src->dest, src->iface);
-		
+	  /* This gets the name back to the state it was in when we started. */
+	  flip_queryname(header, nn, prev, &forward->frec_src);
+	  
+	  for (src = &forward->frec_src, prev = NULL; src; prev = src, src = src->next)
+	    {
+	      /* If you didn't undertand this above, you won't understand it here either. */
+	      if (prev)
+		flip_queryname(header, nn, prev, src);
+	      
+	      if (src->fd != -1 && nn > src->udp_pkt_size)
+		{
+		  header->id = htons(src->orig_id);
+		  send_from(src->fd, option_bool(OPT_NOWILD) || option_bool (OPT_CLEVERBIND), daemon->packet, new, 
+			    &src->source, &src->dest, src->iface);
+		  
 #ifdef HAVE_DUMPFILE
-		dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)new, NULL, &src->source, src->fd);
+		  dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)new, NULL, &src->source, src->fd);
 #endif
-		/* Pi-hole modification */
-		FTL_multiple_replies(src->log_id, &first_ID);
-	      }
+		  /* Pi-hole modification */
+		  FTL_multiple_replies(src->log_id, &first_ID);
+		}
+	    }
 	}
     }
       
@@ -2018,6 +2131,9 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   unsigned char *p;
   struct blockdata *saved_question;
   struct timeval tv;
+
+  // Pi-hole
+  char where = 0;
   
   (void)mark;
   (void)have_mark;
@@ -2051,7 +2167,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    break;
 	}
       
-      serv = daemon->serverarray[start];
+      *servp = serv = daemon->serverarray[start];
       
     retry:
       blockdata_retrieve(saved_question, qsize, header);
@@ -2096,19 +2212,21 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	    data_sent = 1;
 	  else if (errno == ETIMEDOUT || errno == EHOSTUNREACH || errno == EINPROGRESS || errno == ECONNREFUSED)
 	    fatal = 1;
-	  /**** Pi-hole modification ****/
-	  if (errno != 0)
-	    FTL_connection_error("failed to send TCP(fast-open) packet", &serv->addr, errno);
-	  /******************************/
 #endif
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
-	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
+	  if (fatal || (!data_sent && (where = 1) && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
+	      int port;
+	      
+	    failed:
 	      /**** Pi-hole modification ****/
-	      FTL_connection_error("failed to send TCP(connect) packet", &serv->addr, errno);
+	      FTL_connection_error("TCP connection failed", &serv->addr, where);
 	      /******************************/
+
+	      port = prettyprint_addr(&serv->addr, daemon->addrbuff);
+	      my_syslog(LOG_DEBUG|MS_DEBUG, _("TCP connection failed to %s#%d"), daemon->addrbuff, port);
 	      close(serv->tcpfd);
 	      serv->tcpfd = -1;
 	      continue;
@@ -2120,25 +2238,21 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
       
       /* We us the _ONCE veriant of read_write() here because we've set a timeout on the tcp socket
 	 and wish to abort if the whole data is not read/written within the timeout. */      
-	if ((!data_sent && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
-	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
-	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
+	if ((!data_sent && (where = 2) && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
+	  ((where = 3) && !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE)) ||
+	  ((where = 4) && !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE)))
 	{
-	  const int errnum = errno;
-	  close(serv->tcpfd);
-	  serv->tcpfd = -1;
 	  /* We get data then EOF, reopen connection to same server,
 	     else try next. This avoids DoS from a server which accepts
 	     connections and then closes them. */
 	  if (serv->flags & SERV_GOT_TCP)
-	    goto retry;
+	    {
+	      close(serv->tcpfd);
+	      serv->tcpfd = -1;
+	      goto retry;
+	    }
 	  else
-	  /**** Pi-hole modification ****/
-	  {
-	    FTL_connection_error("failed to send TCP(read_write) packet", &serv->addr, errnum);
-	    continue;
-	  }
-	  /******************************/
+	    goto failed;
 	}
 
       /* If the question section of the reply doesn't match the question we sent, then
@@ -2146,7 +2260,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	 sending replies containing questions and bogus answers.
 	 Try another server, or give up */
       p = (unsigned char *)(header+1);
-      if (extract_name(header, rsize, &p, daemon->namebuff, EXTR_NAME_NOCASE, 4) != 1)
+      if (extract_name(header, rsize, &p, daemon->namebuff, EXTR_NAME_COMPARE, 4) != 1)
 	continue;
       GETSHORT(rtype, p); 
       GETSHORT(rclass, p);
@@ -2796,7 +2910,8 @@ unsigned char *tcp_request(int confd, time_t now,
     }
 
   blockdata_free(saved_question);
-  
+  check_log_writer(1);
+
   return packet;
 }
 
@@ -3075,8 +3190,15 @@ static void free_frec(struct frec *f)
 {
   struct frec_src *last;
   
-  /* add back to freelist if not the record builtin to every frec. */
-  for (last = f->frec_src.next; last && last->next; last = last->next) ;
+  /* add back to freelist if not the record builtin to every frec,
+     also free any bigmaps they's been decorated with. */
+  for (last = f->frec_src.next; last && last->next; last = last->next)
+    if (last->encode_bigmap)
+      {
+	free(last->encode_bigmap);
+	last->encode_bigmap = NULL;
+      }
+  
   if (last)
     {
       last->next = daemon->free_frec_src;
@@ -3093,7 +3215,7 @@ static void free_frec(struct frec *f)
       blockdata_free(f->stash);
       f->stash = NULL;
     }
-  
+
 #ifdef HAVE_DNSSEC
   /* Anything we're waiting on is pointless now, too */
   if (f->blocking_query)
@@ -3216,6 +3338,16 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 {
   struct frec *f;
   struct dns_header *header;
+  int compare_mode = EXTR_NAME_COMPARE;
+
+  /* Only compare case-sensitive when matching frec to a recieved answer,
+     NOT when looking for a duplicated question. */
+  if (flags & FREC_ANSWER)
+    {
+      flags &= ~FREC_ANSWER;
+      if (!option_bool(OPT_NO_0x20))
+	compare_mode = EXTR_NAME_NOCASE;
+    }
   
   for (f = daemon->frec_list; f; f = f->next)
     if (f->sentto &&
@@ -3224,22 +3356,35 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 	(header = blockdata_retrieve(f->stash, f->stash_len, NULL)))
       {
 	unsigned char *p = (unsigned char *)(header+1);
-	int hclass, hrrtype;
+	int hclass, hrrtype, rc;
 
 	/* Case sensitive compare for DNS-0x20 encoding. */
-	if (extract_name(header, f->stash_len, &p, target, EXTR_NAME_NOCASE, 4) != 1)
-	  continue;
-		   
-	GETSHORT(hrrtype, p);
-	GETSHORT(hclass, p);
-		   
-	/* type checked by flags for DNSSEC queries. */
-	if (rrtype != -1 && rrtype != hrrtype)
-	  continue;
-		   
-	if (class != hclass)
-	  continue;
-	
+	if ((rc = extract_name(header, f->stash_len, &p, target, compare_mode, 4)))
+	  {
+	    GETSHORT(hrrtype, p);
+	    GETSHORT(hclass, p);
+	    
+	    /* type checked by flags for DNSSEC queries. */
+	    if (rrtype != -1 && rrtype != hrrtype)
+	      continue;
+	    
+	    if (class != hclass)
+	      continue;
+	  }
+
+	if (rc != 1)
+	  {
+	    static int warned = 0;
+	    
+	    if (rc == 3 && !warned)
+	      {
+		my_syslog(LOG_WARNING, _("Case mismatch in DNS reply - check bit 0x20 encoding."));
+		warned = 1;
+	      }
+	    
+	    continue;
+	  }
+		
 	return f;
       }
   

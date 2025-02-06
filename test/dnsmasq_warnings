@@ -108,6 +108,8 @@ src/dnsmasq/forward.c
 	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries reached (max: %d)"), daemon->ftabsize);
 src/dnsmasq/forward.c
 	my_syslog(LOG_WARNING, _("Maximum number of concurrent DNS queries to %s reached (max: %d)"), domain, daemon->ftabsize);
+src/dnsmasq/forward.c
+		my_syslog(LOG_WARNING, _("Case mismatch in DNS reply - check bit 0x20 encoding."));
 src/dnsmasq/lease.c
 	    my_syslog(MS_DHCP | LOG_WARNING, _("ignoring invalid line in lease database: %s %s %s %s ..."),
 		      daemon->dhcp_buff3, daemon->dhcp_buff2,

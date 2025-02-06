@@ -264,10 +264,9 @@ set(sources
         timers.h
         vector.c
         vector.h
+        version.c
         version.h
         )
-
-set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
 
 add_custom_target(
         gen_version ALL

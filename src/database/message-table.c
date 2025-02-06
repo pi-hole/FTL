@@ -1597,7 +1597,7 @@ void log_verify_message(const char *expected, const char *actual)
 	log_crit("%s", buf);
 
 	// Log to database
-	add_message(VERIFY_MESSAGE, buf, expected, actual, GIT_HASH, FTL_ARCH);
+	add_message(VERIFY_MESSAGE, buf, expected, actual, git_hash(), ftl_arch());
 
 }
 

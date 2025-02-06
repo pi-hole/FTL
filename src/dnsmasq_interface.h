@@ -49,7 +49,7 @@ void FTL_TCP_worker_terminating(bool finished);
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 
-void FTL_connection_error(const char *reason, const union mysockaddr *addr, const int errnum);
+void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where);
 
 bool get_dnsmasq_debug(void) __attribute__ ((pure));
 

@@ -498,10 +498,10 @@ void log_counter_info(void)
 
 void log_FTL_version(const bool crashreport)
 {
-	log_info("FTL branch: %s", GIT_BRANCH);
+	log_info("FTL branch: %s", git_branch());
 	log_info("FTL version: %s", get_FTL_version());
-	log_info("FTL commit: %s", GIT_HASH);
-	log_info("FTL date: %s", GIT_DATE);
+	log_info("FTL commit: %s", git_hash());
+	log_info("FTL date: %s", git_date());
 	if(crashreport)
 	{
 		char *username_now = getUserName();
@@ -510,7 +510,7 @@ void log_FTL_version(const bool crashreport)
 	}
 	else
 		log_info("FTL user: %s", username);
-	log_info("Compiled for %s using %s", FTL_ARCH, FTL_CC);
+	log_info("Compiled for %s using %s", ftl_arch(), ftl_cc());
 }
 
 static char *FTLversion = NULL;
@@ -519,21 +519,21 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
 	{
-		if(strlen(GIT_TAG) > 1 )
+		if(strlen(git_tag()) > 1 )
 		{
-			if (strlen(GIT_VERSION) > 1)
+			if (strlen(git_version()) > 1)
 			{
 				// Copy version string if this is a tagged release
-				FTLversion = strdup(GIT_VERSION);
+				FTLversion = strdup(git_version());
 			}
 
 		}
-		else if(strlen(GIT_HASH) > 0)
+		else if(strlen(git_hash()) > 0)
 		{
 			// Build special version string when there is a hash
 			FTLversion = calloc(13, sizeof(char));
 			// Build version by appending 7 characters of the hash to "vDev-"
-			snprintf(FTLversion, 13, "vDev-%.7s", GIT_HASH);
+			snprintf(FTLversion, 13, "vDev-%.7s", git_hash());
 		}
 		else
 		{

@@ -3801,17 +3801,31 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
-void FTL_connection_error(const char *reason, const union mysockaddr *addr, const int errnum)
+void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)
 {
+	// Backup errno
+	const int errnum = errno;
+
 	// Get the error message
 	const char *error = strerror(errnum);
 
 	// Set log priority
 	int priority = LOG_ERR;
 
+	// Additional information (if available)
+	const char *extra = "";
+	if(where == 1)
+		extra = " while connecting to upstream";
+	else if(where == 2)
+		extra = " while sending data upstream";
+	else if(where == 3)
+		extra = " while receiving payload length from upstream";
+	else if(where == 4)
+		extra = " while receiving payload data from upstream";
+
 	// If this is a TCP connection error and errno == 0, this isn't a
 	// connection error but the remote side closed the connection
-	if(errnum == 0 && strstr(reason, "TCP(read_write)") != NULL)
+	if(errnum == 0 && strcmp(reason, "TCP connection failed") == 0)
 	{
 		error = "Connection prematurely closed by remote server";
 		priority = LOG_INFO;
@@ -3826,7 +3840,7 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 	// Get query ID, may be negative if this is a TCP query
 	const int id = daemon->log_display_id > 0 ? daemon->log_display_id : -daemon->log_display_id;
 	// Log to FTL.log
-	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
+	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)%s", ip, port, id, reason, error, extra);
 
 	// Log to pihole.log
 	my_syslog(priority, "%s: %s", reason, error);
@@ -3837,7 +3851,10 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 	static time_t last = 0;
 	if(time(NULL) - last > 5)
 	{
+		// Update last time
 		last = time(NULL);
+
+		// Build server string
 		char *server = NULL;
 		if(ip[0] != '\0')
 		{
@@ -3849,10 +3866,34 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 				server[len - 1] = '\0';
 			}
 		}
-		log_connection_error(server, reason, error);
+
+		// Extend reason with extra information (if available)
+		char *reason_extended = (char *)reason;
+		bool allocated = false;
+		if(extra[0] != '\0')
+		{
+			const size_t len = strlen(reason) + strlen(extra) + 3;
+			reason_extended = calloc(len, sizeof(char));
+			if(reason_extended != NULL)
+			{
+				snprintf(reason_extended, len, "%s%s", reason, extra);
+				reason_extended[len - 1] = '\0';
+				allocated = true;
+			}
+		}
+
+		// Log connection error
+		log_connection_error(server, reason_extended, error);
+
+		// Free allocated memory
 		if(server != NULL)
 			free(server);
+		if(allocated)
+			free(reason_extended);
 	}
+
+	// Restore errno for dnsmaq logging routines
+	errno = errnum;
 }
 
 /**

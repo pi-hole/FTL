@@ -20,25 +20,37 @@
 /* EXTR_NAME_EXTRACT -> extract name
    EXTR_NAME_COMPARE -> compare name, case insensitive
    EXTR_NAME_NOCASE -> compare name, case sensitive
-   EXTR_NAME_FLIP -> flip 0x20 bits in packet, controlled by bitmap in parm. name may be NULL 
+   EXTR_NAME_FLIP -> flip 0x20 bits in packet.
+
+   For flip, name is  an array of ints, whose size
+   is given in parm, which forms the bitmap. Bits beyond the size
+   are assumed to be zero.
    
    return = 0 -> error
    return = 1 -> extract OK, compare OK, flip OK
    return = 2 -> extract OK, compare failed.
+   return = 3 -> extract OK, compare failed but only on case.
 */
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int func, unsigned int parm)
 {
   unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
+  unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size, bitmap;
   int retvalue = 1, case_insens = 1, isExtract = 0, flip = 0, extrabytes = (int)parm;
-  
+  unsigned int *bigmap;
+
   if (func == EXTR_NAME_EXTRACT)
     isExtract = 1, *cp = 0;
   else if (func == EXTR_NAME_NOCASE)
     case_insens = 0;
   else if (func == EXTR_NAME_FLIP)
-    flip = 1, extrabytes = 0;
+    {
+      flip = 1, extrabytes = 0;
+      bigmap = (unsigned int *)name;
+      name = NULL;
+      bigmap_size = parm;
+    }
   
   while (1)
     { 
@@ -116,12 +128,18 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	      {
 		unsigned char c = *p;
 
-		/* parm is unsigned. We only flip up to the first 32 alpha-chars. */
 		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
 		  {
-		    if (parm & 1)
+		    /* Get the next int of the bitmap */
+		    if (bigmap_posn < bigmap_size && bigmap_counter-- == 0)
+		      {
+			bitmap = bigmap[bigmap_posn++];
+			bigmap_counter = (sizeof(unsigned int) * 8) - 1;
+		      }
+		    
+		    if (bitmap & 1)
 		      *p ^= 0x20;
-		    parm >>= 1;
+		    bitmap >>= 1;
 		  }
 	      }
 	    else 
@@ -141,9 +159,21 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		    
 		    if (case_insens && c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
+
+		    if (!case_insens && retvalue != 2 && c1 != c2)
+		      {
+			if (c1 >= 'A' && c1 <= 'Z')
+			  c1 += 'a' - 'A';
+			
+			if (c2 >= 'A' && c2 <= 'Z')
+			  c2 += 'a' - 'A';
+			
+			if (c1 == c2)
+			  retvalue = 3;
+		      }
 		    
 		    if (c1 != c2)
-		      retvalue =  2;
+		      retvalue = 2;
 		  }
 	      }
 	    
@@ -2412,7 +2442,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
       if (!(ansp = skip_questions(header, qlen)))
 	return 0; /* bad packet */
       anscount = nscount = addncount = 0;
-      log_query(F_CONFIG, "reply", NULL, "truncated", 0);
+      log_query(0, "reply", NULL, "truncated", 0);
     }
 
   if (nxdomain)
