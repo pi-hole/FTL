@@ -1,0 +1,44 @@
+/* Pi-hole: A black hole for Internet advertisements
+*  (c) 2025 Pi-hole, LLC (https://pi-hole.net)
+*  Network-wide ad blocking via your own hardware.
+*
+*  FTL Engine
+*  Version-related hard-coded strings
+*
+*  This file is copyright under the latest version of the EUPL.
+*  Please see LICENSE file for your rights under this license. */
+
+#include "version.h"
+
+const char * __attribute__ ((const)) git_version(void)
+{
+	return "@GIT_VERSION@";
+}
+
+const char * __attribute__ ((const)) git_date(void)
+{
+	return "@GIT_DATE@";
+}
+const char * __attribute__ ((const)) git_branch(void)
+{
+	return "@GIT_BRANCH@";
+}
+const char * __attribute__ ((const)) git_tag(void)
+{
+	return "@GIT_TAG@";
+}
+
+const char * __attribute__ ((const)) git_hash(void)
+{
+	return "@GIT_HASH@";
+}
+
+const char * __attribute__ ((const)) ftl_arch(void)
+{
+	return "@FTL_ARCH@";
+}
+
+const char * __attribute__ ((const)) ftl_cc(void)
+{
+	return "@FTL_CC@";
+}

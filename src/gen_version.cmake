@@ -99,7 +99,7 @@ message("   - Commit date: ${GIT_DATE}")
 
 # configure the version file, but output to a temporary location
 configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/version.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/version.c.in
         ${CMAKE_CURRENT_BINARY_DIR}/version~
         @ONLY
 )
@@ -109,7 +109,7 @@ execute_process(
         COMMAND
         ${CMAKE_COMMAND} -E compare_files
         ${CMAKE_CURRENT_BINARY_DIR}/version~
-        ${CMAKE_CURRENT_BINARY_DIR}/version.h
+        ${CMAKE_CURRENT_BINARY_DIR}/version.c
         RESULT_VARIABLE
         VERSION_NEEDS_UPDATING
 
@@ -123,6 +123,6 @@ if(VERSION_NEEDS_UPDATING)
             COMMAND
             ${CMAKE_COMMAND} -E copy
             ${CMAKE_CURRENT_BINARY_DIR}/version~
-            ${CMAKE_CURRENT_BINARY_DIR}/version.h
+            ${CMAKE_CURRENT_BINARY_DIR}/version.c
     )
 endif()

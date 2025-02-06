@@ -810,10 +810,10 @@ void parse_args(int argc, char *argv[])
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n",
 			       green, bold, get_FTL_version(), normal);
-			printf("Branch:          " GIT_BRANCH "\n");
-			printf("Commit:          " GIT_HASH " (" GIT_DATE ")\n");
-			printf("Architecture:    " FTL_ARCH "\n");
-			printf("Compiler:        " FTL_CC "\n");
+			printf("Branch:          %s\n", git_branch());
+			printf("Commit:          %s (%s)",git_hash(), git_date());
+			printf("Architecture:    %s\n", ftl_arch());
+			printf("Compiler:        %s\n", ftl_cc());
 #if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
 			printf("GLIBC version:   %d.%d\n\n", __GLIBC__, __GLIBC_MINOR__);
 #else
@@ -920,20 +920,20 @@ void parse_args(int argc, char *argv[])
 		if(strcmp(argv[i], "-t") == 0 ||
 		   strcmp(argv[i], "tag") == 0)
 		{
-			printf("%s\n",GIT_TAG);
+			printf("%s\n", git_tag());
 			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "-b") == 0 ||
 		   strcmp(argv[i], "branch") == 0)
 		{
-			printf("%s\n",GIT_BRANCH);
+			printf("%s\n", git_branch());
 			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "--hash") == 0)
 		{
-			printf("%s\n",GIT_HASH);
+			printf("%s\n", git_hash());
 			exit(EXIT_SUCCESS);
 		}
 

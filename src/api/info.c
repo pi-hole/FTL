@@ -823,9 +823,9 @@ int get_version_obj(struct ftl_conn *api, cJSON *version)
 	fclose(fp);
 
 	// Add remaining properties to ftl object
-	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", GIT_BRANCH);
+	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", git_branch());
 	JSON_REF_STR_IN_OBJECT(ftl_local, "version", get_FTL_version());
-	JSON_REF_STR_IN_OBJECT(ftl_local, "date", GIT_DATE);
+	JSON_REF_STR_IN_OBJECT(ftl_local, "date", git_date());
 
 	cJSON *core = JSON_NEW_OBJECT();
 	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "branch");
