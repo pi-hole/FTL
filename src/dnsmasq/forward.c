@@ -103,7 +103,7 @@ int send_from(int fd, int nowild, char *packet, size_t len,
       if (errno != EINVAL)
 	{
 	  /********** Pi-hole modification **********/
-	  FTL_connection_error("failed to send UDP reply", to);
+	  FTL_connection_error("failed to send UDP reply", to, -1);
 	  /******************************************/
 	  my_syslog(LOG_ERR, _("failed to send packet: %s"), strerror(errno));
 	}
@@ -522,7 +522,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	    }
 	    /**** Pi-hole modification ****/
 	    else
-	      FTL_connection_error("failed to send UDP request", &srv->addr);
+	      FTL_connection_error("failed to send UDP request", &srv->addr, -1);
 	    /******************************/
 	}
       
@@ -2015,6 +2015,9 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
   unsigned char *p;
   struct blockdata *saved_question;
   struct timeval tv;
+
+  // Pi-hole
+  char where = 0;
   
   (void)mark;
   (void)have_mark;
@@ -2097,13 +2100,13 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  
 	  /* If fastopen failed due to lack of reply, then there's no point in
 	     trying again in non-FASTOPEN mode. */
-	  if (fatal || (!data_sent && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
+	  if (fatal || (!data_sent && (where = 1) && connect(serv->tcpfd, &serv->addr.sa, sa_len(&serv->addr)) == -1))
 	    {
 	      int port;
 	      
 	    failed:
 	      /**** Pi-hole modification ****/
-	      FTL_connection_error("TCP connection failed", &serv->addr);
+	      FTL_connection_error("TCP connection failed", &serv->addr, where);
 	      /******************************/
 
 	      port = prettyprint_addr(&serv->addr, daemon->addrbuff);
@@ -2119,9 +2122,9 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
       
       /* We us the _ONCE veriant of read_write() here because we've set a timeout on the tcp socket
 	 and wish to abort if the whole data is not read/written within the timeout. */      
-	if ((!data_sent && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
-	  !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE) ||
-	  !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE))
+	if ((!data_sent && (where = 2) && !read_write(serv->tcpfd, (unsigned char *)packet, qsize + sizeof(u16), RW_WRITE_ONCE)) ||
+	  ((where = 3) && !read_write(serv->tcpfd, (unsigned char *)length, sizeof (*length), RW_READ_ONCE)) ||
+	  ((where = 4) && !read_write(serv->tcpfd, payload, (rsize = ntohs(*length)), RW_READ_ONCE)))
 	{
 	  /* We get data then EOF, reopen connection to same server,
 	     else try next. This avoids DoS from a server which accepts
