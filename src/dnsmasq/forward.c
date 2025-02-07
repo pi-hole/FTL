@@ -205,9 +205,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
       struct frec_src *src;
-      struct dns_header *saved_header;
       unsigned int casediff = 0;
       unsigned int *bitvector = NULL;
+      unsigned short id;
       
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == ntohs(header->id) && 
@@ -250,7 +250,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	      goto reply;
 	    }
 
-	  /* Find a bitmap of case differences between the query send upstream and this one,
+	  /* Find a bitmap of case differences between the query sent upstream and this one,
 	     so we can reply to each query with the correct case pattern.
 	     Since we need this to get back the exact case pattern of each query when doing
 	     query combining, we have to handle the (rare) case that there are case differences
@@ -261,9 +261,19 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	     we only scramble the first 32 letters for security reasons.
 
 	     Note the two names are guaranteed to be the same length and differ only in the case
-	     of letters. */
-	  if ((saved_header = blockdata_retrieve(forward->stash, forward->stash_len, NULL)) &&
-	      extract_request(saved_header, forward->stash_len, daemon->workspacename, NULL))
+	     of letters at this point.
+
+	     Get the original query into the packet buffer and extract the query name it contains
+	     to calculate the difference in case scrambling. This is important because we
+	     may fall through below and forward the query in the packet buffer again and we
+	     want to use the same case scrambling as the first time.
+
+	     Retrieve the id from the new query before we overwrite it. */
+
+	  id = ntohs(header->id);
+	  
+	  if (blockdata_retrieve(forward->stash, forward->stash_len, (void *)header) &&
+	      extract_request(header, forward->stash_len, daemon->workspacename, NULL))
 	    {
 	      unsigned int i, gobig = 0;
 	      char *s1, *s2;
@@ -302,7 +312,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  daemon->free_frec_src = src->next;
 	  src->next = forward->frec_src.next;
 	  forward->frec_src.next = src;
-	  src->orig_id = ntohs(header->id);
+	  src->orig_id = id;
 	  src->source = *udpaddr;
 	  src->dest = *dst_addr;
 	  src->log_id = daemon->log_id;
