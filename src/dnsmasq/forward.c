@@ -399,9 +399,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
       header->id = ntohs(forward->new_id);
-      
       forward->frec_src.encode_bitmap = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
       forward->frec_src.encode_bigmap = NULL;
+
       if (!extract_name(header, plen, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
 	goto reply;
       
