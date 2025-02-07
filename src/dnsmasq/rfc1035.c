@@ -30,16 +30,19 @@
    return = 1 -> extract OK, compare OK, flip OK
    return = 2 -> extract OK, compare failed.
    return = 3 -> extract OK, compare failed but only on case.
+
+   If pp == NULL, operate on the query name in the packet.
 */
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int func, unsigned int parm)
 {
-  unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
+  unsigned char *cp = (unsigned char *)name, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
   unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size = parm, bitmap = 0;
   int retvalue = 1, case_insens = 1, isExtract = 0, flip = 0, extrabytes = (int)parm;
   unsigned int *bigmap = (unsigned int *)name;
-
+  unsigned char *p = pp ? *pp : (unsigned char *)(header+1);
+  
   if (func == EXTR_NAME_EXTRACT)
     isExtract = 1, *cp = 0;
   else if (func == EXTR_NAME_NOCASE)
@@ -72,11 +75,14 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	    }
 	  else if (!flip && *cp != 0)
 	    retvalue = 2;
-	  
-	  if (p1) /* we jumped via compression */
-	    *pp = p1;
-	  else
-	    *pp = p;
+
+	  if (pp)
+	    {
+	      if (p1) /* we jumped via compression */
+		*pp = p1;
+	      else
+		*pp = p;
+	    }
 	  
 	  return retvalue;
 	}

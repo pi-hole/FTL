@@ -340,8 +340,6 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
   /* new query */
   if (!forward)
     {
-      unsigned char *p;
-
       if (OPCODE(header) != QUERY)
 	{
 	  flags = F_RCODE;
@@ -404,8 +402,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       
       forward->frec_src.encode_bitmap = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
       forward->frec_src.encode_bigmap = NULL;
-      p = (unsigned char *)(header+1);
-      if (!extract_name(header, plen, &p, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+      if (!extract_name(header, plen, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
 	goto reply;
       
       /* Keep copy of query for retries and move to TCP */
@@ -1316,8 +1313,7 @@ void reply_query(int fd, time_t now)
   server->query_latency = server->mma_latency/128;
   
   /* Flip the bits back in the query name. */
-  p = (unsigned char *)(header+1);
-  if (!extract_name(header, n, &p, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+    if (!extract_name(header, n, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
     return;
       
 #ifdef HAVE_DNSSEC
@@ -1350,8 +1346,7 @@ static void xor_array(unsigned int *arg1, unsigned int *arg2, unsigned int len)
 /* Call extract_name() to flip case of query in packet according to the XOR of the bit maps help in arg1 and arg2 */
 static void flip_queryname(struct dns_header *header, ssize_t len, struct frec_src *arg1, struct frec_src *arg2)
 {
-  unsigned char *p = (unsigned char *)(header+1);
-  unsigned int *arg1p, *arg2p, arg1len, arg2len, *swapp, swap;
+  unsigned int *arg1p, *arg2p, arg1len, arg2len;
 
    /* Two cases: bitmap is single 32 bit int, or it's arbitrary-length array of 32bit ints.
       The two args may be different and of different lengths.
@@ -1370,17 +1365,14 @@ static void flip_queryname(struct dns_header *header, ssize_t len, struct frec_s
   /* make arg1 the longer, if they differ. */
   if (arg2len > arg1len)
     {
-      swap = arg1len;
-      swapp = arg1p;
-      arg1len = arg2len;
-      arg1p = arg2p;
-      arg2len = swap;
-      arg2p = swapp;
+      unsigned int swapl = arg1len, *swapp = arg1p;
+      arg1len = arg2len, arg1p = arg2p;
+      arg2len = swapl, arg2p = swapp;
     }
 
   /* XOR on shorter length, flip on longer, operate on longer */
   xor_array(arg1p, arg2p, arg2len);
-  extract_name(header, len, &p, (char *)arg1p, EXTR_NAME_FLIP, arg1len);
+  extract_name(header, len, NULL, (char *)arg1p, EXTR_NAME_FLIP, arg1len);
   xor_array(arg1p, arg2p, arg2len); /* restore */
 }
 
@@ -2249,7 +2241,7 @@ static ssize_t tcp_talk(int first, int last, int start, unsigned char *packet,  
 	  else
 	    goto failed;
 	}
-
+      
       /* If the question section of the reply doesn't match the question we sent, then
 	 someone might be attempting to insert bogus values into the cache by 
 	 sending replies containing questions and bogus answers.
