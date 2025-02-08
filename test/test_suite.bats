@@ -14,10 +14,12 @@
   [[ "${lines[0]}" == *"Binary integrity check: OK" ]]
 }
 
-@test "Running a second instance is detected and prevented" {
-  run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
+@test "Running a second instance is detected and warned about" {
+  run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f --fail-on-error"'
   printf "%s\n" "${lines[@]}"
-  [[ "${lines[@]}" == *"CRIT: pihole-FTL is already running"* ]]
+  [[ "${lines[@]}" == *"Another pihole-FTL process is already running"* ]] 
+  [[ "${lines[@]}" == *"failed to create listening socket for port 53: Address in use"* ]]
+  [[ "${lines[@]}" == *"CRIT: Exiting FTL due to dnsmasq failure"* ]]
 }
 
 @test "dnsmasq options as expected" {
@@ -748,7 +750,7 @@
 }
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(Another pihole-FTL process is already running)|(Skipping query save due to dnsmasq failure)"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
@@ -762,7 +764,7 @@
 }
 
 @test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
-  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: pihole-FTL is already running"'
+  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v -E "(failed to create listening socket for port 53: Address in use)|(Exiting FTL due to dnsmasq failure)"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }

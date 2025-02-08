@@ -84,6 +84,7 @@ bool debug_mode = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
+bool fail_on_error = false;
 
 // Extended SGR sequence:
 //
@@ -1165,6 +1166,13 @@ void parse_args(int argc, char *argv[])
 		{
 			printf("True\n");
 			exit(EXIT_SUCCESS);
+		}
+
+		// Check if FTL should fail hard on dnsmasq config errors
+		if(strcmp(argv[i], "--fail-on-error") == 0)
+		{
+			fail_on_error = true;
+			ok = true;
 		}
 
 		// Complain if invalid options have been found

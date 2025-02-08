@@ -72,9 +72,9 @@ int main (int argc, char *argv[])
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
-	// Check if another FTL process is already running
-	if(another_FTL())
-		return EXIT_FAILURE;
+	// Check if another FTL process is already running and warn the user if
+	// that is the case
+	another_FTL();
 
 	// Set process priority
 	set_nice();
@@ -127,16 +127,26 @@ int main (int argc, char *argv[])
 		log_debug(DEBUG_ANY, "Jumped back to main() from dnsmasq/die()");
 		dnsmasq_failed = true;
 
-		if(!forked)
+		// Continue running FTL unless we are in fail-on-error mode
+		if(!fail_on_error)
 		{
-			// If dnsmasq never finished initializing, we need to
-			// launch the threads
-			FTL_fork_and_bind_sockets(NULL, false);
-		}
+			if(!forked)
+			{
+				// If dnsmasq never finished initializing, we need to
+				// launch the threads
+				FTL_fork_and_bind_sockets(NULL, false);
+			}
 
-		// Loop here to keep the webserver running unless requested to restart
-		while(!killed)
-			sleepms(100);
+			// Loop here to keep the webserver running unless requested to restart
+			while(!killed)
+				sleepms(100);
+		}
+		else
+		{
+			// Start writing to STDOUT
+			log_ctrl(true, true);
+			log_crit("Exiting FTL due to dnsmasq failure");
+		}
 	}
 
 	log_debug(DEBUG_ANY, "Shutting down... // exit code %d // jmpret %d", exit_code, jmpret);
@@ -145,10 +155,15 @@ int main (int argc, char *argv[])
 	sleepms(250);
 
 	// Save new queries to database (if database is used)
-	if(config.database.maxDBdays.v.ui > 0)
+	// There is no point in trying to save queries if dnsmasq failed
+	if(config.database.maxDBdays.v.ui > 0 && !dnsmasq_failed)
 	{
 		export_queries_to_disk(true);
 		log_info("Finished final database update");
+	}
+	else if(dnsmasq_failed)
+	{
+		log_warn("Skipping query save due to dnsmasq failure");
 	}
 
 	cleanup(exit_code);

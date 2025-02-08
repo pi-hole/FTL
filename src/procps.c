@@ -47,9 +47,11 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 		name[len] = '\0';
 
 		// Strip path from name
-		char *ptr = strrchr(name, '/');
+		const char *ptr = strrchr(name, '/');
 		if(ptr != NULL)
 			memmove(name, ptr+1, len - (ptr - name));
+		else
+			name[0] = '\0';
 
 		return true;
 	}
@@ -200,7 +202,7 @@ bool another_FTL(void)
 	// If already_running is true, we are done
 	if(already_running)
 	{
-		log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
+		log_warn("Another %s process is already running (PID %d)!", PROCESS_NAME, pid);
 		return true;
 	}
 
@@ -267,7 +269,7 @@ bool another_FTL(void)
 		if(!already_running)
 		{
 			already_running = true;
-			log_crit("%s is already running!", PROCESS_NAME);
+			log_warn("Another %s process is already running!", PROCESS_NAME);
 		}
 
 		if(last_pid != ppid)
@@ -292,6 +294,19 @@ bool another_FTL(void)
 	return already_running;
 }
 
+/**
+ * @brief Retrieves memory usage information for the current process.
+ *
+ * This function reads the memory usage statistics from the /proc/self/status
+ * file and populates the provided proc_mem structure with the relevant data.
+ *
+ * @param mem A pointer to a proc_mem structure where the memory usage
+ * information will be stored.
+ * @param total_memory The total memory available on the system, used to
+ * calculate the percentage of memory usage.
+ * @return true if the memory information was successfully retrieved, false
+ * otherwise.
+ */
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
 {
 	// Open /proc/self/status
@@ -317,8 +332,17 @@ bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
 	return true;
 }
 
-// Get RAM information in units of kB
-// This is implemented similar to how free (procps) does it
+/**
+ * @brief Parses the /proc/meminfo file to retrieve memory information.
+ *
+ * This function reads the /proc/meminfo file to gather information about the system's memory usage.
+ * It extracts values for total memory, free memory, available memory, cached memory, buffers, and
+ * reclaimable slab memory. The function then computes the actual cached memory and used memory. The
+ * returned values are in units of kilobytes.
+ *
+ * @param mem A pointer to a struct proc_meminfo where the parsed memory information will be stored.
+ * @return true if the memory information was successfully parsed, false otherwise.
+ */
 bool parse_proc_meminfo(struct proc_meminfo *mem)
 {
 	long page_cached = -1, buffers = -1, slab_reclaimable = -1;
