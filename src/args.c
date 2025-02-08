@@ -1156,6 +1156,9 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    authentication (if enabled)\n");
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
+			printf("\t%s--fail-on-error%s     Fail hard on dnsmasq errors instead\n", green, normal);
+			printf("\t                    of trying to continue running to offer\n");
+			printf("\t                    partial functionality\n");
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
