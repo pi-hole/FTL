@@ -811,7 +811,7 @@ void parse_args(int argc, char *argv[])
 			printf("Version:         %s%s%s%s\n",
 			       green, bold, get_FTL_version(), normal);
 			printf("Branch:          %s\n", git_branch());
-			printf("Commit:          %s (%s)",git_hash(), git_date());
+			printf("Commit:          %s (%s)\n",git_hash(), git_date());
 			printf("Architecture:    %s\n", ftl_arch());
 			printf("Compiler:        %s\n", ftl_cc());
 #if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
