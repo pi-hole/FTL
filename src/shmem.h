@@ -19,7 +19,7 @@
 #include "datastructure.h"
 
 typedef struct {
-	const char *name;
+	char *name;
 	size_t size;
 	void *ptr;
 	int fd;
