@@ -109,12 +109,22 @@ void go_daemon(void)
 	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
 
+/**
+ * @brief Save the current process ID (PID) to a file.
+ *
+ * This function retrieves the PID of the current process and writes it to a
+ * specified file. If the file cannot be opened for writing, an error is logged.
+ * Otherwise, the PID is written to the file and the file is closed. The PID is
+ * also logged for informational purposes.
+ *
+ * @return void
+ */
 void savepid(void)
 {
-	FILE *f;
 	// Get PID of the current process
 	const pid_t pid = getpid();
 	// Open file for writing
+	FILE *f = NULL;
 	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
 		// Log error
@@ -129,20 +139,73 @@ void savepid(void)
 	log_info("PID of FTL process: %i", (int)pid);
 }
 
+/**
+ * @brief Reads the process ID (PID) from a file.
+ *
+ * This function attempts to open a file specified by the configuration
+ * and read the PID from it. If the file cannot be opened or the PID
+ * cannot be parsed, appropriate warnings are logged and the function
+ * returns -1.
+ *
+ * @return pid_t The PID read from the file on success, or -1 on failure.
+ */
+pid_t readpid(void)
+{
+	pid_t pid = -1;
+	FILE *f = NULL;
+	// Open file for reading
+	if((f = fopen(config.files.pid.v.s, "r")) == NULL)
+	{
+		// Log error
+		log_warn("Unable to read PID from file: %s", strerror(errno));
+		return -1;
+	}
+
+	// Try to read PID from file if it is not empty
+	if(fscanf(f, "%d", &pid) != 1)
+		log_debug(DEBUG_SHMEM, "Unable to parse PID in PID file");
+
+	// Close file
+	fclose(f);
+
+	return pid;
+}
+
+/**
+ * @brief Empties the PID file and remove it
+ *
+ * This function opens the PID file in write mode, which effectively
+ * empties its contents. If the file cannot be opened, a warning is logged.
+ *
+ * @note This function does not remove the PID file, it only empties it.
+ */
 static void removepid(void)
 {
-	// Note that this function is not really removing the PID file but
-	// rather emptying it
-	FILE *f;
-	// Open file for writing (emptying it)
+	FILE *f = NULL;
+	// Open file for writing to overwrite/empty it
 	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
 		log_warn("Unable to empty PID file: %s", strerror(errno));
 		return;
 	}
 	fclose(f);
+
+	// Remove PID file
+	if(unlink(config.files.pid.v.s) != 0)
+		log_warn("Unable to remove PID file: %s", strerror(errno));
 }
 
+/**
+ * @brief Retrieves the username of the effective user ID of the calling process.
+ *
+ * This function uses the `geteuid()` function to get the effective user ID (EUID) of the calling process
+ * and then searches the user database for an entry with a matching UID using the `getpwuid()` function.
+ * If a matching entry is found, the username is returned. If no matching entry is found, the UID is
+ * returned as a string. If an error occurs during the lookup, a warning is logged.
+ *
+ * @return A dynamically allocated string containing the username or UID. The caller is responsible for
+ * freeing the allocated memory. Returns NULL if memory allocation fails.
+ */
 char *getUserName(void)
 {
 	char *name;

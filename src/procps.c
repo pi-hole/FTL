@@ -17,6 +17,8 @@
 #include <sys/times.h>
 // config
 #include "config/config.h"
+// readpid()
+#include "daemon.h"
 
 #define PROCESS_NAME   "pihole-FTL"
 
@@ -73,128 +75,36 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 	return true;
 }
 
-// This function tries to obtain the parent process ID of a given PID
-// It returns true on success, false otherwise and stores the parent PID in
-// the given pid_t pointer
-static bool get_process_ppid(const pid_t pid, pid_t *ppid)
-{
-	// Try to open status file
-	char filename[sizeof("/proc/%u/task/%u/status") + sizeof(int)*3 * 2];
-	snprintf(filename, sizeof(filename), "/proc/%d/status", pid);
-	FILE *f = fopen(filename, "r");
-	if(f == NULL)
-		return false;
-
-	// Read comm from opened file
-	char buffer[128];
-	while(fgets(buffer, sizeof(buffer), f) != NULL)
-	{
-		if(sscanf(buffer, "PPid: %d\n", ppid) == 1)
-			break;
-	}
-	fclose(f);
-
-	return true;
-}
-
-// This function tries to obtain the process creation time of a given PID
-// It returns true on success, false otherwise and stores the creation time in
-// the given buffer
-static bool get_process_creation_time(const pid_t pid, char timestr[TIMESTR_SIZE])
-{
-	// Try to open comm file
-	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
-	snprintf(filename, sizeof(filename), "/proc/%d/comm", pid);
-	struct stat st;
-	if(stat(filename, &st) < 0)
-		return false;
-	get_timestr(timestr, st.st_ctim.tv_sec, false, false);
-
-	return true;
-}
-
-// This function checks if a given PID is running inside a docker container
-static bool is_in_docker(const pid_t pid)
-{
-	char filename[sizeof("/proc/%u/cgroup") + sizeof(int)*3];
-	snprintf(filename, sizeof(filename), "/proc/%d/cgroup", pid);
-
-	FILE *f = fopen(filename, "r");
-	if(f == NULL)
-		return false;
-
-	char buffer[128];
-	while(fgets(buffer, sizeof(buffer), f) != NULL)
-	{
-		if(strstr(buffer, "/docker") != NULL)
-		{
-			fclose(f);
-			return true;
-		}
-	}
-	fclose(f);
-
-	return false;
-}
-
 // This function prints an info message about if another FTL process is already
 // running. It returns true if another FTL process is already running, false
 // otherwise.
 bool another_FTL(void)
 {
-	DIR *dirPos;
-	struct dirent *entry;
 	const pid_t ourselves = getpid();
 	bool already_running = false;
-	pid_t pid = 0;
+	pid_t pid = readpid();
 
-	// First we try to read the PID file and compare the PID in there with
-	// our own PID. If the PID file does not exist or does not contain our
-	// PID, we try to find another FTL process by looking at the process
-	// list further down.
-	if(config.files.pid.v.s != NULL)
+	if(pid == ourselves)
 	{
-		FILE *pidFile = fopen(config.files.pid.v.s, "r");
-		if(pidFile != NULL)
-		{
-			if(fscanf(pidFile, "%d", &pid) == 1)
-			{
-				if(pid == ourselves)
-				{
-					log_debug(DEBUG_SHMEM, "PID file contains our own PID");
-				}
-				else
-				{
-					// Note: kill(pid, 0) does not send a
-					// signal, but merely checks if the
-					// process exists. If the process does
-					// not exist, kill() returns -1 and sets
-					// errno to ESRCH. However, if the
-					// process exists, but security
-					// restrictions tell the system to deny
-					// its existence, we cannot distinguish
-					// between the process not existing and
-					// the process existing but being denied
-					// to us. In that case, our fallback
-					// solution below kicks in and iterates
-					// over /proc instead.
-					already_running = kill(pid, 0) == 0;
-					log_debug(DEBUG_SHMEM, "PID file contains PID %d (%s), we are %d",
-					          pid, already_running ? "running" : "dead", ourselves);
-				}
-			}
-			else
-			{
-				log_debug(DEBUG_SHMEM, "Failed to parse PID in PID file: %s",
-				          strerror(errno));
-			}
-			fclose(pidFile);
-		}
-		else
-		{
-			log_debug(DEBUG_SHMEM, "Failed to open PID file \"%s\": %s",
-			          config.files.pid.v.s, strerror(errno));
-		}
+		log_info("PID file contains our own PID");
+	}
+	else if(pid < 0)
+	{
+		log_info("PID file does not exist or not readable");
+	}
+	else
+	{
+		// Note: kill(pid, 0) does not send a signal, but merely checks
+		// if the process exists. If the process does not exist, kill()
+		// returns -1 and sets errno to ESRCH. However, if the process
+		// exists, but security restrictions tell the system to deny its
+		// existence, we cannot distinguish between the process not
+		// existing and the process existing but being denied to us. In
+		// that case, our fallback solution below kicks in and iterates
+		// over /proc instead.
+		already_running = kill(pid, 0) == 0;
+		log_info("PID file contains PID %d (%s), we are %d",
+		         pid, already_running ? "running" : "dead", ourselves);
 	}
 
 	// If already_running is true, we are done
@@ -204,92 +114,10 @@ bool another_FTL(void)
 		return true;
 	}
 
-	// If the PID file does not contain our own PID, we try to find a running
-	// process with the same name as our own process
-	// Open /proc
-	errno = 0;
-	if ((dirPos = opendir("/proc")) == NULL)
-	{
-		log_warn("Failed to access /proc: %s", strerror(errno));
-		return false;
-	}
-
-	// Loop over entries in /proc
-	// This is much more efficient than iterating over all possible PIDs
-	pid_t last_pid = 0;
-	size_t last_len = 0u;
-	log_debug(DEBUG_SHMEM, "Reading /proc/[0-9]*");
-	while ((entry = readdir(dirPos)) != NULL)
-	{
-		// We are only interested in subdirectories of /proc
-		if(entry->d_type != DT_DIR)
-			continue;
-		// We are only interested in PID subdirectories
-		if(entry->d_name[0] < '0' || entry->d_name[0] > '9')
-			continue;
-
-		// Extract PID
-		pid = strtol(entry->d_name, NULL, 10);
-
-		// Get process name
-		char name[PROC_PATH_SIZ] = { 0 };
-		if(!get_process_name(pid, name))
-			continue;
-
-		log_debug(DEBUG_SHMEM, "PID: %d -> name: %s%s", pid, name, pid == ourselves ? " (us)" : "");
-
-		// Skip our own process
-		if(pid == ourselves)
-			continue;
-
-		// Only process this if this is our own process
-		if(strcasecmp(name, PROCESS_NAME) != 0)
-			continue;
-
-		// Get parent process ID (PPID)
-		pid_t ppid;
-		if(!get_process_ppid(pid, &ppid))
-			continue;
-		char ppid_name[PROC_PATH_SIZ] = { 0 };
-		if(!get_process_name(ppid, ppid_name))
-			continue;
-
-		// Skip if this is an instance running inside a docker container
-		if(is_in_docker(pid))
-			continue;
-
-		log_debug(DEBUG_SHMEM, " └ PPID: %d -> name: %s", ppid, ppid_name);
-
-		char timestr[TIMESTR_SIZE] = { 0 };
-		get_process_creation_time(pid, timestr);
-
-		// If this is the first process we log, add a header
-		if(!already_running)
-		{
-			already_running = true;
-			log_crit("%s is already running!", PROCESS_NAME);
-		}
-
-		if(last_pid != ppid)
-		{
-			// Independent process, may be child of init/systemd
-			log_info("%s (PID %d) ──> %s (PID %d, started %s)",
-			         ppid_name, ppid, name, pid, timestr);
-			last_pid = pid;
-			last_len = snprintf(NULL, 0, "%s (PID %d) ──> ", ppid_name, ppid);
-		}
-		else
-		{
-			// Process parented by the one we analyzed before,
-			// highlight their relationship
-			log_info("%*s └─> %s (PID %d, started %s)",
-			         (int)last_len, "", name, pid, timestr);
-		}
-	}
-	log_debug(DEBUG_SHMEM, "Done reading /proc/[0-9]*");
-
-	closedir(dirPos);
-	return already_running;
+	// If we did not find another FTL process by looking at the PID file, we assume
+	// no other FTL process is running. We write our own PID to the file later after
+	// we have successfully started up (and possibly forked).
+	return false;
 }
 
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
