@@ -1411,8 +1411,8 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 unsigned char *skip_name(unsigned char *ansp, struct dns_header *header, size_t plen, int extrabytes);
 unsigned char *skip_questions(struct dns_header *header, size_t plen);
 unsigned char *skip_section(unsigned char *ansp, int count, struct dns_header *header, size_t plen);
-unsigned int extract_request(struct dns_header *header, size_t qlen, 
-			       char *name, unsigned short *typep);
+unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
+			     unsigned short *typep, unsigned short *classp);
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
 		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
@@ -1548,7 +1548,7 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 #ifdef HAVE_DNSSEC
 void pop_and_retry_query(struct frec *forward, int status, time_t now);
 int tcp_from_udp(time_t now, int status, struct dns_header *header, ssize_t *n, 
-		 int class, char *name, char *keyname, struct server *server, 
+		 int class, char *name, struct server *server, 
 		 int *keycount, int *validatecount);
 #endif
 unsigned char *tcp_request(int confd, time_t now,
@@ -1672,7 +1672,7 @@ void send_event(int fd, int event, int data, char *msg);
 void clear_cache_and_reload(time_t now);
 #ifdef HAVE_DNSSEC
 int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
-		ssize_t *plen, int class, struct server *server, int *keycount, int *validatecount);
+		ssize_t *plen, char *name, int class, struct server *server, int *keycount, int *validatecount);
 #endif
 
 /* netlink.c */

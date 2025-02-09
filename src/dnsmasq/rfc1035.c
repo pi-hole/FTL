@@ -1271,7 +1271,8 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark)
 
 /* If the packet holds exactly one query
    return F_IPV4 or F_IPV6  and leave the name from the query in name */
-unsigned int extract_request(struct dns_header *header, size_t qlen, char *name, unsigned short *typep)
+unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
+			     unsigned short *typep, unsigned short *classp)
 {
   unsigned char *p = (unsigned char *)(header+1);
   int qtype, qclass;
@@ -1295,6 +1296,9 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 
   if (typep)
     *typep = qtype;
+
+  if (classp)
+    *classp = qclass;
 
   if (qclass == C_IN)
     {

@@ -2183,7 +2183,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
    cache_recv_insert() calls pop_and_retry_query() after the result 
    arrives via the pipe to the parent. */
 int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
-		ssize_t *plen, int class, struct server *server, int *keycount, int *validatecount)
+		ssize_t *plen, char *name, int class, struct server *server, int *keycount, int *validatecount)
 {
   struct server *s;
 
@@ -2260,8 +2260,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	}
     }
   
-  status = tcp_from_udp(now, status, header, plen, class, daemon->namebuff, daemon->keyname, 
-			server, keycount, validatecount);
+  status = tcp_from_udp(now, status, header, plen, class, name, server, keycount, validatecount);
   
   /* close upstream connections. */
   for (s = daemon->servers; s; s = s->next)
