@@ -213,6 +213,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	 may fall through below and forward the query in the packet buffer again and we
 	 want to use the same case scrambling as the first time. */
       blockdata_retrieve(forward->stash, forward->stash_len, (void *)header); 
+      plen = forward->stash_len;
 
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == id && 
