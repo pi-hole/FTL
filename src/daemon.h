@@ -14,8 +14,7 @@
 extern pthread_t threads[THREADS_MAX];
 
 void go_daemon(void);
-void savepid(void);
-pid_t readpid(void);
+void savePID(void);
 char *getUserName(void);
 const char *hostname(void);
 const char *domainname(void);

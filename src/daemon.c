@@ -104,7 +104,7 @@ void go_daemon(void)
 		exit(EXIT_SUCCESS);
 	}
 
-	savepid();
+	savePID();
 
 	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
@@ -119,7 +119,7 @@ void go_daemon(void)
  *
  * @return void
  */
-void savepid(void)
+void savePID(void)
 {
 	// Get PID of the current process
 	const pid_t pid = getpid();
@@ -140,46 +140,14 @@ void savepid(void)
 }
 
 /**
- * @brief Reads the process ID (PID) from a file.
- *
- * This function attempts to open a file specified by the configuration
- * and read the PID from it. If the file cannot be opened or the PID
- * cannot be parsed, appropriate warnings are logged and the function
- * returns -1.
- *
- * @return pid_t The PID read from the file on success, or -1 on failure.
- */
-pid_t readpid(void)
-{
-	pid_t pid = -1;
-	FILE *f = NULL;
-	// Open file for reading
-	if((f = fopen(config.files.pid.v.s, "r")) == NULL)
-	{
-		// Log error
-		log_warn("Unable to read PID from file: %s", strerror(errno));
-		return -1;
-	}
-
-	// Try to read PID from file if it is not empty
-	if(fscanf(f, "%d", &pid) != 1)
-		log_debug(DEBUG_SHMEM, "Unable to parse PID in PID file");
-
-	// Close file
-	fclose(f);
-
-	return pid;
-}
-
-/**
- * @brief Empties the PID file and remove it
+ * @brief Empties the PID file
  *
  * This function opens the PID file in write mode, which effectively
  * empties its contents. If the file cannot be opened, a warning is logged.
  *
  * @note This function does not remove the PID file, it only empties it.
  */
-static void removepid(void)
+static void removePID(void)
 {
 	FILE *f = NULL;
 	// Open file for writing to overwrite/empty it
@@ -190,9 +158,7 @@ static void removepid(void)
 	}
 	fclose(f);
 
-	// Remove PID file
-	if(unlink(config.files.pid.v.s) != 0)
-		log_warn("Unable to remove PID file: %s", strerror(errno));
+	log_info("PID file emptied");
 }
 
 /**
@@ -439,7 +405,7 @@ void cleanup(const int ret)
 	}
 
 	// Remove PID file
-	removepid();
+	removePID();
 
 	// Free regex filter memory
 	free_regex();

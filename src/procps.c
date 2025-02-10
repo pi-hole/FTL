@@ -17,7 +17,7 @@
 #include <sys/times.h>
 // config
 #include "config/config.h"
-// readpid()
+// readPID()
 #include "daemon.h"
 
 #define PROCESS_NAME   "pihole-FTL"
@@ -75,41 +75,121 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 	return true;
 }
 
+/**
+ * @brief Reads the process ID (PID) from a file.
+ *
+ * This function attempts to open a file specified by the configuration
+ * and read the PID from it. If the file cannot be opened or the PID
+ * cannot be parsed, appropriate warnings are logged and the function
+ * returns -1.
+ *
+ * @return pid_t The PID read from the file on success, or -1 on failure.
+ */
+static pid_t readPID(void)
+{
+	pid_t pid = -1;
+	FILE *f = NULL;
+	// Open file for reading
+	if((f = fopen(config.files.pid.v.s, "r")) == NULL)
+	{
+		// Log error
+		log_warn("Unable to read PID from file: %s", strerror(errno));
+		return -1;
+	}
+
+	// Try to read PID from file if it is not empty
+	if(fscanf(f, "%d", &pid) != 1)
+		log_debug(DEBUG_SHMEM, "Unable to parse PID in PID file");
+
+	// Close file
+	fclose(f);
+
+	return pid;
+}
+
+/**
+ * @brief Checks if a process with the given PID is alive.
+ *
+ * This function determines if a process is alive by checking the
+ * /proc/<pid>/status file. If the file cannot be opened, it is assumed that the
+ * process is dead. The function reads the status file to check the state of the
+ * process. If the process is in zombie state, it is considered not running.
+ *
+ * @param pid The process ID to check.
+ * @return true if the process is alive and not a zombie, false otherwise.
+ */
+static bool process_alive(const pid_t pid)
+{
+	// Create /proc/<pid>/status filename
+	char filename[64] = { 0 };
+	snprintf(filename, sizeof(filename), "/proc/%d/status", pid);
+
+	FILE *file = fopen(filename, "r");
+	// If we cannot open the file, we assume the process is dead as
+	// /proc/<pid> does not exist anymore
+	if(file == NULL)
+		return false;
+
+	// Parse the entire file
+	char line[256];
+	bool running = true;
+	while(fgets(line, sizeof(line), file))
+	{
+		// Search for state
+		if(strncmp(line, "State:", 6) == 0)
+		{
+			// Check if process is a zombie
+			// On Linux operating systems, a zombie process is a
+			// process that has completed execution (via the exit
+			// system call) but still has an entry in the process
+			// table: it is a process in the "Terminated state".
+			// It typically happens when the parent (calling)
+			// program properly has not yet fetched the return
+			// status of the sub-process.
+			if(strcmp(line, "State:\tZ") == 0)
+				running = false;
+
+			log_debug(DEBUG_SHMEM, "Process state: \"%s\"", line);
+			break;
+		}
+	}
+
+	// Close file
+	fclose(file);
+
+	// Process is still alive if the running flag is still true
+	return running;
+}
+
 // This function prints an info message about if another FTL process is already
 // running. It returns true if another FTL process is already running, false
 // otherwise.
 bool another_FTL(void)
 {
+	// The PID in the PID file
+	const pid_t pid = readPID();
+	// Our own PID from the current process
 	const pid_t ourselves = getpid();
-	bool already_running = false;
-	pid_t pid = readpid();
 
 	if(pid == ourselves)
 	{
+		// This should not happen, as we store our own PID in the PID
+		// file only after we have successfully started up (and possibly
+		// forked). However, if it does happen, we log an info message
 		log_info("PID file contains our own PID");
 	}
 	else if(pid < 0)
 	{
+		// If we cannot read the PID file, we assume no other FTL process is
+		// running. We write our own PID to the file later after we have
+		// successfully started up (and possibly forked).
 		log_info("PID file does not exist or not readable");
 	}
-	else
+	else if(process_alive(pid))
 	{
-		// Note: kill(pid, 0) does not send a signal, but merely checks
-		// if the process exists. If the process does not exist, kill()
-		// returns -1 and sets errno to ESRCH. However, if the process
-		// exists, but security restrictions tell the system to deny its
-		// existence, we cannot distinguish between the process not
-		// existing and the process existing but being denied to us. In
-		// that case, our fallback solution below kicks in and iterates
-		// over /proc instead.
-		already_running = kill(pid, 0) == 0;
-		log_info("PID file contains PID %d (%s), we are %d",
-		         pid, already_running ? "running" : "dead", ourselves);
-	}
-
-	// If already_running is true, we are done
-	if(already_running)
-	{
+		// If we found another FTL process by looking at the PID file, we
+		// check if it is still alive. If it is, we log a critical message
+		// and return true. This will terminate the current process.
 		log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
 		return true;
 	}
@@ -117,6 +197,7 @@ bool another_FTL(void)
 	// If we did not find another FTL process by looking at the PID file, we assume
 	// no other FTL process is running. We write our own PID to the file later after
 	// we have successfully started up (and possibly forked).
+	log_info("No other running FTL process found.");
 	return false;
 }
 

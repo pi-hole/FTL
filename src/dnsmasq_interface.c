@@ -3175,7 +3175,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(daemonmode)
 		go_daemon();
 	else
-		savepid();
+		savePID();
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
