@@ -5938,6 +5938,9 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
+#ifdef HAVE_DUMPFILE
+  daemon->dump_mask = 0xffffffff;
+#endif
 #ifdef HAVE_DNSSEC
   daemon->limit[LIMIT_SIG_FAIL] = DNSSEC_LIMIT_SIG_FAIL;
   daemon->limit[LIMIT_CRYPTO] = DNSSEC_LIMIT_CRYPTO;
