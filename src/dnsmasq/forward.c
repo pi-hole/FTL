@@ -207,10 +207,15 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       struct frec_src *src;
       unsigned int casediff = 0;
       unsigned int *bitvector = NULL;
-      unsigned short id;
+      unsigned short id = ntohs(header->id); /* Retrieve the id from the new query before we overwrite it. */
       
+      /* Get the case-scambled version of the query to resend. This is important because we
+	 may fall through below and forward the query in the packet buffer again and we
+	 want to use the same case scrambling as the first time. */
+      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header); 
+
       for (src = &forward->frec_src; src; src = src->next)
-	if (src->orig_id == ntohs(header->id) && 
+	if (src->orig_id == id && 
 	    sockaddr_isequal(&src->source, udpaddr))
 	  break;
       
@@ -263,17 +268,10 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	     Note the two names are guaranteed to be the same length and differ only in the case
 	     of letters at this point.
 
-	     Get the original query into the packet buffer and extract the query name it contains
-	     to calculate the difference in case scrambling. This is important because we
-	     may fall through below and forward the query in the packet buffer again and we
-	     want to use the same case scrambling as the first time.
-
-	     Retrieve the id from the new query before we overwrite it. */
-
-	  id = ntohs(header->id);
-	  
-	  if (blockdata_retrieve(forward->stash, forward->stash_len, (void *)header) &&
-	      extract_request(header, forward->stash_len, daemon->workspacename, NULL))
+	     The original query we sent is now in packet buffer and the query name in the
+	     new instance is on daemon->namebuff. */
+	    	  
+	  if (extract_request(header, forward->stash_len, daemon->workspacename, NULL))
 	    {
 	      unsigned int i, gobig = 0;
 	      char *s1, *s2;
