@@ -11,9 +11,23 @@
 #ifndef DHCP_DISCOVER_H
 #define DHCP_DISCOVER_H
 
+// pthread_lock
+#include <pthread.h>
+
 int run_dhcp_discover(void);
 int get_hardware_address(const int sock, const char *iname, unsigned char *mac);
-void start_lock(void);
-void end_lock(void);
+
+// Global lock used by all threads
+extern pthread_mutex_t dhcp_lock;
+
+inline void start_lock(void)
+{
+	pthread_mutex_lock(&dhcp_lock);
+}
+
+inline void end_lock(void)
+{
+	pthread_mutex_unlock(&dhcp_lock);
+}
 
 #endif // DHCP_DISCOVER_H
