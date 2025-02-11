@@ -43,10 +43,7 @@ bool writeFTLtoml(const bool verbose)
 	// Try to open a temporary config file for writing
 	FILE *fp;
 	if((fp = openFTLtoml("w", 0)) == NULL)
-	{
-		log_warn("Cannot write to FTL config file (%s), content not updated", strerror(errno));
 		return false;
-	}
 
 	// Write header
 	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
