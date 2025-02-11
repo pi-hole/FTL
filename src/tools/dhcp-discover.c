@@ -193,7 +193,7 @@ struct dhcp_packet_data
 };
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
-static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
+static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, const unsigned char *mac)
 {
 	struct dhcp_packet_data discover_packet = { 0 };
 
@@ -560,7 +560,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 }
 
 // waits for a DHCPOFFER message from one or more DHCP servers
-static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
+static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, const unsigned char *mac)
 {
 	struct dhcp_packet_data offer_packet;
 	struct sockaddr_in source;
@@ -825,6 +825,22 @@ int run_dhcp_discover(void)
 		tmp = tmp->ifa_next;
 	}
 
+	// Warn if there are additional interfaces we have not checked here
+	// because of the limit given my MAXTHREADS
+	if(tmp != NULL)
+		printf_locked("Warning: Not all interfaces will be scanned, internal limit of %d reached\n", MAXTHREADS);
+
+	// Destroy the thread attributes object, since we're done with it
+	pthread_attr_destroy(&attr);
+
+	// Set timeout for pthread_timedjoin_np() relative to CLOCK_REALTIME
+	struct timespec timeout = { 0 };
+	if(clock_gettime(CLOCK_REALTIME, &timeout) < 0)
+		perror("Error setting joining timeout");
+
+	// Add SCAN_TIMEOUT + 2 (safety margin) seconds to the current time
+	timeout.tv_sec += SCAN_TIMEOUT + 2;
+
 	// Wait for all threads to join back with us
 	for(tid--; tid > -1; tid--)
 	{
@@ -835,9 +851,14 @@ int run_dhcp_discover(void)
 		if(scanthread[tid] != 0)
 		{
 			void *args = NULL;
-			pthread_join(scanthread[tid], &args);
+			const int ret = pthread_timedjoin_np(scanthread[tid], &args, &timeout);
 			struct thread_info *tdata = (struct thread_info *)args;
-			if(tdata != NULL)
+			if (ret != 0)
+			{
+				const char *reason = ret == ETIMEDOUT ? "timeout" : strerror(ret);
+				printf("Error joining IPv4 scanning thread %d: %s\n", tid, reason);
+			}
+			else if(tdata != NULL)
 			{
 				iface = tdata->iface;
 				v4 = tdata->responses > 0 ? tdata->responses : 0;
@@ -848,9 +869,14 @@ int run_dhcp_discover(void)
 		if(scanthread[MAXTHREADS + tid] != 0)
 		{
 			void *args = NULL;
-			pthread_join(scanthread[MAXTHREADS + tid], &args);
+			const int ret = pthread_timedjoin_np(scanthread[MAXTHREADS + tid], &args, &timeout);
 			struct thread_info *tdata = (struct thread_info *)args;
-			if(tdata != NULL)
+			if (ret != 0)
+			{
+				const char *reason = ret == ETIMEDOUT ? "timeout" : strerror(ret);
+				printf("Error joining IPv6 scanning thread %d: %s\n", tid, reason);
+			}
+			else if(tdata != NULL)
 			{
 				iface = tdata->iface;
 				v6 = tdata->responses > 0 ? tdata->responses : 0;
