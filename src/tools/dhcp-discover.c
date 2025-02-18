@@ -13,10 +13,14 @@
 #undef __USE_XOPEN
 #include "FTL.h"
 #include "dhcp-discover.h"
+// dhcpv6_discover_iface()
+#include "dhcpv6-discover.h"
 // format_time()
 #include "log.h"
-// read_FTLconf()
-#include "config.h"
+// readFTLconf()
+#include "config/config.h"
+// cli_bold(), etc.
+#include "args.h"
 // check_capability()
 #include "capabilities.h"
 
@@ -45,30 +49,18 @@
 
 // Maximum time we wait for incoming DHCPOFFERs
 // (seconds)
-#define DHCPOFFER_TIMEOUT 10
+#define SCAN_TIMEOUT 6
 
 // How many threads do we spawn at maximum?
 // This is also the limit for interfaces
 // we scan for DHCP activity.
 #define MAXTHREADS 32
 
-// Probe DHCP servers responding to the broadcast address
-#define PROBE_BCAST
-
 // Should we generate test data for DHCP option 249?
 //#define TEST_OPT_249
 
-// Global lock used by all threads
-static pthread_mutex_t lock;
-static void __attribute__((format(gnu_printf, 1, 2))) printf_locked(const char *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	pthread_mutex_lock(&lock);
-	vprintf(format, args);
-	pthread_mutex_unlock(&lock);
-	va_end(args);
-}
+// Global lock used by all dhcp[6]-discover threads
+pthread_mutex_t dhcp_lock;
 
 extern const struct opttab_t {
   char *name;
@@ -93,25 +85,33 @@ static int create_dhcp_socket(const char *iname)
 	const int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if(sock < 0)
 	{
-		printf_locked("Error: Could not create socket for interface %s!\n", iname);
+		start_lock();
+		printf("Error: Could not create socket for interface %s!\n", iname);
+		end_lock();
 		return -1;
 	}
 
 #ifdef DEBUG
-	printf_locked("DHCP socket: %d\n", sock);
+	start_lock();
+	printf("DHCP socket: %d\n", sock);
+	end_lock();
 #endif
 	// set the reuse address flag so we don't get errors when restarting
-	if(setsockopt(sock,SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag))<0)
+	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(flag)) < 0)
 	{
-		printf_locked("Error: Could not set reuse address option on DHCP socket (%s)!\n", iname);
+		start_lock();
+		printf("Error: Could not set reuse address option on DHCP socket (%s)!\n", iname);
+		end_lock();
 		close(sock);
 		return -1;
 	}
 
 	// set the broadcast option - we need this to listen to DHCP broadcast messages
-	if(setsockopt(sock, SOL_SOCKET,SO_BROADCAST, (char *)&flag, sizeof flag) < 0)
+	if(setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *)&flag, sizeof(flag)) < 0)
 	{
-		printf_locked("Error: Could not set broadcast option on DHCP socket (%s)!\n", iname);
+		start_lock();
+		printf("Error: Could not set broadcast option on DHCP socket (%s)!\n", iname);
+		end_lock();
 		close(sock);
 		return -1;
 	}
@@ -120,8 +120,10 @@ static int create_dhcp_socket(const char *iname)
 	strncpy(interface.ifr_ifrn.ifrn_name, iname, IFNAMSIZ-1);
 	if(setsockopt(sock,SOL_SOCKET, SO_BINDTODEVICE, (char *)&interface, sizeof(interface)) < 0)
 	{
-		printf_locked("Error: Could not bind socket to interface %s (%s)\n",
+		start_lock();
+		printf("Error: Could not bind socket to interface %s (%s)\n",
 		              iname, strerror(errno));
+		end_lock();
 		close(sock);
 		return -1;
 	}
@@ -129,8 +131,10 @@ static int create_dhcp_socket(const char *iname)
 	// bind the socket
 	if(bind(sock, (struct sockaddr *)&dhcp_socket, sizeof(dhcp_socket)) < 0)
 	{
-		printf_locked("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n",
+		start_lock();
+		printf("Error: Could not bind to DHCP socket (interface %s, port %d, %s)\n",
 		              iname, DHCP_CLIENT_PORT, strerror(errno));
+		end_lock();
 		close(sock);
 		return -1;
 	}
@@ -148,15 +152,17 @@ int get_hardware_address(const int sock, const char *iname, unsigned char *mac)
 	int ret = 0;
 	if((ret = ioctl(sock, SIOCGIFHWADDR, &ifr)) < 0)
 	{
-		printf_locked(" Error: Could not get hardware address of interface %s: %s\n", iname, strerror(errno));
+		printf(" Error: Could not get hardware address of interface %s: %s\n", iname, strerror(errno));
 		return false;
 	}
 	memcpy(&mac[0], &ifr.ifr_hwaddr.sa_data, 6);
 #ifdef DEBUG
-	printf_locked("Hardware address of this interface: ");
+	start_lock();
+	printf("Hardware address of this interface: ");
 	for (uint8_t i = 0; i < 6; ++i)
-		printf_locked("%02x%s", mac[i], i < 5 ? ":" : "");
-	printf_locked("\n");
+		printf("%02x%s", mac[i], i < 5 ? ":" : "");
+	printf("\n");
+	end_lock();
 #endif
 	return true;
 }
@@ -177,11 +183,11 @@ struct dhcp_packet_data
 	unsigned char chaddr [MAX_DHCP_CHADDR_LENGTH];  // hardware address of this machine
 	char sname [MAX_DHCP_SNAME_LENGTH];             // name of DHCP server
 	char file [MAX_DHCP_FILE_LENGTH];               // boot file name (used for diskless booting?)
-	char options[MAX_DHCP_OPTIONS_LENGTH];          // options
+	unsigned char options[MAX_DHCP_OPTIONS_LENGTH]; // options
 };
 
 // sends a DHCPDISCOVER message to the specified in an attempt to find DHCP servers
-static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
+static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *iface, const unsigned char *mac)
 {
 	struct dhcp_packet_data discover_packet = { 0 };
 
@@ -217,7 +223,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	discover_packet.options[6] = 1;  // DHCP message type code for DHCPDISCOVER
 
 	// Place end option at the end of the options
-	discover_packet.options[7] = 255;
+	discover_packet.options[7] = (char)255;
 
 	// Send the DHCPDISCOVER packet to the specified address
 	struct sockaddr_in target = { 0 };
@@ -226,15 +232,17 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 	target.sin_addr.s_addr = INADDR_BROADCAST;
 
 #ifdef DEBUG
-	printf_locked("Sending DHCPDISCOVER on interface %s@%s ... \n", inet_ntoa(target.sin_addr), iface);
-	printf_locked("DHCPDISCOVER XID: %lu (0x%X)\n", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
-	printf_locked("DHCDISCOVER ciaddr:  %s\n", inet_ntoa(discover_packet.ciaddr));
-	printf_locked("DHCDISCOVER yiaddr:  %s\n", inet_ntoa(discover_packet.yiaddr));
-	printf_locked("DHCDISCOVER siaddr:  %s\n", inet_ntoa(discover_packet.siaddr));
-	printf_locked("DHCDISCOVER giaddr:  %s\n", inet_ntoa(discover_packet.giaddr));
+	start_lock();
+	printf("Sending DHCPDISCOVER on interface %s@%s ... \n", inet_ntoa(target.sin_addr), iface);
+	printf("DHCPDISCOVER XID: %lu (0x%X)\n", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
+	printf("DHCDISCOVER ciaddr:  %s\n", inet_ntoa(discover_packet.ciaddr));
+	printf("DHCDISCOVER yiaddr:  %s\n", inet_ntoa(discover_packet.yiaddr));
+	printf("DHCDISCOVER siaddr:  %s\n", inet_ntoa(discover_packet.siaddr));
+	printf("DHCDISCOVER giaddr:  %s\n", inet_ntoa(discover_packet.giaddr));
+	end_lock();
 #endif
 	// send the DHCPDISCOVER packet
-	const int bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target, sizeof(target));
+	const ssize_t bytes = sendto(sock, (char *)&discover_packet, sizeof(discover_packet), 0, (struct sockaddr *)&target, sizeof(target));
 	if(bytes < 0)
 	{
 		// strerror() returns "Required key not available" for ENOKEY
@@ -242,21 +250,25 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 		// meaningful error message for ENOKEY returned by wireguard interfaces
 		// (see https://www.wireguard.com/papers/wireguard.pdf, page 5)
 		const char *error = errno == ENOKEY ? "No route to host (no such peer available)" : strerror(errno);
-		printf_locked("Error: Could not send DHCPDISCOVER to %s@%s: %s\n",
+		start_lock();
+		printf("Error: Could not send DHCPDISCOVER to %s@%s: %s\n",
 		              inet_ntoa(target.sin_addr), iface, error);
+		end_lock();
 		return false;
 	}
 
 #ifdef DEBUG
-	printf_locked("Sent %d bytes\n", bytes);
+	start_lock();
+	printf("Sent %zu bytes\n", (size_t)bytes);
+	end_lock();
 #endif
 	return true;
 }
 
 #ifdef TEST_OPT_249
-static void gen_249_test_data(dhcp_packet_data *offer_packet)
+static void gen_249_test_data(struct dhcp_packet_data *offer_packet)
 {
-	// Test data for DHCP option 249 (length 14)
+    // Test data for DHCP option 249 (length 14)
 	// See https://discourse.pi-hole.net/t/pi-hole-unbound-via-wireguard-stops-working-over-night/49149
 	char test_data[] = { 249, 14, 0x20, 0xAC, 0x1F, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAC, 0x1F, 0x01, 0x01};
 	// The first 4 bytes are DHCP magic cookie
@@ -336,9 +348,11 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char buffer[4*optlen + 9];
-				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				const size_t bufsiz = 4*optlen + 9;
+				char *buffer = calloc(bufsiz, sizeof(char));
+				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, bufsiz);
 				printf("%s: \"%s\"\n", opttab[i].name, buffer);
+				free(buffer);
 			}
 			else if(opttab[i].size & OT_TIME)
 			{
@@ -392,7 +406,8 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 							printf("Message type: DHCPINFORM (8)\n");
 							break;
 						default:
-							printf("Message type: UNKNOWN (%u)\n", offer_packet->options[x]);
+							printf("Message type: UNKNOWN (%hhu)\n",
+							       (unsigned char)offer_packet->options[x]);
 							break;
 					}
 				}
@@ -422,9 +437,10 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char buffer[4*optlen + 9];
-				binbuf_to_escaped_C_literal(&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				char *buffer = calloc(4*optlen + 9, sizeof(char));
+				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, sizeof(buffer));
 				printf("wpad-server: \"%s\"\n", buffer);
+				free(buffer);
 			}
 			else if(opttype == 158) // DHCPv4 PCP Option (RFC 7291)
 			{                       // https://tools.ietf.org/html/rfc7291#section-4
@@ -448,7 +464,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// see
 				// - https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dhcpe/f9c19c79-1c7f-4746-b555-0c0fc523f3f9
 				// - https://datatracker.ietf.org/doc/html/rfc3442 (page 3)
-				printf("%s Classless Static Route:", opttype == 121 ? "RFC 3442" : "Microsoft");
+				printf("%s Classless Static Route:\n", opttype == 121 ? "RFC 3442" : "Microsoft");
 				// Loop over contained routes
 				unsigned int n = 0;
 				for(unsigned int i = 1; n < optlen; i++)
@@ -473,15 +489,15 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 					if(cidr == 0)
 					{
 						// default route (0.0.0.0/0)
-						printf("     %d: default via %d.%d.%d.%d", i,
-						              router[0], router[1], router[2], router[3]);
+						printf("     %u: default via %u.%u.%u.%u\n\n", i,
+						       router[0], router[1], router[2], router[3]);
 					}
 					else
 					{
 						// specific route
-						printf("     %d: %d.%d.%d.%d/%d via %d.%d.%d.%d", i,
-						              addr[0], addr[1], addr[2], addr[3], cidr,
-						              router[0], router[1], router[2], router[3]);
+						printf("     %u: %u.%u.%u.%u/%u via %u.%u.%u.%u\n", i,
+						       addr[0], addr[1], addr[2], addr[3], cidr,
+						       router[0], router[1], router[2], router[3]);
 					}
 				}
 			}
@@ -501,7 +517,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 	}
 
 	// Add one empty line for readability
-	printf("\n");
+	puts("");
 }
 
 // receives a DHCP packet
@@ -527,14 +543,16 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	address_size = sizeof(struct sockaddr_in);
 	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
-	printf_locked("\n* Received %d bytes from %s:%s\n", recv_result, iface, inet_ntoa(address->sin_addr));
+	start_lock();
+	printf("* Received %d bytes from %s @ %s\n", recv_result, inet_ntoa(address->sin_addr), iface);
 #ifdef DEBUG
-	printf_locked("  after waiting for %f seconds\n", difftime(time(NULL), start_time));
+	printf("  after waiting for %f seconds\n", difftime(time(NULL), start_time));
 #endif
 	// Return on error
 	if(recv_result == -1)
 	{
-		printf_locked(" recvfrom() failed on %s, error: %s\n", iface, strerror(errno));
+		printf(" recvfrom() failed on %s, error: %s\n", iface, strerror(errno));
+		end_lock();
 		return false;
 	}
 
@@ -542,13 +560,10 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 }
 
 // waits for a DHCPOFFER message from one or more DHCP servers
-static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, unsigned char *mac)
+static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface, const unsigned char *mac)
 {
 	struct dhcp_packet_data offer_packet;
 	struct sockaddr_in source;
-#ifdef DEBUG
-	unsigned int responses = 0;
-#endif
 	unsigned int valid_responses = 0;
 	time_t start_time;
 	time_t current_time;
@@ -556,20 +571,13 @@ static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface,
 	time(&start_time);
 
 	// receive as many responses as we can
-	while(time(&current_time) && (current_time-start_time) < DHCPOFFER_TIMEOUT)
+	while(time(&current_time) && (current_time-start_time) < SCAN_TIMEOUT)
 	{
 		memset(&source, 0, sizeof(source));
 		memset(&offer_packet, 0, sizeof(offer_packet));
 
 		if(!receive_dhcp_packet(&offer_packet, sizeof(offer_packet), iface, sock, start_time, &source))
 			continue;
-#ifdef DEBUG
-		else
-			responses++;
-#endif
-
-		if(pthread_mutex_lock(&lock) != 0)
-			return -1;
 
 #ifdef DEBUG
 		printf(" DHCPOFFER XID: %lu (0x%X)\n", (unsigned long) ntohl(offer_packet.xid), ntohl(offer_packet.xid));
@@ -581,7 +589,7 @@ static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface,
 			printf("  DHCPOFFER XID (%lu) does not match our DHCPDISCOVER XID (%lu) - ignoring packet (not for us)\n",
 			       (unsigned long) ntohl(offer_packet.xid), (unsigned long) xid);
 
-			pthread_mutex_unlock(&lock);
+			end_lock();
 			continue;
 		}
 
@@ -600,7 +608,7 @@ static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface,
 				printf("%02x%s", offer_packet.chaddr[x], x < 5 ? ":" : "");
 			printf(" (response MAC address)\n");
 
-			pthread_mutex_unlock(&lock);
+			end_lock();
 			continue;
 		}
 
@@ -626,9 +634,10 @@ static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface,
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
-			char buffer[4*len + 9];
+			char *buffer = calloc(4*len + 9, sizeof(char));
 			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, sizeof(buffer));
 			printf("%s\n", buffer);
+			free(buffer);
 		}
 		else
 			printf("(empty)\n");
@@ -637,66 +646,89 @@ static int get_dhcp_offer(const int sock, const uint32_t xid, const char *iface,
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
-			char buffer[4*len + 9];
+			char *buffer = calloc(4*len + 9, sizeof(char));
 			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, sizeof(buffer));
 			printf("%s\n", buffer);
+			free(buffer);
 		}
 		else
 			printf("(empty)\n");
 
 		printf("  DHCP options:\n");
 		print_dhcp_offer(source.sin_addr, &offer_packet);
-		pthread_mutex_unlock(&lock);
-
+		end_lock();
 		valid_responses++;
 	}
-#ifdef DEBUG
-	printf(" Responses seen while scanning:    %d\n", responses);
-	printf(" Responses meant for this machine: %d\n\n", valid_responses);
-#endif
+
 	return valid_responses;
 }
 
-static void *dhcp_discover_iface(void *args)
+struct thread_info {
+	char *iface;
+	int responses;
+};
+
+static void *dhcp_discover_iface_v4(void *args)
 {
-	int valid_responses = -1;
 	// Get interface details
-	const char *iface = ((struct ifaddrs*)args)->ifa_name;
+	struct thread_info *tdata = (struct thread_info *)args;
+	char *thread_name = malloc(strlen(tdata->iface) + 4);
+	sprintf(thread_name, "%s-v4", tdata->iface);
 
 	// Set interface name as thread name
-	prctl(PR_SET_NAME, iface, 0, 0, 0);
+	prctl(PR_SET_NAME, thread_name, 0, 0, 0);
+	free(thread_name);
+
+	// Set interface name as thread name
+	prctl(PR_SET_NAME, tdata->iface, 0, 0, 0);
 
 	// create socket for DHCP communications
-	const int dhcp_socket = create_dhcp_socket(iface);
+	const int dhcp_socket = create_dhcp_socket(tdata->iface);
 
 	// Cannot create socket, likely a permission error
 	if(dhcp_socket < 0)
-		goto end_dhcp_discover_iface;
+		goto end_dhcp_discover_iface_v4;
 
 	// get hardware address of client machine
 	unsigned char mac[MAX_DHCP_CHADDR_LENGTH] = { 0 };
-	get_hardware_address(dhcp_socket, iface, mac);
+	get_hardware_address(dhcp_socket, tdata->iface, mac);
 
 	// Generate pseudo-random transaction ID
-	srand(time(NULL));
-	const uint32_t xid = random();
+	srand((unsigned int)time(NULL));
+	const uint32_t xid = (uint32_t)random();
 
 	// Probe servers on this interface
-	if(!send_dhcp_discover(dhcp_socket, xid, iface, mac))
-		goto end_dhcp_discover_iface;
+	if(!send_dhcp_discover(dhcp_socket, xid, tdata->iface, mac))
+		goto end_dhcp_discover_iface_v4;
 
 	// wait for a DHCPOFFER packet
-	valid_responses = get_dhcp_offer(dhcp_socket, xid, iface, mac);
+	tdata->responses = get_dhcp_offer(dhcp_socket, xid, tdata->iface, mac);
 
-end_dhcp_discover_iface:
+end_dhcp_discover_iface_v4:
 	// Close socket if we created one
 	if(dhcp_socket > 0)
 		close(dhcp_socket);
 
-	if(valid_responses >= 0)
-		printf_locked("DHCP packets received on interface %s: %u\n", iface, valid_responses);
+	// Return the number of responses
+	pthread_exit(tdata);
+}
 
-	pthread_exit(NULL);
+static void *dhcp_discover_iface_v6(void *args)
+{
+	// Get interface details
+	struct thread_info *tdata = (struct thread_info *)args;
+	char *thread_name = malloc(strlen(tdata->iface) + 4);
+	sprintf(thread_name, "%s-v6", tdata->iface);
+
+	// Set interface name as thread name
+	prctl(PR_SET_NAME, thread_name, 0, 0, 0);
+	free(thread_name);
+
+	// Perform the same scan for DHCPv6
+	tdata->responses = dhcpv6_discover_iface(tdata->iface, SCAN_TIMEOUT);
+
+	// Return the number of responses
+	pthread_exit(tdata);
 }
 
 int run_dhcp_discover(void)
@@ -708,30 +740,40 @@ int run_dhcp_discover(void)
 		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_BIND_SERVICE). Try running as root (sudo)");
 		return EXIT_FAILURE;
 	}
+	if(!check_capability(CAP_NET_RAW))
+	{
+		puts("Error: Insufficient permissions or capabilities (needs CAP_NET_RAW). Try running as root (sudo)");
+		return EXIT_FAILURE;
+	}
 
 	// Disable terminal output during config config file parsing
 	log_ctrl(false, false);
 	// Process pihole-FTL.conf to get gravity.db
-	read_FTLconf();
+	readFTLconf(&config, false);
 	// Only print to terminal, disable log file
 	log_ctrl(false, true);
 
-	printf("Scanning all your interfaces for DHCP servers\n");
-	printf("Timeout: %d seconds\n", DHCPOFFER_TIMEOUT);
+	printf("Scanning all your interfaces for DHCP servers and IPv6 routers\n");
+	printf("Timeout: %d seconds\n\n", SCAN_TIMEOUT);
 
 	// Get interface names for available interfaces on this machine
 	// and launch a thread for each one
-	pthread_t scanthread[MAXTHREADS];
+	pthread_t scanthread[2*MAXTHREADS] = { 0 };
+	struct thread_info thread_infos[2*MAXTHREADS] = { 0 };
 	pthread_attr_t attr;
 	// Initialize thread attributes object with default attribute values
 	pthread_attr_init(&attr);
 
-	// Create processing/logging lock
-	pthread_mutexattr_t lock_attr = {};
+	// Create processing/printfing lock
+	pthread_mutexattr_t lock_attr;
 	// Initialize the lock attributes
 	pthread_mutexattr_init(&lock_attr);
 	// Initialize the lock
-	pthread_mutex_init(&lock, &lock_attr);
+	if(pthread_mutex_init(&dhcp_lock, &lock_attr) != 0)
+	{
+		perror("Error initializing lock");
+		return EXIT_FAILURE;
+	}
 	// Destroy the lock attributes since we're done with it
 	pthread_mutexattr_destroy(&lock_attr);
 
@@ -759,11 +801,26 @@ int run_dhcp_discover(void)
 				continue;
 			}
 
-			// Create a probing thread for this interface
-			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface, tmp ) != 0)
+			// Create a DHCP probing thread for this interface
+			thread_infos[tid].iface = strdup(tmp->ifa_name);
+			if(pthread_create(&scanthread[tid], &attr, dhcp_discover_iface_v4, &thread_infos[tid] ) != 0)
 			{
-				printf_locked("Unable to launch thread for interface %s, skipping...",
+				start_lock();
+				printf("Unable to launch DHCP thread for interface %s, skipping...",
 				              tmp->ifa_name);
+				end_lock();
+				tmp = tmp->ifa_next;
+				continue;
+			}
+
+			// Create a RA probing thread for this interface
+			thread_infos[MAXTHREADS + tid].iface = thread_infos[tid].iface;
+			if(pthread_create(&scanthread[MAXTHREADS + tid], &attr, dhcp_discover_iface_v6, &thread_infos[MAXTHREADS + tid] ) != 0)
+			{
+				start_lock();
+				printf("Unable to launch RA thread for interface %s, skipping...",
+				              tmp->ifa_name);
+				end_lock();
 				tmp = tmp->ifa_next;
 				continue;
 			}
@@ -776,12 +833,86 @@ int run_dhcp_discover(void)
 		tmp = tmp->ifa_next;
 	}
 
+	// Warn if there are additional interfaces we have not checked here
+	// because of the limit given my MAXTHREADS
+	if(tmp != NULL)
+	{
+		start_lock();
+		printf("Warning: Not all interfaces will be scanned, internal limit of %d reached\n", MAXTHREADS);
+		end_lock();
+	}
+
+	// Destroy the thread attributes object, since we're done with it
+	pthread_attr_destroy(&attr);
+
+	// Set timeout for pthread_timedjoin_np() relative to CLOCK_REALTIME
+	struct timespec timeout = { 0 };
+	if(clock_gettime(CLOCK_REALTIME, &timeout) < 0)
+		perror("Error setting joining timeout");
+
+	// Add SCAN_TIMEOUT + 2 (safety margin) seconds to the current time
+	timeout.tv_sec += SCAN_TIMEOUT + 2;
+
 	// Wait for all threads to join back with us
 	for(tid--; tid > -1; tid--)
-		pthread_join(scanthread[tid], NULL);
+	{
+		char *iface = NULL;
+		unsigned int v4 = 0, v6 = 0;
+
+		// Check DHCP (IPv4) thread
+		if(scanthread[tid] != 0)
+		{
+			void *args = NULL;
+			const int ret = pthread_timedjoin_np(scanthread[tid], &args, &timeout);
+			struct thread_info *tdata = (struct thread_info *)args;
+			if (ret != 0)
+			{
+				const char *reason = ret == ETIMEDOUT ? "timeout" : strerror(ret);
+				printf("Error joining IPv4 scanning thread %d: %s\n", tid, reason);
+			}
+			else if(tdata != NULL)
+			{
+				iface = tdata->iface;
+				v4 = tdata->responses > 0 ? tdata->responses : 0;
+			}
+		}
+
+		// Check RA (IPv6) thread
+		if(scanthread[MAXTHREADS + tid] != 0)
+		{
+			void *args = NULL;
+			const int ret = pthread_timedjoin_np(scanthread[MAXTHREADS + tid], &args, &timeout);
+			struct thread_info *tdata = (struct thread_info *)args;
+			if (ret != 0)
+			{
+				const char *reason = ret == ETIMEDOUT ? "timeout" : strerror(ret);
+				printf("Error joining IPv6 scanning thread %d: %s\n", tid, reason);
+			}
+			else if(tdata != NULL)
+			{
+				iface = tdata->iface;
+				v6 = tdata->responses > 0 ? tdata->responses : 0;
+			}
+		}
+
+		// Print results
+		if(iface != NULL)
+		{
+			if(v4 < 1 && v6 < 1)
+				printf("No answer on %s%s%s\n",
+				       cli_bold(), iface, cli_normal());
+			else
+				printf("Received %u DHCP (IPv4) and %u RA (IPv6) answers on %s%s%s\n",
+				       v4, v6, cli_bold(), iface, cli_normal());
+			free(iface);
+		}
+	}
 
 	// Free linked-list of interfaces on this client
 	freeifaddrs(addrs);
+
+	// Destroy the mutex lock
+	pthread_mutex_destroy(&dhcp_lock);
 
 	return EXIT_SUCCESS;
 }

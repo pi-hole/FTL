@@ -1,0 +1,170 @@
+openapi: 3.0.2
+components:
+  paths:
+    gravity:
+      post:
+        summary: Run gravity
+        tags:
+          - Actions
+        operationId: "action_gravity"
+        description: |
+          Update Pi-hole's adlists by running `pihole -g`. The output of the process is streamed with chunked encoding.
+        responses:
+          '200':
+            description: OK
+            content:
+              text/plain:
+                schema:
+                  type: string
+                  example: |
+                      [i] Neutrino emissions detected...
+
+                      [✓] Pulling blocklist source list into range
+
+                      [i] Preparing new gravity database...
+                      [✓] Preparing new gravity database
+                      [i] Using libz compression
+
+                      [i] Target: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+                      [✓] Status: Retrieval successful
+                      [i] Imported 172502 domains, ignoring 3 non-domain entries
+                          Sample of non-domain entries:
+                            - 0.0.0.0
+                            - fe
+                            - ff
+                      [i] List stayed unchanged
+
+                      [i] Target: https://v.firebog.net/hosts/AdguardDNS.txt
+                      [✓] Status: No changes detected
+                      [i] Imported 47225 domains
+
+                      [✓] Creating new gravity databases
+                      [✓] Storing downloaded domains in new gravity database
+                      [✓] Building tree
+                      [✓] Swapping databases
+                      [✓] The old database remains available.
+                      [i] Number of gravity domains: 219727 (215440 unique domains)
+                      [i] Number of exact blacklisted domains: 0
+                      [i] Number of regex blacklist filters: 2
+                      [i] Number of exact whitelisted domains: 0
+                      [i] Number of regex whitelist filters: 0
+                      [✓] Cleaning up stray matter
+
+                      [✓] FTL is listening on port
+                         [✓] UDP (IPv4)
+                         [✓] TCP (IPv4)
+                         [✓] UDP (IPv6)
+                         [✓] TCP (IPv6)
+
+                      [✓] Pi-hole blocking is enabled
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/errors/unauthorized'
+    restartdns:
+      post:
+        summary: Restart pihole-FTL
+        tags:
+          - Actions
+        operationId: "action_restartdns"
+        description: |
+          Restarts the pihole-FTL service
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    flush_logs:
+      post:
+        summary: Flush the DNS logs
+        tags:
+          - Actions
+        operationId: "action_flushlogs"
+        description: |
+          Flushes the DNS logs. This includes emptying the DNS log file and purging the most recent 24 hours from both the database and FTL's internal memory.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    flush_arp:
+      post:
+        summary: Flush the network table
+        tags:
+          - Actions
+        operationId: "action_flusharp"
+        description: |
+          Flushes the network table. This includes emptying the ARP table and removing both all known devices and their associated addresses.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
+
+  errors:
+    forbidden:
+      description: |
+        The request was valid, but the server is refusing the action.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "forbidden"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "<Action name> is not allowed"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: "Check setting webserver.api.allow_destructive"

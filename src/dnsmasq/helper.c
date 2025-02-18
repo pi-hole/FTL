@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2025 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 */
 
 #include "dnsmasq.h"
-#include "../log.h"
+#include "log.h"
 
 #ifdef HAVE_SCRIPT
 
@@ -98,10 +98,6 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       return pipefd[1];
     }
 
-  /**** Pi-hole modification ****/
-  logg("Started script helper");
-  /******************************/
-
   /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit
      and SIGALRM so that we can use sleep() */
   sigact.sa_handler = SIG_IGN;
@@ -128,9 +124,16 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      /* return error */
 	      send_event(err_fd, EVENT_USER_ERR, errno, daemon->scriptuser);
 	    }
+	  /**** Pi-hole modification ****/
+	  log_err("Starting script helper FAILED");
+	  /******************************/
 	  _exit(0);
 	}
     }
+
+  /**** Pi-hole modification ****/
+  log_info("Started script helper");
+  /******************************/
 
   /* close all the sockets etc, we don't need them here. 
      Don't close err_fd, in case the lua-init fails.
@@ -201,7 +204,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	}
       
       /* we read zero bytes when pipe closed: this is our signal to exit */ 
-      if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), 1))
+      if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), RW_READ))
 	{
 #ifdef HAVE_LUASCRIPT
 	  if (daemon->luascript)
@@ -267,7 +270,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	continue;
       
       if (!read_write(pipefd[0], buf, 
-		      data.hostname_len + data.ed_len + data.clid_len, 1))
+		      data.hostname_len + data.ed_len + data.clid_len, RW_READ))
 	continue;
 
       /* CLID into packet */

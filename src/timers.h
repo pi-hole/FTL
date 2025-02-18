@@ -10,21 +10,17 @@
 #ifndef TIMERS_H
 #define TIMERS_H
 
-// Timer enumeration
-enum timers {
-	DATABASE_WRITE_TIMER,
-	EXIT_TIMER,
-	GC_TIMER,
-	LISTS_TIMER,
-	REGEX_TIMER,
-	ARP_TIMER,
-	LAST_TIMER
-	} __attribute__ ((packed));
+#include "enums.h"
+
+#include <stdbool.h>
 
 #define NUMTIMERS LAST_TIMER
 
 void timer_start(const enum timers i);
 double timer_elapsed_msec(const enum timers i);
 void sleepms(const int milliseconds);
+void set_blockingmode_timer(double delay, bool blocked);
+void get_blockingmode_timer(double *delay, bool *target_status);
+void *timer(void *val);
 
 #endif //TIMERS_H

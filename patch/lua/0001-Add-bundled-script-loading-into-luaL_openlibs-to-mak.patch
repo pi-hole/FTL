@@ -1,0 +1,90 @@
+From 0ff00e1c838ec91a31970c2b51a7651954cba3d6 Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Mon, 23 Sep 2024 21:42:21 +0200
+Subject: [PATCH] Add bundled script loading into luaL_openlibs to make them
+ available globally (also in the webserver)
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/lua/ftl_lua.h                  |  2 --
+ src/lua/linit.c                    |  6 ++++++
+ src/lua/lua.c                      | 13 +------------
+ 3 files changed, 7 insertions(+), 14 deletions(-)
+
+diff --git a/src/lua/ftl_lua.h b/src/lua/ftl_lua.h
+index d986498a..30bad1f9 100644
+--- a/src/lua/ftl_lua.h
++++ b/src/lua/ftl_lua.h
+@@ -21,8 +21,6 @@ int run_luac(const int argc, char **argv);
+ int lua_main (int argc, char **argv);
+ int luac_main (int argc, char **argv);
+ 
+-extern int dolibrary (lua_State *L, char *name);
+-
+ void print_embedded_scripts(void);
+ void ftl_lua_init(lua_State *L);
+ 
+diff --git a/src/lua/linit.c b/src/lua/linit.c
+index 9a5bcfdc..787865c0 100644
+--- a/src/lua/linit.c
++++ b/src/lua/linit.c
+@@ -8,6 +8,10 @@
+ #define linit_c
+ #define LUA_LIB
+ 
++/** Pi-hole modification **/
++#include "ftl_lua.h"
++/**************************/
++
+ /*
+ ** If you embed Lua in your program and need to open the standard
+ ** libraries, call luaL_openlibs in your program. If you need a
+@@ -64,5 +68,7 @@ LUALIB_API void luaL_openlibs (lua_State *L) {
+     luaL_requiref(L, lib->name, lib->func, 1);
+     lua_pop(L, 1);  /* remove lib */
+   }
++  // Load and enable libraries bundled with Pi-hole
++  ftl_lua_init(L);
+ }
+ 
+diff --git a/src/lua/lua.c b/src/lua/lua.c
+index 35fb281d..111a1b2b 100644
+--- a/src/lua/lua.c
++++ b/src/lua/lua.c
+@@ -20,10 +20,6 @@
+ #include "lauxlib.h"
+ #include "lualib.h"
+ 
+-/** Pi-hole modification **/
+-#include "ftl_lua.h"
+-/**************************/
+-
+ 
+ #if !defined(LUA_PROGNAME)
+ #define LUA_PROGNAME		"lua"
+@@ -218,9 +214,7 @@ static int dostring (lua_State *L, const char *s, const char *name) {
+ ** If there is no explicit modname and globname contains a '-', cut
+ ** the suffix after '-' (the "version") to make the global name.
+ */
+-/************** Pi-hole modification ***************/
+-int dolibrary (lua_State *L, char *globname) {
+-/***************************************************/
++static int dolibrary (lua_State *L, char *globname) {
+   int status;
+   char *suffix = NULL;
+   char *modname = strchr(globname, '=');
+@@ -655,11 +649,6 @@ static int pmain (lua_State *L) {
+       return 0;  /* error running LUA_INIT */
+   }
+ 
+-  /************** Pi-hole modification ***************/
+-  // Load and enable libraries bundled with Pi-hole
+-  ftl_lua_init(L);
+-  /***************************************************/
+-
+   if (!runargs(L, argv, optlim))  /* execute arguments -e and -l */
+     return 0;  /* something failed */
+   if (script > 0) {  /* execute main script (if there is one) */
+-- 
+2.34.1
+

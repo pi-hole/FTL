@@ -1,0 +1,154 @@
+openapi: 3.0.2
+components:
+  paths:
+    endpoints:
+      get:
+        summary: Get list of available API endpoints
+        tags:
+          - "FTL information"
+        operationId: "get_endpoints"
+        description: |
+          This API hook returns the list of all available API endpoints.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'endpoints.yaml#/components/schemas/endpoints'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    endpoints:
+      type: object
+      properties:
+        endpoints:
+          type: object
+          description: Endpoints
+          properties:
+            get:
+              type: array
+              items:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
+            post:
+              type: array
+              items:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
+            put:
+              type: array
+              items:
+                type: object
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
+            patch:
+              type: array
+              items:
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''
+            delete:
+              type: array
+              items:
+                properties:
+                  uri:
+                    type: string
+                    description: URI
+                  parameters:
+                    type: string
+                    description: Parameters
+              example:
+                - uri: "/api/dns/blocking"
+                  parameters: ''
+                - uri: "/api/dns/cache"
+                  parameters: ''
+                - uri: "/api/dns/port"
+                  parameters: ''
+                - uri: "/api/domains"
+                  parameters: ''
+                - uri: "/api/groups"
+                  parameters: ''
+                - uri: "/api/lists"
+                  parameters: ''

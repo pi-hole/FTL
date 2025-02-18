@@ -19,6 +19,10 @@
 #  define NETTLE_VERSION_MINOR 0
 #endif
 
+#ifdef HAVE_MBEDTLS
+#include <mbedtls/version.h>
+#endif
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -36,15 +40,47 @@
 #include "tools/gravity-parseList.h"
 // run_dhcp_discover()
 #include "tools/dhcp-discover.h"
+// mg_version()
+#include "webserver/civetweb/civetweb.h"
+// cJSON_Version()
+#include "webserver/cJSON/cJSON.h"
+#include "config/cli.h"
+#include "config/config.h"
+// compression functions
+#include "zip/gzip.h"
+// teleporter functions
+#include "zip/teleporter.h"
+// printTOTP()
+#include "api/api.h"
+// generate_certificate()
+#include "webserver/x509.h"
+// run_dhcp_discover()
+#include "tools/dhcp-discover.h"
 // run_arp_scan()
 #include "tools/arp-scan.h"
+// run_performance_test()
+#include "config/password.h"
+// idn2_to_ascii_lz()
+#include <idn2.h>
+// sha256sum()
+#include "files.h"
+// resolveHostname()
+#include "resolve.h"
+// ntp_client()
+#include "ntp/ntp.h"
+// check_capability()
+#include "capabilities.h"
+
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
 
 // defined in database/shell.c
 extern int sqlite3_shell_main(int argc, char **argv);
 
-bool dnsmasq_debug = false;
+// defined in database/sqlite3_rsync.c
+extern int sqlite3_rsync_main(int argc, char **argv);
+
+bool debug_mode = false;
 bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
@@ -73,8 +109,9 @@ const char** argv_dnsmasq = NULL;
 #define COL_BLUE	"\x1b[94m" // bright foreground color
 #define COL_PURPLE	"\x1b[95m" // bright foreground color
 #define COL_CYAN	"\x1b[96m" // bright foreground color
+#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
 
-static inline bool __attribute__ ((pure)) is_term(void)
+static bool __attribute__ ((pure)) is_term(void)
 {
 	// test whether STDOUT refers to a terminal
 	return isatty(fileno(stdout)) == 1;
@@ -116,6 +153,16 @@ const char __attribute__ ((pure)) *cli_bold(void)
 	return is_term() ? COL_BOLD : "";
 }
 
+const char __attribute__ ((pure)) *cli_underline(void)
+{
+	return is_term() ? COL_ULINE : "";
+}
+
+const char __attribute__ ((pure)) *cli_italics(void)
+{
+	return is_term() ? COL_ITALIC : "";
+}
+
 // Resets font to normal
 const char __attribute__ ((pure)) *cli_normal(void)
 {
@@ -132,15 +179,15 @@ static const char __attribute__ ((pure)) *cli_color(const char *color)
 const char __attribute__ ((pure)) *cli_over(void)
 {
 	// \x1b[K is the ANSI escape sequence for "erase to end of line"
-	return is_term() ? "\r\x1b[K" : "\r";
+	return is_term() ? CLI_OVER : "\r";
 }
 
-static inline bool strEndsWith(const char *input, const char *end)
+static bool strEndsWith(const char *input, const char *end)
 {
 	return strcmp(input + strlen(input) - strlen(end), end) == 0;
 }
 
-void parse_args(int argc, char* argv[])
+void parse_args(int argc, char *argv[])
 {
 	bool quiet = false;
 	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
@@ -168,6 +215,10 @@ void parse_args(int argc, char* argv[])
 	if(strEndsWith(argv[0], "luac"))
 		exit(run_luac(argc, argv));
 
+	// Special (undocumented) mode to test kernel signal handling
+	if(argc == 2 && strcmp(argv[1], "sigtest") == 0)
+		exit(sigtest());
+
 	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
 	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
 	// Also, we do this if the first argument is a file with ".db" ending
@@ -175,15 +226,238 @@ void parse_args(int argc, char* argv[])
 	   (argc > 1 && strEndsWith(argv[1], ".db")))
 			exit(sqlite3_shell_main(argc, argv));
 
+	// If the binary name is "sqlite3_rsync"  (e.g., symlink /usr/bin/sqlite3_rsync -> /usr/bin/pihole-FTL),
+	// we operate in drop-in mode and consume all arguments for the embedded sqlite3_rsync tool
+	if(strEndsWith(argv[0], "sqlite3_rsync"))
+		exit(sqlite3_rsync_main(argc, argv));
+
+	// Compression feature
+	if((argc == 3 || argc == 4) &&
+	   (strcmp(argv[1], "gzip") == 0 || strcmp(argv[1], "--gzip") == 0))
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		// Get input and output file names
+		const char *infile = argv[2];
+		bool is_gz = strEndsWith(infile, ".gz");
+		char *outfile = NULL;
+		if(argc == 4)
+		{
+			// If an output file is given, we use it
+			outfile = strdup(argv[3]);
+		}
+		else if(is_gz)
+		{
+			// If no output file is given, and this is a gzipped
+			// file, we use the input file name without ".gz"
+			// appended
+			outfile = calloc(strlen(infile)-2, sizeof(char));
+			memcpy(outfile, infile, strlen(infile)-3);
+		}
+		else
+		{
+			// If no output file is given, and this is not a gzipped
+			// file, we use the input file name with ".gz" appended
+			outfile = calloc(strlen(infile)+4, sizeof(char));
+			strcpy(outfile, infile);
+			strcat(outfile, ".gz");
+		}
+
+		bool success = false;
+		if(is_gz)
+		{
+			// If the input file is already gzipped, we decompress it
+			success = inflate_file(infile, outfile, true);
+		}
+		else
+		{
+			// If the input file is not gzipped, we compress it
+			success = deflate_file(infile, outfile, true);
+		}
+
+		// Free allocated memory
+		free(outfile);
+
+		// Return exit code
+		exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Set config option through CLI
+	if(argc > 1 && strcmp(argv[1], "--config") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, false);
+		readFTLconf(&config, false);
+		log_ctrl(false, true);
+		clear_debug_flags(); // No debug printing wanted
+		if(argc == 2)
+			exit(get_config_from_CLI(NULL, false));
+		else if(argc == 3)
+			exit(get_config_from_CLI(argv[2], false));
+		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
+			exit(get_config_from_CLI(argv[3], true));
+		else if(argc == 4)
+			exit(set_config_from_CLI(argv[2], argv[3]));
+		else
+		{
+			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
+			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	// Set config option through CLI
+	if(argc == 2 && strcmp(argv[1], "--totp") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, false);
+		readFTLconf(&config, false);
+		log_ctrl(false, true);
+		clear_debug_flags(); // No debug printing wanted
+		exit(printTOTP());
+	}
+
+	// Create teleporter archive through CLI
+	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
+		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Create test NTP client
+	if((argc > 1 && argc < 5) && strcmp(argv[1], "ntp") == 0)
+	{
+		// Parse arguments
+		const bool update = (argc > 2 && strcmp(argv[2], "--update") == 0) ||
+		                    (argc > 3 && strcmp(argv[3], "--update") == 0);
+		const char *server = "127.0.0.1";
+		if(argc > 2 && strcmp(argv[2], "--update") != 0)
+			server = argv[2];
+
+		// Ensure we have the necessary capabilities
+		if(update && !check_capability(CAP_SYS_TIME))
+		{
+			puts("Insufficient capabilities to run NTP client");
+			const char *bold = cli_bold();
+			const char *normal = cli_normal();
+			printf("Try: %ssudo%s ", bold, normal);
+			for(int i = 0; i < argc; i++)
+				printf("%s ", argv[i]);
+			puts("");
+			exit(EXIT_FAILURE);
+		}
+
+		printf("Using NTP server: %s\n", server);
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
+		exit(ntp_client(server, update, true) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Import teleporter archive through CLI
+	if(argc == 3 && strcmp(argv[1], "--teleporter") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		readFTLconf(&config, false);
+		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Generate X.509 certificate
+	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
+	{
+		if(argc < 3 || argc > 5)
+		{
+			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
+			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
+			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
+			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const char *domain = argc > 3 ? argv[3] : "pi.hole";
+		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
+		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Parse X.509 certificate
+	if(argc > 1 &&
+	  (strcmp(argv[1], "--read-x509") == 0 ||
+	   strcmp(argv[1], "--read-x509-key") == 0))
+	{
+		if(argc > 4)
+		{
+			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
+			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
+			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Option parsing
+		// Should we report on the private key?
+		const bool private_key = strcmp(argv[1], "--read-x509-key") == 0;
+		// If no certificate file is given, we use the one from the config
+		const char *certfile = NULL;
+		if(argc == 2)
+		{
+			readFTLconf(&config, false);
+			certfile = config.webserver.tls.cert.v.s;
+		}
+		else
+			certfile = argv[2];
+
+		// If no domain is given, we only check the certificate
+		const char *domain = argc > 3 ? argv[3] : NULL;
+
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		enum cert_check result = read_certificate(certfile, domain, private_key);
+
+		if(argc < 4)
+			exit(result == CERT_OKAY ? EXIT_SUCCESS : EXIT_FAILURE);
+		else if(result == CERT_DOMAIN_MATCH)
+		{
+			printf("Certificate matches domain %s\n", argv[3]);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Certificate does not match domain %s\n", argv[3]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
 	// we offer some specialized gravity tools
-	if(argc > 1 && strcmp(argv[1], "gravity") == 0)
+	if(argc > 1 && (strcmp(argv[1], "gravity") == 0 || strcmp(argv[1], "antigravity") == 0))
 	{
+		const bool antigravity = strcmp(argv[1], "antigravity") == 0;
+
 		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
-		if(argc == 6 && strcmp(argv[2], "parseList") == 0)
+		if(argc == 6 && strcasecmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5]));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
+		}
+
+		// pihole-FTL gravity checkList <infile>
+		if(argc == 4 && strcasecmp(argv[2], "checkList") == 0)
+		{
+			// Parse the given list and write the result to the given file
+			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");
@@ -198,6 +472,14 @@ void parse_args(int argc, char* argv[])
 		exit(run_dhcp_discover());
 	}
 
+	// Password hashing performance test
+	if(argc > 1 && (strcmp(argv[1], "--perf") == 0 || strcmp(argv[1], "performance") == 0))
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		exit(run_performance_test());
+	}
+
 	// ARP scanning mode
 	if(argc > 1 && strcmp(argv[1], "arp-scan") == 0)
 	{
@@ -206,6 +488,125 @@ void parse_args(int argc, char* argv[])
 		const bool scan_all = argc > 2 && strcmp(argv[2], "-a") == 0;
 		const bool extreme_mode = argc > 2 && strcmp(argv[2], "-x") == 0;
 		exit(run_arp_scan(scan_all, extreme_mode));
+	}
+
+	// IDN2 conversion mode
+	if(argc > 1 && strcmp(argv[1], "idn2") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		if(argc == 3)
+		{
+			// Convert unicode domain to punycode
+			char *punycode = NULL;
+			const int rc = idn2_to_ascii_lz(argv[2], &punycode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[2]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Convert punycode domain to lowercase
+			for(unsigned int i = 0u; i < strlen(punycode); i++)
+				punycode[i] = tolower(punycode[i]);
+
+			printf("%s\n", punycode);
+			exit(EXIT_SUCCESS);
+
+		}
+		else if(argc == 4 && (strcmp(argv[2], "-d") == 0 || strcmp(argv[2], "--decode") == 0))
+		{
+			// Convert punycode domain to unicode
+			char *unicode = NULL;
+			const int rc = idn2_to_unicode_lzlz(argv[3], &unicode, IDN2_NFC_INPUT | IDN2_NONTRANSITIONAL);
+			if (rc != IDN2_OK)
+			{
+				// Invalid domain name
+				printf("Invalid domain name: %s\n", argv[3]);
+				exit(EXIT_FAILURE);
+			}
+
+			printf("%s\n", unicode);
+			exit(EXIT_SUCCESS);
+		}
+		else
+		{
+			printf("Usage: %s idn2 [--decode] <domain>\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	// sha256sum mode
+	if(argc == 3 && strcmp(argv[1], "sha256sum") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		uint8_t checksum[SHA256_DIGEST_SIZE];
+		if(!sha256sum(argv[2], checksum, false))
+			exit(EXIT_FAILURE);
+
+		// Convert checksum to hex string
+		char hex[SHA256_DIGEST_SIZE*2+1];
+		sha256_raw_to_hex(checksum, hex);
+
+		// Print result
+		printf("%s  %s\n", hex, argv[2]);
+		exit(EXIT_SUCCESS);
+	}
+
+	// Checksum verification mode
+	if(argc == 2 && strcmp(argv[1], "verify") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		const enum verify_result match = verify_FTL(true);
+		printf("%s Binary integrity check: %s\n",
+		       match == VERIFY_OK ? cli_tick() :
+		         match == VERIFY_NO_CHECKSUM ? cli_qst() : cli_cross(),
+		       match == VERIFY_OK ? "OK" :
+		         match == VERIFY_NO_CHECKSUM ? "No checksum found" :
+		           match == VERIFY_ERROR ? "Error" : "Failed");
+		exit(match);
+	}
+
+	// Local reverse name resolver
+	if((argc == 3 || argc == 4) && strcasecmp(argv[1], "ptr") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+
+		// Need to get dns.port and the resolver settings
+		readFTLconf(&config, false);
+
+		// TCP or UDP (default)?
+		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
+
+		// Create a socket
+		struct sockaddr_in dest;
+		const int sock = create_socket(tcp, &dest);
+		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
+
+		// Close the socket
+		close(sock);
+
+		// Exit early if no name was found
+		if(name == NULL)
+			exit(EXIT_FAILURE);
+
+		// Print result
+		printf("%s\n", name);
+		free(name);
+		exit(EXIT_SUCCESS);
+	}
+
+
+	// Set config option through CLI
+	if(argc == 3 && strcmp(argv[1], "migrate") == 0 && strcmp(argv[2], "v6") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -217,7 +618,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "lua") == 0 ||
 		   strcmp(argv[i], "--lua") == 0)
 		{
-			exit(run_lua_interpreter(argc - i, &argv[i], dnsmasq_debug));
+			exit(run_lua_interpreter(argc - i, &argv[i], debug_mode));
 		}
 
 		// Expose internal lua compiler
@@ -267,8 +668,14 @@ void parse_args(int argc, char* argv[])
 				exit(sqlite3_shell_main(argc - i, &argv[i]));
 		}
 
+		if(strcmp(argv[i], "sqlite3_rsync") == 0 ||
+		   strcmp(argv[i], "--sqlite3_rsync") == 0)
+		{
+			exit(sqlite3_rsync_main(argc - i, &argv[i]));
+		}
+
 		// Implement dnsmasq's test function, no need to prepare the entire FTL
-		// environment (initialize shared memory, lead queries from long-term
+		// environment (initialize shared memory, load queries from long-term
 		// database, ...) when the task is a simple (dnsmasq) syntax check
 		if(strcmp(argv[i], "dnsmasq-test") == 0 ||
 		   strcmp(argv[i], "--test") == 0)
@@ -276,7 +683,23 @@ void parse_args(int argc, char* argv[])
 			const char *arg[2];
 			arg[0] = "";
 			arg[1] = "--test";
+			log_ctrl(false, true);
 			exit(main_dnsmasq(2, (char**)arg));
+		}
+
+		// Implement dnsmasq's test function, no need to prepare the entire FTL
+		// environment (initialize shared memory, lead queries from long-term
+		// database, ...) when the task is a simple (dnsmasq) syntax check
+		if(argc == 3 && strcmp(argv[1], "dnsmasq-test-file") == 0)
+		{
+			const char *arg[3];
+			char *filename = calloc(strlen(argv[2])+strlen("--conf-file=")+1, sizeof(char));
+			arg[0] = "";
+			sprintf(filename, "--conf-file=%s", argv[2]);
+			arg[1] = filename;
+			arg[2] = "--test";
+			log_ctrl(false, true);
+			exit(main_dnsmasq(3, (char**)arg));
 		}
 
 		// If we find "--" we collect everything behind that for dnsmasq
@@ -313,7 +736,7 @@ void parse_args(int argc, char* argv[])
 			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
 			argv_dnsmasq[0] = "";
 
-			if(dnsmasq_debug)
+			if(debug_mode)
 			{
 				argv_dnsmasq[1] = "-d";
 				argv_dnsmasq[2] = "--log-debug";
@@ -324,7 +747,7 @@ void parse_args(int argc, char* argv[])
 				argv_dnsmasq[2] = "";
 			}
 
-			if(dnsmasq_debug)
+			if(debug_mode)
 			{
 				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
 				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
@@ -335,7 +758,7 @@ void parse_args(int argc, char* argv[])
 			while(i < argc)
 			{
 				argv_dnsmasq[j++] = strdup(argv[i++]);
-				if(dnsmasq_debug)
+				if(debug_mode)
 					printf("dnsmasq options: [%i]: %s\n", j-1, argv_dnsmasq[j-1]);
 			}
 
@@ -348,11 +771,11 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "d") == 0 ||
 		   strcmp(argv[i], "debug") == 0)
 		{
-			dnsmasq_debug = true;
+			debug_mode = true;
 			daemonmode = false;
 			ok = true;
 
-			// Replace "-k" by "-d" (dnsmasq_debug mode implies nofork)
+			// Replace "-k" by "-d" (debug_mode mode implies nofork)
 			argv_dnsmasq[1] = "-d";
 		}
 
@@ -379,6 +802,7 @@ void parse_args(int argc, char* argv[])
 			const char *bold = cli_bold();
 			const char *normal = cli_normal();
 			const char *green = cli_color(COL_GREEN);
+			const char *red = cli_color(COL_RED);
 			const char *yellow = cli_color(COL_YELLOW);
 
 			// Print FTL version
@@ -386,10 +810,15 @@ void parse_args(int argc, char* argv[])
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n",
 			       green, bold, get_FTL_version(), normal);
-			printf("Branch:          " GIT_BRANCH "\n");
-			printf("Commit:          " GIT_HASH " (" GIT_DATE ")\n");
-			printf("Architecture:    " FTL_ARCH "\n");
-			printf("Compiler:        " FTL_CC "\n\n");
+			printf("Branch:          %s\n", git_branch());
+			printf("Commit:          %s (%s)\n",git_hash(), git_date());
+			printf("Architecture:    %s\n", ftl_arch());
+			printf("Compiler:        %s\n", ftl_cc());
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+			printf("GLIBC version:   %d.%d\n\n", __GLIBC__, __GLIBC_MINOR__);
+#else
+			printf("GLIBC version:   -\n\n");
+#endif
 
 			// Print dnsmasq version and compile time options
 			print_dnsmasq_version(yellow, green, bold, normal);
@@ -421,26 +850,90 @@ void parse_args(int argc, char* argv[])
 			printf("Version:         %s%s" xstr(NETTLE_VERSION_MAJOR) "." xstr(NETTLE_VERSION_MINOR) "%s\n",
 			       green, bold, normal);
 			printf("GMP:             %s\n", NETTLE_USE_MINI_GMP ? "Mini" : "Full");
+			printf("\n");
+			printf("****************************** %s%sCivetWeb%s *****************************\n",
+			       yellow, bold, normal);
+#ifdef HAVE_MBEDTLS
+			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
+			       green, bold, mg_version(), normal, yellow, green, bold, normal);
+#else
+			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
+			       green, bold, mg_version(), normal, red, yellow, normal);
+#endif
+			printf("Features:        ");
+			if(mg_check_feature(MG_FEATURES_FILES))
+				printf("Files: %sYes%s, ", green, normal);
+			else
+				printf("Files: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_TLS))
+				printf("TLS: %sYes%s, ", green, normal);
+			else
+				printf("TLS: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_CGI))
+				printf("CGI: %sYes%s, ", green, normal);
+			else
+				printf("CGI: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_IPV6))
+				printf("IPv6: %sYes%s, \n", green, normal);
+			else
+				printf("IPv6: %sNo%s, \n", red, normal);
+			if(mg_check_feature(MG_FEATURES_WEBSOCKET))
+				printf("                 WebSockets: %sYes%s, ", green, normal);
+			else
+				printf("                 WebSockets: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_SSJS))
+				printf("Server-side JavaScript: %sYes%s\n", green, normal);
+			else
+				printf("Server-side JavaScript: %sNo%s\n", red, normal);
+			if(mg_check_feature(MG_FEATURES_LUA))
+				printf("                 Lua: %sYes%s, ", green, normal);
+			else
+				printf("                 Lua: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_CACHE))
+				printf("Cache: %sYes%s, ", green, normal);
+			else
+				printf("Cache: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_STATS))
+				printf("Stats: %sYes%s, ", green, normal);
+			else
+				printf("Stats: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_COMPRESSION))
+				printf("Compression: %sYes%s\n", green, normal);
+			else
+				printf("Compression: %sNo%s\n", red, normal);
+			if(mg_check_feature(MG_FEATURES_HTTP2))
+				printf("                 HTTP2: %sYes%s, ", green, normal);
+			else
+				printf("                 HTTP2: %sNo%s, ", red, normal);
+			if(mg_check_feature(MG_FEATURES_X_DOMAIN_SOCKET))
+				printf("Unix domain sockets: %sYes%s\n", green, normal);
+			else
+				printf("Unix domain sockets: %sNo%s\n", red, normal);
+			printf("\n");
+			printf("****************************** %s%scJSON%s ********************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
+			printf("\n");
 			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "-t") == 0 ||
 		   strcmp(argv[i], "tag") == 0)
 		{
-			printf("%s\n",GIT_TAG);
+			printf("%s\n", git_tag());
 			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "-b") == 0 ||
 		   strcmp(argv[i], "branch") == 0)
 		{
-			printf("%s\n",GIT_BRANCH);
+			printf("%s\n", git_branch());
 			exit(EXIT_SUCCESS);
 		}
 
 		if(strcmp(argv[i], "--hash") == 0)
 		{
-			printf("%s\n",GIT_HASH);
+			printf("%s\n", git_hash());
 			exit(EXIT_SUCCESS);
 		}
 
@@ -465,9 +958,9 @@ void parse_args(int argc, char* argv[])
 			// Enable stdout printing
 			cli_mode = true;
 			if(argc == i + 2)
-				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], NULL));
+				exit(regex_test(debug_mode, quiet, argv[i + 1], NULL));
 			else if(argc == i + 3)
-				exit(regex_test(dnsmasq_debug, quiet, argv[i + 1], argv[i + 2]));
+				exit(regex_test(debug_mode, quiet, argv[i + 1], argv[i + 2]));
 			else
 			{
 				printf("pihole-FTL: invalid option -- '%s' need either one or two parameters\nTry '%s --help' for more information\n", argv[i], argv[0]);
@@ -479,6 +972,7 @@ void parse_args(int argc, char* argv[])
 		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "help") == 0 || strcmp(argv[i], "--help") == 0)
 		{
 			const char *bold = cli_bold();
+			const char *uline = cli_underline();
 			const char *normal = cli_normal();
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
@@ -506,19 +1000,19 @@ void parse_args(int argc, char* argv[])
 			printf("\t%sregex-test %sstr %srgx%s  Test %sstr%s against regular expression\n", green, blue, cyan, normal, blue, normal);
 			printf("\t                    given by regular expression %srgx%s\n\n", cyan, normal);
 
-			printf("    Example: %spihole-FTL regex-test %ssomebad.domain %sbad%s\n", green, blue, cyan, normal);
+			printf("    Example: %s%s regex-test %ssomebad.domain %sbad%s\n", green, argv[0], blue, cyan, normal);
 			printf("    to test %ssomebad.domain%s against %sbad%s\n\n", blue, normal, cyan, normal);
 			printf("    An optional %s-q%s prevents any output (exit code testing):\n", purple, normal);
-			printf("    %spihole-FTL %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, purple, green, blue, cyan, normal);
+			printf("    %s%s %s-q%s regex-test %ssomebad.domain %sbad%s\n\n", green, argv[0], purple, green, blue, cyan, normal);
 
 			printf("%sEmbedded Lua engine:%s\n", yellow, normal);
 			printf("\t%s--lua%s, %slua%s          FTL's lua interpreter\n", green, normal, green, normal);
 			printf("\t%s--luac%s, %sluac%s        FTL's lua compiler\n\n", green, normal, green, normal);
 
-			printf("    Usage: %spihole-FTL lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s%s lua %s[OPTIONS] [SCRIPT [ARGS]]%s\n\n", green, argv[0], cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be seen by running %spihole-FTL lua --help%s\n", green, normal);
+			printf("      options can be seen by running %s%s lua --help%s\n", green, argv[0], normal);
 			printf("    - %s[SCRIPT]%s is the optional name of a Lua script.\n", cyan, normal);
 			printf("      If this script does not exist, an interactive shell is\n");
 			printf("      started instead.\n");
@@ -527,11 +1021,10 @@ void parse_args(int argc, char* argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
-
-			printf("    Usage: %spihole-FTL sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
-			printf("      options can be found in %spihole-FTL sqlite3 --help%s.\n", green, normal);
+			printf("      options can be found in %s%s sqlite3 --help%s.\n", green, argv[0], normal);
 			printf("      The first option can be either %s-h%s or %s-ni%s, see below.\n", purple, normal, purple, normal);
 			printf("    - %s[FILENAME]%s is the optional name of an SQLite database.\n", cyan, normal);
 			printf("      A new database is created if the file does not previously\n");
@@ -539,17 +1032,29 @@ void parse_args(int argc, char* argv[])
 			printf("      transient in-memory database instead.\n");
 			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
-			printf("    There are two special %spihole-FTL sqlite3%s mode switches:\n", green, normal);
+			printf("    There are two special %s%s sqlite3%s mode switches:\n", green, argv[0], normal);
 			printf("    %s-h%s  %shuman-readable%s mode:\n", purple, normal, bold, normal);
 			printf("        In this mode, the output of the shell is formatted in\n");
 			printf("        a human-readable way. This is especially useful for\n");
 			printf("        debugging purposes. %s-h%s is a shortcut for\n", purple, normal);
-			printf("        %spihole-FTL sqlite3 %s-column -header -nullvalue '(null)'%s\n\n", green, purple, normal);
+			printf("        %s%s sqlite3 %s-column -header -nullvalue '(null)'%s\n\n", green, argv[0], purple, normal);
 			printf("    %s-ni%s %snon-interative%s mode\n", purple, normal, bold, normal);
 			printf("        In this mode, batch mode is enforced and any possibly\n");
 			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
-			printf("        for %spihole-FTL sqlite3 %s-batch -init /dev/null%s\n\n", green, purple, normal);
-			printf("    Usage: %spihole-FTL sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, purple, cyan, normal);
+			printf("        for %s%s sqlite3 %s-batch -init /dev/null%s\n\n", green, argv[0], purple, normal);
+			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, argv[0], purple, cyan, normal);
+
+			printf("%ssqlite3_rsync%s tool:\n", yellow, normal);
+			printf("\t%ssqlite3_rsync%s           Synchronize SQLite3 databases\n", green, normal);
+			printf("    Usage: %s%s sqlite3_rsync %sORIGIN REPLICA [OPTIONS]%s\n\n", green, argv[0], cyan, normal);
+			printf("    This tool is used to synchronize a local database with a\n");
+			printf("    remote one. The remote database is accessed via an SSH\n");
+			printf("    connection. The main difference to rsync is that this\n");
+			printf("    tool using SQLite3 transactions and, hence, can\n");
+			printf("    synchronize the local database with the remote one in a\n");
+			printf("    safe way, preventing data corruption. Both databases must\n");
+			printf("    be using WAL mode.\n\n");
+			printf("    For more information, see %s%s sqlite3_rsync --help%s\n\n", green, argv[0], normal);
 
 			printf("%sEmbedded dnsmasq options:%s\n", yellow, normal);
 			printf("\t%sdnsmasq-test%s        Test syntax of dnsmasq's config\n", green, normal);
@@ -557,12 +1062,87 @@ void parse_args(int argc, char* argv[])
 			printf("\t%s--list-dhcp6%s        List known DHCPv6 config options\n\n", green, normal);
 
 			printf("%sDebugging and special use:%s\n", yellow, normal);
-			printf("\t%sd%s, %sdebug%s            Enter debugging mode\n", green, normal, green, normal);
+			printf("\t%sd%s, %sdebug%s            Enter debugging mode: Don't go into \n", green, normal, green, normal);
+			printf("\t                    daemon mode and verbose logging\n");
 			printf("\t%stest%s                Don't start pihole-FTL but instead\n", green, normal);
-			printf("\t                    quit immediately\n");
+			printf("\t                    process everything and quit immediately\n");
 			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
 
+			printf("%sConfig options:%s\n", yellow, normal);
+			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+
+			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
+			printf("    A simple but fast in-memory gzip compressor\n\n");
+			printf("    Usage: %s%s --gzip %sinfile %s[outfile]%s\n\n", green, argv[0], cyan, purple, normal);
+			printf("    - %sinfile%s is the file to be processed. If the filename ends\n", cyan, normal);
+			printf("      in %s.gz%s, FTL will uncompress, otherwise it will compress\n\n", yellow, normal);
+			printf("    - %s[outfile]%s is the optional target file.\n", purple, normal);
+			printf("      If omitted, FTL will try to derive the target file from\n");
+			printf("      the source file.\n\n");
+			printf("    Examples:\n");
+			printf("      - %s%s --gzip %sfile.txt%s\n", green, argv[0], cyan, normal);
+			printf("        compresses %sfile.txt%s to %sfile.txt%s.gz%s\n\n", cyan, normal, cyan, yellow, normal);
+			printf("      - %s%s --gzip %sfile.txt%s.gz%s\n", green, cyan, argv[0], yellow, normal);
+			printf("        %sun%scompresses %sfile.txt%s.gz%s to %sfile.txt%s\n\n", uline, normal, cyan, yellow, normal, cyan, normal);
+
+			printf("%sTeleporter:%s\n", yellow, normal);
+			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
+			printf("\t                    current directory and print its name\n");
+			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
+
+			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
+			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");
+			printf("    and store it in %soutfile%s.\n\n", cyan, normal);
+			printf("    By default, this new certificate is based on the elliptic\n");
+			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
+			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
+			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
+			printf("    for which the certificate is valid. If omitted, the domain\n");
+			printf("    is set to %spi.hole%s.\n\n", blue, normal);
+			printf("    Usage: %s%s --gen-x509 %soutfile %s[domain] %s[rsa]%s\n\n", green, argv[0], cyan, blue, purple, normal);
+
+			printf("%sTLS X.509 certificate parser:%s\n", yellow, normal);
+			printf("    Parse the given X.509 certificate and optionally check if\n");
+			printf("    it matches a given domain. If no domain is given, only a\n");
+			printf("    human-readable output string is printed.\n\n");
+			printf("    If no certificate file is given, the one from the config\n");
+			printf("    is used (if applicable). If --read-x509-key is used, details\n");
+			printf("    about the private key are printed as well.\n\n");
+			printf("    Usage: %s%s --read-x509 %s[certfile] %s[domain]%s\n", green, argv[0], cyan, purple, normal);
+			printf("    Usage: %s%s --read-x509-key %s[certfile] %s[domain]%s\n\n", green, argv[0], cyan, purple, normal);
+
+			printf("%sGravity tools:%s\n", yellow, normal);
+			printf("    Check domains in a given file for validity using Pi-hole's\n");
+			printf("    gravity filters. The expected input format is one domain\n");
+			printf("    per line (no HOSTS lists, etc.)\n\n");
+			printf("    Usage: %s%s gravity checkList %sinfile%s\n\n", green, argv[0], cyan, normal);
+
+			printf("%sIDN2 conversion:%s\n", yellow, normal);
+			printf("    Convert a given internationalized domain name (IDN) to\n");
+			printf("    punycode or vice versa.\n\n");
+			printf("    Encoding: %s%s idn2 %sdomain%s\n", green, argv[0], cyan, normal);
+			printf("    Decoding: %s%s idn2 -d %spunycode%s\n\n", green, argv[0], cyan, normal);
+
+			printf("%sNTP client:%s\n", yellow, normal);
+			printf("    Query an NTP server for the current time and print the\n");
+			printf("    result in human-readable format. An optional %sserver%s may be\n", cyan, normal);
+			printf("    as argument. If the server is omitted, 127.0.0.1 is used.\n\n");
+			printf("    The system time is updated on the system when the optional\n");
+			printf("    %s--update%s flag is given.\n\n", purple, normal);
+			printf("    Usage: %s%s ntp %s[server]%s %s[--update]%s\n\n", green, argv[0], cyan, normal, purple, normal);
+
+			printf("%sSHA256 checksum tools:%s\n", yellow, normal);
+			printf("    Calculates the SHA256 checksum of a file. The checksum is\n");
+			printf("    computed as described in FIPS-180-2 and uses streaming\n");
+			printf("    to allow processing arbitrary large files with a small\n");
+			printf("    memory footprint.\n\n");
+			printf("    Usage: %s%s sha256sum %sfile%s\n\n", green, argv[0], cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
+			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
+			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
+			printf("\t                    Append %stcp%s to use TCP instead of UDP\n", purple, normal);
 			printf("\t%sdhcp-discover%s       Discover DHCP servers in the local\n", green, normal);
 			printf("\t                    network\n");
 			printf("\t%sarp-scan %s[-a/-x]%s    Use ARP to scan local network for\n", green, cyan, normal);
@@ -571,6 +1151,11 @@ void parse_args(int argc, char* argv[])
 			printf("\t                    interfaces\n");
 			printf("\t                    Append %s-x%s to force scan on all\n", cyan, normal);
 			printf("\t                    interfaces and scan 10x more often\n");
+			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
+			printf("\t                    authentication (if enabled)\n");
+			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
+			printf("\t                    BALLOON password-hashing algorithm\n");
+			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
 		}
@@ -580,12 +1165,6 @@ void parse_args(int argc, char* argv[])
 		{
 			printf("True\n");
 			exit(EXIT_SUCCESS);
-		}
-
-		// Return number of errors on this undocumented flag
-		if(strcmp(argv[i], "--check-structs") == 0)
-		{
-			exit(check_struct_sizes());
 		}
 
 		// Complain if invalid options have been found
@@ -603,4 +1182,22 @@ void parse_args(int argc, char* argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+}
+
+// defined in src/dnsmasq/option.c
+extern void reset_usage_indicator(void);
+// defined in src/log.h
+bool only_testing = false;
+void test_dnsmasq_options(int argc, const char *argv[])
+{
+	// Reset getopt before calling read_opts
+	optind = 0;
+
+	// Signal we don't want to jump back to FTL's main()
+	// but die after configuration parsing
+	only_testing = true;
+
+	// Call dnsmasq's option parser
+	reset_usage_indicator();
+	read_opts(argc, (char**)argv, NULL);
 }

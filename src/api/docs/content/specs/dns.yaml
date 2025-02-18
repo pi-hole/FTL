@@ -1,0 +1,142 @@
+openapi: 3.0.2
+components:
+  paths:
+    blocking:
+      summary: Modify blocking status
+      get:
+        summary: Get current blocking status
+        tags:
+          - DNS control
+        operationId: "get_blocking"
+        description: |
+          The property `timer` may contain additional details concerning a temporary en-/disabling.
+          It is `null` when no timer is active (the current status is permanent).
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'dns.yaml#/components/schemas/blocking'
+                    - $ref: 'dns.yaml#/components/schemas/timer'
+                    - $ref: 'common.yaml#/components/schemas/took'
+      post:
+        summary: Change current blocking status
+        tags:
+          - DNS control
+        operationId: "set_blocking"
+        description: |
+          Change the current blocking mode by setting `blocking` to the desired value.
+          The optional `timer` object may used to set a timer. Once this timer elapsed, the opposite blocking mode is automatically set.
+          For instance, you can request `{blocking: false, timer: 60}` to disable Pi-hole for one minute.
+          Blocking will be automatically resumed afterwards.
+
+          You can terminate a possibly running timer by setting `timer` to `null` (the set mode becomes permanent).
+        requestBody:
+          description: Callback payload
+          content:
+            'application/json':
+              schema:
+                allOf:
+                  - $ref: 'dns.yaml#/components/schemas/blocking_bool'
+                  - $ref: 'dns.yaml#/components/schemas/timer'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'dns.yaml#/components/schemas/blocking'
+                    - $ref: 'dns.yaml#/components/schemas/timer'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - oneOf:
+                      - $ref: 'dns.yaml#/components/schemas/errors/no_payload'
+                      - $ref: 'dns.yaml#/components/schemas/errors/item_missing'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+  schemas:
+    blocking:
+      type: object
+      properties:
+        blocking:
+          type: string
+          description: Blocking status
+          enum:
+            - "enabled"
+            - "disabled"
+            - "failed"
+            - "unknown"
+          example: "enabled"
+    blocking_bool:
+      type: object
+      properties:
+        blocking:
+          type: boolean
+          description: Blocking status
+          default: true
+          example: true
+    timer:
+      type: object
+      properties:
+        timer:
+          type: number
+          description: Remaining seconds until blocking mode is automatically changed
+          nullable: true
+          example: 15.0
+
+    errors:
+      item_missing:
+        type: object
+        description: Item to be modified is missing
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "body_error"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "No \\\"blocking\\\" boolean in body data"
+              hint:
+                type: string
+                nullable: true
+                description: "Additional data (if available)"
+                example: null
+      no_payload:
+        type: object
+        description: No JSON payload found
+        properties:
+          error:
+            type: object
+            properties:
+              key:
+                type: string
+                description: "Machine-readable error type"
+                example: "bad_request"
+              message:
+                type: string
+                description: "Human-readable error message"
+                example: "Invalid request body data (no valid JSON)"
+              hint:
+                type: string
+                nullable: true
+                description: "Additional data (if available)"
+                example: null

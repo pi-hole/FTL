@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2025 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,18 +15,43 @@
 */
 
 #include "dnsmasq.h"
-#include "../dnsmasq_interface.h"
+#include "dnsmasq_interface.h"
 
+/* EXTR_NAME_EXTRACT -> extract name
+   EXTR_NAME_COMPARE -> compare name, case insensitive
+   EXTR_NAME_NOCASE -> compare name, case sensitive
+   EXTR_NAME_FLIP -> flip 0x20 bits in packet.
+
+   For flip, name is  an array of ints, whose size
+   is given in parm, which forms the bitmap. Bits beyond the size
+   are assumed to be zero.
+   
+   return = 0 -> error
+   return = 1 -> extract OK, compare OK, flip OK
+   return = 2 -> extract OK, compare failed.
+   return = 3 -> extract OK, compare failed but only on case.
+*/
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
-		 char *name, int isExtract, int extrabytes)
+		 char *name, int func, unsigned int parm)
 {
   unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
-  int retvalue = 1;
-  
-  if (isExtract)
-    *cp = 0;
+  unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size, bitmap;
+  int retvalue = 1, case_insens = 1, isExtract = 0, flip = 0, extrabytes = (int)parm;
+  unsigned int *bigmap;
 
+  if (func == EXTR_NAME_EXTRACT)
+    isExtract = 1, *cp = 0;
+  else if (func == EXTR_NAME_NOCASE)
+    case_insens = 0;
+  else if (func == EXTR_NAME_FLIP)
+    {
+      flip = 1, extrabytes = 0;
+      bigmap = (unsigned int *)name;
+      name = NULL;
+      bigmap_size = parm;
+    }
+  
   while (1)
     { 
       unsigned int label_type;
@@ -47,7 +72,7 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		cp--;
 	      *cp = 0; /* terminate: lose final period */
 	    }
-	  else if (*cp != 0)
+	  else if (!flip && *cp != 0)
 	    retvalue = 2;
 	  
 	  if (p1) /* we jumped via compression */
@@ -86,7 +111,7 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	  if (!CHECK_LEN(header, p, plen, l))
 	    return 0;
 	  
-	  for(j=0; j<l; j++, p++)
+	  for (j=0; j<l; j++, p++)
 	    if (isExtract)
 	      {
 		unsigned char c = *p;
@@ -99,6 +124,24 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		else
 		  *cp++ = c; 
 	      }
+	    else if (flip)
+	      {
+		unsigned char c = *p;
+
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+		  {
+		    /* Get the next int of the bitmap */
+		    if (bigmap_posn < bigmap_size && bigmap_counter-- == 0)
+		      {
+			bitmap = bigmap[bigmap_posn++];
+			bigmap_counter = (sizeof(unsigned int) * 8) - 1;
+		      }
+		    
+		    if (bitmap & 1)
+		      *p ^= 0x20;
+		    bitmap >>= 1;
+		  }
+	      }
 	    else 
 	      {
 		unsigned char c1 = *cp, c2 = *p;
@@ -108,23 +151,35 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 		else 
 		  {
 		    cp++;
-		    if (c1 >= 'A' && c1 <= 'Z')
-		      c1 += 'a' - 'A';
 
 		    if (c1 == NAME_ESCAPE)
 		      c1 = (*cp++)-1;
+		    else if (case_insens && c1 >= 'A' && c1 <= 'Z')
+		      c1 += 'a' - 'A';
 		    
-		    if (c2 >= 'A' && c2 <= 'Z')
+		    if (case_insens && c2 >= 'A' && c2 <= 'Z')
 		      c2 += 'a' - 'A';
-		     
+
+		    if (!case_insens && retvalue != 2 && c1 != c2)
+		      {
+			if (c1 >= 'A' && c1 <= 'Z')
+			  c1 += 'a' - 'A';
+			
+			if (c2 >= 'A' && c2 <= 'Z')
+			  c2 += 'a' - 'A';
+			
+			if (c1 == c2)
+			  retvalue = 3;
+		      }
+		    
 		    if (c1 != c2)
-		      retvalue =  2;
+		      retvalue = 2;
 		  }
 	      }
 	    
 	  if (isExtract)
 	    *cp++ = '.';
-	  else if (*cp != 0 && *cp++ != '.')
+	  else if (!flip && *cp != 0 && *cp++ != '.')
 	    retvalue = 2;
 	}
       else
@@ -400,7 +455,7 @@ int do_doctor(struct dns_header *header, size_t qlen, char *namebuff)
       if (i == ntohs(header->ancount) && !(p = skip_section(p, ntohs(header->nscount), header, qlen)))
 	return done;
       
-      if (!extract_name(header, qlen, &p, namebuff, 1, 10))
+      if (!extract_name(header, qlen, &p, namebuff, EXTR_NAME_EXTRACT, 10))
 	return done; /* bad packet */
       
       GETSHORT(qtype, p); 
@@ -481,7 +536,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
   
   for (i = 0; i < ntohs(header->nscount); i++)
     {
-      if (!extract_name(header, qlen, &p, daemon->workspacename, 1, 0))
+      if (!extract_name(header, qlen, &p, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
 	return 0; /* bad packet */
       
       GETSHORT(qtype, p); 
@@ -510,7 +565,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 	      
 	      for (j = 0; j < 2; j++) /* MNAME, RNAME */
 		{
-		  if (!extract_name(header, qlen, &p, daemon->workspacename, 1, 0))
+		  if (!extract_name(header, qlen, &p, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
 		    {
 		      if (!no_cache)
 			blockdata_free(addr.rrblock.rrdata);
@@ -662,7 +717,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 
   namep = p = (unsigned char *)(header+1);
   
-  if (ntohs(header->qdcount) != 1 || !extract_name(header, qlen, &p, name, 1, 4))
+  if (ntohs(header->qdcount) != 1 || !extract_name(header, qlen, &p, name, EXTR_NAME_EXTRACT, 4))
     return 2; /* bad packet */
   
   GETSHORT(qtype, p); 
@@ -686,7 +741,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  for (j = 0; j < ntohs(header->ancount); j++) 
 	    {
 	      int secflag = 0;
-	      if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
+	      if (!(res = extract_name(header, qlen, &p1, name, EXTR_NAME_COMPARE, 10)))
 		return 2; /* bad packet */
 	      
 	      GETSHORT(aqtype, p1); 
@@ -708,7 +763,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	      if (aqclass == C_IN && res != 2 && (aqtype == T_CNAME || aqtype == T_PTR))
 		{
 #ifdef HAVE_DNSSEC
-		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+		  if (option_bool(OPT_DNSSEC_VALID) && j < daemon->rr_status_sz && daemon->rr_status[j] != 0)
 		    {
 		      /* validated RR anywhere in CNAME chain, don't cache. */
 		      if (cname_short || aqtype == T_CNAME)
@@ -723,7 +778,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  if (aqtype == T_CNAME)
 		    log_query(secflag | F_CNAME | F_FORWARD | F_UPSTREAM, name, NULL, NULL, 0);
 		  
-		  if (!extract_name(header, qlen, &p1, name, 1, 0))
+		  if (!extract_name(header, qlen, &p1, name, EXTR_NAME_EXTRACT, 0))
 		    return 2;
 		  
 		  if (aqtype == T_CNAME)
@@ -792,6 +847,17 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	flags |= F_RR;
       else
 	insert = 0; /* NOTE: do not cache data from CNAME queries. */
+
+      /*********** Pi-hole modification ***********/
+      if(FTL_check_reply(RCODE(header), flags, NULL, daemon->log_display_id))
+	{
+	  // Found while processing a reply from upstream. We prevent cache insertion here
+	  // This query is to be blocked as we found a blocked
+	  // domain while walking the CNAME path. Log to pihole.log here
+	  log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (header)", 0);
+	  return 99;
+	}
+      /********************************************/
       
     cname_loop1:
       if (!(p1 = skip_questions(header, qlen)))
@@ -801,7 +867,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	{
 	  int secflag = 0;
 	  
-	  if (!(res = extract_name(header, qlen, &p1, name, 0, 10)))
+	  if (!(res = extract_name(header, qlen, &p1, name, EXTR_NAME_COMPARE, 10)))
 	    return 2; /* bad packet */
 	  
 	  GETSHORT(aqtype, p1); 
@@ -826,7 +892,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	  
 #ifdef HAVE_DNSSEC
-	  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[j] != 0)
+	  if (option_bool(OPT_DNSSEC_VALID) && j < daemon->rr_status_sz && daemon->rr_status[j] != 0)
 	    {
 	      secflag = F_DNSSECOK;
 	      
@@ -864,11 +930,11 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		}
 	      
 	      namep = p1;
-	      if (!extract_name(header, qlen, &p1, name, 1, 0))
+	      if (!extract_name(header, qlen, &p1, name, EXTR_NAME_EXTRACT, 0))
 		return 2;
 	      
 	      // ****************************** Pi-hole modification ******************************
-	      const char *src = cpp != NULL ? cpp->flags & F_BIGNAME ? cpp->name.bname->name : cpp->name.sname : NULL;
+	      const char *src = cpp != NULL ? cache_get_name(cpp) : NULL;
 	      if(FTL_CNAME(name, src, daemon->log_display_id))
 		{
 		  // Found while processing a reply from upstream. We prevent cache insertion here
@@ -945,7 +1011,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			      /* Name, extract it then re-encode. */
 			      int len;
 			      
-			      if (!extract_name(header, qlen, &p1, name, 1, 0))
+			      if (!extract_name(header, qlen, &p1, name, EXTR_NAME_EXTRACT, 0))
 				{
 				  blockdata_free(addr.rrblock.rrdata);
 				  return 2;
@@ -978,7 +1044,7 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			} while (desc != -1);
 		      
 		      /* we overwrote the original name, so get it back here. */
-		      if (!extract_name(header, qlen, &tmp, name, 1, 0))
+		      if (!extract_name(header, qlen, &tmp, name, EXTR_NAME_EXTRACT, 0))
 			{
 			  blockdata_free(addr.rrblock.rrdata);
 			  return 2;
@@ -1017,6 +1083,15 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, nftsets->domain, &addr, *nftsets_cur, 0);
 #endif
 		}
+
+		/*********** Pi-hole modification ***********/
+		if(FTL_check_reply(RCODE(header), flags, &addr, daemon->log_display_id))
+		  {
+ 		    // Found while processing a reply from upstream
+ 		    log_query(F_UPSTREAM, name, NULL, "blocked due to upstream response (answer)", 0);
+ 		    return 99;
+ 		  }
+		/********************************************/
 	      
 	      if (insert)
 		{
@@ -1140,7 +1215,7 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark)
     {
       int aqtype, aqclass, ardlen;
       
-      if (!extract_name(header, len, &p, daemon->namebuff, 1, 10))
+      if (!extract_name(header, len, &p, daemon->namebuff, EXTR_NAME_EXTRACT, 10))
 	return;
       
       if (!CHECK_LEN(header, p, len, 10))
@@ -1158,7 +1233,7 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark)
 	{
 	  if (aqtype == T_CNAME)
 	    {
-	      if (!extract_name(header, len, &p, daemon->workspacename, 1, 0))
+	      if (!extract_name(header, len, &p, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
 		return;
 	      if (safe_name(daemon->namebuff) && safe_name(daemon->workspacename))
 		ubus_event_bcast_connmark_allowlist_resolved(mark, daemon->namebuff, daemon->workspacename, attl);
@@ -1204,11 +1279,11 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   
   if (ntohs(header->qdcount) != 1 || OPCODE(header) != QUERY)
     return 0; /* must be exactly one query. */
-  
+
   if (!(header->hb3 & HB3_QR) && (ntohs(header->ancount) != 0 || ntohs(header->nscount) != 0))
     return 0; /* non-standard query. */
   
-  if (!extract_name(header, qlen, &p, name, 1, 4))
+  if (!extract_name(header, qlen, &p, name, EXTR_NAME_EXTRACT, 4))
     return 0; /* bad packet */
    
   GETSHORT(qtype, p); 
@@ -1253,6 +1328,8 @@ void setup_reply(struct dns_header *header, unsigned int flags, int ede)
     SET_RCODE(header, NOERROR); /* empty domain */
   else if (flags == F_NXDOMAIN)
     SET_RCODE(header, NXDOMAIN);
+  else if (flags == F_RCODE)
+    SET_RCODE(header, NOTIMP);
   else if (flags & ( F_IPV4 | F_IPV6))
     {
       SET_RCODE(header, NOERROR);
@@ -1320,7 +1397,7 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
 
   for (i = ntohs(header->ancount); i != 0; i--)
     {
-      if (name && !extract_name(header, qlen, &p, name, 1, 10))
+      if (name && !extract_name(header, qlen, &p, name, EXTR_NAME_EXTRACT, 10))
 	return 0; /* bad packet */
 
       if (!name && !(p = skip_name(p, header, qlen, 10)))
@@ -1329,7 +1406,7 @@ static int check_bad_address(struct dns_header *header, size_t qlen, struct bogu
       GETSHORT(qtype, p); 
       GETSHORT(qclass, p);
       GETLONG(ttl, p);
-      GETSHORT(rdlen, p)
+      GETSHORT(rdlen, p);
       if (ttlp)
 	*ttlp = ttl;
       
@@ -1570,7 +1647,7 @@ static unsigned long crec_ttl(struct crec *crecp, time_t now)
     return daemon->max_ttl;
 }
 
-static int cache_validated(const struct crec *crecp)
+static int cache_not_validated(const struct crec *crecp)
 {
   return (option_bool(OPT_DNSSEC_VALID) && !(crecp->flags & F_DNSSECOK));
 }
@@ -1578,8 +1655,7 @@ static int cache_validated(const struct crec *crecp)
 /* return zero if we can't answer from cache, or packet size if we can */
 size_t answer_request(struct dns_header *header, char *limit, size_t qlen,  
 		      struct in_addr local_addr, struct in_addr local_netmask, 
-		      time_t now, int ad_reqd, int do_bit, int have_pseudoheader,
-		      int *stale, int *filtered) 
+		      time_t now, int ad_reqd, int do_bit, int no_cache, int *stale, int *filtered) 
 {
   char *name = daemon->namebuff;
   unsigned char *p, *ansp;
@@ -1594,6 +1670,10 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   size_t len;
   int rd_bit = (header->hb3 & HB3_RD);
   int count = 255; /* catch loops */
+
+  /* Suppress cached answers of no_cache set. */
+  if (no_cache)
+    rd_bit = 0;
   
   if (stale)
     *stale = 0;
@@ -1627,7 +1707,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   nameoffset = p - (unsigned char *)header;
   
   /* now extract name as .-concatenated string into name */
-  if (!extract_name(header, qlen, &p, name, 1, 4))
+  if (!extract_name(header, qlen, &p, name, EXTR_NAME_EXTRACT, 4))
     return 0; /* bad packet */
   
   GETSHORT(qtype, p); 
@@ -1668,7 +1748,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	
 	/* If the client asked for DNSSEC  don't use cached data. */
 	if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-	    (rd_bit && (!do_bit || cache_validated(crecp))))
+	    (rd_bit && (!do_bit || cache_not_validated(crecp))))
 	  {
 	    if (crecp->flags & F_CONFIG || qtype == T_CNAME)
 	      ans = 1;
@@ -1827,7 +1907,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		 the zone is unsigned, which implies that we're doing
 		 validation. */
 	      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-		  (rd_bit && (!do_bit || cache_validated(crecp)) ))
+		  (rd_bit && (!do_bit || cache_not_validated(crecp)) ))
 		{
 		  do 
 		    { 
@@ -1983,7 +2063,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      
 	      /* If the client asked for DNSSEC  don't use cached data. */
 	      if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
-		  (rd_bit && (!do_bit || cache_validated(crecp)) ))
+		  (rd_bit && (!do_bit || cache_not_validated(crecp)) ))
 		do
 		  { 
 		    int stale_flag = 0;
@@ -2047,7 +2127,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			log_query(stale_flag | (crecp->flags & ~F_REVERSE), name, &crecp->addr,
 				  record_source(crecp->uid), 0);
 			    // ****************************** Pi-hole modification ******************************
-			    const char *src = crecp != NULL ? crecp->flags & F_BIGNAME ? crecp->name.bname->name : crecp->name.sname : NULL;
+			    const char *src = crecp != NULL ? cache_get_name(crecp) : NULL;
 			    if(FTL_CNAME(name, src, daemon->log_display_id))
 			      {
 			        // Served from cache. This can happen if a domain hidden in the CNAME path
@@ -2180,19 +2260,19 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
       
       if (!ans)
 	{
-	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) &&
-	      rd_bit && (!do_bit || cache_validated(crecp)))
+	  if ((crecp = cache_find_by_name(NULL, name, now, F_RR | F_NXDOMAIN)) && rd_bit)
 	    do
 	      {
 		int flags = crecp->flags;
 		unsigned short rrtype;
-		
+
 		if (flags & F_KEYTAG)
 		  rrtype = crecp->addr.rrblock.rrtype;
 		else
 		  rrtype = crecp->addr.rrdata.rrtype;
 		
-		if ((flags & F_NXDOMAIN) || rrtype == qtype)
+		if (((flags & F_NXDOMAIN) || rrtype == qtype) &&
+		    (!do_bit || cache_not_validated(crecp)))
 		  {
 		    char *rrdata = NULL;
 		    unsigned short rrlen = 0;
@@ -2211,7 +2291,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		    if (flags & F_NXDOMAIN)
 		      nxdomain = 1;
 		    else if (qtype != T_ANY && rr_on_list(daemon->filter_rr, qtype))
-		      flags |=  F_NEG | F_CONFIG;
+		      flags |= F_NEG | F_CONFIG;
 		    
 		    auth = 0;
 		    ans = 1;
@@ -2239,8 +2319,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 		      anscount++;
 		    
 		    /* log after cache insertion as log_txt mangles rrdata */
-		    if (qtype == T_TXT && !(crecp->flags & F_NEG))
-		      log_txt(name, (unsigned char *)rrdata, rrlen, crecp->flags & F_DNSSECOK);
+		    if (qtype == T_TXT && !(flags & F_NEG))
+		      log_txt(name, (unsigned char *)rrdata, rrlen, flags & (F_DNSSECOK | F_STALE));
 		    else
 		      log_query(flags, name, &crecp->addr, NULL, 0);
 		  }
@@ -2255,14 +2335,15 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	}
       
       
-      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype))
+      if (qtype != T_ANY && !ans && rr_on_list(daemon->filter_rr, qtype) && !do_bit)
 	{
 	  /* We don't have a cached answer and when we get an answer from upstream we're going to
 	     filter it anyway. If we have a cached answer for the domain for another RRtype then
 	     that may be enough to tell us if the answer should be NODATA and save the round trip.
 	     Cached NXDOMAIN has already been handled, so here we look for any record for the domain,
 	     since its existence allows us to return a NODATA answer. Note that we never set the AD flag,
-	     since we didn't authenticate the record. */
+	     since we didn't authenticate the record; this doesn't work if we want auth data, so
+	     don't use this shortcut in that case. */
 	  
 	  if (cache_find_by_name(NULL, name, now, F_IPV4 | F_IPV6 | F_RR | F_CNAME))
 	    {
@@ -2356,23 +2437,26 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
   
   /* truncation */
   if (trunc)
-    header->hb3 |= HB3_TC;
-  
+    {
+      header->hb3 |= HB3_TC;
+      if (!(ansp = skip_questions(header, qlen)))
+	return 0; /* bad packet */
+      anscount = nscount = addncount = 0;
+      log_query(0, "reply", NULL, "truncated", 0);
+    }
+
   if (nxdomain)
     SET_RCODE(header, NXDOMAIN);
   else if (notimp)
     SET_RCODE(header, NOTIMP);
   else
     SET_RCODE(header, NOERROR); /* no error */
+
   header->ancount = htons(anscount);
   header->nscount = htons(nscount);
   header->arcount = htons(addncount);
 
   len = ansp - (unsigned char *)header;
-  
-  /* Advertise our packet size limit in our reply */
-  if (have_pseudoheader)
-    len = add_pseudoheader(header, len, (unsigned char *)limit, daemon->edns_pktsz, 0, NULL, 0, do_bit, 0);
   
   if (ad_reqd && sec_data)
     header->hb4 |= HB4_AD;

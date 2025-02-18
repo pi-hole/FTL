@@ -14,10 +14,22 @@
 #include <dirent.h>
 // getpid()
 #include <unistd.h>
+#include <sys/times.h>
+// config
+#include "config/config.h"
+// readPID()
+#include "daemon.h"
 
 #define PROCESS_NAME   "pihole-FTL"
 
-static bool get_process_name(const pid_t pid, char name[16])
+// This function tries to obtain the process name of a given PID
+// It returns true on success, false otherwise and stores the process name in
+// the given buffer
+// The preferred mechanism is to use /proc/<pid>/exe, but if that fails, we try
+// to parse /proc/<pid>/comm. The latter is not guaranteed to be correct (e.g.
+// processes can easily change it themselves using prctl with PR_SET_NAME), but
+// it is better than nothing.
+bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 {
 	if(pid == 0)
 	{
@@ -26,7 +38,25 @@ static bool get_process_name(const pid_t pid, char name[16])
 	}
 
 	// Try to open comm file
-	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
+	char filename[sizeof("/proc/%d/exe") + sizeof(int)*3];
+	snprintf(filename, sizeof(filename), "/proc/%d/exe", pid);
+
+	// Read link destination
+	ssize_t len = readlink(filename, name, PROC_PATH_SIZ);
+	if(len > 0)
+	{
+		// If readlink() succeeded, terminate string
+		name[len] = '\0';
+
+		// Strip path from name
+		char *ptr = strrchr(name, '/');
+		if(ptr != NULL)
+			memmove(name, ptr+1, len - (ptr - name));
+
+		return true;
+	}
+
+	// If readlink() failed, try to open comm file
 	snprintf(filename, sizeof(filename), "/proc/%d/comm", pid);
 	FILE *f = fopen(filename, "r");
 	if(f == NULL)
@@ -34,126 +64,203 @@ static bool get_process_name(const pid_t pid, char name[16])
 
 	// Read name from opened file
 	if(fscanf(f, "%15s", name) != 1)
-		false;
+	{
+		fclose(f);
+		return false;
+	}
+
+	// Close file
 	fclose(f);
 
 	return true;
 }
 
-
-static bool get_process_ppid(const pid_t pid, pid_t *ppid)
+/**
+ * @brief Reads the process ID (PID) from a file.
+ *
+ * This function attempts to open a file specified by the configuration
+ * and read the PID from it. If the file cannot be opened or the PID
+ * cannot be parsed, appropriate warnings are logged and the function
+ * returns -1.
+ *
+ * @return pid_t The PID read from the file on success, or -1 on failure.
+ */
+static pid_t readPID(void)
 {
-	// Try to open status file
-	char filename[sizeof("/proc/%u/task/%u/status") + sizeof(int)*3 * 2];
+	pid_t pid = -1;
+	FILE *f = NULL;
+	// Open file for reading
+	if((f = fopen(config.files.pid.v.s, "r")) == NULL)
+	{
+		// Log error
+		log_warn("Unable to read PID from file: %s", strerror(errno));
+		return -1;
+	}
+
+	// Try to read PID from file if it is not empty
+	if(fscanf(f, "%d", &pid) != 1)
+		log_debug(DEBUG_SHMEM, "Unable to parse PID in PID file");
+
+	// Close file
+	fclose(f);
+
+	return pid;
+}
+
+/**
+ * @brief Checks if a process with the given PID is alive.
+ *
+ * This function determines if a process is alive by checking the
+ * /proc/<pid>/status file. If the file cannot be opened, it is assumed that the
+ * process is dead. The function reads the status file to check the state of the
+ * process. If the process is in zombie state, it is considered not running.
+ *
+ * @param pid The process ID to check.
+ * @return true if the process is alive and not a zombie, false otherwise.
+ */
+static bool process_alive(const pid_t pid)
+{
+	// Create /proc/<pid>/status filename
+	char filename[64] = { 0 };
 	snprintf(filename, sizeof(filename), "/proc/%d/status", pid);
-	FILE *f = fopen(filename, "r");
-	if(f == NULL)
+
+	FILE *file = fopen(filename, "r");
+	// If we cannot open the file, we assume the process is dead as
+	// /proc/<pid> does not exist anymore
+	if(file == NULL)
 		return false;
 
-	// Read comm from opened file
-	char buffer[128];
-	while(fgets(buffer, sizeof(buffer), f) != NULL)
+	// Parse the entire file
+	char line[256];
+	bool running = true;
+	while(fgets(line, sizeof(line), file))
 	{
-		if(sscanf(buffer, "PPid: %d\n", ppid) == 1)
+		// Search for state
+		if(strncmp(line, "State:", 6) == 0)
+		{
+			// Check if process is a zombie
+			// On Linux operating systems, a zombie process is a
+			// process that has completed execution (via the exit
+			// system call) but still has an entry in the process
+			// table: it is a process in the "Terminated state".
+			// It typically happens when the parent (calling)
+			// program properly has not yet fetched the return
+			// status of the sub-process.
+			if(strcmp(line, "State:\tZ") == 0)
+				running = false;
+
+			log_debug(DEBUG_SHMEM, "Process state: \"%s\"", line);
 			break;
+		}
 	}
-	fclose(f);
 
-	return true;
+	// Close file
+	fclose(file);
+
+	// Process is still alive if the running flag is still true
+	return running;
 }
 
-static bool get_process_creation_time(const pid_t pid, char timestr[84])
+// This function prints an info message about if another FTL process is already
+// running. It returns true if another FTL process is already running, false
+// otherwise.
+bool another_FTL(void)
 {
-	// Try to open comm file
-	char filename[sizeof("/proc/%u/task/%u/comm") + sizeof(int)*3 * 2];
-	snprintf(filename, sizeof(filename), "/proc/%d/comm", pid);
-	struct stat st;
-	if(stat(filename, &st) < 0)
-		return false;
-	get_timestr(timestr, st.st_ctim.tv_sec, false);
-
-	return true;
-}
-
-bool check_running_FTL(void)
-{
-	DIR *dirPos;
-	struct dirent *entry;
+	// The PID in the PID file
+	const pid_t pid = readPID();
+	// Our own PID from the current process
 	const pid_t ourselves = getpid();
-	bool process_running = false;
 
-	// Open /proc
-	errno = 0;
-	if ((dirPos = opendir("/proc")) == NULL)
+	if(pid == ourselves)
 	{
-		logg("Failed to access /proc: %s", strerror(errno));
+		// This should not happen, as we store our own PID in the PID
+		// file only after we have successfully started up (and possibly
+		// forked). However, if it does happen, we log an info message
+		log_info("PID file contains our own PID");
+	}
+	else if(pid < 0)
+	{
+		// If we cannot read the PID file, we assume no other FTL process is
+		// running. We write our own PID to the file later after we have
+		// successfully started up (and possibly forked).
+		log_info("PID file does not exist or not readable");
+	}
+	else if(process_alive(pid))
+	{
+		// If we found another FTL process by looking at the PID file, we
+		// check if it is still alive. If it is, we log a critical message
+		// and return true. This will terminate the current process.
+		log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
+		return true;
+	}
+
+	// If we did not find another FTL process by looking at the PID file, we assume
+	// no other FTL process is running. We write our own PID to the file later after
+	// we have successfully started up (and possibly forked).
+	log_info("No other running FTL process found.");
+	return false;
+}
+
+bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory)
+{
+	// Open /proc/self/status
+	FILE *file = fopen("/proc/self/status", "r");
+	if(file == NULL)
 		return false;
-	}
 
-	// Loop over entries in /proc
-	// This is much more efficient than iterating over all possible PIDs
-	pid_t last_pid = 0;
-	size_t last_len = 0u;
-	while ((entry = readdir(dirPos)) != NULL)
+	// Parse the entire file
+	char line[256];
+	while(fgets(line, sizeof(line), file))
 	{
-		// We are only interested in subdirectories of /proc
-		if(entry->d_type != DT_DIR)
-			continue;
-		// We are only interested in PID subdirectories
-		if(entry->d_name[0] < '0' || entry->d_name[0] > '9')
-			continue;
-
-		// Extract PID
-		const pid_t pid = strtol(entry->d_name, NULL, 10);
-
-		// Skip our own process
-		if(pid == ourselves)
-			continue;
-
-		// Get process name
-		char name[16] = { 0 };
-		if(!get_process_name(pid, name))
-			continue;
-
-		// Only process this is this is our own process
-		if(strcasecmp(name, PROCESS_NAME) != 0)
-			continue;
-
-		// Get parent process ID (PPID)
-		pid_t ppid;
-		if(!get_process_ppid(pid, &ppid))
-			continue;
-		char ppid_name[16] = { 0 };
-		if(!get_process_name(ppid, ppid_name))
-			continue;
-
-		char timestr[84] = { 0 };
-		get_process_creation_time(pid, timestr);
-
-		// If this is the first process we log, add a header
-		if(!process_running)
-		{
-			process_running = true;
-			logg("HINT: %s is already running!", PROCESS_NAME);
-		}
-
-		if(last_pid != ppid)
-		{
-			// Independent process, may be child of init/systemd
-			logg("%s (%d) ──> %s (PID %d, started %s)",
-			     ppid_name, ppid, name, pid, timestr);
-			last_pid = pid;
-			last_len = snprintf(NULL, 0, "%s (%d) ──> ", ppid_name, ppid);
-		}
-		else
-		{
-			// Process parented by the one we analyzed before,
-			// highlight their relationship
-			logg("%*s └─> %s (PID %d, started %s)",
-			     (int)last_len, "", name, pid, timestr);
-		}
+		sscanf(line, "VmRSS: %lu", &mem->VmRSS);
+		sscanf(line, "VmHWM: %lu", &mem->VmHWM);
+		sscanf(line, "VmSize: %lu", &mem->VmSize);
+		sscanf(line, "VmPeak: %lu", &mem->VmPeak);
 	}
+	fclose(file);
 
-	closedir(dirPos);
-	return process_running;
+	mem->VmRSS_percent = 100.0f * mem->VmRSS / total_memory;
+	if(mem->VmRSS_percent > 99.9f)
+		mem->VmRSS_percent = 99.9f;
+
+	return true;
+}
+
+// Get RAM information in units of kB
+// This is implemented similar to how free (procps) does it
+bool parse_proc_meminfo(struct proc_meminfo *mem)
+{
+	long page_cached = -1, buffers = -1, slab_reclaimable = -1;
+	FILE *meminfo = fopen("/proc/meminfo", "r");
+	if(meminfo == NULL)
+		return false;
+
+	char line[256];
+	while(fgets(line, sizeof(line), meminfo))
+	{
+		sscanf(line, "MemTotal: %lu kB", &mem->total);
+		sscanf(line, "MemFree: %lu kB", &mem->mfree);
+		sscanf(line, "MemAvailable: %lu kB", &mem->avail);
+		sscanf(line, "Cached: %ld kB", &page_cached);
+		sscanf(line, "Buffers: %ld kB", &buffers);
+		sscanf(line, "SReclaimable: %ld kB", &slab_reclaimable);
+	}
+	fclose(meminfo);
+
+	// Compute actual memory numbers
+	mem->cached = page_cached + slab_reclaimable;
+
+	// This logic is copied from procps (meminfo.c)
+	// if mem->avail is greater than mem->total or our calculation of used
+	// overflows, that's symptomatic of running within a lxc container where
+	// such values will be dramatically distorted over those of the host.
+	if (mem->avail > mem->total)
+		mem->avail = mem->mfree;
+	if (mem->total >= mem->mfree + mem->cached + buffers)
+		mem->used = mem->total - mem->mfree - mem->cached - buffers;
+	else
+		mem->used = mem->total - mem->mfree;
+
+	// Return success
+	return true;
 }

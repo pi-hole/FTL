@@ -14,7 +14,7 @@
 #include "FTL.h"
 #include "log.h"
 #include "edns0.h"
-#include "config.h"
+#include "config/config.h"
 #include "datastructure.h"
 #include "shmem.h"
 
@@ -62,17 +62,22 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 	// Return early if we have no pseudoheader (a.k.a. additional records)
 	if (!pheader)
 	{
-		if(config.debug & DEBUG_EDNS0)
-			logg("EDNS(0) pheader is NULL");
+		log_debug(DEBUG_EDNS0, "No EDNS(0) pheader found");
 		return;
 	}
 
 	// Debug logging
-	if(config.debug & DEBUG_EDNS0)
+	if(config.debug.edns0.v.b)
+	{
+		char *payload = calloc(3*plen+1, sizeof(char));
 		for(unsigned int i = 0; i < plen; i++)
-			logg("EDNS(0) pheader[%i] = 0x%02x", i, pheader[i]);
+			sprintf(&payload[3*i], "%02X ", pheader[i]);
+		log_debug(DEBUG_EDNS0, "pheader: %s (%lu bytes)",
+		          payload, (long unsigned int)plen);
+		free(payload);
+	}
 
-        // Working pointer
+	// Working pointer
 	unsigned char *p = pheader;
 
 // RFC 6891                   EDNS(0) Extensions                   6.1.2.  Wire Format
@@ -101,8 +106,7 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 //        | CLASS      | u_int16_t    | requestor's UDP payload size |
 	unsigned short class;
 	GETSHORT(class, p);
-	if(config.debug & DEBUG_EDNS0)
-		logg("EDNS(0) requestor's UDP payload size: %u bytes", class);
+	log_debug(DEBUG_EDNS0, "requestor's UDP payload size: %u bytes", class);
 //        +------------+--------------+------------------------------+
 //        | TTL        | u_int32_t    | extended RCODE and flags     |
 	unsigned long ttl;
@@ -184,17 +188,15 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 		// Avoid buffer overflow due to an malicious packet
 		if(offset + optlen > rdlen)
 		{
-			if(config.debug & DEBUG_EDNS0)
-				logg("Found malicious EDNS payload, skipping record.");
+			log_warn("Found malicious EDNS payload (payload larger than advertised), skipping record.");
 			break;
 		}
 
 		// Debug logging
-		if(config.debug & DEBUG_EDNS0)
-			logg("EDNS(0) code %u, optlen %u (bytes %zu - %zu of %u)",
-			     code, optlen, offset, offset + optlen, rdlen);
+		log_debug(DEBUG_EDNS0, "code %u, optlen %u (bytes %zu - %zu of %u)",
+		          code, optlen, offset, offset + optlen, rdlen);
 
-		if (code == EDNS0_ECS && config.edns0_ecs)
+		if (code == EDNS0_ECS && config.dns.EDNS0ECS.v.b)
 		{
 			// EDNS(0) CLIENT SUBNET
 			// RFC 7871              Client Subnet in DNS Queries              6.  Option Format
@@ -239,9 +241,8 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			if(!(family == 1 && source_netmask == 32) &&
 			   !(family == 2 && source_netmask == 128))
 			{
-				if(config.debug & DEBUG_EDNS0)
-					logg("EDNS(0) CLIENT SUBNET: %s/%u found (IPv%u)",
-					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+				log_debug(DEBUG_EDNS0, "CLIENT SUBNET: %s/%u found (IPv%u)",
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 				continue;
 			}
 
@@ -254,16 +255,14 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			if((family == 1 && (ntohl(addr.addr4.s_addr) & 0xFF000000) == 0x7F000000) ||
 			   (family == 2 && IN6_IS_ADDR_LOOPBACK(&addr.addr6)))
 			{
-				if(config.debug & DEBUG_EDNS0)
-					logg("EDNS(0) CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
-					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+				log_debug(DEBUG_EDNS0, "CLIENT SUBNET: Skipped %s/%u (IPv%u loopback address)",
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 			else
 			{
 				edns.client_set = true;
-				if(config.debug & DEBUG_EDNS0)
-					logg("EDNS(0) CLIENT SUBNET: %s/%u - OK (IPv%u)",
-					     ipaddr, source_netmask, family == 1 ? 4 : 6);
+				log_debug(DEBUG_EDNS0, "CLIENT SUBNET: %s/%u - OK (IPv%u)",
+				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 		}
 		else if(code == EDNS0_COOKIE && optlen == 8)
@@ -271,13 +270,13 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			// EDNS(0) COOKIE client
 			unsigned char client_cookie[8];
 			memcpy(client_cookie, p, 8);
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
 				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
-				logg("EDNS(0) COOKIE (client-only): %s",
+				log_debug(DEBUG_EDNS0, "COOKIE (client-only): %s",
 				     pretty_client_cookie);
 			}
 
@@ -291,21 +290,23 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			memcpy(client_cookie, p, 8);
 
 			unsigned short server_cookie_len = optlen - 8;
-			unsigned char server_cookie[server_cookie_len];
+			unsigned char *server_cookie = calloc(server_cookie_len, sizeof(unsigned char));
 			memcpy(server_cookie, p + 8u, server_cookie_len);
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
 				char pretty_client_cookie[8*2 + 1]; // client: fixed length
 				char *pp = pretty_client_cookie;
 				for(unsigned int j = 0; j < 8; j++)
 					pp += sprintf(pp, "%02X", client_cookie[j]);
-				char pretty_server_cookie[server_cookie_len*2 + 1u]; // server: variable length
+				char *pretty_server_cookie = calloc(server_cookie_len*2 + 1u, sizeof(char)); // server: variable length
 				pp = pretty_server_cookie;
 				for(unsigned int j = 0; j < server_cookie_len; j++)
 					pp += sprintf(pp, "%02X", server_cookie[j]);
-				logg("EDNS(0) COOKIE (client + server): %s (client), %s (server, %u bytes)",
+				log_debug(DEBUG_EDNS0, "COOKIE (client + server): %s (client), %s (server, %u bytes)",
 				     pretty_client_cookie, pretty_server_cookie, server_cookie_len);
+				free(pretty_server_cookie);
 			}
+			free(server_cookie);
 
 			// Advance working pointer
 			p += optlen;
@@ -316,8 +317,7 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			memcpy(edns.mac_byte, p, sizeof(edns.mac_byte));
 			print_mac(edns.mac_text, (unsigned char*)edns.mac_byte, sizeof(edns.mac_byte));
 			edns.mac_set = true;
-			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0) MAC address (BYTE format): %s", edns.mac_text);
+			log_debug(DEBUG_EDNS0, "MAC address (BYTE format): %s", edns.mac_text);
 
 			// Advance working pointer
 			p += 6;
@@ -336,12 +336,11 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			          (unsigned char*)&edns.mac_byte[5]) == 6)
 			{
 				edns.mac_set = true;
-				if(config.debug & DEBUG_EDNS0)
-					logg("EDNS(0) MAC address (TEXT format): %s", edns.mac_text);
+				log_debug(DEBUG_EDNS0, "MAC address (TEXT format): %s", edns.mac_text);
 			}
-			else if(config.debug & DEBUG_EDNS0)
+			else
 			{
-				logg("         Received MAC address has invalid format!");
+				log_debug(DEBUG_EDNS0, "Received MAC address has invalid format!");
 			}
 
 			// Advance working pointer
@@ -350,8 +349,7 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 		else if(code == EDNS0_MAC_ADDR_BASE64 && optlen == 8)
 		{
 			// EDNS(0) MAC address (BASE format)
-			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0) MAC address (BASE64 format): NOT IMPLEMENTED");
+			log_debug(DEBUG_EDNS0, "MAC address (BASE64 format): NOT IMPLEMENTED");
 
 			// Advance working pointer
 			p += 8;
@@ -359,19 +357,21 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 		else if(code == EDNS0_CPE_ID && optlen < 256)
 		{
 			// EDNS(0) CPE-ID, 256 byte arbitrary limit
-			unsigned char payload[optlen + 1u]; // variable length
+			unsigned char *payload = calloc(optlen + 1u, sizeof(unsigned char));
 			memcpy(payload, p, optlen);
 			payload[optlen] = '\0';
-			if(config.debug & DEBUG_EDNS0)
+			if(config.debug.edns0.v.b)
 			{
-				char pretty_payload[optlen*5 + 1u];
+				char *pretty_payload = calloc(optlen*5 + 1u, sizeof(char));
 				char *pp = pretty_payload;
 				for(unsigned int j = 0; j < optlen; j++)
 					pp += sprintf(pp, "0x%02X ", payload[j]);
 				pretty_payload[optlen*5 - 1] = '\0'; // Truncate away the trailing whitespace
-				logg("EDNS(0) CPE-ID (payload size %u): \"%s\" (%s)",
+				log_debug(DEBUG_EDNS0, "CPE-ID (payload size %u): \"%s\" (%s)",
 				     optlen, payload, pretty_payload);
+				free(pretty_payload);
 			}
+			free(payload);
 
 			// Advance working pointer
 			p += optlen;
@@ -400,21 +400,22 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			// this document. The value of the INFO-CODE is encoded
 			// as a two-octet unsigned integer in network byte
 			// order.
-			//
-			// The EXTRA-TEXT from the EDE EDNS option is ignored by
-			// FTL
 
 			// Debug output
-			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0) EDE: %s (code %d)", edestr(edns.ede), edns.ede);
+			log_debug(DEBUG_EDNS0, "EDE: %s (code %d)", edestr(edns.ede), edns.ede);
+
+			if(optlen > 2)
+			{
+				// Debug output
+				log_debug(DEBUG_EDNS0, "EDE: EXTRA-TEXT: %.*s", optlen - 2, p + 2);
+			}
 
 			// Advance working pointer
 			p += optlen;
 		}
 		else
 		{
-			if(config.debug & DEBUG_EDNS0)
-				logg("EDNS(0): option %u with length %u", code, optlen);
+			log_debug(DEBUG_EDNS0, "Unknown option %u with length %u", code, optlen);
 			// Not implemented, skip this record
 
 			// Advance working pointer

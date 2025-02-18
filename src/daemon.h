@@ -12,16 +12,20 @@
 
 #include "enums.h"
 extern pthread_t threads[THREADS_MAX];
-#define MAX_API_THREADS 5
-extern pthread_t api_threads[MAX_API_THREADS];
 
 void go_daemon(void);
-void savepid(void);
+void savePID(void);
 char *getUserName(void);
 const char *hostname(void);
+const char *domainname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
+void set_nice(void);
+void calc_cpu_usage(const unsigned int interval);
+float get_cpu_percentage(void) __attribute__((pure));
+bool ipv6_enabled(void);
+void init_locale(void);
 
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -38,6 +42,17 @@ void cleanup(const int ret);
 pid_t FTL_gettid(void);
 #define gettid FTL_gettid
 
+// getrandom() is only available since glibc 2.25
+// https://www.gnu.org/software/gnulib/manual/html_node/sys_002frandom_002eh.html
+#if !defined(__GLIBC__) || __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25)
+#include <sys/random.h>
+#else
+#define getrandom getrandom_fallback
+#endif
+
+ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags);
+
 extern bool resolver_ready;
+extern bool dnsmasq_failed;
 
 #endif //DAEMON_H

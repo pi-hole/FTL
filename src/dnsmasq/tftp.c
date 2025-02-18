@@ -1,4 +1,4 @@
-/* dnsmasq is Copyright (c) 2000-2024 Simon Kelley
+/* dnsmasq is Copyright (c) 2000-2025 Simon Kelley
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -360,7 +360,7 @@ void tftp_request(struct listener *listen, time_t now)
     }
   
   p = packet + 2;
-  end = packet + len;
+  end = packet + 2 + len;
   
   if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
       !(filename = next(&p, end)) ||
@@ -845,7 +845,7 @@ static ssize_t get_block(char *packet, struct tftp_transfer *transfer)
       mess->block = htons((unsigned short)(transfer->block));
       
       if (lseek(transfer->file->fd, transfer->offset, SEEK_SET) == (off_t)-1 ||
-	  !read_write(transfer->file->fd, mess->data, size, 1))
+	  !read_write(transfer->file->fd, mess->data, size, RW_READ))
 	return -1;
       
       transfer->expansion = 0;

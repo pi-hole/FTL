@@ -32,7 +32,6 @@ set(sources
         dump.c
         edns0.c
         forward.c
-        hash-questions.c
         helper.c
         inotify.c
         ip6addr.h
@@ -64,5 +63,10 @@ set(sources
 
 add_library(dnsmasq OBJECT ${sources})
 target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\")
-target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized)
+target_compile_definitions(dnsmasq PRIVATE CONFFILE=\"/etc/pihole/dnsmasq.conf\")
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized -Wno-sign-compare)
+elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(dnsmasq PRIVATE -Wno-gnu-variable-sized-type-not-at-end -Wno-sign-compare -Wno-deprecated-non-prototype)
+endif()
 target_include_directories(dnsmasq PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

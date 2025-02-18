@@ -1,0 +1,103 @@
+From f59235a1973d13d1271b50546c28cf4d9d2f921a Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Sat, 31 Dec 2022 07:08:23 +0100
+Subject: [PATCH] Add Pi-hole specific method to send HTTP headers
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c | 53 +++++++++++++++++++++++++++++++++++++++++
+ src/webserver/civetweb/civetweb.h | 11 +++++++++
+ 2 files changed, 64 insertions(+)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index 81f642be..ed360a76 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -4135,6 +4135,14 @@ send_additional_header(struct mg_connection *conn)
+ 	if (header && header[0]) {
+ 		mg_response_header_add_lines(conn, header);
+ 	}
++
++	/*************** Pi-hole modification ****************/
++	if (pi_hole_extra_headers[0] != '\0') {
++		mg_response_header_add_lines(conn, pi_hole_extra_headers);
++		// Invalidate extra headers after having sent them to avoid repetitions
++		pi_hole_extra_headers[0] = '\0';
++	}
++	/*****************************************************/
+ }
+ 
+ 
+@@ -4530,6 +4538,48 @@ mg_send_http_error_impl(struct mg_connection *conn,
+ }
+ 
+ 
++/************************************** Pi-hole method **************************************/
++CIVETWEB_API int
++my_send_http_error_headers(struct mg_connection *conn,
++                           int status, const char* mime_type,
++                           long long content_length)
++{
++	if ((mime_type == NULL) || (*mime_type == 0)) {
++		/* No content type defined: default to text/html */
++		mime_type = "text/html";
++	}
++
++	mg_response_header_start(conn, status);
++	send_no_cache_header(conn);
++	send_additional_header(conn);
++	mg_response_header_add(conn, "Content-Type", mime_type, -1);
++	if (content_length < 0) {
++		/* Size not known. Use chunked encoding (HTTP/1.x) */
++		if (conn->protocol_type == PROTOCOL_TYPE_HTTP1) {
++			/* Only HTTP/1.x defines "chunked" encoding, HTTP/2 does not*/
++			mg_response_header_add(conn, "Transfer-Encoding", "chunked", -1);
++		}
++	} else {
++		char len[32];
++		int trunc = 0;
++		mg_snprintf(conn,
++		            &trunc,
++		            len,
++		            sizeof(len),
++		            "%" UINT64_FMT,
++		            (uint64_t)content_length);
++		if (!trunc) {
++			/* Since 32 bytes is enough to hold any 64 bit decimal number,
++			 * !trunc is always true */
++			mg_response_header_add(conn, "Content-Length", len, -1);
++		}
++	}
++	mg_response_header_send(conn);
++
++	return 0;
++}
++/********************************************************************************************/
++
+ CIVETWEB_API int
+ mg_send_http_error(struct mg_connection *conn, int status, const char *fmt, ...)
+ {
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
+index 7ea45fb2..f879ff3e 100644
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
+@@ -963,6 +964,16 @@ CIVETWEB_API int mg_send_http_error(struct mg_connection *conn,
+                                     PRINTF_FORMAT_STRING(const char *fmt),
+                                     ...) PRINTF_ARGS(3, 4);
+ 
++/************************************** Pi-hole method **************************************/
++int my_send_http_error_headers(struct mg_connection *conn,
++                               int status, const char* mime_type,
++                               long long content_length);
++
++// Buffer used for additional "Set-Cookie" headers
++#define PIHOLE_HEADERS_MAXLEN 1024
++extern char pi_hole_extra_headers[PIHOLE_HEADERS_MAXLEN];
++/********************************************************************************************/
++
+ 
+ /* Send "HTTP 200 OK" response header.
+  * After calling this function, use mg_write or mg_send_chunk to send the
+-- 
+2.34.1
+

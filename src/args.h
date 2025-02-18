@@ -10,9 +10,9 @@
 #ifndef ARGS_H
 #define ARGS_H
 
-void parse_args(int argc, char* argv[]);
+void parse_args(int argc, char *argv[]);
 
-extern bool daemonmode, cli_mode, dnsmasq_debug;
+extern bool daemonmode, cli_mode;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
 
@@ -24,8 +24,9 @@ const char *cli_done(void) __attribute__ ((pure));
 const char *cli_bold(void) __attribute__ ((pure));
 const char *cli_normal(void) __attribute__ ((pure));
 const char *cli_over(void) __attribute__ ((pure));
+const char *cli_underline(void) __attribute__ ((pure));
+const char *cli_italics(void) __attribute__ ((pure));
 
-// defined in dnsmasq_interface.c
-int check_struct_sizes(void);
+void test_dnsmasq_options(int argc, const char *argv[]);
 
 #endif //ARGS_H
