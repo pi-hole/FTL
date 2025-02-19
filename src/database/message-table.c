@@ -34,6 +34,10 @@
 // GIT_HASH, FTL_ARCH
 #include "version.h"
 
+// Connection error threshold and interval
+#define CONN_ERR_THRESHOLD 10
+#define CONN_ERR_INTERVAL 60
+
 // Number of arguments in a variadic macro
 // Credit: https://stackoverflow.com/a/35693080/2087442
 #define PP_NARG(...) \
@@ -1409,7 +1413,6 @@ void logg_hostname_warning(const char *ip, const char *name, const unsigned int 
 
 	// Log to database
 	add_message(HOSTNAME_MESSAGE, ip, name, (const int)pos);
-
 }
 
 void logg_fatal_dnsmasq_message(const char *message)
@@ -1423,7 +1426,6 @@ void logg_fatal_dnsmasq_message(const char *message)
 
 	// Log to database
 	add_message_no_args(DNSMASQ_CONFIG_MESSAGE, message);
-
 }
 
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count)
@@ -1439,7 +1441,6 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 	// Log to database
 	add_message(RATE_LIMIT_MESSAGE, clientIP, config.dns.rateLimit.count.v.ui, config.dns.rateLimit.interval.v.ui, turnaround);
-
 }
 
 void logg_warn_dnsmasq_message(char *message)
@@ -1453,7 +1454,6 @@ void logg_warn_dnsmasq_message(char *message)
 
 	// Log to database
 	add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
-
 }
 
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg)
@@ -1536,7 +1536,6 @@ void logg_inaccessible_adlist(const int dbindex, const char *address)
 
 	// Log to database
 	add_message(INACCESSIBLE_ADLIST_MESSAGE, address, dbindex);
-
 }
 
 void log_certificate_domain_mismatch(const char *certfile, const char *domain)
@@ -1550,7 +1549,6 @@ void log_certificate_domain_mismatch(const char *certfile, const char *domain)
 
 	// Log to database
 	add_message(CERTIFICATE_DOMAIN_MISMATCH_MESSAGE, certfile, domain);
-
 }
 
 void log_connection_error(const char *server, const char *reason, const char *error)
@@ -1562,9 +1560,28 @@ void log_connection_error(const char *server, const char *reason, const char *er
 	// Log to FTL.log
 	log_warn("%s", buf);
 
-	// Log to database
-	add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
+	// Only log to the database if more than 30 warnings are seen per hour
+	static unsigned int connection_errors_sum = 0;
+	if(connection_errors_sum < CONN_ERR_THRESHOLD)
+	{
+		// Check for roll-over of the hour and reset the counter
+		static time_t last_connection_error = 0;
+		if(last_connection_error == 0)
+			last_connection_error = time(NULL);
+		else if(time(NULL) - last_connection_error > CONN_ERR_INTERVAL)
+		{
+			connection_errors_sum = 0;
+			last_connection_error = time(NULL);
+		}
 
+		// Increment the counter
+		connection_errors_sum++;
+	}
+	else
+	{
+		// Log to database
+		add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
+	}
 }
 
 void log_ntp_message(const bool error, const bool server, const char *message)
@@ -1584,7 +1601,6 @@ void log_ntp_message(const bool error, const bool server, const char *message)
 
 	// Log to database
 	add_message(NTP_MESSAGE, message, level, who);
-
 }
 
 void log_verify_message(const char *expected, const char *actual)
@@ -1598,7 +1614,6 @@ void log_verify_message(const char *expected, const char *actual)
 
 	// Log to database
 	add_message(VERIFY_MESSAGE, buf, expected, actual, git_hash(), ftl_arch());
-
 }
 
 void log_gravity_restored(const char *status)
@@ -1612,5 +1627,4 @@ void log_gravity_restored(const char *status)
 
 	// Log to database
 	add_message_no_args(GRAVITY_RESTORED_MESSAGE, status);
-
 }
