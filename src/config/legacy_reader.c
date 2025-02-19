@@ -835,13 +835,20 @@ static void readDebugingSettingsLegacy(FILE *fp)
 		opened = true;
 	}
 
-	// DEBUG_ALL
-	// defaults to: false
-	// ~0 is a shortcut for "all bits set"
-	setDebugOption(fp, "DEBUG_ALL", ~(enum debug_flag)0);
-
-	for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
-		setDebugOption(fp, debugstr(flag), flag);
+	bool bit = false;
+	const char *debug_all = parseFTLconf(fp, "DEBUG_ALL");
+	if(debug_all != NULL && parseBool(debug_all, &bit) && bit)
+	{
+		// Set all debug flags if DEBUG_ALL is set to true
+		set_all_debug(&config, true);
+	}
+	else
+	{
+		// Iterate over all debug flags and set them if they are present
+		// in the config file.
+		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
+			setDebugOption(fp, debugstr(flag), flag);
+	}
 
 	// Parse debug options
 	set_debug_flags(&config);
