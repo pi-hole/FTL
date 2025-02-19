@@ -72,7 +72,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	// Do not redirect for ACME challenges
 	log_info("Local URI: \"%s\"", req_info->local_uri_raw);
-	const bool is_acme = strcmp(req_info->local_uri_raw, "/.well-known/acme-challenge") == 0;
+	const char acme_challenge[] = "/.well-known/acme-challenge/";
+	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
 	{
 		// ACME challenge - no authentication required
