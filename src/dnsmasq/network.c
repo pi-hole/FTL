@@ -1399,7 +1399,7 @@ int local_bind(int fd, union mysockaddr *addr, char *intname, unsigned int ifind
   /* cannot set source _port_ for TCP connections. */
   if (is_tcp)
     port = 0;
-  else if (port == 0 && daemon->max_port != 0)
+  else if (port == 0 && daemon->max_port != 0 && daemon->max_port >= daemon->min_port)
     {
       /* Bind a random port within the range given by min-port and max-port if either
 	 or both are set. Otherwise use the OS's random ephemeral port allocation by
