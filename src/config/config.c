@@ -430,7 +430,7 @@ static void initConfig(struct config *conf)
 	conf->dns.ignoreLocalhost.c = validate_stub; // Only type-based checking
 
 	conf->dns.showDNSSEC.k = "dns.showDNSSEC";
-	conf->dns.showDNSSEC.h = "Should FTL should analyze and show internally generated DNSSEC queries?";
+	conf->dns.showDNSSEC.h = "Should FTL analyze and show internally generated DNSSEC queries?";
 	conf->dns.showDNSSEC.t = CONF_BOOL;
 	conf->dns.showDNSSEC.d.b = true;
 	conf->dns.showDNSSEC.c = validate_stub; // Only type-based checking
