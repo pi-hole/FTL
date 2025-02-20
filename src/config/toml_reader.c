@@ -228,8 +228,9 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 static toml_table_t *parseTOML(const unsigned int version)
 {
 	// Try to open default config file. Use fallback if not found
-	FILE *fp;
-	if((fp = openFTLtoml("r", version)) == NULL)
+	bool locked = false;
+	FILE *fp = openFTLtoml("r", version, &locked);
+	if(fp == NULL)
 		return NULL;
 
 	// Parse lines in the config file
@@ -237,7 +238,7 @@ static toml_table_t *parseTOML(const unsigned int version)
 	toml_table_t *conf = toml_parse_file(fp, errbuf, sizeof(errbuf));
 
 	// Close file and release exclusive lock
-	closeFTLtoml(fp);
+	closeFTLtoml(fp, locked);
 
 	// Check for errors
 	if(conf == NULL)

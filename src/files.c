@@ -35,6 +35,8 @@
 #include <inttypes.h>
 //basename()
 #include <libgen.h>
+// flock(), LOCK_SH
+#include <sys/file.h>
 
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
@@ -862,4 +864,76 @@ enum verify_result verify_FTL(bool verbose)
 	}
 
 	return success ? VERIFY_OK : VERIFY_FAILED;
+}
+/**
+ * @brief Locks a file for exclusive access.
+ *
+ * This function attempts to acquire an exclusive lock on the file
+ * associated with the given file pointer.
+ *
+ * @param fp A pointer to the FILE object representing the file to be locked.
+ * @param filename The name of the file to be locked, used for logging purposes.
+ * @return true if the lock is successfully acquired, false otherwise.
+ */
+
+bool lock_file(FILE *fp, const char *filename)
+{
+	const int fd = fileno(fp);
+	if(fd < 0)
+	{
+		log_err("Failed to get file descriptor for \"%s\": %s",
+		        filename, strerror(errno));
+		return false;
+	}
+
+	if(flock(fd, LOCK_EX) != 0)
+	{
+		// Backup errno
+		const int _e = errno;
+		log_err("Cannot get exclusive lock for %s: %s",
+		        filename, strerror(errno));
+
+		// Restore errno
+		errno = _e;
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * @brief Unlocks a file by releasing the lock on the file descriptor.
+ *
+ * This function attempts to release the lock on the file associated with the
+ * given file pointer. If the file descriptor cannot be obtained or the lock
+ * cannot be released, an error message is logged and the function returns false.
+ *
+ * @param fp A pointer to the FILE object representing the file to unlock.
+ * @param filename A string representing the name of the file. This is used for
+ *                 logging purposes. If NULL, "<file>" is used in the log message.
+ * @return true if the lock was successfully released, false otherwise.
+ */
+bool unlock_file(FILE *fp, const char *filename)
+{
+	const int fd = fileno(fp);
+	if(fd < 0)
+	{
+		log_err("Failed to get file descriptor for \"%s\": %s",
+		        filename ? filename : "<file>", strerror(errno));
+		return false;
+	}
+
+	if(flock(fd, LOCK_UN) != 0)
+	{
+		// Backup errno
+		const int _e = errno;
+		log_err("Cannot release lock for %s: %s",
+		        filename ? filename : "<file>", strerror(errno));
+
+		// Restore errno
+		errno = _e;
+		return false;
+	}
+
+	return true;
 }

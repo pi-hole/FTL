@@ -633,8 +633,9 @@ cJSON *read_forced_vars(const unsigned int version)
 	cJSON *env_vars = cJSON_CreateArray();
 
 	// Try to open default config file. Use fallback if not found
-	FILE *fp;
-	if((fp = openFTLtoml("r", version)) == NULL)
+	bool locked = false;
+	FILE *fp = openFTLtoml("r", version, &locked);
+	if(fp == NULL)
 	{
 		// Return empty cJSON array
 		return env_vars;
@@ -672,7 +673,7 @@ cJSON *read_forced_vars(const unsigned int version)
 	}
 
 	// Close file and release exclusive lock
-	closeFTLtoml(fp);
+	closeFTLtoml(fp, locked);
 
 	// Return cJSON array
 	return env_vars;
