@@ -55,14 +55,21 @@ void getEnvVars(void)
 			// Split key and value using strtok_r
 			char *saveptr = NULL;
 			char *key = strtok_r(env_copy, "=", &saveptr);
-			char *value = strtok_r(NULL, "=", &saveptr);
 
 			// Log warning if value is missing
-			if(value == NULL)
+			char *value;
+			if(strlen(*env) <= strlen(key) + 1)
 			{
 				log_warn("Environment variable %s has no value, substituting with empty string", key);
 				value = (char*)"";
 			}
+			else
+			{
+				// The entire string *after* the key + 1 (for
+				// the '=') is the value
+				value = *env + strlen(key) + 1;
+			}
+			log_debug(DEBUG_CONFIG, "ENV \"%s\" = \"%s\"", key, value);
 
 			// Add to list
 			struct env_item *new_item = calloc(1, sizeof(struct env_item));

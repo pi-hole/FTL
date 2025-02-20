@@ -70,6 +70,16 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
+	// Do not redirect for ACME challenges
+	log_info("Local URI: \"%s\"", req_info->local_uri_raw);
+	const char acme_challenge[] = "/.well-known/acme-challenge/";
+	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
+	if(is_acme)
+	{
+		// ACME challenge - no authentication required
+		return 0;
+	}
+
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
 	api.conn = conn;

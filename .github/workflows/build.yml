@@ -2,7 +2,7 @@ name: Build, Test, Deploy
 
 permissions:
   id-token: write
-  contents: read
+  contents: write # needed for softprops/action-gh-release
   attestations: write
 
 on:

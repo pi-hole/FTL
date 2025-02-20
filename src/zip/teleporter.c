@@ -277,9 +277,8 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	mz_zip_error pErr;
 	if(!mz_zip_validate_mem_archive(*ptr, *size, MZ_ZIP_FLAG_VALIDATE_LOCATE_FILE_FLAG, &pErr))
 	{
-		log_err("Failed to validate generated Teleporter ZIP archive: %s",
-		        mz_zip_get_error_string(pErr));
-		return "Failed to validate generated Teleporter ZIP archive!";
+		log_warn("Failed to validate generated Teleporter ZIP archive: %s",
+		         mz_zip_get_error_string(pErr));
 	}
 
 	// Generate filename for ZIP archive (it has both the hostname and the
