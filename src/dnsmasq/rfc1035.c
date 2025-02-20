@@ -597,18 +597,18 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 		}
 	      
 	      /* rest of RR */
-	      if (!no_cache && !blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p, 20))
-		{
-		  blockdata_free(addr.rrblock.rrdata);
-		  return 0;
-		}
-
-	      addr.rrblock.datalen += 20;
-	      
 	      if (!no_cache)
 		{
 		  int secflag = 0;
 
+		  if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p, 20))
+		    {
+		      blockdata_free(addr.rrblock.rrdata);
+		      return 0;
+		    }
+		  
+		  addr.rrblock.datalen += 20;
+		  
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[i + ntohs(header->ancount)] != 0)
 		    {
