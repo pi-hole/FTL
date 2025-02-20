@@ -402,6 +402,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       header->id = ntohs(forward->new_id);
       
       forward->frec_src.encode_bitmap = option_bool(OPT_NO_0x20) ? 0 : rand32();
+      forward->frec_src.encode_bigmap = NULL;
       p = (unsigned char *)(header+1);
       if (!extract_name(header, plen, &p, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
 	goto reply;
@@ -1100,6 +1101,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		  new->flags |= flags;
 		  new->forwardall = 0;
 		  new->frec_src.encode_bitmap = 0;
+		  new->frec_src.encode_bigmap = NULL;
 
 		  forward->next_dependent = NULL;
 		  new->dependent = forward; /* to find query awaiting new one. */
@@ -3200,7 +3202,7 @@ static void free_frec(struct frec *f)
   struct frec_src *last;
   
   /* add back to freelist if not the record builtin to every frec,
-     also free any bigmaps they's been decorated with. */
+     also free any bigmaps they've been decorated with. */
   for (last = f->frec_src.next; last && last->next; last = last->next)
     if (last->encode_bigmap)
       {
@@ -3210,6 +3212,12 @@ static void free_frec(struct frec *f)
   
   if (last)
     {
+      /* final link in the chain loses bigmap too. */
+      if (last->encode_bigmap)
+	{
+	  free(last->encode_bigmap);
+	  last->encode_bigmap = NULL;
+	}
       last->next = daemon->free_frec_src;
       daemon->free_frec_src = f->frec_src.next;
     }
