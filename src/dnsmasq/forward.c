@@ -301,8 +301,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 
 	      if (gobig && !bitvector)
 		{
-		  casediff = (i/BITS_IN_INT) + 1; /* length of array */
-		  if ((bitvector = whine_malloc(casediff)))
+		  casediff = ((i - 1)/BITS_IN_INT) + 1; /* length of array */
+		  /* whine_malloc() zeros memory */
+		  if ((bitvector = whine_malloc(casediff * sizeof(unsigned int))))
 		    goto big_redo;
 		}
 	    }
