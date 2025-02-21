@@ -2678,15 +2678,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			if (msize > 128)
 			  ret_err_free(_("bad prefix length"), new);
 			
-			mask = (1LLU << (128 - msize)) - 1LLU;
+			/* prefix==64 overflows the mask calculation */
+			if (msize <= 64)
+			  mask = (u64)-1LL;
+			else
+			  mask = (1LLU << (128 - msize)) - 1LLU;
 			
 			new->is6 = 1;
 			new->prefixlen = msize;
 			
-			/* prefix==64 overflows the mask calculation above */
-			if (msize <= 64)
-			  mask = (u64)-1LL;
-			  
 			new->end6 = new->start6;
 			setaddr6part(&new->start6, addrpart & ~mask);
 			setaddr6part(&new->end6, addrpart | mask);
