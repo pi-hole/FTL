@@ -504,9 +504,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			continue;
 		}
 
-		if(active == NULL || cidr == NULL || target == NULL || domain == NULL)
+		if(active == NULL || cidr == NULL || target == NULL)
 		{
-			log_err("Skipped invalid dns.revServers[%u]: %s", i, revServer->valuestring);
+			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", i, revServer->valuestring);
 			free(copy);
 			continue;
 		}
@@ -517,7 +517,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
-		if(strlen(domain) > 0)
+		if(domain != NULL && strlen(domain) > 0)
 		{
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
