@@ -116,10 +116,20 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
 			// errors are fatal and we break out of the loop
-			if(err != EINTR)
+			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
 				break;
+			}
+
+			// Check if the child exited too quickly for waitpid to
+			// catch it. We cannot get the return code in this case
+			// and have to check the pipe content instead
+			if(errno == ECHILD)
+			{
+				log_debug(DEBUG_CONFIG, "dnsmasq test exited too quickly for waitpid");
+				code = strstr(errbuf, "syntax check OK") != NULL ? EXIT_SUCCESS : EXIT_FAILURE;
+				goto check_return;
 			}
 		}
 
@@ -136,11 +146,12 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			        WCOREDUMP(status) ? "(core dumped)" : "");
 		}
 
+check_return:
 		// Check if the error message contains a line number. If so, we
 		// can append the offending line to the error message
 		if(code != EXIT_SUCCESS)
 		{
-			int lineno = get_lineno_from_string(errbuf);
+			const int lineno = get_lineno_from_string(errbuf);
 			if(lineno > 0)
 			{
 				const size_t errbuf_size = strlen(errbuf);
