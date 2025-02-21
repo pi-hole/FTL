@@ -722,7 +722,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   unsigned int rcode = RCODE(header);
   size_t plen; 
   /******** Pi-hole modification ********/
-  unsigned char *pheader_copy = NULL;
   unsigned char ede_data[MAX_EDE_DATA] = { 0 };
   size_t ede_len = 0;
   /**************************************/
@@ -875,16 +874,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	if(rc == 99)
 	    {
 	      cache_secure = 0;
-	      // Make a private copy of the pheader to ensure
-	      // we are not accidentially rewriting what is in
-	      // the pheader when we're creating a crafted reply
-	      // further below (when a query is to be blocked)
-	      if (pheader)
-	      {
-	       pheader_copy = calloc(1, plen);
-		memcpy(pheader_copy, pheader, plen);
-	      }
-
 	      // Generate DNS packet for reply, a possibly existing pseudo header
 	      // will be restored later inside resize_packet()
 	      n = FTL_make_answer(header, ((char *) header) + 65536, n, ede_data, &ede_len);
@@ -920,22 +909,17 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   
   /* the code above can elide sections of the packet. Find the new length here 
      and put back pseudoheader if it was removed. */
-  n = resize_packet(header, n, pheader_copy ? pheader_copy : pheader, plen);
+  n = resize_packet(header, n, pheader, plen);
   /******** Pi-hole modification ********/
-  // The line above was modified to use
-  // pheader_copy instead of pheader
-  if(pheader_copy)
-    free(pheader_copy);
-
   if (pheader && (ede != EDE_UNSET || ede_len > 0))
     {
       if (ede_len > 0)
-	  n = add_pseudoheader(header, n, limit, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
-	else
-	  {
-	    u16 swap = htons((u16)ede);
-	    n = add_pseudoheader(header, n, limit, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
-	  }
+	n = add_pseudoheader(header, n, limit, EDNS0_OPTION_EDE, ede_data, ede_len, do_bit, 1);
+      else
+        {
+	  u16 swap = htons((u16)ede);
+	  n = add_pseudoheader(header, n, limit, EDNS0_OPTION_EDE, (unsigned char *)&swap, 2, do_bit, 1);
+	}
     }
   /**************************************/
 
