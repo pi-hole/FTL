@@ -435,11 +435,9 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
-	if(getrandom(raw_sid, sizeof(raw_sid), 0) < 0)
-	{
-		log_err("getrandom() failed in generateSID(): %s", strerror(errno));
+	if(!get_secure_randomness(raw_sid, sizeof(raw_sid)))
 		return;
-	}
+
 	base64_encode_raw(NETTLE_SIGN sid, SID_BITSIZE/8, raw_sid);
 	sid[SID_SIZE-1] = '\0';
 }
