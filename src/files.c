@@ -881,8 +881,8 @@ bool lock_file(FILE *fp, const char *filename)
 	const int fd = fileno(fp);
 	if(fd < 0)
 	{
-		log_err("Failed to get file descriptor for \"%s\": %s",
-		        filename, strerror(errno));
+		log_warn("Failed to get file descriptor for \"%s\": %s",
+		         filename, strerror(errno));
 		return false;
 	}
 
@@ -890,8 +890,8 @@ bool lock_file(FILE *fp, const char *filename)
 	{
 		// Backup errno
 		const int _e = errno;
-		log_err("Cannot get exclusive lock for %s: %s",
-		        filename, strerror(errno));
+		log_warn("Cannot get exclusive lock for %s: %s",
+		         filename, strerror(errno));
 
 		// Restore errno
 		errno = _e;
@@ -918,8 +918,8 @@ bool unlock_file(FILE *fp, const char *filename)
 	const int fd = fileno(fp);
 	if(fd < 0)
 	{
-		log_err("Failed to get file descriptor for \"%s\": %s",
-		        filename ? filename : "<file>", strerror(errno));
+		log_warn("Failed to get file descriptor for \"%s\": %s",
+		         filename ? filename : "<file>", strerror(errno));
 		return false;
 	}
 
@@ -927,8 +927,8 @@ bool unlock_file(FILE *fp, const char *filename)
 	{
 		// Backup errno
 		const int _e = errno;
-		log_err("Cannot release lock for %s: %s",
-		        filename ? filename : "<file>", strerror(errno));
+		log_warn("Cannot release lock for %s: %s",
+		         filename ? filename : "<file>", strerror(errno));
 
 		// Restore errno
 		errno = _e;
