@@ -13,6 +13,8 @@
 #include "config/config.h"
 #include "config/setupVars.h"
 #include "datastructure.h"
+// file_exists()
+#include "files.h"
 
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
@@ -514,6 +516,14 @@ static void get_conf_listeningMode_from_setupVars(void)
 
 void importsetupVarsConf(void)
 {
+	// Check if the file exists. If not, there is nothing to do and we
+	// return early
+	if(!file_exists(config.files.setupVars.v.s))
+	{
+		log_info("setupVars.conf does not exist, skipping migration");
+		return;
+	}
+
 	log_info("Migrating config from %s", config.files.setupVars.v.s);
 
 	// Try to obtain password hash from setupVars.conf
