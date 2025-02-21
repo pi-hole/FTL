@@ -243,6 +243,7 @@ struct config {
 		struct conf_item acl;
 		struct conf_item port;
 		struct conf_item threads;
+		struct conf_item headers;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;

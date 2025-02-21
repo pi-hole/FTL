@@ -424,27 +424,6 @@ void http_init(void)
 	}
 
 	// Prepare options for HTTP server (NULL-terminated list)
-	// Note about the additional headers:
-	// - "Content-Security-Policy: [...]"
-	//   'unsafe-inline' is both required by Chart.js styling some elements directly, and
-	//   index.html containing some inlined Javascript code.
-	// - "X-Frame-Options: DENY"
-	//   The page can not be displayed in a frame, regardless of the site attempting to do
-	//   so.
-	// - "X-Xss-Protection: 0"
-	//   Disables XSS filtering in browsers that support it. This header is usually
-	//   enabled by default in browsers, and is not recommended as it can hurt the
-	//   security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection)
-	// - "X-Content-Type-Options: nosniff"
-	//   Marker used by the server to indicate that the MIME types advertised in the
-	//   Content-Type headers should not be changed and be followed. This allows to
-	//   opt-out of MIME type sniffing, or, in other words, it is a way to say that the
-	//   webmasters knew what they were doing. Site security testers usually expect this
-	//   header to be set.
-	// - "Referrer-Policy: strict-origin-when-cross-origin"
-	//   A referrer will be sent for same-site origins, but cross-origin requests will
-	//   send no referrer information.
-	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
@@ -453,11 +432,7 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
-		                     "X-Frame-Options: DENY\r\n"
-		                     "X-XSS-Protection: 0\r\n"
-		                     "X-Content-Type-Options: nosniff\r\n"
-		                     "Referrer-Policy: strict-origin-when-cross-origin",
+		"additional_header", config.webserver.headers.v.s,
 		"index_files", "index.html,index.htm,index.lp",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
