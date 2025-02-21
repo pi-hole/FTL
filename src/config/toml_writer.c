@@ -41,8 +41,9 @@ bool writeFTLtoml(const bool verbose)
 	}
 
 	// Try to open a temporary config file for writing
-	FILE *fp;
-	if((fp = openFTLtoml("w", 0)) == NULL)
+	bool locked = false;
+	FILE *fp = openFTLtoml("w", 0, &locked);
+	if(fp == NULL)
 		return false;
 
 	// Write header
@@ -163,7 +164,7 @@ bool writeFTLtoml(const bool verbose)
 	cJSON_Delete(env_vars);
 
 	// Close file and release exclusive lock
-	closeFTLtoml(fp);
+	closeFTLtoml(fp, locked);
 
 	// Move temporary file to the final location if it is different
 	// We skip the first 8 lines as they contain the header and will always

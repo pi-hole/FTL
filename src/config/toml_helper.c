@@ -13,8 +13,6 @@
 #include "config/config.h"
 // get_refresh_hostnames_str()
 #include "datastructure.h"
-// flock(), LOCK_SH
-#include <sys/file.h>
 // fcntl(), O_ACCMODE, O_RDONLY
 #include <fcntl.h>
 // rotate_files()
@@ -29,7 +27,7 @@
 #include "files.h"
 
 // Open the TOML file for reading or writing
-FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version)
+FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *mode, const unsigned int version, bool *locked)
 {
 	// This should not happen, install a safeguard anyway to unveil
 	// possible future coding issues early on
@@ -69,15 +67,7 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	}
 
 	// Lock file, may block if the file is currently opened
-	if(flock(fileno(fp), LOCK_EX) != 0)
-	{
-		const int _e = errno;
-		log_err("Cannot open config file %s in exclusive mode (%s): %s",
-		        filename, mode, strerror(errno));
-		fclose(fp);
-		errno = _e;
-		return NULL;
-	}
+	*locked = lock_file(fp, filename);
 
 	// Log if we are using a backup file
 	if(version > 0)
@@ -88,14 +78,14 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 }
 
 // Open the TOML file for reading or writing
-void closeFTLtoml(FILE *fp)
+void closeFTLtoml(FILE *fp, const bool locked)
 {
 	// Release file lock
-	const int fn = fileno(fp);
-	if(flock(fn, LOCK_UN) != 0)
-		log_err("Cannot release lock on FTL's config file: %s", strerror(errno));
+	if(locked)
+		unlock_file(fp, NULL);
 
 	// Get access mode
+	const int fn = fileno(fp);
 	const int mode = fcntl(fn, F_GETFL);
 	if (mode == -1)
 		log_err("Cannot get access mode for FTL's config file: %s", strerror(errno));

@@ -43,4 +43,7 @@ int parse_line(char *line, char **key, char **value);
 
 char *get_hwmon_target(const char *path) __attribute__((malloc));
 
+bool lock_file(FILE *fp, const char *filename);
+bool unlock_file(FILE *fp, const char *filename);
+
 #endif //FILE_H
