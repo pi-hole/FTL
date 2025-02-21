@@ -437,7 +437,7 @@ static void generateSID(char *sid)
 	uint8_t raw_sid[SID_SIZE];
 	if(getrandom(raw_sid, sizeof(raw_sid), 0) < 0)
 	{
-		log_err("getrandom() failed in generateSID()");
+		log_err("getrandom() failed in generateSID(): %s", strerror(errno));
 		return;
 	}
 	base64_encode_raw(NETTLE_SIGN sid, SID_BITSIZE/8, raw_sid);

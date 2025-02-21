@@ -330,7 +330,7 @@ char * __attribute__((malloc)) create_password(const char *password)
 	uint8_t salt[SALT_LEN] = { 0 };
 	if(getrandom(salt, sizeof(salt), 0) < 0)
 	{
-		log_err("getrandom() failed in create_password()");
+		log_err("getrandom() failed in create_password(): %s", strerror(errno));
 		return NULL;
 	}
 
@@ -529,7 +529,7 @@ int run_performance_test(void)
 	uint8_t salt[SALT_LEN] = { 0 };
 	if(getrandom(salt, sizeof(salt), 0) < 0)
 	{
-		printf("Could not generate random salt!\n");
+		printf("Could not generate random salt!: %s\n", strerror(errno));
 		return EXIT_FAILURE;
 	}
 
@@ -677,7 +677,7 @@ bool generate_password(char **password, char **pwhash)
 	uint8_t password_raw[APPPW_LEN] = { 0 };
 	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
 	{
-		log_err("getrandom() failed in generate_password()");
+		log_err("getrandom() failed in generate_password(): %s", strerror(errno));
 		return false;
 	}
 
@@ -700,7 +700,7 @@ bool generate_password(char **password, char **pwhash)
 	uint8_t salt[SALT_LEN] = { 0 };
 	if(getrandom(salt, sizeof(salt), 0) < 0)
 	{
-		log_err("getrandom() failed in generate_password()");
+		log_err("getrandom() failed in generate_password(): %s", strerror(errno));
 		return false;
 	}
 
