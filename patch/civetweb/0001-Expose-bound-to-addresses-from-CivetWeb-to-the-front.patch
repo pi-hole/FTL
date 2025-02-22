@@ -1,0 +1,50 @@
+From 0bee9e9f7942c5b73a715eaeadf5ab2d09a8c74d Mon Sep 17 00:00:00 2001
+From: DL6ER <dl6er@dl6er.de>
+Date: Sat, 22 Feb 2025 18:33:25 +0100
+Subject: [PATCH] Expose bound-to addresses from CivetWeb to the frontend
+
+Signed-off-by: DL6ER <dl6er@dl6er.de>
+---
+ src/webserver/civetweb/civetweb.c | 1 +
+ src/webserver/civetweb/civetweb.h | 6 ++++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index fa908e54..66fcab01 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -3339,6 +3339,7 @@ mg_get_server_ports(const struct mg_context *ctx,
+ 		ports[cnt].is_ssl = ctx->listening_sockets[i].is_ssl;
+ 		ports[cnt].is_redirect = ctx->listening_sockets[i].ssl_redir;
+ 		ports[cnt].is_optional = ctx->listening_sockets[i].is_optional;
++		memcpy(&ports[cnt].addr, &ctx->listening_sockets[i].lsa, sizeof(ports[cnt].addr));
+ 
+ 		if (ctx->listening_sockets[i].lsa.sa.sa_family == AF_INET) {
+ 			/* IPv4 */
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
+index eee958b4..6dcfa457 100644
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
+@@ -23,6 +23,8 @@
+ #ifndef CIVETWEB_HEADER_INCLUDED
+ #define CIVETWEB_HEADER_INCLUDED
+ 
++#include <netinet/in.h> /* Pi-hole extension */
++
+ #define CIVETWEB_VERSION "1.17"
+ #define CIVETWEB_VERSION_MAJOR (1)
+ #define CIVETWEB_VERSION_MINOR (17)
+@@ -721,6 +723,10 @@ struct mg_server_port {
+ 	int _reserved2;
+ 	int _reserved3;
+ 	int _reserved4;
++   union {
++     struct sockaddr_in sa4; /* Pi-hole extension */
++     struct sockaddr_in6 sa6; /* Pi-hole extension */
++   } addr;
+ };
+ 
+ /* Legacy name */
+-- 
+2.43.0
+

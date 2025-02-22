@@ -23,6 +23,8 @@
 #ifndef CIVETWEB_HEADER_INCLUDED
 #define CIVETWEB_HEADER_INCLUDED
 
+#include <netinet/in.h> /* Pi-hole extension */
+
 #define CIVETWEB_VERSION "1.17"
 #define CIVETWEB_VERSION_MAJOR (1)
 #define CIVETWEB_VERSION_MINOR (17)
@@ -721,6 +723,10 @@ struct mg_server_port {
 	int _reserved2;
 	int _reserved3;
 	int _reserved4;
+   union {
+     struct sockaddr_in sa4; /* Pi-hole extension */
+     struct sockaddr_in6 sa6; /* Pi-hole extension */
+   } addr;
 };
 
 /* Legacy name */
