@@ -91,6 +91,47 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 	return strdup(response);
 }
 
+bool get_secure_randomness(uint8_t *buffer, const size_t length)
+{
+	ssize_t result;
+
+	// First try to get randomness in non-blocking mode and print a warning when not enough entropy is available right now
+	do {
+		result = getrandom(buffer, length, GRND_NONBLOCK);
+	} while (result < 0 && errno == EINTR);
+
+	// If not enough entropy is available right now, try again in blocking mode
+	if (result < 0 && errno == EAGAIN)
+	{
+		log_warn("getrandom() failed in get_secure_randomness(): Not enough entropy available right now, retrying in blocking mode");
+		// Sleep for 1 second to give the kernel some time to gather entropy
+		sleepms(1000);
+	}
+	else
+	{
+		// If the first try was successful, return the result
+		if (result >= 0)
+			return true;
+	}
+	do {
+		result = getrandom(buffer, length, 0);
+	} while (result < 0 && errno == EINTR);
+
+	if (result < 0)
+	{
+		const int err = errno;
+		log_err("getrandom() failed in get_secure_randomness(): %s", strerror(errno));
+		errno = err;
+		return false;
+	}
+	else if((size_t)result != length)
+	{
+		log_err("getrandom() failed in get_secure_randomness(): Not enough bytes generated (%zu != %zu)", (size_t)result, length);
+		return false;
+	}
+	return true;
+}
+
 static char * __attribute__((malloc)) base64_encode(const uint8_t *data, const size_t length)
 {
 	// Base64 encoding requires 4 bytes for every 3 bytes of input, plus
@@ -328,11 +369,8 @@ char * __attribute__((malloc)) create_password(const char *password)
 	// Generate a 128 bit random salt
 	// genrandom() returns cryptographically secure random data
 	uint8_t salt[SALT_LEN] = { 0 };
-	if(getrandom(salt, sizeof(salt), 0) < 0)
-	{
-		log_err("getrandom() failed in create_password()");
+	if(!get_secure_randomness(salt, sizeof(salt)))
 		return NULL;
-	}
 
 	// Generate balloon PHC-encoded password hash
 	return balloon_password(password, salt, true);
@@ -527,11 +565,8 @@ int run_performance_test(void)
 	// Generate a 128 bit random salt
 	// genrandom() returns cryptographically secure random data
 	uint8_t salt[SALT_LEN] = { 0 };
-	if(getrandom(salt, sizeof(salt), 0) < 0)
-	{
-		printf("Could not generate random salt!\n");
+	if(!get_secure_randomness(salt, sizeof(salt)))
 		return EXIT_FAILURE;
-	}
 
 	printf("Running time-performance test:\n");
 	size_t t_t_cost = 16;
@@ -675,11 +710,8 @@ bool generate_password(char **password, char **pwhash)
 	// Generate a 256 bit random password
 	// genrandom() returns cryptographically secure random data
 	uint8_t password_raw[APPPW_LEN] = { 0 };
-	if(getrandom(password_raw, sizeof(password_raw), 0) < 0)
-	{
-		log_err("getrandom() failed in generate_password()");
+	if(!get_secure_randomness(password_raw, sizeof(password_raw)))
 		return false;
-	}
 
 	// Encode password as base64
 	*password = base64_encode(password_raw, sizeof(password_raw));
@@ -698,11 +730,8 @@ bool generate_password(char **password, char **pwhash)
 
 	// Generate a 128 bit random salt
 	uint8_t salt[SALT_LEN] = { 0 };
-	if(getrandom(salt, sizeof(salt), 0) < 0)
-	{
-		log_err("getrandom() failed in generate_password()");
+	if(!get_secure_randomness(salt, sizeof(salt)))
 		return false;
-	}
 
 	// Generate balloon PHC-encoded password hash
 	*pwhash = balloon_password(*password, salt, true);

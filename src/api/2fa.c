@@ -13,8 +13,6 @@
 #include "webserver/json_macros.h"
 #include "log.h"
 #include "config/config.h"
-// getrandom()
-#include "daemon.h"
 // generate_password()
 #include "config/password.h"
 
@@ -269,10 +267,8 @@ int generateTOTP(struct ftl_conn *api)
 {
 	// Generate random secret using the system's random number generator
 	uint8_t random_secret[RFC6238_SECRET_LEN];
-	if(getrandom(random_secret, sizeof(random_secret), 0) < (ssize_t)sizeof(random_secret))
-	{
+	if(!get_secure_randomness(random_secret, sizeof(random_secret)))
 		return send_json_error(api, 500, "internal_error", "Failed to generate random secret", strerror(errno));
-	}
 
 	// Encode base32 secret
 	const size_t base32_len = sizeof(random_secret)*8/5+1;
