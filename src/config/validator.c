@@ -77,8 +77,19 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		while((host = strsep(&tmp, " \t")) != NULL)
 		{
 			// Skip extra whitespace/tabs
-			while(isspace((unsigned char)*host)) host++;
-			if(strlen(host) == 0) continue;
+			while(isspace((unsigned char)*host))
+				host++;
+
+			// Skip this entry if it's empty after trimming
+			// the whitespaces/tabs at the end of the line
+			if(strlen(host) == 0)
+				break;
+
+			// If this hostname is actually the start of a comment
+			// (first letter is '#'), skip parsing the rest of the
+			// entire line
+			if(host[0] == '#')
+				break;
 
 			if(!valid_domain(host, strlen(host), false))
 			{
