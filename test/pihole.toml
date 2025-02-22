@@ -114,7 +114,7 @@
 
   # The DNS domain used by your Pi-hole.
   #
-  # This DNS domain in purely local. FTL may answer queries from its local cache and
+  # This DNS domain is purely local. FTL may answer queries from its local cache and
   # configuration but *never* forwards any requests upstream *unless* you have
   # configured a dns.revServer exactly for this domain. In the latter case, all queries
   # for this domain are sent exclusively to this server (including reverse lookups).

@@ -550,7 +550,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
 		if(!domain_revServer)
 		{
-			fputs("# This DNS domain in purely local. FTL may answer queries from\n", pihole_conf);
+			fputs("# This DNS domain is purely local. FTL may answer queries from\n", pihole_conf);
 			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
 			fputs("# domain to any upstream servers\n", pihole_conf);
 			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
