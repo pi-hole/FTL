@@ -1011,7 +1011,7 @@
     # By default, FTL warns if the shared-memory usage exceeds 90%. You can set any
     # integer limit between 0 to 100 (interpreted as percentages) where 0 means that
     # checking of shared-memory usage is disabled.
-    shmem = 0 ### CHANGED, default = 90
+    shmem = 91 ### CHANGED (env), default = 90
 
     # FTL stores its long-term history in a database file on disk. Furthermore, FTL stores
     # log files. By default, FTL warns if usage of the disk holding any crucial file
@@ -1147,6 +1147,7 @@
 # Configuration statistics:
 # 152 total entries out of which 95 entries are default
 # --> 57 entries are modified
-# 2 entries are forced through environment:
+# 3 entries are forced through environment:
 #   - misc.nice
+#   - misc.check.shmem
 #   - debug.api
