@@ -40,7 +40,7 @@
   # Should FTL hide queries made by localhost?
   ignoreLocalhost = false
 
-  # Should FTL should analyze and show internally generated DNSSEC queries?
+  # Should FTL analyze and show internally generated DNSSEC queries?
   showDNSSEC = true
 
   # Should FTL analyze *only* A and AAAA queries?

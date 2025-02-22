@@ -177,8 +177,13 @@ static void get_revServer_from_setupVars(void)
 	char *domain_str = read_setupVarsconf("REV_SERVER_DOMAIN");
 	if(domain_str != NULL)
 	{
-		domain = strdup(domain_str);
-		trim_whitespace(domain);
+		if(strlen(domain_str) == 0)
+			log_info("setupVars.conf:REV_SERVER_DOMAIN -> Empty string, ignoring");
+		else
+		{
+			domain = strdup(domain_str);
+			trim_whitespace(domain);
+		}
 	}
 	else
 		log_info("setupVars.conf:REV_SERVER_DOMAIN -> Not set");
@@ -187,16 +192,19 @@ static void get_revServer_from_setupVars(void)
 	clearSetupVarsArray();
 
 	// Only add the entry if all values are present and active
-	if(cidr != NULL && target != NULL && domain != NULL)
+	if(cidr != NULL && target != NULL)
 	{
 		// Build comma-separated string of all values
 		// 9 = 3 commas, "true/false", and null terminator
-		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 9, sizeof(char));
+		char *old = calloc(strlen(cidr) + strlen(target) + (domain != NULL ? strlen(domain) : 0) + 9, sizeof(char));
 		if(old != NULL)
 		{
 			// Add to new config
 			// active is always true as we only add active entries
-			sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			if(domain != NULL && strlen(domain) > 0)
+				sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			else
+				sprintf(old, "%s,%s,%s", active ? "true" : "false", cidr, target);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
 
 			// Parameter present in setupVars.conf
