@@ -698,6 +698,9 @@
   # - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for
   # same-site origins, but cross-origin requests will send no referrer information.
   # The latter four headers are set as expected by https://securityheaders.io
+  #
+  # Possible values are:
+  #     <valid HTTP headers>
   headers = "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin"
 
   [webserver.session]
