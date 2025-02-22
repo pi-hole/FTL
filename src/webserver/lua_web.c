@@ -71,7 +71,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
 	// Do not redirect for ACME challenges
-	log_info("Local URI: \"%s\"", req_info->local_uri_raw);
+	log_debug(DEBUG_API, "Local URI: \"%s\"", req_info->local_uri_raw);
 	const char acme_challenge[] = "/.well-known/acme-challenge/";
 	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
