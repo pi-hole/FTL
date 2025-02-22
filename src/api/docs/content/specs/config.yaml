@@ -410,7 +410,9 @@ components:
                 threads:
                   type: integer
                 headers:
-                  type: string
+                  type: array
+                  items:
+                    type: string
                 session:
                   type: object
                   properties:
@@ -746,7 +748,12 @@ components:
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
-            headers: "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin"
+            headers:
+              - "Content-Security-Policy: default-src 'self' 'unsafe-inline';"
+              - "X-Frame-Options: DENY"
+              - "X-XSS-Protection: 0"
+              - "X-Content-Type-Options: nosniff"
+              - "Referrer-Policy: strict-origin-when-cross-origin"
             session:
               timeout: 300
               restore: true

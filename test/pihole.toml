@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.1-3-g03cc1d34-dirty)
+# Pi-hole configuration file (v6.0.2-18-g392eaa08)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-02-21 10:58:04 UTC
+# Last updated on 2025-02-22 18:05:05 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -678,8 +678,7 @@
   threads = 0
 
   # Additional HTTP headers added to the web server responses.
-  # The headers are separated by a carriage return and a line feed (\r\n). The headers
-  # are added to all responses, including those for the API.
+  # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
   # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
   # styling some elements directly, and index.html containing some inlined Javascript
@@ -700,8 +699,14 @@
   # The latter four headers are set as expected by https://securityheaders.io
   #
   # Possible values are:
-  #     <valid HTTP headers>
-  headers = "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin"
+  #     array of HTTP headers
+  headers = [
+    "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
+    "X-Frame-Options: DENY",
+    "X-XSS-Protection: 0",
+    "X-Content-Type-Options: nosniff",
+    "Referrer-Policy: strict-origin-when-cross-origin"
+  ]
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will

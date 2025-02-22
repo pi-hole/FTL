@@ -423,6 +423,30 @@ void http_init(void)
 		return;
 	}
 
+	// Construct additional headers
+	char *webheaders = strdup("");
+	cJSON *header;
+	cJSON_ArrayForEach(header, config.webserver.headers.v.json)
+	{
+		if(!cJSON_IsString(header))
+		{
+			log_err("Invalid header in webserver.headers!");
+			continue;
+		}
+
+		// Get header value
+		const char *h = cJSON_GetStringValue(header);
+
+		// Allocate memory for the new header
+		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (webheaders == NULL) {
+			log_err("Failed to allocate memory for webheaders!");
+			return;
+		}
+		strcat(webheaders, h);
+		strcat(webheaders, "\r\n");
+	}
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
@@ -432,7 +456,7 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", config.webserver.headers.v.s,
+		"additional_header", webheaders,
 		"index_files", "index.html,index.htm,index.lp",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
