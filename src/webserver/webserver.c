@@ -281,7 +281,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 	size_t len = 0;
 	// First byte has the length of the first string
 	**buf = 0;
-	const char *domain_str = domain ? config.webserver.domain.v.s : "localhost";
+	const char *domain_str = domain ? config.webserver.domain.v.s : "pi.hole";
 	size_t api_str_size = strlen(domain_str) + 20;
 
 	// Check if the string is too long for the TXT record
