@@ -1013,6 +1013,19 @@ static void initConfig(struct config *conf)
 	conf->webserver.threads.d.ui = 0;
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
+	conf->webserver.headers.k = "webserver.headers";
+	conf->webserver.headers.h = "Additional HTTP headers added to the web server responses.\n The headers are added to all responses, including those for the API.\n Note about the default additional headers:\n - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js styling some elements directly, and index.html containing some inlined Javascript code.\n - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the site attempting to do so.\n - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This header is usually enabled by default in browsers, and is not recommended as it can hurt the security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).\n - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the MIME types advertised in the  Content-Type headers should not be changed and be followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a way to say that the webmasters knew what they were doing. Site security testers usually expect this header to be set.\n - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for same-site origins, but cross-origin requests will send no referrer information.\n The latter four headers are set as expected by https://securityheaders.io";
+	conf->webserver.headers.a = cJSON_CreateStringReference("array of HTTP headers");
+	conf->webserver.headers.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.headers.f = FLAG_RESTART_FTL;
+	conf->webserver.headers.d.json = cJSON_CreateArray();
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'self' 'unsafe-inline';"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Frame-Options: DENY"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-XSS-Protection: 0"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
+	conf->webserver.headers.c = validate_stub; // Only type-based checking
+
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
@@ -1562,8 +1575,25 @@ static void initConfig(struct config *conf)
 		// Verify all config options are defined above
 		if(!conf_item->p || !conf_item->k || !conf_item->h || !conf_item->e || conf_item->t == 0)
 		{
-			log_err("Config option %u/%u is not fully configured!", i, (unsigned int)CONFIG_ELEMENTS);
+			log_err("Config option %u/%u (%s) is not fully configured!",
+			        i, (unsigned int)CONFIG_ELEMENTS, conf_item->k ? conf_item->k : "N/A");
 			continue;
+		}
+
+		// Verify config options with non-trivial type have allowed values
+		if(conf_item->t != CONF_BOOL &&
+		   conf_item->t != CONF_UINT &&
+		   conf_item->t != CONF_UINT16 &&
+		   conf_item->t != CONF_DOUBLE &&
+		   conf_item->t != CONF_INT &&
+		   conf_item->t != CONF_ALL_DEBUG_BOOL)
+		{
+			if(conf_item->a == NULL)
+			{
+				// At this point we know that conf_item->k is not NULL
+				log_err("Config option %s (type %u) has no allowed values!", conf_item->k, conf_item->t);
+				continue;
+			}
 		}
 
 		// Verify we have no default string pointers to NULL
