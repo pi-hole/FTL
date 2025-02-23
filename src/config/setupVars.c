@@ -567,7 +567,7 @@ void importsetupVarsConf(void)
 	// Try to get bool properties (the first two are intentionally set from the same key)
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expandHosts);
-	get_conf_bool_from_setupVars("DNS_bogusPriv", &config.dns.bogusPriv);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogusPriv);
 	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
 	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
 	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.hostRecord);
@@ -599,7 +599,7 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
-	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
 
 	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
 
