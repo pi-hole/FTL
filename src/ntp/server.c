@@ -309,6 +309,11 @@ static void *ntp_bind_and_listen(void *param)
 	setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
 #endif
 
+	// Set socket receive buffer to 1 KB to avoid (near) endless queueing of
+	// NTP requests
+	const int recvbuf = 1024;
+	setsockopt(s, SOL_SOCKET, SO_RCVBUF, &recvbuf, sizeof(recvbuf));
+
 	// Bind the socket to the NTP port
 	char ipstr[INET6_ADDRSTRLEN + 1];
 	memset(ipstr, 0, sizeof(ipstr));
