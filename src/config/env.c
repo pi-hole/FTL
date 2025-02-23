@@ -147,32 +147,17 @@ void printFTLenv(void)
 
 static struct env_item *__attribute__((pure)) getFTLenv(const char *key)
 {
-	// Normalize the environment variable to conventional names,
-	// i.e. uppercase letters, digits, and the <underscore> ( '_' )
-	// Exact case matches will still work.
+	// "Normalize" the environment variable to conventional names by using a case insensitive comparison,
 	// See: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html
-	char *env_key = strdup(key);
-	int env_length = strlen(env_key);
-	for (int i = 0; i < env_length; i++)
-	{
-		if (env_key[i] == '.')
-			env_key[i] = '_'; // keys are pre-processed, but just in case
-		else
-			env_key[i] = toupper(env_key[i]);
-	}
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		// Check if this is the requested key
-		if(strcmp(item->key, key) == 0 || strcmp(item->key, env_key) == 0)
-		{
-			free(env_key);
+		if(strcasecmp(item->key, key) == 0)
 			return item;
-		}
 	}
 
 	// Return NULL if the key was not found
-	free(env_key);
 	return NULL;
 }
 
