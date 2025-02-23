@@ -42,6 +42,8 @@
 #include "enums.h"
 // threads
 #include "signals.h"
+// sleepms()
+#include "timers.h"
 
 uint64_t ntp_last_sync = 0u;
 uint32_t ntp_root_delay = 0u;
@@ -269,6 +271,10 @@ static void request_process_loop(const int fd, const char *ipstr, const int prot
 		// Handle the request
 		ntp_reply(fd, &src_addr, src_addrlen, buf, &recv_time);
 		log_debug(DEBUG_NTP, "NTP reply sent");
+
+		// Sleep for 100 msec, this allows no more than 10 requests per
+		// second
+		sleepms(100);
 	}
 }
 
@@ -302,6 +308,11 @@ static void *ntp_bind_and_listen(void *param)
 	int optval = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
 #endif
+
+	// Set socket receive buffer to 1 KB to avoid (near) endless queueing of
+	// NTP requests
+	const int recvbuf = 1024;
+	setsockopt(s, SOL_SOCKET, SO_RCVBUF, &recvbuf, sizeof(recvbuf));
 
 	// Bind the socket to the NTP port
 	char ipstr[INET6_ADDRSTRLEN + 1];
