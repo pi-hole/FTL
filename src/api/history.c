@@ -18,14 +18,17 @@
 #include "overTime.h"
 // config struct
 #include "config/config.h"
+// get_max_overtime_slot()
+#include "gc.h"
 
 int api_history(struct ftl_conn *api)
 {
 	lock_shm();
 
-	// Loop over all overTime slots and add them to the array
 	cJSON *history = JSON_NEW_ARRAY();
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	const unsigned int max_slot = get_max_overtime_slot();
+	// Loop over all overTime slots and add them to the array
+	for(unsigned int slot = 0; slot <= max_slot; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
@@ -148,7 +151,8 @@ int api_history_clients(struct ftl_conn *api)
 	int others_total = 0;
 
 	cJSON *history = JSON_NEW_ARRAY();
-	for(unsigned int slot = 0; slot < OVERTIME_SLOTS; slot++)
+	const unsigned int max_slot = get_max_overtime_slot();
+	for(unsigned int slot = 0; slot <= max_slot; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
