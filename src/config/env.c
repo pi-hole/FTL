@@ -183,16 +183,26 @@ void freeEnvVars(void)
  * @param conf_item A pointer to the configuration item structure.
  * @param item A pointer to the environment item structure to be marked as invalid.
  */
-static void invalid_item(const char *envvar, struct conf_item *conf_item, struct env_item *item)
+static void invalid_enum_item(const char *envvar, struct conf_item *conf_item, struct env_item *item)
 {
 	item->error = "not an allowed option";
 	item->allowed = conf_item->h;
 	item->valid = false;
 
+	cJSON *allowed_items = cJSON_CreateArray();
+	cJSON *it = NULL;
+	cJSON_ArrayForEach(it, conf_item->a)
+	{
+		cJSON *sub_item = cJSON_GetObjectItem(it, "item");
+		cJSON_AddItemToArray(allowed_items, cJSON_Duplicate(sub_item, true));
+	}
+	char *allowed_values = cJSON_PrintUnformatted(allowed_items);
 	char *escaped_value = escape_json(envvar);
-	log_warn("ENV %s = \"%s\" is %s, allowed options are: %s",
-	         conf_item->e, escaped_value, item->error, item->allowed);
+
+	log_warn("ENV %s = %s is %s, allowed options are: %s",
+	         conf_item->e, escaped_value, item->error, allowed_values);
 	free(escaped_value);
+	free(allowed_values);
 }
 
 bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, struct config *newconf, cJSON *forced_vars, bool *reset)
@@ -407,7 +417,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -422,7 +432,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -437,7 +447,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -452,7 +462,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -467,7 +477,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -482,7 +492,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -497,7 +507,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -512,7 +522,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				invalid_item(envvar, conf_item, item);
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
