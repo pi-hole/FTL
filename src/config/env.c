@@ -197,8 +197,8 @@ static void invalid_enum_item(const char *envvar, struct conf_item *conf_item, s
 	char *escaped_value = escape_json(envvar);
 
 	// Calculate the size of the error message
-	asprintf(&item->error, "= %s is %s, allowed options are: %s",
-	         escaped_value, item->error, allowed_values);
+	asprintf(&item->error, "= %s is invalid, allowed options are: %s",
+	         escaped_value, allowed_values);
 
 	free(escaped_value);
 	free(allowed_values);
