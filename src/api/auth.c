@@ -401,7 +401,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			const int code = delete_session(user_id) ? 204 : 404;
 
 			// Send empty reply with appropriate HTTP status code
-			send_http_code(api, "application/json; charset=utf-8", code, "");
+			send_http_code(api, NULL, code, "");
 			return code;
 		}
 		else

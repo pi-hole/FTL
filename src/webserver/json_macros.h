@@ -223,10 +223,14 @@
 })
 
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
-	if((code) != 204) \
+	if((code) < 100 || (code) == 204 || (code) == 304) \
 	{ \
-		cJSON_AddNumberToObject(object, "took", double_time() - api->now); \
+		/* HTTP codes 1xx, 204 and 304 must not have a body */ \
+		send_http_code(api, NULL, code, ""); \
+		cJSON_Delete(object); \
+		return code; \
 	} \
+	cJSON_AddNumberToObject(object, "took", double_time() - api->now); \
 	char *json_string = json_formatter(object); \
 	if(json_string == NULL) \
 	{ \
