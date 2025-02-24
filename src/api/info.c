@@ -974,16 +974,9 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 		char *endptr = NULL;
 		long int idval = strtol(token, &endptr, 10);
 		if(errno != 0 || endptr == token || *endptr != '\0' || idval < 0)
-		{
-			// Send error reply
-			free(id);
-			return send_json_error(api, 400, // 400 Bad Request
-			                       "uri_error",
-			                       "Invalid ID in path",
-			                       api->action_path);
-		}
-
-		cJSON_AddNumberToObject(ids, "id", idval);
+			log_warn("API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
+		else
+			cJSON_AddNumberToArray(ids, idval);
 
 		// Get next token
 		token = strtok_r(NULL, ",", &saveptr);

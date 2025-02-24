@@ -1008,6 +1008,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
 				free_config(&newconf);
+				free_config_path(requested_path);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Invalid value",
@@ -1032,6 +1033,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 404 if config element not found
 	if(!found)
 	{
+		free_config(&newconf);
 		cJSON *json = JSON_NEW_OBJECT();
 		JSON_SEND_OBJECT_CODE(json, 404);
 	}
@@ -1039,6 +1041,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 400 if unique item already present
 	if(message != NULL)
 	{
+		free_config(&newconf);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,
@@ -1081,8 +1084,17 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Send empty reply with matching HTTP status code
 	// 201 - Created or 204 - No content
-	cJSON *json = JSON_NEW_OBJECT();
-	JSON_SEND_OBJECT_CODE(json, api->method == HTTP_PUT ? 201 : 204);
+	if(api->method == HTTP_PUT)
+	{
+		cJSON *json = JSON_NEW_OBJECT();
+		JSON_SEND_OBJECT_CODE(json, 201);
+	}
+	else
+	{
+		// 204 - No content
+		send_http_code(api, NULL, 204, "");
+		return 204;
+	}
 }
 
 // Endpoint /api/config router
