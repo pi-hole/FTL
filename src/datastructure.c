@@ -414,7 +414,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 {
 		client->count += total;
 		client->blockedcount += blocked;
-		if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+		if(overTimeIdx > -1 && (unsigned int)overTimeIdx < OVERTIME_SLOTS)
 		{
 			overTime[overTimeIdx].total += overTimeMod;
 			client->overTime[overTimeIdx] += overTimeMod;
@@ -432,7 +432,7 @@ void change_clientcount(clientsData *client, int total, int blocked, int overTim
 			clientsData *aliasclient = getClient(client->aliasclient_id, true);
 			aliasclient->count += total;
 			aliasclient->blockedcount += blocked;
-			if(overTimeIdx > -1 && overTimeIdx < OVERTIME_SLOTS)
+			if(overTimeIdx > -1 && (unsigned int)overTimeIdx < OVERTIME_SLOTS)
 				aliasclient->overTime[overTimeIdx] += overTimeMod;
 		}
 }

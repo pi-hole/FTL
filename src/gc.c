@@ -263,9 +263,9 @@ static void recycle(void)
  *
  * @return The maximum overtime slot as an unsigned integer.
  */
-unsigned int get_max_overtime_slot(void)
+unsigned int __attribute__((pure)) get_max_overtime_slot(void)
 {
-	return min(config.webserver.api.maxHistory.v.ui, MAXLOGAGE * 3600) / OVERTIME_INTERVAL - 1;
+	return min(config.webserver.api.maxHistory.v.ui, MAXLOGAGE * 3600) / OVERTIME_INTERVAL;
 }
 
 // Subtract rate-limitation count from individual client counters
