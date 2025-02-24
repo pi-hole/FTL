@@ -39,10 +39,25 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		return;
 	}
 
+	// If the lease time is a raw value (no unit), we assume it is in hours
+	// as this was the standard convention in the past
+	char *new = strdup(setupVarsValue);
+	if(strcmp(key, "DHCP_LEASETIME") == 0 && strchr(new, 'h') == NULL)
+	{
+		int leaseTimeInHours = atoi(new);
+		free(new);
+		if((new = calloc(10, sizeof(char))) == NULL)
+		{
+			log_warn("get_conf_string_from_setupVars(%s) failed: Could not allocate memory for new", key);
+			return;
+		}
+		snprintf(new, 10, "%dh", leaseTimeInHours);
+	}
+
 	// Free previously allocated memory (if applicable)
 	if(conf_item->t == CONF_STRING_ALLOCATED)
 		free(conf_item->v.s);
-	conf_item->v.s = strdup(setupVarsValue);
+	conf_item->v.s = new;
 	conf_item->t = CONF_STRING_ALLOCATED;
 	conf_item->f |= FLAG_CONF_IMPORTED;
 
