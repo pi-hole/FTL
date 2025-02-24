@@ -1061,7 +1061,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.t = CONF_STRING;
 	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
-	conf->webserver.paths.webhome.c = validate_filepath;
+	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
 
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
