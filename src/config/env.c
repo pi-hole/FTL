@@ -23,6 +23,8 @@
 #include <limits.h>
 // openFTLtoml()
 #include "config/toml_helper.h"
+// escape_json()
+#include "webserver/http-common.h"
 struct env_item
 {
 	bool used;
@@ -172,6 +174,25 @@ void freeEnvVars(void)
 		free(env_list);
 		env_list = next;
 	}
+}
+
+/**
+ * @brief Marks an environment item as invalid and logs a warning message.
+ *
+ * @param envvar The value of the environment variable.
+ * @param conf_item A pointer to the configuration item structure.
+ * @param item A pointer to the environment item structure to be marked as invalid.
+ */
+static void invalid_item(const char *envvar, struct conf_item *conf_item, struct env_item *item)
+{
+	item->error = "not an allowed option";
+	item->allowed = conf_item->h;
+	item->valid = false;
+
+	char *escaped_value = escape_json(envvar);
+	log_warn("ENV %s = \"%s\" is %s, allowed options are: %s",
+	         conf_item->e, escaped_value, item->error, item->allowed);
+	free(escaped_value);
 }
 
 bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, struct config *newconf, cJSON *forced_vars, bool *reset)
@@ -386,11 +407,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -405,11 +422,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -424,11 +437,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -443,11 +452,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -462,11 +467,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -481,11 +482,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -500,11 +497,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -519,11 +512,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_item(envvar, conf_item, item);
 			}
 			break;
 		}
