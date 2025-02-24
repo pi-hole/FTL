@@ -1622,8 +1622,15 @@
   [[ ${lines[0]} == "  nice = -11 ### CHANGED (env), default = -10" ]]
 }
 
+@test "Capitalized Environmental variable is used and favored over config file" {
+  # The config file has 90 but we set FTLCONF_MISC_CHECK_SHMEM="91"
+  run bash -c 'grep "shmem = 91" /etc/pihole/pihole.toml'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "    shmem = 91 ### CHANGED (env), default = 90" ]]
+}
+
 @test "Correct number of environmental variables is logged" {
-  run bash -c 'grep -q "3 FTLCONF environment variables found (1 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "4 FTLCONF environment variables found (2 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }

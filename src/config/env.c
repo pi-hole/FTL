@@ -147,11 +147,13 @@ void printFTLenv(void)
 
 static struct env_item *__attribute__((pure)) getFTLenv(const char *key)
 {
+	// "Normalize" the environment variable to conventional names by using a case insensitive comparison,
+	// See: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		// Check if this is the requested key
-		if(strcmp(item->key, key) == 0)
+		if(strcasecmp(item->key, key) == 0)
 			return item;
 	}
 
