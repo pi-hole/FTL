@@ -307,13 +307,13 @@
     edns = "TEXT"
 
   [dns.specialDomains]
-    # Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of
+    # Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of
     # use-application-dns.net to disable Firefox automatic DNS-over-HTTP? This is
     # following the recommendation on
     # https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https
     mozillaCanary = true
 
-    # Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of mask.icloud.com
+    # Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of mask.icloud.com
     # and mask-h2.icloud.com to disable Apple's iCloud Private Relay to prevent Apple
     # devices from bypassing Pi-hole? This is following the recommendation on
     # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
