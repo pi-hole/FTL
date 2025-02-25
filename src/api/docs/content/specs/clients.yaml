@@ -53,7 +53,6 @@ components:
               schema:
                 allOf:
                   - $ref: 'clients.yaml#/components/schemas/clients/put'
-                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '201':
             description: Created item
@@ -170,7 +169,6 @@ components:
               schema:
                 allOf:
                   - $ref: 'clients.yaml#/components/schemas/clients/post'
-                  - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '201':
             description: Created item
