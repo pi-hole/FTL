@@ -250,7 +250,7 @@ components:
                 time: 19
               list_id: NULL
               upstream: "localhost#5353"
-              dbid: 112421354
+              id: 112421354
               ede:
                 code: 0
                 text: null
@@ -268,7 +268,7 @@ components:
                 time: 12.3
               list_id: NULL
               upstream: "localhost#5353"
-              dbid: 112421355
+              id: 112421355
               ede:
                 code: 0
                 text: null
