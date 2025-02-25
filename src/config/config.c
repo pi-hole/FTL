@@ -1161,6 +1161,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
 	conf->webserver.api.maxHistory.t = CONF_UINT;
+	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
 
