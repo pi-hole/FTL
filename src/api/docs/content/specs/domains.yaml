@@ -34,6 +34,16 @@ components:
           - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
           - `/api/domains/regex` (allowed and denied regex domains)
           - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
+        parameters:
+          - allOf:
+            - $ref: '#/components/parameters/type'
+            - required: false
+          - allOf:
+            - $ref: '#/components/parameters/kind'
+            - required: false
+          - allOf:
+            - $ref: '#/components/parameters/domain'
+            - required: false
         responses:
           '200':
             description: OK
