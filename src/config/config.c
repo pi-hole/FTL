@@ -1010,6 +1010,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.threads.k = "webserver.threads";
 	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n The default value of 0 means that the number of threads is automatically determined by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on 8 cores). Any other value specifies the number of threads explicitly. A hard-coded maximum of 64 threads is enforced for this option.\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.";
 	conf->webserver.threads.t = CONF_UINT;
+	conf->webserver.threads.f = FLAG_RESTART_FTL;
 	conf->webserver.threads.d.ui = 0;
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
