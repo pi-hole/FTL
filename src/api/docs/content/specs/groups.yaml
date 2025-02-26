@@ -54,8 +54,8 @@ components:
               schema:
                 $ref: 'groups.yaml#/components/schemas/groups/put'
         responses:
-          '201':
-            description: Created item
+          '200':
+            description: Created or Updated Item
             content:
               application/json:
                 schema:
