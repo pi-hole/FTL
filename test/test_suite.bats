@@ -756,7 +756,7 @@
 @test "No ERROR messages in FTL.log (besides known/intended error)" {
   run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap files.pcap: not a valid file path)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -1630,24 +1630,40 @@
 }
 
 @test "Correct number of environmental variables is logged" {
-  run bash -c 'grep -q "4 FTLCONF environment variables found (2 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  grep "FTLCONF environment variables" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "5 FTLCONF environment variables found (2 used, 2 invalid, 1 ignored)" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
 @test "Correct environmental variable is logged" {
+  grep "FTLCONF_misc_nice" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
-@test "Invalid environmental variable is logged" {
-  run bash -c 'grep -q "FTLCONF_debug_api is not a boolean" /var/log/pihole/FTL.log'
+@test "Invalid environmental variable is logged (type mismatch)" {
+  grep "FTLCONF_debug_api" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "FTLCONF_debug_api is not a boolean, using default instead" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Invalid environmental variable is logged (validation failed)" {
+  grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
 @test "Unknown environmental variable is logged, a useful alternative is suggested" {
+  grep "FTLCONF_dns_upstrrr" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"WARNING: [?] FTLCONF_dns_upstrrr is unknown, did you mean any of these?" ]]
