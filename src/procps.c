@@ -264,3 +264,91 @@ bool parse_proc_meminfo(struct proc_meminfo *mem)
 	// Return success
 	return true;
 }
+
+
+/**
+ * @brief Parses the /proc/stat file to extract CPU statistics.
+ *
+ * This function reads the /proc/stat file to gather CPU usage statistics,
+ * including user, system, idle, iowait, irq, softirq, steal, guest, and guest_nice times.
+ * It calculates the total CPU time and idle time, and stores these values in the provided
+ * pointers.
+ *
+ * @param total_sum Pointer to store the total CPU time.
+ * @param idle_sum Pointer to store the idle CPU time.
+ * @return true if the parsing is successful, false otherwise.
+ */
+bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum)
+{
+	FILE *statfile = fopen("/proc/stat", "r");
+	if(statfile == NULL)
+		return false;
+
+	unsigned long user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice;
+	/*
+	    user   (1) Time spent in user mode. (includes guest and guest_nice time)
+
+	    nice   (2) Time spent in user mode with low priority (nice).
+
+	    system (3) Time spent in system mode.
+
+	    idle   (4) Time spent in the idle task.  This value should be USER_HZ  times
+	           the second entry in the /proc/uptime pseudo-file.
+
+	    iowait (since Linux 2.5.41)
+	           (5) Time waiting for I/O to complete.
+
+	    irq (since Linux 2.6.0-test4)
+	           (6) Time servicing interrupts.
+
+	    softirq (since Linux 2.6.0-test4)
+	           (7) Time servicing softirqs.
+
+	    steal (since Linux 2.6.11)
+	           (8)  Stolen  time, which is the time spent in other operating systems
+	           when running in a virtualized environment
+
+	    guest (since Linux 2.6.24)
+	           (9) Time spent running a virtual  CPU  for  guest  operating  systems
+	           under the control of the Linux kernel.
+
+	    guest_nice (since Linux 2.6.33)
+	           (10)  Time spent running a niced guest (virtual CPU for guest operat-
+	           ing systems under the control of the Linux kernel).
+	*/
+
+	// Read the file until we find the first line starting with "cpu "
+	char line[256];
+	while(fgets(line, sizeof(line), statfile))
+	{
+		if(strncmp(line, "cpu ", 4) == 0)
+		{
+			sscanf(line, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+			       &user, &nice, &system, &idle,
+			       &iowait, &irq, &softirq, &steal,
+			       &guest, &guest_nice);
+			break;
+		}
+	}
+
+	if (feof(statfile)) {
+		log_warn("No CPU line found in /proc/stat");
+		return false;
+	}
+
+	fclose(statfile);
+
+	// Guest time is already accounted in usertime
+	user -= guest;
+	nice -= guest_nice;
+
+	// Fields existing on kernels >= 2.6
+	// (and RHEL's patched kernel 2.4...)
+	const unsigned long long int sys_all = system + irq + softirq;
+	const unsigned long long int virtual = guest + guest_nice;
+	const unsigned long long int busy_sum = user + nice + sys_all + steal + virtual;
+	*idle_sum = idle + iowait;
+	*total_sum = busy_sum + *idle_sum;
+
+	return true;
+}

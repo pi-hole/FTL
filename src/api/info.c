@@ -32,7 +32,7 @@
 #include "datastructure.h"
 // uname()
 #include <sys/utsname.h>
-// get_cpu_percentage()
+// get_ftl_cpu_percentage()
 #include "daemon.h"
 // getProcessMemory()
 #include "procps.h"
@@ -220,6 +220,8 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	cJSON *cpu = JSON_NEW_OBJECT();
 	// Number of available processors
 	JSON_ADD_NUMBER_TO_OBJECT(cpu, "nprocs", nprocs);
+	// Averaged total CPU usage in percent
+	JSON_ADD_NUMBER_TO_OBJECT(cpu, "%cpu", get_total_cpu_percentage());
 
 	// 1, 5, and 15 minute load averages (we need to convert them)
 	cJSON *raw = JSON_NEW_ARRAY();
@@ -599,7 +601,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	parse_proc_meminfo(&mem);
 	getProcessMemory(&pmem, mem.total);
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
-	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_ftl_cpu_percentage());
 
 	JSON_ADD_BOOL_TO_OBJECT(ftl, "allow_destructive", config.webserver.api.allow_destructive.v.b);
 

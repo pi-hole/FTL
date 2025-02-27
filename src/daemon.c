@@ -39,6 +39,8 @@
 #include <locale.h>
 // freeEnvVars()
 #include "config/env.h"
+// parse_proc_stat()
+#include "procps.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -436,8 +438,8 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
-static float last_clock = 0.0f;
-static float cpu_usage = 0.0f;
+static float ftl_cpu_usage = 0.0f;
+static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)
 {
 	// Get the current resource usage
@@ -454,18 +456,40 @@ void calc_cpu_usage(const unsigned int interval)
 	// kernel mode by this process since the total time since the last call
 	// to this function. 100% means one core is fully used, 200% means two
 	// cores are fully used, etc.
-	const float this_clock = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+	const float ftl_cpu_time = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
 
 	// Calculate the CPU usage in this interval
-	cpu_usage = 100.0 * (this_clock - last_clock) / interval;
+	static float last_ftl_cpu_time = 0.0f;
+	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval;
+
+	// The number of clock ticks per second
+	static long user_hz = 0;
+	if(user_hz == 0)
+		user_hz = sysconf(_SC_CLK_TCK);
+
+	// Calculate the total CPU usage
+	unsigned long total_total, total_idle;
+	parse_proc_stat(&total_total, &total_idle);
+
+	// Calculate the CPU usage since the last call to this function
+	static unsigned long last_total_total = 0, last_total_idle = 0;
+	if(total_total - last_total_total > 0)
+		total_cpu_usage = 100.0 * (total_total - last_total_total - (total_idle - last_total_idle)) / (total_total - last_total_total);
 
 	// Store the current time for the next call to this function
-	last_clock = this_clock;
+	last_ftl_cpu_time = ftl_cpu_time;
+	last_total_idle = total_idle;
+	last_total_total = total_total;
 }
 
-float __attribute__((pure)) get_cpu_percentage(void)
+float __attribute__((pure)) get_ftl_cpu_percentage(void)
 {
-	return cpu_usage;
+	return ftl_cpu_usage;
+}
+
+float __attribute__((pure)) get_total_cpu_percentage(void)
+{
+	return total_cpu_usage;
 }
 
 ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags)

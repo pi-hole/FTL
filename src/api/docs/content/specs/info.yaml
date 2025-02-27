@@ -461,6 +461,10 @@ components:
                   type: integer
                   description: Number of available processors
                   example: 8
+                "%cpu":
+                  type: number
+                  description: Total CPU usage in percent
+                  example: 0.0
                 load:
                   type: object
                   description: 1, 5, and 15 minute load averages
