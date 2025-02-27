@@ -462,6 +462,9 @@ void calc_cpu_usage(const unsigned int interval)
 	static float last_ftl_cpu_time = 0.0f;
 	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval;
 
+	// Store the current time for the next call to this function
+	last_ftl_cpu_time = ftl_cpu_time;
+
 	// The number of clock ticks per second
 	static long user_hz = 0;
 	if(user_hz == 0)
@@ -469,7 +472,11 @@ void calc_cpu_usage(const unsigned int interval)
 
 	// Calculate the total CPU usage
 	unsigned long total_total, total_idle;
-	parse_proc_stat(&total_total, &total_idle);
+	if(!parse_proc_stat(&total_total, &total_idle))
+	{
+		total_cpu_usage = -1.0f;
+		return;
+	}
 
 	// Calculate the CPU usage since the last call to this function
 	static unsigned long last_total_total = 0, last_total_idle = 0;
@@ -477,7 +484,6 @@ void calc_cpu_usage(const unsigned int interval)
 		total_cpu_usage = 100.0 * (total_total - last_total_total - (total_idle - last_total_idle)) / (total_total - last_total_total);
 
 	// Store the current time for the next call to this function
-	last_ftl_cpu_time = ftl_cpu_time;
 	last_total_idle = total_idle;
 	last_total_total = total_total;
 }

@@ -463,7 +463,7 @@ components:
                   example: 8
                 "%cpu":
                   type: number
-                  description: Total CPU usage in percent
+                  description: Total CPU usage in percent (may be higher than 100% on multi-core systems and negative if the value cannot be computed)
                   example: 0.0
                 load:
                   type: object
