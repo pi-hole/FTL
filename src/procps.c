@@ -323,16 +323,23 @@ bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum)
 	{
 		if(strncmp(line, "cpu ", 4) == 0)
 		{
-			sscanf(line, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+			if(sscanf(line, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
 			       &user, &nice, &system, &idle,
 			       &iowait, &irq, &softirq, &steal,
-			       &guest, &guest_nice);
+			       &guest, &guest_nice) != 10)
+			{
+				log_debug(DEBUG_ANY, "Failed to parse CPU line in /proc/stat");
+				fclose(statfile);
+				return false;
+			}
+
 			break;
 		}
 	}
 
 	if (feof(statfile)) {
 		log_warn("No CPU line found in /proc/stat");
+		fclose(statfile);
 		return false;
 	}
 
