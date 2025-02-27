@@ -79,8 +79,8 @@ components:
                   - $ref: 'domains.yaml#/components/schemas/domains/put'
                   - $ref: 'common.yaml#/components/schemas/took'
         responses:
-          '201':
-            description: Created domain
+          '200':
+            description: Created or Updated domain
             content:
               application/json:
                 schema:
