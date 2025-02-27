@@ -185,7 +185,7 @@ static char * __attribute__((malloc)) balloon_password(const char *password,
 {
 	// Parameter check
 	if(password == NULL || salt == NULL)
-		return NULL;
+		return strdup("");
 
 	struct timespec start, end;
 	// Record starting time
@@ -370,7 +370,7 @@ char * __attribute__((malloc)) create_password(const char *password)
 	// genrandom() returns cryptographically secure random data
 	uint8_t salt[SALT_LEN] = { 0 };
 	if(!get_secure_randomness(salt, sizeof(salt)))
-		return NULL;
+		return strdup("");
 
 	// Generate balloon PHC-encoded password hash
 	return balloon_password(password, salt, true);
