@@ -15,12 +15,12 @@
     "url": "https://github.com/pi-hole/FTL/issues"
   },
   "scripts": {
-    "openapi-enforcer": "node test/api/openapi-enforcer.js",
+    "validate-specs": "node test/api/validate-specs.mjs",
     "validate-examples": "openapi-examples-validator src/api/docs/content/specs/main.yaml",
-    "test": "npm run openapi-enforcer && npm run validate-examples"
+    "test": "npm run validate-specs && npm run validate-examples"
   },
   "devDependencies": {
-    "openapi-enforcer": "^1.13.1",
+    "@seriousme/openapi-schema-validator": "^2.3.1",
     "openapi-examples-validator": "^4.2.1"
   }
 }
