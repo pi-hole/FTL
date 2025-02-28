@@ -22,13 +22,62 @@
 # error "mbedTLS version 3.5.0 or later is required"
 #endif
 
-
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
 
+static mbedtls_entropy_context entropy = { 0 };
+static mbedtls_ctr_drbg_context ctr_drbg = { 0 };
+/**
+ * @brief Initializes the entropy and random number generator.
+ *
+ * This function initializes the entropy and random number generator using
+ * mbedtls library functions. It ensures that the initialization is performed
+ * only once. Calling this function multiple times has no adverse effect.
+ *
+ * @return true if the initialization is successful or has already been
+ * performed, false if there is an error during initialization.
+ */
+bool init_entropy(void)
+{
+	// Check if already initialized
+	static bool initialized = false;
+	if(initialized)
+		return true;
+
+	const char *pers = "pihole-FTL";
+	mbedtls_ctr_drbg_init(&ctr_drbg);
+	mbedtls_entropy_init(&entropy);
+
+	// Initialize random number generator
+	int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *) pers, strlen(pers));
+	if(ret != 0)
+	{
+		log_err("ERROR: mbedtls_ctr_drbg_seed returned %d\n", ret);
+		return false;
+	}
+
+
+	log_info("Random number generator initialized successfully.");
+	initialized = true;
+	return true;
+}
+
+/**
+ * @brief Frees the resources allocated for entropy and CTR-DRBG contexts.
+ *
+ * This function releases the memory and resources associated with the
+ * entropy and CTR-DRBG contexts, ensuring that they are properly cleaned up.
+ * It should be called when these contexts are no longer needed to avoid
+ * memory leaks.
+ */
+void destroy_entropy(void)
+{
+	mbedtls_entropy_free(&entropy);
+	mbedtls_ctr_drbg_free(&ctr_drbg);
+}
+
 // Generate private RSA key
 static int generate_private_key_rsa(mbedtls_pk_context *key,
-                                    mbedtls_ctr_drbg_context *ctr_drbg,
                                     unsigned char key_buffer[])
 {
 	int ret;
@@ -39,7 +88,7 @@ static int generate_private_key_rsa(mbedtls_pk_context *key,
 	}
 
 	if((ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(*key), mbedtls_ctr_drbg_random,
-	                              ctr_drbg, RSA_KEY_SIZE, 65537)) != 0)
+	                              &ctr_drbg, RSA_KEY_SIZE, 65537)) != 0)
 	{
 		printf("ERROR: mbedtls_rsa_gen_key returned %d\n", ret);
 		return ret;
@@ -56,7 +105,6 @@ static int generate_private_key_rsa(mbedtls_pk_context *key,
 
 // Generate private EC key
 static int generate_private_key_ec(mbedtls_pk_context *key,
-                                   mbedtls_ctr_drbg_context *ctr_drbg,
                                    unsigned char key_buffer[])
 {
 	int ret;
@@ -69,7 +117,7 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 
 	// Generate key SECP384R1 key (NIST P-384)
 	if((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP384R1, mbedtls_pk_ec(*key),
-	                              mbedtls_ctr_drbg_random, ctr_drbg)) != 0)
+	                              mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
 	{
 		printf("ERROR: mbedtls_ecp_gen_key returned %d\n", ret);
 		return ret;
@@ -150,9 +198,6 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	int ret;
 	mbedtls_x509write_cert ca_cert, server_cert;
 	mbedtls_pk_context ca_key, server_key;
-	mbedtls_entropy_context entropy;
-	mbedtls_ctr_drbg_context ctr_drbg;
-	const char *pers = "pihole-FTL";
 	unsigned char ca_buffer[BUFFER_SIZE];
 	unsigned char cert_buffer[BUFFER_SIZE];
 	unsigned char key_buffer[BUFFER_SIZE];
@@ -163,29 +208,19 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_init(&server_cert);
 	mbedtls_pk_init(&ca_key);
 	mbedtls_pk_init(&server_key);
-	mbedtls_ctr_drbg_init(&ctr_drbg);
-	mbedtls_entropy_init(&entropy);
-
-	// Initialize random number generator
-	printf("Initializing random number generator...\n");
-	if((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-	                                (const unsigned char *) pers, strlen(pers))) != 0)
-	{
-		printf("ERROR: mbedtls_ctr_drbg_seed returned %d\n", ret);
-		return false;
-	}
+	init_entropy();
 
 	// Generate key
 	if(rsa)
 	{
 		// Generate RSA key
 		printf("Generating RSA key...\n");
-		if((ret = generate_private_key_rsa(&ca_key, &ctr_drbg, ca_key_buffer)) != 0)
+		if((ret = generate_private_key_rsa(&ca_key, ca_key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key returned %d\n", ret);
 			return false;
 		}
-		if((ret = generate_private_key_rsa(&server_key, &ctr_drbg, key_buffer)) != 0)
+		if((ret = generate_private_key_rsa(&server_key, key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key returned %d\n", ret);
 			return false;
@@ -195,12 +230,12 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	{
 		// Generate EC key
 		printf("Generating EC key...\n");
-		if((ret = generate_private_key_ec(&ca_key, &ctr_drbg, ca_key_buffer)) != 0)
+		if((ret = generate_private_key_ec(&ca_key, ca_key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key_ec returned %d\n", ret);
 			return false;
 		}
-		if((ret = generate_private_key_ec(&server_key, &ctr_drbg, key_buffer)) != 0)
+		if((ret = generate_private_key_ec(&server_key, key_buffer)) != 0)
 		{
 			printf("ERROR: generate_private_key_ec returned %d\n", ret);
 			return false;
@@ -343,8 +378,6 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_free(&server_cert);
 	mbedtls_pk_free(&ca_key);
 	mbedtls_pk_free(&server_key);
-	mbedtls_ctr_drbg_free(&ctr_drbg);
-	mbedtls_entropy_free(&entropy);
 
 	return true;
 }
@@ -384,12 +417,9 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 
 	mbedtls_x509_crt crt;
 	mbedtls_pk_context key;
-	mbedtls_entropy_context entropy;
-	mbedtls_ctr_drbg_context ctr_drbg;
 	mbedtls_x509_crt_init(&crt);
 	mbedtls_pk_init(&key);
-	mbedtls_entropy_init(&entropy);
-	mbedtls_ctr_drbg_init(&ctr_drbg);
+	init_entropy();
 
 	log_info("Reading certificate from %s ...", certfile);
 
@@ -489,8 +519,6 @@ next_san:
 		// Free resources
 		mbedtls_x509_crt_free(&crt);
 		mbedtls_pk_free(&key);
-		mbedtls_entropy_free(&entropy);
-		mbedtls_ctr_drbg_free(&ctr_drbg);
 		return found ? CERT_DOMAIN_MATCH : CERT_DOMAIN_MISMATCH;
 	}
 
@@ -629,24 +657,26 @@ end:
 	// Free resources
 	mbedtls_x509_crt_free(&crt);
 	mbedtls_pk_free(&key);
-	mbedtls_entropy_free(&entropy);
-	mbedtls_ctr_drbg_free(&ctr_drbg);
 
 	return CERT_OKAY;
 }
 
 #else
 
-bool generate_certificate(const char* certfile, bool rsa, const char *domain)
-{
-	log_err("FTL was not compiled with mbedtls support");
-	return false;
-}
-
 enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
 {
 	log_err("FTL was not compiled with mbedtls support");
 	return CERT_FILE_NOT_FOUND;
+}
+
+bool init_entropy(void)
+{
+	log_warn("FTL was not compiled with mbedtls support, fallback random number generator not available");
+	return false;
+}
+
+void destroy_entropy(void)
+{
 }
 
 #endif

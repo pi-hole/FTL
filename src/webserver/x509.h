@@ -10,14 +10,22 @@
 #ifndef X509_H
 #define X509_H
 
+#ifndef HAVE_MBEDTLS
+#define HAVE_MBEDTLS
+#endif
+
 #ifdef HAVE_MBEDTLS
 # include <mbedtls/entropy.h>
 # include <mbedtls/ctr_drbg.h>
 #endif
 
 #include "enums.h"
+#include <stdbool.h>
 
 bool generate_certificate(const char* certfile, bool rsa, const char *domain);
 enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key);
+
+bool init_entropy(void);
+void destroy_entropy(void);
 
 #endif // X509_H

@@ -39,6 +39,8 @@
 #include <locale.h>
 // freeEnvVars()
 #include "config/env.h"
+// destroy_entropy()
+#include "webserver/x509.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -424,6 +426,9 @@ void cleanup(const int ret)
 	//            counters-> ... etc.
 	// This should be the last action when c
 	destroy_shmem();
+
+	// De-initialize the random number generator and entropy collector
+	destroy_entropy();
 
 	// Free environment variables
 	freeEnvVars();
