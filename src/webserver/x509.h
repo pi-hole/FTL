@@ -10,10 +10,6 @@
 #ifndef X509_H
 #define X509_H
 
-#ifndef HAVE_MBEDTLS
-#define HAVE_MBEDTLS
-#endif
-
 #ifdef HAVE_MBEDTLS
 # include <mbedtls/entropy.h>
 # include <mbedtls/ctr_drbg.h>

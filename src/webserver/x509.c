@@ -44,20 +44,42 @@ bool init_entropy(void)
 	if(initialized)
 		return true;
 
-	const char *pers = "pihole-FTL";
 	mbedtls_ctr_drbg_init(&ctr_drbg);
 	mbedtls_entropy_init(&entropy);
 
+	char machine_id[33] = { 0 };
+	// Get machine-id
+	// https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
+	FILE *f = fopen("/etc/machine-id", "r");
+	if(f == NULL)
+	{
+		log_warn("Could not open /etc/machine-id, using fallback");
+		strcpy(machine_id, "c7bde55876876987accc913546f3bcc");
+	}
+	else
+	{
+		if(fread(machine_id, 1, 32, f) != 32)
+		{
+			log_warn("Could not read /etc/machine-id, using fallback");
+			strcpy(machine_id, "c7bde55876876987accc913546f3bcc");
+		}
+		else
+		{
+			// Ensure null-termination
+			machine_id[32] = '\0';
+		}
+		fclose(f);
+	}
+
 	// Initialize random number generator
-	int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *) pers, strlen(pers));
+	int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (unsigned char*)machine_id, strlen(machine_id));
 	if(ret != 0)
 	{
-		log_err("ERROR: mbedtls_ctr_drbg_seed returned %d\n", ret);
+		log_err("mbedtls_ctr_drbg_seed returned %d\n", ret);
 		return false;
 	}
 
-
-	log_info("Random number generator initialized successfully.");
+	log_info("Random number generator initialized successfully");
 	initialized = true;
 	return true;
 }
