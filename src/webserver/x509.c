@@ -98,6 +98,29 @@ void destroy_entropy(void)
 	mbedtls_ctr_drbg_free(&ctr_drbg);
 }
 
+/**
+ * @brief Generates random bytes using the CTR_DRBG (Counter mode Deterministic
+ * Random Byte Generator).
+ *
+ * @param output Pointer to the buffer where the generated random bytes will be
+ * stored.
+ * @param len The number of random bytes to generate.
+ * @return The number of bytes generated on success, or -1 on failure.
+ */
+ssize_t drbg_random(unsigned char *output, size_t len)
+{
+	init_entropy();
+	const int ret = mbedtls_ctr_drbg_random(&ctr_drbg, output, len);
+	if(ret != 0)
+	{
+		log_err("mbedtls_ctr_drbg_random returned %d\n", ret);
+		return -1;
+	}
+
+	// Return number of bytes generated
+	return len;
+}
+
 // Generate private RSA key
 static int generate_private_key_rsa(mbedtls_pk_context *key,
                                     unsigned char key_buffer[])
@@ -699,6 +722,12 @@ bool init_entropy(void)
 
 void destroy_entropy(void)
 {
+}
+
+ssize_t drbg_random(unsigned char *output, size_t len)
+{
+	log_warn("FTL was not compiled with mbedtls support, fallback random number generator not available");
+	return -1;
 }
 
 #endif

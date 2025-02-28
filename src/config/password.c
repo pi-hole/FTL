@@ -93,8 +93,7 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 
 bool get_secure_randomness(uint8_t *buffer, const size_t length)
 {
-	ssize_t result;
-
+	ssize_t result = -1;
 	// First try to get randomness in non-blocking mode and print a warning when not enough entropy is available right now
 	do {
 		result = getrandom(buffer, length, GRND_NONBLOCK);
@@ -103,7 +102,7 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 	// If not enough entropy is available right now, try again in blocking mode
 	if (result < 0 && errno == EAGAIN)
 	{
-		log_warn("getrandom() failed in get_secure_randomness(): Not enough entropy available right now, retrying in blocking mode");
+		log_warn("Not enough entropy available right now for generating secure randomness, retrying in blocking mode");
 		// Sleep for 1 second to give the kernel some time to gather entropy
 		sleepms(1000);
 	}
@@ -111,24 +110,41 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 	{
 		// If the first try was successful, return the result
 		if (result >= 0)
-			return true;
+			goto random_success;
 	}
 	do {
 		result = getrandom(buffer, length, 0);
 	} while (result < 0 && errno == EINTR);
 
-	if (result < 0)
+	if(result < 0)
 	{
-		const int err = errno;
-		log_err("getrandom() failed in get_secure_randomness(): %s", strerror(errno));
-		errno = err;
+		log_warn("Getting secure randomness failed (%s), trying /dev/urandom", strerror(errno));
+		result = getrandom_fallback(buffer, length, 0);
+		if(result < 0 || result < (ssize_t)length)
+		{
+			log_warn("Fallback failed, trying internal DRBG generator");
+			result = drbg_random(buffer, length);
+			if(result < 0)
+			{
+				// Warning will be printed by drbg_random()
+				return false;
+			}
+
+			log_info("Internal DRBG generator successfully used");
+		}
+		else
+			log_info("Fallback to /dev/urandom successful");
+	}
+
+	// Check if enough bytes were generated
+	if(result != (ssize_t)length)
+	{
+		log_err("Randomness generator failed: not enough bytes generated (%zd != %zu)", result, length);
 		return false;
 	}
-	else if((size_t)result != length)
-	{
-		log_err("getrandom() failed in get_secure_randomness(): Not enough bytes generated (%zu != %zu)", (size_t)result, length);
-		return false;
-	}
+
+random_success:
+	log_debug(DEBUG_ANY, "Generated %zd bytes of secure randomness", result);
 	return true;
 }
 

@@ -435,6 +435,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
+	log_info("B");
 	if(!get_secure_randomness(raw_sid, sizeof(raw_sid)))
 		return;
 

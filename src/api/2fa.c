@@ -267,6 +267,7 @@ int generateTOTP(struct ftl_conn *api)
 {
 	// Generate random secret using the system's random number generator
 	uint8_t random_secret[RFC6238_SECRET_LEN];
+	log_info("A");
 	if(!get_secure_randomness(random_secret, sizeof(random_secret)))
 		return send_json_error(api, 500, "internal_error", "Failed to generate random secret", strerror(errno));
 
