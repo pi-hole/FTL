@@ -2586,7 +2586,21 @@ unsigned char *tcp_request(int confd, time_t now,
 	    {
 	      if (saved_question)
 		blockdata_free(saved_question);
+
+	      do_bit = 0;
 	      
+	      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
+		{ 
+		  unsigned short ede_flags;
+		  
+		  have_pseudoheader = 1;
+		  pheader += 4; /* udp_size, ext_rcode */
+		  GETSHORT(ede_flags, pheader);
+		  
+		  if (ede_flags & 0x8000)
+		    do_bit = 1; /* do bit */ 
+		}
+
 	      size = add_edns0_config(header, size, ((unsigned char *) header) + 65536, &peer_addr, now, &cacheable);
 	      saved_question = blockdata_alloc((char *)header, (size_t)size);
 	      saved_size = size;
@@ -2628,20 +2642,6 @@ unsigned char *tcp_request(int confd, time_t now,
 	      else
 		dst_addr_4.s_addr = 0;
 	      
-	      do_bit = 0;
-	      
-	      if (find_pseudoheader(header, (size_t)size, NULL, &pheader, NULL, NULL))
-		{ 
-		  unsigned short ede_flags;
-		  
-		  have_pseudoheader = 1;
-		  pheader += 4; /* udp_size, ext_rcode */
-		  GETSHORT(ede_flags, pheader);
-		  
-		  if (ede_flags & 0x8000)
-		    do_bit = 1; /* do bit */ 
-		}
-
 	      ad_reqd = do_bit;
 	      /* RFC 6840 5.7 */
 	      if (header->hb4 & HB4_AD)
