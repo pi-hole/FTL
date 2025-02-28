@@ -360,7 +360,7 @@ void tftp_request(struct listener *listen, time_t now)
     }
   
   p = packet + 2;
-  end = packet + 2 + len;
+  end = packet + len;
   
   if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
       !(filename = next(&p, end)) ||
@@ -743,15 +743,21 @@ static void free_transfer(struct tftp_transfer *transfer)
 static char *next(char **p, char *end)
 {
   char *ret = *p;
-  size_t len;
+  char *n = *p;
 
-  if (*(end-1) != 0 || 
-      *p == end ||
-      (len = strlen(ret)) == 0)
-    return NULL;
-
-  *p += len + 1;
-  return ret;
+  /* as long as end of packet not reached: */
+  while (n < end) {
+	if (*n) {
+		/* contiue while terminating NUL char not found yet */
+		++n;
+		continue;
+	}
+	/* NUL char found. Update start pointer and return start of string. */
+	*p = n + 1;
+	return ret;
+  }
+  /* end of packet reached, but NUL-terminated string not found: */
+  return NULL;
 }
 
 static void sanitise(char *buf)
