@@ -366,7 +366,7 @@ static bool check_wildcard_domain(const char *domain, char *san, const size_t sa
 	// Attention: The SAN is not NUL-terminated, so we need to
 	//            use the length field
 	const char *wild_domain = domain + domain_len - san_len + 1;
-	return strncasecmp(wild_domain, san + 1, san_len) == 0;
+	return strncasecmp(wild_domain, san + 1, san_len - 1) == 0;
 }
 
 // This function reads a X.509 certificate from a file and prints a

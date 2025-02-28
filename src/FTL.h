@@ -59,11 +59,11 @@
 #define MAXITER 1000
 
 // How many hours do we want to store in FTL's memory? [hours]
-#define MAXLOGAGE 24
+#define MAXLOGAGE 24u
 
 // Interval for overTime data [seconds]
 // Default: 600 (10 minutes)
-#define OVERTIME_INTERVAL 600
+#define OVERTIME_INTERVAL 600u
 
 // How many overTime slots do we need?
 // This is the maximum log age divided by the overtime interval

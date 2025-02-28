@@ -8,7 +8,7 @@ components:
           - Metrics
         operationId: "get_activity_metrics"
         description: |
-          Request data needed to generate the \"Query over last 24 hours\" graph. The sum of the values in the individual data arrays may be smaller than the total number of queries for the corresponding timestamp. The remaining queries are queries that do not fit into the shown categories (e.g. database busy, unknown status queries, etc.).
+          Request data needed to generate the total queries over time graph. The sum of the values in the individual data arrays may be smaller than the total number of queries for the corresponding timestamp. The remaining queries are queries that do not fit into the shown categories (e.g. database busy, unknown status queries, etc.).
         responses:
           '200':
             description: OK

@@ -554,7 +554,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
 		if(!domain_revServer)
 		{
-			fputs("# This DNS domain in purely local. FTL may answer queries from\n", pihole_conf);
+			fputs("# This DNS domain is purely local. FTL may answer queries from\n", pihole_conf);
 			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
 			fputs("# domain to any upstream servers\n", pihole_conf);
 			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
@@ -841,6 +841,12 @@ bool read_legacy_dhcp_static_config(void)
 		return false;
 	}
 
+	// Clear out config.dhcp.hosts array if it exists
+	if(config.dhcp.hosts.v.json != NULL)
+		cJSON_Delete(config.dhcp.hosts.v.json);
+	config.dhcp.hosts.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;
@@ -898,6 +904,12 @@ bool read_legacy_cnames_config(void)
 		return false;
 	}
 
+	// Clear out config.dns.cnameRecords array if it exists
+	if(config.dns.cnameRecords.v.json != NULL)
+		cJSON_Delete(config.dns.cnameRecords.v.json);
+	config.dns.cnameRecords.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;
@@ -955,6 +967,12 @@ bool read_legacy_custom_hosts_config(void)
 		return false;
 	}
 
+	// Clear out config.dns.hosts array if it exists
+	if(config.dns.hosts.v.json != NULL)
+		cJSON_Delete(config.dns.hosts.v.json);
+	config.dns.hosts.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;

@@ -13,6 +13,8 @@
 #include "config/config.h"
 #include "config/setupVars.h"
 #include "datastructure.h"
+// file_exists()
+#include "files.h"
 
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
@@ -37,10 +39,25 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		return;
 	}
 
+	// If the lease time is a raw value (no unit), we assume it is in hours
+	// as this was the standard convention in the past
+	char *new = strdup(setupVarsValue);
+	if(strcmp(key, "DHCP_LEASETIME") == 0 && strchr(new, 'h') == NULL)
+	{
+		int leaseTimeInHours = atoi(new);
+		free(new);
+		if((new = calloc(10, sizeof(char))) == NULL)
+		{
+			log_warn("get_conf_string_from_setupVars(%s) failed: Could not allocate memory for new", key);
+			return;
+		}
+		snprintf(new, 10, "%dh", leaseTimeInHours);
+	}
+
 	// Free previously allocated memory (if applicable)
 	if(conf_item->t == CONF_STRING_ALLOCATED)
 		free(conf_item->v.s);
-	conf_item->v.s = strdup(setupVarsValue);
+	conf_item->v.s = new;
 	conf_item->t = CONF_STRING_ALLOCATED;
 	conf_item->f |= FLAG_CONF_IMPORTED;
 
@@ -175,8 +192,13 @@ static void get_revServer_from_setupVars(void)
 	char *domain_str = read_setupVarsconf("REV_SERVER_DOMAIN");
 	if(domain_str != NULL)
 	{
-		domain = strdup(domain_str);
-		trim_whitespace(domain);
+		if(strlen(domain_str) == 0)
+			log_info("setupVars.conf:REV_SERVER_DOMAIN -> Empty string, ignoring");
+		else
+		{
+			domain = strdup(domain_str);
+			trim_whitespace(domain);
+		}
 	}
 	else
 		log_info("setupVars.conf:REV_SERVER_DOMAIN -> Not set");
@@ -185,16 +207,19 @@ static void get_revServer_from_setupVars(void)
 	clearSetupVarsArray();
 
 	// Only add the entry if all values are present and active
-	if(cidr != NULL && target != NULL && domain != NULL)
+	if(cidr != NULL && target != NULL)
 	{
 		// Build comma-separated string of all values
 		// 9 = 3 commas, "true/false", and null terminator
-		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 9, sizeof(char));
+		char *old = calloc(strlen(cidr) + strlen(target) + (domain != NULL ? strlen(domain) : 0) + 9, sizeof(char));
 		if(old != NULL)
 		{
 			// Add to new config
 			// active is always true as we only add active entries
-			sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			if(domain != NULL && strlen(domain) > 0)
+				sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			else
+				sprintf(old, "%s,%s,%s", active ? "true" : "false", cidr, target);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
 
 			// Parameter present in setupVars.conf
@@ -514,6 +539,14 @@ static void get_conf_listeningMode_from_setupVars(void)
 
 void importsetupVarsConf(void)
 {
+	// Check if the file exists. If not, there is nothing to do and we
+	// return early
+	if(!file_exists(config.files.setupVars.v.s))
+	{
+		log_info("setupVars.conf does not exist, skipping migration");
+		return;
+	}
+
 	log_info("Migrating config from %s", config.files.setupVars.v.s);
 
 	// Try to obtain password hash from setupVars.conf
@@ -549,7 +582,7 @@ void importsetupVarsConf(void)
 	// Try to get bool properties (the first two are intentionally set from the same key)
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expandHosts);
-	get_conf_bool_from_setupVars("DNS_bogusPriv", &config.dns.bogusPriv);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogusPriv);
 	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
 	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
 	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.hostRecord);
@@ -581,7 +614,7 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
-	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
 
 	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
 

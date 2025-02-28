@@ -756,7 +756,7 @@
 @test "No ERROR messages in FTL.log (besides known/intended error)" {
   run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -1179,7 +1179,7 @@
 @test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
   run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+  [[ ${lines[0]} == '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/"' ]]
 }
 
 @test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
@@ -1622,8 +1622,15 @@
   [[ ${lines[0]} == "  nice = -11 ### CHANGED (env), default = -10" ]]
 }
 
+@test "Capitalized Environmental variable is used and favored over config file" {
+  # The config file has 90 but we set FTLCONF_MISC_CHECK_SHMEM="91"
+  run bash -c 'grep "shmem = 91" /etc/pihole/pihole.toml'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "    shmem = 91 ### CHANGED (env), default = 90" ]]
+}
+
 @test "Correct number of environmental variables is logged" {
-  run bash -c 'grep -q "3 FTLCONF environment variables found (1 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "4 FTLCONF environment variables found (2 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
@@ -1635,7 +1642,7 @@
 }
 
 @test "Invalid environmental variable is logged" {
-  run bash -c 'grep -q "FTLCONF_debug_api is invalid" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_debug_api is not a boolean" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }

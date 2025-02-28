@@ -252,6 +252,22 @@ static void recycle(void)
 	}
 }
 
+/**
+ * @brief Computes the maximum overtime slot to send.
+ *
+ * This function calculates the maximum overtime slot based on the
+ * configuration settings for the webserver API's maximum history value.
+ * The calculation involves converting the maximum history value from
+ * hours to seconds, dividing by the overtime interval, and adjusting
+ * the result to get the correct slot number.
+ *
+ * @return The maximum overtime slot as an unsigned integer.
+ */
+unsigned int __attribute__((pure)) get_max_overtime_slot(void)
+{
+	return min(config.webserver.api.maxHistory.v.ui, MAXLOGAGE * 3600) / OVERTIME_INTERVAL;
+}
+
 // Subtract rate-limitation count from individual client counters
 // As long as client->rate_limit is still larger than the allowed
 // maximum count, the rate-limitation will just continue

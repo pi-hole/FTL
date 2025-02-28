@@ -45,14 +45,14 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 			return false;
 		}
 
-		// Check if it's in the form "IP HOSTNAME"
+		// Check if it's in the form "IP[ \t]HOSTNAME"
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
-		char *ip = strsep(&tmp, " ");
+		char *ip = strsep(&tmp, " \t");
 
 		if(!ip || !*ip)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not an IP address (\"%s\")",
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: found no first element (\"%s\")",
 			         key, i, item->valuestring);
 			free(str);
 			return false;
@@ -74,8 +74,23 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// hostnames to come after the IP address
 		unsigned int hosts = 0;
 		char *host = NULL;
-		while((host = strsep(&tmp, " ")) != NULL)
+		while((host = strsep(&tmp, " \t")) != NULL)
 		{
+			// Skip extra whitespace/tabs
+			while(isspace((unsigned char)*host))
+				host++;
+
+			// Skip this entry if it's empty after trimming
+			// the whitespaces/tabs at the end of the line
+			if(strlen(host) == 0)
+				break;
+
+			// If this hostname is actually the start of a comment
+			// (first letter is '#'), skip parsing the rest of the
+			// entire line
+			if(host[0] == '#')
+				break;
+
 			if(!valid_domain(host, strlen(host), false))
 			{
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",

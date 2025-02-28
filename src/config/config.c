@@ -430,7 +430,7 @@ static void initConfig(struct config *conf)
 	conf->dns.ignoreLocalhost.c = validate_stub; // Only type-based checking
 
 	conf->dns.showDNSSEC.k = "dns.showDNSSEC";
-	conf->dns.showDNSSEC.h = "Should FTL should analyze and show internally generated DNSSEC queries?";
+	conf->dns.showDNSSEC.h = "Should FTL analyze and show internally generated DNSSEC queries?";
 	conf->dns.showDNSSEC.t = CONF_BOOL;
 	conf->dns.showDNSSEC.d.b = true;
 	conf->dns.showDNSSEC.c = validate_stub; // Only type-based checking
@@ -502,7 +502,7 @@ static void initConfig(struct config *conf)
 	conf->dns.expandHosts.c = validate_stub; // Only type-based checking
 
 	conf->dns.domain.k = "dns.domain";
-	conf->dns.domain.h = "The DNS domain used by your Pi-hole to expand hosts and for DHCP.\n\n Only if DHCP is enabled below: For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
+	conf->dns.domain.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
 	conf->dns.domain.a = cJSON_CreateStringReference("<any valid domain>");
 	conf->dns.domain.t = CONF_STRING;
 	conf->dns.domain.f = FLAG_RESTART_FTL;
@@ -662,13 +662,13 @@ static void initConfig(struct config *conf)
 
 	// sub-struct dns.special_domains
 	conf->dns.specialDomains.mozillaCanary.k = "dns.specialDomains.mozillaCanary";
-	conf->dns.specialDomains.mozillaCanary.h = "Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of use-application-dns.net to disable Firefox automatic DNS-over-HTTP? This is following the recommendation on https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https";
+	conf->dns.specialDomains.mozillaCanary.h = "Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of use-application-dns.net to disable Firefox automatic DNS-over-HTTP? This is following the recommendation on https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https";
 	conf->dns.specialDomains.mozillaCanary.t = CONF_BOOL;
 	conf->dns.specialDomains.mozillaCanary.d.b = true;
 	conf->dns.specialDomains.mozillaCanary.c = validate_stub; // Only type-based checking
 
 	conf->dns.specialDomains.iCloudPrivateRelay.k = "dns.specialDomains.iCloudPrivateRelay";
-	conf->dns.specialDomains.iCloudPrivateRelay.h = "Should Pi-hole always replies with NXDOMAIN to A and AAAA queries of mask.icloud.com and mask-h2.icloud.com to disable Apple's iCloud Private Relay to prevent Apple devices from bypassing Pi-hole? This is following the recommendation on https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay";
+	conf->dns.specialDomains.iCloudPrivateRelay.h = "Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of mask.icloud.com and mask-h2.icloud.com to disable Apple's iCloud Private Relay to prevent Apple devices from bypassing Pi-hole? This is following the recommendation on https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay";
 	conf->dns.specialDomains.iCloudPrivateRelay.t = CONF_BOOL;
 	conf->dns.specialDomains.iCloudPrivateRelay.d.b = true;
 	conf->dns.specialDomains.iCloudPrivateRelay.c = validate_stub; // Only type-based checking
@@ -1010,8 +1010,22 @@ static void initConfig(struct config *conf)
 	conf->webserver.threads.k = "webserver.threads";
 	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n The default value of 0 means that the number of threads is automatically determined by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on 8 cores). Any other value specifies the number of threads explicitly. A hard-coded maximum of 64 threads is enforced for this option.\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.";
 	conf->webserver.threads.t = CONF_UINT;
+	conf->webserver.threads.f = FLAG_RESTART_FTL;
 	conf->webserver.threads.d.ui = 0;
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
+
+	conf->webserver.headers.k = "webserver.headers";
+	conf->webserver.headers.h = "Additional HTTP headers added to the web server responses.\n The headers are added to all responses, including those for the API.\n Note about the default additional headers:\n - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js styling some elements directly, and index.html containing some inlined Javascript code.\n - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the site attempting to do so.\n - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This header is usually enabled by default in browsers, and is not recommended as it can hurt the security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).\n - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the MIME types advertised in the  Content-Type headers should not be changed and be followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a way to say that the webmasters knew what they were doing. Site security testers usually expect this header to be set.\n - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for same-site origins, but cross-origin requests will send no referrer information.\n The latter four headers are set as expected by https://securityheaders.io";
+	conf->webserver.headers.a = cJSON_CreateStringReference("array of HTTP headers");
+	conf->webserver.headers.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.headers.f = FLAG_RESTART_FTL;
+	conf->webserver.headers.d.json = cJSON_CreateArray();
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'self' 'unsafe-inline';"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Frame-Options: DENY"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-XSS-Protection: 0"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));
+	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
+	conf->webserver.headers.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
@@ -1148,6 +1162,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.k = "webserver.api.maxHistory";
 	conf->webserver.api.maxHistory.h = "How much history should be imported from the database and returned by the API [seconds]? (max 24*60*60 = 86400)";
 	conf->webserver.api.maxHistory.t = CONF_UINT;
+	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
 	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
 
@@ -1562,8 +1577,25 @@ static void initConfig(struct config *conf)
 		// Verify all config options are defined above
 		if(!conf_item->p || !conf_item->k || !conf_item->h || !conf_item->e || conf_item->t == 0)
 		{
-			log_err("Config option %u/%u is not fully configured!", i, (unsigned int)CONFIG_ELEMENTS);
+			log_err("Config option %u/%u (%s) is not fully configured!",
+			        i, (unsigned int)CONFIG_ELEMENTS, conf_item->k ? conf_item->k : "N/A");
 			continue;
+		}
+
+		// Verify config options with non-trivial type have allowed values
+		if(conf_item->t != CONF_BOOL &&
+		   conf_item->t != CONF_UINT &&
+		   conf_item->t != CONF_UINT16 &&
+		   conf_item->t != CONF_DOUBLE &&
+		   conf_item->t != CONF_INT &&
+		   conf_item->t != CONF_ALL_DEBUG_BOOL)
+		{
+			if(conf_item->a == NULL)
+			{
+				// At this point we know that conf_item->k is not NULL
+				log_err("Config option %s (type %u) has no allowed values!", conf_item->k, conf_item->t);
+				continue;
+			}
 		}
 
 		// Verify we have no default string pointers to NULL

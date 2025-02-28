@@ -84,7 +84,7 @@ static void recompute_aliasclient(const int aliasclientID)
 		// Add counts of this client to the alias-client
 		aliasclient->count += client->count;
 		aliasclient->blockedcount += client->blockedcount;
-		for(int idx = 0; idx < OVERTIME_SLOTS; idx++)
+		for(unsigned int idx = 0; idx < OVERTIME_SLOTS; idx++)
 			aliasclient->overTime[idx] += client->overTime[idx];
 	}
 }

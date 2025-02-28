@@ -207,8 +207,9 @@ static struct serverports
 	bool is_secure :1;
 	bool is_redirect :1;
 	bool is_optional :1;
-	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
-	in_port_t port;
+	char addr[INET6_ADDRSTRLEN + 2]; // +2 for square brackets around IPv6 address
+	int port;
+	int protocol; // 1 = IPv4, 3 = IPv6
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
 /**
@@ -252,7 +253,22 @@ static void get_server_ports(void)
 		server_ports[i].is_secure = mgports[i].is_ssl;
 		server_ports[i].is_redirect = mgports[i].is_redirect;
 		server_ports[i].is_optional = mgports[i].is_optional;
+		// 1 = IPv4, 3 = IPv6 (can also be a combo-socker serving both),
+		// the documentation in civetweb.h is wrong
 		server_ports[i].protocol = mgports[i].protocol;
+
+		// Convert listening address to string
+		if(server_ports[i].protocol == 1)
+			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, server_ports[i].addr, INET_ADDRSTRLEN);
+		else if(server_ports[i].protocol == 3)
+		{
+			char tmp[INET6_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET6, &mgports[i].addr.sa6.sin6_addr, tmp, INET6_ADDRSTRLEN);
+			// Enclose IPv6 address in square brackets
+			snprintf(server_ports[i].addr, sizeof(server_ports[i].addr), "[%s]", tmp);
+		}
+		else
+			log_warn("Unsupported protocol for port %d", mgports[i].port);
 
 		// Store (first) HTTPS port if not already set
 		if(mgports[i].is_ssl && https_port == 0)
@@ -261,11 +277,13 @@ static void get_server_ports(void)
 		// Print port information
 		if(i == 0)
 			log_info("Web server ports:");
-		log_info("  - %d (HTTP%s, IPv%s%s%s)",
-		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
-		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
-		         mgports[i].is_redirect ? ", redirecting" : "",
-		         mgports[i].is_optional ? ", optional" : "");
+		log_info("  - %s:%d (HTTP%s, IPv%s%s%s)",
+		         server_ports[i].addr,
+		         server_ports[i].port,
+		         server_ports[i].is_secure ? "S" : "",
+		         server_ports[i].protocol == 1 ? "4" : "6",
+		         server_ports[i].is_redirect ? ", redirecting" : "",
+		         server_ports[i].is_optional ? ", optional" : "");
 
 	}
 }
@@ -275,21 +293,13 @@ in_port_t __attribute__((pure)) get_https_port(void)
 	return https_port;
 }
 
+#define MAX_URL_LEN 255
 unsigned short get_api_string(char **buf, const bool domain)
 {
 	// Initialize buffer to empty string
 	size_t len = 0;
 	// First byte has the length of the first string
 	**buf = 0;
-	const char *domain_str = domain ? config.webserver.domain.v.s : "localhost";
-	size_t api_str_size = strlen(domain_str) + 20;
-
-	// Check if the string is too long for the TXT record
-	if(api_str_size > 255)
-	{
-		log_err("API URL too long for TXT record!");
-		return 0;
-	}
 
 	// TXT record format:
 	//
@@ -311,20 +321,30 @@ unsigned short get_api_string(char **buf, const bool domain)
 			continue;
 
 		// Reallocate additional memory for every port
-		if((*buf = realloc(*buf, (i+1)*api_str_size)) == NULL)
+		const size_t bufsz = (i + 1) * MAX_URL_LEN;
+		if((*buf = realloc(*buf, bufsz)) == NULL)
 		{
 			log_err("Failed to reallocate API URL buffer!");
 			return 0;
 		}
-		const size_t bufsz = (i+1)*api_str_size;
+
+		// Use appropriate domain
+		const char *addr = domain ? config.webserver.domain.v.s : server_ports[i].addr;
+
+		// If we bound to the wildcard address, substitute it with
+		// 127.0.0.1
+		if(strcmp(addr, "0.0.0.0") == 0)
+			addr = "127.0.0.1";
+		else if(strcasecmp(addr, "[::]") == 0)
+			addr = "[::1]";
 
 		// Append API URL to buffer
 		// We add this at buffer + 1 because the first byte is the
 		// length of the string, which we don't know yet
-		char *api_str = calloc(api_str_size, sizeof(char));
-		const ssize_t this_len = snprintf(api_str, bufsz - len - 1, "http%s://%s:%d/api/",
+		char *api_str = calloc(MAX_URL_LEN, sizeof(char));
+		const ssize_t this_len = snprintf(api_str, MAX_URL_LEN, "http%s://%s:%d/api/",
 		                                  server_ports[i].is_secure ? "s" : "",
-		                                  domain_str, server_ports[i].port);
+		                                  addr, server_ports[i].port);
 		// Check if snprintf() failed
 		if(this_len < 0)
 		{
@@ -423,28 +443,31 @@ void http_init(void)
 		return;
 	}
 
+	// Construct additional headers
+	char *webheaders = strdup("");
+	cJSON *header;
+	cJSON_ArrayForEach(header, config.webserver.headers.v.json)
+	{
+		if(!cJSON_IsString(header))
+		{
+			log_err("Invalid header in webserver.headers!");
+			continue;
+		}
+
+		// Get header value
+		const char *h = cJSON_GetStringValue(header);
+
+		// Allocate memory for the new header
+		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (webheaders == NULL) {
+			log_err("Failed to allocate memory for webheaders!");
+			return;
+		}
+		strcat(webheaders, h);
+		strcat(webheaders, "\r\n");
+	}
+
 	// Prepare options for HTTP server (NULL-terminated list)
-	// Note about the additional headers:
-	// - "Content-Security-Policy: [...]"
-	//   'unsafe-inline' is both required by Chart.js styling some elements directly, and
-	//   index.html containing some inlined Javascript code.
-	// - "X-Frame-Options: DENY"
-	//   The page can not be displayed in a frame, regardless of the site attempting to do
-	//   so.
-	// - "X-Xss-Protection: 0"
-	//   Disables XSS filtering in browsers that support it. This header is usually
-	//   enabled by default in browsers, and is not recommended as it can hurt the
-	//   security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection)
-	// - "X-Content-Type-Options: nosniff"
-	//   Marker used by the server to indicate that the MIME types advertised in the
-	//   Content-Type headers should not be changed and be followed. This allows to
-	//   opt-out of MIME type sniffing, or, in other words, it is a way to say that the
-	//   webmasters knew what they were doing. Site security testers usually expect this
-	//   header to be set.
-	// - "Referrer-Policy: strict-origin-when-cross-origin"
-	//   A referrer will be sent for same-site origins, but cross-origin requests will
-	//   send no referrer information.
-	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
@@ -453,11 +476,7 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
-		                     "X-Frame-Options: DENY\r\n"
-		                     "X-XSS-Protection: 0\r\n"
-		                     "X-Content-Type-Options: nosniff\r\n"
-		                     "Referrer-Policy: strict-origin-when-cross-origin",
+		"additional_header", webheaders,
 		"index_files", "index.html,index.htm,index.lp",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
