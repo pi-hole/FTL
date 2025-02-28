@@ -122,10 +122,10 @@ void printFTLenv(void)
 			else
 			{
 				if(item->error != NULL)
-					log_err("  %s %s %s",
+					log_err("  %s %s %s, using default instead",
 						cli_cross(), item->key, item->error);
 				else
-					log_err("  %s %s is invalid",
+					log_err("  %s %s is invalid, using default instead",
 					        cli_cross(), item->key);
 
 				if(item->error_allocated)
@@ -612,6 +612,20 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			break;
 		}
 	}
+
+	// Validate enum value if it is valid and validation function is defined
+	char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(conf_item->c != NULL && !conf_item->c(&conf_item->v, conf_item->k, errbuf))
+	{
+		log_debug(DEBUG_CONFIG, "Config item validation failed for %s: %s", conf_item->k, errbuf);
+		item->error = strdup(errbuf);
+		item->error_allocated = true;
+		item->valid = false;
+		return false;
+	}
+
+
+	log_debug(DEBUG_CONFIG, "Env var %s passed validation successfully", conf_item->k);
 
 	return true;
 }
