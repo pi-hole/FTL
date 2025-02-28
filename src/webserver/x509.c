@@ -25,6 +25,22 @@
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
 
+static bool read_id_file(const char *filename, char *buffer, size_t buffer_size)
+{
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+		return false;
+
+	if(fread(buffer, 1, buffer_size, f) != buffer_size)
+	{
+		fclose(f);
+		return false;
+	}
+
+	fclose(f);
+	return true;
+}
+
 static mbedtls_entropy_context entropy = { 0 };
 static mbedtls_ctr_drbg_context ctr_drbg = { 0 };
 /**
@@ -47,28 +63,23 @@ bool init_entropy(void)
 	mbedtls_ctr_drbg_init(&ctr_drbg);
 	mbedtls_entropy_init(&entropy);
 
-	char machine_id[33] = { 0 };
-	// Get machine-id
+	// Get machine-id (this may fail in containers)
 	// https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
-	FILE *f = fopen("/etc/machine-id", "r");
-	if(f == NULL)
+	char machine_id[128] = { 0 };
+	read_id_file("/etc/machine-id", machine_id, sizeof(machine_id));
+
+	// The boot_id random ID that is regenerated on each boot. As such it
+	// can be used to identify the local machine’s current boot. It’s
+	// universally available on any recent Linux kernel. It’s a good and
+	// safe choice if you need to identify a specific boot on a specific
+	// booted kernel.
+	// Read /proc/sys/kernel/random/boot_id and append it to machine_id
+	// The UUID is in format 8-4-4-4-12 and, hence, 36 characters long
+	char boot_id[37] = { 0 };
+	if(read_id_file("/proc/sys/kernel/random/boot_id", boot_id, sizeof(boot_id)))
 	{
-		log_warn("Could not open /etc/machine-id, using fallback");
-		strcpy(machine_id, "c7bde55876876987accc913546f3bcc");
-	}
-	else
-	{
-		if(fread(machine_id, 1, 32, f) != 32)
-		{
-			log_warn("Could not read /etc/machine-id, using fallback");
-			strcpy(machine_id, "c7bde55876876987accc913546f3bcc");
-		}
-		else
-		{
-			// Ensure null-termination
-			machine_id[32] = '\0';
-		}
-		fclose(f);
+		boot_id[36] = '\0';
+		strncat(machine_id, boot_id, sizeof(machine_id) - strlen(machine_id) - 1);
 	}
 
 	// Initialize random number generator
@@ -79,7 +90,6 @@ bool init_entropy(void)
 		return false;
 	}
 
-	log_info("Random number generator initialized successfully");
 	initialized = true;
 	return true;
 }
