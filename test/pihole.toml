@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.2-18-g392eaa08)
+# Pi-hole configuration file (v6.0.3-12-gd154623c-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-02-22 18:05:05 UTC
+# Last updated on 2025-03-01 11:59:17 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -318,6 +318,11 @@
     # devices from bypassing Pi-hole? This is following the recommendation on
     # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
     iCloudPrivateRelay = true
+
+    # Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to
+    # prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers? This
+    # is based on recommendations at the end of RFC 9462, section 4.
+    designatedResolver = true
 
     [dns.reply.host]
       # Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the
@@ -1176,7 +1181,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 153 total entries out of which 96 entries are default
+# 154 total entries out of which 97 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
