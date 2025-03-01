@@ -360,7 +360,7 @@ void tftp_request(struct listener *listen, time_t now)
     }
   
   p = packet + 2;
-  end = packet + 2 + len;
+  end = packet + len;
   
   if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
       !(filename = next(&p, end)) ||
@@ -742,15 +742,16 @@ static void free_transfer(struct tftp_transfer *transfer)
 
 static char *next(char **p, char *end)
 {
-  char *ret = *p;
-  size_t len;
+  char *n, *ret = *p;
+  
+  /* Look for end of string, without running off the end of the packet. */
+  for (n = *p; n < end && *n != 0; n++);
 
-  if (*(end-1) != 0 || 
-      *p == end ||
-      (len = strlen(ret)) == 0)
+  /* ran off the end or zero length string - failed */
+  if (n == end || n == ret)
     return NULL;
-
-  *p += len + 1;
+  
+  *p = n + 1;
   return ret;
 }
 
