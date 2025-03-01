@@ -224,12 +224,12 @@ static in_port_t https_port = 0;
  * @note If no ports are configured, a warning is logged and the function returns.
  *
  * @param void This function does not take any parameters.
- * @return void This function does not return any value.
+ * @return bool Returns whether the server ports were successfully retrieved
  */
-static void get_server_ports(void)
+static bool get_server_ports(void)
 {
 	if(ctx == NULL)
-		return;
+		return false;
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
@@ -239,7 +239,7 @@ static void get_server_ports(void)
 	if(ports < 1)
 	{
 		log_warn("No web server ports configured!");
-		return;
+		return false;
 	}
 
 	// Loop over all ports
@@ -289,6 +289,8 @@ static void get_server_ports(void)
 		         server_ports[i].is_bound ? "OK" : "NOT bound");
 
 	}
+
+	return true;
 }
 
 in_port_t __attribute__((pure)) get_https_port(void)
@@ -564,16 +566,13 @@ void http_init(void)
 	init.configuration_options = options;
 
 	/* Start the server */
-	if((ctx = mg_start2(&init, &error)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
-
-	// Get server ports
-	get_server_ports();
 
 	// Register API handler
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
