@@ -94,6 +94,7 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 bool get_secure_randomness(uint8_t *buffer, const size_t length)
 {
 	ssize_t result = -1;
+	const char *generator = "getrandom";
 	// First try to get randomness in non-blocking mode and print a warning when not enough entropy is available right now
 	do {
 		result = getrandom(buffer, length, GRND_NONBLOCK);
@@ -118,11 +119,13 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 
 	if(result < 0)
 	{
-		log_warn("Getting secure randomness failed (%s), trying /dev/urandom", strerror(errno));
+		log_debug(DEBUG_API, "Getting secure randomness failed (%s), trying /dev/urandom", strerror(errno));
+		generator = "/dev/urandom";
 		result = getrandom_fallback(buffer, length, 0);
 		if(result < 0 || result < (ssize_t)length)
 		{
-			log_warn("Fallback failed, trying internal DRBG generator");
+			log_debug(DEBUG_API, "Fallback failed, trying internal DRBG generator");
+			generator = "internal DRBG";
 			result = drbg_random(buffer, length);
 			if(result < 0)
 			{
@@ -130,16 +133,16 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 				return false;
 			}
 
-			log_info("Internal DRBG generator successfully used");
+			log_debug(DEBUG_API, "Internal DRBG generator successfully used");
 		}
 		else
-			log_info("Fallback to /dev/urandom successful");
+			log_debug(DEBUG_API, "Fallback to /dev/urandom successful");
 	}
 
 	// Check if enough bytes were generated
 	if(result != (ssize_t)length)
 	{
-		log_err("Randomness generator failed: not enough bytes generated (%zd != %zu)", result, length);
+		log_err("Randomness generator (%s) failed: not enough bytes generated (%zd != %zu)", generator, result, length);
 		return false;
 	}
 
