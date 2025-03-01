@@ -296,9 +296,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 
 		// Check if the DHCP range is valid (start needs to be smaller than end)
-		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) > ntohl(conf->dhcp.end.v.in_addr.s_addr))
 		{
-			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			strncpy(errbuf, "DHCP range start address is larger than the end address", ERRBUF_SIZE);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
