@@ -29,6 +29,8 @@
 #include "database/query-table.h"
 // verify_FTL()
 #include "files.h"
+// init_entropy()
+#include "webserver/x509.h"
 
 char *username;
 bool startup = true;
@@ -61,6 +63,9 @@ int main (int argc, char *argv[])
 	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
+
+	// Initialize entropy and random number generator
+	init_entropy();
 
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)

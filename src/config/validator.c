@@ -270,6 +270,21 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 	return true;
 }
 
+// Validate a file path that needs to have both a slash at the beginning and at
+// the end
+bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if the path starts and ends with a slash
+	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: file path does not start and end with a slash (\"%s\")", key, val->s);
+		return false;
+	}
+
+	// Check if the path contains only valid characters
+	return validate_filepath(val, key, err);
+}
+
 // Validate file path (empty allowed)
 bool validate_filepath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
