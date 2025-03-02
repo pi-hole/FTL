@@ -8565,6 +8565,9 @@ static const struct {
      * (http://www.iana.org/assignments/media-types)
      * application types */
     {".bin", 4, "application/octet-stream"},
+    {".cer", 4, "application/pkix-cert"},
+    {".crl", 4, "application/pkix-crl"},
+    {".crt", 4, "application/pkix-cert"},
     {".deb", 4, "application/octet-stream"},
     {".dmg", 4, "application/octet-stream"},
     {".dll", 4, "application/octet-stream"},
