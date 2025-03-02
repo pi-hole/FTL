@@ -219,6 +219,16 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		return EXIT_FAILURE;
 	}
 
+	// Use temp_store = FILE to avoid memory exhaustion for a very large number of lists
+	// This pragma tells SQLite to store temporary tables and indices in a file instead of in memory
+	if(!checkOnly && sqlite3_exec(db, "PRAGMA temp_store = FILE;", NULL, NULL, NULL) != SQLITE_OK)
+	{
+		printf("%s  %s Unable to set temp_store to FILE in database file %s\n", over, cross, outfile);
+		fclose(fpin);
+		sqlite3_close(db);
+		return EXIT_FAILURE;
+	}
+
 	// Get size of input file
 	fseek(fpin, 0L, SEEK_END);
 	const size_t fsize = ftell(fpin);
