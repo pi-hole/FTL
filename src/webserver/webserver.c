@@ -207,6 +207,7 @@ static struct serverports
 	bool is_secure :1;
 	bool is_redirect :1;
 	bool is_optional :1;
+	bool is_bound :1;
 	char addr[INET6_ADDRSTRLEN + 2]; // +2 for square brackets around IPv6 address
 	int port;
 	int protocol; // 1 = IPv4, 3 = IPv6
@@ -253,6 +254,7 @@ static void get_server_ports(void)
 		server_ports[i].is_secure = mgports[i].is_ssl;
 		server_ports[i].is_redirect = mgports[i].is_redirect;
 		server_ports[i].is_optional = mgports[i].is_optional;
+		server_ports[i].is_bound = mgports[i].is_bound;
 		// 1 = IPv4, 3 = IPv6 (can also be a combo-socker serving both),
 		// the documentation in civetweb.h is wrong
 		server_ports[i].protocol = mgports[i].protocol;
@@ -277,13 +279,14 @@ static void get_server_ports(void)
 		// Print port information
 		if(i == 0)
 			log_info("Web server ports:");
-		log_info("  - %s:%d (HTTP%s, IPv%s%s%s)",
+		log_info("  - %s:%d (HTTP%s, IPv%s%s%s, %s)",
 		         server_ports[i].addr,
 		         server_ports[i].port,
 		         server_ports[i].is_secure ? "S" : "",
 		         server_ports[i].protocol == 1 ? "4" : "6",
 		         server_ports[i].is_redirect ? ", redirecting" : "",
-		         server_ports[i].is_optional ? ", optional" : "");
+		         server_ports[i].is_optional ? ", optional" : "",
+		         server_ports[i].is_bound ? "OK" : "NOT bound");
 
 	}
 }
