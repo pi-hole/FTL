@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.2-18-g392eaa08)
+# Pi-hole configuration file (v6.0.3-12-gd154623c-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-02-22 18:05:05 UTC
+# Last updated on 2025-03-02 19:01:39 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -751,6 +751,22 @@
     #     <valid subpath>, both slashes are needed!
     webhome = "/admin/"
 
+    # Prefix where the web interface is served
+    # This is useful when you are using a reverse proxy serving the web interface, e.g.,
+    # at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the
+    # prefix would be "/pihole". Note that the prefix has to be stripped away by the
+    # reverse proxy, e.g., for traefik:
+    # - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)
+    # - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole
+    # The prefix should start with a slash. If you don't use a prefix, leave this field
+    # empty. Setting this field to an incorrect value may result in the web interface not
+    # being accessible.
+    # Don't use this setting if you are not using a reverse proxy!
+    #
+    # Possible values are:
+    #     valid URL prefix or empty
+    prefix = ""
+
   [webserver.interface]
     # Should the web interface use the boxed layout?
     boxed = true
@@ -1176,7 +1192,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 153 total entries out of which 96 entries are default
+# 154 total entries out of which 97 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

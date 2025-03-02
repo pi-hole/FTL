@@ -254,6 +254,7 @@ struct config {
 		struct {
 			struct conf_item webroot;
 			struct conf_item webhome;
+			struct conf_item prefix;
 		} paths;
 		struct {
 			struct conf_item boxed;
