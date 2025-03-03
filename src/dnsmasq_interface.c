@@ -1433,6 +1433,33 @@ static bool special_domain(const queriesData *query, const char *domain)
 		return true;
 	}
 
+	// RFC 9462: Designated Resolver Domain
+	// The domain "_dns.resolver.arpa" is reserved for use by DNS resolvers
+	// that are designated by the network administrator to provide special
+	// services to the network, e.g., DoH, DoQ, or DoT.
+	//
+	// Example (Google's 8.8.8.8):
+	// ;; QUESTION SECTION:
+	// ;_dns.resolver.arpa.            IN      SVCB
+	//
+	// ;; ANSWER SECTION:
+	// _dns.resolver.arpa.     86400   IN      SVCB    1 dns.google. alpn="dot"
+	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
+	//
+	// RFC 9462, Section 4 says:
+	// 
+	// If the recursive resolver that receives this query has no Designated
+	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
+	// zone, to provide a consistent and accurate signal to clients that it
+	// does not have a Designated Resolver.
+	if(config.dns.specialDomains.designatedResolver.v.b &&
+	   strlen(domain) > 13 && strcasecmp(&domain[strlen(domain) - 13], "resolver.arpa") == 0)
+	{
+		blockingreason = "Designated Resolver domain";
+		force_next_DNS_reply = REPLY_NODATA;
+		return true;
+	}
+
 	return false;
 }
 

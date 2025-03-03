@@ -673,6 +673,12 @@ static void initConfig(struct config *conf)
 	conf->dns.specialDomains.iCloudPrivateRelay.d.b = true;
 	conf->dns.specialDomains.iCloudPrivateRelay.c = validate_stub; // Only type-based checking
 
+	conf->dns.specialDomains.designatedResolver.k = "dns.specialDomains.designatedResolver";
+	conf->dns.specialDomains.designatedResolver.h = "Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers? This is based on recommendations at the end of RFC 9462, section 4.";
+	conf->dns.specialDomains.designatedResolver.t = CONF_BOOL;
+	conf->dns.specialDomains.designatedResolver.d.b = true;
+	conf->dns.specialDomains.designatedResolver.c = validate_stub; // Only type-based checking
+
 	// sub-struct dns.reply_addr
 	conf->dns.reply.host.force4.k = "dns.reply.host.force4";
 	conf->dns.reply.host.force4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client. This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names: [ \"pi.hole\", \"<the device's hostname>\", \"pi.hole.<local domain>\", \"<the device's hostname>.<local domain>\" ]";
