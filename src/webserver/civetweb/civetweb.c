@@ -20599,7 +20599,7 @@ master_thread_run(struct mg_context *ctx)
 	unsigned int i;
 	unsigned int workerthreadcount;
 
-	if (!ctx) {
+	if (!ctx || !ctx->listening_socket_fds) {
 		return;
 	}
 
