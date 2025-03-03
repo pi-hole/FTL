@@ -703,10 +703,11 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 
 	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
-		// Load additional user scripts from /etc/dnsmasq.d if the
+		// Load additional user configs from /etc/dnsmasq.d if the
 		// directory exists (it may not, e.g., in a container)
-		fputs("# Load additional user scripts\n", pihole_conf);
-		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
+		// Load only files ending in .conf
+		fputs("# Load additional user configs\n", pihole_conf);
+		fputs("conf-dir=/etc/dnsmasq.d,*.conf\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 
