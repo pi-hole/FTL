@@ -288,7 +288,9 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 				p++;
 			}
 
-			// Add ^ and $ to the string
+			// Add ^ and $ to the string, but only add ^ if the
+			// string does not start with *. In the latter case, we
+			// only add $ to the string (and remove the *).
 			char *regex2 = calloc(strlen(regex) + 3, sizeof(char));
 			if(regex2 == NULL)
 			{
@@ -296,7 +298,16 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 				free(regex);
 				continue;
 			}
-			sprintf(regex2, "^%s$", regex);
+			if(regex[0] != '*')
+			{
+				// Add ^ and $ to the string
+				sprintf(regex2, "^%s$", regex);
+			}
+			else
+			{
+				// Skip the * and add $ to the string
+				sprintf(regex2, "%s$", regex + 1);
+			}
 
 			// Free memory
 			free(regex);
@@ -305,7 +316,7 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 			cJSON *item = cJSON_CreateString(regex2);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_info("setupVars.conf:%s -> Setting %s[%u] = %s\n",
+			log_info("setupVars.conf:%s -> Setting %s[%u] = %s",
 			         key, conf_item->k, i, item->valuestring);
 
 			// Free memory
