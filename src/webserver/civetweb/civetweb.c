@@ -244,6 +244,7 @@ static void DEBUG_TRACE_FUNC(const char *func,
 
 #else
 #include "log.h"
+#include <sys/resource.h>
 #define DEBUG_TRACE(fmt, ...)                                                  \
 	if(debug_flags[DEBUG_WEBSERVER]) {\
 		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
@@ -2890,6 +2891,9 @@ mg_set_thread_name(const char *name)
 	 */
 	(void)prctl(PR_SET_NAME, threadName, 0, 0, 0);
 #endif
+
+	// Pi-hole modification: Increase niceness of threads
+	setpriority(PRIO_PROCESS, gettid(), 5);
 }
 #else /* !defined(NO_THREAD_NAME) */
 static void
