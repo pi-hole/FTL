@@ -139,6 +139,19 @@ void generate_backtrace(void)
 #endif
 }
 
+/**
+ * @brief Terminates the program due to an error.
+ *
+ * This function sets the exit code to indicate failure and raises a SIGTERM
+ * signal to terminate the main process. It is intended to be called when a
+ * critical error occurs that requires the program to exit.
+ */
+static void terminate_error(void)
+{
+	exit_code = EXIT_FAILURE;
+	raise(SIGTERM);
+}
+
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *context)
 {
 	(void)context;
@@ -260,15 +273,27 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		log_info("Asking parent pihole-FTL (PID %i) to shut down", (int)mpid);
 		kill(mpid, SIGRTMIN+2);
 		log_info("FTL fork terminated!");
+
+		// Terminate fork indicating failure
+		exit(EXIT_FAILURE);
+	}
+	else if(gettid() != getpid())
+	{
+		// This is a thread, signal to the main process to shut down
+		log_info("Shutting down thread...");
+		terminate_error();
+
+		// Exit the thread here, it failed anyway
+		pthread_exit(NULL);
 	}
 	else
 	{
 		// This is the main process
 		cleanup(EXIT_FAILURE);
-	}
 
-	// Terminate process indicating failure
-	exit(EXIT_FAILURE);
+		// Terminate process indicating failure
+		exit(EXIT_FAILURE);
+	}
 }
 
 static void SIGRT_handler(int signum, siginfo_t *si, void *context)
@@ -301,8 +326,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 2)
 	{
 		// Terminate FTL indicating failure
-		exit_code = EXIT_FAILURE;
-		raise(SIGTERM);
+		terminate_error();
 	}
 	else if(rtsig == 3)
 	{
