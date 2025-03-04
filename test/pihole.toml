@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.2-18-g392eaa08)
+# Pi-hole configuration file (v6.0.3-14-gbb1ff28a-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-02-22 18:05:05 UTC
+# Last updated on 2025-03-03 11:05:52 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -669,13 +669,11 @@
   # Therefore, the value of this option is effectively the number of concurrent HTTP
   # connections that can be handled. Any other connections are queued until they can be
   # processed by a unoccupied thread.
-  # The default value of 0 means that the number of threads is automatically determined
-  # by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on
-  # 8 cores). Any other value specifies the number of threads explicitly. A hard-coded
-  # maximum of 64 threads is enforced for this option.
   # The total number of threads you see may be lower than the configured value as
   # threads are only created when needed due to incoming connections.
-  threads = 0
+  # The value 0 means the number of threads is 50 (as per default settings of CivetWeb)
+  # for backwards-compatible behavior.
+  threads = 50
 
   # Additional HTTP headers added to the web server responses.
   # The headers are added to all responses, including those for the API.
@@ -997,6 +995,10 @@
   addr2line = true
 
   # Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?
+  # Warning: This is an advanced setting and should only be used with care.
+  # Incorrectly formatted or config files specifying options which can only be defined
+  # once can result in conflicts with the automatic configuration of Pi-hole (see
+  # /etc/pihole/dnsmasq.conf) and may stop DNS resolution from working.
   etc_dnsmasq_d = true ### CHANGED, default = false
 
   # Additional lines to inject into the generated dnsmasq configuration.

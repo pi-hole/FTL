@@ -244,7 +244,7 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
-bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -296,9 +296,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 
 		// Check if the DHCP range is valid (start needs to be smaller than end)
-		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) > ntohl(conf->dhcp.end.v.in_addr.s_addr))
 		{
-			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			strncpy(errbuf, "DHCP range start address is larger than the end address", ERRBUF_SIZE);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
@@ -703,10 +703,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
-		// Load additional user scripts from /etc/dnsmasq.d if the
+		// Load additional user configs from /etc/dnsmasq.d if the
 		// directory exists (it may not, e.g., in a container)
-		fputs("# Load additional user scripts\n", pihole_conf);
-		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
+		// Load only files ending in .conf
+		fputs("# Load additional user configs\n", pihole_conf);
+		fputs("conf-dir=/etc/dnsmasq.d,*.conf\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 
