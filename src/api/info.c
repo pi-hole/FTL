@@ -762,7 +762,12 @@ int get_version_obj(struct ftl_conn *api, cJSON *version)
 	// Loop over KEY=VALUE parts in the versions file
 	while((read = getline(&line, &len, fp)) != -1)
 	{
-		if (parse_line(line, &key, &value))
+		// Skip empty lines
+		if(read <= 1)
+			continue;
+
+		// Parse lines and skip those without values
+		if (!parse_line(line, &key, &value) || strlen(value) == 0)
 			continue;
 
 		if(strcmp(key, "CORE_BRANCH") == 0)
