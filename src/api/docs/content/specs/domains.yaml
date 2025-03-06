@@ -4,9 +4,9 @@ components:
     type_kind_domain:
       summary: Modify domains and regular expressions
       parameters:
-        - $ref: 'domains.yaml#/components/parameters/type'
-        - $ref: 'domains.yaml#/components/parameters/kind'
-        - $ref: 'domains.yaml#/components/parameters/domain'
+        - $ref: '#/components/parameters/type'
+        - $ref: '#/components/parameters/kind'
+        - $ref: '#/components/parameters/domain'
       get:
         summary: Get domain
         tags:
@@ -34,6 +34,16 @@ components:
           - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
           - `/api/domains/regex` (allowed and denied regex domains)
           - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
+        parameters:
+          - allOf:
+            - $ref: '#/components/parameters/type'
+            - required: false
+          - allOf:
+            - $ref: '#/components/parameters/kind'
+            - required: false
+          - allOf:
+            - $ref: '#/components/parameters/domain'
+            - required: false
         responses:
           '200':
             description: OK
@@ -41,11 +51,11 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
+                    - $ref: '#/components/schemas/domains/get'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
-                    $ref: 'domains.yaml#/components/examples/domains'
+                    $ref: '#/components/examples/domains'
           '401':
             description: Unauthorized
             content:
@@ -76,7 +86,7 @@ components:
             'application/json':
               schema:
                 allOf:
-                  - $ref: 'domains.yaml#/components/schemas/domains/put'
+                  - $ref: '#/components/schemas/domains/put'
                   - $ref: 'common.yaml#/components/schemas/took'
         responses:
           '200':
@@ -85,12 +95,12 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
-                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
+                    - $ref: '#/components/schemas/domains/get' # identical to GET
+                    - $ref: '#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   domains:
-                    $ref: 'domains.yaml#/components/examples/domains'
+                    $ref: '#/components/examples/domains'
           '400':
             description: Bad request
             content:
@@ -101,15 +111,15 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   list_imprecise:
-                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
-                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
                   no_payload:
-                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
+                    $ref: '#/components/examples/errors/database_error/duplicate'
                   invalid_regex:
-                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
+                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -144,9 +154,9 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   list_imprecise:
-                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
-                    $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+                    $ref: '#/components/examples/errors/uri_error/item_missing'
           '401':
             description: Unauthorized
             content:
@@ -157,8 +167,8 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
     type_kind:
       parameters:
-        - $ref: 'domains.yaml#/components/parameters/type'
-        - $ref: 'domains.yaml#/components/parameters/kind'
+        - $ref: '#/components/parameters/type'
+        - $ref: '#/components/parameters/kind'
       post:
         summary: Add new domain
         tags:
@@ -179,7 +189,7 @@ components:
           content:
             application/json:
               schema:
-                $ref: 'domains.yaml#/components/schemas/domains/post'
+                $ref: '#/components/schemas/domains/post'
         responses:
           '201':
             description: Created domain
@@ -187,8 +197,8 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get' # identical to GET
-                    - $ref: 'domains.yaml#/components/schemas/lists_processed'
+                    - $ref: '#/components/schemas/domains/get' # identical to GET
+                    - $ref: '#/components/schemas/lists_processed'
                     - $ref: 'common.yaml#/components/schemas/took'
             headers:
               Location:
@@ -203,13 +213,13 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   list_imprecise:
-                    $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
+                    $ref: '#/components/examples/errors/uri_error/list_imprecise'
                   no_payload:
-                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
                   duplicate:
-                    $ref: 'domains.yaml#/components/examples/errors/database_error/duplicate'
+                    $ref: '#/components/examples/errors/database_error/duplicate'
                   invalid_regex:
-                    $ref: 'domains.yaml#/components/examples/errors/regex_error/invalid_regex'
+                    $ref: '#/components/examples/errors/regex_error/invalid_regex'
           '401':
             description: Unauthorized
             content:
@@ -273,7 +283,7 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   no_payload:
-                    $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
+                    $ref: '#/components/examples/errors/bad_request/no_payload'
           '401':
             description: Unauthorized
             content:
@@ -292,27 +302,27 @@ components:
             description: Array of domains
             items:
               allOf:
-                - $ref: 'domains.yaml#/components/schemas/domain_object'
-                - $ref: 'domains.yaml#/components/schemas/unicode'
-                - $ref: 'domains.yaml#/components/schemas/type'
-                - $ref: 'domains.yaml#/components/schemas/kind'
-                - $ref: 'domains.yaml#/components/schemas/comment'
-                - $ref: 'domains.yaml#/components/schemas/groups'
-                - $ref: 'domains.yaml#/components/schemas/enabled'
-                - $ref: 'domains.yaml#/components/schemas/readonly'
+                - $ref: '#/components/schemas/domain_object'
+                - $ref: '#/components/schemas/unicode'
+                - $ref: '#/components/schemas/type'
+                - $ref: '#/components/schemas/kind'
+                - $ref: '#/components/schemas/comment'
+                - $ref: '#/components/schemas/groups'
+                - $ref: '#/components/schemas/enabled'
+                - $ref: '#/components/schemas/readonly'
       put:
         allOf:
-          - $ref: 'domains.yaml#/components/schemas/type'
-          - $ref: 'domains.yaml#/components/schemas/kind'
-          - $ref: 'domains.yaml#/components/schemas/comment'
-          - $ref: 'domains.yaml#/components/schemas/groups'
-          - $ref: 'domains.yaml#/components/schemas/enabled'
+          - $ref: '#/components/schemas/type'
+          - $ref: '#/components/schemas/kind'
+          - $ref: '#/components/schemas/comment'
+          - $ref: '#/components/schemas/groups'
+          - $ref: '#/components/schemas/enabled'
       post:
         allOf:
-          - $ref: 'domains.yaml#/components/schemas/domain_maybe_array'
-          - $ref: 'domains.yaml#/components/schemas/comment'
-          - $ref: 'domains.yaml#/components/schemas/groups'
-          - $ref: 'domains.yaml#/components/schemas/enabled'
+          - $ref: '#/components/schemas/domain_maybe_array'
+          - $ref: '#/components/schemas/comment'
+          - $ref: '#/components/schemas/groups'
+          - $ref: '#/components/schemas/enabled'
     domain:
       description: Domain
       type: string
@@ -335,13 +345,13 @@ components:
       properties:
         domain:
           oneOf:
-            - $ref: 'domains.yaml#/components/schemas/domain'
-            - $ref: 'domains.yaml#/components/schemas/domain_array'
+            - $ref: '#/components/schemas/domain'
+            - $ref: '#/components/schemas/domain_array'
     domain_object:
       type: object
       properties:
         domain:
-          $ref: 'domains.yaml#/components/schemas/domain'
+          $ref: '#/components/schemas/domain'
     type:
       type: object
       properties:
