@@ -127,6 +127,20 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
 	const size_t uri_len = strlen(uri);
+
+	// Check if we are allowed to serve this directory by checking the
+	// configuration setting webserver.serve_all and the requested URI to
+	// start with something else than config.webserver.paths.webhome. If so,
+	// send error 404
+	if(!config.webserver.serve_all.v.b &&
+	   strncmp(uri, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
+	{
+		log_debug(DEBUG_API, "Not serving %s, returning 404", uri);
+		mg_send_http_error(conn, 404, "Not Found");
+		return 404;
+	}
+
+	// Get query string
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
