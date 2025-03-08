@@ -1027,6 +1027,12 @@ static void initConfig(struct config *conf)
 	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
 	conf->webserver.headers.c = validate_stub; // Only type-based checking
 
+	conf->webserver.serve_all.k = "webserver.serve_all";
+	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory? If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
+	conf->webserver.serve_all.t = CONF_BOOL;
+	conf->webserver.serve_all.d.b = false;
+	conf->webserver.serve_all.c = validate_stub;
+
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
