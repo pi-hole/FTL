@@ -475,6 +475,8 @@ void http_init(void)
 		"authentication_domain", config.webserver.domain.v.s,
 		"additional_header", webheaders,
 		"index_files", "index.html,index.htm,index.lp",
+		"enable_keep_alive", "yes",
+		"keep_alive_timeout_ms", "5000",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
