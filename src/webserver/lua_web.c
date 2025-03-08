@@ -87,7 +87,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!config.webserver.serve_all.v.b &&
 	   strncmp(req_info->local_uri_raw, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
 	{
-		log_debug(DEBUG_API, "Not serving %s, returning 404", req_info->local_uri_raw);
+		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", req_info->local_uri_raw);
 		mg_send_http_error(conn, 404, "Not Found");
 		return 404;
 	}
