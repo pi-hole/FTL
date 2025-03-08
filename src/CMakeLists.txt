@@ -276,6 +276,25 @@ add_custom_target(
         BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/version.c
         COMMENT "Generating version.c using gen_version.cmake")
 
+# Add link-time optimization (LTO)
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    # -flto=<NUM_CORES> means that we use the number of available cores for LTO
+    #
+    # -fuse-linker-plugin: Use the linker plugin for LTO. This generally
+    # improves the LTO performance
+    #
+    # -fno-fat-lto-objects: Do not generate fat LTO objects. This means the
+    # generated object files are smaller but linking without LTO is not possible
+    #
+    # -fwhole-program: Assume that the current compilation unit is the whole
+    # program. This allows the compiler to perform more aggressive optimizations
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto=auto -fuse-linker-plugin -fno-fat-lto-objects -fwhole-program")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto=auto -fuse-linker-plugin -fno-fat-lto-objects -fwhole-program")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -flto=auto -fuse-linker-plugin -fno-fat-lto-objects -fwhole-program")
+endif()
+
+# Build the FTL binary
+
 add_library(core OBJECT ${sources})
 target_compile_options(core PRIVATE ${EXTRAWARN})
 target_compile_definitions(core PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
