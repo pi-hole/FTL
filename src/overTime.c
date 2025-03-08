@@ -175,7 +175,8 @@ void moveOverTimeMemory(const time_t mintime)
 	          (unsigned long)oldestOverTimeIS, (unsigned long)oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
-	// function is called before GC is necessary.
+	// function is called before GC is necessary. Also return if there is
+	// nothing to move (moveOverTime == 0).
 	if(!(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS))
 		return;
 
