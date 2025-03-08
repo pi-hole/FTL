@@ -1778,6 +1778,37 @@
 }
 
 # This test should run before a password is set
+@test "API: Config properties return as expected" {
+  run bash -c 'curl -s 127.0.0.1/api/config/_properties | jq .config'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "{" ]]
+  [[ ${lines[1]} == "  \"read_only\": [" ]]
+  [[ ${lines[2]} == "    {" ]]
+  [[ ${lines[3]} == "      \"key\": \"misc.nice\"," ]]
+  [[ ${lines[4]} == "      \"reason\": \"env_var\"," ]]
+  [[ ${lines[5]} == "      \"description\": \"Set via environment variable\"" ]]
+  [[ ${lines[6]} == "    }," ]]
+  [[ ${lines[7]} == "    {" ]]
+  [[ ${lines[8]} == "      \"key\": \"misc.readOnly\"," ]]
+  [[ ${lines[9]} == "      \"reason\": \"read_only\"," ]]
+  [[ ${lines[10]} == "      \"description\": \"Variable can only be set in pihole.toml, not via API\"" ]]
+  [[ ${lines[11]} == "    }," ]]
+  [[ ${lines[12]} == "    {" ]]
+  [[ ${lines[13]} == "      \"key\": \"misc.check.shmem\"," ]]
+  [[ ${lines[14]} == "      \"reason\": \"env_var\"," ]]
+  [[ ${lines[15]} == "      \"description\": \"Set via environment variable\"" ]]
+  [[ ${lines[16]} == "    }," ]]
+  [[ ${lines[17]} == "    {" ]]
+  [[ ${lines[18]} == "      \"key\": \"debug.api\"," ]]
+  [[ ${lines[19]} == "      \"reason\": \"env_var\"," ]]
+  [[ ${lines[20]} == "      \"description\": \"Set via environment variable\"" ]]
+  [[ ${lines[21]} == "    }" ]]
+  [[ ${lines[22]} == "  ]" ]]
+  [[ ${lines[23]} == "}" ]]
+  [[ ${lines[24]} == "" ]]
+}
+
+# This test should run before a password it set
 @test "Lua server page is generating proper backtrace" {
   # Enable serving of Lua pages outside /admin
   run bash -c './pihole-FTL --config webserver.serve_all true'
