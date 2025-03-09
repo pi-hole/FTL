@@ -14,9 +14,9 @@ index fa908e54..66fcab01 100644
 --- a/src/webserver/civetweb/civetweb.c
 +++ b/src/webserver/civetweb/civetweb.c
 @@ -3339,6 +3339,7 @@ mg_get_server_ports(const struct mg_context *ctx,
- 		ports[cnt].is_ssl = ctx->listening_sockets[i].is_ssl;
  		ports[cnt].is_redirect = ctx->listening_sockets[i].ssl_redir;
  		ports[cnt].is_optional = ctx->listening_sockets[i].is_optional;
+ 		ports[cnt].is_bound = ctx->listening_sockets[i].sock != INVALID_SOCKET;
 +		memcpy(&ports[cnt].addr, &ctx->listening_sockets[i].lsa, sizeof(ports[cnt].addr));
  
  		if (ctx->listening_sockets[i].lsa.sa.sa_family == AF_INET) {
@@ -35,7 +35,7 @@ index eee958b4..6dcfa457 100644
  #define CIVETWEB_VERSION_MAJOR (1)
  #define CIVETWEB_VERSION_MINOR (17)
 @@ -721,6 +723,10 @@ struct mg_server_port {
- 	int _reserved2;
+ 	int is_bound;    /* bound: 0 = no, 1 = yes, relevant for optional ports */
  	int _reserved3;
  	int _reserved4;
 +   union {

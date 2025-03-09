@@ -296,7 +296,7 @@ int api_padd(struct ftl_conn *api)
 	parse_proc_meminfo(&mem);
 	getProcessMemory(&pmem, mem.total);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "%mem", pmem.VmRSS_percent);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "%cpu", get_cpu_percentage());
+	JSON_ADD_NUMBER_TO_OBJECT(json, "%cpu", get_ftl_cpu_percentage());
 	JSON_ADD_NUMBER_TO_OBJECT(json, "pid", getpid());
 
 	// info/sensors -> CPU temp sensor

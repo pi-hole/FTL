@@ -1013,6 +1013,29 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 	return cached_list;
 }
 
+static char permitted_list[32] = { 0 };
+const char * __attribute__ ((pure)) get_permitted_statuslist(void)
+{
+	if(permitted_list[0] != '\0')
+		return permitted_list;
+
+	// Build a list of permitted query statuses
+	unsigned int first = 0;
+	// Open parenthesis
+	permitted_list[0] = '(';
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(!is_blocked(status))
+			snprintf(permitted_list + strlen(permitted_list),
+			         sizeof(permitted_list) - strlen(permitted_list),
+			         "%s%d", first++ < 1 ? "" : ",", status);
+
+	// Close parenthesis
+	const size_t len = strlen(permitted_list);
+	permitted_list[len] = ')';
+	permitted_list[len + 1] = '\0';
+	return permitted_list;
+}
+
 unsigned int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;

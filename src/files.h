@@ -39,7 +39,7 @@ bool files_different(const char *pathA, const char *pathB, unsigned int from);
 bool sha256sum(const char *path, uint8_t checksum[SHA256_DIGEST_SIZE], const bool skip_end);
 enum verify_result verify_FTL(bool verbose);
 
-int parse_line(char *line, char **key, char **value);
+bool parse_line(char *line, char **key, char **value);
 
 char *get_hwmon_target(const char *path) __attribute__((malloc));
 

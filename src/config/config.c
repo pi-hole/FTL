@@ -1008,10 +1008,10 @@ static void initConfig(struct config *conf)
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.threads.k = "webserver.threads";
-	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n The default value of 0 means that the number of threads is automatically determined by the number of online CPU cores minus 1 (e.g., launching up to 8-1 = 7 threads on 8 cores). Any other value specifies the number of threads explicitly. A hard-coded maximum of 64 threads is enforced for this option.\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.";
+	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.\n The value 0 means the number of threads is 50 (as per default settings of CivetWeb) for backwards-compatible behavior.";
 	conf->webserver.threads.t = CONF_UINT;
 	conf->webserver.threads.f = FLAG_RESTART_FTL;
-	conf->webserver.threads.d.ui = 0;
+	conf->webserver.threads.d.ui = 50;
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
 	conf->webserver.headers.k = "webserver.headers";
@@ -1026,6 +1026,12 @@ static void initConfig(struct config *conf)
 	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));
 	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
 	conf->webserver.headers.c = validate_stub; // Only type-based checking
+
+	conf->webserver.serve_all.k = "webserver.serve_all";
+	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory? If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
+	conf->webserver.serve_all.t = CONF_BOOL;
+	conf->webserver.serve_all.d.b = false;
+	conf->webserver.serve_all.c = validate_stub;
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
@@ -1325,7 +1331,7 @@ static void initConfig(struct config *conf)
 	conf->misc.addr2line.c = validate_stub; // Only type-based checking
 
 	conf->misc.etc_dnsmasq_d.k = "misc.etc_dnsmasq_d";
-	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?";
+	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?\n Warning: This is an advanced setting and should only be used with care.\n Incorrectly formatted or config files specifying options which can only be defined once can result in conflicts with the automatic configuration of Pi-hole (see "DNSMASQ_PH_CONFIG") and may stop DNS resolution from working.";
 	conf->misc.etc_dnsmasq_d.t = CONF_BOOL;
 	conf->misc.etc_dnsmasq_d.f = FLAG_RESTART_FTL;
 	conf->misc.etc_dnsmasq_d.d.b = false;
@@ -1748,7 +1754,8 @@ bool migrate_config_v6(void)
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);
-	write_dnsmasq_config(&config, false, NULL);
+	char errbuf[ERRBUF_SIZE] = { 0 };
+	write_dnsmasq_config(&config, false, errbuf);
 	write_custom_list();
 
 	return true;
@@ -1776,7 +1783,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			if(rewrite)
 			{
 				writeFTLtoml(true);
-				write_dnsmasq_config(conf, false, NULL);
+				char errbuf[ERRBUF_SIZE] = { 0 };
+				write_dnsmasq_config(conf, false, errbuf);
 				write_custom_list();
 			}
 			return true;
@@ -1808,7 +1816,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 
 	// Initialize the TOML config file
 	writeFTLtoml(true);
-	write_dnsmasq_config(conf, false, NULL);
+	char errbuf[ERRBUF_SIZE] = { 0 };
+	write_dnsmasq_config(conf, false, errbuf);
 	write_custom_list();
 
 	return false;

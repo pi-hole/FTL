@@ -197,6 +197,20 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
 	const size_t uri_len = strlen(uri);
+
+	// Check if we are allowed to serve this directory by checking the
+	// configuration setting webserver.serve_all and the requested URI to
+	// start with something else than config.webserver.paths.webhome. If so,
+	// send error 404
+	if(!config.webserver.serve_all.v.b &&
+	   strncmp(uri, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
+	{
+		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
+		mg_send_http_error(conn, 404, "Not Found");
+		return 404;
+	}
+
+	// Get query string
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
@@ -277,6 +291,7 @@ static struct serverports
 	bool is_secure :1;
 	bool is_redirect :1;
 	bool is_optional :1;
+	bool is_bound :1;
 	char addr[INET6_ADDRSTRLEN + 2]; // +2 for square brackets around IPv6 address
 	int port;
 	int protocol; // 1 = IPv4, 3 = IPv6
@@ -293,12 +308,12 @@ static in_port_t https_port = 0;
  * @note If no ports are configured, a warning is logged and the function returns.
  *
  * @param void This function does not take any parameters.
- * @return void This function does not return any value.
+ * @return bool Returns whether the server ports were successfully retrieved
  */
-static void get_server_ports(void)
+static bool get_server_ports(void)
 {
 	if(ctx == NULL)
-		return;
+		return false;
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
@@ -308,7 +323,7 @@ static void get_server_ports(void)
 	if(ports < 1)
 	{
 		log_warn("No web server ports configured!");
-		return;
+		return false;
 	}
 
 	// Loop over all ports
@@ -323,6 +338,7 @@ static void get_server_ports(void)
 		server_ports[i].is_secure = mgports[i].is_ssl;
 		server_ports[i].is_redirect = mgports[i].is_redirect;
 		server_ports[i].is_optional = mgports[i].is_optional;
+		server_ports[i].is_bound = mgports[i].is_bound;
 		// 1 = IPv4, 3 = IPv6 (can also be a combo-socker serving both),
 		// the documentation in civetweb.h is wrong
 		server_ports[i].protocol = mgports[i].protocol;
@@ -347,15 +363,18 @@ static void get_server_ports(void)
 		// Print port information
 		if(i == 0)
 			log_info("Web server ports:");
-		log_info("  - %s:%d (HTTP%s, IPv%s%s%s)",
+		log_info("  - %s:%d (HTTP%s, IPv%s%s%s, %s)",
 		         server_ports[i].addr,
 		         server_ports[i].port,
 		         server_ports[i].is_secure ? "S" : "",
 		         server_ports[i].protocol == 1 ? "4" : "6",
 		         server_ports[i].is_redirect ? ", redirecting" : "",
-		         server_ports[i].is_optional ? ", optional" : "");
+		         server_ports[i].is_optional ? ", optional" : "",
+		         server_ports[i].is_bound ? "OK" : "NOT bound");
 
 	}
+
+	return true;
 }
 
 in_port_t __attribute__((pure)) get_https_port(void)
@@ -468,27 +487,19 @@ void http_init(void)
 		return;
 	}
 
-	char num_threads[3] = { 0 };
-	// Calculate number of threads for the web server
-	// any positive number = number of threads (limited to at most MAX_WEBTHREADS)
-	// 0 = the number of online processors (at least 1, no more than 16)
-	// For the automatic option, we use the number of available (= online)
-	// cores which may be less than the total number of cores in the system,
-	// e.g., if a virtualization environment is used and fewer cores are
-	// assigned to the VM than are available on the host.
-	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
+	// Get maximum number of threads for webserver
+	char num_threads[16] = { 0 };
+	if(config.webserver.threads.v.ui == 0)
+	{
+		// For compatibility with older versions, set the number of
+		// threads to the default value (50) if it was 0. Before Pi-hole
+		// FTL v6.0.4, the number of threads was computed in dependence
+		// of the number of CPUs available. This is no longer the case.
+		config.webserver.threads.v.ui = 50;
+	}
 
-	if(config.webserver.threads.v.ui > 0)
-	{
-		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.ui, 1, MAX_WEBTHREADS);
-		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
-	else // Automatic thread calculation
-	{
-		const int nprocs = get_nprocs();
-		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
-		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
+	snprintf(num_threads, sizeof(num_threads), "%u", config.webserver.threads.v.ui);
+	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
@@ -551,6 +562,8 @@ void http_init(void)
 		"authentication_domain", config.webserver.domain.v.s,
 		"additional_header", webheaders,
 		"index_files", "index.html,index.htm,index.lp",
+		"enable_keep_alive", "yes",
+		"keep_alive_timeout_ms", "5000",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
@@ -642,7 +655,7 @@ void http_init(void)
 	init.configuration_options = options;
 
 	/* Start the server */
-	if((ctx = mg_start2(&init, &error)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);

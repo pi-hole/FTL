@@ -413,6 +413,8 @@ components:
                   type: array
                   items:
                     type: string
+                serve_all:
+                  type: boolean
                 session:
                   type: object
                   properties:
@@ -756,6 +758,7 @@ components:
               - "X-XSS-Protection: 0"
               - "X-Content-Type-Options: nosniff"
               - "Referrer-Policy: strict-origin-when-cross-origin"
+            serve_all: false
             session:
               timeout: 300
               restore: true

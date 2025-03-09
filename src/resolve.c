@@ -868,7 +868,7 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 // Resolve client host names
 static void resolveClients(const bool onlynew, const bool force_refreshing)
 {
-	const time_t now = time(NULL);
+	const double now = double_time();
 	// Lock counter access here, we use a copy in the following loop
 	lock_shm();
 	const unsigned int clientscount = counters->clients;
@@ -962,7 +962,14 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// 2. We should only refresh IPv4 client, but this client is IPv6
 		// 3. We should only refresh unknown hostnames, but leave
 		//    existing ones as they are
-		if(onlynew == false &&
+		//
+		// We do not skip here clients which are
+		// - still new,
+		// - IPv6, and
+		// - need to be resolved
+		const bool new_ipv6_needs_resolve = newflag && IPv6 && client->firstSeen + DELAY_V6_RESOLUTION <= now;
+
+		if(onlynew == false && !new_ipv6_needs_resolve &&
 		   (config.resolver.refreshNames.v.refresh_hostnames == REFRESH_NONE ||
 		   (config.resolver.refreshNames.v.refresh_hostnames == REFRESH_IPV4_ONLY && IPv6) ||
 		   (config.resolver.refreshNames.v.refresh_hostnames == REFRESH_UNKNOWN && oldnamepos != 0)))
