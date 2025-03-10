@@ -80,6 +80,18 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		return 0;
 	}
 
+	// Check if we are allowed to serve this directory by checking the
+	// configuration setting webserver.serve_all and the requested URI to
+	// start with something else than config.webserver.paths.webhome. If so,
+	// send error 404
+	if(!config.webserver.serve_all.v.b &&
+	   strncmp(req_info->local_uri_raw, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
+	{
+		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", req_info->local_uri_raw);
+		mg_send_http_error(conn, 404, "Not Found");
+		return 404;
+	}
+
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
 	api.conn = conn;

@@ -556,17 +556,17 @@ void rotate_files(const char *path, char **first_file)
 }
 
 // Credits: https://stackoverflow.com/a/55410469
-int parse_line(char *line, char **key, char **value)
+bool parse_line(char *line, char **key, char **value)
 {
 	char *ptr = strchr(line, '=');
 	if (ptr == NULL)
-		return -1;
+		return false;
 
 	*ptr++ = '\0';
 	*key = trim(line);
 	*value = trim(ptr);
 
-	return 0;
+	return true;
 }
 
 // Get symlink target

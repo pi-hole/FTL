@@ -219,6 +219,16 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 static int api_teleporter_POST(struct ftl_conn *api)
 {
+	// Check if this is an app session and reject the request if app sudo
+	// mode is disabled
+	if(api->session != NULL && api->session->app && !config.webserver.api.app_sudo.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
+	}
+
 	struct upload_data data;
 	memset(&data, 0, sizeof(struct upload_data));
 	const struct mg_request_info *req_info = mg_get_request_info(api->conn);

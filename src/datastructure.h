@@ -148,6 +148,7 @@ bool is_blocked(const enum query_status status) __attribute__ ((const));
 bool is_cached(const enum query_status status) __attribute__ ((const));
 const char *get_blocked_statuslist(void) __attribute__ ((pure));
 const char *get_cached_statuslist(void) __attribute__ ((pure));
+const char *get_permitted_statuslist(void) __attribute__ ((pure));
 unsigned int get_blocked_count(void) __attribute__ ((pure));
 unsigned int get_forwarded_count(void) __attribute__ ((pure));
 unsigned int get_cached_count(void) __attribute__ ((pure));
@@ -163,7 +164,7 @@ const char *getCNAMEDomainString(const queriesData *query);
 const char *getClientIPString(const queriesData *query);
 const char *getClientNameString(const queriesData *query);
 
-void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod);
+void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
 const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
 const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));

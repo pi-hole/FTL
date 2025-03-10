@@ -19,7 +19,7 @@ components:
 
           - Only show queries *from* a given timestamp on: Use parameter `from`
           - Only show queries *until* a given timestamp: Use parameter `until`
-          - Only show queries sent to a specific upstream destination (may also be `cache` or `blocklist`): Use parameter `upstream`
+          - Only show queries sent to a specific upstream destination (may also be `cache`, `blocklist`, or `permitted`): Use parameter `upstream`
           - Only show queries for specific domains: Use parameter `domain`
           - Only show queries for specific clients: Use parameter `client`
 
@@ -250,7 +250,7 @@ components:
                 time: 19
               list_id: NULL
               upstream: "localhost#5353"
-              dbid: 112421354
+              id: 112421354
               ede:
                 code: 0
                 text: null
@@ -268,7 +268,7 @@ components:
                 time: 12.3
               list_id: NULL
               upstream: "localhost#5353"
-              dbid: 112421355
+              id: 112421355
               ede:
                 code: 0
                 text: null

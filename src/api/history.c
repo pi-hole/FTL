@@ -102,7 +102,7 @@ int api_history_clients(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 		cJSON *clients = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
-		JSON_SEND_OBJECT_UNLOCK(json);
+		JSON_SEND_OBJECT(json);
 	}
 
 	// Get number of clients to return

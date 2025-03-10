@@ -244,6 +244,7 @@ static void DEBUG_TRACE_FUNC(const char *func,
 
 #else
 #include "log.h"
+#include <sys/resource.h>
 #define DEBUG_TRACE(fmt, ...)                                                  \
 	if(debug_flags[DEBUG_WEBSERVER]) {\
 		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
@@ -2890,6 +2891,9 @@ mg_set_thread_name(const char *name)
 	 */
 	(void)prctl(PR_SET_NAME, threadName, 0, 0, 0);
 #endif
+
+	// Pi-hole modification: Increase niceness of threads
+	setpriority(PRIO_PROCESS, gettid(), 5);
 }
 #else /* !defined(NO_THREAD_NAME) */
 static void
@@ -3339,6 +3343,7 @@ mg_get_server_ports(const struct mg_context *ctx,
 		ports[cnt].is_ssl = ctx->listening_sockets[i].is_ssl;
 		ports[cnt].is_redirect = ctx->listening_sockets[i].ssl_redir;
 		ports[cnt].is_optional = ctx->listening_sockets[i].is_optional;
+		ports[cnt].is_bound = ctx->listening_sockets[i].sock != INVALID_SOCKET;
 		memcpy(&ports[cnt].addr, &ctx->listening_sockets[i].lsa, sizeof(ports[cnt].addr));
 
 		if (ctx->listening_sockets[i].lsa.sa.sa_family == AF_INET) {
@@ -20598,7 +20603,7 @@ master_thread_run(struct mg_context *ctx)
 	unsigned int i;
 	unsigned int workerthreadcount;
 
-	if (!ctx) {
+	if (!ctx || !ctx->listening_socket_fds) {
 		return;
 	}
 
