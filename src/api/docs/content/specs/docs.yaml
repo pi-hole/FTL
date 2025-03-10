@@ -10,7 +10,7 @@ components:
         operationId: "get_docs"
         security: []
         description: |
-          This API hook returns the embedded API documentation rendered as HTML. Note that this endpoint is supposed to be access from web browsers only. The automatically generated `curl` example will *not* create a *full* (as in: self-consistent) clone of the documentation.
+          This API hook returns the embedded API documentation rendered as HTML. Note that this endpoint is supposed to be accessed from web browsers only. The automatically generated `curl` example will *not* create a *full* (as in: self-contained) clone of the documentation.
         responses:
           '200':
             description: OK
