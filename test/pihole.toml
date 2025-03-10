@@ -1199,7 +1199,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 154 total entries out of which 97 entries are default
+# 155 total entries out of which 98 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
