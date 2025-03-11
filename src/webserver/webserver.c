@@ -418,16 +418,19 @@ void http_init(void)
 
 	// Get maximum number of threads for webserver
 	char num_threads[16] = { 0 };
-	if(config.webserver.threads.v.ui == 0)
+	unsigned int threads = config.webserver.threads.v.ui;
+	if(threads == 0)
 	{
 		// For compatibility with older versions, set the number of
 		// threads to the default value (50) if it was 0. Before Pi-hole
 		// FTL v6.0.4, the number of threads was computed in dependence
 		// of the number of CPUs available. This is no longer the case.
-		config.webserver.threads.v.ui = 50;
+		threads = 50;
 	}
 
-	snprintf(num_threads, sizeof(num_threads), "%u", config.webserver.threads.v.ui);
+	snprintf(num_threads, sizeof(num_threads), "%u", threads);
+
+	// Ensure null termination for safety
 	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */

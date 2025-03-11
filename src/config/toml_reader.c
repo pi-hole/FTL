@@ -197,7 +197,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		{
 			log_debug(DEBUG_CONFIG, "%s CHANGED", new_conf_item->k);
 			if(new_conf_item->f & FLAG_RESTART_FTL && restart != NULL)
+			{
+				log_info("Restarting FTL due to change of %s", new_conf_item->k);
 				*restart = true;
+			}
 
 			// Check if this item changed the password, if so, we need to
 			// invalidate all currently active sessions
@@ -208,7 +211,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 
 	// Migrate config from old to new
 	if(migrate_config(toml, newconf) && restart != NULL)
+	{
+		log_info("Restarting FTL due to migration of configuration");
 		*restart = true;
+	}
 
 	// Report debug config if enabled
 	set_debug_flags(newconf);
