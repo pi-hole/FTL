@@ -319,6 +319,11 @@
     # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
     iCloudPrivateRelay = true
 
+    # Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to
+    # prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers? This
+    # is based on recommendations at the end of RFC 9462, section 4.
+    designatedResolver = true
+
     [dns.reply.host]
       # Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the
       # address of the interface a query arrived on and uses this address for replying to A
@@ -1183,7 +1188,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 154 total entries out of which 97 entries are default
+# 155 total entries out of which 98 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

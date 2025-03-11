@@ -162,6 +162,7 @@ struct config {
 		struct {
 			struct conf_item mozillaCanary;
 			struct conf_item iCloudPrivateRelay;
+			struct conf_item designatedResolver;
 		} specialDomains;
 		struct {
 			struct {
