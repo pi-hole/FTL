@@ -131,8 +131,7 @@ void *DB_thread(void *val)
 			break;
 
 		// Store queries in on-disk database
-		if(config.database.maxDBdays.v.ui > 0 &&
-		   now - lastDBsave >= (time_t)config.database.DBinterval.v.ui)
+		if(now - lastDBsave >= (time_t)config.database.DBinterval.v.ui)
 		{
 			// Update lastDBsave timer
 			lastDBsave = now - now%config.database.DBinterval.v.ui;

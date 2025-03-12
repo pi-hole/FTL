@@ -149,12 +149,9 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database (if database is used)
-	if(config.database.maxDBdays.v.ui > 0)
-	{
-		export_queries_to_disk(true);
-		log_info("Finished final database update");
-	}
+	// Save new queries to database
+	export_queries_to_disk(true);
+	log_info("Finished final database update");
 
 	cleanup(exit_code);
 
