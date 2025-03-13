@@ -261,6 +261,8 @@ components:
                       type: boolean
                     iCloudPrivateRelay:
                       type: boolean
+                    designatedResolver:
+                      type: boolean
                 reply:
                   type: object
                   properties:
@@ -689,6 +691,7 @@ components:
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
+              designatedResolver: true
             reply:
               host:
                 force4: false

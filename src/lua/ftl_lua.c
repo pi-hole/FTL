@@ -260,6 +260,35 @@ static int pihole_needLogin(lua_State *L) {
 static int pihole_api_url(lua_State *L) {
 	// Return API URL
 	lua_pushstring(L, get_api_uri());
+
+	return 1; // number of results
+}
+
+// pihole.format_path()
+static int pihole_format_path(lua_State *L) {
+	// Get current page (first argument to LUA function)
+	const char *page = luaL_checkstring(L, 1);
+
+	// Strip leading webhome from page (if it exists)
+	if (config.webserver.paths.webhome.v.s != NULL)
+	{
+		const size_t webhome_len = strlen(config.webserver.paths.webhome.v.s);
+		if (strncmp(page, config.webserver.paths.webhome.v.s, webhome_len) == 0)
+			page += webhome_len;
+	}
+
+	// Convert all / to -
+	for (char *p = (char *)page; *p != '\0'; p++)
+		if (*p == '/')
+			*p = '-';
+
+	// Substitute "index" for empty string (dashboard landing page)
+	if (page[0] == '\0')
+		page = "index";
+
+	// Return the formatted page string
+	lua_pushstring(L, page);
+
 	return 1; // number of results
 }
 
@@ -273,6 +302,7 @@ static const luaL_Reg piholelib[] = {
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
 	{"api_url", pihole_api_url},
+	{"format_path", pihole_format_path},
 	{NULL, NULL}
 };
 
