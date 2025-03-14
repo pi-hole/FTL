@@ -365,8 +365,6 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  flags = 0;
 	}
 
-      master = daemon->serverarray[first];
-
       /* don't forward A or AAAA queries for simple names, except the empty name */
       if (!flags &&
 	  option_bool(OPT_NODOTS_LOCAL) &&
@@ -378,7 +376,9 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       /* Configured answer. */
       if (flags || ede == EDE_NOT_READY)
 	goto reply;
-      
+
+      master = daemon->serverarray[first];
+
       if (!(forward = get_new_frec(now, master, 0)))
 	goto reply;
       /* table full - flags == 0, return REFUSED */
