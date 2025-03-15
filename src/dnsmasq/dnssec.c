@@ -1261,6 +1261,7 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
       p += 8; /* class, type, TTL */
       GETSHORT(rdlen, p);
       psave = p;
+
       if (!extract_name(header, plen, &p, workspace2, EXTR_NAME_EXTRACT, 0))
 	return DNSSEC_FAIL_BADPACKET;
 
@@ -1283,7 +1284,22 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 	  workspace1--;
 	  *workspace1 = '*';
 	}
-	  
+
+      rdlen -= p - psave;
+      /* rdlen is now length of type map, and p points to it 
+	 packet checked to be as long as rdlen implies in prove_non_existence() */
+      
+      /* check that the first typemap is complete. */
+      if (rdlen < 2 || rdlen < p[1] + 2)
+	return DNSSEC_FAIL_BADPACKET;
+
+      /* RFC 6672 5.3.4.1. */
+#define DNAME_OFFSET (T_DNAME >> 3)
+#define DNAME_MASK (0x80 >> (T_DNAME & 0x07))
+      if (p[0] == 0 && (p[1] >= DNAME_OFFSET + 1) && (p[2 + DNAME_OFFSET] & DNAME_MASK) != 0 &&
+	  hostname_issubdomain(name, workspace1) == 1)
+	return DNSSEC_FAIL_NONSEC;
+      
       rc = hostname_cmp(workspace1, name);
       
       if (rc == 0)
@@ -1294,16 +1310,12 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 
 	  /* NSEC with the same name as the RR we're testing, check
 	     that the type in question doesn't appear in the type map */
-	  rdlen -= p - psave;
-	  /* rdlen is now length of type map, and p points to it 
-	     packet checked to be as long as rdlen implies in prove_non_existence() */
-	  
-	  /* If we can prove that there's no NS record, return that information. */
-	  if (nons && rdlen >= 2 && p[0] == 0 && (p[2] & (0x80 >> T_NS)) != 0)
-	    *nons = 0;
-	  
-	  if (rdlen >= 2 && p[0] == 0)
+	  if (p[0] == 0 && p[1] >= 1)
 	    {
+	      /* If we can prove that there's no NS record, return that information. */
+	      if (nons && (p[2] & (0x80 >> T_NS)) != 0)
+		*nons = 0;
+	    
 	      /* A CNAME answer would also be valid, so if there's a CNAME is should 
 		 have been returned. */
 	      if ((p[2] & (0x80 >> T_CNAME)) != 0)
@@ -1315,10 +1327,10 @@ static int prove_non_existence_nsec(struct dns_header *header, size_t plen, unsi
 	      if (name_labels != 0 && type == T_DS && (p[2] & (0x80 >> T_SOA)) != 0)
 		return DNSSEC_FAIL_NONSEC;
 	    }
-
-	  while (rdlen >= 2)
+	  
+	  while (rdlen > 0)
 	    {
-	      if (!CHECK_LEN(header, p, plen, rdlen))
+	      if (rdlen < 2 || rdlen < p[1] + 2)
 		return DNSSEC_FAIL_BADPACKET;
 	      
 	      if (p[0] == type >> 8)
@@ -1458,7 +1470,11 @@ static int check_nsec3_coverage(struct dns_header *header, size_t plen, int dige
 		p += hash_len; /* skip next-domain hash */
 		rdlen -= p - psave;
 
-		if (rdlen >= 2 && p[0] == 0)
+		/* check that the first typemap is complete. */
+		if (rdlen < 2 || rdlen < p[1] + 2)
+		  return DNSSEC_FAIL_BADPACKET;
+		
+		if (p[0] == 0 && p[1] >= 1)
 		  {
 		    /* If we can prove that there's no NS record, return that information. */
 		    if (nons && (p[2] & (0x80 >> T_NS)) != 0)
@@ -1476,8 +1492,11 @@ static int check_nsec3_coverage(struct dns_header *header, size_t plen, int dige
 		      return 0;
 		  }
 
-		while (rdlen >= 2)
+		while (rdlen > 0)
 		  {
+		    if (rdlen < 2 || rdlen < p[1] + 2)
+		      return DNSSEC_FAIL_BADPACKET;
+
 		    if (p[0] == type >> 8)
 		      {
 			/* Does the NSEC3 say our type exists? */
