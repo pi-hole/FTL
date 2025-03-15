@@ -1949,11 +1949,13 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   static unsigned char **targets = NULL;
   static int target_sz = 0;
 
-  unsigned char *ans_start, *p1, *p2;
-  int type1, class1, rdlen1 = 0, type2, class2, rdlen2, qclass, qtype, targetidx;
-  int i, j, rc = STAT_INSECURE;
+  unsigned char *ans_start, *p1, *p2, *p3;
+  int type1, class1, rdlen1 = 0, type2, class2, rdlen2, qclass, qtype, targetidx, gotdname;
+  int i, j, k, rc = STAT_INSECURE;
   int secure = STAT_SECURE;
   int rc_nsec;
+  unsigned long ttl;
+  
   /* extend rr_status if necessary */
   if (daemon->rr_status_sz < ntohs(header->ancount) + ntohs(header->nscount))
     {
@@ -2000,27 +2002,119 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
   /* Can't validate an RRSIG query */
   if (qtype == T_RRSIG)
     return STAT_INSECURE;
+
+  /* Find CNAME targets. */
+  for (gotdname = i = 0; i < ntohs(header->ancount); i++) 
+    {
+      if (!(p1 = skip_name(p1, header, plen, 10)))
+	return STAT_BOGUS; /* bad packet */
+      
+      GETSHORT(type1, p1); 
+      GETSHORT(class1, p1);
+      p1 += 4; /* TTL */
+      GETSHORT(rdlen1, p1);  
+      
+      if (type1 == T_DNAME)
+	gotdname = 1;
+      
+      if (qtype != T_CNAME && qtype != T_ANY && type1 == T_CNAME && class1 == qclass)
+	{
+	  if (!expand_workspace(&targets, &target_sz, targetidx))
+	    return STAT_BOGUS;
+	  
+	  targets[targetidx++] = p1; /* pointer to target name */
+	}
+      
+      if (!ADD_RDLEN(header, p1, plen, rdlen1))
+	return STAT_BOGUS;
+    }
   
-  if (qtype != T_CNAME && qtype != T_ANY)
-    for (j = ntohs(header->ancount); j != 0; j--) 
+  /* A DNAME capable of sythesising a CNAME means we don't need to validate the CNAME,
+     we can just assume that it's valid. RFC 4035 3.2.3 */
+  if (gotdname)
+    for (p1 = ans_start, i = 0; i < ntohs(header->ancount); i++) 
       {
-	if (!(p1 = skip_name(p1, header, plen, 10)))
+	if (!extract_name(header, plen, &p1, name, EXTR_NAME_EXTRACT, 10))
 	  return STAT_BOGUS; /* bad packet */
 	
-	GETSHORT(type2, p1); 
-	p1 += 6; /* class, TTL */
-	GETSHORT(rdlen2, p1);  
+	GETSHORT(type1, p1); 
+	GETSHORT(class1, p1);
+	p1 += 4; /* TTL */
+	GETSHORT(rdlen1, p1);  
 	
-	if (type2 == T_CNAME)
+	if (type1 != T_DNAME)
 	  {
-	    if (!expand_workspace(&targets, &target_sz, targetidx))
+	    if (!ADD_RDLEN(header, p1, plen, rdlen1))
 	      return STAT_BOGUS;
-	    
-	    targets[targetidx++] = p1; /* pointer to target name */
 	  }
-	
-	if (!ADD_RDLEN(header, p1, plen, rdlen2))
-	  return STAT_BOGUS;
+	else
+	  {
+	    if (!extract_name(header, plen, &p1, keyname, EXTR_NAME_EXTRACT, 0))
+	      return STAT_BOGUS; /* bad packet */
+	    
+	    /* We now have the name of the DNAME in name, and the target in keyname.
+	       Look for any CNAMEs which could have been synthesised from this DNAME
+	       and pre-qualify them. */
+	    for (p2 = ans_start, j = 0; j < ntohs(header->ancount); j++)
+	      {
+		if (!extract_name(header, plen, &p2, daemon->cname, EXTR_NAME_EXTRACT, 10))
+		  return STAT_BOGUS; /* bad packet */
+		
+		GETSHORT(type2, p2); 
+		GETSHORT(class2, p2);
+		GETLONG(ttl, p2);
+		GETSHORT(rdlen2, p2);  
+		
+		if (type2 != T_CNAME || class2 != class1)
+		  {
+		    if (!ADD_RDLEN(header, p2, plen, rdlen2))
+		      return STAT_BOGUS;
+		  }
+		else
+		  {
+		    size_t name_prefix_len = strlen(daemon->cname) - strlen(name);
+		    
+		    if (!extract_name(header, plen, &p2, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
+		      return STAT_BOGUS; /* bad packet */
+		    
+		    /* We have the name of the CNAME in daemon->cname, and the target in daemon->workspacename.
+		       See if the CNAME was sythesised from the DNAME.
+		       CNAME must be <subdomain>.<dname>
+		       CNAME target must be <subdomain>.<dname_target>
+		       <subdomain>s must match for name and target. */ 
+		    if (hostname_issubdomain(name, daemon->cname) == 1 &&
+			hostname_issubdomain(keyname, daemon->workspacename) == 1 &&
+			name_prefix_len == strlen(daemon->workspacename) - strlen(keyname))
+		      {
+			char save = daemon->cname[name_prefix_len];
+			daemon->cname[name_prefix_len] = 0;
+			daemon->workspacename[name_prefix_len] = 0;
+			
+			if (hostname_isequal(daemon->cname, daemon->workspacename))
+			  {
+			    /* pre-qualify this as validated */
+			    daemon->rr_status[j] = ttl > 0 ? ttl : 1;
+			    
+			    /* and remove it from the targets we need to have validated answers to. */
+			    if (class2 == qclass)
+			      {
+				daemon->cname[name_prefix_len] = save;
+				for (k = 0; k <targetidx; k++)
+				  if ((p3 = targets[k]))
+				    {
+				      int rc1;
+				      if (!(rc1 = extract_name(header, plen, &p3, daemon->cname, EXTR_NAME_COMPARE, 0)))
+					return STAT_BOGUS; /* bad packet */
+				      
+				      if (rc1 == 1)
+					targets[k] = NULL;
+				    }
+			      }
+			  }
+		      }
+		  }
+	      }
+	  }
       }
   
   for (p1 = ans_start, i = 0; i < ntohs(header->ancount) + ntohs(header->nscount); i++)
@@ -2038,6 +2132,10 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
       
       /* Don't try and validate RRSIGs! */
       if (type1 == T_RRSIG)
+	continue;
+
+      /* Pre-validated by DNAME above don't validate. */
+      if (daemon->rr_status[i] != 0)
 	continue;
       
       /* Check if we've done this RRset already */

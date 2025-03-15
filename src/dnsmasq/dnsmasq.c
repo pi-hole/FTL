@@ -140,6 +140,7 @@ int main_dnsmasq (int argc, char **argv)
 	 '.' or NAME_ESCAPE then all would have to be escaped, so the 
 	 presentation format would be twice as long as the spec. */
       daemon->keyname = safe_malloc((MAXDNAME * 2) + 1);
+      daemon->cname = safe_malloc((MAXDNAME * 2) + 1);
       /* one char flag per possible RR in answer section (may get extended). */
       daemon->rr_status_sz = 64;
       daemon->rr_status = safe_malloc(sizeof(*daemon->rr_status) * daemon->rr_status_sz);

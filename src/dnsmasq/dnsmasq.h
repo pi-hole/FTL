@@ -1262,7 +1262,7 @@ extern struct daemon {
   char *namebuff; /* MAXDNAME size buffer */
   char *workspacename;
 #ifdef HAVE_DNSSEC
-  char *keyname; /* MAXDNAME size buffer */
+  char *keyname, *cname; /* MAXDNAME size buffer */
   unsigned long *rr_status; /* ceiling in TTL from DNSSEC or zero for insecure */
   int rr_status_sz;
   int dnssec_no_time_check;
