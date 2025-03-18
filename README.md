@@ -1,3 +1,9 @@
+<h1 align="center">
+
+_______________________________________________________________________
+ v6 pihole-FTL binaries just for armv5te
+_______________________________________________________________________
+</h1>
 <p align="center">
   <a href="https://pi-hole.net">
     <picture>
@@ -28,12 +34,15 @@ FTLDNS (`pihole-FTL`) provides an interactive API and also generates statistics 
 
 ## Official documentation
 
-The official *FTL*DNS documentation can be found [here](https://docs.pi-hole.net/ftldns/).
+The official status of these binaries is _unsupported_, so don't rely on or expect support from the Pi-hole developers (they have enough to do w/ just the supported architectures).  Official *FTL*DNS documentation can be found [here](https://docs.pi-hole.net/ftldns/).
 
 ## Installation
 
-FTLDNS (`pihole-FTL`) is automatically installed when installing Pi-hole.
+FTLDNS (`pihole-FTL`) should be installed manually when using the `unsupported/binary` branch.
 
 ### IMPORTANT
 
 >FTLDNS will *disable* any existing installations of `dnsmasq`.  This is because FTLDNS *is* `dnsmasq` + Pi-hole's code, so both cannot run simultaneously.
+
+### Acknowledgements
+>Thanks and gratitude to the developers at [Pi-hole.net](https://pi-hole.net) and denizens at [Pi-hole discourse](https://discourse.pi-hole.net/) that did the code, fixed the bugs, rattled the cages, and make it work.
