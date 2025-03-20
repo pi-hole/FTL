@@ -285,7 +285,8 @@ struct event_desc {
 #define OPT_NO_0x20        74
 #define OPT_DO_0x20        75
 #define OPT_AUTH_LOG       76
-#define OPT_LAST           77
+#define OPT_LEASEQUERY     77
+#define OPT_LAST           78
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -868,6 +869,7 @@ struct dhcp_lease {
   char *old_hostname;    /* hostname before it moved to another lease */
   int flags;
   time_t expires;        /* lease expiry */
+  time_t last_transaction;
 #ifdef HAVE_BROKEN_RTC
   unsigned int length;
 #endif
@@ -879,6 +881,8 @@ struct dhcp_lease {
   int last_interface;
   int new_interface;     /* save possible originated interface */
   int new_prefixlen;     /* and its prefix length */
+  unsigned char *agent_id, *vendorclass;
+  int agent_id_len, vendorclass_len;
 #ifdef HAVE_DHCP6
   struct in6_addr addr6;
   unsigned int iaid;
@@ -1638,6 +1642,7 @@ void lease6_reset(void);
 struct dhcp_lease *lease6_find_by_client(struct dhcp_lease *first, int lease_type,
 					 unsigned char *clid, int clid_len, unsigned int iaid);
 struct dhcp_lease *lease6_find_by_addr(struct in6_addr *net, int prefix, u64 addr);
+struct dhcp_lease *lease6_find_by_plain_addr(struct in6_addr *addr);
 u64 lease_find_max_addr6(struct dhcp_context *context);
 void lease_ping_reply(struct in6_addr *sender, unsigned char *packet, char *interface);
 void lease_update_slaac(time_t now);
@@ -1650,6 +1655,8 @@ void lease_set_hwaddr(struct dhcp_lease *lease, const unsigned char *hwaddr,
 void lease_set_hostname(struct dhcp_lease *lease, const char *name, int auth, char *domain, char *config_domain);
 void lease_set_expires(struct dhcp_lease *lease, unsigned int len, time_t now);
 void lease_set_interface(struct dhcp_lease *lease, int interface, time_t now);
+void lease_set_agent_id(struct dhcp_lease *lease, unsigned char *new, int len);
+void lease_set_vendorclass(struct dhcp_lease *lease, unsigned char *new, int len);
 struct dhcp_lease *lease_find_by_client(unsigned char *hwaddr, int hw_len, int hw_type,  
 					unsigned char *clid, int clid_len);
 struct dhcp_lease *lease_find_by_addr(struct in_addr addr);
@@ -1670,7 +1677,8 @@ void lease_add_extradata(struct dhcp_lease *lease, unsigned char *data,
 #ifdef HAVE_DHCP
 size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  size_t sz, time_t now, int unicast_dest, int loopback,
-		  int *is_inform, int pxe, struct in_addr fallback, time_t recvtime);
+		  int *is_inform, int pxe, struct in_addr fallback,
+		  time_t recvtime, int is_relay_use_source);
 unsigned char *extended_hwaddr(int hwtype, int hwlen, unsigned char *hwaddr, 
 			       int clid_len, unsigned char *clid, int *len_out);
 #endif
