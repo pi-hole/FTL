@@ -436,6 +436,8 @@ components:
                       type: string
                     webhome:
                       type: string
+                    prefix:
+                      type: string
                 interface:
                   type: object
                   properties:
@@ -768,6 +770,7 @@ components:
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
+              prefix: ""
             interface:
               boxed: true
               theme: "default-darker"

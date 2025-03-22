@@ -18,41 +18,14 @@
 #include "config/config.h"
 // log_web()
 #include "log.h"
-
 // directory_exists()
 #include "files.h"
 
 static char *login_uri = NULL, *admin_api_uri = NULL;
-void allocate_lua(void)
+void allocate_lua(char *login_uri_in, char *admin_api_uri_in)
 {
-	// Build login URI string (webhome + login)
-	// Append "login" to webhome string
-	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	login_uri = calloc(login_uri_len + 6, sizeof(char));
-	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
-	strcpy(login_uri + login_uri_len, "login");
-	login_uri[login_uri_len + 5u] = '\0';
-	log_debug(DEBUG_API, "Login URI: %s", login_uri);
-
-	// Build "wrong" API URI string (webhome + api)
-	// Append "api" to webhome string
-	const size_t admin_api_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	admin_api_uri = calloc(admin_api_uri_len + 4, sizeof(char));
-	memcpy(admin_api_uri, config.webserver.paths.webhome.v.s, admin_api_uri_len);
-	strcpy(admin_api_uri + admin_api_uri_len, "api");
-	admin_api_uri[admin_api_uri_len + 3u] = '\0';
-	log_debug(DEBUG_API, "Admin API URI: %s", admin_api_uri);
-}
-
-void free_lua(void)
-{
-	// Free login_uri
-	if(login_uri != NULL)
-		free(login_uri);
-
-	// Free admin_api_uri
-	if(admin_api_uri != NULL)
-		free(admin_api_uri);
+	login_uri = login_uri_in;
+	admin_api_uri = admin_api_uri_in;
 }
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
@@ -98,7 +71,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	api.request = req_info;
 	api.now = double_time();
 
-	// Check if the request is for the API under /admin/api
+	// Check if the request is for the API under <webhome>api
 	// (it is posted at /api)
 	if(strncmp(req_info->local_uri_raw, admin_api_uri, strlen(admin_api_uri)) == 0)
 	{
@@ -139,10 +112,10 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		if(!authorized)
 		{
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin",
-			        config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin\r\n\r\n",
-			          config.webserver.paths.webhome.v.s);
+			log_web("Authentication required, redirecting to %s%slogin",
+			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%slogin\r\n\r\n",
+			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}
@@ -153,8 +126,10 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		if(authorized)
 		{
 			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirecting to %s", config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", config.webserver.paths.webhome.v.s);
+			log_web("User is already authenticated, redirecting to %s%s",
+			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%s\r\n\r\n",
+			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

@@ -34,9 +34,78 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 static char *error_pages = NULL;
+static char *prefix_webhome = NULL;
+static char *api_uri = NULL;
+static char *admin_api_uri = NULL;
+static char *login_uri = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
+
+/**
+ * @brief Constructs various web paths used by the webserver.
+ *
+ * @return true if all paths are successfully constructed and allocated, false otherwise.
+ */
+static bool build_webpaths(void)
+{
+	// Construct error_pages path
+	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
+	log_debug(DEBUG_API, "Error pages path: %s", error_pages);
+	if(error_pages == NULL)
+	{
+		log_err("Failed to allocate memory for error_pages path!");
+		return false;
+	}
+
+	// Construct prefix_webhome path
+	prefix_webhome = append_to_path(config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+	log_debug(DEBUG_API, "Prefix webhome path: %s", prefix_webhome);
+	if(prefix_webhome == NULL)
+	{
+		log_err("Failed to allocate memory for prefix_webhome path!");
+		return false;
+	}
+
+	// Construct api_url path
+	api_uri = append_to_path(config.webserver.paths.prefix.v.s, "/api");
+	log_debug(DEBUG_API, "API URI path: %s", api_uri);
+	if(api_uri == NULL)
+	{
+		log_err("Failed to allocate memory for api_uri path!");
+		return false;
+	}
+
+	// Construct admin_api_uri path
+	admin_api_uri = append_to_path(prefix_webhome, "api");
+	log_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
+	if(admin_api_uri == NULL)
+	{
+		log_err("Failed to allocate memory for admin_api_uri path!");
+		return false;
+	}
+
+	// Construct login_uri path
+	login_uri = append_to_path(config.webserver.paths.webhome.v.s, "login");
+	log_debug(DEBUG_API, "Login URI path: %s", login_uri);
+	if(login_uri == NULL)
+	{
+		log_err("Failed to allocate memory for login_uri path!");
+		return false;
+	}
+
+	return true;
+}
+
+char * __attribute__((pure)) get_prefix_webhome(void)
+{
+	return prefix_webhome;
+}
+
+char * __attribute__((pure)) get_api_uri(void)
+{
+	return api_uri;
+}
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -94,13 +163,14 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		if(strcmp(uri, "/") == 0)
 		{
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
-			          config.webserver.paths.webhome.v.s);
-			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+			          prefix_webhome);
+			mg_send_http_redirect(conn, prefix_webhome, 308);
 			return 1;
 		}
 	}
 
 	// else: Not redirecting
+	log_debug(DEBUG_API, "Not redirecting %s", uri);
 	return 0;
 }
 
@@ -113,11 +183,11 @@ static int redirect_admin_handler(struct mg_connection *conn, void *input)
 		const char *uri = request->local_uri_raw;
 
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          uri, config.webserver.paths.webhome.v.s);
+		          uri, prefix_webhome);
 	}
 
-	// 308 Permanent Redirect from /admin -> /admin/
-	mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+	// 308 Permanent Redirect from [prefix]<webhome without trailing slash> -> [prefix]<webhome>
+	mg_send_http_redirect(conn, prefix_webhome, 308);
 	return 1;
 }
 
@@ -156,7 +226,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 	// Copy everything from before the ".lp" to the new URI to effectively
 	// remove it
-	strncpy(new_uri, uri, uri_len - 3);
+	strncat(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
@@ -361,9 +431,10 @@ unsigned short get_api_string(char **buf, const bool domain)
 		// We add this at buffer + 1 because the first byte is the
 		// length of the string, which we don't know yet
 		char *api_str = calloc(MAX_URL_LEN, sizeof(char));
-		const ssize_t this_len = snprintf(api_str, MAX_URL_LEN, "http%s://%s:%d/api/",
+		const ssize_t this_len = snprintf(api_str, MAX_URL_LEN, "http%s://%s:%d%s/api/",
 		                                  server_ports[i].is_secure ? "s" : "",
-		                                  addr, server_ports[i].port);
+		                                  addr, server_ports[i].port,
+		                                  config.webserver.paths.prefix.v.s);
 		// Check if snprintf() failed
 		if(this_len < 0)
 		{
@@ -449,16 +520,18 @@ void http_init(void)
 		return;
 	}
 
-	// Construct error_pages path
-	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
-	if(error_pages == NULL)
+	if(!build_webpaths())
 	{
-		log_err("Failed to allocate memory for error_pages path!");
+		log_err("Failed to build web paths, web interface will not be available!");
 		return;
 	}
 
 	// Construct additional headers
 	char *webheaders = strdup("");
+	if (webheaders == NULL) {
+		log_err("Failed to allocate memory for webheaders!");
+		return;
+	}
 	cJSON *header;
 	cJSON_ArrayForEach(header, config.webserver.headers.v.json)
 	{
@@ -593,24 +666,28 @@ void http_init(void)
 		return;
 	}
 
-	// Register API handler
+	// Get server ports
+	get_server_ports();
+
+	// Register API handler, use "/api" even when a prefix is defined as the
+	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin/ redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
-	// Register /admin -> /admin/ redirect handler
-	if(strlen(config.webserver.paths.webhome.v.s) > 1)
+	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
+	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
-		// Construct webhome_matcher path
-		char *webhome_matcher = NULL;
-		webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
-		webhome_matcher[strlen(webhome_matcher)-1] = '$';
+		// Replace trailing slash with end-of-string marker for matcher
+		char *prefix_webhome_matcher = strdup(prefix_webhome);
+		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
+	
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          webhome_matcher, config.webserver.paths.webhome.v.s);
-		// String is internally duplicated during request configuration
-		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
-		free(webhome_matcher);
+		          prefix_webhome, config.webserver.paths.webhome.v.s);
+		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
+		// prefix_webhome_matcher is internally duplicated during
+		// request configuration so it can be freed here
+		free(prefix_webhome_matcher);
 	}
 
 	// Register **.lp -> ** redirect handler
@@ -620,7 +697,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
-	allocate_lua();
+	allocate_lua(login_uri, admin_api_uri);
 
 	// Restore sessions from database
 	init_api();
@@ -718,16 +795,26 @@ void http_terminate(void)
 	/* Un-initialize the library */
 	mg_exit_library();
 
-	// Free Lua-related resources
-	free_lua();
-
 	// Remove CLI password
 	remove_cli_password();
 
 	// Free error_pages path
 	if(error_pages != NULL)
-	{
 		free(error_pages);
-		error_pages = NULL;
-	}
+
+	// Free webhome_matcher path
+	if(prefix_webhome != NULL)
+		free(prefix_webhome);
+
+	// Free api_uri path
+	if(api_uri != NULL)
+		free(api_uri);
+
+	// Free admin_api_uri path
+	if(admin_api_uri != NULL)
+		free(admin_api_uri);
+	
+	// Free login_uri path
+	if(login_uri != NULL)
+		free(login_uri);
 }

@@ -759,6 +759,22 @@
     #     <valid subpath>, both slashes are needed!
     webhome = "/admin/"
 
+    # Prefix where the web interface is served
+    # This is useful when you are using a reverse proxy serving the web interface, e.g.,
+    # at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the
+    # prefix would be "/pihole". Note that the prefix has to be stripped away by the
+    # reverse proxy, e.g., for traefik:
+    # - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)
+    # - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole
+    # The prefix should start with a slash. If you don't use a prefix, leave this field
+    # empty. Setting this field to an incorrect value may result in the web interface not
+    # being accessible.
+    # Don't use this setting if you are not using a reverse proxy!
+    #
+    # Possible values are:
+    #     valid URL prefix or empty
+    prefix = ""
+
   [webserver.interface]
     # Should the web interface use the boxed layout?
     boxed = true
@@ -1188,7 +1204,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 155 total entries out of which 98 entries are default
+# 156 total entries out of which 99 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
