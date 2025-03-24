@@ -144,6 +144,12 @@ paths:
   /domains/{type}/{kind}:
     $ref: 'domains.yaml#/components/paths/type_kind'
 
+  /domains/{type}:
+    $ref: 'domains.yaml#/components/paths/type'
+
+  /domains:
+    $ref: 'domains.yaml#/components/paths/direct'
+
   /domains:batchDelete:
     $ref: 'domains.yaml#/components/paths/batchDelete'
 
