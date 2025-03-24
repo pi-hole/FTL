@@ -38,7 +38,7 @@ The official status of these binaries is _unsupported_, so don't rely on or expe
 
 ## Installation
 
-FTLDNS (`pihole-FTL`) should be installed manually when using the `unsupported/binary` branch.
+FTLDNS (`pihole-FTL`) should be installed manually when using the `unsupported/binary` branch. Consider something like `install -T -m 0755 <path-to-pihole-FTL-binary> /usr/bin/pihole-FTL`, for instance.
 
 ### IMPORTANT
 
