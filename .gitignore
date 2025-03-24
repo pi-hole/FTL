@@ -43,3 +43,6 @@ ptr.log
 
 # Compiled LUA scripts
 /src/lua/scripts/*.hex
+
+# Custom README.md for this arch-specific repo
+README.md
