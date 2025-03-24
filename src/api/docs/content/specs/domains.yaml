@@ -229,6 +229,7 @@ components:
           *Note:* There will be no content on success.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:
@@ -254,6 +255,10 @@ components:
                         - "exact"
                         - "regex"
                       example: "exact"
+                  required:
+                    - item
+                    - type
+                    - kind
         responses:
           '204':
             description: Items deleted
