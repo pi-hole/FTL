@@ -277,20 +277,32 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		lineno++;
 
 		// Skip empty lines
-		if(read == 0)
+		if(read < 1)
 			continue;
 
 		// Remove trailing newline
 		if(line[read-1] == '\n')
 			line[--read] = '\0';
 
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
 		// Remove trailing carriage return
 		if(line[read-1] == '\r')
 			line[--read] = '\0';
 
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
 		// Remove trailing whitespace
 		while(read > 0 && isspace(line[read-1]))
 			line[--read] = '\0';
+
+		// Skip empty lines
+		if(read < 1)
+			continue;
 
 		// Skip lines having any of the following characters:
 		// ! = ABP-style comment
@@ -314,6 +326,23 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			read = comment_start;
 		}
 
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
+		// In case there is a string (e.g., an IP address) in front of
+		// the domain (separated by space or tab), remove it
+		const size_t domain_start = strcspn(line, " \t");
+		if(domain_start < (size_t)read)
+		{
+			memmove(line, line + domain_start, read - domain_start);
+			read -= domain_start;
+		}
+
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
 		// Remove leading tabs, spaces, etc.
 		const size_t white_start = strspn(line, " \t");
 		if(white_start < (size_t)read)
@@ -322,12 +351,16 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			read -= white_start;
 		}
 
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
 		// Remove trailing dot (convert FQDN to domain)
 		if(read > 0 && line[read-1] == '.')
 			line[--read] = '\0';
 
 		// Skip empty lines
-		if(read == 0)
+		if(read < 1)
 			continue;
 
 		// Convert all characters to lowercase
