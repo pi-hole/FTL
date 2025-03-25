@@ -7,7 +7,12 @@ components:
         tags:
           - Authentication
         operationId: "get_auth"
-        security: []
+        security:
+          - {}
+          - query_sid: []
+          - cookie_sid: []
+          - header_sid: []
+          - x_header_sid: []
         description: |
           The API may chose to reply with a valid session if no authentication is needed for this server.
         responses:
