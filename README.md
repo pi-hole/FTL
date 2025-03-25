@@ -38,11 +38,16 @@ The official status of these binaries is _unsupported_, so don't rely on or expe
 
 ## Installation
 
-FTLDNS (`pihole-FTL`) should be installed manually when using the `unsupported/binary` branch. Consider something like `install -T -m 0755 <path-to-pihole-FTL-binary> /usr/bin/pihole-FTL`, for instance.
+Remember that this is not officially supported - self-sufficiency and reading can go a long way.  FTLDNS (`pihole-FTL`) should be installed manually when using the `unsupported/binary` branch.  You **may** be able to get help at the [Community Help](https://discourse.pi-hole.net/c/bugs-problems-issues/community-help/36) Category - filter by `unsupported\binary` or other tags; search strings like `pogoplug` or `ARMv5TE`.
+- **switch** to `unsupported/binary` branch: after git-cloning the `pihole core` repo, switch to `unsupported/branch`
+- **env flags**: you pass the env var _before_ the command
+-    **`PIHOLE_SKIP_FTL_BINARY_CHECK=true`** : usage `PIHOLE_SKIP_FTL_BINARY_CHECK=true ./basic_installer.sh` , for instance. Facilitates `unsupported/binary` installs.
+-    **`PIHOLE_SKIP_OS_CHECK=true`**:  usage `PIHOLE_SKIP_OS_CHECK=true pihole checkout core unsupported` .  Makes installs/maintenance easier on unsupported OS versions like Debian Unstable.
+- **manual install**: `install -T -m 0755 <path-to-pihole-FTL-binary> /usr/bin/pihole-FTL`, for instance.
 
 ### IMPORTANT
 
 >FTLDNS will *disable* any existing installations of `dnsmasq`.  This is because FTLDNS *is* `dnsmasq` + Pi-hole's code, so both cannot run simultaneously.
 
 ### Acknowledgements
->Thanks and gratitude to the developers at [Pi-hole.net](https://pi-hole.net) and denizens at [Pi-hole discourse](https://discourse.pi-hole.net/) that did the code, fixed the bugs, rattled the cages, and make it work.
+>Thanks and gratitude to the developers at [Pi-hole.net](https://pi-hole.net) and denizens at [Pi-hole discourse](https://discourse.pi-hole.net/) that did the code, fixed the bugs, rattled the cages to shake out the problems, and make it work.
