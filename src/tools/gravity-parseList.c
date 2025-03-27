@@ -356,7 +356,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			continue;
 
 		// Remove trailing dot (convert FQDN to domain)
-		if(read > 0 && line[read-1] == '.')
+		if(line[read-1] == '.')
 			line[--read] = '\0';
 
 		// Skip empty lines
