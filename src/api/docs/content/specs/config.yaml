@@ -502,8 +502,6 @@ components:
                   type: string
                 macvendor:
                   type: string
-                setupVars:
-                  type: string
                 pcap:
                   type: string
                 log:
@@ -798,7 +796,6 @@ components:
             gravity: "/etc/pihole/gravity.db"
             gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
-            setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
             log:
               ftl: "/var/log/pihole/FTL.log"

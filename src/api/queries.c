@@ -1147,7 +1147,7 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 		}
 
 		// Compile regex
-		int rc = regcomp(&(*regex)[i], filter->valuestring, REG_EXTENDED);
+		int rc = regcomp(&(*regex)[i], filter->valuestring, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 		if(rc != 0)
 		{
 			// Failed to compile regex

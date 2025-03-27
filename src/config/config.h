@@ -42,6 +42,9 @@
 // Migration target for the legacy (pre-v6.0) config file
 #define MIGRATION_TARGET_V6 "/etc/pihole/migration_backup_v6"
 
+// Location of the legacy (pre-v6.0) setupVars config file
+#define SETUPVARS_CONF "/etc/pihole/setupVars.conf"
+
 union conf_value {
 	bool b;                                     // boolean value
 	int i;                                      // integer value
@@ -290,7 +293,6 @@ struct config {
 		struct conf_item gravity;
 		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
-		struct conf_item setupVars;
 		struct conf_item pcap;
 		struct {
 			struct conf_item ftl;

@@ -649,7 +649,7 @@ static void initConfig(struct config *conf)
 
 	// sub-struct dns.rate_limit
 	conf->dns.rateLimit.count.k = "dns.rateLimit.count";
-	conf->dns.rateLimit.count.h = "Rate-limited queries are answered with a REFUSED reply and not further processed by FTL.\n The default settings for FTL's rate-limiting are to permit no more than 1000 queries in 60 seconds. Both numbers can be customized independently. It is important to note that rate-limiting is happening on a per-client basis. Other clients can continue to use FTL while rate-limited clients are short-circuited at the same time.\n For this setting, both numbers, the maximum number of queries within a given time, and the length of the time interval (seconds) have to be specified. For instance, if you want to set a rate limit of 1 query per hour, the option should look like RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a client reaches the maximum number of queries it will be blocked until the end of the current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44 seconds. If the client continues to send queries while being blocked already and this number of queries during the blocking exceeds the limit the client will continue to be blocked until the end of the next interval (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As soon as the client requests less than the set limit, it will be unblocked (Ending rate-limitation of 10.0.1.39).\n Rate-limiting may be disabled altogether by setting both values to zero (this results in the same behavior as before FTL v5.7).\n How many queries are permitted...";
+	conf->dns.rateLimit.count.h = "Rate-limited queries are answered with a REFUSED reply and not further processed by FTL.\n The default settings for FTL's rate-limiting are to permit no more than 1000 queries in 60 seconds. Both numbers can be customized independently. It is important to note that rate-limiting is happening on a per-client basis. Other clients can continue to use FTL while rate-limited clients are short-circuited at the same time.\n For this setting, both numbers, the maximum number of queries within a given time, and the length of the time interval (seconds) have to be specified. For instance, if you want to set a rate limit of 1 query per hour, the option should look like dns.rateLimit.count=1 and dns.rateLimit.interval=3600. The time interval is relative to when FTL has finished starting (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a client reaches the maximum number of queries it will be blocked until the end of the current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44 seconds. If the client continues to send queries while being blocked already and this number of queries during the blocking exceeds the limit the client will continue to be blocked until the end of the next interval (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As soon as the client requests less than the set limit, it will be unblocked (Ending rate-limitation of 10.0.1.39).\n Rate-limiting may be disabled altogether by setting both values to zero (this results in the same behavior as before FTL v5.7).\n How many queries are permitted...";
 	conf->dns.rateLimit.count.t = CONF_UINT;
 	conf->dns.rateLimit.count.d.ui = 1000;
 	conf->dns.rateLimit.count.c = validate_stub; // Only type-based checking
@@ -1199,7 +1199,7 @@ static void initConfig(struct config *conf)
 	conf->webserver.api.client_history_global_max.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
-	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)";
+	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. restart DNS server, flush logs, ...)";
 	conf->webserver.api.allow_destructive.t = CONF_BOOL;
 	conf->webserver.api.allow_destructive.d.b = true;
 	conf->webserver.api.allow_destructive.c = validate_stub; // Only type-based checking
@@ -1264,13 +1264,6 @@ static void initConfig(struct config *conf)
 	conf->files.macvendor.t = CONF_STRING;
 	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
 	conf->files.macvendor.c = validate_filepath;
-
-	conf->files.setupVars.k = "files.setupVars";
-	conf->files.setupVars.h = "The old config file of Pi-hole used before v6.0";
-	conf->files.setupVars.a = cJSON_CreateStringReference("<any Pi-hole setupVars file>");
-	conf->files.setupVars.t = CONF_STRING;
-	conf->files.setupVars.d.s = (char*)"/etc/pihole/setupVars.conf";
-	conf->files.setupVars.c = validate_filepath;
 
 	conf->files.pcap.k = "files.pcap";
 	conf->files.pcap.h = "An optional file containing a pcap capture of the network traffic. This file is used for debugging purposes only. If you don't know what this is, you don't need it.\n Setting this to an empty string disables pcap recording. The file must be writable by the user running FTL (typically pihole). Failure to write to this file will prevent the DNS resolver from starting. The file is appended to if it already exists.";
@@ -1691,19 +1684,20 @@ static void get_web_port(struct config *conf)
 
 	// Create a string with the default ports
 	// Allocate memory for the string
-	char *ports = calloc(32, sizeof(char));
+	const size_t portstrlen = 64;
+	char *ports = calloc(portstrlen, sizeof(char));
 	if(ports == NULL)
 	{
 		log_err("Unable to allocate memory for default ports string");
 		return;
 	}
 	// Create the string
-	snprintf(ports, 32, "%do,%dos", http_port, https_port);
+	snprintf(ports, portstrlen, "%do,%dos", http_port, https_port);
 
 	// Append IPv6 ports if IPv6 is enabled
 	const bool have_ipv6 = ipv6_enabled();
 	if(have_ipv6)
-		snprintf(ports + strlen(ports), 32 - strlen(ports),
+		snprintf(ports + strlen(ports), portstrlen - strlen(ports),
 			",[::]:%do,[::]:%dos", http_port, https_port);
 
 	// Set default values for webserver ports
