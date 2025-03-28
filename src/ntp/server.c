@@ -48,6 +48,7 @@
 uint64_t ntp_last_sync = 0u;
 uint32_t ntp_root_delay = 0u;
 uint32_t ntp_root_dispersion = 0u;
+uint8_t ntp_stratum = 0u;
 
 // RFC 5905 Appendix A.4: Kernel System Clock Interface
 uint64_t gettime64(void)
@@ -87,10 +88,8 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 	// 4 and set mode = 4 ("server")
 	send_buf[0] = (0x04 << 3) + 0x04;
 
-	// Set stratum to "secondary server" as we have derived time via
-	// external NTP as well. May be set to 1 if we want to be a primary
-	// server (synchronized by a hardware clock with GPS, etc.)
-	send_buf[1] = 0x02;
+	// Set stratum (one greater than upstream server)
+	send_buf[1] = ntp_stratum;
 
 	// Copy Poll value from client
 	send_buf[2] = recv_buf[2];
