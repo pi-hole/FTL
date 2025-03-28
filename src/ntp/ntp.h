@@ -71,6 +71,7 @@ bool ntp_sync_rtc(void);
 extern uint64_t ntp_last_sync;
 extern uint32_t ntp_root_delay;
 extern uint32_t ntp_root_dispersion;
+extern uint8_t ntp_stratum;
 
 #endif // NTP_H
 
