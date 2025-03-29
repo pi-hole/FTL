@@ -965,7 +965,7 @@ char *parse_server(char *arg, struct server_details *sdetails)
       hints.ai_family = AF_UNSPEC;
 
       /* Get addresses suitable for sending datagrams. We assume that we can use the
-	 same addresses for TCP connections. Settting this to zero gets each address
+	 same addresses for TCP connections. Setting this to zero gets each address
 	 threes times, for SOCK_STREAM, SOCK_RAW and SOCK_DGRAM, which is not useful. */
       hints.ai_socktype = SOCK_DGRAM;
 
@@ -3990,7 +3990,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	while (arg)
 	  {
 	    comma = split(arg);
-	    if (strchr(arg, ':')) /* ethernet address, netid or binary CLID */
+	    if (strchr(arg, ':')) /* Ethernet address, netid or binary CLID */
 	      {
 		if ((arg[0] == 'i' || arg[0] == 'I') &&
 		    (arg[1] == 'd' || arg[1] == 'D') &&

@@ -830,7 +830,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       if (daemon->doctors && do_doctor(header, n, daemon->namebuff))
 	cache_secure = 0;
       
-      /* check_for_bogus_wildcard() does it's own caching, so
+      /* check_for_bogus_wildcard() does its own caching, so
 	 don't call extract_addresses() if it triggers. */
       if (daemon->bogus_addr && rcode != NXDOMAIN &&
 	  check_for_bogus_wildcard(header, n, daemon->namebuff, now))

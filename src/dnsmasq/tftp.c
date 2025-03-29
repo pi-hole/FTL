@@ -274,7 +274,7 @@ void tftp_request(struct listener *listen, time_t now)
 	}
       
       /* Enforce simultaneous transfer limit. In non-single-port mode
-	 this is doene by not listening on the server socket when
+	 this is done by not listening on the server socket when
 	 too many transfers are in progress. */
       if (!transfer && tftp_cnt >= daemon->tftp_max)
 	return;
