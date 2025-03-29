@@ -683,6 +683,9 @@
   # Additional HTTP headers added to the web server responses.
   # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
+  # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
+  # resolution on links that the user may choose to follow. We disable DNS prefetching
+  # here.
   # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
   # styling some elements directly, and index.html containing some inlined Javascript
   # code.
@@ -704,6 +707,7 @@
   # Possible values are:
   #     array of HTTP headers
   headers = [
+    "X-DNS-Prefetch-Control: off",
     "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
