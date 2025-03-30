@@ -756,6 +756,7 @@ components:
             port: 80,[::]:80
             threads: 0
             headers:
+              - "X-DNS-Prefetch-Control: off"
               - "Content-Security-Policy: default-src 'self' 'unsafe-inline';"
               - "X-Frame-Options: DENY"
               - "X-XSS-Protection: 0"
