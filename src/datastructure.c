@@ -410,13 +410,32 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	return clientID;
 }
 
-void change_clientcount(clientsData *client, int total, int blocked, int overTimeIdx, int overTimeMod)
+/**
+ * @brief Updates the client count, blocked count, and overtime data for a given
+ * client.
+ *
+ * This function modifies the client's count and blocked count by the specified
+ * amounts. Additionally, if a valid overtime index is provided, it updates the
+ * overtime data for the client and the global overtime array. This update can
+ * be avoided by setting overTimeIdx to -1.
+ *
+ * @param client Pointer to the clientsData structure representing the client.
+ * @param total The amount to add to the client's count.
+ * @param blocked The amount to add to the client's blocked count.
+ * @param overTimeIdx The index of the overtime slot to update. Must be between
+ * 0 and OVERTIME_SLOTS - 1 or -1 to skip updating the overtime data.
+ * @param overTimeMod The amount to add to the specified overtime slot.
+ */
+void change_clientcount(clientsData *client, const int total, const int blocked,
+                        const int overTimeIdx, const int overTimeMod)
 {
 		client->count += total;
 		client->blockedcount += blocked;
 		if(overTimeIdx > -1 && (unsigned int)overTimeIdx < OVERTIME_SLOTS)
 		{
 			overTime[overTimeIdx].total += overTimeMod;
+			log_debug(DEBUG_OVERTIME, "overTime[%d].total += %d = %d",
+			          overTimeIdx, overTimeMod, overTime[overTimeIdx].total);
 			client->overTime[overTimeIdx] += overTimeMod;
 		}
 
@@ -1013,6 +1032,29 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 	return cached_list;
 }
 
+static char permitted_list[32] = { 0 };
+const char * __attribute__ ((pure)) get_permitted_statuslist(void)
+{
+	if(permitted_list[0] != '\0')
+		return permitted_list;
+
+	// Build a list of permitted query statuses
+	unsigned int first = 0;
+	// Open parenthesis
+	permitted_list[0] = '(';
+	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
+		if(!is_blocked(status))
+			snprintf(permitted_list + strlen(permitted_list),
+			         sizeof(permitted_list) - strlen(permitted_list),
+			         "%s%d", first++ < 1 ? "" : ",", status);
+
+	// Close parenthesis
+	const size_t len = strlen(permitted_list);
+	permitted_list[len] = ')';
+	permitted_list[len + 1] = '\0';
+	return permitted_list;
+}
+
 unsigned int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
@@ -1217,19 +1259,43 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	// ... update overTime counters, ...
 	const int timeidx = getOverTimeID(query->timestamp);
 	if(is_blocked(old_status) && !init)
+	{
 		overTime[timeidx].blocked--;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].blocked-- = %d (old_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].blocked, get_query_status_str(old_status), query->id);
+	}
 	if(is_blocked(new_status))
+	{
 		overTime[timeidx].blocked++;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].blocked++ = %d (new_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].blocked, get_query_status_str(new_status), query->id);
+	}
 
 	if((old_status == QUERY_CACHE || old_status == QUERY_CACHE_STALE) && !init)
+	{
 		overTime[timeidx].cached--;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].cached-- = %d (old_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].cached, get_query_status_str(old_status), query->id);
+	}
 	if(new_status == QUERY_CACHE || new_status == QUERY_CACHE_STALE)
+	{
 		overTime[timeidx].cached++;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].cached++ = %d (new_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].cached, get_query_status_str(new_status), query->id);
+	}
 
 	if(old_status == QUERY_FORWARDED && !init)
+	{
 		overTime[timeidx].forwarded--;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].forwarded-- = %d (old_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].forwarded, get_query_status_str(old_status), query->id);
+	}
 	if(new_status == QUERY_FORWARDED)
+	{
 		overTime[timeidx].forwarded++;
+		log_debug(DEBUG_OVERTIME, "overTime[%d].forwarded++ = %d (new_status = %s), ID = %d",
+		          timeidx, overTime[timeidx].forwarded, get_query_status_str(new_status), query->id);
+	}
 
 	// ... and set new status
 	query->status = new_status;

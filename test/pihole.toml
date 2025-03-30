@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.3-14-gbb1ff28a-dirty)
+# Pi-hole configuration file (v6.0.4-20-g70547d28-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-03-03 11:05:52 UTC
+# Last updated on 2025-03-07 18:48:00 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -318,6 +318,11 @@
     # devices from bypassing Pi-hole? This is following the recommendation on
     # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
     iCloudPrivateRelay = true
+
+    # Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to
+    # prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers? This
+    # is based on recommendations at the end of RFC 9462, section 4.
+    designatedResolver = true
 
     [dns.reply.host]
       # Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the
@@ -678,6 +683,9 @@
   # Additional HTTP headers added to the web server responses.
   # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
+  # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
+  # resolution on links that the user may choose to follow. We disable DNS prefetching
+  # here.
   # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
   # styling some elements directly, and index.html containing some inlined Javascript
   # code.
@@ -699,12 +707,18 @@
   # Possible values are:
   #     array of HTTP headers
   headers = [
+    "X-DNS-Prefetch-Control: off",
     "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
     "X-Content-Type-Options: nosniff",
     "Referrer-Policy: strict-origin-when-cross-origin"
   ]
+
+  # Should the web server serve all files in webserver.paths.webroot directory? If
+  # disabled, only files within the path defined through webserver.paths.webhome and
+  # /api will be served.
+  serve_all = false
 
   [webserver.session]
     # Session timeout in seconds. If a session is inactive for more than this time, it will
@@ -748,6 +762,22 @@
     # Possible values are:
     #     <valid subpath>, both slashes are needed!
     webhome = "/admin/"
+
+    # Prefix where the web interface is served
+    # This is useful when you are using a reverse proxy serving the web interface, e.g.,
+    # at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the
+    # prefix would be "/pihole". Note that the prefix has to be stripped away by the
+    # reverse proxy, e.g., for traefik:
+    # - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)
+    # - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole
+    # The prefix should start with a slash. If you don't use a prefix, leave this field
+    # empty. Setting this field to an incorrect value may result in the web interface not
+    # being accessible.
+    # Don't use this setting if you are not using a reverse proxy!
+    #
+    # Possible values are:
+    #     valid URL prefix or empty
+    prefix = ""
 
   [webserver.interface]
     # Should the web interface use the boxed layout?
@@ -1178,7 +1208,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 153 total entries out of which 96 entries are default
+# 156 total entries out of which 99 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

@@ -36,9 +36,9 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 {
   unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
-  unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size, bitmap;
+  unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size = parm, bitmap = 0;
   int retvalue = 1, case_insens = 1, isExtract = 0, flip = 0, extrabytes = (int)parm;
-  unsigned int *bigmap;
+  unsigned int *bigmap = (unsigned int *)name;
 
   if (func == EXTR_NAME_EXTRACT)
     isExtract = 1, *cp = 0;
@@ -47,9 +47,7 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
   else if (func == EXTR_NAME_FLIP)
     {
       flip = 1, extrabytes = 0;
-      bigmap = (unsigned int *)name;
       name = NULL;
-      bigmap_size = parm;
     }
   
   while (1)

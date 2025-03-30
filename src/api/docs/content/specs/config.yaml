@@ -261,6 +261,8 @@ components:
                       type: boolean
                     iCloudPrivateRelay:
                       type: boolean
+                    designatedResolver:
+                      type: boolean
                 reply:
                   type: object
                   properties:
@@ -413,6 +415,8 @@ components:
                   type: array
                   items:
                     type: string
+                serve_all:
+                  type: boolean
                 session:
                   type: object
                   properties:
@@ -431,6 +435,8 @@ components:
                     webroot:
                       type: string
                     webhome:
+                      type: string
+                    prefix:
                       type: string
                 interface:
                   type: object
@@ -685,6 +691,7 @@ components:
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
+              designatedResolver: true
             reply:
               host:
                 force4: false
@@ -749,11 +756,13 @@ components:
             port: 80,[::]:80
             threads: 0
             headers:
+              - "X-DNS-Prefetch-Control: off"
               - "Content-Security-Policy: default-src 'self' 'unsafe-inline';"
               - "X-Frame-Options: DENY"
               - "X-XSS-Protection: 0"
               - "X-Content-Type-Options: nosniff"
               - "Referrer-Policy: strict-origin-when-cross-origin"
+            serve_all: false
             session:
               timeout: 300
               restore: true
@@ -762,6 +771,7 @@ components:
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
+              prefix: ""
             interface:
               boxed: true
               theme: "default-darker"

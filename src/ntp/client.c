@@ -344,6 +344,21 @@ static bool reply(const int fd, const char *server, struct addrinfo *saddr, stru
 		return false;
 	}
 
+	// Check and increment stratum
+	// Stratum 16 indicates unsynchronised source, and strata 0 // and > 16
+	// are reserved. (RFC 5905 fig 11)
+	// Primary servers are assigned stratum one; secondary servers at each
+	// lower level are assigned stratum numbers one greater than the
+	// preceding level. (RFC 5905 s3)
+
+	if (buf[1] < 1 || buf[1] > 15)
+	{
+		log_warn("Received NTP reply has invalid or unsynchronised stratum, ignoring");
+		return false;
+	}
+
+	ntp_stratum = buf[1] + 1;
+
 	// Calculate delay and offset
 	const double T1 = ntp->org / FRAC;
 	const double T2 = rec / FRAC;

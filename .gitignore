@@ -17,6 +17,7 @@ version~
 .vscode/*
 !.vscode/c_cpp_properties.json
 /build/
+.codechecker/
 
 # __pycache__ files (API tests)
 __pycache__/

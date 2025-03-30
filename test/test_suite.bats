@@ -1771,8 +1771,19 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-# This test should run before a password it set
+@test "Lua server page outside /admin is not served by default" {
+  run bash -c 'curl -sI 127.0.0.1/broken_lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "HTTP/1.1 404 Not Found"* ]]
+}
+
+# This test should run before a password is set
 @test "Lua server page is generating proper backtrace" {
+  # Enable serving of Lua pages outside /admin
+  run bash -c './pihole-FTL --config webserver.serve_all true'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'true' ]]
+  run bash -c 'sleep 1'
   # Run a page with a syntax error
   run bash -c 'curl -s 127.0.0.1/broken_lua'
   printf "%s\n" "${lines[@]}"

@@ -157,6 +157,10 @@ int api_queries_suggestions(struct ftl_conn *api)
 		JSON_REF_STR_IN_ARRAY(dnssec, string);
 	}
 
+	// Add special "permitted" upstream which is the sum of forwarded and
+	// cached queries
+	JSON_REF_STR_IN_ARRAY(upstream, "permitted");
+
 	cJSON *suggestions = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(suggestions, "domain", domain);
 	JSON_ADD_ITEM_TO_OBJECT(suggestions, "client_ip", client_ip);
@@ -345,6 +349,12 @@ int api_queries(struct ftl_conn *api)
 			{
 				// Pseudo-upstream for cached queries
 				add_querystr_string(api, querystr, "q.status IN ", get_cached_statuslist(), &where);
+				filtering = true;
+			}
+			else if(strcmp(upstreamname, "permitted") == 0)
+			{
+				// Pseudo-upstream for permitted queries
+				add_querystr_string(api, querystr, "q.status IN ", get_permitted_statuslist(), &where);
 				filtering = true;
 			}
 			else

@@ -162,6 +162,7 @@ struct config {
 		struct {
 			struct conf_item mozillaCanary;
 			struct conf_item iCloudPrivateRelay;
+			struct conf_item designatedResolver;
 		} specialDomains;
 		struct {
 			struct {
@@ -244,6 +245,7 @@ struct config {
 		struct conf_item port;
 		struct conf_item threads;
 		struct conf_item headers;
+		struct conf_item serve_all;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
@@ -254,6 +256,7 @@ struct config {
 		struct {
 			struct conf_item webroot;
 			struct conf_item webhome;
+			struct conf_item prefix;
 		} paths;
 		struct {
 			struct conf_item boxed;

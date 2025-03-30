@@ -568,6 +568,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 	}
 
+	// The domain "pi.hole" is purely local, never forward it to upstream servers
+	fputs("# Local domain for Pi-hole\n", pihole_conf);
+	fputs("# This domain is purely local and should never be forwarded to any\n", pihole_conf);
+	fputs("# upstream servers. We add a false A-record to this domain to prevent\n", pihole_conf);
+	fputs("# NXDOMAIN responses for queries on this domain. The actual response\n", pihole_conf);
+	fputs("# is handled by FTL at runtime\n", pihole_conf);
+	fputs("local=/pi.hole/\n", pihole_conf);
+	fputs("host-record=pi.hole,0.0.0.0\n", pihole_conf);
+
 	if(conf->dhcp.active.v.b)
 	{
 		fputs("# DHCP server setting\n", pihole_conf);

@@ -43,7 +43,7 @@
 // flaw, the browser (primarily Internet Explorer) will not reveal the cookie to
 // a third party.
 #define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Strict; Path=/; Max-Age=%u; HttpOnly\r\n"
-#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1\r\n"
+#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1; Expires=Thu, 01 Jan 1970 00:00:00 GMT;\r\n"
 
 struct session {
 	bool used;

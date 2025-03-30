@@ -194,7 +194,24 @@ components:
           content:
             application/json:
               schema:
-                $ref: 'lists.yaml#/components/schemas/lists/post'
+                type: array
+                items:
+                  type: object
+                  properties:
+                    item:
+                      type: string
+                      description: group name
+                    type:
+                      type: string
+                      enum:
+                        - "allow"
+                        - "block"
+                      description: Type of list
+                example:
+                  - item: "https://hosts-file.net/ad_servers.txt"
+                    type: "block"
+                  - item: "https://hosts-file.net/ad_servers2.txt"
+                    type: "block"
         responses:
           '204':
             description: Items deleted

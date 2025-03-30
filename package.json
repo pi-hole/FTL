@@ -20,7 +20,7 @@
     "test": "npm run openapi-enforcer && npm run validate-examples"
   },
   "devDependencies": {
-    "openapi-enforcer": "^1.13.1",
-    "openapi-examples-validator": "^4.2.1"
+    "openapi-enforcer": "^1.23.0",
+    "openapi-examples-validator": "^5.0.0"
   }
 }
