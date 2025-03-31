@@ -188,6 +188,7 @@ components:
           The `database_error` with message `UNIQUE constraint failed` error indicates that a group with the same name already exists.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:
@@ -198,6 +199,8 @@ components:
                     item:
                       type: string
                       description: group name
+                  required:
+                    - item
                 example:
                   - "item": "test1"
                   - "item": "test2"

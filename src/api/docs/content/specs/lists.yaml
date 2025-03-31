@@ -191,6 +191,7 @@ components:
           The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:

@@ -220,6 +220,7 @@ components:
           *Note:* There will be no content on success.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:
@@ -230,6 +231,8 @@ components:
                     item:
                       type: string
                       description: client IP / MAC / hostname / interface
+                  required:
+                    - item
                 example:
                   - "item": "192.168.2.5"
                   - "item": "::1"
