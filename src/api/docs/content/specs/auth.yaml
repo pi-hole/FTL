@@ -283,7 +283,6 @@ components:
           required:
             - valid
             - sid
-            - csrf
             - validity
             - message
             - totp
