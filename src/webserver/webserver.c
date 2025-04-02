@@ -666,9 +666,6 @@ void http_init(void)
 		return;
 	}
 
-	// Get server ports
-	get_server_ports();
-
 	// Register API handler, use "/api" even when a prefix is defined as the
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
