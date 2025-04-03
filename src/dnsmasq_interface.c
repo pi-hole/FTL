@@ -3885,7 +3885,7 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 		char *server = NULL;
 		if(ip[0] != '\0')
 		{
-			const size_t len = strlen(ip) + 6;
+			const size_t len = strlen(ip) + 7;
 			server = calloc(len, sizeof(char));
 			if(server != NULL)
 			{
