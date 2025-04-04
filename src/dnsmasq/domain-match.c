@@ -467,7 +467,7 @@ int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp)
   /* Find server to send DNSSEC query to. This will normally be the 
      same as for the original query, but may be another if
      servers for domains are involved. */		      
-  if (!lookup_domain(keyname, F_DNSSECOK, &first, &last))
+  if (!lookup_domain(keyname, F_SERVER | F_DNSSECOK, &first, &last))
     return -1;
 
   for (index = first; index != last; index++)
