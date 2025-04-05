@@ -747,6 +747,16 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 		return false;
 	}
 
+	// Return early if a clock disciplining NTP client is detected
+	// Checks chrony, the ntp family (ntp, ntpsec and openntpd), and ntpd-rs
+	if((system ("pidof -x chronyd") == 0) ||
+	   (system ("pidof -x ntpd") == 0) ||
+	   (system ("pidof -x ntp-daemon") == 0))
+	{
+		log_info("Clock disciplining NTP client detected, not starting NTP sync");
+		return false;
+	}
+
 	// Check if we have the ambient capabilities to set the system time.
 	// Without CAP_SYS_TIME, we cannot set the system time and the NTP
 	// client will not be able to synchronize the time so there is no point
