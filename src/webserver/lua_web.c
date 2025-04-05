@@ -20,6 +20,8 @@
 #include "log.h"
 // directory_exists()
 #include "files.h"
+// ftl_http_redirect()
+#include "webserver.h"
 
 static char *login_uri = NULL, *admin_api_uri = NULL;
 void allocate_lua(char *login_uri_in, char *admin_api_uri_in)
@@ -114,8 +116,9 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			// User is not authenticated, redirect to login page
 			log_web("Authentication required, redirecting to %s%slogin",
 			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%slogin\r\n\r\n",
-			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%slogin",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}
@@ -125,11 +128,12 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		// Check if the user is authenticated
 		if(authorized)
 		{
-			// User is already authenticated, redirect to index page
+			// User is already authenticated, redirecting to index page
 			log_web("User is already authenticated, redirecting to %s%s",
 			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%s\r\n\r\n",
-			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%s",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

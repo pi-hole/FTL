@@ -285,6 +285,50 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
+/**
+ * @brief Redirects an HTTP request to a specified URL with a given status code.
+ *
+ * This function formats a URL string using a format specifier and redirects
+ * the HTTP connection to the specified URL with the provided HTTP status code.
+ *
+ * @param conn Pointer to the `mg_connection` structure representing the HTTP connection.
+ *             Must not be NULL.
+ * @param code HTTP status code to use for the redirection (e.g., 301, 302).
+ * @param format Format string for the URL to redirect to. Must not be NULL.
+ *               Supports standard printf-style formatting.
+ * @param ... Additional arguments for the format string.
+ *
+ * @return The HTTP status code used for the redirection on success, or 0 on failure.
+ */
+int __attribute__((format(printf, 3, 4), nonnull(1,3)))
+ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...)
+{
+	// Determine the size of the formatted string
+	va_list args;
+	va_start(args, format);
+	int size = vsnprintf(NULL, 0, format, args);
+	va_end(args);
+
+	char *buffer = calloc(size + 1, sizeof(char));
+	if (buffer == NULL) {
+		log_err("Memory allocation failed for redirect format!");
+		return 0;
+	}
+
+	// Format the string
+	va_start(args, format);
+	vsnprintf(buffer, size + 1, format, args);
+	va_end(args);
+	// Ensure null termination
+	buffer[size] = '\0';
+
+	log_debug(DEBUG_API, "Redirecting to %s", buffer);
+	mg_send_http_redirect(conn, buffer, code);
+	free(buffer);
+
+	return code;
+}
+
 #define MAXPORTS 8
 static struct serverports
 {
