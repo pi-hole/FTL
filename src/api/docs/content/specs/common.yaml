@@ -91,7 +91,7 @@ components:
         example: 1672580025
       until:
         in: query
-        description: Unix timestamp from when the data should be requested
+        description: Unix timestamp until when the data should be requested
         name: until
         schema:
           type: integer
