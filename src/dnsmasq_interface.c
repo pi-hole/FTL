@@ -1489,11 +1489,14 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		return false;
 	}
 
-	// If this cache record can expire, check if it is still valid
-	if(dns_cache->expires > 0 && dns_cache->expires < time(NULL))
+	// If this cache record can expire, check if it is still valid and/or if
+	// caching is generally disabled
+	if((dns_cache->expires > 0 && dns_cache->expires < time(NULL)) ||
+	    config.dns.cache.upstreamBlockedTTL.v.ui == 0)
 	{
-		// This cache record is expired, we have to re-check
-		log_debug(DEBUG_QUERIES, "DNS cache record expired");
+		// This cache record is expired or caching is disabled, we have
+		// to re-check if this domain is blocked
+		log_debug(DEBUG_QUERIES, "DNS cache record expired or caching disabled");
 		dns_cache->blocking_status = QUERY_UNKNOWN;
 		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;

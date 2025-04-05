@@ -185,10 +185,6 @@ components:
         operationId: "batchDelete_lists"
         description: |
           Deletes multiple lists in the `lists` object. The `{list}`s themselves are specified in the request body (POST JSON).
-
-          On success, a new resource is created at `/lists/{list}`.
-
-          The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
         requestBody:
           description: Callback payload
           required: true

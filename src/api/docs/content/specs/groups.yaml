@@ -182,10 +182,6 @@ components:
         operationId: "batchDelete_groups"
         description: |
           Deletes multiple groups in the `groups` object. The `{groups}` themselves are specified in the request body (POST JSON).
-
-          On success, a new resource is created at `/groups/{name}`.
-
-          The `database_error` with message `UNIQUE constraint failed` error indicates that a group with the same name already exists.
         requestBody:
           description: Callback payload
           required: true
