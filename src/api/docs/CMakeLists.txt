@@ -17,6 +17,7 @@ set(sources
         hex/external/highlight.min.js
         hex/external/highlight-default.min.css
         hex/images/logo.svg
+        hex/images/favicon.ico
         hex/specs/action.yaml
         hex/specs/auth.yaml
         hex/specs/clients.yaml
