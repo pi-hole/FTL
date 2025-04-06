@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.4-20-g70547d28-dirty)
+# Pi-hole configuration file (v6.0.4-75-gc53cf00b)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-03-07 18:48:00 UTC
+# Last updated on 2025-03-27 11:04:20 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -384,17 +384,17 @@
     # For this setting, both numbers, the maximum number of queries within a given time,
     # and the length of the time interval (seconds) have to be specified. For instance, if
     # you want to set a rate limit of 1 query per hour, the option should look like
-    # RATE_LIMIT=1/3600. The time interval is relative to when FTL has finished starting
-    # (start of the daemon + possible delay by DELAY_STARTUP) then it will advance in
-    # steps of the rate-limiting interval. If a client reaches the maximum number of
-    # queries it will be blocked until the end of the current interval. This will be
-    # logged to /var/log/pihole/FTL.log, e.g. Rate-limiting 10.0.1.39 for at least 44
-    # seconds. If the client continues to send queries while being blocked already and
-    # this number of queries during the blocking exceeds the limit the client will
-    # continue to be blocked until the end of the next interval (FTL.log will contain
-    # lines like Still rate-limiting 10.0.1.39 as it made additional 5007 queries). As
-    # soon as the client requests less than the set limit, it will be unblocked (Ending
-    # rate-limitation of 10.0.1.39).
+    # dns.rateLimit.count=1 and dns.rateLimit.interval=3600. The time interval is relative
+    # to when FTL has finished starting (start of the daemon + possible delay by
+    # DELAY_STARTUP) then it will advance in steps of the rate-limiting interval. If a
+    # client reaches the maximum number of queries it will be blocked until the end of the
+    # current interval. This will be logged to /var/log/pihole/FTL.log, e.g. Rate-limiting
+    # 10.0.1.39 for at least 44 seconds. If the client continues to send queries while
+    # being blocked already and this number of queries during the blocking exceeds the
+    # limit the client will continue to be blocked until the end of the next interval
+    # (FTL.log will contain lines like Still rate-limiting 10.0.1.39 as it made additional
+    # 5007 queries). As soon as the client requests less than the set limit, it will be
+    # unblocked (Ending rate-limitation of 10.0.1.39).
     # Rate-limiting may be disabled altogether by setting both values to zero (this
     # results in the same behavior as before FTL v5.7).
     # How many queries are permitted...
@@ -897,7 +897,7 @@
     # individually.
     client_history_global_max = true
 
-    # Allow destructive API calls (e.g. deleting all queries, powering off the system, ...)
+    # Allow destructive API calls (e.g. restart DNS server, flush logs, ...)
     allow_destructive = true
 
     [webserver.api.temp]
@@ -947,12 +947,6 @@
   # Possible values are:
   #     <any Pi-hole macvendor database>
   macvendor = "/etc/pihole/macvendor.db"
-
-  # The old config file of Pi-hole used before v6.0
-  #
-  # Possible values are:
-  #     <any Pi-hole setupVars file>
-  setupVars = "/etc/pihole/setupVars.conf"
 
   # An optional file containing a pcap capture of the network traffic. This file is used
   # for debugging purposes only. If you don't know what this is, you don't need it.
@@ -1208,7 +1202,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 156 total entries out of which 99 entries are default
+# 155 total entries out of which 98 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

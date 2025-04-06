@@ -552,13 +552,13 @@ void importsetupVarsConf(void)
 {
 	// Check if the file exists. If not, there is nothing to do and we
 	// return early
-	if(!file_exists(config.files.setupVars.v.s))
+	if(!file_exists(SETUPVARS_CONF))
 	{
 		log_info("setupVars.conf does not exist, skipping migration");
 		return;
 	}
 
-	log_info("Migrating config from %s", config.files.setupVars.v.s);
+	log_info("Migrating config from "SETUPVARS_CONF);
 
 	// Try to obtain password hash from setupVars.conf
 	get_conf_string_from_setupVars("WEBPASSWORD", &config.webserver.api.pwhash);
@@ -634,10 +634,10 @@ void importsetupVarsConf(void)
 
 	// Move the setupVars.conf file to the migration directory
 	const char *setupVars_target = MIGRATION_TARGET_V6"/setupVars.conf";
-	if(rename(config.files.setupVars.v.s, setupVars_target) != 0)
-		log_warn("Could not move %s to %s", config.files.setupVars.v.s, setupVars_target);
+	if(rename(SETUPVARS_CONF, setupVars_target) != 0)
+		log_warn("Could not move "SETUPVARS_CONF" to %s", setupVars_target);
 	else
-		log_info("Moved %s to %s", config.files.setupVars.v.s, setupVars_target);
+		log_info("Moved "SETUPVARS_CONF" to %s", setupVars_target);
 
 	log_info("setupVars.conf migration complete");
 }
@@ -691,7 +691,7 @@ size_t linebuffersize = 0;
 char *read_setupVarsconf(const char *key)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(config.files.setupVars.v.s, "r")) == NULL)
+	if((setupVarsfp = fopen(SETUPVARS_CONF, "r")) == NULL)
 	{
 		log_debug(DEBUG_CONFIG, "Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;
