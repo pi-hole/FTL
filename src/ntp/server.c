@@ -46,7 +46,7 @@
 #include "timers.h"
 
 uint64_t ntp_last_sync = 0u;
-uint32_t ntp_root_delay = 0u;
+int32_t ntp_root_delay = 0u;
 uint32_t ntp_root_dispersion = 0u;
 uint8_t ntp_stratum = 0u;
 
