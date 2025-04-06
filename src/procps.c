@@ -359,3 +359,59 @@ bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum)
 
 	return true;
 }
+
+/**
+ * @brief Searches for a process by its name in the /proc filesystem.
+ *
+ * This function iterates through the directories in /proc, which represent
+ * process IDs (PIDs), and checks the "comm" file in each directory to find
+ * a process with a matching name.
+ *
+ * @param name The name of the process to search for.
+ *
+ * @return The PID of the process if found, or -1 if no matching process is found
+ *         or if an error occurs (e.g., unable to open /proc or a file).
+ *
+ * @note This function assumes the /proc filesystem is available and accessible.
+ *       It also assumes that the "comm" file in each process directory contains
+ *       the name of the process.
+ */
+pid_t search_proc(const char *name)
+{
+	DIR *dir = opendir("/proc");
+	if(dir == NULL)
+		return -1;
+
+	struct dirent *entry;
+	while((entry = readdir(dir)) != NULL)
+	{
+		// Check if the entry is a directory and contains only digits
+		// We skip ".", "..", "self", and friends
+		if(entry->d_type == DT_DIR && isdigit(entry->d_name[0]))
+		{
+			char filename[64];
+			snprintf(filename, sizeof(filename), "/proc/%s/comm", entry->d_name);
+			FILE *file = fopen(filename, "r");
+			if(file != NULL)
+			{
+				char comm[PROC_PATH_SIZ + 1] = { 0 };
+				// Read the command name from the file
+				if(fscanf(file, "%"xstr(PROC_PATH_SIZ)"s", comm) == 1)
+				{
+					if(strcmp(comm, name) == 0)
+					{
+						// Found a matching process
+						fclose(file);
+						closedir(dir);
+						return atoi(entry->d_name);
+					}
+				}
+				fclose(file);
+			}
+		}
+	}
+
+	// No process found with the given name
+	closedir(dir);
+	return -1;
+}
