@@ -1345,7 +1345,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  else if (!lease && (ltmp = lease_find_by_addr(mess->yiaddr)))
 	    {
 	      /* If a host is configured with more than one MAC address, it's OK to 'nix 
-		 a lease from one of it's MACs to give the address to another. */
+		 a lease from one of its MACs to give the address to another. */
 	      if (config && config_has_mac(config, ltmp->hwaddr, ltmp->hwaddr_len, ltmp->hwaddr_type))
 		{
 		  inet_ntop(AF_INET, &ltmp->addr, daemon->addrbuff, ADDRSTRLEN);

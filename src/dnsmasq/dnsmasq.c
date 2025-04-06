@@ -140,6 +140,7 @@ int main_dnsmasq (int argc, char **argv)
 	 '.' or NAME_ESCAPE then all would have to be escaped, so the 
 	 presentation format would be twice as long as the spec. */
       daemon->keyname = safe_malloc((MAXDNAME * 2) + 1);
+      daemon->cname = safe_malloc((MAXDNAME * 2) + 1);
       /* one char flag per possible RR in answer section (may get extended). */
       daemon->rr_status_sz = 64;
       daemon->rr_status = safe_malloc(sizeof(*daemon->rr_status) * daemon->rr_status_sz);
@@ -939,7 +940,8 @@ int main_dnsmasq (int argc, char **argv)
 	my_syslog(LOG_INFO, _("DNSSEC signature timestamps not checked until system time valid"));
 
       for (ds = daemon->ds; ds; ds = ds->next)
-	my_syslog(LOG_INFO, _("configured with trust anchor for %s keytag %u"),
+	my_syslog(LOG_INFO,
+		  ds->digestlen == 0 ? _("configured with negative trust anchor for %s") : _("configured with trust anchor for %s keytag %u"),
 		  ds->name[0] == 0 ? "<root>" : ds->name, ds->keytag);
     }
 #endif
@@ -2182,7 +2184,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
    cache_recv_insert() calls pop_and_retry_query() after the result 
    arrives via the pipe to the parent. */
 int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header *header,
-		ssize_t *plen, int class, struct server *server, int *keycount, int *validatecount)
+		ssize_t *plen, char *name, int class, struct server *server, int *keycount, int *validatecount)
 {
   struct server *s;
 
@@ -2259,8 +2261,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	}
     }
   
-  status = tcp_from_udp(now, status, header, plen, class, daemon->namebuff, daemon->keyname, 
-			server, keycount, validatecount);
+  status = tcp_from_udp(now, status, header, plen, class, name, server, keycount, validatecount);
   
   /* close upstream connections. */
   for (s = daemon->servers; s; s = s->next)

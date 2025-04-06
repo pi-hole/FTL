@@ -94,8 +94,7 @@ void build_server_array(void)
    server=/.example.com/ works.
 
    A flag of F_SERVER returns an upstream server only.
-   A flag of F_DNSSECOK returns a DNSSEC capable server only and
-   also disables NODOTS servers from consideration.
+   A flag of F_DNSSECOK disables NODOTS servers from consideration.
    A flag of F_DOMAINSRV returns a domain-specific server only.
    A flag of F_CONFIG returns anything that generates a local
    reply of IPv4 or IPV6.
@@ -338,12 +337,8 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      
 		      if (i != nlow)
 			{
-			  /* If we want a server that can do DNSSEC, and this one can't, 
-			     return nothing, similarly if were looking only for a server
-			     for a particular domain. */
-			  if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
-			    nlow = nhigh;
-			  else if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
+			  /* If we want a server for a particular domain, and this one isn't, return nothing. */
+			  if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
 			    nlow = nhigh;
 			  else
 			    nhigh = i;
@@ -351,7 +346,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      else
 			{
 			  /* --local=/domain/, only return if we don't need a server. */
-			  if (flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER))
+			  if (flags & (F_DOMAINSRV | F_SERVER))
 			    nhigh = i;
 			}
 		    }
@@ -472,7 +467,7 @@ int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp)
   /* Find server to send DNSSEC query to. This will normally be the 
      same as for the original query, but may be another if
      servers for domains are involved. */		      
-  if (!lookup_domain(keyname, F_DNSSECOK, &first, &last))
+  if (!lookup_domain(keyname, F_SERVER | F_DNSSECOK, &first, &last))
     return -1;
 
   for (index = first; index != last; index++)

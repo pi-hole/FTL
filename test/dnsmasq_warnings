@@ -83,7 +83,9 @@ src/dnsmasq/dnsmasq.c
 src/dnsmasq/dnssec.c
       my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : _("per-query crypto work"));
 src/dnsmasq/dnssec.c
-	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+src/dnsmasq/dnssec.c
+	      my_syslog(LOG_WARNING, _("Negative DS reply without NS record received for %s, assuming non-DNSSEC domain-specific server."), name);
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 src/dnsmasq/forward.c

@@ -30,16 +30,19 @@
    return = 1 -> extract OK, compare OK, flip OK
    return = 2 -> extract OK, compare failed.
    return = 3 -> extract OK, compare failed but only on case.
+
+   If pp == NULL, operate on the query name in the packet.
 */
 int extract_name(struct dns_header *header, size_t plen, unsigned char **pp, 
 		 char *name, int func, unsigned int parm)
 {
-  unsigned char *cp = (unsigned char *)name, *p = *pp, *p1 = NULL;
+  unsigned char *cp = (unsigned char *)name, *p1 = NULL;
   unsigned int j, l, namelen = 0, hops = 0;
   unsigned int bigmap_counter = 0, bigmap_posn = 0, bigmap_size = parm, bitmap = 0;
   int retvalue = 1, case_insens = 1, isExtract = 0, flip = 0, extrabytes = (int)parm;
   unsigned int *bigmap = (unsigned int *)name;
-
+  unsigned char *p = pp ? *pp : (unsigned char *)(header+1);
+  
   if (func == EXTR_NAME_EXTRACT)
     isExtract = 1, *cp = 0;
   else if (func == EXTR_NAME_NOCASE)
@@ -72,11 +75,14 @@ int extract_name(struct dns_header *header, size_t plen, unsigned char **pp,
 	    }
 	  else if (!flip && *cp != 0)
 	    retvalue = 2;
-	  
-	  if (p1) /* we jumped via compression */
-	    *pp = p1;
-	  else
-	    *pp = p;
+
+	  if (pp)
+	    {
+	      if (p1) /* we jumped via compression */
+		*pp = p1;
+	      else
+		*pp = p;
+	    }
 	  
 	  return retvalue;
 	}
@@ -591,18 +597,18 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 		}
 	      
 	      /* rest of RR */
-	      if (!no_cache && !blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p, 20))
-		{
-		  blockdata_free(addr.rrblock.rrdata);
-		  return 0;
-		}
-
-	      addr.rrblock.datalen += 20;
-	      
 	      if (!no_cache)
 		{
 		  int secflag = 0;
 
+		  if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, (char *)p, 20))
+		    {
+		      blockdata_free(addr.rrblock.rrdata);
+		      return 0;
+		    }
+		  
+		  addr.rrblock.datalen += 20;
+		  
 #ifdef HAVE_DNSSEC
 		  if (option_bool(OPT_DNSSEC_VALID) && daemon->rr_status[i + ntohs(header->ancount)] != 0)
 		    {
@@ -1265,7 +1271,8 @@ void report_addresses(struct dns_header *header, size_t len, u32 mark)
 
 /* If the packet holds exactly one query
    return F_IPV4 or F_IPV6  and leave the name from the query in name */
-unsigned int extract_request(struct dns_header *header, size_t qlen, char *name, unsigned short *typep)
+unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
+			     unsigned short *typep, unsigned short *classp)
 {
   unsigned char *p = (unsigned char *)(header+1);
   int qtype, qclass;
@@ -1290,6 +1297,9 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   if (typep)
     *typep = qtype;
 
+  if (classp)
+    *classp = qclass;
+
   if (qclass == C_IN)
     {
       if (qtype == T_A)
@@ -1301,9 +1311,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
     }
 
 #ifdef HAVE_DNSSEC
-  /* F_DNSSECOK as agument to search_servers() inhibits forwarding
-     to servers for domains without a trust anchor. This make the
-     behaviour for DS and DNSKEY queries we forward the same
+  /* Make the behaviour for DS and DNSKEY queries we forward the same
      as for DS and DNSKEY queries we originate. */
   if (option_bool(OPT_DNSSEC_VALID) && (qtype == T_DS || qtype == T_DNSKEY))
     return F_DNSSECOK;
