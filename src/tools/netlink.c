@@ -422,7 +422,8 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 					else if(private_net(*in, false))
 						cJSON_AddStringToObject(addr, type_str, "private");
 					else if((in->s_addr & htonl(0xffc00000)) == htonl(0x64400000))
-						cJSON_AddStringToObject(addr, type_str, "shared");
+						// RFC 6598: Carrier-Grade NAT (CGN) 100.64.0.0/10
+						cJSON_AddStringToObject(addr, type_str, "Carrier-Grade NAT");
 					else
 						cJSON_AddStringToObject(addr, type_str, "public");
 				}
