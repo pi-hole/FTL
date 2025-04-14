@@ -240,7 +240,7 @@ static bool settime_skew(const double offset)
 	tx.offset = 1000000 * offset;
 	tx.modes = ADJ_OFFSET_SINGLESHOT;
 
-	log_debug(DEBUG_NTP, "Gradually adjusting system time by %ld us", tx.offset);
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %"PRId64" us", (int64_t)tx.offset);
 
 	if(adjtimex(&tx) < 0)
 	{
