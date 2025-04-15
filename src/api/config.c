@@ -231,8 +231,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
 				return "not of type unsigned integer (16bit)";
 			// Set item
-			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			conf_item->v.u16 = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
 			break;
 		}
 		case CONF_LONG:

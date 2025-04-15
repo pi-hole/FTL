@@ -576,7 +576,7 @@ static void initConfig(struct config *conf)
 	conf->dns.port.h = "Port used by the DNS server";
 	conf->dns.port.t = CONF_UINT16;
 	conf->dns.port.f = FLAG_RESTART_FTL;
-	conf->dns.port.d.ui = 53u;
+	conf->dns.port.d.u16 = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
 	// sub-struct dns.cache
