@@ -48,6 +48,10 @@ static const unsigned char images_logo_svg[] = {
 #include "hex/images/logo.svg"
 };
 
+static const unsigned char images_favicon_ico[] = {
+#include "hex/images/favicon.ico"
+};
+
 static const unsigned char specs_auth_yaml[] = {
 #include "hex/specs/auth.yaml"
 };
@@ -151,6 +155,7 @@ struct {
     {"external/highlight-default.min.css", "text/css", (const char*)highlight_default_min_css, sizeof(highlight_default_min_css)},
     {"external/highlight.min.js", "application/javascript", (const char*)highlight_min_js, sizeof(highlight_min_js)},
     {"images/logo.svg", "image/svg+xml", (const char*)images_logo_svg, sizeof(images_logo_svg)},
+    {"images/favicon.ico", "image/ico", (const char*)images_favicon_ico, sizeof(images_favicon_ico)},
     {"specs/auth.yaml", "text/plain", (const char*)specs_auth_yaml, sizeof(specs_auth_yaml)},
     {"specs/clients.yaml", "text/plain", (const char*)specs_clients_yaml, sizeof(specs_clients_yaml)},
     {"specs/config.yaml", "text/plain", (const char*)specs_config_yaml, sizeof(specs_config_yaml)},
