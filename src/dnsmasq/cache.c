@@ -898,15 +898,15 @@ int cache_recv_insert(time_t now, int fd)
 	  /* Sneak in possibly updated crypto HWM. */
 	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
-	  if (m > daemon->metrics[METRIC_CRYPTO_HWM])
+	  if ((unsigned int)m > daemon->metrics[METRIC_CRYPTO_HWM])
 	    daemon->metrics[METRIC_CRYPTO_HWM] = m;
 	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
-	  if (m > daemon->metrics[METRIC_SIG_FAIL_HWM])
+	  if ((unsigned int)m > daemon->metrics[METRIC_SIG_FAIL_HWM])
 	    daemon->metrics[METRIC_SIG_FAIL_HWM] = m;
 	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
 	    return 0;
-	  if (m > daemon->metrics[METRIC_WORK_HWM])
+	  if ((unsigned int)m > daemon->metrics[METRIC_WORK_HWM])
 	    daemon->metrics[METRIC_WORK_HWM] = m;
 #endif
 	  cache_end_insert();
