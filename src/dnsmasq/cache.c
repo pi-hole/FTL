@@ -861,12 +861,15 @@ void cache_end_insert(void)
 
 #ifdef HAVE_DNSSEC
       /* Sneak out possibly updated crypto HWM values. */
-      m = daemon->metrics[METRIC_CRYPTO_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-      m = daemon->metrics[METRIC_SIG_FAIL_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-      m = daemon->metrics[METRIC_WORK_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
+      read_write(daemon->pipe_to_parent,
+		 (unsigned char *)&daemon->metrics[METRIC_CRYPTO_HWM],
+		 sizeof(daemon->metrics[METRIC_CRYPTO_HWM]), RW_WRITE);
+      read_write(daemon->pipe_to_parent,
+		 (unsigned char *)&daemon->metrics[METRIC_SIG_FAIL_HWM],
+		 sizeof(daemon->metrics[METRIC_SIG_FAIL_HWM]), RW_WRITE);
+      read_write(daemon->pipe_to_parent,
+		 (unsigned char *)&daemon->metrics[METRIC_WORK_HWM],
+		 sizeof(daemon->metrics[METRIC_WORK_HWM]), RW_WRITE);
 #endif
     }
       
@@ -896,18 +899,20 @@ int cache_recv_insert(time_t now, int fd)
 	{
 #ifdef HAVE_DNSSEC
 	  /* Sneak in possibly updated crypto HWM. */
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
+	  unsigned int val;
+	  
+	  if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
 	    return 0;
-	  if ((unsigned int)m > daemon->metrics[METRIC_CRYPTO_HWM])
-	    daemon->metrics[METRIC_CRYPTO_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
+	  if (val > daemon->metrics[METRIC_CRYPTO_HWM])
+	    daemon->metrics[METRIC_CRYPTO_HWM] = val;
+	  if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
 	    return 0;
-	  if ((unsigned int)m > daemon->metrics[METRIC_SIG_FAIL_HWM])
-	    daemon->metrics[METRIC_SIG_FAIL_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
+	  if (val > daemon->metrics[METRIC_SIG_FAIL_HWM])
+	    daemon->metrics[METRIC_SIG_FAIL_HWM] = val;
+	  if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
 	    return 0;
-	  if ((unsigned int)m > daemon->metrics[METRIC_WORK_HWM])
-	    daemon->metrics[METRIC_WORK_HWM] = m;
+	  if (val > daemon->metrics[METRIC_WORK_HWM])
+	    daemon->metrics[METRIC_WORK_HWM] = val;
 #endif
 	  cache_end_insert();
 	  return 1;
