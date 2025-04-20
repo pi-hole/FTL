@@ -41,6 +41,8 @@
 #include "database/message-table.h"
 // check_capability()
 #include "capabilities.h"
+// search_proc()
+#include "procps.h"
 
 // Required accuracy of the NTP sync in seconds in order to start the NTP server
 // thread. If the NTP sync is less accurate than this value, the NTP server
@@ -744,6 +746,13 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	{
 		log_info("NTP sync is disabled");
 		ntp_server_start();
+		return false;
+	}
+	// Return early if a clock disciplining NTP client is detected
+	// Checks chrony, the ntp family (ntp, ntpsec and openntpd), and ntpd-rs
+	if(search_proc("chronyd") > 0 || search_proc("ntpd") > 0 || search_proc("ntp-daemon") > 0)
+	{
+		log_info("Clock disciplining NTP client detected, not starting embedded NTP client/server");
 		return false;
 	}
 
