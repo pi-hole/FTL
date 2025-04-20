@@ -284,7 +284,8 @@ struct event_desc {
 #define OPT_LOG_PROTO      73
 #define OPT_NO_0x20        74
 #define OPT_DO_0x20        75
-#define OPT_LAST           76
+#define OPT_AUTH_LOG       76
+#define OPT_LAST           77
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )

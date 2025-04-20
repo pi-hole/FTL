@@ -2305,6 +2305,10 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   if (!option_bool(OPT_LOG))
     return;
 
+  /* F_NOERR is reused here to indicate logs arrising from auth queries */ 
+  if (!(flags & F_NOERR) && option_bool(OPT_AUTH_LOG))
+    return;
+
   /* build query type string if requested */
   if (!(flags & (F_SERVER | F_IPSET)) && type > 0)
     arg = querystr(arg, type);
