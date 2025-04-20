@@ -2343,6 +2343,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	    dest = "SERVFAIL";
 	  else if (rcode == REFUSED)
 	    dest = "REFUSED";
+	  else if (rcode == FORMERR)
+	    dest = "FORMERR";
 	  else if (rcode == NOTIMP)
 	    dest = "not implemented";
 	  else
