@@ -1880,7 +1880,7 @@ void receive_query(struct listener *listen, time_t now)
 
   if (OPCODE(header) != QUERY)
   {
-      log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &source_addr, "non-query", 0);
+      log_query_mysockaddr((auth_dns ? F_NOERR : 0) | F_QUERY | F_FORWARD | F_CONFIG, NULL, &source_addr, NULL, OPCODE(header));
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , "opcode",
 				    &source_addr, "non-query", 0, daemon->log_display_id, UDP);
   }
@@ -1889,8 +1889,8 @@ void receive_query(struct listener *listen, time_t now)
 #ifdef HAVE_AUTH
       struct auth_zone *zone;
 #endif
-      log_query_mysockaddr((auth_dns ? F_NOERR : 0 ) | F_QUERY | F_FORWARD, daemon->namebuff,
-			   &source_addr, auth_dns ? "auth" : "query", type);
+      log_query_mysockaddr((auth_dns ? F_NOERR | F_AUTH : 0 ) | F_QUERY | F_FORWARD, daemon->namebuff,
+			   &source_addr, NULL, type);
       piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , daemon->namebuff,
 				    &source_addr, auth_dns ? "auth" : "query", type, daemon->log_display_id, UDP);
       
@@ -2574,7 +2574,7 @@ unsigned char *tcp_request(int confd, time_t now,
 	  
 	  if (OPCODE(header) != QUERY)
 	    {
-	      log_query_mysockaddr(F_QUERY | F_FORWARD, "opcode", &peer_addr, "non-query", 0);
+	      log_query_mysockaddr((auth_dns ? F_NOERR : 0) |  F_QUERY | F_FORWARD | F_CONFIG, NULL, &peer_addr, NULL, OPCODE(header));
 	      gotname = 0;
 	      flags = F_RCODE;
 	      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD , "opcode",
@@ -2605,8 +2605,8 @@ unsigned char *tcp_request(int confd, time_t now,
 	      saved_question = blockdata_alloc((char *)header, (size_t)size);
 	      saved_size = size;
 	      
-	      log_query_mysockaddr((auth_dns ? F_NOERR : 0) | F_QUERY | F_FORWARD, daemon->namebuff,
-				   &peer_addr, auth_dns ? "auth" : "query", qtype);
+	      log_query_mysockaddr((auth_dns ? F_NOERR | F_AUTH : 0) | F_QUERY | F_FORWARD, daemon->namebuff,
+				   &peer_addr, NULL, qtype);
 	      
 	      piholeblocked = FTL_new_query(F_QUERY | F_FORWARD, daemon->namebuff,
 					    &peer_addr, auth_dns ? "auth" : "query", qtype, daemon->log_display_id, TCP);

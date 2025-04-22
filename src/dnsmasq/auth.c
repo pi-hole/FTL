@@ -103,9 +103,9 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
   unsigned char *p, *ansp;
   int qtype, qclass, rc;
   int nameoffset, axfroffset = 0;
-  int q, anscount = 0, authcount = 0;
+  int anscount = 0, authcount = 0;
   struct crec *crecp;
-  int  auth = !local_query, trunc = 0, nxdomain = 1, soa = 0, ns = 0, axfr = 0, out_of_zone = 0;
+  int  auth = !local_query, trunc = 0, nxdomain = 1, soa = 0, ns = 0, axfr = 0, out_of_zone = 0, notimp = 0;
   struct auth_zone *zone = NULL;
   struct addrlist *subnet = NULL;
   char *cut;
@@ -118,17 +118,18 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
   unsigned int wclen;
   unsigned int log_flags = local_query ? 0 : F_NOERR;
   
-  if (ntohs(header->qdcount) == 0 || OPCODE(header) != QUERY )
+  if (ntohs(header->qdcount) != 1)
     return 0;
 
   /* determine end of question section (we put answers there) */
   if (!(ansp = skip_questions(header, qlen)))
     return 0; /* bad packet */
   
-  /* now process each question, answers go in RRs after the question */
   p = (unsigned char *)(header+1);
 
-  for (q = ntohs(header->qdcount); q != 0; q--)
+  if (OPCODE(header) != QUERY)
+    notimp = 1;
+  else
     {
       unsigned int flag = 0;
       int found = 0;
@@ -148,7 +149,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	{
 	  auth = 0;
 	  out_of_zone = 1;
-	  continue;
+	  goto done;
 	}
 
       if ((qtype == T_PTR || qtype == T_SOA || qtype == T_NS) &&
@@ -163,7 +164,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    {
 	      out_of_zone = 1;
 	      auth = 0;
-	      continue;
+	      goto done;
 	    }
 	  else if (qtype == T_SOA)
 	    soa = 1, found = 1;
@@ -272,7 +273,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	  else
 	    log_query(log_flags | flag | F_NEG | F_NXDOMAIN | F_REVERSE | (auth ? F_AUTH : 0), NULL, &addr, NULL, 0);
 
-	  continue;
+	  goto done;
 	}
       
     cname_restart:
@@ -289,7 +290,7 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	    {
 	      out_of_zone = 1;
 	      auth = 0;
-	      continue;
+	      goto done;
 	    }
 	}
 
@@ -583,6 +584,8 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
 	}
       
     }
+
+ done:
   
   /* Add auth section */
   if (auth && zone)
@@ -886,13 +889,22 @@ size_t answer_auth(struct dns_header *header, char *limit, size_t qlen, time_t n
   header->nscount = htons(authcount);
   header->arcount = htons(0);
 
-  if (!local_query && out_of_zone)
+  if ((!local_query && out_of_zone) || notimp)
     {
-      SET_RCODE(header, REFUSED); 
+      if (out_of_zone)
+	{
+	  addr.log.rcode = REFUSED;
+	  addr.log.ede = EDE_NOT_AUTH;
+	}
+      else
+	{
+	  addr.log.rcode = NOTIMP;
+	  addr.log.ede = EDE_UNSET;
+	}
+
+      SET_RCODE(header, addr.log.rcode); 
       header->ancount = htons(0);
       header->nscount = htons(0);
-      addr.log.rcode = REFUSED;
-      addr.log.ede = EDE_NOT_AUTH;
       log_query(log_flags | F_UPSTREAM | F_RCODE, "error", &addr, NULL, 0);
       return resize_packet(header,  ansp - (unsigned char *)header, NULL, 0);
     }

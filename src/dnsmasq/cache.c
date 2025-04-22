@@ -2301,7 +2301,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   char portstring[7]; /* space for #<portnum> */
 
   FTL_hook(flags, name, addr, arg, daemon->log_display_id, type, file, line);
-  
+  char opcodestring[3]; /* maximum is 15 */
+
   if (!option_bool(OPT_LOG))
     return;
 
@@ -2310,7 +2311,7 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     return;
 
   /* build query type string if requested */
-  if (!(flags & (F_SERVER | F_IPSET)) && type > 0)
+  if (!(flags & (F_SERVER | F_IPSET | F_QUERY)) && type > 0)
     arg = querystr(arg, type);
 
   dest = arg;
@@ -2403,6 +2404,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     source = arg;
   else if (flags & F_UPSTREAM)
     source = "reply";
+  else if (flags & F_AUTH)
+    source = "auth";
   else if (flags & F_SECSTAT)
     {
       if (addr && addr->log.ede != EDE_UNSET && option_bool(OPT_EXTRALOG))
@@ -2413,8 +2416,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
       source = "validation";
       dest = arg;
     }
-  else if (flags & F_AUTH)
-    source = "auth";
   else if (flags & F_DNSSEC)
     {
       source = arg;
@@ -2424,11 +2425,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     {
       source = "forwarded";
       verb = "to";
-    }
-  else if (flags & F_QUERY)
-    {
-      source = arg;
-      verb = "from";
     }
   else if (flags & F_IPSET)
     {
@@ -2441,7 +2437,21 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     source = "cached-stale";
   else
     source = "cached";
-  
+
+  if (flags & F_QUERY)
+    {
+      if (flags & F_CONFIG)
+	{
+	  sprintf(opcodestring, "%u", type & 0xf);
+	  source = "non-query opcode";
+	  name = opcodestring;
+	}
+      else if (!(flags & F_AUTH))
+	source = "query";
+      
+      verb = "from";
+    }
+
   if (!name)
     gap = name = "";
   else if (!name[0])
