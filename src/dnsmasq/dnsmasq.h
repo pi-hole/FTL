@@ -1678,7 +1678,7 @@ void lease_add_extradata(struct dhcp_lease *lease, unsigned char *data,
 size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  size_t sz, time_t now, int unicast_dest, int loopback,
 		  int *is_inform, int pxe, struct in_addr fallback,
-		  time_t recvtime, int is_relay_use_source);
+		  time_t recvtime, struct in_addr leasequery_source);
 unsigned char *extended_hwaddr(int hwtype, int hwlen, unsigned char *hwaddr, 
 			       int clid_len, unsigned char *clid, int *len_out);
 #endif

@@ -230,19 +230,22 @@ void dhcp_packet(time_t now, int pxe_fd)
     return;
   
   mess = (struct dhcp_packet *)daemon->dhcp_packet.iov_base;
-  loopback = !mess->giaddr.s_addr && (ifr.ifr_flags & IFF_LOOPBACK);
-
+  
   /* Non-standard extension:
      If giaddr == 255.255.255.255 we reply to the source
      address in the request packet header. This makes
      stand-alone leasequery clients easier, as they
-     can leave source address determination to the kernel. */
+     can leave source address determination to the kernel.
+     In this case, set a flag and clear giaddr here,
+     to avoid massive relay confusion. */
   if (mess->giaddr.s_addr == INADDR_BROADCAST)
     {
       mess->giaddr.s_addr = 0;
       is_relay_use_source = 1;
     }
-       
+  
+  loopback = !mess->giaddr.s_addr && (ifr.ifr_flags & IFF_LOOPBACK);
+  
 #ifdef HAVE_LINUX_NETWORK
   /* ARP fiddling uses original interface even if we pretend to use a different one. */
   safe_strncpy(arp_req.arp_dev, ifr.ifr_name, sizeof(arp_req.arp_dev));
@@ -349,7 +352,8 @@ void dhcp_packet(time_t now, int pxe_fd)
 
       lease_prune(NULL, now); /* lose any expired leases */
       iov.iov_len = dhcp_reply(parm.current, ifr.ifr_name, iface_index, (size_t)sz, now, unicast_dest,
-			       loopback, &is_inform, pxe_fd, iface_addr, recvtime, is_relay_use_source);
+			       loopback, &is_inform, pxe_fd, iface_addr, recvtime,
+			       is_relay_use_source ? dest.sin_addr : mess->giaddr);
       lease_update_file(now);
       lease_update_dns(0);
       
@@ -380,6 +384,7 @@ void dhcp_packet(time_t now, int pxe_fd)
     {
       /* Send to BOOTP relay. */
       if (is_relay_use_source)
+	/* restore as-recieved value */
 	mess->giaddr.s_addr = INADDR_BROADCAST;
       else
 	{

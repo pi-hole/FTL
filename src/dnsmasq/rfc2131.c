@@ -74,7 +74,7 @@ static void handle_encap(struct dhcp_packet *mess, unsigned char *end, unsigned 
 
 size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  size_t sz, time_t now, int unicast_dest, int loopback,
-		  int *is_inform, int pxe, struct in_addr fallback, time_t recvtime, int is_relay_use_source)
+		  int *is_inform, int pxe, struct in_addr fallback, time_t recvtime, struct in_addr leasequery_source)
 {
   unsigned char *opt, *clid = NULL;
   struct dhcp_lease *ltmp, *lease = NULL;
@@ -109,7 +109,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 #endif
 
   subnet_addr.s_addr = override.s_addr = 0;
-
+          
   /* set tag with name == interface */
   iface_id.net = iface_name;
   iface_id.next = NULL;
@@ -1059,11 +1059,13 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       if (!option_bool(OPT_LEASEQUERY))
 	return 0;
       
-      if (mess->giaddr.s_addr == 0 && !is_relay_use_source)
+      if (leasequery_source.s_addr == 0)
 	return 0;
-      
+
       daemon->metrics[METRIC_DHCPLEASEQUERY]++;
-      log_packet("DHCPLEASEQUERY", mess->ciaddr.s_addr ? &mess->ciaddr : NULL, emac_len != 0 ? emac : NULL, emac_len, iface_name, NULL, NULL, mess->xid);
+      inet_ntop(AF_INET, &leasequery_source, daemon->workspacename, ADDRSTRLEN);
+      log_packet("DHCPLEASEQUERY", mess->ciaddr.s_addr ? &mess->ciaddr : NULL, emac_len != 0 ? emac : NULL, emac_len,
+		 iface_name, "from ", daemon->workspacename, mess->xid);
 
       /* Put all the contexts on the ->current list for the next stages. */
       for (context = daemon->dhcp; context; context = context->next)
@@ -1901,22 +1903,24 @@ static void log_packet(char *type, void *addr, unsigned char *ext_mac,
     print_mac(daemon->namebuff, ext_mac, mac_len);
   
   if (option_bool(OPT_LOG_OPTS))
-    my_syslog(MS_DHCP | LOG_INFO, "%u %s(%s) %s%s%s %s%s",
+    my_syslog(MS_DHCP | LOG_INFO, "%u %s(%s) %s%s%s%s%s%s",
 	      ntohl(xid), 
 	      type,
 	      interface, 
 	      daemon->addrbuff,
 	      addr ? " " : "",
 	      daemon->namebuff,
+	      ext_mac ? " " : "",
 	      string ? string : "",
 	      err ? err : "");
   else
-    my_syslog(MS_DHCP | LOG_INFO, "%s(%s) %s%s%s %s%s",
+    my_syslog(MS_DHCP | LOG_INFO, "%s(%s) %s%s%s%s%s%s",
 	      type,
 	      interface, 
 	      daemon->addrbuff,
 	      addr ? " " : "",
 	      daemon->namebuff,
+	      ext_mac ? " " : "",
 	      string ? string : "",
 	      err ? err : "");
   
