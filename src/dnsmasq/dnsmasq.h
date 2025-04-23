@@ -869,7 +869,6 @@ struct dhcp_lease {
   char *old_hostname;    /* hostname before it moved to another lease */
   int flags;
   time_t expires;        /* lease expiry */
-  time_t last_transaction;
 #ifdef HAVE_BROKEN_RTC
   unsigned int length;
 #endif
@@ -1202,7 +1201,7 @@ extern struct daemon {
   char *runfile; 
   char *lease_change_command;
   struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
-  struct bogus_addr *bogus_addr, *ignore_addr;
+  struct bogus_addr *bogus_addr, *ignore_addr, *leasequery_addr;
   struct server *servers, *servers_tail, *local_domains, **serverarray;
   struct rebind_domain *no_rebind;
   int server_has_wildcard;

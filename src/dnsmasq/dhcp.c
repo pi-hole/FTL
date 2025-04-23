@@ -384,7 +384,7 @@ void dhcp_packet(time_t now, int pxe_fd)
     {
       /* Send to BOOTP relay. */
       if (is_relay_use_source)
-	/* restore as-recieved value */
+	/* restore as-received value */
 	mess->giaddr.s_addr = INADDR_BROADCAST;
       else
 	{

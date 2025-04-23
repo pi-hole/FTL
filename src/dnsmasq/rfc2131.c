@@ -1062,8 +1062,24 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       if (leasequery_source.s_addr == 0)
 	return 0;
 
-      daemon->metrics[METRIC_DHCPLEASEQUERY]++;
       inet_ntop(AF_INET, &leasequery_source, daemon->workspacename, ADDRSTRLEN);
+
+      if (daemon->leasequery_addr)
+	{
+	  struct bogus_addr *baddrp;
+
+	  for (baddrp = daemon->leasequery_addr; baddrp; baddrp = baddrp->next)
+	    if (!baddrp->is6 && baddrp->addr.addr4.s_addr == leasequery_source.s_addr)
+	      break;
+	  
+	  if (!baddrp)
+	    {
+	      my_syslog(MS_DHCP | LOG_WARNING, _("leasequery from %s not permitted"), daemon->workspacename);
+	      return 0;
+	    }
+	}
+      
+      daemon->metrics[METRIC_DHCPLEASEQUERY]++;
       log_packet("DHCPLEASEQUERY", mess->ciaddr.s_addr ? &mess->ciaddr : NULL, emac_len != 0 ? emac : NULL, emac_len,
 		 iface_name, "from ", daemon->workspacename, mess->xid);
 
