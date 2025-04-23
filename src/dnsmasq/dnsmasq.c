@@ -2166,6 +2166,10 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   
   if (!option_bool(OPT_DEBUG))
     {
+#ifdef HAVE_DNSSEC
+       cache_update_hwm(); /* Sneak out possibly updated crypto HWM values. */
+#endif
+
       close(daemon->pipe_to_parent);
       flush_log();
       _exit(0);
@@ -2274,10 +2278,10 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
   
    if (!option_bool(OPT_DEBUG))
      {
-       ssize_t m = -2;
+       unsigned char op = PIPE_OP_RESULT;
 
        /* tell our parent we're done, and what the result was then exit. */
-       read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
+       read_write(daemon->pipe_to_parent, &op, sizeof(op), RW_WRITE);
        read_write(daemon->pipe_to_parent, (unsigned char *)&status, sizeof(status), RW_WRITE);
        read_write(daemon->pipe_to_parent, (unsigned char *)plen, sizeof(*plen), RW_WRITE);
        read_write(daemon->pipe_to_parent, (unsigned char *)header, *plen, RW_WRITE);
@@ -2287,6 +2291,9 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
        read_write(daemon->pipe_to_parent, (unsigned char *)&keycount, sizeof(keycount), RW_WRITE);
        read_write(daemon->pipe_to_parent, (unsigned char *)validatecount, sizeof(*validatecount), RW_WRITE);
        read_write(daemon->pipe_to_parent, (unsigned char *)&validatecount, sizeof(validatecount), RW_WRITE);
+      
+       cache_update_hwm(); /* Sneak out possibly updated crypto HWM values. */
+              
        close(daemon->pipe_to_parent);
        
        flush_log();
