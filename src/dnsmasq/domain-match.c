@@ -402,6 +402,8 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   
   setup_reply(header, flags, ede);
 
+  gotname &= ~F_QUERY;
+  
   if (flags & (F_NXDOMAIN | F_NOERR))
     log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL, 0);
 
