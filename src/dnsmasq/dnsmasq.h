@@ -570,9 +570,9 @@ union mysockaddr {
 
 
 /* The actual values here matter, since we sort on them to get records in the order
-   IPv6 addr, IPv4 addr, all zero return, resolvconf servers, upstream server, no-data return  */
-#define SERV_LITERAL_ADDRESS    1  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
-#define SERV_USE_RESOLV         2  /* forward this domain in the normal way */
+   IPv6 addr, IPv4 addr, all zero return, no-data return, resolvconf servers, upstream server */
+#define SERV_USE_RESOLV         1  /* forward this domain in the normal way */
+#define SERV_LITERAL_ADDRESS    2  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
 #define SERV_ALL_ZEROS          4  /* return all zeros for A and AAAA */
 #define SERV_4ADDR              8  /* addr is IPv4 */
 #define SERV_6ADDR             16  /* addr is IPv6 */

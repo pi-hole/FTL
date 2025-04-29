@@ -1685,7 +1685,7 @@ void check_servers(int no_loop_check)
 	   if (++locals <= LOCALS_LOGGED)
 	     my_syslog(LOG_INFO, _("using only locally-known addresses for %s"), serv->domain);
 	 }
-       else if (serv->flags & SERV_USE_RESOLV)
+       else if (serv->flags & SERV_USE_RESOLV && serv->domain_len != 0)
 	 my_syslog(LOG_INFO, _("using standard nameservers for %s"), serv->domain);
     }
   
