@@ -505,7 +505,7 @@ static struct {
   { '4', ARG_DUP, "set:<tag>,<mac address>", gettext_noop("Map MAC address (with wildcards) to option set."), NULL },
   { LOPT_BRIDGE, ARG_DUP, "<iface>,<alias>..", gettext_noop("Treat DHCP requests on aliases as arriving from interface."), NULL },
   { LOPT_SHARED_NET, ARG_DUP, "<iface>|<addr>,<addr>", gettext_noop("Specify extra networks sharing a broadcast domain for DHCP"), NULL},
-  { LOPT_LEASEQUERY, ARG_DUP, "[<addr>]", gettext_noop("Enable RFC 4388 leasequery functions for DHCPv4"), NULL },
+  { LOPT_LEASEQUERY, ARG_DUP, "[<addr>[/prefix>]]", gettext_noop("Enable RFC 4388 leasequery functions for DHCPv4"), NULL },
   { '5', OPT_NO_PING, NULL, gettext_noop("Disable ICMP echo address checking in the DHCP server."), NULL },
   { '6', ARG_ONE, "<path>", gettext_noop("Shell script to run on DHCP lease creation and destruction."), NULL },
   { LOPT_LUASCRIPT, ARG_DUP, "path", gettext_noop("Lua script to run on DHCP lease creation and destruction."), NULL },

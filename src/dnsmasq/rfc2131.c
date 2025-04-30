@@ -1069,7 +1069,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  struct bogus_addr *baddrp;
 
 	  for (baddrp = daemon->leasequery_addr; baddrp; baddrp = baddrp->next)
-	    if (!baddrp->is6 && baddrp->addr.addr4.s_addr == leasequery_source.s_addr)
+	    if (!baddrp->is6 && is_same_net_prefix(leasequery_source, baddrp->addr.addr4, baddrp->prefix))
 	      break;
 	  
 	  if (!baddrp)
