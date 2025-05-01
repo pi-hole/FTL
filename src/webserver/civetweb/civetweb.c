@@ -455,8 +455,9 @@ _civet_safe_clock_gettime(int clk_id, struct timespec *t)
 #endif
 
 #if defined(USE_ZLIB)
-#include "zconf.h"
-#include "zlib.h"
+//#include "zconf.h"
+//#include "zlib.h"
+#include "zip/miniz/miniz.h"
 #endif
 
 

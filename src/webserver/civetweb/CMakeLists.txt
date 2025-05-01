@@ -15,6 +15,10 @@ set(sources
         md5.inl
         sha1.inl
         timer.inl
+        mod_lua.inl
+        mod_mbedtls.inl
+        mod_lua_shared.inl
+        mod_zlib.inl
         )
 
 add_library(civetweb OBJECT ${sources})
@@ -24,12 +28,14 @@ target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused
 # NO_SSL_DL NO_SSL = no SSL support (for now)
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
+# USE_ZLIB: add zlib support
 # TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
                                             NO_SSL_DL
                                             USE_IPV6
                                             USE_LUA
+                                            USE_ZLIB
                                             TIMER_RESOLUTION=1000)
 
 include_directories(${PROJECT_SOURCE_DIR}/src/lua /usr/local/include)
