@@ -82,6 +82,11 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 	if ((recv_buf[0] & 0x07) != 0x3) {
 		log_warn("Received invalid NTP request: not from an NTP client, ignoring");
 		return false;
+	// Check if the request is NTP version 4
+	}
+	if (((recv_buf[0] >> 3) & 0x07) != 0x4) {
+		log_warn("Received NTP request has unsupported version, ignoring");
+		return false;
 	}
 
 	// set LI = 0 (no warning about leap seconds), set version-number to
