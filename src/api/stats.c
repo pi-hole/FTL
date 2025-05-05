@@ -655,7 +655,7 @@ cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 
 		if(upstreams_only)
 		{
-			cJSON_AddStringToArray(jtop_upstreams, name);
+			cJSON_AddStringToArray(jtop_upstreams, ip);
 		}
 		else
 		{
