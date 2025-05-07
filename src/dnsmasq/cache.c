@@ -881,6 +881,16 @@ void cache_update_hwm(void)
 }
 #endif
 
+#if defined(HAVE_IPSET) || defined(HAVE_NFTSET)
+void cache_send_ipset(unsigned char op, struct ipsets *sets, int flags, union all_addr *addr)
+{
+  read_write(daemon->pipe_to_parent, &op, sizeof(op), RW_WRITE);
+  read_write(daemon->pipe_to_parent, (unsigned char *)&sets, sizeof(sets), RW_WRITE);
+  read_write(daemon->pipe_to_parent, (unsigned char *)&flags, sizeof(flags), RW_WRITE);
+  read_write(daemon->pipe_to_parent, (unsigned char *)addr, sizeof(*addr), RW_WRITE);
+}
+#endif
+
 /* A marshalled cache entry arrives on fd, read, unmarshall and insert into cache of master process. */
 int cache_recv_insert(time_t now, int fd)
 {
@@ -1029,11 +1039,45 @@ int cache_recv_insert(time_t now, int fd)
 #endif
 	      crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
 	    }
-
+	  
 	  /* loop reading RRs, since we don't want to go back to the poll() loop
 	     and start processing other queries which might pollute the insertion
 	     chain. The child will never block between the first OP_RR and the OP_END */
 	  continue;
+	  
+#if defined(HAVE_IPSET) || defined(HAVE_NFTSET)
+	case PIPE_OP_IPSET:
+	case PIPE_OP_NFTSET:
+	    {
+	      struct ipsets *sets;
+	      char **sets_cur;
+	      
+	      if (!read_write(fd, (unsigned char *)&sets, sizeof(sets), RW_READ) ||
+		  !read_write(fd, (unsigned char *)&flags, sizeof(flags), RW_READ) ||
+		  !read_write(fd, (unsigned char *)&addr, sizeof(addr), RW_READ))
+		return 0;
+	      
+	      for (sets_cur = sets->sets; *sets_cur; sets_cur++)
+		{
+		  int rc = -1;
+		  
+#ifdef HAVE_IPSET
+		  if (op == PIPE_OP_IPSET)
+		    rc = add_to_ipset(*sets_cur, &addr, flags, 0);
+#endif
+		  
+#ifdef HAVE_NFTSET		  
+		  if (op == PIPE_OP_NFTSET)
+		    rc = add_to_nftset(*sets_cur, &addr, flags, 0);
+#endif
+		  
+		  if (rc == 0)
+		    log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, sets->domain, &addr, *sets_cur, op == PIPE_OP_IPSET);
+		}
+	      
+	      return 1;
+	    }
+#endif
 	}
     }
 }
