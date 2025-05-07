@@ -284,7 +284,8 @@ struct event_desc {
 #define OPT_LOG_PROTO      73
 #define OPT_NO_0x20        74
 #define OPT_DO_0x20        75
-#define OPT_LAST           76
+#define OPT_AUTH_LOG       76
+#define OPT_LAST           77
 
 #define OPTION_BITS (sizeof(unsigned int)*8)
 #define OPTION_SIZE ( (OPT_LAST/OPTION_BITS)+((OPT_LAST%OPTION_BITS)!=0) )
@@ -548,6 +549,11 @@ struct crec {
 #define SRC_HOSTS     2
 #define SRC_AH        3
 
+#define PIPE_OP_RR      1  /* Resource record */
+#define PIPE_OP_END     2  /* Cache entry complete: commit */
+#define PIPE_OP_RESULT  3  /* validation result. */
+#define PIPE_OP_STATS   4  /* Update parent's stats */
+
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.
    Blech. Roll our own. */
@@ -564,9 +570,9 @@ union mysockaddr {
 
 
 /* The actual values here matter, since we sort on them to get records in the order
-   IPv6 addr, IPv4 addr, all zero return, resolvconf servers, upstream server, no-data return  */
-#define SERV_LITERAL_ADDRESS    1  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
-#define SERV_USE_RESOLV         2  /* forward this domain in the normal way */
+   IPv6 addr, IPv4 addr, all zero return, no-data return, resolvconf servers, upstream server */
+#define SERV_USE_RESOLV         1  /* forward this domain in the normal way */
+#define SERV_LITERAL_ADDRESS    2  /* addr is the answer, or NoDATA is the answer, depending on the next four flags */
 #define SERV_ALL_ZEROS          4  /* return all zeros for A and AAAA */
 #define SERV_4ADDR              8  /* addr is IPv4 */
 #define SERV_6ADDR             16  /* addr is IPv6 */
@@ -1371,6 +1377,9 @@ void cache_end_insert(void);
 void cache_start_insert(void);
 unsigned int cache_remove_uid(const unsigned int uid);
 int cache_recv_insert(time_t now, int fd);
+#ifdef HAVE_DNSSEC
+void cache_update_hwm(void);
+#endif
 struct crec *cache_insert(char *name, union all_addr *addr, unsigned short class, 
 			  time_t now, unsigned long ttl, unsigned int flags);
 void cache_reload(void);

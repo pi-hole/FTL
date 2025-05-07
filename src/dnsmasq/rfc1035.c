@@ -535,9 +535,6 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
   if (substring)
     *substring = name_len;
 
-  if (ttlp)
-    *ttlp = daemon->neg_ttl;
-  
   for (i = 0; i < ntohs(header->nscount); i++)
     {
       if (!extract_name(header, qlen, &p, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
@@ -813,21 +810,32 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 	}
       
-      if (!found && !option_bool(OPT_NO_NEG))
+      if (!found)
 	{
-	  /* For reverse records, we use the name field to store the SOA name. */
-	  int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
-	  
 	  flags |= F_NEG | (secure ?  F_DNSSECOK : 0);
-	  if (name_encoding && ttl)
-	    {
-	      flags |= F_REVERSE | name_encoding;
-	      if (!have_soa)
-		flags |= F_NO_RR; /* Marks no SOA found. */
-	      cache_insert(name + substring, &addr, C_IN, now, ttl, flags);
-	    }
-	  
+
+	  if (name_encoding)
+	    flags |= F_REVERSE | name_encoding;
+
 	  log_query(flags | F_UPSTREAM, name, &addr, NULL, 0);
+
+	  if (name_encoding && !option_bool(OPT_NO_NEG))
+	    {
+	      /* For reverse records, we use the name field to store the SOA name. */
+	      int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
+
+	      if (have_soa || daemon->neg_ttl)
+		{
+		  /* If daemon->neg_ttl is set, we can cache even without an SOA. */
+		  if (!have_soa)
+		    {
+		      flags |= F_NO_RR; /* Marks no SOA found. */
+		      ttl = daemon->neg_ttl;
+		    }
+		  
+		  cache_insert(name + substring, &addr, C_IN, now, ttl, flags);
+		}
+	    }
 	}
     }
   else
@@ -1147,26 +1155,27 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    {
 	      int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
 	      
-	      /* If there's no SOA to get the TTL from, but there is a CNAME 
-		 pointing at this, inherit its TTL */
-	      if (ttl || cpp)
-		{
-		  if (!ttl)
-		    ttl = cttl;
-		  
-		  addr.rrdata.datalen = substring;
-		  addr.rrdata.rrtype = qtype;
-		  
-		  if (!have_soa)
-		    flags |= F_NO_RR; /* Marks no SOA found. */
-		}
-	      
-	      newc = cache_insert(name, &addr, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
-	      if (newc && cpp)
-		{
-		  next_uid(newc);
-		  cpp->addr.cname.target.cache = newc;
-		  cpp->addr.cname.uid = newc->uid;
+	      if (have_soa || daemon->neg_ttl)
+		{		  
+		  if (have_soa)
+		    {
+		      addr.rrdata.datalen = substring;
+		      addr.rrdata.rrtype = qtype;
+		    }
+		  else
+		    {
+		      /* If daemon->neg_ttl is set, we can cache even without an SOA. */
+		      ttl = daemon->neg_ttl;
+		      flags |= F_NO_RR; /* Marks no SOA found. */
+		    }
+			      
+		  newc = cache_insert(name, &addr, C_IN, now, ttl, F_FORWARD | F_NEG | flags | (secure ? F_DNSSECOK : 0));	
+		  if (newc && cpp)
+		    {
+		      next_uid(newc);
+		      cpp->addr.cname.target.cache = newc;
+		      cpp->addr.cname.uid = newc->uid;
+		    }
 		}
 	    }
 	}
