@@ -472,7 +472,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 								sqlite3_close(db);
 								return EXIT_FAILURE;
 							}
-							memcpy(invalid_domains_list[invalid_domains_list_len], line, token_len);
+							memcpy(invalid_domains_list[invalid_domains_list_len], token, token_len);
 							invalid_domains_list[invalid_domains_list_len][token_len] = '\0';
 							invalid_domains_list_lengths[invalid_domains_list_len] = token_len;
 							invalid_domains_list_len++;
