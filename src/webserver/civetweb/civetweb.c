@@ -1597,7 +1597,7 @@ static int mg_openssl_initialized = 0;
 #endif
 #if !defined(OPENSSL_API_1_0) && !defined(OPENSSL_API_1_1)                     \
     && !defined(OPENSSL_API_3_0) && !defined(USE_MBEDTLS)                      \
-	&& !defined(USE_GNUTLS)
+    && !defined(USE_GNUTLS)
 #error "Please define OPENSSL_API_#_# or USE_MBEDTLS or USE_GNUTLS"
 #endif
 #if defined(OPENSSL_API_1_0) && defined(OPENSSL_API_1_1)
@@ -2371,7 +2371,9 @@ STOP_FLAG_ASSIGN(stop_flag_t *f, stop_flag_t v)
 {
 	stop_flag_t sf = 0;
 	do {
-		sf = mg_atomic_compare_and_swap(f, *f, v);
+		sf = mg_atomic_compare_and_swap(f,
+		                                __atomic_load_n(f, __ATOMIC_SEQ_CST),
+		                                v);
 	} while (sf != v);
 }
 
@@ -6224,9 +6226,12 @@ push_inner(struct mg_context *ctx,
 		} else
 #elif defined(USE_GNUTLS)
 		if (ssl != NULL) {
-			n = gtls_ssl_write(ssl, (const unsigned char *)buf, (size_t) len);
+			n = gtls_ssl_write(ssl, (const unsigned char *)buf, (size_t)len);
 			if (n < 0) {
-				fprintf(stderr, "SSL write failed (%d): %s", n, gnutls_strerror(n));
+				fprintf(stderr,
+				        "SSL write failed (%d): %s",
+				        n,
+				        gnutls_strerror(n));
 				return -2;
 			} else {
 				err = 0;
@@ -6531,7 +6536,10 @@ pull_inner(FILE *fp,
 		if (pollres > 0) {
 			nread = gtls_ssl_read(conn->ssl, (unsigned char *)buf, to_read);
 			if (nread < 0) {
-				fprintf(stderr, "SSL read failed (%d): %s", nread, gnutls_strerror(nread));
+				fprintf(stderr,
+				        "SSL read failed (%d): %s",
+				        nread,
+				        gnutls_strerror(nread));
 				return -2;
 			} else {
 				err = 0;
@@ -8569,6 +8577,9 @@ static const struct {
      * (http://www.iana.org/assignments/media-types)
      * application types */
     {".bin", 4, "application/octet-stream"},
+    {".cer", 4, "application/pkix-cert"},
+    {".crl", 4, "application/pkix-crl"},
+    {".crt", 4, "application/pkix-cert"},
     {".deb", 4, "application/octet-stream"},
     {".dmg", 4, "application/octet-stream"},
     {".dll", 4, "application/octet-stream"},
@@ -8580,6 +8591,7 @@ static const struct {
     {".json", 5, "application/json"},
     {".mjs", 4, "application/javascript"},
     {".msi", 4, "application/octet-stream"},
+    {".pem", 4, "application/x-pem-file"},
     {".pdf", 4, "application/pdf"},
     {".ps", 3, "application/postscript"},
     {".rtf", 4, "application/rtf"},
@@ -9688,7 +9700,8 @@ connect_socket(
 		return 0;
 	}
 
-#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS) && !defined(NO_SSL_DL)
+#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS)          \
+    && !defined(NO_SSL_DL)
 #if defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0)
 	if (use_ssl && (TLS_client_method == NULL)) {
 		if (error != NULL) {
@@ -16212,6 +16225,10 @@ set_ports_option(struct mg_context *phys_ctx)
 			mg_cry_ctx_internal(phys_ctx,
 			                    "cannot create socket (entry %i)",
 			                    portsTotal);
+			if (so.is_optional) {
+				portsOk++; /* it's okay if we couldn't create a socket,
+				        this port is optional anyway */
+			}
 			continue;
 		}
 
@@ -16297,6 +16314,10 @@ set_ports_option(struct mg_context *phys_ctx)
 #else
 			mg_cry_ctx_internal(phys_ctx, "%s", "IPv6 not available");
 			closesocket(so.sock);
+			if (so.is_optional) {
+				portsOk++; /* it's okay if we couldn't set the socket option,
+				              this port is optional anyway */
+			}
 			so.sock = INVALID_SOCKET;
 			continue;
 #endif
@@ -18450,7 +18471,8 @@ mg_close_connection(struct mg_connection *conn)
 
 	close_connection(conn);
 
-#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS) // TODO: mbedTLS client
+#if !defined(NO_SSL) && !defined(USE_MBEDTLS)                                  \
+    && !defined(USE_GNUTLS) // TODO: mbedTLS client
 	if (((conn->phys_ctx->context_type == CONTEXT_HTTP_CLIENT)
 	     || (conn->phys_ctx->context_type == CONTEXT_WS_CLIENT))
 	    && (conn->phys_ctx->dd.ssl_ctx != NULL)) {
@@ -18552,7 +18574,8 @@ mg_connect_client_impl(const struct mg_client_options *client_options,
 		return NULL;
 	}
 
-#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS) // TODO: mbedTLS client
+#if !defined(NO_SSL) && !defined(USE_MBEDTLS)                                  \
+    && !defined(USE_GNUTLS) // TODO: mbedTLS client
 #if (defined(OPENSSL_API_1_1) || defined(OPENSSL_API_3_0))                     \
     && !defined(NO_SSL_DL)
 
@@ -18629,7 +18652,8 @@ mg_connect_client_impl(const struct mg_client_options *client_options,
 			            error->text_buffer_size,
 			            "Can not create mutex");
 		}
-#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS) // TODO: mbedTLS client
+#if !defined(NO_SSL) && !defined(USE_MBEDTLS)                                  \
+    && !defined(USE_GNUTLS) // TODO: mbedTLS client
 		SSL_CTX_free(conn->dom_ctx->ssl_ctx);
 #endif
 		closesocket(sock);
@@ -18637,7 +18661,8 @@ mg_connect_client_impl(const struct mg_client_options *client_options,
 		return NULL;
 	}
 
-#if !defined(NO_SSL) && !defined(USE_MBEDTLS) && !defined(USE_GNUTLS) // TODO: mbedTLS client
+#if !defined(NO_SSL) && !defined(USE_MBEDTLS)                                  \
+    && !defined(USE_GNUTLS) // TODO: mbedTLS client
 	if (use_ssl) {
 		/* TODO: Check ssl_verify_peer and ssl_ca_path here.
 		 * SSL_CTX_set_verify call is needed to switch off server
@@ -22308,7 +22333,7 @@ mg_get_system_info(char *buffer, int buflen)
 		            sizeof(block),
 		            ",%s\"os\" : \"%s %s\"",
 		            eol,
-		           "RTEMS",
+		            "RTEMS",
 		            rtems_version());
 		system_info_length += mg_str_append(&buffer, end, block);
 #elif defined(__ZEPHYR__)

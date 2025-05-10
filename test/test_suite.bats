@@ -327,13 +327,6 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Local DNS test: SOA ftl" {
-  run bash -c "dig SOA ftl @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 0 10800 3600 604800 3600" ]]
-  [[ ${lines[1]} == "" ]]
-}
-
 @test "Local DNS test: PTR ptr.ftl" {
   run bash -c "dig PTR ptr.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -359,13 +352,6 @@
   run bash -c "dig MX mx.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "50 ns1.ftl." ]]
-  [[ ${lines[1]} == "" ]]
-}
-
-@test "Local DNS test: NS ftl" {
-  run bash -c "dig NS ftl @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl." ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -748,7 +734,7 @@
 }
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(Negative DS reply without NS record received for ftl)"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }

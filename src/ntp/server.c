@@ -46,7 +46,7 @@
 #include "timers.h"
 
 uint64_t ntp_last_sync = 0u;
-uint32_t ntp_root_delay = 0u;
+int32_t ntp_root_delay = 0u;
 uint32_t ntp_root_dispersion = 0u;
 uint8_t ntp_stratum = 0u;
 
@@ -81,6 +81,11 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
  	// Check if the first byte is valid: mode is expected to be 3 ("client")
 	if ((recv_buf[0] & 0x07) != 0x3) {
 		log_warn("Received invalid NTP request: not from an NTP client, ignoring");
+		return false;
+	// Check if the request is NTP version 4
+	}
+	if (((recv_buf[0] >> 3) & 0x07) != 0x4) {
+		log_warn("Received NTP request has unsupported version, ignoring");
 		return false;
 	}
 

@@ -816,14 +816,16 @@ void cache_end_insert(void)
 	      char *name = cache_get_name(new_chain);
 	      ssize_t m = strlen(name);
 	      unsigned int flags = new_chain->flags;
+	      unsigned char op = PIPE_OP_RR;
 #ifdef HAVE_DNSSEC
 	      u16 class = new_chain->uid;
 #endif
 	      
+	      read_write(daemon->pipe_to_parent, &op, sizeof(op), RW_WRITE);
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
 	      read_write(daemon->pipe_to_parent, (unsigned char *)name, m, RW_WRITE);
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->ttd, sizeof(new_chain->ttd), RW_WRITE);
-	      read_write(daemon->pipe_to_parent, (unsigned  char *)&flags, sizeof(flags), RW_WRITE);
+	      read_write(daemon->pipe_to_parent, (unsigned char *)&flags, sizeof(flags), RW_WRITE);
 	      read_write(daemon->pipe_to_parent, (unsigned char *)&new_chain->addr, sizeof(new_chain->addr), RW_WRITE);
 	      
 	      if (flags & F_RR)
@@ -855,24 +857,29 @@ void cache_end_insert(void)
   /* signal end of cache insert in master process */
   if (daemon->pipe_to_parent != -1)
     {
-      ssize_t m = -1;
-
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-
-#ifdef HAVE_DNSSEC
-      /* Sneak out possibly updated crypto HWM values. */
-      m = daemon->metrics[METRIC_CRYPTO_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-      m = daemon->metrics[METRIC_SIG_FAIL_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-      m = daemon->metrics[METRIC_WORK_HWM];
-      read_write(daemon->pipe_to_parent, (unsigned char *)&m, sizeof(m), RW_WRITE);
-#endif
+      unsigned char op = PIPE_OP_END;
+      read_write(daemon->pipe_to_parent, &op, sizeof(op), RW_WRITE);
     }
-      
-  new_chain = NULL;
 }
 
+#ifdef HAVE_DNSSEC
+void cache_update_hwm(void)
+{
+  /* Sneak out possibly updated crypto HWM values. */
+  unsigned char op = PIPE_OP_STATS;
+
+  read_write(daemon->pipe_to_parent, &op, sizeof(op), RW_WRITE);
+  read_write(daemon->pipe_to_parent,
+	     (unsigned char *)&daemon->metrics[METRIC_CRYPTO_HWM],
+	     sizeof(daemon->metrics[METRIC_CRYPTO_HWM]), RW_WRITE);
+  read_write(daemon->pipe_to_parent,
+	     (unsigned char *)&daemon->metrics[METRIC_SIG_FAIL_HWM],
+	     sizeof(daemon->metrics[METRIC_SIG_FAIL_HWM]), RW_WRITE);
+  read_write(daemon->pipe_to_parent,
+	     (unsigned char *)&daemon->metrics[METRIC_WORK_HWM],
+	     sizeof(daemon->metrics[METRIC_WORK_HWM]), RW_WRITE);
+}
+#endif
 
 /* A marshalled cache entry arrives on fd, read, unmarshall and insert into cache of master process. */
 int cache_recv_insert(time_t now, int fd)
@@ -883,137 +890,150 @@ int cache_recv_insert(time_t now, int fd)
   time_t ttd;
   unsigned int flags;
   struct crec *crecp = NULL;
+  unsigned char op;
   
   cache_start_insert();
   
   while (1)
     {
- 
-      if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
+      if (!read_write(fd, &op, sizeof(op), RW_READ))
 	return 0;
       
-      if (m == -1)
+      switch (op)
 	{
-#ifdef HAVE_DNSSEC
-	  /* Sneak in possibly updated crypto HWM. */
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
-	    return 0;
-	  if (m > daemon->metrics[METRIC_CRYPTO_HWM])
-	    daemon->metrics[METRIC_CRYPTO_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
-	    return 0;
-	  if (m > daemon->metrics[METRIC_SIG_FAIL_HWM])
-	    daemon->metrics[METRIC_SIG_FAIL_HWM] = m;
-	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ))
-	    return 0;
-	  if (m > daemon->metrics[METRIC_WORK_HWM])
-	    daemon->metrics[METRIC_WORK_HWM] = m;
-#endif
+	case PIPE_OP_END:
 	  cache_end_insert();
 	  return 1;
-	}
-
+	  
 #ifdef HAVE_DNSSEC
-      /* UDP validation moved to TCP to avoid truncation. 
-	 Restart UDP validation process with the returned result. */
-      if (m == -2)
-	{
-	  int status, uid, keycount, validatecount;
-	  int *keycountp, *validatecountp;
-	  size_t ret_len;
+	case PIPE_OP_STATS:
+	  {
+	    /* Sneak in possibly updated crypto HWM. */
+	    unsigned int val;
+
+	    if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
+	      return 0;
+	    if (val > daemon->metrics[METRIC_CRYPTO_HWM])
+	      daemon->metrics[METRIC_CRYPTO_HWM] = val;
+	    if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
+	      return 0;
+	    if (val > daemon->metrics[METRIC_SIG_FAIL_HWM])
+	      daemon->metrics[METRIC_SIG_FAIL_HWM] = val;
+	    if (!read_write(fd, (unsigned char *)&val, sizeof(val), RW_READ))
+	      return 0;
+	    if (val > daemon->metrics[METRIC_WORK_HWM])
+	      daemon->metrics[METRIC_WORK_HWM] = val;
+	    return 1;
+	  }
 	  
-	  struct frec *forward;
-	  
-	  if (!read_write(fd, (unsigned char *)&status, sizeof(status), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&ret_len, sizeof(ret_len), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)daemon->packet, ret_len, RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&uid, sizeof(uid), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&keycount, sizeof(keycount), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&keycountp, sizeof(keycountp), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&validatecount, sizeof(validatecount), RW_READ))
-	    return 0;
-	  if (!read_write(fd, (unsigned char *)&validatecountp, sizeof(validatecountp), RW_READ))
-	    return 0;
-	  
-	  /* There's a tiny chance that the frec may have been freed 
-	     and reused before the TCP process returns. Detect that with
-	     the uid field which is unique modulo 2^32 for each use. */
-	  if (uid == forward->uid)
-	    {
-	      /* repatriate the work counters from the child process. */
-	      *keycountp = keycount;
-	      *validatecountp = validatecount;
-	      
-	      if (!forward->dependent)
-		return_reply(now, forward, (struct dns_header *)daemon->packet, ret_len, status);
-	      else
-		pop_and_retry_query(forward, status, now);
-	    }
-	  
-	  return 1;
-	}
+	case PIPE_OP_RESULT:
+	  {
+	    /* UDP validation moved to TCP to avoid truncation. 
+	       Restart UDP validation process with the returned result. */
+	    int status, uid, keycount, validatecount;
+	    int *keycountp, *validatecountp;
+	    size_t ret_len;
+	    
+	    struct frec *forward;
+	    
+	    if (!read_write(fd, (unsigned char *)&status, sizeof(status), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&ret_len, sizeof(ret_len), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)daemon->packet, ret_len, RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&forward, sizeof(forward), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&uid, sizeof(uid), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&keycount, sizeof(keycount), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&keycountp, sizeof(keycountp), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&validatecount, sizeof(validatecount), RW_READ))
+	      return 0;
+	    if (!read_write(fd, (unsigned char *)&validatecountp, sizeof(validatecountp), RW_READ))
+	      return 0;
+	    
+	    /* There's a tiny chance that the frec may have been freed 
+	       and reused before the TCP process returns. Detect that with
+	       the uid field which is unique modulo 2^32 for each use. */
+	    if (uid == forward->uid)
+	      {
+		/* repatriate the work counters from the child process. */
+		*keycountp = keycount;
+		*validatecountp = validatecount;
+		
+		if (!forward->dependent)
+		  return_reply(now, forward, (struct dns_header *)daemon->packet, ret_len, status);
+		else
+		  pop_and_retry_query(forward, status, now);
+	      }
+	    
+	    return 1;
+	  }
 #endif
-       
-      if (!read_write(fd, (unsigned char *)daemon->namebuff, m, RW_READ) ||
-	  !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), RW_READ) ||
-	  !read_write(fd, (unsigned char *)&flags, sizeof(flags), RW_READ) ||
-	  !read_write(fd, (unsigned char *)&addr, sizeof(addr), RW_READ))
-	return 0;
-
-      daemon->namebuff[m] = 0;
-
-      ttl = difftime(ttd, now);
-      
-      if (flags & F_CNAME)
-	{
-	  struct crec *newc = really_insert(daemon->namebuff, NULL, C_IN, now, ttl, flags);
-	  /* This relies on the fact that the target of a CNAME immediately precedes
-	     it because of the order of extraction in extract_addresses, and
-	     the order reversal on the new_chain. */
-	  if (newc)
+	  
+	case PIPE_OP_RR:
+	  if (!read_write(fd, (unsigned char *)&m, sizeof(m), RW_READ) ||
+	      !read_write(fd, (unsigned char *)daemon->namebuff, m, RW_READ) ||
+	      !read_write(fd, (unsigned char *)&ttd, sizeof(ttd), RW_READ) ||
+	      !read_write(fd, (unsigned char *)&flags, sizeof(flags), RW_READ) ||
+	      !read_write(fd, (unsigned char *)&addr, sizeof(addr), RW_READ))
+	    return 0;
+	  
+	  daemon->namebuff[m] = 0;
+	  
+	  ttl = difftime(ttd, now);
+	  
+	  if (flags & F_CNAME)
 	    {
-	      newc->addr.cname.is_name_ptr = 0;
-	      
-	      if (!crecp)
-		newc->addr.cname.target.cache = NULL;
-	      else
+	      struct crec *newc = really_insert(daemon->namebuff, NULL, C_IN, now, ttl, flags);
+	      /* This relies on the fact that the target of a CNAME immediately precedes
+		 it because of the order of extraction in extract_addresses, and
+		 the order reversal on the new_chain. */
+	      if (newc)
 		{
-		  next_uid(crecp);
-		  newc->addr.cname.target.cache = crecp;
-		  newc->addr.cname.uid = crecp->uid;
+		  newc->addr.cname.is_name_ptr = 0;
+		  
+		  if (!crecp)
+		    newc->addr.cname.target.cache = NULL;
+		  else
+		    {
+		      next_uid(crecp);
+		      newc->addr.cname.target.cache = crecp;
+		      newc->addr.cname.uid = crecp->uid;
+		    }
 		}
 	    }
-	}
-      else
-	{
-	  unsigned short class = C_IN;
-
-	  if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
-	      && !(addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
-	    return 0;
+	  else
+	    {
+	      unsigned short class = C_IN;
+	      
+	      if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
+		  && !(addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
+		return 0;
 #ifdef HAVE_DNSSEC
-	  if (flags & F_DNSKEY)
-	    {
-	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
-		  !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
-		return 0;
-	    }
-	  else  if (flags & F_DS)
-	    {
-	      if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
-		  (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
-		return 0;
-	    }
+	      if (flags & F_DNSKEY)
+		{
+		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
+		      !(addr.key.keydata = blockdata_read(fd, addr.key.keylen)))
+		    return 0;
+		}
+	      else  if (flags & F_DS)
+		{
+		  if (!read_write(fd, (unsigned char *)&class, sizeof(class), RW_READ) ||
+		      (!(flags & F_NEG) && !(addr.key.keydata = blockdata_read(fd, addr.key.keylen))))
+		    return 0;
+		}
 #endif
-	  crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
+	      crecp = really_insert(daemon->namebuff, &addr, class, now, ttl, flags);
+	    }
+
+	  /* loop reading RRs, since we don't want to go back to the poll() loop
+	     and start processing other queries which might pollute the insertion
+	     chain. The child will never block between the first OP_RR and the OP_END */
+	  continue;
 	}
     }
 }
@@ -1465,11 +1485,17 @@ void cache_reload(void)
 	cache->flags = F_FORWARD | F_IMMORTAL | F_DS | F_CONFIG | F_NAMEP;
 	cache->ttd = daemon->local_ttl;
 	cache->name.namep = ds->name;
-	cache->addr.ds.keylen = ds->digestlen;
-	cache->addr.ds.algo = ds->algo;
-	cache->addr.ds.keytag = ds->keytag;
-	cache->addr.ds.digest = ds->digest_type;
 	cache->uid = ds->class;
+	if (ds->digestlen != 0)
+	  {
+	    cache->addr.ds.keylen = ds->digestlen;
+	    cache->addr.ds.algo = ds->algo;
+	    cache->addr.ds.keytag = ds->keytag;
+	    cache->addr.ds.digest = ds->digest_type;
+	  }
+	else
+	  cache->flags |= F_NEG | F_DNSSECOK | F_NO_RR;
+	
 	cache_hash(cache);
 	make_non_terminals(cache);
       }
@@ -2290,12 +2316,17 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   char portstring[7]; /* space for #<portnum> */
 
   FTL_hook(flags, name, addr, arg, daemon->log_display_id, type, file, line);
-  
+  char opcodestring[3]; /* maximum is 15 */
+
   if (!option_bool(OPT_LOG))
     return;
 
+  /* F_NOERR is reused here to indicate logs arrising from auth queries */ 
+  if (!(flags & F_NOERR) && option_bool(OPT_AUTH_LOG))
+    return;
+
   /* build query type string if requested */
-  if (!(flags & (F_SERVER | F_IPSET)) && type > 0)
+  if (!(flags & (F_SERVER | F_IPSET | F_QUERY)) && type > 0)
     arg = querystr(arg, type);
 
   dest = arg;
@@ -2328,6 +2359,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
 	    dest = "SERVFAIL";
 	  else if (rcode == REFUSED)
 	    dest = "REFUSED";
+	  else if (rcode == FORMERR)
+	    dest = "FORMERR";
 	  else if (rcode == NOTIMP)
 	    dest = "not implemented";
 	  else
@@ -2386,6 +2419,8 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     source = arg;
   else if (flags & F_UPSTREAM)
     source = "reply";
+  else if (flags & F_AUTH)
+    source = "auth";
   else if (flags & F_SECSTAT)
     {
       if (addr && addr->log.ede != EDE_UNSET && option_bool(OPT_EXTRALOG))
@@ -2396,8 +2431,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
       source = "validation";
       dest = arg;
     }
-  else if (flags & F_AUTH)
-    source = "auth";
   else if (flags & F_DNSSEC)
     {
       source = arg;
@@ -2407,11 +2440,6 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     {
       source = "forwarded";
       verb = "to";
-    }
-  else if (flags & F_QUERY)
-    {
-      source = arg;
-      verb = "from";
     }
   else if (flags & F_IPSET)
     {
@@ -2424,7 +2452,21 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
     source = "cached-stale";
   else
     source = "cached";
-  
+
+  if (flags & F_QUERY)
+    {
+      if (flags & F_CONFIG)
+	{
+	  sprintf(opcodestring, "%u", type & 0xf);
+	  source = "non-query opcode";
+	  name = opcodestring;
+	}
+      else if (!(flags & F_AUTH))
+	source = "query";
+      
+      verb = "from";
+    }
+
   if (!name)
     gap = name = "";
   else if (!name[0])

@@ -26,6 +26,7 @@
 #define DNSSEC_LIMIT_SIG_FAIL 20 /* Number of signature that can fail to validate in one answer */
 #define DNSSEC_LIMIT_CRYPTO 200 /* max no. of crypto operations to validate one query. */
 #define DNSSEC_LIMIT_NSEC3_ITERS 150 /* Max. number if iterations allowed in NSEC3 record. */
+#define DNSSEC_ASSUMED_DS_TTL 3600 /* TTL for negative DS records implied by server=/domain/ */
 #define TIMEOUT 10     /* drop UDP queries after TIMEOUT seconds */
 #define SMALL_PORT_RANGE 30 /* If DNS port range is smaller than this, use different allocation. */
 #define FORWARD_TEST 1000 /* try all servers every 1000 queries */

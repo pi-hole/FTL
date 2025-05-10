@@ -965,7 +965,7 @@ char *parse_server(char *arg, struct server_details *sdetails)
       hints.ai_family = AF_UNSPEC;
 
       /* Get addresses suitable for sending datagrams. We assume that we can use the
-	 same addresses for TCP connections. Settting this to zero gets each address
+	 same addresses for TCP connections. Setting this to zero gets each address
 	 threes times, for SOCK_STREAM, SOCK_RAW and SOCK_DGRAM, which is not useful. */
       hints.ai_socktype = SOCK_DGRAM;
 
@@ -2678,15 +2678,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			if (msize > 128)
 			  ret_err_free(_("bad prefix length"), new);
 			
-			mask = (1LLU << (128 - msize)) - 1LLU;
+			/* prefix==64 overflows the mask calculation */
+			if (msize <= 64)
+			  mask = (u64)-1LL;
+			else
+			  mask = (1LLU << (128 - msize)) - 1LLU;
 			
 			new->is6 = 1;
 			new->prefixlen = msize;
 			
-			/* prefix==64 overflows the mask calculation above */
-			if (msize <= 64)
-			  mask = (u64)-1LL;
-			  
 			new->end6 = new->start6;
 			setaddr6part(&new->start6, addrpart & ~mask);
 			setaddr6part(&new->end6, addrpart | mask);
@@ -3438,6 +3438,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      set_option_bool(OPT_EXTRALOG);
 	      set_option_bool(OPT_LOG_PROTO);
 	    }
+	  else if (strcmp(arg, "auth") == 0)
+	    set_option_bool(OPT_AUTH_LOG);
 	}
       break;
 
@@ -3990,7 +3992,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	while (arg)
 	  {
 	    comma = split(arg);
-	    if (strchr(arg, ':')) /* ethernet address, netid or binary CLID */
+	    if (strchr(arg, ':')) /* Ethernet address, netid or binary CLID */
 	      {
 		if ((arg[0] == 'i' || arg[0] == 'I') &&
 		    (arg[1] == 'd' || arg[1] == 'D') &&
@@ -5340,7 +5342,8 @@ err:
 	
 	new->class = C_IN;
 	new->name = NULL;
-
+	new->digestlen = 0;
+	
 	if ((comma = split(arg)) && (algo = split(comma)))
 	  {
 	    int class = 0;
@@ -5358,29 +5361,37 @@ err:
 		algo = split(comma);
 	      }
 	  }
-		  
-       	if (!comma || !algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
-	    !atoi_check16(comma, &new->keytag) || 
-	    !atoi_check8(algo, &new->algo) ||
-	    !atoi_check8(digest, &new->digest_type) ||
-	    !(new->name = canonicalise_opt(arg)))
+	
+	if (!(new->name = canonicalise_opt(arg)))
 	  ret_err_free(_("bad trust anchor"), new);
-	    
-	/* Upper bound on length */
-	len = (2*strlen(keyhex))+1;
-	new->digest = opt_malloc(len);
-	unhide_metas(keyhex);
-	/* 4034: "Whitespace is allowed within digits" */
-	for (cp = keyhex; *cp; )
-	  if (isspace((unsigned char)*cp))
-	    for (cp1 = cp; *cp1; cp1++)
-	      *cp1 = *(cp1+1);
-	  else
-	    cp++;
-	if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+
+	if (comma)
 	  {
-	    free(new->name);
-	    ret_err_free(_("bad HEX in trust anchor"), new);
+	    if (!algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
+		!atoi_check16(comma, &new->keytag) || 
+		!atoi_check8(algo, &new->algo) ||
+		!atoi_check8(digest, &new->digest_type))
+	      {
+		free(new->name);
+		ret_err_free(_("bad trust anchor"), new);
+	      }
+	    
+	    /* Upper bound on length */
+	    len = (2*strlen(keyhex))+1;
+	    new->digest = opt_malloc(len);
+	    unhide_metas(keyhex);
+	    /* 4034: "Whitespace is allowed within digits" */
+	    for (cp = keyhex; *cp; )
+	      if (isspace((unsigned char)*cp))
+		for (cp1 = cp; *cp1; cp1++)
+		  *cp1 = *(cp1+1);
+	      else
+		cp++;
+	    if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+	      {
+		free(new->name);
+		ret_err_free(_("bad HEX in trust anchor"), new);
+	      }
 	  }
 	
 	new->next = daemon->ds;
@@ -5929,6 +5940,9 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
+#ifdef HAVE_DUMPFILE
+  daemon->dump_mask = 0xffffffff;
+#endif
 #ifdef HAVE_DNSSEC
   daemon->limit[LIMIT_SIG_FAIL] = DNSSEC_LIMIT_SIG_FAIL;
   daemon->limit[LIMIT_CRYPTO] = DNSSEC_LIMIT_CRYPTO;
