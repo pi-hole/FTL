@@ -22,6 +22,8 @@
 // flush_network_table()
 #include "database/network-table.h"
 #include "config/config.h"
+// gravity_running
+#include "daemon.h"
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
 {
@@ -117,7 +119,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 
 int api_action_gravity(struct ftl_conn *api)
 {
-	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
+	gravity_running = true;
+	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
+	gravity_running = false;
+	return ret;
 }
 
 int api_action_restartDNS(struct ftl_conn *api)

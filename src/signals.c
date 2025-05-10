@@ -42,7 +42,10 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-client",
 	"ntp-server4",
 	"ntp-server6",
- };
+};
+
+// Private prototypes
+ static void terminate(void);
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience
@@ -440,6 +443,27 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 	log_info("Asked to terminate by \"%s\" (PID %ld, user %s UID %ld)",
 	         kill_name, (long int)kill_pid, kill_user, (long int)kill_uid);
 
+	// Check if we can terminate
+	want_terminate = true;
+	check_if_want_terminate();
+}
+
+// Checks if the program should terminate or not
+void check_if_want_terminate(void)
+{
+	if(gravity_running)
+	{
+		log_info("Not restarting as gravity is still running...");
+		return;
+	}
+
+	if(want_terminate)
+		terminate();
+}
+
+// Terminates the DNS service by signaling or marking it as failed
+static void terminate(void)
+{
 	// Terminate dnsmasq to stop DNS service
 	if(!dnsmasq_failed)
 	{
