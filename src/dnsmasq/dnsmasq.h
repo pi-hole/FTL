@@ -549,12 +549,11 @@ struct crec {
 #define SRC_HOSTS     2
 #define SRC_AH        3
 
-#define PIPE_OP_RR      1  /* Resource record */
-#define PIPE_OP_END     2  /* Cache entry complete: commit */
-#define PIPE_OP_RESULT  3  /* Validation result */
-#define PIPE_OP_STATS   4  /* Update parent's stats */
-#define PIPE_OP_IPSET   5  /* Update IPset */
-#define PIPE_OP_NFTSET  6  /* Update NFTset */
+#define PIPE_OP_INSERT  1  /* Cache entry */
+#define PIPE_OP_RESULT  2  /* Validation result */
+#define PIPE_OP_STATS   3  /* Update parent's stats */
+#define PIPE_OP_IPSET   4  /* Update IPset */
+#define PIPE_OP_NFTSET  5  /* Update NFTset */
 
 /* struct sockaddr is not large enough to hold any address,
    and specifically not big enough to hold an IPv6 address.
