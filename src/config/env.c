@@ -358,21 +358,6 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			break;
 		}
-		case CONF_ULONG:
-		{
-			unsigned long val = 0;
-			if(sscanf(envvar, "%lu", &val) == 1)
-			{
-				conf_item->v.ul = val;
-				item->valid = true;
-			}
-			else
-			{
-				item->error = (char *)"is not an unsigned long integer";
-				item->valid = false;
-			}
-			break;
-		}
 		case CONF_DOUBLE:
 		{
 			double val = 0;

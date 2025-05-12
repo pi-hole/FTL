@@ -22,7 +22,7 @@
 // sqlite3
 #include "database/sqlite3.h"
 // toml_parse()
-#include "config/tomlc99/toml.h"
+#include "config/tomlc17/tomlc17.h"
 // readFTLtoml()
 #include "config/toml_reader.h"
 // writeFTLtoml()
@@ -305,10 +305,11 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	buffer[size] = '\0';
 
 	// Check if the file is a valid TOML file
-	toml_table_t *toml = toml_parse(buffer, hint, ERRBUF_SIZE);
-	if(toml == NULL)
+	toml_result_t toml = toml_parse(buffer, size);
+	if(!toml.ok)
 	{
 		free(buffer);
+		log_err("ZIP TOML file is not valid: %s", toml.errmsg);
 		return "File etc/pihole/pihole.toml in ZIP archive is not a valid TOML file";
 	}
 	free(buffer);
@@ -317,7 +318,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL, 0))
+	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true))
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 
 	// Test dnsmasq config in the imported configuration
@@ -341,7 +342,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	return NULL;
 }
 
-static const char *import_dhcp_leases(void *ptr, size_t size, char * const hint)
+static const char *import_dhcp_leases(const void *ptr, size_t size, char * const hint)
 {
 	// We do not check if the file is empty here, as an empty dhcp.leases file is valid
 

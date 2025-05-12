@@ -17,7 +17,7 @@
 #include "log.h"
 #include "datastructure.h"
 // toml_table_t
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 // hash_password()
 #include "config/password.h"
 // check_capability()
@@ -123,18 +123,6 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			else
 			{
 				log_err("Config setting %s is invalid, allowed options are: long integer", conf_item->k);
-				return false;
-			}
-			break;
-		}
-		case CONF_ULONG:
-		{
-			unsigned long val;
-			if(sscanf(value, "%lu", &val) == 1)
-				conf_item->v.ul = val;
-			else
-			{
-				log_err("Config setting %s is invalid, allowed options are: unsigned long integer", conf_item->k);
 				return false;
 			}
 			break;
