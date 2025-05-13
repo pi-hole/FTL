@@ -528,7 +528,7 @@ static void initConfig(struct config *conf)
 	conf->dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	conf->dns.interface.t = CONF_STRING;
 	conf->dns.interface.f = FLAG_RESTART_FTL;
-	conf->dns.interface.d.s = (char*)"";
+	conf->dns.interface.d.s = (char*)"eth0";
 	conf->dns.interface.c = validate_stub; // Type-based checking + dnsmasq syntax checking
 
 	conf->dns.hostRecord.k = "dns.hostRecord";
