@@ -449,14 +449,22 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 }
 
 // Checks if the program should terminate or not
+static time_t last_term_warning = 0;
 void check_if_want_terminate(void)
 {
-	if(gravity_running)
+	// Return early if we are not allowed to terminate
+	if(want_terminate && !gravity_running)
 	{
-		log_info("Not restarting as gravity is still running...");
+		// Only log once every 30 seconds
+		if(time(NULL) - last_term_warning > 30)
+		{
+			log_info("Terminating as gravity is not running anymore...");
+			last_term_warning = time(NULL);
+		}
 		return;
 	}
 
+	// Terminate if we are allowed to
 	if(want_terminate)
 		terminate();
 }
