@@ -1290,3 +1290,48 @@ bool nllinks(cJSON *interfaces, const bool detailed)
 	log_debug(DEBUG_NETLINK, "Called nllinks");
 	return nlquery(RTM_GETLINK, interfaces, detailed);
 }
+
+/**
+ * @brief Retrieves the name of the default gateway.
+ *
+ * This function queries the system's routing table to find the default
+ * gateway and returns its name. The returned string is dynamically allocated
+ * and must be freed by the caller to avoid memory leaks.
+ *
+ * @return A pointer to a dynamically allocated string containing the name
+ *         of the default gateway, or NULL if no default gateway is found.
+ *
+ * @note The function uses JSON objects to parse and process routing
+ *       information. Ensure that the required JSON handling utilities
+ *       (e.g., cJSON) are available and properly linked.
+ */
+char * __attribute__((malloc)) get_gateway_name(void)
+{
+	char *gateway_name = NULL;
+	cJSON *json = cJSON_CreateObject();
+	cJSON *routes = cJSON_CreateArray();
+	nlroutes(routes, false);
+	cJSON_AddItemToObject(json, "routes", routes);
+
+	// Loop through the routes and find the default gateway
+	cJSON *route = NULL;
+	cJSON_ArrayForEach(route, routes)
+	{
+		cJSON *dst = cJSON_GetObjectItem(route, "dst");
+		if(dst != NULL &&
+		   cJSON_IsString(dst) &&
+		   strcmp(cJSON_GetStringValue(dst), "default") == 0)
+		{
+			gateway_name = strdup(cJSON_GetStringValue(cJSON_GetObjectItem(route, "oif")));
+			break;
+		}
+	}
+
+	// Fallback to "eth0" if no default gateway is found (unlikely to
+	// happen)
+	if(gateway_name == NULL)
+		gateway_name = strdup("eth0");
+
+	cJSON_Delete(json);
+	return gateway_name;
+}

@@ -146,11 +146,12 @@
   # Validate DNS replies using DNSSEC?
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
+  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
+  # Leave empty for auto-detection.
   #
   # Possible values are:
   #     a valid interface name
-  interface = "eth0"
+  interface = ""
 
   # Add A, AAAA and PTR records to the DNS. This adds one or more names to the DNS with
   # associated IPv4 (A) and IPv6 (AAAA) records
