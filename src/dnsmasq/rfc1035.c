@@ -914,7 +914,6 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	    }
 #endif	  
 	  
-
 	  if (aqtype == T_CNAME)
 	    {
 	      if (!cname_count--)

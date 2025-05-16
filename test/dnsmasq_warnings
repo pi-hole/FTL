@@ -142,8 +142,10 @@ src/dnsmasq/network.c
 		    _("ignoring nameserver %s - cannot make/bind socket: %s"),
 		    daemon->namebuff, strerror(errno));
 src/dnsmasq/rfc2131.c
-      my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"),
-		via, daemon->addrbuff);
+	  my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"),
+		    via, daemon->addrbuff);
+src/dnsmasq/rfc2131.c
+	      my_syslog(MS_DHCP | LOG_WARNING, _("leasequery from %s not permitted"), daemon->workspacename);
 src/dnsmasq/rfc2131.c
 	  my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
 		    daemon->addrbuff, daemon->dhcp_buff);
