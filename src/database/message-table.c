@@ -727,14 +727,14 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
 {
-	if(snprintf(plain, sizeof_plain, "WARNING in dnsmasq core: %s", message) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "dnsmasq: %s", message) > sizeof_plain)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
 		return;
 
-	if(snprintf(html, sizeof_html, "Warning in <code>dnsmasq</code> core:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message) > sizeof_html)
+	if(snprintf(html, sizeof_html, "<code>dnsmasq</code> warning:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message) > sizeof_html)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold HTML message, warning truncated");
 }
 

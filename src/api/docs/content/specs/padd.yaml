@@ -218,6 +218,10 @@ components:
               type: boolean
               description: "Reverse DNS server status"
               example: false
+            privacy_level:
+              type: integer
+              description: "Privacy level"
+              example: 0
         "%cpu":
           type: number
           description: "CPU usage"

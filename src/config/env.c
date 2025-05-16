@@ -333,7 +333,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			unsigned int val = 0;
 			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
 			{
-				conf_item->v.ui = val;
+				conf_item->v.u16 = val;
 				item->valid = true;
 			}
 			else

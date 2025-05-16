@@ -761,7 +761,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		},{
 			// i = 3
 			.archive_name = "setupVars.conf",
-			.destination = config.files.setupVars.v.s
+			.destination = SETUPVARS_CONF
 		},{
 			.archive_name = "dnsmasq.d/04-pihole-static-dhcp.conf",
 			.destination = DNSMASQ_STATIC_LEASES
@@ -818,9 +818,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	}
 
 	// Append WEB_PORTS to setupVars.conf
-	FILE *fp = fopen(config.files.setupVars.v.s, "a");
+	FILE *fp = fopen(SETUPVARS_CONF, "a");
 	if(fp == NULL)
-		log_err("Unable to open file \"%s\" for appending: %s", config.files.setupVars.v.s, strerror(errno));
+		log_err("Unable to open file \""SETUPVARS_CONF"\" for appending: %s", strerror(errno));
 	else
 	{
 		fprintf(fp, "WEB_PORTS=%s\n", config.webserver.port.v.s);
