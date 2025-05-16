@@ -867,6 +867,22 @@ components:
                   type: integer
                   description: Number of dedicated TCP workers
                   example: 0
+                dhcp_leasequery:
+                  type: integer
+                  description: Number of DHCP lease queries
+                  example: 0
+                dhcp_lease_unassigned:
+                  type: integer
+                  description: Number of DHCP lease unassigned
+                  example: 0
+                dhcp_lease_actve:
+                  type: integer
+                  description: Number of DHCP lease active
+                  example: 0
+                dhcp_lease_unknown:
+                  type: integer
+                  description: Number of DHCP lease unknown
+                  example: 0
                 dnssec_max_crypto_use:
                   type: integer
                   description: DNSSEC per-query crypto work HWM
