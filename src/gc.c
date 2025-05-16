@@ -679,6 +679,14 @@ void *GC_thread(void *val)
 			set_dnsmasq_debug(is_debugged, dpid);
 		}
 
+		// Intermediate cancellation-point
+		if(killed)
+			break;
+
+		// Check if we need to terminate/restart FTL but this has been
+		// postponed because of an ongoing gravity run
+		check_if_want_terminate();
+
 		// Sleep for the remaining time of the interval (if any)
 		const double time_end = double_time();
 		const double time_diff = time_end - time_start;
