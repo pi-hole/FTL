@@ -727,16 +727,19 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   (void)ad_reqd;
   (void)do_bit;
  
-#ifdef HAVE_IPSET
-  if (daemon->ipsets && extract_name(header, n, NULL, daemon->namebuff, EXTR_NAME_EXTRACT, 0))
-    ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
+#if defined(HAVE_IPSET) || defined(HAVE_NFTSET)
+  if ((daemon->ipsets || daemon->nftsets) && extract_name(header, n, NULL, daemon->namebuff, EXTR_NAME_EXTRACT, 0))
+    {
+#  ifdef HAVE_IPSET
+      ipsets = domain_find_sets(daemon->ipsets, daemon->namebuff);
+#  endif
+      
+#  ifdef HAVE_NFTSET
+      nftsets = domain_find_sets(daemon->nftsets, daemon->namebuff);
+#  endif
+    }
 #endif
-
-#ifdef HAVE_NFTSET
-  if (daemon->nftsets && extract_name(header, n, NULL, daemon->namebuff, EXTR_NAME_EXTRACT, 0))
-    nftsets = domain_find_sets(daemon->nftsets, daemon->namebuff);
-#endif
-
+  
   if ((pheader = find_pseudoheader(header, n, &plen, &sizep, &is_sign, NULL)))
     {
       /* Get extended RCODE. */

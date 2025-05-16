@@ -1027,7 +1027,16 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
     {
       if (STAT_ISEQUAL(rc, STAT_INSECURE))
 	{
-	  if (lookup_domain(name, F_DOMAINSRV, NULL, NULL))
+	  if (option_bool(OPT_BOGUSPRIV) &&
+	      (flags = in_arpa_name_2_addr(name, &a)) &&
+	      ((flags == F_IPV6 && private_net6(&a.addr6, 0)) || (flags == F_IPV4 && private_net(a.addr4, 0))))
+	    {
+	      my_syslog(LOG_INFO, _("Insecure reply received for DS %s, assuming that's OK for a RFC-1918 address."), name);
+	      neganswer = 1;
+	      nons = 0; /* If we're faking a DS, fake one with an NS. */
+	      neg_ttl = DNSSEC_ASSUMED_DS_TTL;
+	    }
+	  else if (lookup_domain(name, F_DOMAINSRV, NULL, NULL))
 	    {
 	      my_syslog(LOG_INFO, _("Insecure reply received for DS %s, assuming non-DNSSEC domain-specific server."), name);
 	      neganswer = 1;

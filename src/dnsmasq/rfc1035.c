@@ -425,7 +425,7 @@ int private_net(struct in_addr addr, int ban_localhost)
     ((ip_addr & 0xFFFFFFFF) == 0xFFFFFFFF)  /* 255.255.255.255/32 (broadcast)*/ ;
 }
 
-static int private_net6(struct in6_addr *a, int ban_localhost)
+int private_net6(struct in6_addr *a, int ban_localhost)
 {
   /* Block IPv4-mapped IPv6 addresses in private IPv4 address space */
   if (IN6_IS_ADDR_V4MAPPED(a))
@@ -1081,19 +1081,34 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 			  private_net6(&addr.addr6, !option_bool(OPT_LOCAL_REBIND)))
 			return 1;
 		    }
-		  
+
+		  if (flags & (F_IPV4 | F_IPV6))
+		    {
+		      /* If we're a child process, send this to the parent,
+			 since the ipset and nfset access is not re-entrant. */
 #ifdef HAVE_IPSET
-		  if (ipsets && (flags & (F_IPV4 | F_IPV6)))
-		    for (ipsets_cur = ipsets->sets; *ipsets_cur; ipsets_cur++)
-		      if (add_to_ipset(*ipsets_cur, &addr, flags, 0) == 0)
-			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, ipsets->domain, &addr, *ipsets_cur, 1);
+		      if (ipsets)
+			{
+			  if (daemon->pipe_to_parent != -1)
+			    cache_send_ipset(PIPE_OP_IPSET, ipsets, flags, &addr);
+			  else
+			    for (ipsets_cur = ipsets->sets; *ipsets_cur; ipsets_cur++)
+			      if (add_to_ipset(*ipsets_cur, &addr, flags, 0) == 0)
+				log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, ipsets->domain, &addr, *ipsets_cur, 1);
+			}
 #endif
 #ifdef HAVE_NFTSET
-		  if (nftsets && (flags & (F_IPV4 | F_IPV6)))
-		    for (nftsets_cur = nftsets->sets; *nftsets_cur; nftsets_cur++)
-		      if (add_to_nftset(*nftsets_cur, &addr, flags, 0) == 0)
-			log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, nftsets->domain, &addr, *nftsets_cur, 0);
+		      if (nftsets)
+			{
+			  if (daemon->pipe_to_parent != -1)
+			    cache_send_ipset(PIPE_OP_NFTSET, nftsets, flags, &addr);
+			  else
+			    for (nftsets_cur = nftsets->sets; *nftsets_cur; nftsets_cur++)
+			      if (add_to_nftset(*nftsets_cur, &addr, flags, 0) == 0)
+				log_query((flags & (F_IPV4 | F_IPV6)) | F_IPSET, nftsets->domain, &addr, *nftsets_cur, 0);
+			}
 #endif
+		    }
 		}
 
 		/*********** Pi-hole modification ***********/
