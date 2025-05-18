@@ -1432,7 +1432,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 			     unsigned short *typep, unsigned short *classp);
 void setup_reply(struct dns_header *header, unsigned int flags, int ede);
 int extract_addresses(struct dns_header *header, size_t qlen, char *name,
-		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets, int is_sign,
+		      time_t now, struct ipsets *ipsets, struct ipsets *nftsets,
                       int check_rebind, int no_cache_dnssec, int secure);
 #if defined(HAVE_CONNTRACK) && defined(HAVE_UBUS)
 void report_addresses(struct dns_header *header, size_t len, u32 mark);
