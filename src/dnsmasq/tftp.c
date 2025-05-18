@@ -362,10 +362,10 @@ void tftp_request(struct listener *listen, time_t now)
   p = packet + 2;
   end = packet + len;
   
-  if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
-      !(filename = next(&p, end)) ||
+  if (!(filename = next(&p, end)) ||
       !(mode = next(&p, end)) ||
-      (strcasecmp(mode, "octet") != 0 && strcasecmp(mode, "netascii") != 0))
+      (strcasecmp(mode, "octet") != 0 && strcasecmp(mode, "netascii") != 0) ||
+      ntohs(*((unsigned short *)packet)) != OP_RRQ)
     {
       if (!filename)
 	len = tftp_err(ERR_ILL, packet, _("empty filename in request from %s"), daemon->addrbuff, NULL);
