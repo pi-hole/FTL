@@ -848,7 +848,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 	}
       else
 	{
-	  int rc = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, is_sign, check_rebind, no_cache, cache_secure);
+	  int rc = extract_addresses(header, n, daemon->namebuff, now, ipsets, nftsets, check_rebind, no_cache, cache_secure);
 
 	  if (rc != 0)
 	    {
