@@ -579,7 +579,7 @@ static void initConfig(struct config *conf)
 	conf->dns.port.d.ui = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
-	conf->dns.localise.k = "misc.dnsmasq_localiseQueries";
+	conf->dns.localise.k = "dns.localise";
 	conf->dns.localise.h = "Enable/Disable the localise-queries option for dnsmasq.\n When this setting is disabled dnsmasq will return all possible values for local DNS Records. Enabled by default";
 	conf->dns.localise.t = CONF_BOOL;
 	conf->dns.localise.f = FLAG_RESTART_FTL;
