@@ -351,7 +351,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 
-	if(conf->dns.localiseQueries)
+	if(conf->misc.dnsmasq_localiseQueries)
 	{
 		fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
 		fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
