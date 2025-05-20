@@ -1352,6 +1352,13 @@ static void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 	conf->misc.dnsmasq_lines.c = validate_stub; // Type-based checking + dnsmasq syntax checking
 
+	conf->misc.dnsmasq_localiseQueries.k = "misc.dnsmasq_localiseQueries";
+	conf->misc.dnsmasq_localiseQueries.h = "Enable/Disable the localise-queries option for dnsmasq.\n When this setting is disabled dnsmasq will return all possible values for local DNS Records. Enabled by default";
+	conf->misc.dnsmasq_localiseQueries.t = CONF_BOOL;
+	conf->misc.dnsmasq_localiseQueries.f = FLAG_RESTART_FTL;
+	conf->misc.dnsmasq_localiseQueries.d.b = true;
+	conf->misc.dnsmasq_localiseQueries.c = validate_stub; // Only type-based checking
+		
 	conf->misc.extraLogging.k = "misc.extraLogging";
 	conf->misc.extraLogging.h = "Log additional information about queries and replies to pihole.log\n When this setting is enabled, the log has extra information at the start of each line. This consists of a serial number which ties together the log lines associated with an individual query, and the IP address of the requestor. This setting is only effective if dns.queryLogging is enabled, too. This option is only useful for debugging and is not recommended for normal use.";
 	conf->misc.extraLogging.t = CONF_BOOL;
