@@ -48,6 +48,12 @@
 #define ATTRIBUTE_NORETURN
 #endif
 
+#if __GNUC__ + 0 >= 8 // clang 20.1.0 does not yet support this
+#define ATTRIBUTE_NONSTRING __attribute__ ((nonstring))
+#else
+#define ATTRIBUTE_NONSTRING
+#endif
+
 /* get these before config.h  for IPv6 stuff... */
 #include <sys/types.h> 
 #include <sys/socket.h>
