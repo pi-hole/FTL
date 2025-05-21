@@ -353,12 +353,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 
 	if(conf->dns.localise.v.b)
 	{
-		fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
-		fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
-		fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
-		fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
-		fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
-		fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
+		fputs("# dnsmasq localise-queries option. When enabled this option will return local DNS Queries");
+  		fputs("# in dependency of the received interface. If a name has more than one address");
+ 		fputs("# associated with it, and at least one of those addresses is on the same subnet as the");
+  		fputs("# interface to which the query was sent, then return only the address(es) on that subnet");
+ 		fputs("# and return all the available addresses otherwise.");
+  		fputs("#");
+ 		fputs("# This option is enabled by default. Disabling it may lead to wrong resolutions of local");
+ 		fputs("# host-records which may result in connectivity issues.");
 		fputs("localise-queries\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
