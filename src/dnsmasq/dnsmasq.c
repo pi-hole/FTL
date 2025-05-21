@@ -1971,11 +1971,14 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   pid_t p;
   union mysockaddr tcp_addr;
   socklen_t tcp_len = sizeof(union mysockaddr);
-  unsigned char a = 0, *buff;
+  unsigned char *buff;
   struct server *s; 
   int flags, auth_dns;
   struct in_addr netmask;
   int pipefd[2];
+#ifdef HAVE_LINUX_NETWORK
+  unsigned char a = 0;
+#endif
 
   while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
   
@@ -2084,7 +2087,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	     single byte comes back up the pipe, which
 	     is sent by the child after it has closed the
 	     netlink socket. */
-	  
+
 	  read_write(pipefd[0], &a, 1, RW_READ);
 #endif
 	  
