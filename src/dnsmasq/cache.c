@@ -104,6 +104,8 @@ static const struct {
   { 64,  "SVCB" }, /* Service Binding [draft-ietf-dnsop-svcb-https-00] SVCB/svcb-completed-template 2020-06-30*/
   { 65,  "HTTPS" }, /* HTTPS Binding [draft-ietf-dnsop-svcb-https-00] HTTPS/https-completed-template 2020-06-30*/
   { 66,  "DSYNC" }, /* Endpoint discovery for delegation synchronization [draft-ietf-dnsop-generalized-notify-03] DSYNC/dsync-completed-template 2024-12-10 */
+  { 67,  "HHIT" }, /* [draft-ietf-drip-registries-28] */
+  { 68,  "BRID" }, /* [draft-ietf-drip-registries-28] */
   { 99,  "SPF" }, /* [RFC7208] */
   { 100, "UINFO" }, /* [IANA-Reserved] */
   { 101, "UID" }, /* [IANA-Reserved] */
