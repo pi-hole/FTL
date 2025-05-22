@@ -245,6 +245,7 @@ enum thread_types {
 	NTP_CLIENT,
 	NTP_SERVER4,
 	NTP_SERVER6,
+	WEBSERVER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
@@ -325,7 +326,9 @@ enum cert_check {
 	CERT_CANNOT_PARSE_KEY,
 	CERT_DOMAIN_MISMATCH,
 	CERT_DOMAIN_MATCH,
-	CERT_OKAY
+	CERT_NOT_YET_VALID,
+	CERT_EXPIRES_SOON,
+	CERT_OKAY,
 } __attribute__ ((packed));
 
 enum http_method {

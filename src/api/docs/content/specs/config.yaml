@@ -429,6 +429,8 @@ components:
                   properties:
                     cert:
                       type: string
+                    validity:
+                      type: integer
                 paths:
                   type: object
                   properties:
@@ -766,6 +768,7 @@ components:
               restore: true
             tls:
               cert: "/etc/pihole/tls.pem"
+              validity: 730
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"

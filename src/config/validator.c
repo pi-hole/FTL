@@ -535,3 +535,14 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	// Return success
 	return true;
 }
+
+bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 7 && val->ui != 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 7", key);
+		return false;
+	}
+
+	return true;
+}

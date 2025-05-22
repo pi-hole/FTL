@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.4-75-gc53cf00b)
+# Pi-hole configuration file (v6.1-110-g8bec7efc-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-03-27 11:04:20 UTC
+# Last updated on 2025-05-22 12:43:05 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -750,6 +750,17 @@
     #     <valid TLS certificate file (*.pem)>
     cert = "/etc/pihole/test.pem" ### CHANGED, default = "/etc/pihole/tls.pem"
 
+    # Number of days the automatically generated self-signed TLS/SSL certificate will be
+    # valid for. Defaults to 730 days (= 2 years). A minimum of 7 days is enforced.
+    # Some devices may enforce shorter validity ranges. Note that defining a lower
+    # validity range may require you to accept the self-signed certificate more often in
+    # your browser.
+    # Pi-hole will regenerate certificates it created itself two days prior to expiration.
+    # If you are using your own certificate, you need to regenerate it yourself. In this
+    # case, it is advised to set the validity range to 0 days, so that Pi-hole does not
+    # try to regenerate your certificate.
+    validity = 730
+
   [webserver.paths]
     # Server root on the host
     #
@@ -1202,7 +1213,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 155 total entries out of which 98 entries are default
+# 156 total entries out of which 99 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
