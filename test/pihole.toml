@@ -214,7 +214,6 @@
   # associated with it, and at least one of those addresses is on the same subnet as the
   # interface to which the query was sent, then return only the address(es) on that subnet
   # and return all the available addresses otherwise.
-  #
   # This option is enabled by default. Disabling it may lead to wrong resolutions of local
   # host-records which may result in connectivity issues.
   localise = true
