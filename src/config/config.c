@@ -580,7 +580,7 @@ static void initConfig(struct config *conf)
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
 	conf->dns.localise.k = "dns.localise";
-	conf->dns.localise.h = "dnsmasq localise-queries option. When enabled this option will return local DNS Queries in dependency of the received interface. If a name has more than one address associated with it, and at least one of those addresses is on the same subnet as the interface to which the query was sent, then return only the address(es) on that subnet and return all the available addresses otherwise. This option is enabled by default. Disabling it may lead to wrong resolutions of local host-records which may result in connectivity issues.");
+	conf->dns.localise.h = "dnsmasq localise-queries option. When enabled this option will return local DNS Queries in dependency of the received interface. If a name has more than one address associated with it, and at least one of those addresses is on the same subnet as the interface to which the query was sent, then return only the address(es) on that subnet and return all the available addresses otherwise.\n This option is enabled by default. Disabling it may lead to wrong resolutions of local host-records which may result in connectivity issues.");
 	conf->dns.localise.t = CONF_BOOL;
 	conf->dns.localise.f = FLAG_RESTART_FTL;
 	conf->dns.localise.d.b = true;
