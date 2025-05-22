@@ -1048,6 +1048,12 @@ static void initConfig(struct config *conf)
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 	conf->webserver.tls.cert.c = validate_filepath;
 
+	conf->webserver.tls.validity.k = "webserver.tls.validity";
+	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for. Defaults to 730 days (= 2 years). A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate.";
+	conf->webserver.tls.validity.t = CONF_UINT;
+	conf->webserver.tls.validity.d.ui = 730; // 2 years
+	conf->webserver.tls.validity.c = validate_ui_min_7_or_0;
+
 	conf->webserver.session.timeout.k = "webserver.session.timeout";
 	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
 	conf->webserver.session.timeout.t = CONF_UINT;
