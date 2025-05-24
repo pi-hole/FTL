@@ -71,14 +71,16 @@ int main_dnsmasq (int argc, char **argv)
   int need_cap_net_raw = 0;
   int need_cap_net_bind_service = 0;
   int have_cap_chown = 0;
+#  ifdef HAVE_DHCP
   char *bound_device = NULL;
   int did_bind = 0;
+#  endif
   struct server *serv;
   char *netlink_warn;
 #else
   int bind_fallback = 0;
 #endif 
-#if defined(HAVE_DHCP) || defined(HAVE_DHCP6)
+#if defined(HAVE_DHCP)
   struct dhcp_context *context;
   struct dhcp_relay *relay;
 #endif
@@ -86,6 +88,8 @@ int main_dnsmasq (int argc, char **argv)
   int tftp_prefix_missing = 0;
 #endif
 
+  (void)netlink_warn;
+  
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
   /*** Pi-hole modification: Locale is already initialized in main.c ***/
 #endif

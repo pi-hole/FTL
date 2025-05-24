@@ -267,6 +267,8 @@ int inotify_check(time_t now)
   int hit = 0;
   struct dyndir *dd;
 
+  (void)now;
+  
   while (1)
     {
       int rc;
