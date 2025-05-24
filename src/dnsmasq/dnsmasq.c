@@ -88,7 +88,9 @@ int main_dnsmasq (int argc, char **argv)
   int tftp_prefix_missing = 0;
 #endif
 
+#ifdef HAVE_LINUX_NETWORK
   (void)netlink_warn;
+#endif
   
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
   /*** Pi-hole modification: Locale is already initialized in main.c ***/
