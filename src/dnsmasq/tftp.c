@@ -198,11 +198,11 @@ static void tftp_request(struct listener *listen, time_t now)
 
       name = namebuff;
       
-      addra.addr4 = addr.in.sin_addr;
-
       if (family == AF_INET6)
 	addra.addr6 = addr.in6.sin6_addr;
-
+      else
+	addra.addr4 = addr.in.sin_addr;
+      
       if (daemon->tftp_interfaces)
 	{
 	  /* dedicated tftp interface list */
@@ -662,7 +662,7 @@ void check_tftp_listeners(time_t now)
       int endcon = 0, error = 0, timeout = 0;
       
       tmp = transfer->next;
-      
+            
       /* ->start set to zero in handle_tftp() when we recv an error packet. */
       if (transfer->start == 0)
 	endcon = error = 1;
@@ -679,22 +679,18 @@ void check_tftp_listeners(time_t now)
 	  /* Do transmission or re-transmission. When we get an ACK, the call to handle_tftp()
 	     bumps transfer->lastack and trips the retransmit timer so that we send the next block(s)
 	     here. */
-	  unsigned int i, winsize;
 	  ssize_t len;
 	  
 	  transfer->retransmit += transfer->timeout + (1<<(transfer->backoff/2));
 	  transfer->backoff++;
 	  transfer->block = transfer->lastack;
-
+	  
 	  if ((len = get_block(daemon->packet, transfer)) == 0)
 	    endcon = 1; /* got last ACK */
 	  else
 	    {
 	      /* send a window'a worth of blocks unless we're retransmitting OACK */
-	      winsize = transfer->block ? transfer->windowsize : 1;
-	      
-	      /* we overwrote the buffer... */
-	      daemon->srv_save = NULL;
+	      unsigned int i, winsize = transfer->block ? transfer->windowsize : 1;
 	      
 	      for (i = 0; i < winsize && !endcon; i++, transfer->block++)
 		{
@@ -860,7 +856,10 @@ static ssize_t tftp_err(int err, char *packet, char *message, char *file, char *
     char message[];
   } *mess = (struct errmess *)packet;
   ssize_t len, ret = 4;
-    
+
+  /* we overwrote the buffer... */
+  daemon->srv_save = NULL;
+
   memset(packet, 0, daemon->packet_buff_sz);
   if (file)
     sanitise(file);
@@ -888,7 +887,10 @@ static ssize_t tftp_err_oops(char *packet, const char *file)
 static ssize_t get_block(char *packet, struct tftp_transfer *transfer)
 {
   memset(packet, 0, daemon->packet_buff_sz);
-  
+
+  /* we overwrote the buffer... */
+  daemon->srv_save = NULL;
+
   if (transfer->block == 0)
     {
       /* send OACK */
