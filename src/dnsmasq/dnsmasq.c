@@ -37,7 +37,9 @@ static volatile pid_t pid = 0;
 static volatile int pipewrite;
 
 static void set_dns_listeners(void);
+#ifdef HAVE_TFTP
 static void set_tftp_listeners(void);
+#endif
 static void check_dns_listeners(time_t now);
 static void do_tcp_connection(struct listener *listener, time_t now, int slot);
 static void sig_handler(int sig);
