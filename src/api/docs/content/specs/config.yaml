@@ -846,6 +846,7 @@ components:
             ntp: false
             netlink: false
             all: false
+          took: 0.003
     config_one:
       summary: One option
       value:
@@ -890,6 +891,7 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+            took: 0.003
         item_already_present:
           summary: Item to be added exists already
           value:
@@ -897,6 +899,7 @@ components:
               key: "bad_request"
               message: "Item already present"
               hint: "Uniqueness of items is enforced"
+            took: 0.003
   parameters:
     detailed:
       name: detailed
