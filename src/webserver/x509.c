@@ -188,7 +188,7 @@ static int generate_private_key_ec(mbedtls_pk_context *key,
 }
 
 // Write a key and/or certificate to a file
-static bool write_to_file(const char *filename, const char *type, const char *suffix, const char *cert, const char *key)
+static bool write_to_file(const char *filename, const char *type, const char *suffix, const char *cert, const char *key, const char *cacert)
 {
 	// Create file with CA certificate only
 	char *targetname = calloc(strlen(filename) + (suffix != NULL ? strlen(suffix) : 0) + 1, sizeof(char));
@@ -236,6 +236,18 @@ static bool write_to_file(const char *filename, const char *type, const char *su
 		if (fwrite(cert, 1, olen, f) != olen)
 		{
 			printf("ERROR: Could not write certificate to %s\n", targetname);
+			fclose(f);
+			return false;
+		}
+	}
+
+	// Write CA certificate (if provided)
+	if(cacert != NULL)
+	{
+		const size_t olen = strlen((char *) cacert);
+		if (fwrite(cacert, 1, olen, f) != olen)
+		{
+			printf("ERROR: Could not write CA certificate to %s\n", targetname);
 			fclose(f);
 			return false;
 		}
@@ -420,13 +432,13 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	}
 
 	// Create file with CA certificate only
-	write_to_file(certfile, "CA certificate", "_ca.crt", (char*)ca_buffer, NULL);
+	write_to_file(certfile, "CA certificate", "_ca.crt", (char*)ca_buffer, NULL, NULL);
 
 	// Create file with server certificate only
-	write_to_file(certfile, "server certificate", ".crt", (char*)cert_buffer, NULL);
+	write_to_file(certfile, "server certificate", ".crt", (char*)cert_buffer, NULL, NULL);
 
-	// Write server's private key and certificate to file
-	write_to_file(certfile, "server key + certificate", NULL, (char*)cert_buffer, (char*)key_buffer);
+	// Write server's private key and certificate, and additionally the CA certificate to complete the chain
+	write_to_file(certfile, "server key + certificate", NULL, (char*)cert_buffer, (char*)key_buffer, (char*)ca_buffer);
 
 	// Free resources
 	mbedtls_x509write_crt_free(&ca_cert);
