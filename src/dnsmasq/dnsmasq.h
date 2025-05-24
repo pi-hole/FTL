@@ -1132,14 +1132,13 @@ struct tftp_file {
 
 struct tftp_transfer {
   int sockfd;
-  time_t timeout;
-  int backoff;
-  unsigned int block, blocksize, expansion;
+  time_t retransmit, start;
+  unsigned int lastack, block, blocksize, windowsize, timeout, expansion;
   off_t offset;
   union mysockaddr peer;
   union all_addr source;
   int if_index;
-  char opt_blocksize, opt_transize, netascii, carrylf;
+  unsigned char opt_blocksize, opt_transize, opt_windowsize, opt_timeout, netascii, carrylf, backoff;
   struct tftp_file *file;
   struct tftp_transfer *next;
 };
@@ -1787,7 +1786,6 @@ void queue_relay_snoop(struct in6_addr *client, int if_index, struct in6_addr *p
 
 /* tftp.c */
 #ifdef HAVE_TFTP
-void tftp_request(struct listener *listen, time_t now);
 void check_tftp_listeners(time_t now);
 int do_tftp_script_run(void);
 #endif

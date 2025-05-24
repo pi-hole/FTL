@@ -54,6 +54,8 @@
 #define CHGRP "root"
 /******************************/
 #define TFTP_MAX_CONNECTIONS 50 /* max simultaneous connections */
+#define TFTP_MAX_WINDOW 32 /* max window size to negotiate */
+#define TFTP_TRANSFER_TIME 120 /* Abandon TFTP transfers after this long. Two mins. */
 #define LOG_MAX 5 /* log-queue length */
 #define RANDFILE "/dev/urandom"
 #define DNSMASQ_SERVICE "uk.org.thekelleys.dnsmasq" /* Default - may be overridden by config */
