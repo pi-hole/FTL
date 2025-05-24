@@ -19,9 +19,13 @@
 #include <stdbool.h>
 // ssize_t
 #include <unistd.h>
+// time_t
+#include <time.h>
 
-bool generate_certificate(const char* certfile, bool rsa, const char *domain);
-enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key);
+bool generate_certificate(const char *certfile, bool rsa, const char *domain, const unsigned int validity_days);
+enum cert_check read_certificate(const char *certfile, const char *domain, const bool private_key);
+enum cert_check cert_currently_valid(const char *certfile, const time_t valid_for_at_least_days);
+bool is_pihole_certificate(const char *certfile);
 
 bool init_entropy(void);
 void destroy_entropy(void);
