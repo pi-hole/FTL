@@ -502,7 +502,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		{
 			const toml_datum_t val = toml_int_in(toml, key);
 			if(val.ok && val.u.i >= 0 && val.u.i <= UINT16_MAX)
-				conf_item->v.ui = val.u.i;
+				conf_item->v.u16 = val.u.i;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned integer (16 bit)", conf_item->k);
 			break;

@@ -274,7 +274,7 @@ void tftp_request(struct listener *listen, time_t now)
 	}
       
       /* Enforce simultaneous transfer limit. In non-single-port mode
-	 this is doene by not listening on the server socket when
+	 this is done by not listening on the server socket when
 	 too many transfers are in progress. */
       if (!transfer && tftp_cnt >= daemon->tftp_max)
 	return;
@@ -367,7 +367,11 @@ void tftp_request(struct listener *listen, time_t now)
       !(mode = next(&p, end)) ||
       (strcasecmp(mode, "octet") != 0 && strcasecmp(mode, "netascii") != 0))
     {
-      len = tftp_err(ERR_ILL, packet, _("unsupported request from %s"), daemon->addrbuff, NULL);
+      if (!filename)
+	len = tftp_err(ERR_ILL, packet, _("empty filename in request from %s"), daemon->addrbuff, NULL);
+      else
+	len = tftp_err(ERR_ILL, packet, _("unsupported %srequest from %s"),
+		       (ntohs(*((unsigned short *)packet)) == OP_WRQ) ? _("write ") : "", daemon->addrbuff);
       is_err = 1;
     }
   else
@@ -755,14 +759,22 @@ static char *next(char **p, char *end)
   return ret;
 }
 
+/* If we don't do anything, don't write the the input/ouptut
+   buffer. This allows us to pass in safe read-only strings constants. */
 static void sanitise(char *buf)
 {
   unsigned char *q, *r;
+
   for (q = r = (unsigned char *)buf; *r; r++)
     if (isprint((int)*r))
-      *(q++) = *r;
-  *q = 0;
-
+      {
+	if (q != r)
+	  *q = *r;
+	q++;
+      }
+  
+  if (q != r)
+    *q = 0;
 }
 
 #define MAXMESSAGE 500 /* limit to make packet < 512 bytes and definitely smaller than buffer */ 

@@ -199,6 +199,7 @@ struct myoption {
 #define LOPT_PXE_OPT       386
 #define LOPT_NO_ENCODE     387
 #define LOPT_DO_ENCODE     388
+#define LOPT_LEASEQUERY    389
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -398,6 +399,7 @@ static const struct myoption opts[] =
     { "use-stale-cache", 2, 0 , LOPT_STALE_CACHE },
     { "no-ident", 0, 0, LOPT_NO_IDENT },
     { "max-tcp-connections", 1, 0, LOPT_MAX_PROCS },
+    { "leasequery", 2, 0, LOPT_LEASEQUERY },
     { NULL, 0, 0, 0 }
   };
 
@@ -503,6 +505,7 @@ static struct {
   { '4', ARG_DUP, "set:<tag>,<mac address>", gettext_noop("Map MAC address (with wildcards) to option set."), NULL },
   { LOPT_BRIDGE, ARG_DUP, "<iface>,<alias>..", gettext_noop("Treat DHCP requests on aliases as arriving from interface."), NULL },
   { LOPT_SHARED_NET, ARG_DUP, "<iface>|<addr>,<addr>", gettext_noop("Specify extra networks sharing a broadcast domain for DHCP"), NULL},
+  { LOPT_LEASEQUERY, ARG_DUP, "[<addr>[/prefix>]]", gettext_noop("Enable RFC 4388 leasequery functions for DHCPv4"), NULL },
   { '5', OPT_NO_PING, NULL, gettext_noop("Disable ICMP echo address checking in the DHCP server."), NULL },
   { '6', ARG_ONE, "<path>", gettext_noop("Shell script to run on DHCP lease creation and destruction."), NULL },
   { LOPT_LUASCRIPT, ARG_DUP, "path", gettext_noop("Lua script to run on DHCP lease creation and destruction."), NULL },
@@ -965,7 +968,7 @@ char *parse_server(char *arg, struct server_details *sdetails)
       hints.ai_family = AF_UNSPEC;
 
       /* Get addresses suitable for sending datagrams. We assume that we can use the
-	 same addresses for TCP connections. Settting this to zero gets each address
+	 same addresses for TCP connections. Setting this to zero gets each address
 	 threes times, for SOCK_STREAM, SOCK_RAW and SOCK_DGRAM, which is not useful. */
       hints.ai_socktype = SOCK_DGRAM;
 
@@ -2678,15 +2681,15 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 			if (msize > 128)
 			  ret_err_free(_("bad prefix length"), new);
 			
-			mask = (1LLU << (128 - msize)) - 1LLU;
+			/* prefix==64 overflows the mask calculation */
+			if (msize <= 64)
+			  mask = (u64)-1LL;
+			else
+			  mask = (1LLU << (128 - msize)) - 1LLU;
 			
 			new->is6 = 1;
 			new->prefixlen = msize;
 			
-			/* prefix==64 overflows the mask calculation above */
-			if (msize <= 64)
-			  mask = (u64)-1LL;
-			  
 			new->end6 = new->start6;
 			setaddr6part(&new->start6, addrpart & ~mask);
 			setaddr6part(&new->end6, addrpart | mask);
@@ -2915,7 +2918,16 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	arg = comma;
       } while (arg);
       break;
-      
+
+#ifdef HAVE_DHCP
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+    case LOPT_LEASEQUERY:
+      set_option_bool(OPT_LEASEQUERY);
+      if (!arg)
+	break;
+#pragma GCC diagnostic pop
+#endif
     case 'B':  /* --bogus-nxdomain */
     case LOPT_IGNORE_ADDR: /* --ignore-address */
      {
@@ -2951,6 +2963,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    baddr->next = daemon->bogus_addr;
 	    daemon->bogus_addr = baddr;
 	  }
+#ifdef HAVE_DHCP
+	else if (option == LOPT_LEASEQUERY)
+	  {
+	    baddr->next = daemon->leasequery_addr;
+	    daemon->leasequery_addr = baddr;
+	  }
+#endif
 	else
 	  {
 	    baddr->next = daemon->ignore_addr;
@@ -3438,6 +3457,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      set_option_bool(OPT_EXTRALOG);
 	      set_option_bool(OPT_LOG_PROTO);
 	    }
+	  else if (strcmp(arg, "auth") == 0)
+	    set_option_bool(OPT_AUTH_LOG);
 	}
       break;
 
@@ -3990,7 +4011,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	while (arg)
 	  {
 	    comma = split(arg);
-	    if (strchr(arg, ':')) /* ethernet address, netid or binary CLID */
+	    if (strchr(arg, ':')) /* Ethernet address, netid or binary CLID */
 	      {
 		if ((arg[0] == 'i' || arg[0] == 'I') &&
 		    (arg[1] == 'd' || arg[1] == 'D') &&
@@ -5340,7 +5361,8 @@ err:
 	
 	new->class = C_IN;
 	new->name = NULL;
-
+	new->digestlen = 0;
+	
 	if ((comma = split(arg)) && (algo = split(comma)))
 	  {
 	    int class = 0;
@@ -5358,29 +5380,37 @@ err:
 		algo = split(comma);
 	      }
 	  }
-		  
-       	if (!comma || !algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
-	    !atoi_check16(comma, &new->keytag) || 
-	    !atoi_check8(algo, &new->algo) ||
-	    !atoi_check8(digest, &new->digest_type) ||
-	    !(new->name = canonicalise_opt(arg)))
+	
+	if (!(new->name = canonicalise_opt(arg)))
 	  ret_err_free(_("bad trust anchor"), new);
-	    
-	/* Upper bound on length */
-	len = (2*strlen(keyhex))+1;
-	new->digest = opt_malloc(len);
-	unhide_metas(keyhex);
-	/* 4034: "Whitespace is allowed within digits" */
-	for (cp = keyhex; *cp; )
-	  if (isspace((unsigned char)*cp))
-	    for (cp1 = cp; *cp1; cp1++)
-	      *cp1 = *(cp1+1);
-	  else
-	    cp++;
-	if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+
+	if (comma)
 	  {
-	    free(new->name);
-	    ret_err_free(_("bad HEX in trust anchor"), new);
+	    if (!algo || !(digest = split(algo)) || !(keyhex = split(digest)) ||
+		!atoi_check16(comma, &new->keytag) || 
+		!atoi_check8(algo, &new->algo) ||
+		!atoi_check8(digest, &new->digest_type))
+	      {
+		free(new->name);
+		ret_err_free(_("bad trust anchor"), new);
+	      }
+	    
+	    /* Upper bound on length */
+	    len = (2*strlen(keyhex))+1;
+	    new->digest = opt_malloc(len);
+	    unhide_metas(keyhex);
+	    /* 4034: "Whitespace is allowed within digits" */
+	    for (cp = keyhex; *cp; )
+	      if (isspace((unsigned char)*cp))
+		for (cp1 = cp; *cp1; cp1++)
+		  *cp1 = *(cp1+1);
+	      else
+		cp++;
+	    if ((new->digestlen = parse_hex(keyhex, (unsigned char *)new->digest, len, NULL, NULL)) == -1)
+	      {
+		free(new->name);
+		ret_err_free(_("bad HEX in trust anchor"), new);
+	      }
 	  }
 	
 	new->next = daemon->ds;
@@ -5929,6 +5959,9 @@ void read_opts(int argc, char **argv, char *compile_opts)
   daemon->randport_limit = 1;
   daemon->host_index = SRC_AH;
   daemon->max_procs = MAX_PROCS;
+#ifdef HAVE_DUMPFILE
+  daemon->dump_mask = 0xffffffff;
+#endif
 #ifdef HAVE_DNSSEC
   daemon->limit[LIMIT_SIG_FAIL] = DNSSEC_LIMIT_SIG_FAIL;
   daemon->limit[LIMIT_CRYPTO] = DNSSEC_LIMIT_CRYPTO;
