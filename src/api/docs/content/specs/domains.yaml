@@ -1,3 +1,50 @@
+.get_path: &get_path
+  summary: Get domain
+  tags:
+    - "Domain management"
+  description: |
+    `{type}`, `{kind}`, and `{domain}` are optional. Specifying any of these may result in only a subset of the available data being returned.
+
+    Valid combinations are:
+    - `/api/domains` (all domains)
+    - `/api/domains/abc.com` (all domains identical to `abc.com`)
+    - `/api/domains/allow` (only allowed domains)
+    - `/api/domains/allow/abc.com` (only allowed domains identical to `abc.com`)
+    - `/api/domains/allow/exact` (only exactly allowed domains)
+    - `/api/domains/allow/exact/abc.com` (only exactly allowed domain identical to `abc.com`)
+    - `/api/domains/allow/regex` (only allowed regex domains)
+    - `/api/domains/allow/regex/abc.com` (only allowed regex domains identical to `abc.com`)
+    - `/api/domains/deny` (only denied domains)
+    - `/api/domains/deny/abc.com` (only denied domains identical to `abc.com`)
+    - `/api/domains/deny/exact` (only exactly denied domains)
+    - `/api/domains/deny/exact/abc.com` (only exactly denied domain identical to `abc.com`)
+    - `/api/domains/deny/regex` (only denied regex domains)
+    - `/api/domains/deny/regex/abc.com` (only denied regex domains identical to `abc.com`)
+    - `/api/domains/exact` (allowed and denied exact domains)
+    - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
+    - `/api/domains/regex` (allowed and denied regex domains)
+    - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: 'domains.yaml#/components/schemas/domains/get'
+              - $ref: 'common.yaml#/components/schemas/took'
+          examples:
+            domains:
+              $ref: 'domains.yaml#/components/examples/domains'
+    '401':
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: 'common.yaml#/components/errors/unauthorized'
+              - $ref: 'common.yaml#/components/schemas/took'
+
 openapi: 3.0.2
 components:
   paths:
@@ -8,52 +55,8 @@ components:
         - $ref: 'domains.yaml#/components/parameters/kind'
         - $ref: 'domains.yaml#/components/parameters/domain'
       get:
-        summary: Get domain
-        tags:
-          - "Domain management"
-        operationId: "get_domains"
-        description: |
-          `{type}`, `{kind}`, and `{domain}` are optional. Specifying any of these may result in only a subset of the available data being returned.
-
-          Valid combinations are:
-          - `/api/domains` (all domains)
-          - `/api/domains/abc.com` (all domains identical to `abc.com`)
-          - `/api/domains/allow` (only allowed domains)
-          - `/api/domains/allow/abc.com` (only allowed domains identical to `abc.com`)
-          - `/api/domains/allow/exact` (only exactly allowed domains)
-          - `/api/domains/allow/exact/abc.com` (only exactly allowed domain identical to `abc.com`)
-          - `/api/domains/allow/regex` (only allowed regex domains)
-          - `/api/domains/allow/regex/abc.com` (only allowed regex domains identical to `abc.com`)
-          - `/api/domains/deny` (only denied domains)
-          - `/api/domains/deny/abc.com` (only denied domains identical to `abc.com`)
-          - `/api/domains/deny/exact` (only exactly denied domains)
-          - `/api/domains/deny/exact/abc.com` (only exactly denied domain identical to `abc.com`)
-          - `/api/domains/deny/regex` (only denied regex domains)
-          - `/api/domains/deny/regex/abc.com` (only denied regex domains identical to `abc.com`)
-          - `/api/domains/exact` (allowed and denied exact domains)
-          - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
-          - `/api/domains/regex` (allowed and denied regex domains)
-          - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
-        responses:
-          '200':
-            description: OK
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'domains.yaml#/components/schemas/domains/get'
-                    - $ref: 'common.yaml#/components/schemas/took'
-                examples:
-                  domains:
-                    $ref: 'domains.yaml#/components/examples/domains'
-          '401':
-            description: Unauthorized
-            content:
-              application/json:
-                schema:
-                  allOf:
-                    - $ref: 'common.yaml#/components/errors/unauthorized'
-                    - $ref: 'common.yaml#/components/schemas/took'
+        operationId: "get_domain"
+        <<: *get_path
       put:
         summary: Replace domain
         tags:
@@ -159,6 +162,9 @@ components:
       parameters:
         - $ref: 'domains.yaml#/components/parameters/type'
         - $ref: 'domains.yaml#/components/parameters/kind'
+      get:
+        operationId: "get_type_kind_domains"
+        <<: *get_path
       post:
         summary: Add new domain
         tags:
@@ -218,6 +224,16 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    type:
+      parameters:
+        - $ref: 'domains.yaml#/components/parameters/type'
+      get:
+        operationId: "get_type_domains"
+        <<: *get_path
+    direct:
+      get:
+        operationId: "get_domains"
+        <<: *get_path
     batchDelete:
       summary: Delete multiple domains
       post:
