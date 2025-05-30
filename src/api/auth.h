@@ -32,18 +32,13 @@
 #define SID_BITSIZE 128
 #define SID_SIZE BASE64_ENCODE_RAW_LENGTH(SID_BITSIZE/8)
 
-// SameSite=Strict: Defense against some classes of cross-site request forgery
-// (CSRF) attacks. This ensures the session cookie will only be sent in a
-// first-party (i.e., Pi-hole) context and NOT be sent along with requests
-// initiated by third party websites.
-//
 // HttpOnly: the cookie cannot be accessed through client side script (if the
 // browser supports this flag). As a result, even if a cross-site scripting
 // (XSS) flaw exists, and a user accidentally accesses a link that exploits this
 // flaw, the browser (primarily Internet Explorer) will not reveal the cookie to
 // a third party.
-#define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Strict; Path=/; Max-Age=%u; HttpOnly\r\n"
-#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Strict; Path=/; Max-Age=-1; Expires=Thu, 01 Jan 1970 00:00:00 GMT;\r\n"
+#define FTL_SET_COOKIE "Set-Cookie: sid=%s; SameSite=Lax; Path=/; Max-Age=%u; HttpOnly\r\n"
+#define FTL_DELETE_COOKIE "Set-Cookie: sid=deleted; SameSite=Lax; Path=/; Max-Age=-1; Expires=Thu, 01 Jan 1970 00:00:00 GMT;\r\n"
 
 struct session {
 	bool used;
