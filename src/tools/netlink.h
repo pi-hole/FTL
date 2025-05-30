@@ -21,11 +21,14 @@
 #include <net/if.h>
 #include <linux/if_link.h>
 #include <linux/if_addr.h>
+#ifndef _NET_IF_ARP_H
 #include <linux/if_arp.h>
+#endif
 
 bool nlroutes(cJSON *routes, const bool detailed);
 bool nladdrs(cJSON *interfaces, const bool detailed);
 bool nllinks(cJSON *interfaces, const bool detailed);
+char *get_gateway_name(void) __attribute__((malloc));
 
 // Netlink expects that the user buffer will be at least 8kB or a page size of
 // the CPU architecture, whichever is bigger. Particular Netlink families may,
