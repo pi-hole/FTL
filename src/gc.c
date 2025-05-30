@@ -102,6 +102,22 @@ static void recycle(void)
 			cache_used[query->cacheID] = true;
 	}
 
+	// Scan cache records for CNAME domain pointers that prevent domains
+	// from being recyclable
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		const DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
+			continue;
+
+		// Mark domains as used when this is a CNAME-related cache
+		// record
+		if(cache->blocking_status == QUERY_GRAVITY_CNAME ||
+		   cache->blocking_status == QUERY_REGEX_CNAME ||
+		   cache->blocking_status == QUERY_DENYLIST_CNAME)
+		   domain_used[cache->CNAME_domainID] = true;
+	}
+
 	// Recycle clients
 	unsigned int clients_recycled = 0;
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
