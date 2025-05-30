@@ -48,7 +48,7 @@ bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
 char* get_client_names_from_ids(const char *group_ids) __attribute__ ((malloc));
 void gravityDB_finalizeTable(void);
-int gravityDB_count(const enum gravity_tables list);
+int gravityDB_count(const enum gravity_tables list, const bool total);
 void check_inaccessible_adlists(void);
 void check_restored_gravity(void);
 bool gravity_updated(void);
