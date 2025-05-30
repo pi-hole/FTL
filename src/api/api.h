@@ -10,8 +10,6 @@
 #ifndef ROUTES_H
 #define ROUTES_H
 
-// struct mg_connection
-#include "webserver/civetweb/civetweb.h"
 // type cJSON
 #include "webserver/cJSON/cJSON.h"
 #include "webserver/http-common.h"

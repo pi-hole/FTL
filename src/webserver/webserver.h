@@ -11,6 +11,10 @@
 #define WEBSERVER_H
 
 #include <stdbool.h>
+// in_port_t
+#include <netinet/in.h>
+// struct mg_connection
+#include "webserver/civetweb/civetweb.h"
 
 // Hard-coded maximum number of allowed web server threads
 #define MAX_WEBTHREADS 64
@@ -20,6 +24,7 @@
 void http_init(void);
 void http_terminate(void);
 
+int ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...) __attribute__((format(printf, 3, 4), nonnull(1, 3)));
 in_port_t get_https_port(void) __attribute__((pure));
 unsigned short get_api_string(char **buf, const bool domain);
 char *get_prefix_webhome(void) __attribute__((pure));

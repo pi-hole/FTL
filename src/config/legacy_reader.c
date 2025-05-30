@@ -244,9 +244,6 @@ const char *readFTLlegacy(struct config *conf)
 	// PIDFILE
 	conf->files.pid.v.s = getPath(fp, "PIDFILE", conf->files.pid.v.s);
 
-	// SETUPVARSFILE
-	conf->files.setupVars.v.s = getPath(fp, "SETUPVARSFILE", conf->files.setupVars.v.s);
-
 	// MACVENDORDB
 	conf->files.macvendor.v.s = getPath(fp, "MACVENDORDB", conf->files.macvendor.v.s);
 

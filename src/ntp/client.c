@@ -41,6 +41,8 @@
 #include "database/message-table.h"
 // check_capability()
 #include "capabilities.h"
+// search_proc()
+#include "procps.h"
 
 // Required accuracy of the NTP sync in seconds in order to start the NTP server
 // thread. If the NTP sync is less accurate than this value, the NTP server
@@ -240,7 +242,7 @@ static bool settime_skew(const double offset)
 	tx.offset = 1000000 * offset;
 	tx.modes = ADJ_OFFSET_SINGLESHOT;
 
-	log_debug(DEBUG_NTP, "Gradually adjusting system time by %ld us", tx.offset);
+	log_debug(DEBUG_NTP, "Gradually adjusting system time by %"PRId64" us", (int64_t)tx.offset);
 
 	if(adjtimex(&tx) < 0)
 	{
@@ -302,6 +304,11 @@ static bool reply(const int fd, const char *server, struct addrinfo *saddr, stru
 	// ref = Reference Timestamp (Time at which the clock was last set or corrected)
 	memcpy(&netbuffer, &buf[16], sizeof(netbuffer));
 	const uint64_t ref = ntoh64(netbuffer);
+	// Validate ref timestamp is non-zero (server has been synchronized at least once)
+	if (ref == 0) {
+		log_warn("Received NTP reply has zero reference timestamp, server is not synchronized, ignoring");
+		return false;
+	}
 	// org = Origin Timestamp (Transmit Timestamp @ Client)
 	memcpy(&netbuffer, &buf[24], sizeof(netbuffer));
 	const uint64_t org = ntoh64(netbuffer);
@@ -340,7 +347,13 @@ static bool reply(const int fd, const char *server, struct addrinfo *saddr, stru
 			}
 		}
 		// else:
-		log_warn("Received NTP reply has invalid version, ignoring");
+		log_warn("Received NTP reply has invalid mode, ignoring");
+		return false;
+	}
+	// Check if the request is NTP version 4
+	if(((buf[0] >> 3) & 0x07) != 4)
+	{
+		log_warn("Received NTP reply has unsupported version, ignoring");
 		return false;
 	}
 
@@ -744,6 +757,13 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	{
 		log_info("NTP sync is disabled");
 		ntp_server_start();
+		return false;
+	}
+	// Return early if a clock disciplining NTP client is detected
+	// Checks chrony, the ntp family (ntp, ntpsec and openntpd), and ntpd-rs
+	if(search_proc("chronyd") > 0 || search_proc("ntpd") > 0 || search_proc("ntp-daemon") > 0)
+	{
+		log_info("Clock disciplining NTP client detected, not starting embedded NTP client/server");
 		return false;
 	}
 

@@ -20,7 +20,7 @@ static int order(char *qdomain, size_t qlen, struct server *serv);
 static int order_qsort(const void *a, const void *b);
 static int order_servers(struct server *s, struct server *s2);
 
-/* If the server is USE_RESOLV or LITERAL_ADDRES, it lives on the local_domains chain. */
+/* If the server is USE_RESOLV or LITERAL_ADDRESS, it lives on the local_domains chain. */
 #define SERV_IS_LOCAL (SERV_USE_RESOLV | SERV_LITERAL_ADDRESS)
 
 void build_server_array(void)
@@ -94,8 +94,7 @@ void build_server_array(void)
    server=/.example.com/ works.
 
    A flag of F_SERVER returns an upstream server only.
-   A flag of F_DNSSECOK returns a DNSSEC capable server only and
-   also disables NODOTS servers from consideration.
+   A flag of F_DNSSECOK disables NODOTS servers from consideration.
    A flag of F_DOMAINSRV returns a domain-specific server only.
    A flag of F_CONFIG returns anything that generates a local
    reply of IPv4 or IPV6.
@@ -260,7 +259,6 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
   return 1;
 }
 
-/* Return first server in group of equivalent servers; this is the "master" record. */
 int server_samegroup(struct server *a, struct server *b)
 {
   return order_servers(a, b) == 0;
@@ -297,11 +295,13 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
     }
   else
     {
-      /* Now the servers are on order between low and high, in the order
-	 IPv6 addr, IPv4 addr, return zero for both, resolvconf servers, send upstream, no-data return.
+      /* Now the matching server records are all between low and high.
+	 order_qsort() ensures that they are in the order
+	 IPv6 addr, IPv4 addr, return zero for both, no-data return,
+	 "use resolvconf" servers, domain-specific upstream servers.
 	 
 	 See which of those match our query in that priority order and narrow (low, high) */
-      
+
       for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_6ADDR); i++);
       
       if (!(flags & F_SERVER) && i != nlow && (flags & F_IPV6))
@@ -326,33 +326,27 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		{
 		  nlow = i;
 		  
-		  /* Short to resolv.conf servers */
-		  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_USE_RESOLV); i++);
+		  /* now look for a NXDOMAIN answer  --local=/domain/ */
+		  for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
 		  
-		  if (i != nlow)
+		  if (!(flags & (F_DOMAINSRV | F_SERVER)) && i != nlow)
 		    nhigh = i;
 		  else
 		    {
-		      /* now look for a server */
-		      for (i = nlow; i < nhigh && !(daemon->serverarray[i]->flags & SERV_LITERAL_ADDRESS); i++);
+		      nlow = i;
+		  
+		      /* return "use resolv.conf servers" if they exist */
+		      for (i = nlow; i < nhigh && (daemon->serverarray[i]->flags & SERV_USE_RESOLV); i++);
 		      
 		      if (i != nlow)
-			{
-			  /* If we want a server that can do DNSSEC, and this one can't, 
-			     return nothing, similarly if were looking only for a server
-			     for a particular domain. */
-			  if ((flags & F_DNSSECOK) && !(daemon->serverarray[nlow]->flags & SERV_DO_DNSSEC))
-			    nlow = nhigh;
-			  else if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
-			    nlow = nhigh;
-			  else
-			    nhigh = i;
-			}
+			nhigh = i;
 		      else
 			{
-			  /* --local=/domain/, only return if we don't need a server. */
-			  if (flags & (F_DNSSECOK | F_DOMAINSRV | F_SERVER))
-			    nhigh = i;
+			  /* If we want a server for a particular domain, and this one isn't, return nothing. */
+			  if ((flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
+			    nlow = nhigh;
+			  else
+			    nlow = i;
 			}
 		    }
 		}
@@ -407,6 +401,8 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   
   setup_reply(header, flags, ede);
 
+  gotname &= ~F_QUERY;
+  
   if (flags & (F_NXDOMAIN | F_NOERR))
     log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL, 0);
 
@@ -472,7 +468,7 @@ int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp)
   /* Find server to send DNSSEC query to. This will normally be the 
      same as for the original query, but may be another if
      servers for domains are involved. */		      
-  if (!lookup_domain(keyname, F_DNSSECOK, &first, &last))
+  if (!lookup_domain(keyname, F_SERVER | F_DNSSECOK, &first, &last))
     return -1;
 
   for (index = first; index != last; index++)
@@ -546,12 +542,14 @@ static int order_qsort(const void *a, const void *b)
   rc = order_servers(s1, s2);
 
   /* Sort all literal NODATA and local IPV4 or IPV6 responses together,
-     in a very specific order. We flip the SERV_LITERAL_ADDRESS bit
-     so the order is IPv6 literal, IPv4 literal, all-zero literal, 
-     unqualified servers, upstream server, NXDOMAIN literal. */
+     in a very specific order  IPv6 literal, IPv4 literal, all-zero literal,
+     NXDOMAIN literal. We also include SERV_USE_RESOLV in this, so that
+     use-standard servers sort before ordinary servers. (SERV_USR_RESOLV set
+     implies that none of SERV_LITERAL_ADDRESS,SERV_4ADDR,SERV_6ADDR,SERV_ALL_ZEROS
+     are set) */
   if (rc == 0)
-    rc = ((s2->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_USE_RESOLV | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS) -
-      ((s1->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_USE_RESOLV | SERV_ALL_ZEROS)) ^ SERV_LITERAL_ADDRESS);
+    rc = ((s2->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_ALL_ZEROS | SERV_USE_RESOLV))) -
+      ((s1->flags & (SERV_LITERAL_ADDRESS | SERV_4ADDR | SERV_6ADDR | SERV_ALL_ZEROS | SERV_USE_RESOLV)));
 
   /* Finally, order by appearance in /etc/resolv.conf etc, for --strict-order */
   if (rc == 0)

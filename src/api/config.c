@@ -62,7 +62,6 @@ static struct {
 	{ "OpenDNS (ECS, DNSSEC)", { "208.67.222.222", "208.67.220.220" }, {"2620:119:35::35", "2620:119:53::53"} },
 	{ "Level3", { "4.2.2.1", "4.2.2.2" }, { NULL, NULL } },
 	{ "Comodo", { "8.26.56.26", "8.20.247.20" }, { NULL, NULL} },
-	{ "DNS.WATCH (DNSSEC)", { "84.200.69.80", "84.200.70.40" }, { "2001:1608:10:25:0:0:1c04:b12f", "2001:1608:10:25:0:0:9249:d69b" } },
 	{ "Quad9 (filtered, DNSSEC)", {"9.9.9.9", "149.112.112.112" }, { "2620:fe::fe", "2620:fe::9" } },
 	{ "Quad9 (unfiltered, no DNSSEC)", { "9.9.9.10", "149.112.112.10" }, { "2620:fe::10", "2620:fe::fe:10" } },
 	{ "Quad9 (filtered, ECS, DNSSEC)", { "9.9.9.11", "149.112.112.11" }, { "2620:fe::11", "2620:fe::fe:11" } },
@@ -232,8 +231,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
 				return "not of type unsigned integer (16bit)";
 			// Set item
-			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			conf_item->v.u16 = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
 			break;
 		}
 		case CONF_LONG:
