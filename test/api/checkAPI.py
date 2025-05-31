@@ -9,11 +9,13 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
+import sys
+import trace
 from libs.openAPI import openApi
 from libs.FTLAPI import FTLAPI
 from libs.responseVerifyer import ResponseVerifyer
 
-if __name__ == "__main__":
+def main():
 	# OpenAPI specs are split into multiple files, this script extracts the endpoints from them
 	openapi = openApi(base_path = "src/api/docs/content/specs/", api_root = "/api")
 	if not openapi.parse("main.yaml"):
@@ -110,4 +112,13 @@ if __name__ == "__main__":
 
 	# If there are no errors, exit with success
 	print("Everything okay!")
-	exit(0)
+	#exit(0)
+
+if __name__ == "__main__":
+	tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
+	                     trace=1, count=1)
+	tracer.run('main()')
+
+	# make a report, placing output in the current directory
+	r = tracer.results()
+	r.write_results(show_missing=True, coverdir=".")

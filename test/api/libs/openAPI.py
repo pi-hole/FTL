@@ -116,7 +116,7 @@ class openApi():
 			# Get the paths
 			self.paths = self.read_yaml_maybe_cache(self.base_path + filename)["paths"]
 		except Exception as e:
-			print("Exception when trying to read " + e)
+			print("Exception when trying to read " + str(e))
 			return False
 
 		# Recursively resolve references in the paths
