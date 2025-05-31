@@ -9,6 +9,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
+import os
 import sys
 import trace
 from libs.openAPI import openApi
@@ -117,6 +118,12 @@ def main():
 	#exit(0)
 
 if __name__ == "__main__":
+	# Exit early when this is a RISCV build
+	# ENV TARGETPLATFORM == "linux/riscv64"
+	if os.getenv("TARGETPLATFORM") == "linux/riscv64":
+		print("Skipping API test on RISCV builds")
+		exit(0)
+
 	if TRACE:
 		tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
 				trace=1, count=1)
