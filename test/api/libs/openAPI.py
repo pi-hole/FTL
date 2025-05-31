@@ -83,6 +83,7 @@ class openApi():
 		for a in dict_in.keys():
 			# Create the next dict key
 			next_dict_key = dict_key + "/" + a if len(dict_key) > 0 else a
+			print("Resolving " + next_dict_key)
 			# If the item is a dict, we check if it is a reference
 			if isinstance(dict_in[a], dict):
 				# Check if this is a reference
@@ -108,6 +109,10 @@ class openApi():
 						else:
 							# No reference, just recurse into the next level
 							self.recurseRef(dict_in[a][i],  next_dict_key)
+			else:
+				# If it is not a dict or list, we do not need to do anything
+				print(f"Not recursing into {next_dict_key} as it is not a dict or list: {type(dict_in[a])}")
+				pass
 
 
 	def parse(self, filename: str):

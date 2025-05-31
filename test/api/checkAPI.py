@@ -121,4 +121,7 @@ if __name__ == "__main__":
 
 	# make a report, placing output in the current directory
 	r = tracer.results()
-	r.write_results(show_missing=True, coverdir=".")
+	print(r.write_results(show_missing=True, coverdir="."))
+
+	# Exit with success
+	exit(0)
