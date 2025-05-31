@@ -15,9 +15,11 @@ from libs.openAPI import openApi
 from libs.FTLAPI import FTLAPI
 from libs.responseVerifyer import ResponseVerifyer
 
+TRACE = False
+
 def main():
 	# OpenAPI specs are split into multiple files, this script extracts the endpoints from them
-	openapi = openApi(base_path = "src/api/docs/content/specs/", api_root = "/api")
+	openapi = openApi(base_path = "src/api/docs/content/specs/", api_root = "/api", trace = TRACE)
 	if not openapi.parse("main.yaml"):
 		exit(1)
 
@@ -115,13 +117,19 @@ def main():
 	#exit(0)
 
 if __name__ == "__main__":
-	tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
-	                     trace=1, count=1)
-	tracer.run('main()')
+	if TRACE:
+		tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
+				trace=1, count=1)
+		tracer.run('main()')
 
-	# make a report, placing output in the current directory
-	r = tracer.results()
-	print(r.write_results(show_missing=True, coverdir="."))
+		# make a report, placing output in the current directory
+		r = tracer.results()
+		print(r.write_results(show_missing=True, coverdir="."))
 
-	# Exit with success
-	exit(0)
+		# Exit with success
+		exit(0)
+	else:
+		main()
+
+		# Exit with success
+		exit(0)

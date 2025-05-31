@@ -17,10 +17,11 @@ class openApi():
 	# List of methods we want to extract
 	METHODS = ["get", "post", "put", "patch", "delete"]
 
-	def __init__(self, base_path: str, api_root: str = "/api") -> None:
+	def __init__(self, base_path: str, api_root: str = "/api", trace: bool = False) -> None:
 		# Store arguments
 		self.base_path = base_path
 		self.api_root = api_root
+		self.TRACE = trace
 
 		# Prepare list of YAML endpoints
 		self.endpoints = {}
@@ -83,7 +84,8 @@ class openApi():
 		for a in dict_in.keys():
 			# Create the next dict key
 			next_dict_key = dict_key + "/" + a if len(dict_key) > 0 else a
-			print("Resolving " + next_dict_key)
+			if self.TRACE:
+				print("Resolving " + next_dict_key)
 			# If the item is a dict, we check if it is a reference
 			if isinstance(dict_in[a], dict):
 				# Check if this is a reference
@@ -111,7 +113,8 @@ class openApi():
 							self.recurseRef(dict_in[a][i],  next_dict_key)
 			else:
 				# If it is not a dict or list, we do not need to do anything
-				print(f"Not recursing into {next_dict_key} as it is not a dict or list: {type(dict_in[a])}")
+				if self.TRACE:
+					print(f"Not recursing into {next_dict_key} as it is not a dict or list: {type(dict_in[a])}")
 				pass
 
 
