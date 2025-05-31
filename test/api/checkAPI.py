@@ -117,6 +117,11 @@ def main():
 	#exit(0)
 
 if __name__ == "__main__":
+	# Exit early when this is a RISCV build
+	if sys.platform == "riscv64":
+		print("This script is not supported on RISCV builds")
+		exit(0)
+
 	if TRACE:
 		tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix],
 				trace=1, count=1)
