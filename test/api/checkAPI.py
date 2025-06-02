@@ -119,8 +119,7 @@ def main():
 
 if __name__ == "__main__":
 	# Exit early when this is a RISCV build
-	# ENV TARGETPLATFORM == "linux/riscv64"
-	if os.getenv("TARGETPLATFORM") == "linux/riscv64":
+	if os.getenv("CI_ARCH") == "linux/riscv64":
 		print("Skipping API test on RISCV builds")
 		exit(0)
 
