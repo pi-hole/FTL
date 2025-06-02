@@ -915,7 +915,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 }
 
 // Finalize non-NULL prepared statements and set them to NULL for a given client
-static inline void gravityDB_finalize_client_statements(clientsData *client)
+static void gravityDB_finalize_client_statements(clientsData *client)
 {
 	log_debug(DEBUG_DATABASE, "Finalizing gravity statements for %s", getstr(client->ippos));
 

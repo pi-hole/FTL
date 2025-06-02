@@ -20,14 +20,14 @@ int get_hardware_address(const int sock, const char *iname, unsigned char *mac);
 // Global lock used by all threads
 extern pthread_mutex_t dhcp_lock;
 
-inline void start_lock(void)
-{
-	pthread_mutex_lock(&dhcp_lock);
+#define start_lock() \
+{ \
+	pthread_mutex_lock(&dhcp_lock); \
 }
 
-inline void end_lock(void)
-{
-	pthread_mutex_unlock(&dhcp_lock);
+#define end_lock() \
+{ \
+	pthread_mutex_unlock(&dhcp_lock); \
 }
 
 #endif // DHCP_DISCOVER_H
