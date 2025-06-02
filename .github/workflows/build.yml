@@ -13,6 +13,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false  
 
 jobs:
   smoke-tests:
@@ -79,6 +85,10 @@ jobs:
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
       GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
     steps:
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
@@ -118,6 +128,10 @@ jobs:
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
       GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
     steps:
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
