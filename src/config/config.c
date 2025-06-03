@@ -1686,7 +1686,7 @@ static void get_web_port(struct config *conf)
 	// Create a string with the default ports
 	// Allocate memory for the string
 	const size_t portstrlen = 64;
-	char *ports = calloc(portstrlen, sizeof(char));
+	char *ports = calloc(portstrlen + 1, sizeof(char));
 	if(ports == NULL)
 	{
 		log_err("Unable to allocate memory for default ports string");

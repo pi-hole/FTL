@@ -38,7 +38,7 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 	}
 
 	// Try to open comm file
-	char filename[sizeof("/proc/%d/exe") + sizeof(int)*3];
+	char filename[64] = { 0 };
 	snprintf(filename, sizeof(filename), "/proc/%d/exe", pid);
 
 	// Read link destination
@@ -398,7 +398,7 @@ pid_t search_proc(const char *name)
 				// Read the command name from the file
 				if(fscanf(file, "%"xstr(PROC_PATH_SIZ)"s", comm) == 1)
 				{
-					if(strcmp(comm, name) == 0)
+					if(strncmp(comm, name, PROC_PATH_SIZ) == 0)
 					{
 						// Found a matching process
 						fclose(file);

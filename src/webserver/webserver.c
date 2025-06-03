@@ -306,11 +306,12 @@ ftl_http_redirect(struct mg_connection *conn, const int code, const char *format
 	// Determine the size of the formatted string
 	va_list args;
 	va_start(args, format);
-	int size = vsnprintf(NULL, 0, format, args);
+	const int size = vsnprintf(NULL, 0, format, args);
 	va_end(args);
 
 	char *buffer = calloc(size + 1, sizeof(char));
-	if (buffer == NULL) {
+	if (buffer == NULL)
+	{
 		log_err("Memory allocation failed for redirect format!");
 		return 0;
 	}
