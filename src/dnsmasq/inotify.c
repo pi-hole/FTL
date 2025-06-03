@@ -137,14 +137,14 @@ static struct hostsfile *dyndir_addhosts(struct dyndir *dd, char *file)
 {
   /* Check if this file is already known in dd->files */
   struct hostsfile *ah;
-  size_t dirlen = sizeof(dd->dname);
+  size_t dirlen = strlen(dd->dname);
   
   /* ah->fname always starts with the string in dd->dname */
   for (ah = dd->files; ah; ah = ah->next)
-    if (ah->fname[dirlen+2] == '/' &&
-        strcmp(&ah->fname[dirlen+3], file) == 0)
+    if (ah->fname[dirlen] == '/' &&
+        strcmp(&ah->fname[dirlen+1], file) == 0)
       return ah;
-  
+        
   /* Not known, create new hostsfile record for this dyndir */
   if ((ah = whine_malloc(sizeof(struct hostsfile))))
     {
