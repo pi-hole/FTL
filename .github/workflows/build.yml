@@ -18,7 +18,12 @@ on:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
         required: false
-        default: false  
+        default: false
+      run_detached:
+        type: boolean
+        description: 'Run tmate in detached mode (default true)'
+        required: false
+        default: true 
 
 jobs:
   smoke-tests:
@@ -90,7 +95,7 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
-          detached: true
+          detached: ${{ inputs.run_detached }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
@@ -135,7 +140,7 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
-          detached: true
+          detached: ${{ inputs.run_detached }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
