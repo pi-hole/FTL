@@ -1303,7 +1303,7 @@ static void initConfig(struct config *conf)
 			{ "0", "Don't hide anything, all statistics are available." },
 			{ "1", "Hide domains. This setting disables Top Domains and Top Ads" },
 			{ "2", "Hide domains and clients. This setting disables Top Domains, Top Ads, Top Clients and Clients over time." },
-			{ "3", "Anonymize everything. This setting disabled almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also loose most regex features." }
+			{ "3", "Anonymize everything. This setting disables almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also lose most regex features." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->misc.privacylevel.a, privacylevel);
 	}
