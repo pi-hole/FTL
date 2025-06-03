@@ -24,6 +24,11 @@ on:
         description: 'Run tmate in detached mode (default true)'
         required: false
         default: true 
+      limit_access:
+        type: boolean
+        description: 'Limit access to user that triggered the job'
+        required: false
+        default: false
 
 jobs:
   smoke-tests:
@@ -96,6 +101,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
           detached: ${{ inputs.run_detached }}
+          limit-access-to-actor: ${{ inputs.limit_access }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
@@ -141,6 +147,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
           detached: ${{ inputs.run_detached }}
+          limit-access-to-actor: ${{ inputs.limit_access }}
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
