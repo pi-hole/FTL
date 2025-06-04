@@ -1021,7 +1021,7 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
-			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME [SQL...]]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
 			printf("      options can be found in %s%s sqlite3 --help%s.\n", green, argv[0], normal);
@@ -1030,7 +1030,7 @@ void parse_args(int argc, char *argv[])
 			printf("      A new database is created if the file does not previously\n");
 			printf("      exist. If this argument is omitted, SQLite3 will use a\n");
 			printf("      transient in-memory database instead.\n");
-			printf("    - %s[SQL...]%s is an optional SQL statement to be executed. If\n", cyan, normal);
+			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
 			printf("    There are two special %s%s sqlite3%s mode switches:\n", green, argv[0], normal);
 			printf("    %s-h%s  %shuman-readable%s mode:\n", purple, normal, bold, normal);
@@ -1042,7 +1042,7 @@ void parse_args(int argc, char *argv[])
 			printf("        In this mode, batch mode is enforced and any possibly\n");
 			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
 			printf("        for %s%s sqlite3 %s-batch -init /dev/null%s\n\n", green, argv[0], purple, normal);
-			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME [SQL...]]%s\n\n", green, argv[0], purple, cyan, normal);
+			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, argv[0], purple, cyan, normal);
 
 			printf("%ssqlite3_rsync%s tool:\n", yellow, normal);
 			printf("\t%ssqlite3_rsync%s           Synchronize SQLite3 databases\n", green, normal);
