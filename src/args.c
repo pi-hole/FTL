@@ -840,7 +840,7 @@ void parse_args(int argc, char *argv[])
 			printf("\n\n");
 			printf("******************************** %s%sLUA%s ********************************\n",
 			       yellow, bold, normal);
-			printf("Version:         %s%s" LUA_VERSION_MAJOR "." LUA_VERSION_MINOR"%s\n",
+			printf("Version:         %s%s" LUA_RELEASE"%s\n",
 			       green, bold, normal);
 			printf("Libraries:       ");
 			print_embedded_scripts();
