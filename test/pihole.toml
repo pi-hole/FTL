@@ -759,7 +759,7 @@
     # If you are using your own certificate, you need to regenerate it yourself. In this
     # case, it is advised to set the validity range to 0 days, so that Pi-hole does not
     # try to regenerate your certificate.
-    validity = 730
+    validity = 47
 
   [webserver.paths]
     # Server root on the host
