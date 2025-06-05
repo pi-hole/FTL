@@ -494,7 +494,7 @@ int check_source(struct dns_header *header, size_t plen, unsigned char *pseudohe
 #define UMBRELLA_DEVICESZ   sizeof(daemon->umbrella_device)
 
 struct umbrella_opt {
-  u8 magic[4];
+  u8 magic[4] ATTRIBUTE_NONSTRING;
   u8 version;
   u8 flags;
   /* We have 4 possible fields since we'll never send both IPv4 and

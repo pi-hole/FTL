@@ -37,7 +37,9 @@ static volatile pid_t pid = 0;
 static volatile int pipewrite;
 
 static void set_dns_listeners(void);
+#ifdef HAVE_TFTP
 static void set_tftp_listeners(void);
+#endif
 static void check_dns_listeners(time_t now);
 static void do_tcp_connection(struct listener *listener, time_t now, int slot);
 static void sig_handler(int sig);
@@ -69,14 +71,16 @@ int main_dnsmasq (int argc, char **argv)
   int need_cap_net_raw = 0;
   int need_cap_net_bind_service = 0;
   int have_cap_chown = 0;
+#  ifdef HAVE_DHCP
   char *bound_device = NULL;
   int did_bind = 0;
+#  endif
   struct server *serv;
   char *netlink_warn;
 #else
   int bind_fallback = 0;
 #endif 
-#if defined(HAVE_DHCP) || defined(HAVE_DHCP6)
+#if defined(HAVE_DHCP)
   struct dhcp_context *context;
   struct dhcp_relay *relay;
 #endif
@@ -84,6 +88,10 @@ int main_dnsmasq (int argc, char **argv)
   int tftp_prefix_missing = 0;
 #endif
 
+#ifdef HAVE_LINUX_NETWORK
+  (void)netlink_warn;
+#endif
+  
 #if defined(HAVE_IDN) || defined(HAVE_LIBIDN2) || defined(LOCALEDIR)
   /*** Pi-hole modification: Locale is already initialized in main.c ***/
 #endif
@@ -1971,11 +1979,14 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   pid_t p;
   union mysockaddr tcp_addr;
   socklen_t tcp_len = sizeof(union mysockaddr);
-  unsigned char a = 0, *buff;
+  unsigned char *buff;
   struct server *s; 
   int flags, auth_dns;
   struct in_addr netmask;
   int pipefd[2];
+#ifdef HAVE_LINUX_NETWORK
+  unsigned char a = 0;
+#endif
 
   while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
   
@@ -2084,7 +2095,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	     single byte comes back up the pipe, which
 	     is sent by the child after it has closed the
 	     netlink socket. */
-	  
+
 	  read_write(pipefd[0], &a, 1, RW_READ);
 #endif
 	  
