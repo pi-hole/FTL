@@ -281,7 +281,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
   nhigh++;
 
   if (flags & F_DOMAINSRV)
-    my_syslog(LOG_DEBUG, "In filter_servers, seed = %n, low = %n, high = %n, arraysz = %n",
+    my_syslog(LOG_DEBUG, "In filter_servers, seed = %d, low = %d, high = %d, arraysz = %d",
 	      seed, nlow, nhigh, daemon->serverarraysz);
   
 #define SERV_LOCAL_ADDRESS (SERV_6ADDR | SERV_4ADDR | SERV_ALL_ZEROS)
@@ -347,7 +347,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      else
 			{
 			  if (flags & F_DOMAINSRV)
-			    my_syslog(LOG_DEBUG, "In filter_servers, seed = %n, low = %n, high = %n, arraysz = %n",
+			    my_syslog(LOG_DEBUG, "In filter_servers, seed = %d, low = %d, high = %d, arraysz = %d",
 				      seed, nlow, nhigh, daemon->serverarraysz);
 			  
 			  /* If we want a server for a particular domain, and this one isn't, return nothing. */
