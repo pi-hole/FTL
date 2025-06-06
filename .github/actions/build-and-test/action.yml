@@ -61,7 +61,7 @@ runs:
       shell: bash
       run: ls -l
     -
-      name: Build and test FTL in ftl-build container (QEMU)
+      name: Build and export FTL in ftl-build container (QEMU)
       uses: Wandalen/wretry.action@v1.4.8
       with:
         attempt_limit: 3
@@ -80,6 +80,19 @@ runs:
             "GIT_BRANCH=${{ inputs.git_branch }}"
             "GIT_TAG=${{ inputs.git_tag }}"
             "BUILD_OPTS=${{ inputs.build_opts }}"
+    -
+      name: Test FTL in ftl-build container (QEMU)
+      uses: Wandalen/wretry.action@v1.4.8
+      with:
+        attempt_limit: 3
+        action: docker/build-push-action@v5.0.0
+        with: |
+          platforms: ${{ inputs.platform }}
+          pull: true
+          push: false
+          context: .
+          target: tests
+          file: .github/Dockerfile
     -
       name: List files in current directory
       shell: bash
