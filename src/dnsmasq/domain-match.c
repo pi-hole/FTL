@@ -343,7 +343,7 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      else
 			{
 			  /* If we want a server for a particular domain, and this one isn't, return nothing. */
-			  if (nlow != nhigh && (flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
+			  if (nlow < daemon->serverarraysz && nlow != nhigh && (flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
 			    nlow = nhigh;
 			}
 		    }
