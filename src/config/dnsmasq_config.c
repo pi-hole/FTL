@@ -476,6 +476,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// Add upstream DNS servers for reverse lookups
 	bool domain_revServer = false;
 	bool domain_homearpa = false;
+	bool domain_internal = false;
 	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
 	for(unsigned int i = 0; i < revServers; i++)
 	{
@@ -530,6 +531,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			// Flag if configured a server for queries for home.arpa domains
 			if(strcmp(domain, "home.arpa") == 0)
 				domain_homearpa = true;
+			
+			// Flag if configured a server for queries for .internal domains
+			if(strcmp(domain, "internal") == 0)
+				domain_internal = true;
 		}
 
 		// Forward unqualified names to the target only when the "never forward
@@ -558,6 +563,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	{
 		fputs("# Do not forward home.arpa domains to upstream servers\n",pihole_conf);
 		fputs("local=/home.arpa/\n\n",pihole_conf);
+	}
+
+	// Ensure that .internal domains (Internet-Draft draft-davies-internal-tld-03) are not
+	// sent upstream, unless configured by user as local domain, with server setting applied above
+	if (!domain_internal)
+	{
+		fputs("# Do not forward .internal domains to upstream servers\n",pihole_conf);
+		fputs("local=/internal/\n\n",pihole_conf);
 	}
 
 	// Add domain to DNS server. It will also be used for DHCP if the DHCP
