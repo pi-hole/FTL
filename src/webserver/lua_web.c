@@ -23,11 +23,12 @@
 // ftl_http_redirect()
 #include "webserver.h"
 
-static char *login_uri = NULL, *admin_api_uri = NULL;
-void allocate_lua(char *login_uri_in, char *admin_api_uri_in)
+static char *login_uri = NULL, *admin_api_uri = NULL, *prefix_webhome = NULL;
+void allocate_lua(char *login_uri_in, char *admin_api_uri_in, char *prefix_webhome_in)
 {
 	login_uri = login_uri_in;
 	admin_api_uri = admin_api_uri_in;
+	prefix_webhome = prefix_webhome_in;
 }
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
@@ -39,7 +40,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 {
 	// Fall back to CivetWeb's default handler if login URI is not available
 	// (should never happen)
-	if(login_uri == NULL || admin_api_uri == NULL)
+	if(login_uri == NULL || admin_api_uri == NULL || prefix_webhome == NULL)
 		return 0;
 
 	/* Handler may access the request info using mg_get_request_info */
@@ -97,11 +98,17 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	// Check if the request is for the login page
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
+	// Check if the request is for something in the webhome directory
+	const bool in_webhome = (strncmp(req_info->local_uri_raw, prefix_webhome, strlen(prefix_webhome)) == 0);
+	log_debug(DEBUG_API, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	          req_info->local_uri_raw, login, in_webhome, no_dot);
+
 	// Check if the request is for a LUA page (every XYZ.lp has already been
-	// rewritten at this point to XYZ)
-	if(!no_dot)
+	// rewritten at this point to XYZ), we also don't enforce authentication
+	// for pages outside the webhome directory
+	if(!no_dot || !in_webhome)
 	{
-		// Not a LUA page - fall back to CivetWeb's default handler
+		// Fall back to CivetWeb's default handler
 		return 0;
 	}
 

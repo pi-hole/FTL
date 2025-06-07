@@ -1941,6 +1941,13 @@
   [[ ${lines[0]} == "{\"session\":{\"valid\":true,\"totp\":false,\"sid\":\""*"\",\"csrf\":\""*"\",\"validity\":300,\"message\":\"password correct\"},\"took\":"*"}" ]]
 }
 
+# This test should run after a password is set
+@test "Lua server page outside of webhome is served without login" {
+  run bash -c 'curl -s 127.0.0.1/broken_lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Hello, world 1!' ]]
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request
