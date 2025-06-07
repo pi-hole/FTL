@@ -1,7 +1,10 @@
 version: 2
 updates:
 - package-ecosystem: github-actions
-  directory: "/"
+  directories: 
+    - "/"
+    - "/.github/actions/build-and-test/"
+    - "/.github/actions/deploy/"
   schedule:
     interval: weekly
     day: saturday
