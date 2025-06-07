@@ -579,6 +579,13 @@ static void initConfig(struct config *conf)
 	conf->dns.port.d.u16 = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
+	conf->dns.localise.k = "dns.localise";
+	conf->dns.localise.h = "dnsmasq localise-queries option. When enabled this option will return local DNS Queries in dependency of the received interface. If a name has more than one address associated with it, and at least one of those addresses is on the same subnet as the interface to which the query was sent, then return only the address(es) on that subnet and return all the available addresses otherwise.\n This option is enabled by default. Disabling it may lead to wrong resolutions of local host-records which may result in connectivity issues.";
+	conf->dns.localise.t = CONF_BOOL;
+	conf->dns.localise.f = FLAG_RESTART_FTL;
+	conf->dns.localise.d.b = true;
+	conf->dns.localise.c = validate_stub; // Only type-based checking
+
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
 	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
@@ -1344,7 +1351,7 @@ static void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 	conf->misc.dnsmasq_lines.c = validate_stub; // Type-based checking + dnsmasq syntax checking
-
+		
 	conf->misc.extraLogging.k = "misc.extraLogging";
 	conf->misc.extraLogging.h = "Log additional information about queries and replies to pihole.log\n When this setting is enabled, the log has extra information at the start of each line. This consists of a serial number which ties together the log lines associated with an individual query, and the IP address of the requestor. This setting is only effective if dns.queryLogging is enabled, too. This option is only useful for debugging and is not recommended for normal use.";
 	conf->misc.extraLogging.t = CONF_BOOL;
