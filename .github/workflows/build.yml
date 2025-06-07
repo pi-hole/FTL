@@ -71,9 +71,6 @@ jobs:
           - platform: linux/386
             bin_name: pihole-FTL-386
             build_opts: ""
-          - platform: linux/riscv64
-            bin_name: pihole-FTL-riscv64
-            build_opts: ""
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -113,6 +110,8 @@ jobs:
             bin_name: pihole-FTL-armv7
           - platform: linux/arm64/v8
             bin_name: pihole-FTL-arm64
+          - platform: linux/riscv64
+            bin_name: pihole-FTL-riscv64
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
