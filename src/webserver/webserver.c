@@ -738,7 +738,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
-	allocate_lua(login_uri, admin_api_uri);
+	allocate_lua(login_uri, admin_api_uri, prefix_webhome);
 
 	// Restore sessions from database
 	init_api();
