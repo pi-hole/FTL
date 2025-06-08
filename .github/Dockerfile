@@ -35,10 +35,11 @@ RUN rm -rf cmake && \
 FROM builder AS tests
 WORKDIR /app
 # Run tests
+SHELL ["/bin/bash", "-c"]
 # If BUILD_OPTS is set to "clang", we set STATIC="false" as we do in build.sh
-RUN if [ ${BUILD_OPTS} = "clang" ]; then export STATIC="false";fi && \
-    bash test/arch_test.sh && \
-    bash test/run.sh
+RUN if [ "${BUILD_OPTS}" = "clang" ]; then export STATIC="false";fi && \
+    test/arch_test.sh && \
+    test/run.sh
 
 # Create final image containing only the FTL binary and API docs
 FROM scratch AS result
