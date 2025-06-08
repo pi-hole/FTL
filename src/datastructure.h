@@ -117,6 +117,7 @@ typedef struct {
 	enum query_type query_type;
 	unsigned int domainID;
 	unsigned int clientID;
+	unsigned int CNAME_domainID; // only valid if query has a CNAME blocking status
 	int list_id;
 	uint32_t hash;
 	time_t expires;
