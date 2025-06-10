@@ -25,12 +25,21 @@ RUN sed -i '/buffer_with_truncation /d' /bats-core/libexec/bats-core/bats-format
 # Remove possible old build files
 RUN rm -rf cmake && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC}" test ${BUILD_OPTS} && \
-# Move FTL binary to root directory
+    bash build.sh "-DSTATIC=${STATIC}" ${BUILD_OPTS} && \
+# Copy FTL binary to root directory
     cd / &&\
-    mv /app/pihole-FTL . && \
+    cp /app/pihole-FTL . && \
 # Create tarball of API docs
     tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz .
+
+FROM builder AS tests
+WORKDIR /app
+# Run tests
+SHELL ["/bin/bash", "-c"]
+# If BUILD_OPTS is set to "clang", we set STATIC="false" as we do in build.sh
+RUN if [ "${BUILD_OPTS}" = "clang" ]; then export STATIC="false";fi && \
+    test/arch_test.sh && \
+    test/run.sh
 
 # Create final image containing only the FTL binary and API docs
 FROM scratch AS result
