@@ -101,7 +101,7 @@ jobs:
 
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.1.0
+        uses: docker/setup-buildx-action@v3.10.0
       -
         name: Print directory contents
         shell: bash
@@ -158,13 +158,13 @@ jobs:
       -
         name: Store binary artifacts for later deployoment
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: ${{ matrix.bin_name }}-binary
           path: '${{ matrix.bin_name }}*'
       -
         name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2.3.0
         # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
         # available (e.g., PR originating from a fork)
         if: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
@@ -179,13 +179,13 @@ jobs:
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'
       -
         name: Get binaries built in previous jobs
-        uses: actions/download-artifact@v4.1.4
+        uses: actions/download-artifact@v4.3.0
         id: download
         with:
           path: ftl_builds/
@@ -194,7 +194,7 @@ jobs:
       -
         name: Get documentation files built in previous jobs
         if: matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@v4.1.4
+        uses: actions/download-artifact@v4.3.0
         with:
           path: ftl_builds/
           name: pihole-api-docs
