@@ -98,7 +98,10 @@ jobs:
       -
         name: Checkout code
         uses: actions/checkout@v4.1.7
-
+      # QEMU should come before Buildx
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.6.0
       -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3.10.0
@@ -146,7 +149,7 @@ jobs:
         name: Export FTL files from ftl-build container (QEMU)
         # Create a temporary container to extract the built files
         run: |
-            docker create --name temp-container ftl-builder:local
+            docker create --platform ${{ matrix.platform }} --name temp-container ftl-builder:local
             docker cp temp-container:/pihole-FTL ./pihole-FTL
             docker cp temp-container:/api-docs.tar.gz ./api-docs.tar.gz
             docker rm temp-container
