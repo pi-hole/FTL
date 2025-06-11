@@ -107,48 +107,53 @@ jobs:
         shell: bash
         run: ls -l
       -
-        name: Build and export FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.10
+        name: Build FTL in ftl-build container (QEMU)
+        # Creates an image to build FTL and load it into the local Docker daemon
+        uses: nick-fields/retry@v3.0.2
         with:
-          attempt_limit: 3
-          action: docker/build-push-action@v5.0.0
-          with: |
-            platforms: ${{ matrix.platform }}
-            pull: true
-            push: false
-            context: .
-            target: result
-            file: .github/Dockerfile
-            outputs: |
-              type=tar,dest=build.tar
-            build-args: |
-              "CI_ARCH=${{ matrix.platform }}"
-              "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}"
-              "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}"
-              "BUILD_OPTS=${{ matrix.build_opts }}"
-
+          max_attempts: 3
+          timeout_minutes: 15
+          command: |
+            docker buildx build \
+              --platform ${{ matrix.platform }} \
+              --pull \
+              --load \
+              --build-arg "CI_ARCH=${{ matrix.platform }}" \
+              --build-arg "GIT_BRANCH=${{ needs.smoke-tests.outputs.GIT_BRANCH }}" \
+              --build-arg "GIT_TAG=${{ needs.smoke-tests.outputs.GIT_TAG }}" \
+              --build-arg "BUILD_OPTS=${{ matrix.build_opts }}" \
+              --tag ftl-builder:local \
+              --file .github/Dockerfile .
       -
         name: Test FTL in ftl-build container (QEMU)
-        uses: Wandalen/wretry.action@v1.4.10
+        # Uses the ftl-builder image to run tests
+        # set STATIC to true for all except clang builds as we do in build.sh
+        uses: nick-fields/retry@v3.0.2
         with:
-          attempt_limit: 3
-          action: docker/build-push-action@v5.0.0
-          with: |
-            platforms: ${{ matrix.platform }}
-            pull: true
-            push: false
-            context: .
-            target: tests
-            file: .github/Dockerfile
+          max_attempts: 3
+          timeout_minutes: 10
+          command: |
+            STATIC="true"
+            if [ "${{ matrix.build_opts }}" = "clang" ]; then STATIC="false"; fi
+            docker run --rm \
+              --platform ${{ matrix.platform }} \
+              --env CI_ARCH=${{ matrix.platform }} \
+              --env BUILD_OPTS=${{ matrix.build_opts }} \
+              --env STATIC=${STATIC} \
+              ftl-builder:local \
+              /bin/bash -c "test/arch_test.sh && test/run.sh"
+      -
+        name: Export FTL files from ftl-build container (QEMU)
+        # Create a temporary container to extract the built files
+        run: |
+            docker create --name temp-container ftl-builder:local
+            docker cp temp-container:/pihole-FTL ./pihole-FTL
+            docker cp temp-container:/api-docs.tar.gz ./api-docs.tar.gz
+            docker rm temp-container
       -
         name: List files in current directory
         shell: bash
         run: ls -l
-      -
-        name: Extract FTL binary from container
-        shell: bash
-        run: |
-          tar -xf build.tar pihole-FTL
       -
         name: "Generate checksum file"
         shell: bash
@@ -170,12 +175,6 @@ jobs:
         if: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
         with:
           subject-path: ${{ matrix.bin_name }}
-      -
-        name: Extract documentation files from container
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
-        shell: bash
-        run: |
-          tar -xf build.tar api-docs.tar.gz
       -
         name: Upload documentation artifacts for deployoment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
