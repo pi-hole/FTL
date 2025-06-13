@@ -164,7 +164,7 @@ jobs:
           mv pihole-FTL "${{ matrix.bin_name }}"
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
-        name: Store binary artifacts for later deployoment
+        name: Store binary artifacts for later deployment
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4.6.2
         with:
@@ -179,7 +179,7 @@ jobs:
         with:
           subject-path: ${{ matrix.bin_name }}
       -
-        name: Upload documentation artifacts for deployoment
+        name: Upload documentation artifacts for deployment
         if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
         uses: actions/upload-artifact@v4.6.2
         with:
