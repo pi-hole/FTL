@@ -697,13 +697,17 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	}
 
 	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
-	fputs("#     test, localhost, invalid\n", pihole_conf);
+	fputs("#     test, & invalid\n", pihole_conf);
 	fputs("# names as special and SHOULD NOT attempt to look up NS records for them, or\n", pihole_conf);
 	fputs("# otherwise query authoritative DNS servers in an attempt to resolve these\n", pihole_conf);
 	fputs("# names.\n", pihole_conf);
 	fputs("server=/test/\n", pihole_conf);
-	fputs("server=/localhost/\n", pihole_conf);
 	fputs("server=/invalid/\n", pihole_conf);
+	fputs("#     localhost\n", pihole_conf);
+	fputs("# Instead, caching DNS servers SHOULD, for all such address queries, generate\n", pihole_conf);
+	fputs("# an immediate positive response giving the IP loopback address\n", pihole_conf);
+	fputs("address=/localhost/127.0.0.1\n", pihole_conf);
+	fputs("address=/localhost/::1\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# The same RFC requests something similar for\n", pihole_conf);
 	fputs("#     10.in-addr.arpa.      21.172.in-addr.arpa.  27.172.in-addr.arpa.\n", pihole_conf);
