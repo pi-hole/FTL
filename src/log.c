@@ -588,6 +588,11 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 
 	while (src < src_buf + src_sz)
 	{
+		// Check if we have enough space before writing
+		// Worst case: we need 4 chars for "\x00" + null terminator
+		if (dst >= dst_str + dst_sz - 5)
+			break;
+
 		if (isprint(*src))
 		{
 			// The printable characters are:
@@ -597,17 +602,15 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			// r s t u v w x y z { | } ~
 			*dst++ = *src++;
 		}
-		else if (*src == '\\')
-		{
-			// Backslash isn't included above but isn't harmful
-			*dst++ = '\\';
-			*dst++ = *src++;
-		}
 		else
 		{
-			// Handle other characters more specifically
+			// Handle special characters
 			switch(*src)
 			{
+				case '\\':
+					*dst++ = '\\';
+					*dst++ = '\\';
+					break;
 				case '\n':
 					*dst++ = '\\';
 					*dst++ = 'n';
@@ -625,18 +628,12 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%X", *(unsigned char*)src);
+					sprintf(dst, "0x%02X", (unsigned char)*src);
 					dst += 4;
+					break;
 			}
-
-			// Advance reading counter by one character
 			src++;
 		}
-
-		// next iteration requires up to 5 chars in dst buffer, for ex.
-		// "0x04" + terminating zero (see below)
-		if (dst > (dst_str + dst_sz - 5))
-			break;
 	}
 
 	// Zero-terminate buffer
