@@ -465,6 +465,7 @@ components:
               key: "uri_error"
               message: "Invalid request: Specify item in URI"
               hint: null
+            took: 0.003
       bad_request:
         no_payload:
           summary: No JSON payload found
@@ -473,6 +474,7 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
       database_error:
         duplicate:
           summary: Database error
@@ -481,6 +483,7 @@ components:
               key: "database_error"
               message: "Could not add to gravity database"
               hint: "UNIQUE constraint failed: clientlist.client"
+            took: 0.003
   parameters:
     client:
       in: path
