@@ -3,8 +3,6 @@ updates:
 - package-ecosystem: github-actions
   directories: 
     - "/"
-    - "/.github/actions/build-and-test/"
-    - "/.github/actions/deploy/"
   schedule:
     interval: weekly
     day: saturday
