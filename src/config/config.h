@@ -152,6 +152,7 @@ struct config {
 		struct conf_item cnameRecords;
 		struct conf_item port;
 		struct conf_item revServers;
+		struct conf_item localise;
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;

@@ -233,6 +233,10 @@
   #     "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]", e.g.,
   #     "true,192.168.0.0/24,192.168.0.1,fritz.box"
   revServers = []
+  
+  # Enable/Disable the localise-queries option for dnsmasq. When this setting is disabled 
+  # dnsmasq will return all possible values for local DNS Records. Enabled by default
+  localise = true
 
   [dns.cache]
     # Cache size of the DNS server. Note that expiring cache entries naturally make room
