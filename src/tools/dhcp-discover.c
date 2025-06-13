@@ -437,8 +437,9 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char *buffer = calloc(4*optlen + 9, sizeof(char));
-				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, sizeof(buffer));
+				size_t bufsiz = 4*optlen + 9;
+				char *buffer = calloc(bufsiz, sizeof(char));
+				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, bufsiz);
 				printf("wpad-server: \"%s\"\n", buffer);
 				free(buffer);
 			}
@@ -634,8 +635,9 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
-			char *buffer = calloc(4*len + 9, sizeof(char));
-			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, sizeof(buffer));
+			size_t bufsiz = 4*len + 9;
+			char *buffer = calloc(bufsiz, sizeof(char));
+			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, bufsiz);
 			printf("%s\n", buffer);
 			free(buffer);
 		}
@@ -646,8 +648,9 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
-			char *buffer = calloc(4*len + 9, sizeof(char));
-			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, sizeof(buffer));
+			size_t bufsiz = 4*len + 9;
+			char *buffer = calloc(bufsiz, sizeof(char));
+			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, bufsiz);
 			printf("%s\n", buffer);
 			free(buffer);
 		}
