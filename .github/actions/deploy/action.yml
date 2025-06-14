@@ -34,7 +34,7 @@ runs:
   steps:
     -
       name: Get binaries built in previous jobs
-      uses: actions/download-artifact@v4.1.4
+      uses: actions/download-artifact@v4.3.0
       id: download
       with:
         path: ftl_builds/
@@ -43,7 +43,7 @@ runs:
     -
       name: Get documentation files built in previous jobs
       if: inputs.pattern == 'pihole-FTL-amd64-binary'
-      uses: actions/download-artifact@v4.1.4
+      uses: actions/download-artifact@v4.3.0
       with:
         path: ftl_builds/
         name: pihole-api-docs
