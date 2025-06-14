@@ -351,15 +351,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 
-	fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
-	fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
-	fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
-	fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
-	fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
-	fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
-	fputs("localise-queries\n", pihole_conf);
-	fputs("\n", pihole_conf);
-
+	if(conf->dns.localise.v.b)
+	{
+		fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
+		fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
+		fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
+		fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
+		fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
+		fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
+		fputs("localise-queries\n", pihole_conf);
+		fputs("\n", pihole_conf);
+	}
+	
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);

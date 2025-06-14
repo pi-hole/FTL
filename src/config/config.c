@@ -579,6 +579,13 @@ static void initConfig(struct config *conf)
 	conf->dns.port.d.u16 = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
+	conf->dns.localise.k = "dns.localise";
+	conf->dns.localise.h = "Enable/Disable the localise-queries option of dnsmasq. When this setting is disabled dnsmasq will return all possible values for local DNS Records. Enabled by default";
+	conf->dns.localise.t = CONF_BOOL;
+	conf->dns.localise.f = FLAG_RESTART_FTL;
+	conf->dns.localise.d.b = true;
+	conf->dns.localise.c = validate_stub; // Only type-based checking
+		
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
 	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
