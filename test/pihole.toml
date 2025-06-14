@@ -209,6 +209,10 @@
   # Port used by the DNS server
   port = 53
 
+  # Enable/Disable the localise-queries option of dnsmasq. When this setting is disabled 
+  # dnsmasq will return all possible values for local DNS Records. Enabled by default
+  localise = true
+
   # Reverse server (former also called "conditional forwarding") feature
   # Array of reverse servers each one in one of the following forms:
   # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]"

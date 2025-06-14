@@ -151,6 +151,7 @@ struct config {
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct conf_item localise;
 		struct conf_item revServers;
 		struct {
 			struct conf_item size;
