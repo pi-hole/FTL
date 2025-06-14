@@ -725,7 +725,7 @@ void http_init(void)
 	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
 	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
 	{
-		log_warn("Webhome is set to root (/) and IP blocking is enabled!");
+		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
 	}
 
 	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
