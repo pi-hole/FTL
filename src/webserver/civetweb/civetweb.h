@@ -188,6 +188,7 @@ struct mg_request_info {
 	/* Pi-hole modification */
 	char csrf_token[32];
 	int is_authenticated;
+	const char *socket_path; /* Unix socket file path */
 };
 
 

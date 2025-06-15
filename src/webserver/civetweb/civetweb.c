@@ -20354,6 +20354,12 @@ worker_thread_run(struct mg_connection *conn)
 		conn->request_info.server_port =
 		    ntohs(USA_IN_PORT_UNSAFE(&conn->client.lsa));
 
+#if defined(USE_X_DOM_SOCKET)
+		if (conn->client.lsa.sa.sa_family == AF_UNIX) {
+			conn->request_info.socket_path = conn->client.lsa.sun.sun_path;
+		}
+#endif
+
 		sockaddr_to_string(conn->request_info.remote_addr,
 		                   sizeof(conn->request_info.remote_addr),
 		                   &conn->client.rsa);
@@ -20566,6 +20572,12 @@ accept_new_connection(const struct socket *listener, struct mg_context *ctx)
 			                    __func__,
 			                    strerror(ERRNO));
 		}
+
+#if defined(USE_X_DOM_SOCKET)
+		if (so.lsa.sa.sa_family == AF_UNIX) {
+			mg_strlcpy(so.lsa.sun.sun_path, listener->lsa.sun.sun_path, sizeof(so.lsa.sun.sun_path));
+		}
+#endif
 
 #if !defined(__ZEPHYR__)
 		if ((so.lsa.sa.sa_family == AF_INET)
