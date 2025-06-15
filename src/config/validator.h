@@ -24,6 +24,7 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_filepath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_filepath_no_comma(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_regex_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 

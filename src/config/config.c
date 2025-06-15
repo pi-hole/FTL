@@ -1187,6 +1187,13 @@ void initConfig(struct config *conf)
 	conf->webserver.api.cli_pw.d.b = true;
 	conf->webserver.api.cli_pw.c = validate_stub; // Only type-based checking
 
+	conf->webserver.api.private_socket.k = "webserver.api.private_socket";
+	conf->webserver.api.private_socket.h = "Path to create a UNIX socket path, used by the pihole command for local API requests. This socket will be owned by the user running FTL (typically pihole). Note, if you change from the default value, give the path as an environment variable PIHOLE_API_SOCKET when running the pihole command.";
+	conf->webserver.api.private_socket.a = cJSON_CreateStringReference("<any writeable path without a comma>");
+	conf->webserver.api.private_socket.t = CONF_STRING;
+	conf->webserver.api.private_socket.d.s = (char*)"/run/pihole-FTL.sock";
+	conf->webserver.api.private_socket.c = validate_filepath_no_comma;
+
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
 	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("An array of regular expressions describing clients");

@@ -307,6 +307,30 @@ bool validate_filepath_dash(union conf_value *val, const char *key, char err[VAL
 	return validate_filepath(val, key, err);
 }
 
+// Validate file path, ensure there's no comma to ensure it can't be misinterpreted in a comma-seperated list
+bool validate_filepath_no_comma(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Empty paths are allowed, e.g., to disable a feature like PCAP
+	if(strlen(val->s) == 0)
+		return true;
+
+	if (!validate_filepath(val, key, err)) {
+		return false;
+	}
+
+	// Check if the path contains only valid characters
+	for(unsigned int i = 0; i < strlen(val->s); i++)
+	{
+		if(val->s[i] != ',')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: file path must not contain a comma (\"%s\")", key, val->s);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 // Validate a single regular expression
 static bool validate_regex(const char *regex, char err[VALIDATOR_ERRBUF_LEN])
 {
