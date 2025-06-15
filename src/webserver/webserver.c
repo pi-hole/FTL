@@ -267,6 +267,29 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	return 1;
 }
 
+static void unlink_socket_files(const char* list) {
+	while (*list == ' ' || *list == '\t')
+		list++;
+
+	while (list[0] != '\0') {
+		if (list[0] == 'x') {
+			list++;
+			char *end = strchr(list, ',');
+			size_t length = (end == NULL) ? strlen(list) : (size_t)(end - list);
+			char *path = malloc(length + 1);
+			strncpy(path, list, length + 1);
+			unlink(path);
+			free(path);
+		}
+
+		list = strchr(list, ',');
+		if (list == NULL) {
+			break;
+		}
+		list++;
+	}
+}
+
 void FTL_mbed_debug(void *user_param, int level, const char *file, int line, const char *message)
 {
 	// Only log when in TLS debugging mode
@@ -556,6 +579,7 @@ void http_init(void)
 
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	log_web("Using private socket \"%s\"", config.webserver.api.private_socket.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
@@ -575,6 +599,8 @@ void http_init(void)
 		log_err("Failed to build web paths, web interface will not be available!");
 		return;
 	}
+
+	char *ports = NULL; // Early initialisation for later cleanup
 
 	// Construct additional headers
 	char *webheaders = strdup("");
@@ -598,17 +624,29 @@ void http_init(void)
 		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
 		if (webheaders == NULL) {
 			log_err("Failed to allocate memory for webheaders!");
-			return;
+			goto exit;
 		}
 		strcat(webheaders, h);
 		strcat(webheaders, "\r\n");
 	}
 
+	// Remove any stale socket
+	unlink(config.webserver.api.private_socket.v.s);
+	unlink_socket_files(config.webserver.port.v.s);
+
+	size_t ports_size = strlen(config.webserver.port.v.s) + strlen(config.webserver.api.private_socket.v.s) + 3; // add 'x', ',', and NULL
+	ports = malloc(ports_size);
+	if (ports == NULL) {
+		log_err("Failed to allocate memory for ports!");
+		goto exit;
+	}
+	snprintf(ports, ports_size, "x%s,%s", config.webserver.api.private_socket.v.s, config.webserver.port.v.s);
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
-		"listening_ports", config.webserver.port.v.s,
+		"listening_ports", ports,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
@@ -713,7 +751,7 @@ void http_init(void)
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
-		return;
+		goto exit;
 	}
 
 	// Register API handler, use "/api" even when a prefix is defined as the
@@ -757,6 +795,10 @@ void http_init(void)
 
 	// Create CLI password (if enabled)
 	create_cli_password();
+
+exit:
+	free(webheaders);
+	free(ports);
 }
 
 static char *append_to_path(char *path, const char *append)
