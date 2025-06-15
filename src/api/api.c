@@ -180,7 +180,9 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Verify requesting client is allowed to see this resource
-			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
+			const struct mg_request_info *request_info = mg_get_request_info(conn);
+			if(!(request_info->socket_path && strcmp(request_info->socket_path, config.webserver.api.private_socket.v.s) == 0)
+				&& api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
 				break;
