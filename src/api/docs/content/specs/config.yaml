@@ -210,6 +210,8 @@ components:
                     type: string
                 domainNeeded:
                   type: boolean
+                domainLocal:
+                  type: boolean
                 expandHosts:
                   type: boolean
                 domain:
@@ -666,6 +668,7 @@ components:
             hosts:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
+            domainLocal: true
             expandHosts: true
             domain: "lan"
             bogusPriv: true
