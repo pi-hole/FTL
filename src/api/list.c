@@ -745,6 +745,7 @@ int api_list(struct ftl_conn *api)
 	enum gravity_list_type listtype;
 	bool can_modify = false;
 	bool batchDelete = false;
+	bool listtype_optional = true;
 	if((api->item = startsWith("/api/groups", api)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
@@ -759,6 +760,7 @@ int api_list(struct ftl_conn *api)
 	else if((api->item = startsWith("/api/lists", api)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
+		listtype_optional = api->method == HTTP_GET;
 		can_modify = true;
 	}
 	else if((api->item = startsWith("/api/lists:batchDelete", api)) != NULL)
@@ -835,11 +837,12 @@ int api_list(struct ftl_conn *api)
 	// If this is a request for a list, we check if there is a request
 	// parameter narrowing down which kind of list. If so, we modify the
 	// list type accordingly
-	if(listtype == GRAVITY_ADLISTS && api->request->query_string != NULL)
+	if(listtype == GRAVITY_ADLISTS)
 	{
 		// Check if there is a type parameter
 		char typestr[16] = { 0 };
-		if(get_string_var(api->request->query_string, "type", typestr, sizeof(typestr)) > 0)
+		if(api->request->query_string != NULL &&
+		   get_string_var(api->request->query_string, "type", typestr, sizeof(typestr)) > 0)
 		{
 			if(strcasecmp(typestr, "allow") == 0)
 				listtype = GRAVITY_ADLISTS_ALLOW;
@@ -853,6 +856,14 @@ int api_list(struct ftl_conn *api)
 				                       "Invalid request: Invalid type parameter (should be either \"allow\" or \"block\")",
 				                       api->request->query_string);
 			}
+		}
+		else if(!listtype_optional)
+		{
+			// If this is not a GET request, we require the type parameter
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: Specify type parameter (should be either \"allow\" or \"block\")",
+			                       api->request->query_string);
 		}
 	}
 
