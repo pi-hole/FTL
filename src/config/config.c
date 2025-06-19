@@ -502,6 +502,13 @@ void initConfig(struct config *conf)
 	conf->dns.domainNeeded.d.b = false;
 	conf->dns.domainNeeded.c = validate_stub; // Only type-based checking
 
+	conf->dns.domainLocal.k = "dns.domainLocal";
+	conf->dns.domainLocal.h = "If set, the domain configured by dns.domain is considered local and queries for this domain are never forwarded upstream unless a dns.revServer is configured for this domain.\n\n If unset, queries for this domain are forwarded upstream to (possibly public) server which is probably not what you want *unless* you have added extra configuration for this domain *or* your upstream servers are able to handle local domains (e.g., router).";
+	conf->dns.domainLocal.t = CONF_BOOL;
+	conf->dns.domainLocal.f = FLAG_RESTART_FTL;
+	conf->dns.domainLocal.d.b = true;
+	conf->dns.domainLocal.c = validate_stub; // Only type-based checking
+
 	conf->dns.expandHosts.k = "dns.expandHosts";
 	conf->dns.expandHosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
 	conf->dns.expandHosts.t = CONF_BOOL;

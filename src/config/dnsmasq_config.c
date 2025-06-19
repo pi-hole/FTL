@@ -545,7 +545,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			// Flag if configured a server for queries for home.arpa domains
 			if(strcmp(domain, "home.arpa") == 0)
 				domain_homearpa = true;
-			
+
 			// Flag if configured a server for queries for .internal domains
 			if(strcmp(domain, "internal") == 0)
 				domain_internal = true;
@@ -592,19 +592,30 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(strlen(conf->dns.domain.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		if(!domain_revServer)
+		if(domain_revServer || !config.dns.domainLocal.v.b)
+		{
+			if(domain_revServer)
+			{
+				fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
+				fputs("# It is forwarded to the upstream servers configured above\n", pihole_conf);
+			}
+			else if(!config.dns.domainLocal.v.b)
+			{
+				fputs("# This domain is explicitly configured to *not* be local. Ensure\n", pihole_conf);
+				fputs("# that you have configured at least one upstream server for this\n", pihole_conf);
+				fputs("# domain elsewhere to prevent it from being forwarded to the general\n", pihole_conf);
+				fputs("# (probably public) upstream servers\n", pihole_conf);
+			}
+			fputs("# (see server=/<domain>/target above)\n", pihole_conf);
+			fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
+		}
+		else
 		{
 			fputs("# This DNS domain is purely local. FTL may answer queries from\n", pihole_conf);
 			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
 			fputs("# domain to any upstream servers\n", pihole_conf);
 			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
 			fprintf(pihole_conf, "local=/%s/\n\n", conf->dns.domain.v.s);
-		}
-		else
-		{
-			fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
-			fputs("# (see server=/<domain>/target above)\n", pihole_conf);
-			fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
 		}
 	}
 

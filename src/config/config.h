@@ -141,6 +141,7 @@ struct config {
 		struct conf_item blockTTL;
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
+		struct conf_item domainLocal;
 		struct conf_item expandHosts;
 		struct conf_item domain;
 		struct conf_item bogusPriv;
