@@ -362,12 +362,21 @@ HAVE_SOCKADDR_SA_LEN
 #endif
 
 #if !defined(HAVE_LINUX_NETWORK)
-#undef HAVE_IPSET
 #undef HAVE_NFTSET
 #endif
 
 #if defined(NO_IPSET)
 #undef HAVE_IPSET
+#endif
+
+#if defined(HAVE_IPSET)
+#  if defined(HAVE_LINUX_NETWORK)
+#    define HAVE_LINUX_IPSET
+#  elif defined(HAVE_BSD_NETWORK)
+#    define HAVE_BSD_IPSET
+#  else
+#    undef HAVE_IPSET
+#  endif
 #endif
 
 #ifdef NO_LOOP
