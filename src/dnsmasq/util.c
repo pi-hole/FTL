@@ -864,9 +864,9 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
       
       closedir(d);
       return;
-  }
+    }
 #endif
-
+  
   /* fallback, dumb code. */
   for (max_fd--; max_fd >= 0; max_fd--)
     if (max_fd != STDOUT_FILENO && max_fd != STDERR_FILENO && max_fd != STDIN_FILENO &&
