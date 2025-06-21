@@ -12,20 +12,16 @@ diff --git a/src/webserver/civetweb/mod_lua.inl b/src/webserver/civetweb/mod_lua
 index 26f281ee..e9a13835 100644
 --- a/src/webserver/civetweb/mod_lua.inl
 +++ b/src/webserver/civetweb/mod_lua.inl
-@@ -3208,10 +3208,9 @@ handle_lsp_request(struct mg_connection *conn,
- 	 * "<?" which means "classic CivetWeb Syntax".
+@@ -3208,9 +3208,9 @@ handle_lsp_request(struct mg_connection *conn,
  	 *
  	 */
--	run_lsp = run_lsp_civetweb;
+	run_lsp = run_lsp_civetweb;
 -	if ((addr[0] == '<') && (addr[1] != '?')) {
--		run_lsp = run_lsp_kepler;
--	}
-+
-+	// Pi-hole change: Always use Kepler syntax, ignore rules above
-+	run_lsp = run_lsp_kepler;
++	if ((addr[0] != 'H')) { // Pi-hole change: Check if file starts with "H" for HTTP
+		run_lsp = run_lsp_kepler;
+	}
  
  	/* We're not sending HTTP headers here, Lua page must do it. */
- 	error =
 -- 
 2.34.1
 

@@ -3277,9 +3277,10 @@ handle_lsp_request(struct mg_connection *conn,
 	 * "<?" which means "classic CivetWeb Syntax".
 	 *
 	 */
-
-	// Pi-hole change: Always use Kepler syntax, ignore rules above
-	run_lsp = run_lsp_kepler;
+	run_lsp = run_lsp_civetweb;
+	if ((addr[0] != 'H')) { // Pi-hole change: Check if file starts with "H" for HTTP
+		run_lsp = run_lsp_kepler;
+	}
 
 	/* We're not sending HTTP headers here, Lua page must do it. */
 	error =
