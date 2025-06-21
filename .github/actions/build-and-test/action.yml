@@ -55,14 +55,14 @@ runs:
   steps:
     -
       name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3.1.0
+      uses: docker/setup-buildx-action@v3.11.1
     -
       name: Print directory contents
       shell: bash
       run: ls -l
     -
       name: Build and export FTL in ftl-build container (QEMU)
-      uses: Wandalen/wretry.action@v1.4.8
+      uses: Wandalen/wretry.action@v3.8.0
       with:
         attempt_limit: 3
         action: docker/build-push-action@v5.0.0
@@ -82,7 +82,7 @@ runs:
             "BUILD_OPTS=${{ inputs.build_opts }}"
     -
       name: Test FTL in ftl-build container (QEMU)
-      uses: Wandalen/wretry.action@v1.4.8
+      uses: Wandalen/wretry.action@v3.8.0
       with:
         attempt_limit: 3
         action: docker/build-push-action@v5.0.0
@@ -111,13 +111,13 @@ runs:
     -
       name: Store binary artifacts for later deployoment
       if: inputs.event_name != 'pull_request'
-      uses: actions/upload-artifact@v4.3.1
+      uses: actions/upload-artifact@v4.6.2
       with:
         name: ${{ inputs.artifact_name }}
         path: '${{ inputs.bin_name }}*'
     -
       name: Generate artifact attestation
-      uses: actions/attest-build-provenance@v1
+      uses: actions/attest-build-provenance@v2
       # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
       # available (e.g., PR originating from a fork)
       if: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
@@ -132,7 +132,7 @@ runs:
     -
       name: Upload documentation artifacts for deployoment
       if: inputs.event_name != 'pull_request' && inputs.platform == 'linux/amd64' && inputs.build_opts == ''
-      uses: actions/upload-artifact@v4.3.1
+      uses: actions/upload-artifact@v4.6.2
       with:
         name: pihole-api-docs
         path: 'api-docs.tar.gz'
