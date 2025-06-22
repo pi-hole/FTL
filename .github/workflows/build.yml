@@ -148,10 +148,16 @@ jobs:
       -
         name: Export FTL files from ftl-build container (QEMU)
         # Create a temporary container to extract the built files
+        # Start pihole-FTL in test mode to generate pihole.toml file
         run: |
-            docker create --platform ${{ matrix.platform }} --name temp-container ftl-builder:local
+            docker run --platform ${{ matrix.platform }} \
+              --name temp-container \
+              ftl-builder:local \
+              /bin/bash -c "mkdir -p /etc/pihole && mkdir -p /var/log/pihole && /pihole-FTL test"
             docker cp temp-container:/pihole-FTL ./pihole-FTL
             docker cp temp-container:/api-docs.tar.gz ./api-docs.tar.gz
+            docker cp temp-container:/etc/pihole/pihole.toml ./pihole.toml
+            docker stop temp-container
             docker rm temp-container
       -
         name: List files in current directory
@@ -185,6 +191,14 @@ jobs:
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'
+
+      -
+        name: Upload pihole.toml artifacts for deployment
+        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pihole-toml
+          path: 'pihole.toml'
       -
         name: Get binaries built in previous jobs
         uses: actions/download-artifact@v4.3.0
@@ -200,6 +214,14 @@ jobs:
         with:
           path: ftl_builds/
           name: pihole-api-docs
+      -
+        name: Get pihole.toml built in previous job
+        if: matrix.bin_name == 'pihole-FTL-amd64'
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: ftl_builds/
+          name: pihole-toml
+
       -
         name: Display structure of downloaded files
         shell: bash
