@@ -244,7 +244,10 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
   if (nodots &&
       (daemon->serverarray[daemon->serverarraysz-1]->flags & SERV_FOR_NODOTS) &&
       (nlow == nhigh || daemon->serverarray[nlow]->domain_len == 0))
-    filter_servers(daemon->serverarraysz-1, flags, &nlow, &nhigh);
+    {
+      filter_servers(daemon->serverarraysz-1, flags, &nlow, &nhigh);
+      qlen = 0;
+    }
   
   if (lowout)
     *lowout = nlow;
@@ -343,7 +346,8 @@ int filter_servers(int seed, int flags, int *lowout, int *highout)
 		      else
 			{
 			  /* If we want a server for a particular domain, and this one isn't, return nothing. */
-			  if (nlow < daemon->serverarraysz && nlow != nhigh && (flags & F_DOMAINSRV) && daemon->serverarray[nlow]->domain_len == 0)
+			  if (nlow < daemon->serverarraysz && nlow != nhigh && (flags & F_DOMAINSRV) &&
+			      daemon->serverarray[nlow]->domain_len == 0 && !(daemon->serverarray[nlow]->flags & SERV_FOR_NODOTS))
 			    nlow = nhigh;
 			}
 		    }
