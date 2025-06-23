@@ -652,6 +652,7 @@ static struct crec *really_insert(char *name, union all_addr *addr, unsigned sho
   int freed_all = (flags & F_REVERSE);
   struct crec *free_avail = NULL;
   unsigned int target_uid;
+  my_syslog(LOG_INFO, _("New cache record %lu %s"), ttl, strlen(name) > 0 ? name : ".");
   
   /* if previous insertion failed give up now. */
   if (insert_error)
