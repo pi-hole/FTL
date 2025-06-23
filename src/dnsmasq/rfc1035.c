@@ -1726,7 +1726,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    
 	    if (!(crecp->flags & F_DNSSECOK))
 	      sec_data = 0;
-	    
+	    my_syslog(LOG_INFO, "Cache 1: %lu %s", crec_ttl(crecp, now), name);
 	    log_query(stale_flag | crecp->flags, name, NULL, record_source(crecp->uid), 0);
 	    if (add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 				    crec_ttl(crecp, now), &nameoffset,
@@ -1913,7 +1913,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			{
 			  if (!(crecp->flags & (F_HOSTS | F_DHCP)))
 			    auth = 0;
-			  
+			  my_syslog(LOG_INFO, "Cache 2: %lu %s", crec_ttl(crecp, now), cache_get_name(crecp));
 			  log_query(stale_flag | (crecp->flags & ~F_FORWARD), cache_get_name(crecp), &addr, 
 				    record_source(crecp->uid), 0);
 			  
@@ -2095,6 +2095,8 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			  continue;
 			
 			ans = 1;
+			if(crecp != NULL)
+			  my_syslog(LOG_INFO, "Cache 3 %lu %s", crec_ttl(crecp, now), cache_get_name(crecp));
 			log_query(stale_flag | (crecp->flags & ~F_REVERSE), name, &crecp->addr,
 				  record_source(crecp->uid), 0);
 			    // ****************************** Pi-hole modification ******************************
@@ -2283,7 +2285,7 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 			    rrdata = crecp->addr.rrdata.data;
 			  }
 		      }
-		    
+		    my_syslog(LOG_INFO, "Cache 4 %lu %s", crec_ttl(crecp, now), name);
 		    if (!(flags & F_NEG) && add_resource_record(header, limit, &trunc, nameoffset, &ansp, 
 								crec_ttl(crecp, now), NULL, qtype, C_IN, "t",
 								rrlen, rrdata))
