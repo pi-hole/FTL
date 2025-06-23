@@ -25,7 +25,7 @@
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
-bool writeFTLtoml(const bool verbose)
+bool writeFTLtoml(const bool verbose, FILE *fp)
 {
 	// Return early without writing if we are in config read-only mode
 	if(config.misc.readOnly.v.b)
@@ -40,11 +40,17 @@ bool writeFTLtoml(const bool verbose)
 		return true;
 	}
 
-	// Try to open a temporary config file for writing
+	// open temporary config file for writing *unless* we are provided with
+	// a file pointer to an already opened file
 	bool locked = false;
-	FILE *fp = openFTLtoml("w", 0, &locked);
+	const bool opened = fp == NULL;
 	if(fp == NULL)
-		return false;
+	{
+		// Try to open a temporary config file for writing
+		fp = openFTLtoml("w", 0, &locked);
+		if(fp == NULL)
+			return false;
+	}
 
 	// Write header
 	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
@@ -163,8 +169,13 @@ bool writeFTLtoml(const bool verbose)
 	// Free cJSON array
 	cJSON_Delete(env_vars);
 
-	// Close file and release exclusive lock
-	closeFTLtoml(fp, locked);
+	// Close file and release exclusive lock unless we are provided with a
+	// file pointer in which case we assume that the caller takes care of
+	// this
+	if(opened)
+		closeFTLtoml(fp, locked);
+	else
+		return true;
 
 	// Move temporary file to the final location if it is different
 	// We skip the first 8 lines as they contain the header and will always
