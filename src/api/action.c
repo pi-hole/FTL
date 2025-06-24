@@ -23,7 +23,7 @@
 #include "database/network-table.h"
 #include "config/config.h"
 
-static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
+static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[], const char *extra_env)
 {
 	// Create a pipe for communication with our child
 	int pipefd[2];
@@ -53,6 +53,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		dup2(pipefd[1], STDERR_FILENO);
 		dup2(pipefd[1], STDOUT_FILENO);
 
+		// Set extra environment variable if requested
+		if(extra_env != NULL)
+			setenv(extra_env, "1", 1);
+
 		// Run pihole -g
 		execv(path, (char *const *)args);
 
@@ -71,7 +75,6 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Read readirected STDOUT/STDERR until EOF
 		// We are only interested in the last pipe line
 		char errbuf[1024] = "";
-		FILE *f = fopen("/tmp/gravity.tmp", "w");
 		while(read(pipefd[0], errbuf, sizeof(errbuf)) > 0)
 		{
 			// Send chunked data
@@ -80,13 +83,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			// followed by a chunk of data (the string itself) of the specified
 			// size
 			mg_printf(api->conn, "%zX\r\n%s\r\n", strlen(errbuf), errbuf);
-			fputs(errbuf, f);
 
 			// Reset buffer
 			memset(errbuf, 0, sizeof(errbuf));
 		}
-
-		fclose(f);
 
 		// Wait until child has exited to get its return code
 		int status;
@@ -121,7 +121,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 
 int api_action_gravity(struct ftl_conn *api)
 {
-	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
+	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, "FORCE_COLOR");
 }
 
 int api_action_restartDNS(struct ftl_conn *api)
