@@ -71,6 +71,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Read readirected STDOUT/STDERR until EOF
 		// We are only interested in the last pipe line
 		char errbuf[1024] = "";
+		FILE *f = fopen("/tmp/gravity.tmp", "w");
 		while(read(pipefd[0], errbuf, sizeof(errbuf)) > 0)
 		{
 			// Send chunked data
@@ -79,10 +80,13 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			// followed by a chunk of data (the string itself) of the specified
 			// size
 			mg_printf(api->conn, "%zX\r\n%s\r\n", strlen(errbuf), errbuf);
+			fputs(errbuf, f);
 
 			// Reset buffer
 			memset(errbuf, 0, sizeof(errbuf));
 		}
+
+		fclose(f);
 
 		// Wait until child has exited to get its return code
 		int status;

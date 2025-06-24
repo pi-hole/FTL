@@ -113,8 +113,9 @@ const char** argv_dnsmasq = NULL;
 
 static bool __attribute__ ((pure)) is_term(void)
 {
-	// test whether STDOUT refers to a terminal
-	return isatty(fileno(stdout)) == 1;
+	// test whether STDOUT refers to a terminal or if env variable
+	// FORCE_COLOR is set
+	return getenv("FORCE_COLOR") != NULL || isatty(fileno(stdout)) == 1;
 }
 
 // Returns green [✓]
