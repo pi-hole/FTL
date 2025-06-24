@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.13 AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.13
 
 WORKDIR /app
 
@@ -31,17 +31,3 @@ RUN rm -rf cmake && \
     cp /app/pihole-FTL . && \
 # Create tarball of API docs
     tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz .
-
-FROM builder AS tests
-WORKDIR /app
-# Run tests
-SHELL ["/bin/bash", "-c"]
-# If BUILD_OPTS is set to "clang", we set STATIC="false" as we do in build.sh
-RUN if [ "${BUILD_OPTS}" = "clang" ]; then export STATIC="false";fi && \
-    test/arch_test.sh && \
-    test/run.sh
-
-# Create final image containing only the FTL binary and API docs
-FROM scratch AS result
-COPY --from=builder /pihole-FTL /pihole-FTL
-COPY --from=builder /api-docs.tar.gz /api-docs.tar.gz
