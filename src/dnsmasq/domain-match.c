@@ -95,6 +95,7 @@ void build_server_array(void)
 
    A flag of F_SERVER returns an upstream server only.
    A flag of F_DNSSECOK disables NODOTS servers from consideration.
+   A flag of F_DS returns parent domain server.
    A flag of F_DOMAINSRV returns a domain-specific server only.
    A flag of F_CONFIG returns anything that generates a local
    reply of IPv4 or IPV6.
@@ -106,12 +107,23 @@ int lookup_domain(char *domain, int flags, int *lowout, int *highout)
   ssize_t qlen;
   int try, high, low = 0;
   int nlow = 0, nhigh = 0;
-  char *cp, *qdomain = domain;
-
+  char *cp, *qdomain;
+  
   /* may be no configured servers. */
   if (daemon->serverarraysz == 0)
     return 0;
+
+  /* DS records should come from the parent domain. */
+  if (flags & F_DS)
+    {
+      if ((cp = strchr(domain, '.')))
+	domain = cp+1;
+      else
+	domain = "";
+    }
   
+  qdomain = domain;
+
   /* find query length and presence of '.' */
   for (cp = qdomain, nodots = 1, qlen = 0; *cp; qlen++, cp++)
     if (*cp == '.')
@@ -403,7 +415,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
   
   setup_reply(header, flags, ede);
 
-  gotname &= ~F_QUERY;
+  gotname &= ~(F_QUERY | F_DS);
   
   if (flags & (F_NXDOMAIN | F_NOERR))
     log_query(flags | gotname | F_NEG | F_CONFIG | F_FORWARD, name, NULL, NULL, 0);
@@ -463,14 +475,14 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 }
 
 #ifdef HAVE_DNSSEC
-int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp)
+int dnssec_server(struct server *server, char *keyname, int is_ds, int *firstp, int *lastp)
 {
   int first, last, index;
-
+  
   /* Find server to send DNSSEC query to. This will normally be the 
      same as for the original query, but may be another if
      servers for domains are involved. */		      
-  if (!lookup_domain(keyname, F_SERVER | F_DNSSECOK, &first, &last))
+  if (!lookup_domain(keyname, F_SERVER | F_DNSSECOK | (is_ds ? F_DS : 0), &first, &last))
     return -1;
 
   for (index = first; index != last; index++)

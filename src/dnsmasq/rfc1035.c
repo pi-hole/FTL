@@ -1281,7 +1281,7 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
   /* Make the behaviour for DS and DNSKEY queries we forward the same
      as for DS and DNSKEY queries we originate. */
   if (option_bool(OPT_DNSSEC_VALID) && (qtype == T_DS || qtype == T_DNSKEY))
-    return F_DNSSECOK;
+    return F_DNSSECOK | (qtype == T_DS ? F_DS : 0);
 #endif
   
   return F_QUERY;
