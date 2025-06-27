@@ -348,6 +348,12 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	}
 	fputs("# Set the size of dnsmasq's cache. The default is 150 names. Setting the cache\n", pihole_conf);
 	fputs("# size to zero disables caching. Note: huge cache size impacts performance\n", pihole_conf);
+	// Ensure cache is large enough for DNSSEC operation if DNSSEC is enabled
+	if (conf->dns.dnssec.v.b && conf->dns.cache.size.v.ui < 150)
+	{
+		log_warn("Requested cache size insufficient for DNSSEC operation, overriding to 150");
+		conf->dns.cache.size.v.ui = 150;
+	}
 	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 

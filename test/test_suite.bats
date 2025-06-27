@@ -1431,6 +1431,16 @@
   [[ ${lines[0]} == "0" ]]
 }
 
+@test "Cache resize in dnsmasq.conf for DNSSEC" {
+  run bash -c 'sed -i s/size\ =\ 10000/size\ =\ 149/g /etc/pihole/pihole.toml'
+  run bash -c 'sed -i s/dnssec\ =\ false/dnssec\ =\ true/g /etc/pihole/pihole.toml'
+  run bash -c 'service pihole-FTL restart'
+  sleep 3
+  run bash -c 'grep "cache-size=150" /etc/pihole/dnsmasq.conf'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "cache-size=150" ]]
+}
+
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   printf "%s\n" "${lines[@]}"

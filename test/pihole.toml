@@ -243,6 +243,8 @@
     # for new insertions over time. Setting this number too high will have an adverse
     # effect as not only more space is needed, but also lookup speed gets degraded in the
     # 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.
+    # The minimum cache size is 150 when DNSSEC is enabled as the DNSSEC validation
+    # process uses the cache.
     size = 10000
 
     # Query cache optimizer: If a DNS name exists in the cache, but its time-to-live has

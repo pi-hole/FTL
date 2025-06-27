@@ -588,7 +588,7 @@ static void initConfig(struct config *conf)
 		
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
-	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
+	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries. The minimum cache size is 150 when DNSSEC is enabled as the DNSSEC validation process uses the cache.";
 	conf->dns.cache.size.t = CONF_UINT;
 	conf->dns.cache.size.f = FLAG_RESTART_FTL;
 	conf->dns.cache.size.d.ui = 10000u;
