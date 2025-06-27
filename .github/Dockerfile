@@ -30,4 +30,6 @@ RUN rm -rf cmake && \
     cd / &&\
     cp /app/pihole-FTL . && \
 # Create tarball of API docs
-    tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz .
+    tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz . && \
+# Generate default config file
+    ./pihole-FTL create-default-config ./pihole.toml
