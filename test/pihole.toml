@@ -690,9 +690,9 @@
   # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
   # resolution on links that the user may choose to follow. We disable DNS prefetching
   # here.
-  # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
-  # styling some elements directly, and index.html containing some inlined Javascript
-  # code.
+  # - Content-Security-Policy: [...] 'unsafe-inline' is required by Chart.js for styling
+  # elements directly, https://fonts.gstatic.com and img-src data: are needed for the
+  # embedded API docs.
   # - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the
   # site attempting to do so.
   # - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This
@@ -712,7 +712,7 @@
   #     array of HTTP headers
   headers = [
     "X-DNS-Prefetch-Control: off",
-    "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
+    "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
     "X-Content-Type-Options: nosniff",

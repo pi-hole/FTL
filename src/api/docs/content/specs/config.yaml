@@ -758,7 +758,7 @@ components:
             threads: 0
             headers:
               - "X-DNS-Prefetch-Control: off"
-              - "Content-Security-Policy: default-src 'self' 'unsafe-inline';"
+              - "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;"
               - "X-Frame-Options: DENY"
               - "X-XSS-Protection: 0"
               - "X-Content-Type-Options: nosniff"
