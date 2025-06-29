@@ -1265,6 +1265,7 @@ components:
               key: "uri_error"
               message: "Specify ID of message to delete in path"
               hint: "/api/info/messages"
+            tooK: 0.003
         bad_request:
           summary: ID of message to delete is invalid
           value:
@@ -1272,6 +1273,7 @@ components:
               key: "bad_request"
               message: "Invalid ID in path"
               hint: "/api/info/messages/486741168746857468758478"
+            tooK: 0.003
     metrics:
       summary: Server metrics
       value:
@@ -1338,6 +1340,7 @@ components:
               pruned_4: 0
               allocated_6: 0
               pruned_6: 0
+        took: 0.003
 
   parameters:
     logs:
