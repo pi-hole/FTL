@@ -21,6 +21,8 @@
 #include "config/inotify.h"
 // files_different()
 #include "files.h"
+// git_branch()
+#include "version.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
@@ -53,8 +55,10 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	}
 
 	// Write header
-	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
-	fputs("# Encoding: UTF-8\n", fp);
+	fprintf(fp, "# Pi-hole configuration file (%s)", get_FTL_version());
+	if(strcmp(git_branch(), "master") != 0)
+		fprintf(fp, " on branch %s", git_branch());
+	fputs("\n# Encoding: UTF-8\n", fp);
 	fputs("# This file is managed by pihole-FTL\n", fp);
 	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, time(NULL), false, false);
