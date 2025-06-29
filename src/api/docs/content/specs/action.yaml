@@ -113,14 +113,14 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-    flush_arp:
+    flush_network:
       post:
         summary: Flush the network table
         tags:
           - Actions
-        operationId: "action_flusharp"
+        operationId: "action_flushnetwork"
         description: |
-          Flushes the network table. This includes emptying the ARP table and removing both all known devices and their associated addresses.
+          Flushes the network table. This includes removing both all known devices and their associated addresses.
         responses:
           '200':
             description: OK
