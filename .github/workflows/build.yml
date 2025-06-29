@@ -26,6 +26,7 @@ jobs:
       GIT_TAG: ${{ steps.variables.outputs.GIT_TAG }}
       GIT_BRANCH: ${{ steps.variables.outputs.GIT_BRANCH }}
       OUTPUT_DIR: ${{ steps.variables.outputs.OUTPUT_DIR }}
+      DO_DEPLOY: ${{ steps.variables.outputs.DO_DEPLOY }}
 
     runs-on: ubuntu-latest
     steps:
@@ -42,6 +43,7 @@ jobs:
           echo "GIT_BRANCH=${GIT_BRANCH}" >> $GITHUB_OUTPUT
           echo "GIT_TAG=${GIT_TAG}" >> $GITHUB_OUTPUT
           echo "OUTPUT_DIR=${GIT_TAG:-${GIT_BRANCH}}" >> $GITHUB_OUTPUT
+          echo "DO_DEPLOY=${{ github.event_name != 'pull_request' && secrets.SSH_KEY != '' && github.actor != 'dependabot[bot]' }}" >> $GITHUB_OUTPUT
       -
         name: "Check git branch name depth"
         env:
@@ -147,6 +149,7 @@ jobs:
               /bin/bash -c "test/arch_test.sh && test/run.sh"
       -
         name: Export FTL files from ftl-build container (QEMU)
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         # Create a temporary container to extract the built files
         run: |
             docker create --platform ${{ matrix.platform }} --name temp-container ftl-builder:local
@@ -159,13 +162,14 @@ jobs:
         run: ls -l
       -
         name: "Generate checksum file"
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         shell: bash
         run: |
           mv pihole-FTL "${{ matrix.bin_name }}"
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
         name: Store binary artifacts for later deployment
-        if: github.event_name != 'pull_request'
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         uses: actions/upload-artifact@v4.6.2
         with:
           name: ${{ matrix.bin_name }}-binary
@@ -175,18 +179,19 @@ jobs:
         uses: actions/attest-build-provenance@v2.3.0
         # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
         # available (e.g., PR originating from a fork)
-        if: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true' && env.ACTIONS_ID_TOKEN_REQUEST_URL != ''
         with:
           subject-path: ${{ matrix.bin_name }}
       -
         name: Upload documentation artifacts for deployment
-        if: github.event_name != 'pull_request' && matrix.platform == 'linux/amd64' && matrix.build_opts == ''
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         uses: actions/upload-artifact@v4.6.2
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'
       -
         name: Get binaries built in previous jobs
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         uses: actions/download-artifact@v4.3.0
         id: download
         with:
@@ -195,18 +200,20 @@ jobs:
           merge-multiple: true
       -
         name: Get documentation files built in previous jobs
-        if: matrix.bin_name == 'pihole-FTL-amd64'
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         uses: actions/download-artifact@v4.3.0
         with:
           path: ftl_builds/
           name: pihole-api-docs
       -
         name: Display structure of downloaded files
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         shell: bash
         run: ls -R
         working-directory: ${{steps.download.outputs.download-path}}
       -
         name: Install SSH Key
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         uses: benoitchantre/setup-ssh-authentication-action@1.0.1
         with:
           private-key: ${{ secrets.SSH_KEY }}
@@ -214,11 +221,12 @@ jobs:
           known-hosts: ${{ secrets.KNOWN_HOSTS }}
       -
         name: Set private key permissions
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         shell: bash
         run: chmod 600 ~/.ssh/id_rsa
       -
         name: Untar documentation files
-        if: matrix.bin_name == 'pihole-FTL-amd64'
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         working-directory: ftl_builds/
         shell: bash
         run: |
@@ -226,12 +234,13 @@ jobs:
           tar xzvf api-docs.tar.gz -C docs/
       -
         name: Display structure of files ready for upload
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         working-directory: ftl_builds/
         shell: bash
         run: ls -R
       -
         name: Transfer Builds to Pi-hole server for pihole checkout
-        if: github.actor != 'dependabot[bot]'
+        if: needs.smoke-tests.outputs.DO_DEPLOY == 'true'
         env:
           USER: ${{ secrets.SSH_USER }}
           HOST: ${{ secrets.SSH_HOST }}
