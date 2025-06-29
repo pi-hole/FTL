@@ -339,6 +339,14 @@ int api_queries(struct ftl_conn *api)
 		// Upstream filtering?
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
 		{
+			// If there is a space in the upstream name, truncate
+			// the string to the first space. This is necessary as
+			// upstreams may contains a hostname in parentheses,
+			// after the IP address
+			char *space = strchr(upstreamname, ' ');
+			if(space != NULL)
+				*space = '\0';
+
 			if(strcmp(upstreamname, "blocklist") == 0)
 			{
 				// Pseudo-upstream for blocked queries
