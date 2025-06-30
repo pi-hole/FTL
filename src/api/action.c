@@ -23,7 +23,7 @@
 #include "database/network-table.h"
 #include "config/config.h"
 
-static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[])
+static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[], const char *extra_env)
 {
 	// Create a pipe for communication with our child
 	int pipefd[2];
@@ -52,6 +52,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Redirect STDERR into our pipe
 		dup2(pipefd[1], STDERR_FILENO);
 		dup2(pipefd[1], STDOUT_FILENO);
+
+		// Set extra environment variable if requested
+		if(extra_env != NULL)
+			setenv(extra_env, "1", 1);
 
 		// Run pihole -g
 		execv(path, (char *const *)args);
@@ -117,7 +121,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 
 int api_action_gravity(struct ftl_conn *api)
 {
-	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL });
+	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, "FORCE_COLOR");
 }
 
 int api_action_restartDNS(struct ftl_conn *api)
@@ -158,17 +162,17 @@ int api_action_flush_arp(struct ftl_conn *api)
 	if(!config.webserver.api.allow_destructive.v.b)
 		return send_json_error(api, 403,
 		                       "forbidden",
-		                       "Flushing the ARP tables is not allowed",
+		                       "Flushing the network tables is not allowed",
 		                       "Check setting webserver.api.allow_destructive");
 
-	log_info("Received API request to flush the ARP tables");
+	log_info("Received API request to flush the network tables");
 
-	// Flush the ARP tables
+	// Flush the network tables
 	if(flush_network_table())
 		return send_json_success(api);
 	else
 		return send_json_error(api, 500,
 		                       "server_error",
-		                       "Cannot flush the ARP tables",
+		                       "Cannot flush the network tables",
 		                       NULL);
 }
