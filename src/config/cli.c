@@ -536,7 +536,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	}
 
 	putchar('\n');
-	writeFTLtoml(false);
+	writeFTLtoml(false, NULL);
 	return OKAY;
 }
 

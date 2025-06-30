@@ -610,6 +610,27 @@ void parse_args(int argc, char *argv[])
 		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	// Undocumented option to create an all-default dummy config file
+	if(argc == 3 && strcmp(argv[1], "create-default-config") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		// Validate the output filename
+		if(strstr(argv[2], "..") || strchr(argv[2], '/') || strchr(argv[2], '\\'))
+		{
+			fprintf(stderr, "Error: Invalid filename. Path traversal or special characters are not allowed.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		// Create the default config file
+		if(create_default_config(argv[2]))
+			exit(EXIT_SUCCESS);
+		else
+			exit(EXIT_FAILURE);
+	}
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
