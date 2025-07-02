@@ -517,17 +517,32 @@ int api_queries(struct ftl_conn *api)
 						search[j][0] = '%';
 					}
 
+					// Escape any possible underscore in the
+					// search string to ensure it is not
+					// interpreted as a wildcard by SQLite3
+					for(unsigned int i = 0; i < searchlen; i++)
+					{
+						if(search[j][i] == '_')
+						{
+							// Escape underscore
+							memmove(search[j] + i + 1, search[j] + i, searchlen - i + 1);
+							search[j][i] = '\\';
+							searchlen++;
+							i++;
+						}
+					}
+
 					// Apply the search string to the query if this is an allowed column
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{
 						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
-						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search", &where);
+						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
 					}
 					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
 					{
 						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
 						// We search both client IP and name
-						add_querystr_string(api, querystr, "c.ip LIKE :client_search OR c.name LIKE", ":client_search", &where);
+						add_querystr_string(api, querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
 					}
 					else
 						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
