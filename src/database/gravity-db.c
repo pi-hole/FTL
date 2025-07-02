@@ -2098,14 +2098,38 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	if(!exact && item != NULL && item[0] != '\0')
 	{
 		// Build LIKE string (% + item + %)
-		like_name = calloc(strlen(item)+3, sizeof(char));
+		const size_t maxlen = 2*strlen(item)+  3;
+		like_name = calloc(maxlen, sizeof(char));
 		if(like_name == NULL)
 		{
 			log_err("Failed to allocate memory for like_name");
 			*message = "Failed to allocate memory for like_name";
 			return false;
 		}
-		sprintf(like_name, "%%%s%%", item);
+		// Iterate through item and escape any possible underscore (if
+		// present)
+		if(strchr(item, '_') != NULL)
+		{
+			// Add initial percent sign
+			like_name[0] = '%';
+
+			// Iterate through item
+			char *p = like_name + 1;
+			for(const char *c = item; *c != '\0'; c++)
+			{
+				// Add escape character when needed
+				if(*c == '_') *p++ = '\\';
+				*p++ = *c;
+			}
+			// Ensure the string is nul-terminated
+			*p = '\0';
+
+			// Add final percent sign
+			strncat(like_name, "%", maxlen - strlen(like_name) - 1);
+		}
+		else
+			// No escaping needed, just add percent signs
+			snprintf(like_name, maxlen, "%%%s%%", item);
 	}
 	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
@@ -2115,7 +2139,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE name = :item";
 			else
-				filter = " WHERE name LIKE :item";
+				filter = " WHERE name LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", filter);
 	}
@@ -2136,7 +2160,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter2 = " AND address = :item";
 			else
-				filter2 = " AND address LIKE :item";
+				filter2 = " AND address LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,type,address,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
@@ -2150,7 +2174,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE ip = :item";
 			else
-				filter = " WHERE ip LIKE :item";
+				filter = " WHERE ip LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,ip AS client,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
@@ -2163,7 +2187,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE g.domain = :item";
 			else
-				filter = " WHERE g.domain LIKE :item";
+				filter = " WHERE g.domain LIKE :item ESCAPE '\\'";
 		}
 		const char *table = listtype == GRAVITY_GRAVITY ? "gravity" : "antigravity";
 		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,a.type,"
@@ -2177,7 +2201,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " AND domain = :item";
 			else
-				filter = " AND domain LIKE :item";
+				filter = " AND domain LIKE :item ESCAPE '\\'";
 		}
 
 		snprintf(querystr, buflen, "SELECT id,domain,type,enabled,date_added,date_modified,comment,"
