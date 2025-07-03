@@ -130,6 +130,30 @@ To edit with the command line, use the format `key.name=value`, e.g:
                 documentation.append("\n".join(adjusted_comments))
                 documentation.append("")  # spacer after comment block
             documentation.append(f"**Default value:** `{value}`\n")
+
+            full_key = ".".join(section_stack + [key])
+            env_var = "FTLCONF_" + "_".join(section_stack + [key])
+
+            # --- TOML tab ---
+            documentation.append(f"=== \"TOML\"")
+            documentation.append("    ```toml")            
+            documentation.append(f"    [{'.'.join(section_stack)}]")
+            documentation.append(f"      {key} = {value}")
+            documentation.append("    ```")
+
+            # --- CLI tab ---
+            documentation.append(f"=== \"CLI\"")
+            documentation.append("    ```shell")
+            documentation.append(f"    pihole-FTL --config {full_key}={value}")
+            documentation.append("    ```")
+
+            # --- Environment tab (YAML style for docker-compose) ---
+            documentation.append(f"=== \"Environment (Docker Compose)\"")
+            documentation.append("    ```yaml")
+            documentation.append("    environment:")
+            documentation.append(f"      {env_var}: {value}")
+            documentation.append("    ```\n")
+            
             comment_buffer = []
 
     return "\n".join(documentation)
