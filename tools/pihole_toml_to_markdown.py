@@ -41,6 +41,7 @@ To edit with the command line, use the format `key.name=value`, e.g:
     You will not be able to override it through the TOML file, the command line, or the web interface until the variable is removed from the environment.
 
 ---
+<!-- markdownlint-disable-file MD034 -->
 """
     ]
     section_stack = []
