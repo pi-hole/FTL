@@ -270,15 +270,14 @@ jobs:
           files: |
             ftl_builds/*
       -
-        name: Pull docs repository to update configuation page from pihole.toml
-        # TODO: Once we are satisfied with the code, add condition to only run this step on the master branch (env.GIT_BRANCH == 'master')         
-        if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        name: Pull docs repository to update configuation page from pihole.toml        
+        if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         run: |
           git clone https://github.com/pi-hole/docs.git docs-repo
           python3 tools/pihole_toml_to_markdown.py ftl_builds/pihole.toml docs-repo/docs/ftldns/configfile.md          
       -
         name: Create Pull Request to pi-hole/docs
-        if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PRALOR_PULL_REQUESTS }}
