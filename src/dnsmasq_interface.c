@@ -3635,7 +3635,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 #ifdef HAVE_DHCP6
 	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
 	{
-		lease = lease6_find_by_addr(&addr.addr6, 128, 0);
+		lease = lease6_find_by_plain_addr(&addr.addr6);
 	}
 #endif
 	else
