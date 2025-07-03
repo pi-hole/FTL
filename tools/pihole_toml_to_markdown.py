@@ -20,24 +20,24 @@ To edit with the command line, use the format `key.name=value`, e.g:
 
 !!! note
     **⚙️ Configuration Precedence**
-        
+
     Every Pi-hole setting in this file can be overridden using an environment variable.
     This is especially common in Docker deployments.
-        
+
     Environment variable names follow the format:
-        
+
     ```text
     FTLCONF_<section>_<key>
     ```
-        
+
     For example:
-        
+
     ```text
     FTLCONF_dns_upstreams
     FTLCONF_database_DBimport
     ```
-        
-    ⚠️ **If a setting is defined via an environment variable, it becomes read-only.**  
+
+    ⚠️ **If a setting is defined via an environment variable, it becomes read-only.**
     You will not be able to override it through the TOML file, the command line, or the web interface until the variable is removed from the environment.
 
 ---
@@ -54,14 +54,14 @@ To edit with the command line, use the format `key.name=value`, e.g:
         if re.match(r'^\[.*\]$', stripped):
             in_config = True  # <-- Start processing comments now
             section_stack = [stripped.strip('[]')]
-            documentation.append(f"\n## [{'.'.join(section_stack)}]\n")
+            documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
         # Handle nested section headers
         elif re.match(r'^\[\[.*\]\]$', stripped):
             in_config = True
             section_stack = [stripped.strip('[]')]
-            documentation.append(f"\n## [{'.'.join(section_stack)}]\n")
+            documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
         # Skip all comments before first section
@@ -102,7 +102,6 @@ To edit with the command line, use the format `key.name=value`, e.g:
                 documentation.append("\n".join(adjusted_comments))
                 documentation.append("")  # spacer after comment block
             documentation.append(f"**Default value:** `{value}`\n")
-            documentation.append("")  # spacer line
             comment_buffer = []
 
     return "\n".join(documentation)
