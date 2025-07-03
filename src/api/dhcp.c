@@ -80,13 +80,16 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api)
 {
 	// Validate input (must be a valid IPv4 address)
 	struct sockaddr_in sa;
-	if(api->item == NULL || strlen(api->item) == 0 || inet_pton(AF_INET, api->item, &(sa.sin_addr)) == 0)
+	struct sockaddr_in6 sa6;
+	if(api->item == NULL || strlen(api->item) == 0 ||
+	   (inet_pton(AF_INET, api->item, &(sa.sin_addr)) == 0 &&
+	    inet_pton(AF_INET6, api->item, &(sa6.sin6_addr)) == 0))
 	{
 		// Send empty reply with code 204 No Content
 		return send_json_error(api,
 		                       400,
 		                       "bad_request",
-		                       "The provided IPv4 address is invalid",
+		                       "The provided IP address is invalid",
 		                       api->item);
 	}
 
