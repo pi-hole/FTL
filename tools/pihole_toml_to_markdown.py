@@ -10,13 +10,13 @@ def parse_toml_with_comments(filepath):
 
 This page documents the available options in the `pihole-FTL.conf` file, which is typically managed via the TOML-formatted configuration file:
 
-```\n/etc/pihole/pihole.toml\n```
+```text\n/etc/pihole/pihole.toml\n```
 
 The file can be edited directly, however you can also use the command line option or the web interface.
 
 To edit with the command line, use the format `key.name=value`, e.g:
 
-```\npihole-FTL --config dns.dnssec=true\n```
+```text\npihole-FTL --config dns.dnssec=true\n```
 
 !!! note
     **⚙️ Configuration Precedence**
@@ -26,13 +26,13 @@ To edit with the command line, use the format `key.name=value`, e.g:
         
     Environment variable names follow the format:
         
-    ```
+    ```text
     FTLCONF_<section>_<key>
     ```
         
     For example:
         
-    ```
+    ```text
     FTLCONF_dns_upstreams
     FTLCONF_database_DBimport
     ```
