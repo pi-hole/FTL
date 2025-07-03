@@ -78,7 +78,7 @@ extern bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 // Delete DHCP leases
 int api_dhcp_leases_DELETE(struct ftl_conn *api)
 {
-	// Validate input (must be a valid IPv4 address)
+	// Validate input (must be a valid IP address)
 	struct sockaddr_in sa;
 	struct sockaddr_in6 sa6;
 	if(api->item == NULL || strlen(api->item) == 0 ||
