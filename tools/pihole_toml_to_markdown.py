@@ -5,7 +5,8 @@ def parse_toml_with_comments(filepath):
     with open(filepath, encoding='utf-8') as f:
         lines = f.readlines()
 
-    documentation = ["""# Pi-hole FTL Configuration Reference
+    documentation = ["""<!-- markdownlint-disable MD033 -->
+# Pi-hole FTL Configuration Reference
 
 This page documents the available options of `pihole-FTL`. They are typically managed via the [TOML](https://toml.io/)-formatted configuration file `/etc/pihole/pihole.toml`. This file may be edited directly or you can use the command line (CLI) option, the web interface, the application programming interface (API) or environment variables.
 
@@ -13,7 +14,9 @@ Using the web interface, the API or the CLI is preferred as they can do error ch
 
 To edit with the command line, use the format `key.name=value`, e.g:
 
-```text\nsudo pihole-FTL --config dns.dnssec=true\n```
+```text
+sudo pihole-FTL --config dns.dnssec=true
+```
 
 !!! note "Environment Variables"
     **⚙️ Configuration Precedence**
@@ -33,94 +36,93 @@ To edit with the command line, use the format `key.name=value`, e.g:
 
 ---
 <!-- markdownlint-disable-file MD034 -->
-"""
-    ]
+"""]
     section_stack = []
     comment_buffer = []
-    in_config = False  # <-- New flag to skip file header comments
+    in_config = False
 
     for line in lines:
         stripped = line.strip()
 
-        # Handle section headers
         if re.match(r'^\[.*\]$', stripped):
-            in_config = True  # <-- Start processing comments now
+            in_config = True
             section_stack = [stripped.strip('[]')]
             documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
-        # Handle nested section headers
         elif re.match(r'^\[\[.*\]\]$', stripped):
             in_config = True
             section_stack = [stripped.strip('[]')]
             documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
-        # Skip all comments before first section
         elif stripped.startswith('#'):
             if in_config:
                 comment_buffer.append(stripped.lstrip('#').strip())
             continue
 
-        # Handle key-value pairs
         elif '=' in stripped and in_config:
             key, value = map(str.strip, stripped.split('=', 1))
             documentation.append(f"### `{key}`\n")
             if comment_buffer:
                 adjusted_comments = []
+                table_rows = []
+                in_table = False
+                i = 0
+                while i < len(comment_buffer):
+                    line = comment_buffer[i]
 
-                for i, line in enumerate(comment_buffer):
-                    is_bullet = line.lstrip().startswith("-")
-                    prev_is_bullet = (
-                        i > 0 and comment_buffer[i - 1].lstrip().startswith("-")
-                    )
-                    prev_is_blank = i > 0 and comment_buffer[i - 1].strip() == ""
-
-                    # Insert blank line before bullet if needed
-                    if is_bullet and not prev_is_bullet and not prev_is_blank:
-                        adjusted_comments.append("")
-
-                    # Determine if line looks like a problematic bracketed structure
-                    is_suspect_reference = (
-                        line.count("[") >= 2 and line.count("]") >= 2 and "](" not in line
-                    )
-
-                    # Decide whether to backtick the whole line
-                    if is_suspect_reference:
-                        line = f"`{line}`"  # Do NOT escape angle brackets inside code spans
-                    else:
-                        # Escape angle brackets normally
-                        line = line.replace("<", "&lt;").replace(">", "&gt;")
-
-                    # Wrap words starting with underscore (e.g. _esni) in backticks to prevent MD037
+                    # Fix malformed emphasis due to underscores or asterisks
                     line = re.sub(r'\b(_[a-zA-Z0-9.-]+)', r'`\1`', line)
-                    
-                    # Wrap words starting with asterisk and dot (e.g. *.pem) in backticks  
                     line = re.sub(r'\*\.[a-zA-Z0-9]+', lambda m: f"`{m.group(0)}`", line)
 
-                    # Bold + line break after "Possible values are:"
+                    # Avoid MD052 by backticking ambiguous bracket patterns
+                    if line.count("[") >= 2 and line.count("]") >= 2 and "](" not in line:
+                        line = f"`{line}`"
+
+                    is_bullet = line.lstrip().startswith("- ")
+                    next_line = comment_buffer[i + 1] if i + 1 < len(comment_buffer) else ""
+
                     if line.lower().startswith("possible values are:"):
-                        line = f"**{line}**"
-                        adjusted_comments.append(line)
-                        adjusted_comments.append("")  # blank line after
+                        adjusted_comments.append(f"**{line}**\n")
+                        i += 1
+                        continue
 
-                        # If the next line is a single example that looks complex, wrap it
-                        if (
-                            i + 1 < len(comment_buffer)
-                            and comment_buffer[i + 1].strip().startswith("[")
-                            and ("{" in comment_buffer[i + 1] or "=" in comment_buffer[i + 1])
-                        ):
-                            adjusted_comments.append("```toml")
-                            adjusted_comments.append(comment_buffer[i + 1])
-                            adjusted_comments.append("```")
-                            i += 1  # skip the line we just processed
-                    else:
-                        adjusted_comments.append(line)
+                    if is_bullet and re.match(r'-\s+\".*\"', line):
+                        value_part = re.search(r'\"(.*?)\"', line).group(1)
+                        description_lines = []
+                        j = i + 1
+                        while j < len(comment_buffer) and not comment_buffer[j].lstrip().startswith("- "):
+                            description_lines.append(comment_buffer[j].strip())
+                            j += 1
+                        table_rows.append((value_part, " ".join(description_lines)))
+                        i = j
+                        in_table = True
+                        continue
 
-                # Avoid false link reference errors by backticking lines with ambiguous bracket pairs
-                if line.count("[") >= 2 and line.count("]") >= 2 and "](" not in line:
-                    line = f"`{line}`"
-                
+                    if is_bullet:
+                        if len(adjusted_comments) > 0 and adjusted_comments[-1].strip() != "":
+                            adjusted_comments.append("")  # blank line before
+                        adjusted_comments.append(line)
+                        if (i + 1 >= len(comment_buffer)) or (not comment_buffer[i + 1].lstrip().startswith("- ")):
+                            adjusted_comments.append("")  # blank line after
+                        i += 1
+                        continue
+
+
+                    adjusted_comments.append(line)
+                    i += 1
+
+                if in_table:
+                    adjusted_comments.append("")
+                    adjusted_comments.append("<table>")
+                    adjusted_comments.append("<thead><tr><th style=\"white-space: nowrap\">Value</th><th>Description</th></tr></thead>")
+                    adjusted_comments.append("<tbody>")
+                    for val, desc in table_rows:
+                        adjusted_comments.append(f"<tr><td><code style='white-space: nowrap'>{val}</code></td><td>{desc}</td></tr>")
+                    adjusted_comments.append("</tbody>")
+                    adjusted_comments.append("</table>\n")
+
                 documentation.append("\n".join(adjusted_comments))
                 documentation.append("")  # spacer after comment block
             documentation.append(f"**Default value:** `{value}`\n")
@@ -130,7 +132,7 @@ To edit with the command line, use the format `key.name=value`, e.g:
 
             # --- TOML tab ---
             documentation.append(f"=== \"TOML\"")
-            documentation.append("    ```toml")            
+            documentation.append("    ```toml")
             documentation.append(f"    [{'.'.join(section_stack)}]")
             documentation.append(f"      {key} = {value}")
             documentation.append("    ```")
@@ -147,7 +149,7 @@ To edit with the command line, use the format `key.name=value`, e.g:
             documentation.append("    environment:")
             documentation.append(f"      {env_var}: {value}")
             documentation.append("    ```\n")
-            
+
             comment_buffer = []
 
     return "\n".join(documentation)
