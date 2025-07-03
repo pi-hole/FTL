@@ -2,9 +2,19 @@ import re
 from pathlib import Path
 
 def parse_toml_with_comments(filepath):
+    """
+    Parse a TOML file with comments and generate a Markdown documentation string.
+
+    Args:
+        filepath (str or Path): Path to the TOML file.
+
+    Returns:
+        str: Markdown-formatted documentation.
+    """
     with open(filepath, encoding='utf-8') as f:
         lines = f.readlines()
 
+    # Start with a Markdown header and introductory documentation block
     documentation = ["""<!-- markdownlint-disable MD033 -->
 # Pi-hole FTL Configuration Reference
 
@@ -37,30 +47,34 @@ sudo pihole-FTL --config dns.dnssec=true
 ---
 <!-- markdownlint-disable-file MD034 -->
 """]
-    section_stack = []
-    comment_buffer = []
-    in_config = False
+    section_stack = []      # Tracks the current TOML section(s)
+    comment_buffer = []     # Collects comments preceding a key
+    in_config = False       # True after the first section header
 
     for line in lines:
         stripped = line.strip()
 
+        # Section header: [section]
         if re.match(r'^\[.*\]$', stripped):
             in_config = True
             section_stack = [stripped.strip('[]')]
             documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
+        # Array of tables: [[section]]
         elif re.match(r'^\[\[.*\]\]$', stripped):
             in_config = True
             section_stack = [stripped.strip('[]')]
             documentation.append(f"## [{'.'.join(section_stack)}]\n")
             continue
 
+        # Comment line
         elif stripped.startswith('#'):
             if in_config:
                 comment_buffer.append(stripped.lstrip('#').strip())
             continue
 
+        # Key-value line inside a section
         elif '=' in stripped and in_config:
             key, value = map(str.strip, stripped.split('=', 1))
             documentation.append(f"### `{key}`\n")
@@ -69,6 +83,7 @@ sudo pihole-FTL --config dns.dnssec=true
                 table_rows = []
                 in_table = False
                 i = 0
+                # Process each comment line for formatting and tables
                 while i < len(comment_buffer):
                     line = comment_buffer[i]
 
@@ -83,15 +98,18 @@ sudo pihole-FTL --config dns.dnssec=true
                     is_bullet = line.lstrip().startswith("- ")
                     next_line = comment_buffer[i + 1] if i + 1 < len(comment_buffer) else ""
 
+                    # Bold for "Possible values are:"
                     if line.lower().startswith("possible values are:"):
                         adjusted_comments.append(f"**{line}**\n")
                         i += 1
                         continue
 
+                    # Table row for bullet points with quoted values
                     if is_bullet and re.match(r'-\s+\".*\"', line):
                         value_part = re.search(r'\"(.*?)\"', line).group(1)
                         description_lines = []
                         j = i + 1
+                        # Collect description lines for this value
                         while j < len(comment_buffer) and not comment_buffer[j].lstrip().startswith("- "):
                             description_lines.append(comment_buffer[j].strip())
                             j += 1
@@ -100,6 +118,7 @@ sudo pihole-FTL --config dns.dnssec=true
                         in_table = True
                         continue
 
+                    # Regular bullet points
                     if is_bullet:
                         if len(adjusted_comments) > 0 and adjusted_comments[-1].strip() != "":
                             adjusted_comments.append("")  # blank line before
@@ -109,10 +128,11 @@ sudo pihole-FTL --config dns.dnssec=true
                         i += 1
                         continue
 
-
+                    # Regular comment line
                     adjusted_comments.append(line)
                     i += 1
 
+                # If a table was detected, render it as HTML
                 if in_table:
                     adjusted_comments.append("")
                     adjusted_comments.append("<table>")
@@ -127,23 +147,24 @@ sudo pihole-FTL --config dns.dnssec=true
                 documentation.append("")  # spacer after comment block
             documentation.append(f"**Default value:** `{value}`\n")
 
+            # Compose full key for CLI/env var examples
             full_key = ".".join(section_stack + [key])
             env_var = "FTLCONF_" + "_".join(section_stack + [key])
 
-            # --- TOML tab ---
+            # TOML example tab
             documentation.append(f"=== \"TOML\"")
             documentation.append("    ```toml")
             documentation.append(f"    [{'.'.join(section_stack)}]")
             documentation.append(f"      {key} = {value}")
             documentation.append("    ```")
 
-            # --- CLI tab ---
+            # CLI example tab
             documentation.append(f"=== \"CLI\"")
             documentation.append("    ```shell")
             documentation.append(f"    sudo pihole-FTL --config {full_key}={value}")
             documentation.append("    ```")
 
-            # --- Environment tab (YAML style for docker-compose) ---
+            # Environment variable example tab (for Docker Compose)
             documentation.append(f"=== \"Environment (Docker Compose)\"")
             documentation.append("    ```yaml")
             documentation.append("    environment:")
@@ -155,12 +176,20 @@ sudo pihole-FTL --config dns.dnssec=true
     return "\n".join(documentation)
 
 def write_markdown_doc(input_toml_path, output_md_path):
+    """
+    Generate Markdown documentation from a TOML file and write it to a file.
+
+    Args:
+        input_toml_path (str or Path): Path to the input TOML file.
+        output_md_path (str or Path): Path to the output Markdown file.
+    """
     markdown = parse_toml_with_comments(input_toml_path)
     Path(output_md_path).write_text(markdown, encoding='utf-8')
     print(f"Documentation written to {output_md_path}")
 
 if __name__ == "__main__":
     import sys
+    # Expect exactly two arguments: input TOML and output Markdown
     if len(sys.argv) != 3:
         print("Usage: python pihole_toml_to_markdown.py <input.toml> <output.md>")
         sys.exit(1)
