@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.0.4-75-gc53cf00b)
+# Pi-hole configuration file (v6.2.3-16-g7eb5c0bb-dirty)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-03-27 11:04:20 UTC
+# Last updated on 2025-06-19 18:31:11 UTC
 
 [dns]
   # Array of upstream DNS servers used by Pi-hole
@@ -107,6 +107,14 @@
   # If set, A and AAAA queries for plain names, without dots or domain parts, are never
   # forwarded to upstream nameservers
   domainNeeded = false
+
+  # If set, the domain is considered local and queries for this domain are never
+  # forwarded upstream unless a dns.revServer is configured for this domain.
+  # If unset, queries for this domain are forwarded upstream to (possibly public) server
+  # which is probably not what you want *unless* you have added extra configuration for
+  # this domain *or* your upstream servers are able to handle local domains (e.g.,
+  # router).
+  domainLocal = true
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
   # same way as for DHCP-derived names
@@ -1206,7 +1214,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 156 total entries out of which 99 entries are default
+# 157 total entries out of which 100 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
