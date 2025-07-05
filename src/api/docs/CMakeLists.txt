@@ -14,8 +14,6 @@ set(sources
         hex/pi-hole_js.h
         hex/external/rapidoc-min_js.h
         hex/external/rapidoc-min_js_map.h
-        hex/external/highlight_min_js.h
-        hex/external/highlight-default_min_css.h
         hex/images/logo_svg.h
         hex/images/favicon_ico.h
         hex/specs/action_yaml.h
