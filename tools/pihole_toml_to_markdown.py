@@ -106,9 +106,9 @@ sudo pihole-FTL --config dns.dnssec=true
                         i += 1
                         continue
 
-                    # Table row for bullet points with quoted values
-                    if is_bullet and re.match(r'-\s+\".*\"', line):
-                        value_part = re.search(r'\"(.*?)\"', line).group(1)
+                    # Table row for bullet points with quoted values or integer values
+                    if is_bullet and (re.match(r'-\s+\".*\"', line) or re.match(r'-\s+\d$', line)):
+                        value_part = re.search(r'\"(.*?)\"|(\d)', line).group(1)
                         description_lines = []
                         j = i + 1
                         # Collect description lines for this value
