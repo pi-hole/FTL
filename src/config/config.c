@@ -543,7 +543,7 @@ static void initConfig(struct config *conf)
 	conf->dns.interface.c = validate_stub; // Type-based checking + dnsmasq syntax checking
 	
 	conf->dns.hostRecord.k = "dns.hostRecord";
-	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singluar name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
+	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]");
 	conf->dns.hostRecord.t = CONF_STRING;
 	conf->dns.hostRecord.f = FLAG_RESTART_FTL;
