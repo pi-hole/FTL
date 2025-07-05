@@ -253,7 +253,7 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned int width, const unsigned int indent)
 {
 	print_comment(fp, "", "", 85, indent);
-	print_comment(fp, "", "Possible values are:", 85, indent);
+	print_comment(fp, "", "Allowed values are:", 85, indent);
 	if(cJSON_IsArray(allowed_values))
 	{
 		// Loop over array items
