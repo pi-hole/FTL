@@ -21,8 +21,6 @@
 #include "hex/pi-hole_js.h"
 #include "hex/external/rapidoc-min_js.h"
 #include "hex/external/rapidoc-min_js_map.h"
-#include "hex/external/highlight-default_min_css.h"
-#include "hex/external/highlight_min_js.h"
 #include "hex/images/logo_svg.h"
 #include "hex/images/favicon_ico.h"
 #include "hex/specs/auth_yaml.h"
@@ -59,8 +57,6 @@ struct {
     {"pi-hole.js", "application/javascript", (const char*)pi_hole_js, pi_hole_js_len},
     {"external/rapidoc-min.js", "application/javascript", (const char*)external_rapidoc_min_js, external_rapidoc_min_js_len},
     {"external/rapidoc-min.js.map", "text/plain", (const char*)external_rapidoc_min_js_map, external_rapidoc_min_js_map_len},
-    {"external/highlight-default.min.css", "text/css", (const char*)external_highlight_default_min_css, external_highlight_default_min_css_len},
-    {"external/highlight.min.js", "application/javascript", (const char*)external_highlight_min_js, external_highlight_min_js_len},
     {"images/logo.svg", "image/svg+xml", (const char*)images_logo_svg, images_logo_svg_len},
     {"images/favicon.ico", "image/ico", (const char*)images_favicon_ico, images_favicon_ico_len},
     {"specs/auth.yaml", "text/plain", (const char*)specs_auth_yaml, specs_auth_yaml_len},
