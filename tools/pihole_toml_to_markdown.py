@@ -91,9 +91,11 @@ sudo pihole-FTL --config dns.dnssec=true
                     line = re.sub(r'\b(_[a-zA-Z0-9.-]+)', r'`\1`', line)
                     line = re.sub(r'\*\.[a-zA-Z0-9]+', lambda m: f"`{m.group(0)}`", line)
 
-                    # Avoid MD052 by backticking ambiguous bracket patterns
-                    if line.count("[") >= 2 and line.count("]") >= 2 and "](" not in line:
-                        line = f"`{line}`"
+                    # Avoid MD052 by escaping opening brackets
+                    line = line.replace("[", "\[")
+
+                    # Escape angle brackets
+                    line = line.replace("<", "&lt;").replace(">", "&gt;")
 
                     is_bullet = line.lstrip().startswith("- ")
                     next_line = comment_buffer[i + 1] if i + 1 < len(comment_buffer) else ""
