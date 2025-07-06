@@ -269,3 +269,25 @@ jobs:
         with:
           files: |
             ftl_builds/*
+      -
+        name: Pull docs repository to update configuation page from pihole.toml        
+        #if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        run: |
+          git clone https://github.com/pi-hole/docs.git docs-repo
+          python3 tools/pihole_toml_to_markdown.py ftl_builds/pihole.toml docs-repo/docs/ftldns/configfile.md          
+      -
+        name: Create Pull Request to pi-hole/docs
+        #if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.PRALOR_PULL_REQUESTS }}
+          commit-message: "docs: update pihole.toml documentation"
+          title: "Update pihole.toml documentation"
+          body: "Automated PR to update pihole.toml documentation from FTL build."
+          branch: update-pihole-toml-docs
+          base: master
+          path: docs-repo
+          add-paths: |
+            docs/ftldns/configfile.md
