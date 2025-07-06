@@ -2276,64 +2276,61 @@ int relay_reply6(struct sockaddr_in6 *peer, ssize_t sz, char *arrival_interface)
     {
       void *opt, *opts = inbuff + 34;
       void *end = inbuff + sz;
-      for (opt = opts; opt; opt = opt6_next(opt, end))
-	if (opt6_type(opt) == OPTION6_RELAY_MSG && opt6_len(opt) > 0)
-	  {
-	    int encap_type = *((unsigned char *)opt6_ptr(opt, 0));
-	    put_opt6(opt6_ptr(opt, 0), opt6_len(opt));
-	    memcpy(&peer->sin6_addr, &inbuff[18], IN6ADDRSZ); 
-	    peer->sin6_scope_id = relay->iface_index;
-
-	    if (encap_type == DHCP6RELAYREPL)
-	      {
-		peer->sin6_port = ntohs(DHCPV6_SERVER_PORT);
-		return 1;
-	      }
-
-	    peer->sin6_port = ntohs(DHCPV6_CLIENT_PORT);
-	    
-#ifdef HAVE_SCRIPT
-	    if (daemon->lease_change_command && encap_type == DHCP6REPLY)
-	      {
-		/* decapsulate relayed message */
-		opts = opt6_ptr(opt, 4);
-		end = opt6_ptr(opt, opt6_len(opt));
-
-		for (opt = opts; opt; opt = opt6_next(opt, end))
-		  if (opt6_type(opt) == OPTION6_IA_PD && opt6_len(opt) > 12) 
-		    {
-		      void *ia_opts = opt6_ptr(opt, 12);
-		      void *ia_end = opt6_ptr(opt, opt6_len(opt));
-		      void *ia_opt;
-		      
-		      for (ia_opt = ia_opts; ia_opt; ia_opt = opt6_next(ia_opt, ia_end))
-			/* valid lifetime must not be zero. */
-			if (opt6_type(ia_opt) == OPTION6_IAPREFIX && opt6_len(ia_opt) >= 25 && opt6_uint(ia_opt, 4, 4) != 0)
-			  {
-			    if (daemon->free_snoops ||
-				(daemon->free_snoops = whine_malloc(sizeof(struct snoop_record))))
-			      {
-				struct snoop_record *snoop = daemon->free_snoops;
-				
-				daemon->free_snoops = snoop->next;
-				snoop->client = peer->sin6_addr;
-				snoop->prefix_len = opt6_uint(ia_opt, 8, 1); 
-				memcpy(&snoop->prefix, opt6_ptr(ia_opt, 9), IN6ADDRSZ); 
-				snoop->next = relay->snoop_records;
-				relay->snoop_records = snoop;
-			      }
-			  }
-		    }
-	      }
-#endif		
-	    return 1;
-	  }
       
+      if ((opt = opt6_find(opts, end, OPTION6_RELAY_MSG, 4)))
+	{
+	  int encap_type = opt6_uint(opt, 0, 1);
+	  put_opt6(opt6_ptr(opt, 0), opt6_len(opt));
+	  memcpy(&peer->sin6_addr, &inbuff[18], IN6ADDRSZ); 
+	  peer->sin6_scope_id = relay->iface_index;
+
+	  if (encap_type == DHCP6RELAYREPL)
+	    {
+	      peer->sin6_port = ntohs(DHCPV6_SERVER_PORT);
+	      return 1;
+	    }
+	  
+	  peer->sin6_port = ntohs(DHCPV6_CLIENT_PORT);
+	  
+#ifdef HAVE_SCRIPT
+	  if (daemon->lease_change_command && encap_type == DHCP6REPLY)
+	    {
+	      /* skip over message type and transaction-id. to get to options. */
+	      opts = opt6_ptr(opt, 4);
+	      end = opt6_ptr(opt, opt6_len(opt));
+
+	      if ((opt = opt6_find(opts, end, OPTION6_IA_PD, 12)))
+		{
+		  opts = opt6_ptr(opt, 12);
+		  end = opt6_ptr(opt, opt6_len(opt));
+		  
+		  for (opt = opt6_find(opts, end, OPTION6_IAPREFIX, 25); opt; opt = opt6_find(opt6_next(opt, end), end, OPTION6_IAPREFIX, 25))
+		    /* valid lifetime must not be zero. */
+		    if (opt6_uint(opt, 4, 4) != 0)
+		      {
+			if (daemon->free_snoops ||
+			    (daemon->free_snoops = whine_malloc(sizeof(struct snoop_record))))
+			  {
+			    struct snoop_record *snoop = daemon->free_snoops;
+			    
+			    daemon->free_snoops = snoop->next;
+			    snoop->client = peer->sin6_addr;
+			    snoop->prefix_len = opt6_uint(opt, 8, 1); 
+			    memcpy(&snoop->prefix, opt6_ptr(opt, 9), IN6ADDRSZ); 
+			    snoop->next = relay->snoop_records;
+			    relay->snoop_records = snoop;
+			  }
+		      }
+		}	      
+	    }
+#endif
+	  return 1;
+	}
     }
   
   return 0;
 }
-
+  
 #ifdef HAVE_SCRIPT
 int do_snoop_script_run(void)
 {
