@@ -64,7 +64,7 @@ sudo pihole-FTL --config dns.dnssec=true
             section_stack = [stripped.strip("[]")]
             documentation.append(f"\n## `[{'.'.join(section_stack)}]`\n")
             continue
-        
+
         # If we are in a config section, start buffering comments
         elif stripped.startswith("#"):
             if in_config:
@@ -86,7 +86,7 @@ sudo pihole-FTL --config dns.dnssec=true
 
             else:
                 value = value_lines[0]
-                
+
             documentation.append(f"### `{key}`\n")
 
             # Process the comments collected for this key
@@ -106,22 +106,22 @@ sudo pihole-FTL --config dns.dnssec=true
 
                     # Bold "Allowed values are:"
                     line = re.sub(
-                        r'(^|\s)(Allowed values are:)', 
-                        r'\1**Allowed values are:**', 
+                        r'(^|\s)(Allowed values are:)',
+                        r'\1**Allowed values are:**',
                         line
                     )
 
                     # Bold "Example:"
                     line = re.sub(
-                        r'(^|\s)(Example:)', 
-                        r'\1**Example:**', 
+                        r'(^|\s)(Example:)',
+                        r'\1**Example:**',
                         line
-                    )                   
+                    )
 
                     # Insert blank line before bullet if needed
                     if is_bullet and not prev_is_bullet and not prev_is_blank:
                         adjusted_comments.append("")
-                   
+
                     # Default: just append the line
                     adjusted_comments.append(line)
                     i += 1
@@ -161,7 +161,7 @@ sudo pihole-FTL --config dns.dnssec=true
             if "\n" in value and value.strip().startswith("["):
                 # Flatten multi-line array to single line for CLI
                 array_str = "".join(value.split())
-                documentation.append(f"    sudo pihole-FTL --config {full_key}='{array_str}'")           
+                documentation.append(f"    sudo pihole-FTL --config {full_key}='{array_str}'")
             else:
                 documentation.append(f"    sudo pihole-FTL --config {full_key}={value}")
             documentation.append("    ```")
@@ -185,15 +185,15 @@ def wrap_examples_and_allowed_values(line):
     - Complete arrays: [ "example" ] -> `[ "example" ]`
     - Quoted strings: "example" -> `"example"`
     - Angle brackets: <example> -> `<example>`
-    
+
     Ensures no nested backticks appear within wrapped content.
     """
-   
+
     # Process other patterns
     result = ''
     i = 0
     in_backticks = False
-    
+
     while i < len(line):
         # Skip content already in backticks
         if in_backticks:
@@ -202,7 +202,7 @@ def wrap_examples_and_allowed_values(line):
             result += line[i]
             i += 1
             continue
-            
+
         # Look for patterns to wrap
         if line[i:i+1] == '"':
             # Find the matching closing quote
@@ -238,23 +238,23 @@ def wrap_examples_and_allowed_values(line):
                     bracket_count += 1
                 elif line[j] == ']':
                     bracket_count -= 1
-                if bracket_count == 0:                    
+                if bracket_count == 0:
                     break
-                j += 1                
+                j += 1
             if bracket_count == 0 and j < len(line):  # Found matching closing bracket
                 square_content = line[i:j+1]
                 result += f'`{square_content}`'
                 i = j + 1
                 in_backticks = False
-                
+
             else:  # No matching closing bracket found
                 result += line[i]
                 i += 1
-                
+
         else:
             result += line[i]
             i += 1
-            
+
     return result
 
 def write_markdown_doc(input_toml_path, output_md_path):
