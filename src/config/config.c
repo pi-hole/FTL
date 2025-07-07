@@ -407,42 +407,36 @@ static void initConfig(struct config *conf)
 
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
-	conf->dns.CNAMEdeepInspect.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.CNAMEdeepInspect.t = CONF_BOOL;
 	conf->dns.CNAMEdeepInspect.d.b = true;
 	conf->dns.CNAMEdeepInspect.c = validate_stub; // Only type-based checking
 
 	conf->dns.blockESNI.k = "dns.blockESNI";
 	conf->dns.blockESNI.h = "Should _esni. subdomains be blocked by default? Encrypted Server Name Indication (ESNI) is certainly a good step into the right direction to enhance privacy on the web. It prevents on-path observers, including ISPs, coffee shop owners and firewalls, from intercepting the TLS Server Name Indication (SNI) extension by encrypting it. This prevents the SNI from being used to determine which websites users are visiting.\n\n ESNI will obviously cause issues for pixelserv-tls which will be unable to generate matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox are already enabling ESNI. According to the IEFT draft (link above), we can easily restore piselserv-tls's operation by replying NXDOMAIN to _esni. subdomains of blocked domains as this mimics a \"not configured for this domain\" behavior.";
-	conf->dns.blockESNI.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.blockESNI.t = CONF_BOOL;
 	conf->dns.blockESNI.d.b = true;
 	conf->dns.blockESNI.c = validate_stub; // Only type-based checking
 
 	conf->dns.EDNS0ECS.k = "dns.EDNS0ECS";
 	conf->dns.EDNS0ECS.h = "Should we overwrite the query source when client information is provided through EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even if they are hidden behind the NAT of a router. This feature has been requested and discussed on Discourse where further information how to use it can be found: https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940";
-	conf->dns.EDNS0ECS.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.EDNS0ECS.t = CONF_BOOL;
 	conf->dns.EDNS0ECS.d.b = true;
 	conf->dns.EDNS0ECS.c = validate_stub; // Only type-based checking
 
 	conf->dns.ignoreLocalhost.k = "dns.ignoreLocalhost";
 	conf->dns.ignoreLocalhost.h = "Should FTL hide queries made by localhost?";
-	conf->dns.ignoreLocalhost.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.ignoreLocalhost.t = CONF_BOOL;
 	conf->dns.ignoreLocalhost.d.b = false;
 	conf->dns.ignoreLocalhost.c = validate_stub; // Only type-based checking
 
 	conf->dns.showDNSSEC.k = "dns.showDNSSEC";
 	conf->dns.showDNSSEC.h = "Should FTL analyze and show internally generated DNSSEC queries?";
-	conf->dns.showDNSSEC.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.showDNSSEC.t = CONF_BOOL;
 	conf->dns.showDNSSEC.d.b = true;
 	conf->dns.showDNSSEC.c = validate_stub; // Only type-based checking
 
 	conf->dns.analyzeOnlyAandAAAA.k = "dns.analyzeOnlyAandAAAA";
 	conf->dns.analyzeOnlyAandAAAA.h = "Should FTL analyze *only* A and AAAA queries?";
-	conf->dns.analyzeOnlyAandAAAA.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.analyzeOnlyAandAAAA.t = CONF_BOOL;
 	conf->dns.analyzeOnlyAandAAAA.d.b = false;
 	conf->dns.analyzeOnlyAandAAAA.c = validate_stub; // Only type-based checking
@@ -496,7 +490,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
 	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
-	conf->dns.domainNeeded.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.domainNeeded.t = CONF_BOOL;
 	conf->dns.domainNeeded.f = FLAG_RESTART_FTL;
 	conf->dns.domainNeeded.d.b = false;
@@ -504,7 +497,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.expandHosts.k = "dns.expandHosts";
 	conf->dns.expandHosts.h = "If set, the domain is added to simple names (without a period) in /etc/hosts in the same way as for DHCP-derived names";
-	conf->dns.expandHosts.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.expandHosts.t = CONF_BOOL;
 	conf->dns.expandHosts.f = FLAG_RESTART_FTL;
 	conf->dns.expandHosts.d.b = false;
@@ -520,7 +512,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
-	conf->dns.bogusPriv.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.bogusPriv.t = CONF_BOOL;
 	conf->dns.bogusPriv.f = FLAG_RESTART_FTL;
 	conf->dns.bogusPriv.d.b = true;
@@ -528,7 +519,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.dnssec.k = "dns.dnssec";
 	conf->dns.dnssec.h = "Validate DNS replies using DNSSEC?";
-	conf->dns.dnssec.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.dnssec.t = CONF_BOOL;
 	conf->dns.dnssec.f = FLAG_RESTART_FTL;
 	conf->dns.dnssec.c = validate_stub; // Only type-based checking
@@ -570,7 +560,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.queryLogging.k = "dns.queryLogging";
 	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log";
-	conf->dns.queryLogging.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.queryLogging.t = CONF_BOOL;
 	conf->dns.queryLogging.f = FLAG_RESTART_FTL;
 	conf->dns.queryLogging.d.b = true;
@@ -594,7 +583,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.localise.k = "dns.localise";
 	conf->dns.localise.h = "Enable/Disable the localise-queries option of dnsmasq. When this setting is disabled dnsmasq will return all possible values for local DNS Records. Enabled by default";
-	conf->dns.localise.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.localise.t = CONF_BOOL;
 	conf->dns.localise.f = FLAG_RESTART_FTL;
 	conf->dns.localise.d.b = true;
@@ -635,7 +623,6 @@ static void initConfig(struct config *conf)
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
-	conf->dns.blocking.active.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.blocking.active.t = CONF_BOOL;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
@@ -675,21 +662,18 @@ static void initConfig(struct config *conf)
 	// sub-struct dns.special_domains
 	conf->dns.specialDomains.mozillaCanary.k = "dns.specialDomains.mozillaCanary";
 	conf->dns.specialDomains.mozillaCanary.h = "Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of use-application-dns.net to disable Firefox automatic DNS-over-HTTP?\n\n This follows the recommendation on https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https";
-	conf->dns.specialDomains.mozillaCanary.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.specialDomains.mozillaCanary.t = CONF_BOOL;
 	conf->dns.specialDomains.mozillaCanary.d.b = true;
 	conf->dns.specialDomains.mozillaCanary.c = validate_stub; // Only type-based checking
 
 	conf->dns.specialDomains.iCloudPrivateRelay.k = "dns.specialDomains.iCloudPrivateRelay";
 	conf->dns.specialDomains.iCloudPrivateRelay.h = "Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of mask.icloud.com and mask-h2.icloud.com to disable Apple's iCloud Private Relay to prevent Apple devices from bypassing Pi-hole?\n\n This follows the recommendation on https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay";
-	conf->dns.specialDomains.iCloudPrivateRelay.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.specialDomains.iCloudPrivateRelay.t = CONF_BOOL;
 	conf->dns.specialDomains.iCloudPrivateRelay.d.b = true;
 	conf->dns.specialDomains.iCloudPrivateRelay.c = validate_stub; // Only type-based checking
 
 	conf->dns.specialDomains.designatedResolver.k = "dns.specialDomains.designatedResolver";
 	conf->dns.specialDomains.designatedResolver.h = "Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers?\n\n This is based on recommendations at the end of RFC 9462, section 4.";
-	conf->dns.specialDomains.designatedResolver.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.specialDomains.designatedResolver.t = CONF_BOOL;
 	conf->dns.specialDomains.designatedResolver.d.b = true;
 	conf->dns.specialDomains.designatedResolver.c = validate_stub; // Only type-based checking
@@ -697,7 +681,6 @@ static void initConfig(struct config *conf)
 	// sub-struct dns.reply_addr
 	conf->dns.reply.host.force4.k = "dns.reply.host.force4";
 	conf->dns.reply.host.force4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client.\n\n This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names:\n - \"pi.hole\"\n - \"<the device's hostname>\"\n - \"pi.hole.<local domain>\"\n - \"<the device's hostname>.<local domain>\"";
-	conf->dns.reply.host.force4.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.reply.host.force4.t = CONF_BOOL;
 	conf->dns.reply.host.force4.d.b = false;
 	conf->dns.reply.host.force4.c = validate_stub; // Only type-based checking
@@ -711,7 +694,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.reply.host.force6.k = "dns.reply.host.force6";
 	conf->dns.reply.host.force6.h = "Use a specific IPv6 address for the Pi-hole host? See description for the IPv4 variant above for further details.";
-	conf->dns.reply.host.force6.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.reply.host.force6.t = CONF_BOOL;
 	conf->dns.reply.host.force6.d.b = false;
 	conf->dns.reply.host.force6.c = validate_stub; // Only type-based checking
@@ -726,7 +708,6 @@ static void initConfig(struct config *conf)
 	// sub-struct dns.reply.blocking
 	conf->dns.reply.blocking.force4.k = "dns.reply.blocking.force4";
 	conf->dns.reply.blocking.force4.h = "Use a specific IPv4 address in IP blocking mode? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client.\n\n This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds in the following cases:\n - IP blocking mode is used and this query is to be blocked\n - regular expressions with the ;reply=IP regex extension.";
-	conf->dns.reply.blocking.force4.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.reply.blocking.force4.t = CONF_BOOL;
 	conf->dns.reply.blocking.force4.d.b = false;
 	conf->dns.reply.blocking.force4.c = validate_stub; // Only type-based checking
@@ -740,7 +721,6 @@ static void initConfig(struct config *conf)
 
 	conf->dns.reply.blocking.force6.k = "dns.reply.blocking.force6";
 	conf->dns.reply.blocking.force6.h = "Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant above for further details.";
-	conf->dns.reply.blocking.force6.a = cJSON_CreateStringReference("<true|false>");
 	conf->dns.reply.blocking.force6.t = CONF_BOOL;
 	conf->dns.reply.blocking.force6.d.b = false;
 	conf->dns.reply.blocking.force6.c = validate_stub; // Only type-based checking
@@ -770,7 +750,6 @@ static void initConfig(struct config *conf)
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";
 	conf->dhcp.active.h = "Is the embedded DHCP server enabled?";
-	conf->dhcp.active.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.active.t = CONF_BOOL;
 	conf->dhcp.active.f = FLAG_RESTART_FTL;
 	conf->dhcp.active.d.b = false;
@@ -818,7 +797,6 @@ static void initConfig(struct config *conf)
 
 	conf->dhcp.ipv6.k = "dhcp.ipv6";
 	conf->dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
-	conf->dhcp.ipv6.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.ipv6.t = CONF_BOOL;
 	conf->dhcp.ipv6.f = FLAG_RESTART_FTL;
 	conf->dhcp.ipv6.d.b = false;
@@ -826,7 +804,6 @@ static void initConfig(struct config *conf)
 
 	conf->dhcp.multiDNS.k = "dhcp.multiDNS";
 	conf->dhcp.multiDNS.h = "Advertise DNS server multiple times to clients. Some devices will add their own proprietary DNS servers to the list of DNS servers, which can cause issues with Pi-hole. This option will advertise the Pi-hole DNS server multiple times to clients, which should prevent this from happening.";
-	conf->dhcp.multiDNS.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.multiDNS.t = CONF_BOOL;
 	conf->dhcp.multiDNS.f = FLAG_RESTART_FTL;
 	conf->dhcp.multiDNS.d.b = false;
@@ -834,7 +811,6 @@ static void initConfig(struct config *conf)
 
 	conf->dhcp.rapidCommit.k = "dhcp.rapidCommit";
 	conf->dhcp.rapidCommit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
-	conf->dhcp.rapidCommit.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.rapidCommit.t = CONF_BOOL;
 	conf->dhcp.rapidCommit.f = FLAG_RESTART_FTL;
 	conf->dhcp.rapidCommit.d.b = false;
@@ -842,7 +818,6 @@ static void initConfig(struct config *conf)
 
 	conf->dhcp.logging.k = "dhcp.logging";
 	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below.";
-	conf->dhcp.logging.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.logging.t = CONF_BOOL;
 	conf->dhcp.logging.f = FLAG_RESTART_FTL;
 	conf->dhcp.logging.d.b = false;
@@ -850,7 +825,6 @@ static void initConfig(struct config *conf)
 
 	conf->dhcp.ignoreUnknownClients.k = "dhcp.ignoreUnknownClients";
 	conf->dhcp.ignoreUnknownClients.h = "Ignore unknown DHCP clients.\n If this option is set, Pi-hole ignores all clients which are not explicitly configured through dhcp.hosts. This can be useful to prevent unauthorized clients from getting an IP address from the DHCP server.\n\n It should be noted that this option is not a security feature, as clients can still assign themselves an IP address and use the network. It is merely a convenience feature to prevent unknown clients from getting a valid IP configuration assigned automatically.\n\n Note that you will need to configure new clients manually in dhcp.hosts before they can use the network when this feature is enabled.";
-	conf->dhcp.ignoreUnknownClients.a = cJSON_CreateStringReference("<true|false>");
 	conf->dhcp.ignoreUnknownClients.t = CONF_BOOL;
 	conf->dhcp.ignoreUnknownClients.f = FLAG_RESTART_FTL;
 	conf->dhcp.ignoreUnknownClients.d.b = false;
@@ -868,7 +842,6 @@ static void initConfig(struct config *conf)
 	// struct ntp
 	conf->ntp.ipv4.active.k = "ntp.ipv4.active";
 	conf->ntp.ipv4.active.h = "Should FTL act as network time protocol (NTP) server (IPv4)?";
-	conf->ntp.ipv4.active.a = cJSON_CreateStringReference("<true|false>");
 	conf->ntp.ipv4.active.t = CONF_BOOL;
 	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL;
 	conf->ntp.ipv4.active.d.b = true;
@@ -884,7 +857,6 @@ static void initConfig(struct config *conf)
 
 	conf->ntp.ipv6.active.k = "ntp.ipv6.active";
 	conf->ntp.ipv6.active.h = "Should FTL act as network time protocol (NTP) server (IPv6)?";
-	conf->ntp.ipv6.active.a = cJSON_CreateStringReference("<true|false>");
 	conf->ntp.ipv6.active.t = CONF_BOOL;
 	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL;
 	conf->ntp.ipv6.active.d.b = true;
@@ -900,7 +872,6 @@ static void initConfig(struct config *conf)
 
 	conf->ntp.sync.active.k = "ntp.sync.active";
 	conf->ntp.sync.active.h = "Should FTL try to synchronize the system time with an upstream NTP server?";
-	conf->ntp.sync.active.a = cJSON_CreateStringReference("<true|false>");
 	conf->ntp.sync.active.t = CONF_BOOL;
 	conf->ntp.sync.active.f = FLAG_RESTART_FTL;
 	conf->ntp.sync.active.d.b = true;
@@ -929,7 +900,6 @@ static void initConfig(struct config *conf)
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
-	conf->ntp.sync.rtc.set.a = cJSON_CreateStringReference("<true|false>");
 	conf->ntp.sync.rtc.set.t = CONF_BOOL;
 	conf->ntp.sync.rtc.set.d.b = false;
 	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
@@ -943,7 +913,6 @@ static void initConfig(struct config *conf)
 
 	conf->ntp.sync.rtc.utc.k = "ntp.sync.rtc.utc";
 	conf->ntp.sync.rtc.utc.h = "Should the RTC be set to UTC?";
-	conf->ntp.sync.rtc.utc.a = cJSON_CreateStringReference("<true|false>");
 	conf->ntp.sync.rtc.utc.t = CONF_BOOL;
 	conf->ntp.sync.rtc.utc.d.b = true;
 	conf->ntp.sync.rtc.utc.c = validate_stub; // Only type-based checking
@@ -952,21 +921,18 @@ static void initConfig(struct config *conf)
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";
 	conf->resolver.resolveIPv6.h = "Should FTL try to resolve IPv6 addresses to hostnames?";
-	conf->resolver.resolveIPv6.a = cJSON_CreateStringReference("<true|false>");
 	conf->resolver.resolveIPv6.t = CONF_BOOL;
 	conf->resolver.resolveIPv6.d.b = true;
 	conf->resolver.resolveIPv6.c = validate_stub; // Only type-based checking
 
 	conf->resolver.resolveIPv4.k = "resolver.resolveIPv4";
 	conf->resolver.resolveIPv4.h = "Should FTL try to resolve IPv4 addresses to hostnames?";
-	conf->resolver.resolveIPv4.a = cJSON_CreateStringReference("<true|false>");
 	conf->resolver.resolveIPv4.t = CONF_BOOL;
 	conf->resolver.resolveIPv4.d.b = true;
 	conf->resolver.resolveIPv4.c = validate_stub; // Only type-based checking
 
 	conf->resolver.networkNames.k = "resolver.networkNames";
 	conf->resolver.networkNames.h = "Control whether FTL should use the fallback option to try to obtain client names from checking the network table. This behavior can be disabled with this option.\n\n Assume an IPv6 client without a host names. However, the network table knows - though the client's MAC address - that this is the same device where we have a host name for another IP address (e.g., a DHCP server managed IPv4 address). In this case, we use the host name associated to the other address as this is the same device.";
-	conf->resolver.networkNames.a = cJSON_CreateStringReference("<true|false>");
 	conf->resolver.networkNames.t = CONF_BOOL;
 	conf->resolver.networkNames.d.b = true;
 	conf->resolver.networkNames.c = validate_stub; // Only type-based checking
@@ -991,7 +957,6 @@ static void initConfig(struct config *conf)
 	// struct database
 	conf->database.DBimport.k = "database.DBimport";
 	conf->database.DBimport.h = "Should FTL load information from the database on startup to be aware of the most recent history?";
-	conf->database.DBimport.a = cJSON_CreateStringReference("<true|false>");
 	conf->database.DBimport.t = CONF_BOOL;
 	conf->database.DBimport.d.b = true;
 	conf->database.DBimport.c = validate_stub; // Only type-based checking
@@ -1012,7 +977,6 @@ static void initConfig(struct config *conf)
 
 	conf->database.useWAL.k = "database.useWAL";
 	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
-	conf->database.useWAL.a = cJSON_CreateStringReference("<true|false>");
 	conf->database.useWAL.t = CONF_BOOL;
 	// Note: We would not necessarily need to restart FTL when this setting
 	// is changed, but we do it anyway as this ensures the database is
@@ -1032,7 +996,6 @@ static void initConfig(struct config *conf)
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
 	conf->database.network.parseARPcache.h = "Should FTL analyze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
-	conf->database.network.parseARPcache.a = cJSON_CreateStringReference("<true|false>");
 	conf->database.network.parseARPcache.t = CONF_BOOL;
 	conf->database.network.parseARPcache.d.b = true;
 	conf->database.network.parseARPcache.c = validate_stub; // Only type-based checking
@@ -1094,7 +1057,6 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.serve_all.k = "webserver.serve_all";
 	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory? If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
-	conf->webserver.serve_all.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.serve_all.t = CONF_BOOL;
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
@@ -1150,7 +1112,6 @@ static void initConfig(struct config *conf)
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
 	conf->webserver.interface.boxed.h = "Should the web interface use the boxed layout?";
-	conf->webserver.interface.boxed.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.interface.boxed.t = CONF_BOOL;
 	conf->webserver.interface.boxed.d.b = true;
 	conf->webserver.interface.boxed.c = validate_stub; // Only type-based checking
@@ -1181,7 +1142,6 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.api.prettyJSON.k = "webserver.api.prettyJSON";
 	conf->webserver.api.prettyJSON.h = "Should FTL prettify the API output (add extra spaces, newlines and indentation)?";
-	conf->webserver.api.prettyJSON.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.api.prettyJSON.t = CONF_BOOL;
 	conf->webserver.api.prettyJSON.d.b = false;
 	conf->webserver.api.prettyJSON.c = validate_stub; // Only type-based checking
@@ -1220,14 +1180,12 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.api.app_sudo.k = "webserver.api.app_sudo";
 	conf->webserver.api.app_sudo.h = "Should application password API sessions be allowed to modify config settings?\n\n Setting this to true allows third-party applications using the application password to modify settings, e.g., the upstream DNS servers, DHCP server settings, or changing passwords. This setting should only be enabled if really needed and only if you trust the applications using the application password.";
-	conf->webserver.api.app_sudo.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.api.app_sudo.t = CONF_BOOL;
 	conf->webserver.api.app_sudo.d.b = false;
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
 	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
-	conf->webserver.api.cli_pw.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.api.cli_pw.t = CONF_BOOL;
 	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL;
 	conf->webserver.api.cli_pw.d.b = true;
@@ -1264,14 +1222,12 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.api.client_history_global_max.k = "webserver.api.client_history_global_max";
 	conf->webserver.api.client_history_global_max.h = "How should the API compute the most active clients? If set to true, the API will return the clients with the most queries globally (within 24 hours). If set to false, the API will return the clients with the most queries per time slot individually.";
-	conf->webserver.api.client_history_global_max.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.api.client_history_global_max.t = CONF_BOOL;
 	conf->webserver.api.client_history_global_max.d.b = true;
 	conf->webserver.api.client_history_global_max.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. restart DNS server, flush logs, ...)";
-	conf->webserver.api.allow_destructive.a = cJSON_CreateStringReference("<true|false>");
 	conf->webserver.api.allow_destructive.t = CONF_BOOL;
 	conf->webserver.api.allow_destructive.d.b = true;
 	conf->webserver.api.allow_destructive.c = validate_stub; // Only type-based checking
@@ -1399,14 +1355,12 @@ static void initConfig(struct config *conf)
 
 	conf->misc.addr2line.k = "misc.addr2line";
 	conf->misc.addr2line.h = "Should FTL translate its own stack addresses into code lines during the bug backtrace? This improves the analysis of crashed significantly. It is recommended to leave the option enabled.\n\n This option should only be disabled when addr2line is known to not be working correctly on the machine because, in this case, the malfunctioning addr2line can prevent from generating any backtrace at all.";
-	conf->misc.addr2line.a = cJSON_CreateStringReference("<true|false>");
 	conf->misc.addr2line.t = CONF_BOOL;
 	conf->misc.addr2line.d.b = true;
 	conf->misc.addr2line.c = validate_stub; // Only type-based checking
 
 	conf->misc.etc_dnsmasq_d.k = "misc.etc_dnsmasq_d";
 	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?\n\n Warning: This is an advanced setting and should only be used with care.\n Incorrectly formatted or config files specifying options which can only be defined once can result in conflicts with the automatic configuration of Pi-hole (see "DNSMASQ_PH_CONFIG") and may stop DNS resolution from working.";
-	conf->misc.etc_dnsmasq_d.a = cJSON_CreateStringReference("<true|false>");
 	conf->misc.etc_dnsmasq_d.t = CONF_BOOL;
 	conf->misc.etc_dnsmasq_d.f = FLAG_RESTART_FTL;
 	conf->misc.etc_dnsmasq_d.d.b = false;
@@ -1422,7 +1376,6 @@ static void initConfig(struct config *conf)
 
 	conf->misc.extraLogging.k = "misc.extraLogging";
 	conf->misc.extraLogging.h = "Log additional information about queries and replies to pihole.log\n\n When this setting is enabled, the log has extra information at the start of each line. This consists of a serial number which ties together the log lines associated with an individual query, and the IP address of the requestor. This setting is only effective if dns.queryLogging is enabled, too. This option is only useful for debugging and is not recommended for normal use.";
-	conf->misc.extraLogging.a = cJSON_CreateStringReference("<true|false>");
 	conf->misc.extraLogging.t = CONF_BOOL;
 	conf->misc.extraLogging.f = FLAG_RESTART_FTL;
 	conf->misc.extraLogging.d.b = false;
@@ -1430,7 +1383,6 @@ static void initConfig(struct config *conf)
 
 	conf->misc.readOnly.k = "misc.readOnly";
 	conf->misc.readOnly.h = "Put configuration into read-only mode. This will prevent any changes to the configuration file via the API or CLI. This setting useful when a configuration is to be forced/modified by some third-party application (like infrastructure-as-code providers) and should not be changed by any means.";
-	conf->misc.readOnly.a = cJSON_CreateStringReference("<true|false>");
 	conf->misc.readOnly.t = CONF_BOOL;
 	conf->misc.readOnly.f = FLAG_READ_ONLY;
 	conf->misc.readOnly.d.b = false;
@@ -1439,7 +1391,6 @@ static void initConfig(struct config *conf)
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n\n This check can be disabled with this setting.";
-	conf->misc.check.load.a = cJSON_CreateStringReference("<true|false>");
 	conf->misc.check.load.t = CONF_BOOL;
 	conf->misc.check.load.d.b = true;
 	conf->misc.check.load.c = validate_stub; // Only type-based checking
@@ -1462,210 +1413,180 @@ static void initConfig(struct config *conf)
 	// struct debug
 	conf->debug.database.k = "debug.database";
 	conf->debug.database.h = "Print debugging information about database actions. This prints performed SQL statements as well as some general information such as the time it took to store the queries and how many have been saved to the database.";
-	conf->debug.database.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.database.t = CONF_BOOL;
 	conf->debug.database.d.b = false;
 	conf->debug.database.c = validate_stub; // Only type-based checking
 
 	conf->debug.networking.k = "debug.networking";
 	conf->debug.networking.h = "Prints a list of the detected interfaces on the startup of pihole-FTL. Also, prints whether these interfaces are IPv4 or IPv6 interfaces.";
-	conf->debug.networking.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.networking.t = CONF_BOOL;
 	conf->debug.networking.d.b = false;
 	conf->debug.networking.c = validate_stub; // Only type-based checking
 
 	conf->debug.locks.k = "debug.locks";
 	conf->debug.locks.h = "Print information about shared memory locks. Messages will be generated when waiting, obtaining, and releasing a lock.";
-	conf->debug.locks.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.locks.t = CONF_BOOL;
 	conf->debug.locks.d.b = false;
 	conf->debug.locks.c = validate_stub; // Only type-based checking
 
 	conf->debug.queries.k = "debug.queries";
 	conf->debug.queries.h = "Print extensive query information (domains, types, replies, etc.). This has always been part of the legacy debug mode of pihole-FTL.";
-	conf->debug.queries.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.queries.t = CONF_BOOL;
 	conf->debug.queries.d.b = false;
 	conf->debug.queries.c = validate_stub; // Only type-based checking
 
 	conf->debug.flags.k = "debug.flags";
 	conf->debug.flags.h = "Print flags of queries received by the DNS hooks. Only effective when DEBUG_QUERIES is enabled as well.";
-	conf->debug.flags.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.flags.t = CONF_BOOL;
 	conf->debug.flags.d.b = false;
 	conf->debug.flags.c = validate_stub; // Only type-based checking
 
 	conf->debug.shmem.k = "debug.shmem";
 	conf->debug.shmem.h = "Print information about shared memory buffers. Messages are either about creating or enlarging shmem objects or string injections.";
-	conf->debug.shmem.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.shmem.t = CONF_BOOL;
 	conf->debug.shmem.d.b = false;
 	conf->debug.shmem.c = validate_stub; // Only type-based checking
 
 	conf->debug.gc.k = "debug.gc";
 	conf->debug.gc.h = "Print information about garbage collection (GC): What is to be removed, how many have been removed and how long did GC take.";
-	conf->debug.gc.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.gc.t = CONF_BOOL;
 	conf->debug.gc.d.b = false;
 	conf->debug.gc.c = validate_stub; // Only type-based checking
 
 	conf->debug.arp.k = "debug.arp";
 	conf->debug.arp.h = "Print information about ARP table processing: How long did parsing take, whether read MAC addresses are valid, and if the macvendor.db file exists.";
-	conf->debug.arp.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.arp.t = CONF_BOOL;
 	conf->debug.arp.d.b = false;
 	conf->debug.arp.c = validate_stub; // Only type-based checking
 
 	conf->debug.regex.k = "debug.regex";
 	conf->debug.regex.h = "Controls if FTLDNS should print extended details about regex matching into FTL.log.";
-	conf->debug.regex.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.regex.t = CONF_BOOL;
 	conf->debug.regex.d.b = false;
 	conf->debug.regex.c = validate_stub; // Only type-based checking
 
 	conf->debug.api.k = "debug.api";
 	conf->debug.api.h = "Print extra debugging information concerning API calls. This includes the request, the request parameters, and the internal details about how the algorithms decide which data to present and in what form. This very verbose output should only be used when debugging specific API issues and can be helpful, e.g., when a client cannot connect due to an obscure API error. Furthermore, this setting enables logging of all API requests (auth log) and details about user authentication attempts.";
-	conf->debug.api.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.api.t = CONF_BOOL;
 	conf->debug.api.d.b = false;
 	conf->debug.api.c = validate_stub; // Only type-based checking
 
 	conf->debug.tls.k = "debug.tls";
 	conf->debug.tls.h = "Print extra debugging information about TLS connections. This includes the TLS version, the cipher suite, the certificate chain and much more. This very verbose output should only be used when debugging specific TLS issues and can be helpful, e.g., when a client cannot connect due to an obscure TLS error as modern browsers do not provide much information about the underlying TLS connection and most often give only very generic error messages without much/any underlying technical information.";
-	conf->debug.tls.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.tls.t = CONF_BOOL;
 	conf->debug.tls.d.b = false;
 	conf->debug.tls.c = validate_stub; // Only type-based checking
 
 	conf->debug.overtime.k = "debug.overtime";
 	conf->debug.overtime.h = "Print information about overTime memory operations, such as initializing or moving overTime slots.";
-	conf->debug.overtime.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.overtime.t = CONF_BOOL;
 	conf->debug.overtime.d.b = false;
 	conf->debug.overtime.c = validate_stub; // Only type-based checking
 
 	conf->debug.status.k = "debug.status";
 	conf->debug.status.h = "Print information about status changes for individual queries. This can be useful to identify unexpected unknown queries.";
-	conf->debug.status.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.status.t = CONF_BOOL;
 	conf->debug.status.d.b = false;
 	conf->debug.status.c = validate_stub; // Only type-based checking
 
 	conf->debug.caps.k = "debug.caps";
 	conf->debug.caps.h = "Print information about capabilities granted to the pihole-FTL process. The current capabilities are printed on receipt of SIGHUP, i.e., the current set of capabilities can be queried without restarting pihole-FTL (by setting DEBUG_CAPS=true and thereafter sending killall -HUP pihole-FTL).";
-	conf->debug.caps.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.caps.t = CONF_BOOL;
 	conf->debug.caps.d.b = false;
 	conf->debug.caps.c = validate_stub; // Only type-based checking
 
 	conf->debug.dnssec.k = "debug.dnssec";
 	conf->debug.dnssec.h = "Print information about DNSSEC activity";
-	conf->debug.dnssec.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.dnssec.t = CONF_BOOL;
 	conf->debug.dnssec.d.b = false;
 	conf->debug.dnssec.c = validate_stub; // Only type-based checking
 
 	conf->debug.vectors.k = "debug.vectors";
 	conf->debug.vectors.h = "FTL uses dynamically allocated vectors for various tasks. This config option enables extensive debugging information such as information about allocation, referencing, deletion, and appending.";
-	conf->debug.vectors.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.vectors.t = CONF_BOOL;
 	conf->debug.vectors.d.b = false;
 	conf->debug.vectors.c = validate_stub; // Only type-based checking
 
 	conf->debug.resolver.k = "debug.resolver";
 	conf->debug.resolver.h = "Extensive information about hostname resolution like which DNS servers are used in the first and second hostname resolving tries (only affecting internally generated PTR queries).";
-	conf->debug.resolver.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.resolver.t = CONF_BOOL;
 	conf->debug.resolver.d.b = false;
 	conf->debug.resolver.c = validate_stub; // Only type-based checking
 
 	conf->debug.edns0.k = "debug.edns0";
 	conf->debug.edns0.h = "Print debugging information about received EDNS(0) data.";
-	conf->debug.edns0.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.edns0.t = CONF_BOOL;
 	conf->debug.edns0.d.b = false;
 	conf->debug.edns0.c = validate_stub; // Only type-based checking
 
 	conf->debug.clients.k = "debug.clients";
 	conf->debug.clients.h = "Log various important client events such as change of interface (e.g., client switching from WiFi to wired or VPN connection), as well as extensive reporting about how clients were assigned to its groups.";
-	conf->debug.clients.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.clients.t = CONF_BOOL;
 	conf->debug.clients.d.b = false;
 	conf->debug.clients.c = validate_stub; // Only type-based checking
 
 	conf->debug.aliasclients.k = "debug.aliasclients";
 	conf->debug.aliasclients.h = "Log information related to alias-client processing.";
-	conf->debug.aliasclients.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.aliasclients.t = CONF_BOOL;
 	conf->debug.aliasclients.d.b = false;
 	conf->debug.aliasclients.c = validate_stub; // Only type-based checking
 
 	conf->debug.events.k = "debug.events";
 	conf->debug.events.h = "Log information regarding FTL's embedded event handling queue.";
-	conf->debug.events.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.events.t = CONF_BOOL;
 	conf->debug.events.d.b = false;
 	conf->debug.events.c = validate_stub; // Only type-based checking
 
 	conf->debug.helper.k = "debug.helper";
 	conf->debug.helper.h = "Log information about script helpers, e.g., due to dhcp-script.";
-	conf->debug.helper.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.helper.t = CONF_BOOL;
 	conf->debug.helper.d.b = false;
 	conf->debug.helper.c = validate_stub; // Only type-based checking
 
 	conf->debug.config.k = "debug.config";
 	conf->debug.config.h = "Print config parsing details";
-	conf->debug.config.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.config.t = CONF_BOOL;
 	conf->debug.config.d.b = false;
 	conf->debug.config.c = validate_stub; // Only type-based checking
 
 	conf->debug.inotify.k = "debug.inotify";
 	conf->debug.inotify.h = "Debug monitoring of /etc/pihole filesystem events";
-	conf->debug.inotify.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.inotify.t = CONF_BOOL;
 	conf->debug.inotify.d.b = false;
 	conf->debug.inotify.c = validate_stub; // Only type-based checking
 
 	conf->debug.webserver.k = "debug.webserver";
 	conf->debug.webserver.h = "Debug monitoring of the webserver (CivetWeb) events";
-	conf->debug.webserver.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.webserver.t = CONF_BOOL;
 	conf->debug.webserver.d.b = false;
 	conf->debug.webserver.c = validate_stub; // Only type-based checking
 
 	conf->debug.extra.k = "debug.extra";
 	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
-	conf->debug.extra.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.extra.t = CONF_BOOL;
 	conf->debug.extra.d.b = false;
 	conf->debug.extra.c = validate_stub; // Only type-based checking
 
 	conf->debug.reserved.k = "debug.reserved";
 	conf->debug.reserved.h = "Reserved debug flag";
-	conf->debug.reserved.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.reserved.t = CONF_BOOL;
 	conf->debug.reserved.d.b = false;
 	conf->debug.reserved.c = validate_stub; // Only type-based checking
 
 	conf->debug.ntp.k = "debug.ntp";
 	conf->debug.ntp.h = "Print information about NTP synchronization";
-	conf->debug.ntp.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.ntp.t = CONF_BOOL;
 	conf->debug.ntp.d.b = false;
 	conf->debug.ntp.c = validate_stub; // Only type-based checking
 
 	conf->debug.netlink.k = "debug.netlink";
 	conf->debug.netlink.h = "Print information about netlink communication and parsing";
-	conf->debug.netlink.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.netlink.t = CONF_BOOL;
 	conf->debug.netlink.d.b = false;
 	conf->debug.netlink.c = validate_stub; // Only type-based checking
 
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
-	conf->debug.all.a = cJSON_CreateStringReference("<true|false>");
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;
 	conf->debug.all.d.b = false;
 	conf->debug.all.c = validate_stub; // Only type-based checking
@@ -1742,6 +1663,13 @@ static void initConfig(struct config *conf)
 			log_err("Config option %s has no validator function!", conf_item->k);
 			continue;
 		}
+
+		// If this is a boolean config option, and it has no allowed values - create a default
+		if(conf_item->t == CONF_BOOL && conf_item->a == NULL)
+		{
+			conf_item->a = cJSON_CreateStringReference("true or false");
+		}
+	
 	}
 }
 
