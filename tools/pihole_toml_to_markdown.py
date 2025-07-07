@@ -133,7 +133,7 @@ sudo pihole-FTL --config dns.dnssec=true
                 documentation.append("**Default value:**")
                 documentation.append("")
                 documentation.append("```toml")
-                documentation.append(f"{value}")
+                documentation.append(f"  {value}")
                 documentation.append("```")
                 documentation.append("")
             else:
@@ -149,7 +149,7 @@ sudo pihole-FTL --config dns.dnssec=true
             documentation.append(f"    [{'.'.join(section_stack)}]")
             # Indent multi-line values for TOML block
             if "\n" in value:
-                indented_value = "\n".join("      " + v for v in value.splitlines())
+                indented_value = "\n".join("    " + v for v in value.splitlines()).strip()
                 documentation.append(f"      {key} = {indented_value}")
             else:
                 documentation.append(f"      {key} = {value}")
@@ -172,7 +172,7 @@ sudo pihole-FTL --config dns.dnssec=true
             documentation.append("    environment:")
             yaml_value = value.replace('"',"'")
             if "\n" in yaml_value:
-                yaml_value = f"|\n        " + "\n        ".join(yaml_value.splitlines())
+                yaml_value = f"|\n        " + "\n      ".join(yaml_value.splitlines())
             documentation.append(f"      {env_var}: {yaml_value}")
             documentation.append("    ```\n")
             comment_buffer = []
