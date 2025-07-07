@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-47-gd26afc12-dirty) on branch new/docs_config_pr
+# Pi-hole configuration file (v6.2.3-47-g12f201b3-dirty) on branch new/docs_config_pr
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-06 22:38:03 UTC
+# Last updated on 2025-07-07 17:21:54 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -19,7 +19,7 @@
   # for very low-end devices
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   CNAMEdeepInspect = true
 
   # Should _esni. subdomains be blocked by default? Encrypted Server Name Indication
@@ -36,7 +36,7 @@
   # blocked domains as this mimics a "not configured for this domain" behavior.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   blockESNI = true
 
   # Should we overwrite the query source when client information is provided through
@@ -46,25 +46,25 @@
   # https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   EDNS0ECS = true
 
   # Should FTL hide queries made by localhost?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   ignoreLocalhost = false
 
   # Should FTL analyze and show internally generated DNSSEC queries?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   showDNSSEC = true
 
   # Should FTL analyze *only* A and AAAA queries?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   analyzeOnlyAandAAAA = false
 
   # Controls whether and how FTL will reply with for address for which a local interface
@@ -134,14 +134,14 @@
   # upstream nameservers
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   domainNeeded = false
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
   # same way as for DHCP-derived names
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   expandHosts = false
 
   # The DNS domain used by your Pi-hole.
@@ -175,13 +175,13 @@
   # rather than being forwarded upstream?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   bogusPriv = true
 
   # Validate DNS replies using DNSSEC?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   dnssec = true ### CHANGED, default = false
 
   # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
@@ -238,7 +238,7 @@
   # Log DNS queries and replies to pihole.log
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   queryLogging = true
 
   # List of CNAME records which indicate that <cname> is really <target>. If the <TTL> is
@@ -260,7 +260,7 @@
   # dnsmasq will return all possible values for local DNS Records. Enabled by default
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   localise = true
 
   # Reverse server (formerly called "conditional forwarding")
@@ -343,7 +343,7 @@
     # Should FTL block queries?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     active = true
 
     # How should FTL reply to blocked queries?
@@ -394,7 +394,7 @@
     # https://support.mozilla.org/en-US/kb/configuring-networks-disable-dns-over-https
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     mozillaCanary = true
 
     # Should Pi-hole always reply with NXDOMAIN to A and AAAA queries of mask.icloud.com
@@ -405,7 +405,7 @@
     # https://developer.apple.com/support/prepare-your-network-for-icloud-private-relay
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     iCloudPrivateRelay = true
 
     # Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to
@@ -414,7 +414,7 @@
     # This is based on recommendations at the end of RFC 9462, section 4.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     designatedResolver = true
 
     [dns.reply.host]
@@ -430,7 +430,7 @@
       # - "<the device's hostname>.<local domain>"
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       force4 = true ### CHANGED, default = false
 
       # Custom IPv4 address for the Pi-hole host
@@ -443,7 +443,7 @@
       # variant above for further details.
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       force6 = true ### CHANGED, default = false
 
       # Custom IPv6 address for the Pi-hole host
@@ -463,7 +463,7 @@
       # - regular expressions with the ;reply=IP regex extension.
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       force4 = true ### CHANGED, default = false
 
       # Custom IPv4 address for IP blocking mode
@@ -476,7 +476,7 @@
       # above for further details.
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       force6 = true ### CHANGED, default = false
 
       # Custom IPv6 address for IP blocking mode
@@ -528,7 +528,7 @@
   # Is the embedded DHCP server enabled?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   active = false
 
   # Start address of the DHCP address pool
@@ -584,14 +584,14 @@
   # IPv6 works a whole lot different than IPv4)
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   ipv6 = false
 
   # Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if
   # either the server is the only server for the subnet to avoid conflicts
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   rapidCommit = false
 
   # Advertise DNS server multiple times to clients. Some devices will add their own
@@ -600,7 +600,7 @@
   # clients, which should prevent this from happening.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   multiDNS = false
 
   # Enable logging for DHCP. This will log all relevant DHCP-related activity, including,
@@ -609,7 +609,7 @@
   # the file specified by files.log.dnsmasq below.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   logging = false
 
   # Ignore unknown DHCP clients.
@@ -626,7 +626,7 @@
   # can use the network when this feature is enabled.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   ignoreUnknownClients = false
 
   # Per host parameters for the DHCP server. This allows a machine with a particular
@@ -645,7 +645,7 @@
     # Should FTL act as network time protocol (NTP) server (IPv4)?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     active = true
 
     # IPv4 address to listen on for NTP requests
@@ -658,7 +658,7 @@
     # Should FTL act as network time protocol (NTP) server (IPv6)?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     active = true
 
     # IPv6 address to listen on for NTP requests
@@ -671,7 +671,7 @@
     # Should FTL try to synchronize the system time with an upstream NTP server?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     active = true
 
     # NTP upstream server to sync with, e.g., "pool.ntp.org". Note that the NTP server
@@ -698,7 +698,7 @@
       # Should FTL update a real-time clock (RTC) if available?
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       set = false
 
       # Path to the RTC device to update.
@@ -712,20 +712,20 @@
       # Should the RTC be set to UTC?
       #
       # Allowed values are:
-      #     <true|false>
+      #     true or false
       utc = true
 
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   resolveIPv4 = false ### CHANGED, default = true
 
   # Should FTL try to resolve IPv6 addresses to hostnames?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   resolveIPv6 = false ### CHANGED, default = true
 
   # Control whether FTL should use the fallback option to try to obtain client names from
@@ -738,7 +738,7 @@
   # device.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   networkNames = false ### CHANGED, default = true
 
   # With this option, you can change how (and if) hourly PTR requests are made to check
@@ -768,7 +768,7 @@
   # recent history?
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   DBimport = true
 
   # How long should queries be stored in the database [days]?
@@ -793,7 +793,7 @@
   # (rollback journal in DELETE mode).
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   useWAL = true
 
   [database.network]
@@ -801,7 +801,7 @@
     # network table will stop working reliably.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     parseARPcache = true
 
     # How long should IP addresses be kept in the network_addresses table [days]? IP
@@ -938,7 +938,7 @@
   # /api will be served.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   serve_all = false
 
   [webserver.session]
@@ -1011,7 +1011,7 @@
     # Should the web interface use the boxed layout?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     boxed = true
 
     # Theme used by the Pi-hole web interface
@@ -1048,7 +1048,7 @@
     # Should FTL prettify the API output (add extra spaces, newlines and indentation)?
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     prettyJSON = false
 
     # API password hash
@@ -1090,7 +1090,7 @@
     # you trust the applications using the application password.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     app_sudo = false
 
     # Should FTL create a temporary CLI password?
@@ -1102,7 +1102,7 @@
     # security reasons but can still use the API to query data and manage lists.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     cli_pw = true
 
     # Array of clients to be excluded from certain API responses (regex):
@@ -1154,13 +1154,13 @@
     # individually.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     client_history_global_max = true
 
     # Allow destructive API calls (e.g. restart DNS server, flush logs, ...)
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     allow_destructive = true
 
     [webserver.api.temp]
@@ -1295,7 +1295,7 @@
   # prevent from generating any backtrace at all.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   addr2line = true
 
   # Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?
@@ -1306,7 +1306,7 @@
   # /etc/pihole/dnsmasq.conf) and may stop DNS resolution from working.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   etc_dnsmasq_d = true ### CHANGED, default = false
 
   # Additional lines to inject into the generated dnsmasq configuration.
@@ -1330,7 +1330,7 @@
   # debugging and is not recommended for normal use.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   extraLogging = true ### CHANGED, default = false
 
   # Put configuration into read-only mode. This will prevent any changes to the
@@ -1339,7 +1339,7 @@
   # providers) and should not be changed by any means.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   readOnly = false
 
   [misc.check]
@@ -1354,7 +1354,7 @@
     # This check can be disabled with this setting.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     load = false ### CHANGED, default = true
 
     # FTL stores history in shared memory to allow inter-process communication with forked
@@ -1384,62 +1384,62 @@
   # queries and how many have been saved to the database.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   database = true ### CHANGED, default = false
 
   # Prints a list of the detected interfaces on the startup of pihole-FTL. Also, prints
   # whether these interfaces are IPv4 or IPv6 interfaces.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   networking = true ### CHANGED, default = false
 
   # Print information about shared memory locks. Messages will be generated when waiting,
   # obtaining, and releasing a lock.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   locks = true ### CHANGED, default = false
 
   # Print extensive query information (domains, types, replies, etc.). This has always
   # been part of the legacy debug mode of pihole-FTL.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   queries = true ### CHANGED, default = false
 
   # Print flags of queries received by the DNS hooks. Only effective when DEBUG_QUERIES
   # is enabled as well.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   flags = true ### CHANGED, default = false
 
   # Print information about shared memory buffers. Messages are either about creating or
   # enlarging shmem objects or string injections.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   shmem = true ### CHANGED, default = false
 
   # Print information about garbage collection (GC): What is to be removed, how many have
   # been removed and how long did GC take.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   gc = true ### CHANGED, default = false
 
   # Print information about ARP table processing: How long did parsing take, whether read
   # MAC addresses are valid, and if the macvendor.db file exists.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   arp = true ### CHANGED, default = false
 
   # Controls if FTLDNS should print extended details about regex matching into FTL.log.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   regex = true ### CHANGED, default = false
 
   # Print extra debugging information concerning API calls. This includes the request,
@@ -1450,7 +1450,7 @@
   # all API requests (auth log) and details about user authentication attempts.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   api = true ### CHANGED (env), default = false
 
   # Print extra debugging information about TLS connections. This includes the TLS
@@ -1461,21 +1461,21 @@
   # only very generic error messages without much/any underlying technical information.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   tls = true ### CHANGED, default = false
 
   # Print information about overTime memory operations, such as initializing or moving
   # overTime slots.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   overtime = true ### CHANGED, default = false
 
   # Print information about status changes for individual queries. This can be useful to
   # identify unexpected unknown queries.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   status = true ### CHANGED, default = false
 
   # Print information about capabilities granted to the pihole-FTL process. The current
@@ -1484,13 +1484,13 @@
   # thereafter sending killall -HUP pihole-FTL).
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   caps = true ### CHANGED, default = false
 
   # Print information about DNSSEC activity
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   dnssec = true ### CHANGED, default = false
 
   # FTL uses dynamically allocated vectors for various tasks. This config option enables
@@ -1498,7 +1498,7 @@
   # deletion, and appending.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   vectors = true ### CHANGED, default = false
 
   # Extensive information about hostname resolution like which DNS servers are used in
@@ -1506,13 +1506,13 @@
   # PTR queries).
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   resolver = true ### CHANGED, default = false
 
   # Print debugging information about received EDNS(0) data.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   edns0 = true ### CHANGED, default = false
 
   # Log various important client events such as change of interface (e.g., client
@@ -1520,43 +1520,43 @@
   # about how clients were assigned to its groups.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   clients = true ### CHANGED, default = false
 
   # Log information related to alias-client processing.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   aliasclients = true ### CHANGED, default = false
 
   # Log information regarding FTL's embedded event handling queue.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   events = true ### CHANGED, default = false
 
   # Log information about script helpers, e.g., due to dhcp-script.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   helper = true ### CHANGED, default = false
 
   # Print config parsing details
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   config = true ### CHANGED, default = false
 
   # Debug monitoring of /etc/pihole filesystem events
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   inotify = true ### CHANGED, default = false
 
   # Debug monitoring of the webserver (CivetWeb) events
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   webserver = true ### CHANGED, default = false
 
   # Temporary flag that may print additional information. This debug flag is meant to be
@@ -1564,33 +1564,30 @@
   # without further notice at any time.
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   extra = true ### CHANGED, default = false
 
   # Reserved debug flag
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   reserved = true ### CHANGED, default = false
 
   # Print information about NTP synchronization
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   ntp = true ### CHANGED, default = false
 
   # Print information about netlink communication and parsing
   #
   # Allowed values are:
-  #     <true|false>
+  #     true or false
   netlink = true ### CHANGED, default = false
 
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
-  #
-  # Allowed values are:
-  #     <true|false>
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
