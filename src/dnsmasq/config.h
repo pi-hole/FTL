@@ -303,6 +303,7 @@ HAVE_SOCKADDR_SA_LEN
 #define HAVE_BSD_NETWORK
 #define HAVE_GETOPT_LONG
 #define HAVE_SOCKADDR_SA_LEN
+#define NO_IPSET
 /* Define before sys/socket.h is included so we get socklen_t */
 #define _BSD_SOCKLEN_T_
 /* Select the RFC_3542 version of the IPv6 socket API. 
