@@ -135,7 +135,7 @@ void dhcp_packet(time_t now, int pxe_fd)
   struct dhcp_packet *mess;
   struct dhcp_context *context;
   struct dhcp_relay *relay;
-  int is_relay_reply = 0;
+  int is_relay_reply = 0, is_relay_use_source = 0;
   struct iname *tmp;
   struct ifreq ifr;
   struct msghdr msg;
@@ -230,6 +230,20 @@ void dhcp_packet(time_t now, int pxe_fd)
     return;
   
   mess = (struct dhcp_packet *)daemon->dhcp_packet.iov_base;
+  
+  /* Non-standard extension:
+     If giaddr == 255.255.255.255 we reply to the source
+     address in the request packet header. This makes
+     stand-alone leasequery clients easier, as they
+     can leave source address determination to the kernel.
+     In this case, set a flag and clear giaddr here,
+     to avoid massive relay confusion. */
+  if (mess->giaddr.s_addr == INADDR_BROADCAST)
+    {
+      mess->giaddr.s_addr = 0;
+      is_relay_use_source = 1;
+    }
+  
   loopback = !mess->giaddr.s_addr && (ifr.ifr_flags & IFF_LOOPBACK);
   
 #ifdef HAVE_LINUX_NETWORK
@@ -337,8 +351,9 @@ void dhcp_packet(time_t now, int pxe_fd)
 	return;
 
       lease_prune(NULL, now); /* lose any expired leases */
-      iov.iov_len = dhcp_reply(parm.current, ifr.ifr_name, iface_index, (size_t)sz, 
-			       now, unicast_dest, loopback, &is_inform, pxe_fd, iface_addr, recvtime);
+      iov.iov_len = dhcp_reply(parm.current, ifr.ifr_name, iface_index, (size_t)sz, now, unicast_dest,
+			       loopback, &is_inform, pxe_fd, iface_addr, recvtime,
+			       is_relay_use_source ? dest.sin_addr : mess->giaddr);
       lease_update_file(now);
       lease_update_dns(0);
       
@@ -365,11 +380,17 @@ void dhcp_packet(time_t now, int pxe_fd)
       if (mess->ciaddr.s_addr != 0)
 	dest.sin_addr = mess->ciaddr;
     }
-  else if (mess->giaddr.s_addr && !is_relay_reply)
+  if ((is_relay_use_source || mess->giaddr.s_addr) && !is_relay_reply)
     {
-      /* Send to BOOTP relay  */
-      dest.sin_port = htons(daemon->dhcp_server_port);
-      dest.sin_addr = mess->giaddr; 
+      /* Send to BOOTP relay. */
+      if (is_relay_use_source)
+	/* restore as-received value */
+	mess->giaddr.s_addr = INADDR_BROADCAST;
+      else
+	{
+	  dest.sin_addr = mess->giaddr;
+	  dest.sin_port = htons(daemon->dhcp_server_port);
+	}
     }
   else if (mess->ciaddr.s_addr)
     {

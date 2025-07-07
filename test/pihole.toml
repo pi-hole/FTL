@@ -210,6 +210,10 @@
   # Port used by the DNS server
   port = 53
 
+  # Enable/Disable the localise-queries option of dnsmasq. When this setting is disabled
+  # dnsmasq will return all possible values for local DNS Records. Enabled by default
+  localise = true
+
   # Reverse server (former also called "conditional forwarding") feature
   # Array of reverse servers each one in one of the following forms:
   # "<enabled>,<ip-address>[/<prefix-len>],<server>[#<port>][,<domain>]"
@@ -992,9 +996,9 @@
   #       Hide domains and clients. This setting disables Top Domains, Top Ads, Top
   #       Clients and Clients over time.
   #   - 3
-  #       Anonymize everything. This setting disabled almost any statistics and query
+  #       Anonymize everything. This setting disables almost any statistics and query
   #       analysis. There will be no long-term database logging and no Query Log. You
-  #       will also loose most regex features.
+  #       will also lose most regex features.
   privacylevel = 0
 
   # During startup, in some configurations, network interfaces appear only late during
@@ -1203,7 +1207,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 155 total entries out of which 98 entries are default
+# 156 total entries out of which 99 entries are default
 # --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

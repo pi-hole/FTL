@@ -151,6 +151,7 @@ struct config {
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct conf_item localise;
 		struct conf_item revServers;
 		struct {
 			struct conf_item size;
@@ -365,7 +366,7 @@ void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 bool migrate_config_v6(void);
 bool readFTLconf(struct config *conf, const bool rewrite);
-bool getLogFilePath(void);
+bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
@@ -379,6 +380,7 @@ const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const))
 void replace_config(struct config *newconf);
 void reread_config(void);
 bool create_migration_target_v6(void);
+bool create_default_config(const char *filename);
 
 // Defined in toml_reader.c
 bool readDebugSettings(void);

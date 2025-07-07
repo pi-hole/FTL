@@ -579,6 +579,13 @@ static void initConfig(struct config *conf)
 	conf->dns.port.d.u16 = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
+	conf->dns.localise.k = "dns.localise";
+	conf->dns.localise.h = "Enable/Disable the localise-queries option of dnsmasq. When this setting is disabled dnsmasq will return all possible values for local DNS Records. Enabled by default";
+	conf->dns.localise.t = CONF_BOOL;
+	conf->dns.localise.f = FLAG_RESTART_FTL;
+	conf->dns.localise.d.b = true;
+	conf->dns.localise.c = validate_stub; // Only type-based checking
+
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
 	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time. Setting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
@@ -1303,7 +1310,7 @@ static void initConfig(struct config *conf)
 			{ "0", "Don't hide anything, all statistics are available." },
 			{ "1", "Hide domains. This setting disables Top Domains and Top Ads" },
 			{ "2", "Hide domains and clients. This setting disables Top Domains, Top Ads, Top Clients and Clients over time." },
-			{ "3", "Anonymize everything. This setting disabled almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also loose most regex features." }
+			{ "3", "Anonymize everything. This setting disables almost any statistics and query analysis. There will be no long-term database logging and no Query Log. You will also lose most regex features." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->misc.privacylevel.a, privacylevel);
 	}
@@ -1754,7 +1761,7 @@ bool migrate_config_v6(void)
 	get_web_port(&config);
 
 	// Initialize the TOML config file
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
 	write_dnsmasq_config(&config, false, errbuf);
 	write_custom_list();
@@ -1783,7 +1790,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			// about options deviating from the default are present
 			if(rewrite)
 			{
-				writeFTLtoml(true);
+				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
 				write_dnsmasq_config(conf, false, errbuf);
 				write_custom_list();
@@ -1816,7 +1823,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	get_web_port(&config);
 
 	// Initialize the TOML config file
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
 	write_dnsmasq_config(conf, false, errbuf);
 	write_custom_list();
@@ -1824,7 +1831,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	return false;
 }
 
-bool getLogFilePath(void)
+bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
 	memset(&config, 0, sizeof(config));
@@ -1839,7 +1846,7 @@ bool getLogFilePath(void)
 	config.files.log.ftl.c = validate_filepath;
 
 	// Check if the config file contains a different path
-	if(!getLogFilePathTOML())
+	if(try_read && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;
@@ -1860,7 +1867,7 @@ void set_blockingstatus(bool enabled)
 		return;
 
 	config.dns.blocking.active.v.b = enabled;
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 	raise(SIGHUP);
 }
 
@@ -1987,7 +1994,7 @@ void reread_config(void)
 
 	// Write the config file back to disk to ensure that all options and
 	// comments about options deviating from the default are present
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 
 	// We do not write the dnsmasq config file here as this is done on every
 	// restart and changes would have no effect here
@@ -2058,5 +2065,40 @@ bool create_migration_target_v6(void)
 		}
 	}
 
+	return true;
+}
+
+/**
+ * @brief Creates a default configuration file.
+ *
+ * This function initializes a configuration structure with default values,
+ * then writes it to the specified file in TOML format. If the file cannot
+ * be opened or written to, the function logs an error and returns false.
+ *
+ * @param filename The path to the configuration file to create.
+ * @return true if the default configuration was successfully written, false otherwise.
+ */
+bool create_default_config(const char *filename)
+{
+	// Initialize the config with default values
+	getLogFilePath(false);
+	initConfig(&config);
+
+	// Try to open config file
+	FILE *fp = fopen(filename, "w");
+
+	if(fp == NULL)
+		return false;
+
+	// Write the config to the file
+	if(!writeFTLtoml(true, fp))
+	{
+		log_err("Unable to write default configuration to %s", filename);
+		fclose(fp);
+		return false;
+	}
+
+	fclose(fp);
+	log_info("Default configuration written to %s", filename);
 	return true;
 }

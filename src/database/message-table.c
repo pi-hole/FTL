@@ -1147,7 +1147,7 @@ bool format_messages(cJSON *array)
 			{
 				const char *ip = (const char*)sqlite3_column_text(stmt, 3);
 				const char *name = (const char*)sqlite3_column_text(stmt, 4);
-				const int pos = sqlite3_column_int(stmt, 6);
+				const int pos = sqlite3_column_int(stmt, 5);
 
 				format_hostname_message(plain, sizeof(plain), html, sizeof(html),
 				                        ip, name, pos);

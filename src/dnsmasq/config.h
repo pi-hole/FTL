@@ -54,6 +54,8 @@
 #define CHGRP "root"
 /******************************/
 #define TFTP_MAX_CONNECTIONS 50 /* max simultaneous connections */
+#define TFTP_MAX_WINDOW 32 /* max window size to negotiate */
+#define TFTP_TRANSFER_TIME 120 /* Abandon TFTP transfers after this long. Two mins. */
 #define LOG_MAX 5 /* log-queue length */
 #define RANDFILE "/dev/urandom"
 #define DNSMASQ_SERVICE "uk.org.thekelleys.dnsmasq" /* Default - may be overridden by config */
@@ -155,6 +157,7 @@ NO_AUTH
 NO_DUMPFILE
 NO_LOOP
 NO_INOTIFY
+NO_IPSET
    these are available to explicitly disable compile time options which would 
    otherwise be enabled automatically or which are enabled  by default 
    in the distributed source tree. Building dnsmasq
@@ -300,7 +303,6 @@ HAVE_SOCKADDR_SA_LEN
 #define HAVE_BSD_NETWORK
 #define HAVE_GETOPT_LONG
 #define HAVE_SOCKADDR_SA_LEN
-#define NO_IPSET
 /* Define before sys/socket.h is included so we get socklen_t */
 #define _BSD_SOCKLEN_T_
 /* Select the RFC_3542 version of the IPv6 socket API. 
@@ -310,7 +312,6 @@ HAVE_SOCKADDR_SA_LEN
 #ifndef SOL_TCP
 #  define SOL_TCP IPPROTO_TCP
 #endif
-#define NO_IPSET
 
 #elif defined(__NetBSD__)
 #define HAVE_BSD_NETWORK
@@ -358,6 +359,11 @@ HAVE_SOCKADDR_SA_LEN
 
 #ifdef NO_AUTH
 #undef HAVE_AUTH
+#endif
+
+#if !defined(HAVE_LINUX_NETWORK)
+#undef HAVE_IPSET
+#undef HAVE_NFTSET
 #endif
 
 #if defined(NO_IPSET)
@@ -473,4 +479,4 @@ static char *compile_opts =
 #endif
 "dumpfile";
 
-#endif /* defined(HAVE_DHCP) */
+#endif /* defined(DNSMASQ_COMPILE_OPTS) */
