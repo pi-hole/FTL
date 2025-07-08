@@ -792,6 +792,16 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
      header->hb4 &= ~HB4_AD;
 
+  /* Complain loudly if the upstream server is non-recursive. */
+  if (!(header->hb4 & HB4_RA) && rcode == NOERROR &&
+      server && !(server->flags & SERV_WARNED_RECURSIVE))
+    {
+      (void)prettyprint_addr(&server->addr, daemon->namebuff);
+      my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
+      if (!option_bool(OPT_LOG))
+	server->flags |= SERV_WARNED_RECURSIVE;
+    }  
+
   header->hb4 |= HB4_RA; /* recursion if available */
 
   if (OPCODE(header) != QUERY)
@@ -807,16 +817,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       return resize_packet(header, n, pheader, plen);
     }
   
-  /* Complain loudly if the upstream server is non-recursive. */
-  if (!(header->hb4 & HB4_RA) && rcode == NOERROR &&
-      server && !(server->flags & SERV_WARNED_RECURSIVE))
-    {
-      (void)prettyprint_addr(&server->addr, daemon->namebuff);
-      my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
-      if (!option_bool(OPT_LOG))
-	server->flags |= SERV_WARNED_RECURSIVE;
-    }  
-
   if (header->hb3 & HB3_TC)
     log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
   else if (!bogusanswer || (header->hb4 & HB4_CD))
