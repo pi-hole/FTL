@@ -92,6 +92,7 @@ sudo pihole-FTL --config dns.dnssec=true
             # Process the comments collected for this key
             if comment_buffer:
                 adjusted_comments = []
+                in_allowed_values = False
 
                 i = 0
                 while i < len(comment_buffer):
@@ -103,6 +104,10 @@ sudo pihole-FTL --config dns.dnssec=true
                     # Fix malformed emphasis due to underscores or asterisks
                     line = re.sub(r'\b(_[a-zA-Z0-9.-]+)', r'`\1`', line)
                     line = re.sub(r'\*\.[a-zA-Z0-9]+', lambda m: f"`{m.group(0)}`", line)
+
+                    # Is this "Allowed values are:" section?
+                    if line.find('Allowed values are:') > -1:
+                        in_allowed_values = True
 
                     # Bold "Allowed values are:"
                     line = re.sub(
@@ -117,6 +122,11 @@ sudo pihole-FTL --config dns.dnssec=true
                         r'\1**Example:**',
                         line
                     )
+
+                    # Insert 2 spaces to force a markdown line break after the value
+                    # if the bullet is in "Allowed values are:" section
+                    if is_bullet and in_allowed_values:
+                        line = re.sub(r'(-\s*\S+)$', r'\1  ', line)
 
                     # Insert blank line before bullet if needed
                     if is_bullet and not prev_is_bullet and not prev_is_blank:
