@@ -153,3 +153,4 @@ components:
           - etc/pihole/gravity.db->group
           - etc/pihole/gravity.db->adlist
           - etc/pihole/gravity.db->adlist_by_group
+        took: 0.003
