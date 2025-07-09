@@ -104,8 +104,8 @@
     "2.2.2.2 äste.com steä.com"
   ] ### CHANGED, default = []
 
-  # If set, A and AAAA queries for plain names, without dots or domain parts, are never
-  # forwarded to upstream nameservers
+  # If set, queries for plain names, without dots or domain parts, are never forwarded to
+  # upstream nameservers
   domainNeeded = false
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the

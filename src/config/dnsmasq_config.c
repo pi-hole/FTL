@@ -554,7 +554,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
-		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+		fputs("# Never forward queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
 		fputs("local=//\n\n", pihole_conf);

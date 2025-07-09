@@ -488,7 +488,7 @@ static void initConfig(struct config *conf)
 	conf->dns.hosts.c = validate_dns_hosts;
 
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
-	conf->dns.domainNeeded.h = "If set, A and AAAA queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
+	conf->dns.domainNeeded.h = "If set, queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
 	conf->dns.domainNeeded.t = CONF_BOOL;
 	conf->dns.domainNeeded.f = FLAG_RESTART_FTL;
 	conf->dns.domainNeeded.d.b = false;
