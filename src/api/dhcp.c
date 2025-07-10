@@ -46,10 +46,10 @@ int api_dhcp_leases_GET(struct ftl_conn *api)
 		// Parse line
 		unsigned long expires = 0;
 		char hwaddr[18] = { 0 };
-		char ip[INET_ADDRSTRLEN] = { 0 };
+		char ip[INET6_ADDRSTRLEN] = { 0 };
 		char name[65] = { 0 };
 		char clientid[765] = { 0 };
-		const int ret = sscanf(line, "%lu %17s %15s %64s %764s", &expires, hwaddr, ip, name, clientid);
+		const int ret = sscanf(line, "%lu %17s %45s %64s %764s", &expires, hwaddr, ip, name, clientid);
 
 		// Skip invalid lines
 		if(ret != 5)
@@ -78,15 +78,18 @@ extern bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
 // Delete DHCP leases
 int api_dhcp_leases_DELETE(struct ftl_conn *api)
 {
-	// Validate input (must be a valid IPv4 address)
+	// Validate input (must be a valid IP address)
 	struct sockaddr_in sa;
-	if(api->item == NULL || strlen(api->item) == 0 || inet_pton(AF_INET, api->item, &(sa.sin_addr)) == 0)
+	struct sockaddr_in6 sa6;
+	if(api->item == NULL || strlen(api->item) == 0 ||
+	   (inet_pton(AF_INET, api->item, &(sa.sin_addr)) == 0 &&
+	    inet_pton(AF_INET6, api->item, &(sa6.sin6_addr)) == 0))
 	{
 		// Send empty reply with code 204 No Content
 		return send_json_error(api,
 		                       400,
 		                       "bad_request",
-		                       "The provided IPv4 address is invalid",
+		                       "The provided IP address is invalid",
 		                       api->item);
 	}
 
