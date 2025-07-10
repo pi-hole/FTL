@@ -63,7 +63,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     leases:
       type: object
@@ -104,6 +106,7 @@ components:
               key: "uri_error"
               message: "No ip in URI"
               hint: null
+            took: 0.003
   parameters:
     ip:
       in: path
