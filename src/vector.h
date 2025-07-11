@@ -20,6 +20,7 @@
 #include "database/sqlite3.h"
 
 #define VEC_ALLOC_STEP 10u
+#define VEC_GROWTH_FACTOR 2u  // For exponential growth when expanding beyond initial capacity
 
 typedef struct sqlite3_stmt_vec {
 	unsigned int capacity;

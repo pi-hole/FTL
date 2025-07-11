@@ -78,9 +78,13 @@ void set_sqlite3_stmt_vec(sqlite3_stmt_vec *v, unsigned int index, sqlite3_stmt 
 	if(index >= v->capacity)
 	{
 		// Allocate more memory when trying to set a statement vector entry with
-		// an index larger than the current array size (this makes set an
-		// equivalent alternative to append)
-		if(!resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP))
+		// an index larger than the current array size. Use exponential growth
+		// for better performance with large datasets.
+		unsigned int new_capacity = v->capacity * VEC_GROWTH_FACTOR;
+		if(new_capacity <= index)
+			new_capacity = index + VEC_ALLOC_STEP;
+		
+		if(!resize_sqlite3_stmt_vec(v, new_capacity))
 			return;
 	}
 
@@ -103,8 +107,12 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 	if(index >= v->capacity)
 	{
 		// Silently increase size of vector if trying to read out-of-bounds
-		// Return NULL if the allocation fails
-		if(!resize_sqlite3_stmt_vec(v, index + VEC_ALLOC_STEP))
+		// Use exponential growth for better performance with large datasets.
+		unsigned int new_capacity = v->capacity * VEC_GROWTH_FACTOR;
+		if(new_capacity <= index)
+			new_capacity = index + VEC_ALLOC_STEP;
+		
+		if(!resize_sqlite3_stmt_vec(v, new_capacity))
 			return NULL;
 	}
 
