@@ -132,6 +132,9 @@
 
   # If set, queries for plain names, without dots or domain parts, are never forwarded to
   # upstream nameservers
+  #
+  # Allowed values are:
+  #     true or false
   domainNeeded = false
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
