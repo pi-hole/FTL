@@ -6271,6 +6271,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	    strchr(srv->name, '.') && 
 	    strchr(srv->name, '.') == strrchr(srv->name, '.'))
 	  {
+	    if (strlen(srv->name) + 1 + strlen(daemon->domain_suffix) > MAXDNAME)
+	      die(_("srv-host name %s too long after domain appended"), srv->name, EC_MISC);
 	    strcpy(buff, srv->name);
 	    strcat(buff, ".");
 	    strcat(buff, daemon->domain_suffix);
