@@ -376,6 +376,7 @@ void parse_args(int argc, char *argv[])
 	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
+#ifdef HAVE_MBEDTLS
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
@@ -390,6 +391,10 @@ void parse_args(int argc, char *argv[])
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
 		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+#else
+		printf("Error: FTL was compiled without TLS support. Certificate generation is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
 	}
 
 	// Parse X.509 certificate
@@ -397,6 +402,7 @@ void parse_args(int argc, char *argv[])
 	  (strcmp(argv[1], "--read-x509") == 0 ||
 	   strcmp(argv[1], "--read-x509-key") == 0))
 	{
+#ifdef HAVE_MBEDTLS
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
@@ -439,6 +445,10 @@ void parse_args(int argc, char *argv[])
 			printf("Certificate does not match domain %s\n", argv[3]);
 			exit(EXIT_FAILURE);
 		}
+#else
+		printf("Error: FTL was compiled without TLS support. Certificate reading is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
