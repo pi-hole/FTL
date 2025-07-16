@@ -2920,13 +2920,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
 
 #ifdef HAVE_DHCP
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+# endif
     case LOPT_LEASEQUERY:
       set_option_bool(OPT_LEASEQUERY);
       if (!arg)
 	break;
-#pragma GCC diagnostic pop
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic pop
+# endif
 #endif
     case 'B':  /* --bogus-nxdomain */
     case LOPT_IGNORE_ADDR: /* --ignore-address */
