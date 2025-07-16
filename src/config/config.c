@@ -1071,7 +1071,7 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.session.restore.k = "webserver.session.restore";
 	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
-	conf->webserver.session.restore.a = cJSON_CreateStringReference("<true|false>");	
+	conf->webserver.session.restore.a = cJSON_CreateStringReference("true or false");	
 	conf->webserver.session.restore.t = CONF_BOOL;
 	conf->webserver.session.restore.d.b = true;
 	conf->webserver.session.restore.c = validate_stub; // Only type-based checking

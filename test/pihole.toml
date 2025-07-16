@@ -960,7 +960,7 @@
     # want to keep your sessions after a restart of the web interface.
     #
     # Allowed values are:
-    #     <true|false>
+    #     true or false
     restore = true
 
   [webserver.tls]
