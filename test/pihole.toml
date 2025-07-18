@@ -184,11 +184,12 @@
   #     true or false
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
+  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
+  # Leave empty for auto-detection.
   #
   # Allowed values are:
   #     a valid interface name
-  interface = "eth0"
+  interface = ""
 
   # Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with
   # associated IPv4 (A) and IPv6 (AAAA) records

@@ -28,8 +28,11 @@
 #include <unistd.h>
 // wait
 #include <sys/wait.h>
+// get_gateway_name()
+#include "tools/netlink.h"
 
 #define HEADER_WIDTH 80
+
 
 static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 {
@@ -445,10 +448,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("\n", pihole_conf);
 	}
 
-	const char *interface = conf->dns.interface.v.s;
-	// Use eth0 as fallback interface if the interface is missing
-	if(strlen(interface) == 0)
-		interface = "eth0";
+	char *interface = conf->dns.interface.v.s;
+	const bool interface_allocated = strlen(interface) > 0;
+	if(interface_allocated)
+		interface = get_gateway_name();
 
 	switch(conf->dns.listeningMode.v.listeningMode)
 	{
@@ -799,6 +802,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
 	}
+
+	// Free memory allocated for interface name
+	if(interface_allocated)
+		free(interface);
 
 	// Flush config file to disk
 	fflush(pihole_conf);
