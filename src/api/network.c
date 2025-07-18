@@ -75,7 +75,7 @@ int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed)
 			cJSON_ArrayForEach(iface, interfaces)
 			{
 				const char *ifname = cJSON_GetStringValue(cJSON_GetObjectItem(iface, "name"));
-				if(ifname != NULL && strcmp(ifname, iface_name) == 0)
+				if(ifname != NULL && iface_name != NULL && strcmp(ifname, iface_name) == 0)
 				{
 					cJSON *addr = NULL;
 					cJSON *addrs = cJSON_GetObjectItem(iface, "addresses");

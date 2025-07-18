@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.13 AS builder
+FROM ghcr.io/pi-hole/ftl-build:v2.13
 
 WORKDIR /app
 
@@ -25,14 +25,11 @@ RUN sed -i '/buffer_with_truncation /d' /bats-core/libexec/bats-core/bats-format
 # Remove possible old build files
 RUN rm -rf cmake && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC}" test ${BUILD_OPTS} && \
-# Move FTL binary to root directory
+    bash build.sh "-DSTATIC=${STATIC}" ${BUILD_OPTS} && \
+# Copy FTL binary to root directory
     cd / &&\
-    mv /app/pihole-FTL . && \
+    cp /app/pihole-FTL . && \
 # Create tarball of API docs
-    tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz .
-
-# Create final image containing only the FTL binary and API docs
-FROM scratch AS result
-COPY --from=builder /pihole-FTL /pihole-FTL
-COPY --from=builder /api-docs.tar.gz /api-docs.tar.gz
+    tar -C /app/src/api/docs/content/ -czvf /api-docs.tar.gz . && \
+# Generate default config file
+    ./pihole-FTL create-default-config pihole.toml
