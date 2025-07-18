@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-47-g12f201b3-dirty) on branch new/docs_config_pr
+# Pi-hole configuration file (v6.2.3-86-g195ba130-dirty) on branch new/dns_domainLocal
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-07 17:21:54 UTC
+# Last updated on 2025-07-18 08:52:28 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -139,10 +139,14 @@
 
   # If set, the domain is considered local and queries for this domain are never
   # forwarded upstream unless a dns.revServer is configured for this domain.
+  #
   # If unset, queries for this domain are forwarded upstream to (possibly public) server
   # which is probably not what you want *unless* you have added extra configuration for
   # this domain *or* your upstream servers are able to handle local domains (e.g.,
   # router).
+  #
+  # Allowed values are:
+  #     true or false
   domainLocal = true
 
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
