@@ -24,6 +24,7 @@ pid_t main_pid(void);
 void thread_sleepms(const enum thread_types thread, const int milliseconds);
 void generate_backtrace(void);
 int sigtest(void);
+int sigrtmin(void);
 void restart_ftl(const char *reason);
 pid_t debugger(void);
 
