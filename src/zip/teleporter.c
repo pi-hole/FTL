@@ -335,7 +335,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
 	rotate_files(GLOBALTOMLPATH, NULL);
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 	write_custom_list();
 
 	return NULL;

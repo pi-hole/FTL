@@ -1957,7 +1957,7 @@ size_t make_local_answer(int flags, int gotname, size_t size, struct dns_header 
 			 char *name, char *limit, int first, int last, int ede);
 int server_samegroup(struct server *a, struct server *b);
 #ifdef HAVE_DNSSEC
-int dnssec_server(struct server *server, char *keyname, int *firstp, int *lastp);
+int dnssec_server(struct server *server, char *keyname, int is_ds, int *firstp, int *lastp);
 #endif
 void mark_servers(int flag);
 void cleanup_servers(void);

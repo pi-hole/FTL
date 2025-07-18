@@ -18202,6 +18202,7 @@ reset_per_request_attributes(struct mg_connection *conn)
 
 	/* Pi-hole addition */
 	memset(conn->request_info.csrf_token, 0, sizeof(conn->request_info.csrf_token));
+	memset(&conn->request_info.is_authenticated, 0, sizeof(conn->request_info.is_authenticated));
 
 #if defined(USE_SERVER_STATS)
 	conn->processing_time = 0;
