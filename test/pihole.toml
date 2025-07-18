@@ -31,8 +31,8 @@
   #
   # ESNI will obviously cause issues for pixelserv-tls which will be unable to generate
   # matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox
-  # are already enabling ESNI. According to the IEFT draft (link above), we can easily
-  # restore piselserv-tls's operation by replying NXDOMAIN to _esni. subdomains of
+  # are already enabling ESNI. According to the IETF draft (link above), we can easily
+  # restore pixelserv-tls's operation by replying NXDOMAIN to _esni. subdomains of
   # blocked domains as this mimics a "not configured for this domain" behavior.
   #
   # Allowed values are:
@@ -1265,7 +1265,7 @@
 
   # During startup, in some configurations, network interfaces appear only late during
   # system startup and are not ready when FTL tries to bind to them. Therefore, you may
-  # want FTL to wait a given amount of time before trying to start the DNS revolver.
+  # want FTL to wait a given amount of time before trying to start the DNS resolver.
   #
   # This setting takes any integer value between 0 and 300 seconds. To prevent delayed
   # startup while the system is already running and FTL is restarted, the delay only
