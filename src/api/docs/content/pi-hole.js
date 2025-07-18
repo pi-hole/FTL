@@ -5,10 +5,12 @@
  *  This file is copyright under the latest version of the EUPL.
  *  Please see LICENSE file for your rights under this license. */
 
+'use strict';
+
 // GET implementation
 async function getData(url = '') {
 	const docEl = document.getElementById('thedoc');
-	const sid = docEl.attributes["api-key-value"].value;
+	const sid = docEl.attributes['api-key-value'].value;
 	const response = await fetch(url, {
 		method: 'GET',
 		headers: {'Content-Type': 'application/json', 'X-FTL-SID': sid}
@@ -19,7 +21,7 @@ async function getData(url = '') {
 // DELETE implementation
 async function deleteData(url = '') {
 	const docEl = document.getElementById('thedoc');
-	const sid = docEl.attributes["api-key-value"].value;
+	const sid = docEl.attributes['api-key-value'].value;
 	const response = await fetch(url, {
 		method: 'DELETE',
 		headers: {'X-FTL-SID': sid}
@@ -30,7 +32,7 @@ async function deleteData(url = '') {
 // POST implementation
 async function postData(url = '', data = {}) {
 	const docEl = document.getElementById('thedoc');
-	const sid = docEl.attributes["api-key-value"].value;
+	const sid = docEl.attributes['api-key-value'].value;
 	const response = await fetch(url, {
 		method: 'POST',
 		headers: {'Content-Type': 'application/json', 'X-FTL-SID': sid},
@@ -50,7 +52,7 @@ function loginOk(sid) {
 }
 
 // Mark login as FAIL
-function loginFAIL() {
+function loginFail() {
 	const docEl = document.getElementById('thedoc');
 	docEl.setAttribute('api-key-value', '-');
 	const btn = document.getElementById('loginbtn');
@@ -62,7 +64,7 @@ function loginFAIL() {
 // Mark logout as OK
 function logoutOk() {
 	const docEl = document.getElementById('thedoc');
-	docEl.setAttribute('api-key-value', "-");
+	docEl.setAttribute('api-key-value', '-');
 	const btn = document.getElementById('loginbtn');
 	btn.classList.remove('green');
 	btn.classList.remove('red');
@@ -72,25 +74,25 @@ function logoutOk() {
 // Login using password
 function loginout(){
 	const docEl = document.getElementById('thedoc');
-	if(docEl.attributes["api-key-value"].value === '-') {
-		var pw = document.getElementById('loginpw').value;
-		postData('/api/auth', {password: pw})
+	if(docEl.attributes['api-key-value'].value === '-') {
+		const password = document.getElementById('loginpw').value;
+		postData('/api/auth', {password})
 		.then(data => {
 			if(data.session.valid === true) {
 				loginOk(data.session.sid);
 			} else {
-				loginFAIL();
+				loginFail();
 			}
 		})
 		.catch((error) => {
-			loginFAIL();
+			loginFail();
 			console.error('Error:', error);
 		});
 	} else {
 		deleteData('/api/auth')
 		.then(logoutOk())
 		.catch((error) => {
-			loginFAIL();
+			loginFail();
 			console.error('Error:', error);
 		});
 	}
@@ -101,13 +103,26 @@ function setStyle(style) {
 	docEl.setAttribute('render-style', style);
 	docEl.setAttribute('allow-search', style !== 'view');
 }
-document.addEventListener('DOMContentLoaded', (event) => {
-	let docEl = document.getElementById("thedoc");
 
-	docEl.addEventListener('after-try', (e) => {
-		console.log(e.detail.response);
-		if(e.detail.response.status === 401) {
-			loginFAIL();
+function setTheme(theme) {
+	const docEl = document.getElementById('thedoc');
+	docEl.setAttribute('theme', theme);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+	const docEl = document.getElementById('thedoc');
+
+	docEl.addEventListener('after-try', (event) => {
+		console.log(event.detail.response);
+		if(event.detail.response.status === 401) {
+			loginFail();
 		}
 	});
+
+	document.getElementById('loginbtn').addEventListener('click', loginout);
+	document.getElementById('darkThemeBtn').addEventListener('click', () => setTheme('dark'));
+	document.getElementById('lightThemeBtn').addEventListener('click', () => setTheme('light'));
+	document.getElementById('defaultStyleBtn').addEventListener('click', () => setStyle('view'));
+	document.getElementById('readerStyleBtn').addEventListener('click', () => setStyle('read'));
+	document.getElementById('focusedStyleBtn').addEventListener('click', () => setStyle('focused'));
 });
