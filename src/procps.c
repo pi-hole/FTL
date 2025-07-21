@@ -398,12 +398,13 @@ pid_t search_proc(const char *name)
 				// Read the command name from the file
 				if(fscanf(file, "%"xstr(PROC_PATH_SIZ)"s", comm) == 1)
 				{
-					if(strcmp(comm, name) == 0)
+					if(strncmp(comm, name, PROC_PATH_SIZ) == 0)
 					{
 						// Found a matching process
 						fclose(file);
+						const int pid = atoi(entry->d_name);
 						closedir(dir);
-						return atoi(entry->d_name);
+						return pid;
 					}
 				}
 				fclose(file);

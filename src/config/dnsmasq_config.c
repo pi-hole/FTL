@@ -351,15 +351,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 
-	fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
-	fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
-	fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
-	fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
-	fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
-	fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
-	fputs("localise-queries\n", pihole_conf);
-	fputs("\n", pihole_conf);
-
+	if(conf->dns.localise.v.b)
+	{
+		fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
+		fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
+		fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
+		fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
+		fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
+		fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
+		fputs("localise-queries\n", pihole_conf);
+		fputs("\n", pihole_conf);
+	}
+	
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
@@ -476,6 +479,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// Add upstream DNS servers for reverse lookups
 	bool domain_revServer = false;
 	bool domain_homearpa = false;
+	bool domain_internal = false;
 	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
 	for(unsigned int i = 0; i < revServers; i++)
 	{
@@ -530,6 +534,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			// Flag if configured a server for queries for home.arpa domains
 			if(strcmp(domain, "home.arpa") == 0)
 				domain_homearpa = true;
+			
+			// Flag if configured a server for queries for .internal domains
+			if(strcmp(domain, "internal") == 0)
+				domain_internal = true;
 		}
 
 		// Forward unqualified names to the target only when the "never forward
@@ -546,7 +554,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
-		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+		fputs("# Never forward queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
 		fputs("local=//\n\n", pihole_conf);
@@ -558,6 +566,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	{
 		fputs("# Do not forward home.arpa domains to upstream servers\n",pihole_conf);
 		fputs("local=/home.arpa/\n\n",pihole_conf);
+	}
+
+	// Ensure that .internal domains (Internet-Draft draft-davies-internal-tld-03) are not
+	// sent upstream, unless configured by user as local domain, with server setting applied above
+	if (!domain_internal)
+	{
+		fputs("# Do not forward .internal domains to upstream servers\n",pihole_conf);
+		fputs("local=/internal/\n\n",pihole_conf);
 	}
 
 	// Add domain to DNS server. It will also be used for DHCP if the DHCP
@@ -697,13 +713,17 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	}
 
 	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
-	fputs("#     test, localhost, invalid\n", pihole_conf);
+	fputs("#     test, & invalid\n", pihole_conf);
 	fputs("# names as special and SHOULD NOT attempt to look up NS records for them, or\n", pihole_conf);
 	fputs("# otherwise query authoritative DNS servers in an attempt to resolve these\n", pihole_conf);
 	fputs("# names.\n", pihole_conf);
 	fputs("server=/test/\n", pihole_conf);
-	fputs("server=/localhost/\n", pihole_conf);
 	fputs("server=/invalid/\n", pihole_conf);
+	fputs("#     localhost\n", pihole_conf);
+	fputs("# Instead, caching DNS servers SHOULD, for all such address queries, generate\n", pihole_conf);
+	fputs("# an immediate positive response giving the IP loopback address\n", pihole_conf);
+	fputs("address=/localhost/127.0.0.1\n", pihole_conf);
+	fputs("address=/localhost/::1\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# The same RFC requests something similar for\n", pihole_conf);
 	fputs("#     10.in-addr.arpa.      21.172.in-addr.arpa.  27.172.in-addr.arpa.\n", pihole_conf);

@@ -199,6 +199,7 @@ struct myoption {
 #define LOPT_PXE_OPT       386
 #define LOPT_NO_ENCODE     387
 #define LOPT_DO_ENCODE     388
+#define LOPT_LEASEQUERY    389
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -398,6 +399,7 @@ static const struct myoption opts[] =
     { "use-stale-cache", 2, 0 , LOPT_STALE_CACHE },
     { "no-ident", 0, 0, LOPT_NO_IDENT },
     { "max-tcp-connections", 1, 0, LOPT_MAX_PROCS },
+    { "leasequery", 2, 0, LOPT_LEASEQUERY },
     { NULL, 0, 0, 0 }
   };
 
@@ -503,6 +505,7 @@ static struct {
   { '4', ARG_DUP, "set:<tag>,<mac address>", gettext_noop("Map MAC address (with wildcards) to option set."), NULL },
   { LOPT_BRIDGE, ARG_DUP, "<iface>,<alias>..", gettext_noop("Treat DHCP requests on aliases as arriving from interface."), NULL },
   { LOPT_SHARED_NET, ARG_DUP, "<iface>|<addr>,<addr>", gettext_noop("Specify extra networks sharing a broadcast domain for DHCP"), NULL},
+  { LOPT_LEASEQUERY, ARG_DUP, "[<addr>[/prefix>]]", gettext_noop("Enable RFC 4388 leasequery functions for DHCPv4"), NULL },
   { '5', OPT_NO_PING, NULL, gettext_noop("Disable ICMP echo address checking in the DHCP server."), NULL },
   { '6', ARG_ONE, "<path>", gettext_noop("Shell script to run on DHCP lease creation and destruction."), NULL },
   { LOPT_LUASCRIPT, ARG_DUP, "path", gettext_noop("Lua script to run on DHCP lease creation and destruction."), NULL },
@@ -2915,7 +2918,20 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	arg = comma;
       } while (arg);
       break;
-      
+
+#ifdef HAVE_DHCP
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+# endif
+    case LOPT_LEASEQUERY:
+      set_option_bool(OPT_LEASEQUERY);
+      if (!arg)
+	break;
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic pop
+# endif
+#endif
     case 'B':  /* --bogus-nxdomain */
     case LOPT_IGNORE_ADDR: /* --ignore-address */
      {
@@ -2951,6 +2967,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    baddr->next = daemon->bogus_addr;
 	    daemon->bogus_addr = baddr;
 	  }
+#ifdef HAVE_DHCP
+	else if (option == LOPT_LEASEQUERY)
+	  {
+	    baddr->next = daemon->leasequery_addr;
+	    daemon->leasequery_addr = baddr;
+	  }
+#endif
 	else
 	  {
 	    baddr->next = daemon->ignore_addr;

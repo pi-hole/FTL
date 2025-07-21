@@ -1537,7 +1537,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_DENYLIST);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_DENYLIST_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1554,7 +1556,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_GRAVITY);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_GRAVITY_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1573,7 +1577,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				last_regex_idx = dns_cache->list_id;
-				query_blocked(query, domain, client, QUERY_REGEX);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_REGEX_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1863,6 +1869,12 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		// Store domain that was the reason for blocking the entire chain
 		query->CNAME_domainID = child_domainID;
 
+		// Store CNAME domain ID in DNS cache
+		const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+		DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
+		if(parent_cache != NULL)
+			parent_cache->CNAME_domainID = child_domainID;
+
 		// Change blocking reason into CNAME-caused blocking
 		if(query->status == QUERY_GRAVITY)
 		{
@@ -1870,12 +1882,10 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		}
 		else if(query->status == QUERY_REGEX)
 		{
-			// Get parent and child DNS cache entries
-			const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+			// Get child DNS cache entries
 			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
-			// Get cache pointers
-			DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
+			// Get child's cache pointer
 			const DNSCacheData *child_cache = child_cacheID < 0 ? NULL : getDNSCache(child_cacheID, true);
 
 			// Propagate ID of responsible regex up from the child to the parent
@@ -3625,7 +3635,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 #ifdef HAVE_DHCP6
 	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
 	{
-		lease = lease6_find_by_addr(&addr.addr6, 128, 0);
+		lease = lease6_find_by_plain_addr(&addr.addr6);
 	}
 #endif
 	else

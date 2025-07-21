@@ -162,6 +162,12 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0)
 		{
+			if(strcmp(uri, prefix_webhome) == 0)
+			{
+				log_debug(DEBUG_API, "Not redirecting %s (matches webhome)",
+					  prefix_webhome);
+				return 0;
+			}
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
 			          prefix_webhome);
 			mg_send_http_redirect(conn, prefix_webhome, 308);
@@ -716,6 +722,12 @@ void http_init(void)
 
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
+	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
+	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
+	{
+		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
+	}
+
 	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
@@ -738,7 +750,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
-	allocate_lua(login_uri, admin_api_uri);
+	allocate_lua(login_uri, admin_api_uri, prefix_webhome);
 
 	// Restore sessions from database
 	init_api();

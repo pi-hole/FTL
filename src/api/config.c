@@ -847,7 +847,7 @@ static int api_config_patch(struct ftl_conn *api)
 		set_debug_flags(&config);
 
 		// Store changed configuration to disk
-		writeFTLtoml(true);
+		writeFTLtoml(true, NULL);
 
 		// Rewrite HOSTS file if required
 		if(rewrite_hosts)
@@ -1061,7 +1061,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	set_debug_flags(&config);
 
 	// Store changed configuration to disk
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 
 	// Rewrite HOSTS file if required
 	if(rewrite_hosts)
