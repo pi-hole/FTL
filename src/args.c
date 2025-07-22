@@ -220,6 +220,11 @@ void parse_args(int argc, char *argv[])
 	if(argc == 2 && strcmp(argv[1], "sigtest") == 0)
 		exit(sigtest());
 
+	// Print the value of SIGRTMIN, for use in the scripts to avoid issues
+	// caused by its inconsistent value across environments
+	if(argc == 2 && strcmp(argv[1], "sigrtmin") == 0)
+		exit(sigrtmin());
+
 	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
 	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
 	// Also, we do this if the first argument is a file with ".db" ending

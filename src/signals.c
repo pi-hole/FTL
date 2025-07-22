@@ -558,6 +558,12 @@ int sigtest(void)
 	return EXIT_SUCCESS;
 }
 
+int sigrtmin(void)
+{
+	printf("%d\n", SIGRTMIN);
+	return EXIT_SUCCESS;
+}
+
 void restart_ftl(const char *reason)
 {
 	log_info("Restarting FTL: %s", reason);

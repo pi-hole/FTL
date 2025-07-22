@@ -123,7 +123,7 @@ jobs:
           -src/webserver/civetweb/*
           -src/webserver/cJSON/*
           -src/tre-regex/*
-          -src/config/tomlc99/*
+          -src/config/tomlc17/*
           -src/database/shell.c
           -src/database/sqlite3.c
           -src/database/sqlite3.h
