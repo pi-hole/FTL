@@ -88,7 +88,6 @@ static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
 static char *cname_target = NULL;
-struct host_record *pihole_host_record = NULL;
 #define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
@@ -1144,16 +1143,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				next_iface.haveIPv6 = true;
 				// Store IPv6 address
 				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
-
-				if(pihole_host_record != NULL)
-				{
-					// If we have a host record, we store
-					// the address in the host record
-					// structure
-					memcpy(&pihole_host_record->addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
-				}
-
-				// Remember which kind of address we have
 				if(isGUA)
 					haveGUAv6 = true;
 				else if(isULA)
@@ -1166,13 +1155,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			next_iface.haveIPv4 = true;
 			// Store IPv4 address
 			memcpy(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr));
-
-			if(pihole_host_record != NULL)
-			{
-				// If we have a host record, we store the
-				// address in the host record structure
-				memcpy(&pihole_host_record->addr.s_addr, &next_iface.addr4.addr4, sizeof(next_iface.addr4.addr4));
-			}
 		}
 
 		// Debug logging
@@ -1795,10 +1777,52 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	return blockDomain;
 }
 
+/**
+ * @brief Updates the cache record for the "pi.hole" domain with the current interface addresses.
+ *
+ * This function searches the DNS cache for entries corresponding to the "pi.hole" domain,
+ * for both IPv4 and IPv6 address families. For each matching cache entry found, it updates
+ * the stored address with the address from the next available network interface. It also
+ * sets flags indicating the presence of IPv4 and/or IPv6 addresses in the interface structure.
+ */
+static void update_pihole_cache_record(void)
+{
+	struct crec *lookup = NULL;
+	while ((lookup = cache_find_by_name(lookup, (char*)"pi.hole", 0, F_IPV4 | F_IPV6)))
+	{
+		// We have a cache entry for "pi.hole", so we can use it
+		log_debug(DEBUG_NETWORKING, "Found cache entry for pi.hole: %p", lookup);
+		if(lookup->flags & F_IPV4)
+		{
+			memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(next_iface.addr4.addr4));
+			next_iface.haveIPv4 = true;
+			log_debug(DEBUG_NETWORKING, "Using IPv4 address from cache: %s",
+			          inet_ntoa(next_iface.addr4.addr4));
+		}
+		if(lookup->flags & F_IPV6)
+		{
+			memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
+			next_iface.haveIPv6 = true;
+			log_debug(DEBUG_NETWORKING, "Using IPv6 address from cache: %s",
+			          inet_ntop(AF_INET6, &next_iface.addr6.addr6, next_iface.name, ADDRSTRLEN));
+		}
+	}
+}
+
 bool FTL_CNAME(const char *dst, const char *src, const int id)
 {
 	const double now = double_time();
 	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
+
+	if((src != NULL && strcasecmp(src, "pi.hole") == 0) ||
+	   (dst != NULL && strcasecmp(dst, "pi.hole") == 0))
+	{
+		// If "pi.hole" occurs in the CNAME chain we need to make sure
+		// the "pi.hole" cache record is up-to-date with the current
+		// interface addresses for interface-dependent replies
+		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is part of the CNAME chain");
+		update_pihole_cache_record();
+	}
 
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.dns.CNAMEdeepInspect.v.b)
@@ -3363,30 +3387,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 	// Initialize FTL HTTP server
 	http_init();
-
-	// Search "pi.hole" in daemon->host_records
-	if(daemon->host_records != NULL)
-	{
-		struct host_record *hr;
-		for (hr = daemon->host_records; hr; hr = hr->next)
-		{
-			struct name_list *nl;
-			for (nl = hr->names; nl; nl = nl->next)
-			{
-				if(strcmp(nl->name, "pi.hole") == 0 && hr->flags & HR_4 && hr->flags & HR_6)
-				{
-					log_debug(DEBUG_QUERIES, "Found 4+6 host record for pi.hole at %p", hr);
-					pihole_host_record = hr;
-					break;
-				}
-			}
-		}
-	}
-	if(pihole_host_record == NULL)
-	{
-		log_warn("No host record found for pi.hole. Interface-specific queries may not work as expected.");
-		pihole_host_record = NULL;
-	}
 
 	forked = true;
 }
