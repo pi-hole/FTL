@@ -774,15 +774,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 	    
 	    if (address_assigned != 1)
 	      {
-		/* If the server will not assign any addresses to any IAs in a
-		   subsequent Request from the client, the server MUST send an Advertise
-		   message to the client that doesn't include any IA options. */
-		if (!state->lease_allocate)
-		  {
-		    save_counter(o);
-		    continue;
-		  }
-		
 		/* If the server cannot assign any addresses to an IA in the message
 		   from the client, the server MUST include the IA in the Reply message
 		   with no addresses in the IA and a Status Code option in the IA
@@ -809,7 +800,6 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 	    o = new_opt6(OPTION6_PREFERENCE);
 	    put_opt6_char(option_bool(OPT_AUTHORITATIVE) ? 255 : 0);
 	    end_opt6(o);
-	    tagif = add_options(state, 0);
 	  }
 	else
 	  { 
@@ -829,7 +819,8 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 		  break;
 		}
 	  }
-
+	
+	tagif = add_options(state, 0);
 	break;
       }
       
