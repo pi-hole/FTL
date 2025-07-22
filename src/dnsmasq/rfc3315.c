@@ -982,8 +982,10 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 		  {
 		    if (msg_type == DHCP6REBIND)
 		      {
-			/* When rebinding, we can create a lease if it doesn't exist. */
-			lease = lease6_allocate(&req_addr, state->ia_type == OPTION6_IA_NA ? LEASE_NA : LEASE_TA);
+			/* When rebinding, we can create a lease if it doesn't exist, as long
+			   as --dhcp-authoritative is set. */
+			if (option_bool(OPT_AUTHORITATIVE))
+			  lease = lease6_allocate(&req_addr, state->ia_type == OPTION6_IA_NA ? LEASE_NA : LEASE_TA);
 			if (lease)
 			  lease_set_iaid(lease, state->iaid);
 			else
