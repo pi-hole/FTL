@@ -245,7 +245,11 @@ static int dhcp6_maybe_relay(struct state *state, unsigned char *inbuff, size_t 
 	      struct in6_addr align;
 	      /* the packet data is unaligned, copy to aligned storage */
 	      memcpy(&align, inbuff + 2, IN6ADDRSZ); 
-	      state->link_address = &align;
+
+
+	      /* RFC6221 para 4 */
+	      if (!IN6_IS_ADDR_UNSPECIFIED(&align))
+		state->link_address = &align;
 	      /* zero is_unicast since that is now known to refer to the 
 		 relayed packet, not the original sent by the client */
 	      if (!dhcp6_maybe_relay(state, opt6_ptr(opt, 0), opt6_len(opt), client_addr, 0, now))
