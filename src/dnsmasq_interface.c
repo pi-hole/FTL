@@ -88,6 +88,7 @@ static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
 static char *cname_target = NULL;
+struct host_record *pihole_host_record = NULL;
 #define HOSTNAME "Pi-hole hostname"
 
 // Fork-private copy of the interface data the most recent query came from
@@ -1143,6 +1144,16 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 				next_iface.haveIPv6 = true;
 				// Store IPv6 address
 				memcpy(&next_iface.addr6.addr6, &iface->addr.in6.sin6_addr, sizeof(iface->addr.in6.sin6_addr));
+
+				if(pihole_host_record != NULL)
+				{
+					// If we have a host record, we store
+					// the address in the host record
+					// structure
+					memcpy(&pihole_host_record->addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
+				}
+
+				// Remember which kind of address we have
 				if(isGUA)
 					haveGUAv6 = true;
 				else if(isULA)
@@ -1155,6 +1166,13 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			next_iface.haveIPv4 = true;
 			// Store IPv4 address
 			memcpy(&next_iface.addr4.addr4, &iface->addr.in.sin_addr, sizeof(iface->addr.in.sin_addr));
+
+			if(pihole_host_record != NULL)
+			{
+				// If we have a host record, we store the
+				// address in the host record structure
+				memcpy(&pihole_host_record->addr.s_addr, &next_iface.addr4.addr4, sizeof(next_iface.addr4.addr4));
+			}
 		}
 
 		// Debug logging
@@ -3345,6 +3363,30 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 	// Initialize FTL HTTP server
 	http_init();
+
+	// Search "pi.hole" in daemon->host_records
+	if(daemon->host_records != NULL)
+	{
+		struct host_record *hr;
+		for (hr = daemon->host_records; hr; hr = hr->next)
+		{
+			struct name_list *nl;
+			for (nl = hr->names; nl; nl = nl->next)
+			{
+				if(strcmp(nl->name, "pi.hole") == 0 && hr->flags & HR_4 && hr->flags & HR_6)
+				{
+					log_debug(DEBUG_QUERIES, "Found 4+6 host record for pi.hole at %p", hr);
+					pihole_host_record = hr;
+					break;
+				}
+			}
+		}
+	}
+	if(pihole_host_record == NULL)
+	{
+		log_warn("No host record found for pi.hole. Interface-specific queries may not work as expected.");
+		pihole_host_record = NULL;
+	}
 
 	forked = true;
 }
