@@ -898,20 +898,27 @@ void *webserver_thread(void *val)
 		const enum cert_check status = cert_currently_valid(config.webserver.tls.cert.v.s, 2);
 
 		if(status == CERT_EXPIRES_SOON &&
-		   config.webserver.tls.validity.v.ui > 0 &&
-		   is_pihole_certificate(config.webserver.tls.cert.v.s))
+		   config.webserver.tls.validity.v.ui > 0)
 		{
-			log_info("TLS certificate at %s is about to expire soon, generating new one",
-			         config.webserver.tls.cert.v.s);
-			generate_certificate(config.webserver.tls.cert.v.s, false,
-			                     config.webserver.domain.v.s,
-			                     config.webserver.tls.validity.v.ui);
+			if(is_pihole_certificate(config.webserver.tls.cert.v.s))
+			{
+				log_info("TLS certificate at %s is about to expire soon, generating new one",
+				         config.webserver.tls.cert.v.s);
+				generate_certificate(config.webserver.tls.cert.v.s, false,
+				             config.webserver.domain.v.s,
+				             config.webserver.tls.validity.v.ui);
 
-			log_info("Restarting HTTP server");
-			restart_http();
+				log_info("Restarting HTTP server");
+				restart_http();
 
-			log_info("Done. The new certificate is valid for %u days",
-			         config.webserver.tls.validity.v.ui);
+				log_info("Done. The new certificate is valid for %u days",
+				         config.webserver.tls.validity.v.ui);
+			}
+			else
+			{
+				log_err("TLS certificate at %s is about to expire soon, but it is not a Pi-hole certificate. Please renew it manually!",
+				        config.webserver.tls.cert.v.s);
+			}
 		}
 
 		// Idle for 1 hour
