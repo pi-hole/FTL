@@ -1820,7 +1820,7 @@ void get_client_mac(struct in6_addr *client, int iface, unsigned char *mac,
   
 /* rfc3315.c */
 #ifdef HAVE_DHCP6
-unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *iface_name,  
+unsigned short dhcp6_reply(struct dhcp_context *context, int multicast_dest, int interface, char *iface_name,  
 			   struct in6_addr *fallback, struct in6_addr *ll_addr, struct in6_addr *ula_addr,
 			   size_t sz, struct in6_addr *client_addr, time_t now);
 int relay_upstream6(int iface_index, ssize_t sz, struct in6_addr *peer_address, 

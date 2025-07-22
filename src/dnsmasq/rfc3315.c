@@ -21,7 +21,7 @@
 
 struct state {
   unsigned char *clid;
-  int clid_len, ia_type, interface, hostname_auth, lease_allocate;
+  int multicast_dest, clid_len, ia_type, interface, hostname_auth, lease_allocate;
   char *client_hostname, *hostname, *domain, *send_domain;
   struct dhcp_context *context;
   struct in6_addr *link_address, *fallback, *ll_addr, *ula_addr;
@@ -68,7 +68,7 @@ static void calculate_times(struct dhcp_context *context, unsigned int *min_time
 #define opt6_user_vendor_next(opt, end) (opt6_next(((uint8_t *) opt) - 2, end))
  
 
-unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *iface_name,
+unsigned short dhcp6_reply(struct dhcp_context *context, int multicast_dest, int interface, char *iface_name,
 			   struct in6_addr *fallback,  struct in6_addr *ll_addr, struct in6_addr *ula_addr,
 			   size_t sz, struct in6_addr *client_addr, time_t now)
 {
@@ -87,6 +87,7 @@ unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *if
   
   reset_counter();
   state.context = context;
+  state.multicast_dest = multicast_dest;
   state.interface = interface;
   state.iface_name = iface_name;
   state.fallback = fallback;
@@ -333,20 +334,24 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
   else if (msg_type != DHCP6IREQ)
     return 0;
 
-  /* server-id must match except for SOLICIT, CONFIRM and REBIND messages, which MUST NOT
-     have a server-id.  3315 para 15.x */
   opt = opt6_find(state->packet_options, state->end, OPTION6_SERVER_ID, 1);
-
-  if (msg_type == DHCP6SOLICIT || msg_type == DHCP6CONFIRM || msg_type == DHCP6REBIND)
+  
+  if (msg_type == DHCP6SOLICIT || msg_type == DHCP6CONFIRM || msg_type == DHCP6REBIND || msg_type == DHCP6IREQ)
     {
-      if (opt)
+      /* Above message types must be multicast 3315 Section 15. */
+      if (!state->multicast_dest)
 	return 0;
-    }
-  else if (msg_type == DHCP6IREQ)
-    {
-      /* If server-id provided, it must match. */
-      if (opt && (opt6_len(opt) != daemon->duid_len ||
-		  memcmp(opt6_ptr(opt, 0), daemon->duid, daemon->duid_len) != 0))
+
+      /* server-id must match except for SOLICIT, CONFIRM and REBIND messages, which MUST NOT
+	 have a server-id.  3315 para 15.x */
+      if (msg_type == DHCP6IREQ)
+	{
+	  /* If server-id provided in IREQ, it must match. */
+	  if (opt && (opt6_len(opt) != daemon->duid_len ||
+		      memcmp(opt6_ptr(opt, 0), daemon->duid, daemon->duid_len) != 0))
+	    return 0;
+	}
+      else if (opt) 
 	return 0;
     }
   else
