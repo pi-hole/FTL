@@ -1794,17 +1794,19 @@ static void update_pihole_cache_record(void)
 		log_debug(DEBUG_NETWORKING, "Found cache entry for pi.hole: %p", lookup);
 		if(lookup->flags & F_IPV4)
 		{
-			memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(next_iface.addr4.addr4));
-			next_iface.haveIPv4 = true;
-			log_debug(DEBUG_NETWORKING, "Using IPv4 address from cache: %s",
-			          inet_ntoa(next_iface.addr4.addr4));
+			if(config.dns.reply.host.force4.v.b)
+				memcpy(&lookup->addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(lookup->addr.addr4));
+			else
+				memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(lookup->addr.addr4));
+			log_debug(DEBUG_NETWORKING, "Updating IPv4 address in cache");
 		}
 		if(lookup->flags & F_IPV6)
 		{
-			memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
-			next_iface.haveIPv6 = true;
-			log_debug(DEBUG_NETWORKING, "Using IPv6 address from cache: %s",
-			          inet_ntop(AF_INET6, &next_iface.addr6.addr6, next_iface.name, ADDRSTRLEN));
+			if(config.dns.reply.host.force6.v.b)
+				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
+			else
+				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
+			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
 		}
 	}
 }
