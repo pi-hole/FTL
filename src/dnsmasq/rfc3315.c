@@ -643,7 +643,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
       
     case DHCP6SOLICIT:
       {
-      	int address_assigned = 0;
+      	int address_assigned;
 	/* tags without all prefix-class tags */
 	struct dhcp_netid *solicit_tags;
 	struct dhcp_context *c;
@@ -662,6 +662,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
 
       request_no_address:
 	solicit_tags = tagif;
+	address_assigned = 0;
 	
 	if (ignore)
 	  return 0;
