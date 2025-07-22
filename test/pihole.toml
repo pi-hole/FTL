@@ -988,7 +988,7 @@
     # Number of days the automatically generated self-signed TLS/SSL certificate will be
     # valid for.
     #
-    # Defaults to 730 days (= 2 years). A minimum of 7 days is enforced.
+    # Defaults to 47 days. A minimum of 7 days is enforced.
     # Some devices may enforce shorter validity ranges. Note that defining a lower
     # validity range may require you to accept the self-signed certificate more often in
     # your browser.

@@ -771,7 +771,7 @@ components:
               restore: true
             tls:
               cert: "/etc/pihole/tls.pem"
-              validity: 730
+              validity: 47
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
