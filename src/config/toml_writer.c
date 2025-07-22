@@ -12,7 +12,7 @@
 #include "config.h"
 // get_timestr(), get_FTL_version())
 #include "log.h"
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 #include "toml_writer.h"
 #include "toml_helper.h"
 // get_blocking_mode_str()
@@ -101,7 +101,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		if(conf_item->a != NULL)
 		{
 			// Write possible values if applicable
-			print_toml_allowed_values(conf_item->a, fp, 85, level-1);
+			print_toml_allowed_values(conf_item->a, fp, level-1);
 		}
 
 		// Write value
