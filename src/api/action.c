@@ -157,7 +157,7 @@ int api_action_flush_logs(struct ftl_conn *api)
 		                       NULL);
 }
 
-int api_action_flush_arp(struct ftl_conn *api)
+int api_action_flush_network(struct ftl_conn *api)
 {
 	if(!config.webserver.api.allow_destructive.v.b)
 		return send_json_error(api, 403,
