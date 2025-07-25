@@ -654,26 +654,6 @@ bool export_queries_to_disk(const bool final)
 		// Finalize statement
 		sqlite3_finalize(stmt);
 
-
-		// Update last_disk_db_idx
-		// Prepare SQLite3 statement
-		rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
-		if(rc != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-			return false;
-		}
-
-		// Perform step
-		if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-			last_disk_db_idx = sqlite3_column_int64(stmt, 0);
-		else
-			log_err("Failed to get MAX(id) from query_storage: %s",
-			        sqlite3_errstr(rc));
-
-		// Finalize statement
-		sqlite3_finalize(stmt);
-
 		/*
 		 * If there are any insertions, we:
 		 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
