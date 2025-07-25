@@ -35,11 +35,21 @@ static sqlite3_stmt *domain_stmt = NULL;
 static sqlite3_stmt *client_stmt = NULL;
 static sqlite3_stmt *forward_stmt = NULL;
 static sqlite3_stmt *addinfo_stmt = NULL;
+static sqlite3_stmt *queries_to_disk_stmt = NULL;
+#define SUBTABLE_STMTS 5
+static sqlite3_stmt *subtables_to_disk_stmts[SUBTABLE_STMTS] = { NULL };
+// Array of all prepared statements
 static sqlite3_stmt **stmts[] = { &query_stmt,
                                   &domain_stmt,
                                   &client_stmt,
                                   &forward_stmt,
-                                  &addinfo_stmt };
+                                  &addinfo_stmt,
+                                  &queries_to_disk_stmt,
+                                  &subtables_to_disk_stmts[0],
+                                  &subtables_to_disk_stmts[1],
+                                  &subtables_to_disk_stmts[2],
+                                  &subtables_to_disk_stmts[3],
+                                  &subtables_to_disk_stmts[4] };
 
 // Private prototypes
 static void load_queries_from_disk(void);
@@ -222,6 +232,35 @@ bool init_memory_database(void)
 		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("init_memory_database(queries_to_disk) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	const char *subtable_sql[SUBTABLE_STMTS] = {
+		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
+		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
+		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
+		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
+		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
+	};
+
+	// Export linking tables
+	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
+	{
+		rc = sqlite3_prepare_v3(_memdb, subtable_sql[i], -1,
+		                        SQLITE_PREPARE_PERSISTENT, &subtables_to_disk_stmts[i], NULL);
+		if( rc != SQLITE_OK )
+		{
+			log_err("init_memory_database(queries_to_disk) - SQL error step: %s", sqlite3_errstr(rc));
+			return false;
+		}
+	}
+
 
 	// Attach disk database
 	if(attached)
@@ -602,27 +641,16 @@ bool export_queries_to_disk(const bool final)
 
 	// Start transaction
 	sqlite3 *memdb = get_memdb();
-	sqlite3_stmt *stmt = NULL;
 	SQL_bool(memdb, "BEGIN TRANSACTION");
 
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
-
 		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
 		          last_disk_db_idx, last_mem_db_idx, time);
 
-		// Prepare SQLite3 statement
-		log_debug(DEBUG_DATABASE, "Accessing in-memory database");
-		if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-			return false;
-		}
-
 		// Bind index
-		if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
+		if((rc = sqlite3_bind_int64(queries_to_disk_stmt, 1, last_disk_db_idx)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
 			return false;
@@ -632,19 +660,18 @@ bool export_queries_to_disk(const bool final)
 		// This prevents queries from the last 30 seconds from being stored
 		// immediately on-disk to give them some time to complete before finally
 		// exported. We do not limit anything when storing during termination.
-		if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
+		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 2, time)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 			return false;
 		}
 
 		// Perform step
-		if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		if((rc = sqlite3_step(queries_to_disk_stmt)) == SQLITE_DONE)
 			okay = true;
 		else
 		{
 			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
-			log_info("    SQL query was: \"%s\"", querystr);
 			log_info("    with parameters: id = %lu, timestamp = %f", last_disk_db_idx, time);
 		}
 
@@ -652,7 +679,7 @@ bool export_queries_to_disk(const bool final)
 		insertions = sqlite3_changes(memdb);
 
 		// Finalize statement
-		sqlite3_finalize(stmt);
+		sqlite3_reset(queries_to_disk_stmt);
 
 		/*
 		 * If there are any insertions, we:
@@ -691,36 +718,26 @@ bool export_queries_to_disk(const bool final)
 	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
-	const char *subtable_names[] = {
+	const char *subtable_names[SUBTABLE_STMTS] = {
 		"domain_by_id",
 		"client_by_id",
 		"forward_by_id",
 		"addinfo_by_id",
 		"sqlite_sequence"
 	};
-	const char *subtable_sql[] = {
-		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
-		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
-		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
-		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
-		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
-	};
 
 	// Export linking tables
-	for(unsigned int i = 0; i < ArraySize(subtable_sql); i++)
+	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
+		if((rc = sqlite3_step(subtables_to_disk_stmts[i])) != SQLITE_DONE)
 			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
-			        subtable_sql[i], sqlite3_errstr(rc));
+			        subtable_names[i], sqlite3_errstr(rc));
+		sqlite3_reset(subtables_to_disk_stmts[i]);
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
 	// End transaction
-	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
+	SQL_bool(memdb, "END TRANSACTION");
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
 		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
