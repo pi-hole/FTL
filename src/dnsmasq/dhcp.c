@@ -32,8 +32,6 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 			    struct in_addr netmask, struct in_addr broadcast, void *vparam);
 static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 			      struct in_addr netmask, struct in_addr broadcast, void *vparam);
-static void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz);
-static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface);
 
 static int make_fd(int port)
 {
@@ -344,7 +342,7 @@ void dhcp_packet(time_t now, int pxe_fd)
       if (!iface_enumerate(AF_INET, &parm, (callback_t){.af_inet=complete_context}))
 	return;
 
-      relay_upstream4(iface_index, mess, (size_t)sz);
+      relay_upstream4(iface_index, mess, (size_t)sz, unicast_dest);
        
       /* May have configured relay, but not DHCP server */
       if (!daemon->dhcp)
@@ -1090,123 +1088,5 @@ char *host_from_dns(struct in_addr addr)
   
   return NULL;
 }
-
-static void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz)
-{
-  struct in_addr giaddr = mess->giaddr;
-  u8 hops = mess->hops;
-  struct dhcp_relay *relay;
-
-  if (mess->op != BOOTREQUEST)
-    return;
-
-  for (relay = daemon->relay4; relay; relay = relay->next)
-    if (relay->iface_index != 0 && relay->iface_index == iface_index)
-      break;
-
-  /* No relay config. */
-  if (!relay)
-    return;
-  
-  for (; relay; relay = relay->next)
-    if (relay->iface_index != 0 && relay->iface_index == iface_index)
-      {
-	union mysockaddr to;
-	union all_addr from;
-
-	mess->hops = hops;
-	mess->giaddr = giaddr;
-	
-	if ((mess->hops++) > 20)
-	  continue;
-	
-	/* source address == relay address */
-	from.addr4 = relay->local.addr4;
-
-	/* already gatewayed ? */
-	if (giaddr.s_addr)
-	  {
-	    /* if so check if by us, to stomp on loops. */
-	    if (giaddr.s_addr == relay->local.addr4.s_addr)
-	      continue;
-	  }
-	else
-	  {
-	    /* plug in our address */
-	    mess->giaddr.s_addr = relay->local.addr4.s_addr;
-	  }
-	
-	to.sa.sa_family = AF_INET;
-	to.in.sin_addr = relay->server.addr4;
-	to.in.sin_port = htons(relay->port);
-#ifdef HAVE_SOCKADDR_SA_LEN
-	to.in.sin_len = sizeof(struct sockaddr_in);
-#endif
-	
-	/* Broadcasting to server. */
-	if (relay->server.addr4.s_addr == 0)
-	  {
-	    struct ifreq ifr;
-	    
-	    if (relay->interface)
-	      safe_strncpy(ifr.ifr_name, relay->interface, IF_NAMESIZE);
-	    
-	    if (!relay->interface || strchr(relay->interface, '*') ||
-		ioctl(daemon->dhcpfd, SIOCGIFBRDADDR, &ifr) == -1)
-	      {
-		my_syslog(MS_DHCP | LOG_ERR, _("Cannot broadcast DHCP relay via interface %s"), relay->interface);
-		continue;
-	      }
-	    
-	    to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
-	  }
-	
-#ifdef HAVE_DUMPFILE
-	{
-	  union mysockaddr fromsock;
-	  fromsock.in.sin_port = htons(daemon->dhcp_server_port);
-	  fromsock.in.sin_addr = from.addr4;
-	  fromsock.sa.sa_family = AF_INET;
-
-	  dump_packet_udp(DUMP_DHCP, (void *)mess, sz, &fromsock, &to, -1);
-	}
-#endif
-	
-	 send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
-	 
-	 if (option_bool(OPT_LOG_OPTS))
-	   {
-	     inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
-	     if (relay->server.addr4.s_addr == 0)
-	       snprintf(daemon->dhcp_buff2, DHCP_BUFF_SZ, _("broadcast via %s"), relay->interface);
-	     else
-	       inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
-	     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
-	   }
-      }
-  
-  /* restore in case of a local reply. */
-  mess->giaddr = giaddr;
-}
-
-
-static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface)
-{
-  struct dhcp_relay *relay;
-
-  if (mess->giaddr.s_addr == 0 || mess->op != BOOTREPLY)
-    return NULL;
-
-  for (relay = daemon->relay4; relay; relay = relay->next)
-    {
-      if (mess->giaddr.s_addr == relay->local.addr4.s_addr)
-	{
-	  if (!relay->interface || wildcard_match(relay->interface, arrival_interface))
-	    return relay->iface_index != 0 ? relay : NULL;
-	}
-    }
-  
-  return NULL;	 
-}     
 
 #endif
