@@ -24,6 +24,8 @@
 #include "capabilities.h"
 // suggest_closest_conf_key()
 #include "config/suggest.h"
+// CLI colors
+#include "args.h"
 
 enum exit_codes {
 	OKAY = 0,
@@ -554,6 +556,8 @@ int get_config_from_CLI(const char *key, const bool quiet)
 
 	// Loop over all config options again to find the one we are looking for
 	// (possibly partial match)
+	const char *red = cli_color(COL_RED);
+	const char *normal = cli_normal();
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
@@ -572,16 +576,18 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		// This is the config option we are looking for
 		conf_item = item;
 
+		const bool is_default = compare_config_item(item->t, &item->v, &item->d);
+
 		// Print key if this is not an exact match
 		if(key == NULL || strcmp(item->k, key) != 0)
-			printf("%s = ", item->k);
+			printf("%s%s = ", is_default ? "" : red, item->k);
 
 		// Print value
 		if(conf_item-> f & FLAG_WRITE_ONLY)
 			puts("<write-only property>");
 		else
 			writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
-		putchar('\n');
+		puts(normal);
 	}
 
 	// Check if we found the config option
