@@ -1805,7 +1805,7 @@ static void update_pihole_cache_record(void)
 			if(config.dns.reply.host.force6.v.b)
 				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
 			else
-				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(next_iface.addr6.addr6));
+				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(lookup->addr.addr6));
 			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
 		}
 	}
