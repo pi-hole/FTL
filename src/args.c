@@ -985,6 +985,7 @@ void parse_args(int argc, char *argv[])
 			const char *bold = cli_bold();
 			const char *uline = cli_underline();
 			const char *normal = cli_normal();
+			const char *red = cli_color(COL_RED);
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
 			const char *green = cli_color(COL_GREEN);
@@ -1081,6 +1082,8 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t                    Config items with non-default values may\n");
+			printf("\t                    be colored in %sred%s\n", red, normal);
 			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
