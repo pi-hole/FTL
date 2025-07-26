@@ -607,7 +607,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fputs("# NXDOMAIN responses for queries on this domain. The actual response\n", pihole_conf);
 	fputs("# is handled by FTL at runtime\n", pihole_conf);
 	fputs("local=/pi.hole/\n", pihole_conf);
-	fputs("host-record=pi.hole,0.0.0.0\n", pihole_conf);
+	fputs("host-record=pi.hole,0.0.0.0,::\n", pihole_conf);
 
 	if(conf->dhcp.active.v.b)
 	{

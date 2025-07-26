@@ -1437,7 +1437,32 @@
   [[ "${lines[0]}" == "" ]]
 }
 
+@test "Pi-hole use interface-dependent replies for pi.hole" {
+  run bash -c "dig A pi.hole +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "127.0.0.1" ]]
+
+  run bash -c "dig AAAA pi.hole +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "::1" ]]
+}
+
+@test "Pi-hole uses interface-dependent replies inside CNAME chains" {
+  run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "127.0.0.1" ]]
+
+  run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "::1" ]]
+}
+
 @test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
+  # Set the reply for pi.hole to custom IPv4 and IPv6 addresses
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"reply\":{\"host\":{\"force4\":true,\"IPv4\":\"10.100.0.10\",\"force6\":true,\"IPv6\":\"fe80::10\"}}}}}"'
+  sleep 1
   run bash -c "dig A pi.hole +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1453,6 +1478,18 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
   [[ ${lines[1]} == "" ]]
+}
+
+@test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
+  run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "10.100.0.10" ]]
+
+  run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "fe80::10" ]]
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for hostname" {
@@ -2162,7 +2199,7 @@
 @test "Expected number of config file rotations" {
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
