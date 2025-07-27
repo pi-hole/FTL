@@ -28,7 +28,7 @@ static sqlite3 *_memdb = NULL;
 static bool store_in_database = false;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
-static unsigned long last_mem_db_idx = 0, last_disk_db_idx = 0;
+static unsigned long last_mem_db_idx = 0;
 static unsigned int mem_db_num = 0, disk_db_num = 0;
 static sqlite3_stmt *query_stmt = NULL;
 static sqlite3_stmt *domain_stmt = NULL;
@@ -233,7 +233,9 @@ bool init_memory_database(void)
 		return false;
 	}
 
-	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?",
+	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
+	                                      "WHERE id > (SELECT MAX(id) FROM disk.query_storage) "\
+	                                        "AND timestamp < ?",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -646,21 +648,14 @@ bool export_queries_to_disk(const bool final)
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
-		          last_disk_db_idx, last_mem_db_idx, time);
-
-		// Bind index
-		if((rc = sqlite3_bind_int64(queries_to_disk_stmt, 1, last_disk_db_idx)) != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
-			return false;
-		}
+		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (last_mem_db_idx = %lu)",
+		          time, last_mem_db_idx);
 
 		// Bind upper time limit
 		// This prevents queries from the last 30 seconds from being stored
 		// immediately on-disk to give them some time to complete before finally
 		// exported. We do not limit anything when storing during termination.
-		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 2, time)) != SQLITE_OK)
+		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 			return false;
@@ -672,7 +667,7 @@ bool export_queries_to_disk(const bool final)
 		else
 		{
 			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
-			log_info("    with parameters: id = %lu, timestamp = %f", last_disk_db_idx, time);
+			log_info("    with timestamp = %f", time);
 		}
 
 		// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
@@ -712,9 +707,6 @@ bool export_queries_to_disk(const bool final)
 
 		// Update number of queries in the disk database
 		disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-
-		// All temp queries were stored to disk, update the IDs
-		last_disk_db_idx += insertions;
 	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
@@ -739,8 +731,8 @@ bool export_queries_to_disk(const bool final)
 	// End transaction
 	SQL_bool(memdb, "END TRANSACTION");
 
-	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
-		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
+	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
+		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
 
 	return okay;
 }
@@ -1412,7 +1404,6 @@ void init_disk_db_idx(void)
 	// assume any index
 	if(FTLDBerror())
 	{
-		last_disk_db_idx = 0;
 		last_mem_db_idx = 0;
 		return;
 	}
@@ -1424,7 +1415,7 @@ void init_disk_db_idx(void)
 
 	// Perform step
 	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
-		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
+		last_mem_db_idx = sqlite3_column_int64(stmt, 0);
 	else
 		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
@@ -1432,11 +1423,7 @@ void init_disk_db_idx(void)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	log_debug(DEBUG_DATABASE, "Last long-term idx is %lu", last_disk_db_idx);
-
-	// Update indices so that the next call to DB_save_queries() skips the
-	// queries that we just imported from the database
-	last_mem_db_idx = last_disk_db_idx;
+	log_debug(DEBUG_DATABASE, "Last long-term idx is %lu", last_mem_db_idx);
 }
 
 bool queries_to_database(void)
