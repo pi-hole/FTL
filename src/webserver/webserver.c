@@ -921,8 +921,8 @@ void *webserver_thread(void *val)
 			}
 		}
 
-		// Idle for 1 hour
-		thread_sleepms(WEBSERVER, 3600000);
+		// Idle for 1 day (24 hours)
+		thread_sleepms(WEBSERVER, 86400000);
 	}
 
 	log_info("Terminating webserver thread");

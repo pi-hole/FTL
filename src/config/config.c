@@ -1058,14 +1058,6 @@ static void initConfig(struct config *conf)
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
 
-	conf->webserver.tls.cert.k = "webserver.tls.cert";
-	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file.\n\n All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n The *.pem file can be created using\n     cp server.crt server.pem\n     cat server.key >> server.pem\n if you have these files instead";
-	conf->webserver.tls.cert.a = cJSON_CreateStringReference("<valid TLS certificate file (*.pem)>");
-	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
-	conf->webserver.tls.cert.t = CONF_STRING;
-	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
-	conf->webserver.tls.cert.c = validate_filepath;
-
 	conf->webserver.tls.validity.k = "webserver.tls.validity";
 	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for.\n\n Defaults to 47 days. A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate.";
 	conf->webserver.tls.validity.t = CONF_UINT;

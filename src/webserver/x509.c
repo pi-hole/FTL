@@ -782,9 +782,9 @@ enum cert_check cert_currently_valid(const char *certfile, const time_t valid_fo
 	// Compare validity of certificate
 	// - crt.valid_from needs to be in the past
 	// - crt.valid_to should be further away than at least two days
-	mbedtls_x509_time now;
-	mbedtls_x509_time_gmtime(mbedtls_time(NULL) + valid_for_at_least_days * (24 * 3600), &now);
-	const bool is_valid_to = mbedtls_x509_time_cmp(&(crt.valid_to), &now) > 0;
+	mbedtls_x509_time until = { 0 };
+	mbedtls_x509_time_gmtime(mbedtls_time(NULL) + valid_for_at_least_days * (24 * 3600), &until);
+	const bool is_valid_to = mbedtls_x509_time_cmp(&(crt.valid_to), &until) > 0;
 	const bool is_valid_from = mbedtls_x509_time_is_past(&(crt.valid_from));
 
 	// Free resources
