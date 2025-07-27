@@ -149,6 +149,7 @@ void dhcp_packet(time_t now, int pxe_fd)
 #ifdef HAVE_LINUX_NETWORK
   struct arpreq arp_req;
   struct timeval tv;
+  struct in_addr dst_addr;
 #endif
   
   union {
@@ -174,13 +175,11 @@ void dhcp_packet(time_t now, int pxe_fd)
       (sz < (ssize_t)(sizeof(*mess) - sizeof(mess->options)))) 
     return;
   
-#ifdef HAVE_DUMPFILE
-  dump_packet_udp(DUMP_DHCP, (void *)daemon->dhcp_packet.iov_base, sz, (union mysockaddr *)&dest, NULL, fd);
-#endif
-  
 #if defined (HAVE_LINUX_NETWORK)
   if (ioctl(fd, SIOCGSTAMP, &tv) == 0)
     recvtime = tv.tv_sec;
+
+  dst_addr.s_addr = 0;
   
   if (msg.msg_controllen >= sizeof(struct cmsghdr))
     for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
@@ -192,7 +191,8 @@ void dhcp_packet(time_t now, int pxe_fd)
 	  } p;
 	  p.c = CMSG_DATA(cmptr);
 	  iface_index = p.p->ipi_ifindex;
-	  if (p.p->ipi_addr.s_addr != INADDR_BROADCAST)
+	  dst_addr = p.p->ipi_addr; 
+	  if (dst_addr.s_addr != INADDR_BROADCAST)
 	    unicast_dest = 1;
 	}
 
@@ -222,7 +222,25 @@ void dhcp_packet(time_t now, int pxe_fd)
 	  iface_index = *(p.i);
 	}
 #endif
-	
+
+#ifdef HAVE_DUMPFILE
+  union mysockaddr *sockp = NULL;
+  
+#  ifdef HAVE_LINUX_NETWORK
+  union mysockaddr tosock;
+  
+  sockp = &tosock;
+  tosock.in.sin_port = htons(daemon->dhcp_server_port);
+  tosock.in.sin_addr = dst_addr;
+  tosock.sa.sa_family = AF_INET;
+#    ifdef HAVE_SOCKADDR_SA_LEN
+  tosock.in.sin_len = sizeof(struct sockaddr_in);
+#    endif
+#  endif
+  
+  dump_packet_udp(DUMP_DHCP, (void *)daemon->dhcp_packet.iov_base, sz, (union mysockaddr *)&dest, sockp, -1);
+#endif
+  	
   if (!indextoname(daemon->dhcpfd, iface_index, ifr.ifr_name) ||
       ioctl(daemon->dhcpfd, SIOCGIFFLAGS, &ifr) != 0)
     return;
