@@ -3,11 +3,11 @@ components:
   paths:
     list:
       summary: Modify list
-      parameters:
-        - $ref: 'lists.yaml#/components/parameters/list'
-        - $ref: 'lists.yaml#/components/parameters/listtype'
       get:
         summary: Get lists
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype_optional'
         tags:
           - "List management"
         operationId: "get_lists"
@@ -39,6 +39,9 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
       put:
         summary: Replace list
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         tags:
           - "List management"
         operationId: "replace_lists"
@@ -86,6 +89,9 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete list
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         tags:
           - "List management"
         operationId: "delete_lists"
@@ -468,6 +474,17 @@ components:
       description: Address of the list
       example: https://hosts-file.net/ad_servers.txt
     listtype:
+      in: query
+      name: type
+      schema:
+        type: string
+        enum:
+          - "allow"
+          - "block"
+      required: true
+      description: Type of list
+      example: block
+    listtype_optional:
       in: query
       name: type
       schema:

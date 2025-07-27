@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-87-gc8444c72-dirty) on branch new/renew_tls_cert
+# Pi-hole configuration file (v6.2.3-103-g89ce55ca-dirty) on branch new/renew_tls_cert
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-18 05:48:18 UTC
+# Last updated on 2025-07-27 10:05:29 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -184,11 +184,12 @@
   #     true or false
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled)
+  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
+  # Leave empty for auto-detection.
   #
   # Allowed values are:
   #     a valid interface name
-  interface = "eth0"
+  interface = ""
 
   # Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with
   # associated IPv4 (A) and IPv6 (AAAA) records
@@ -247,7 +248,8 @@
   # Allowed values are:
   #     Array of CNAMEs, each one in the following form: "<cname>,<target>[,<TTL>]"
   cnameRecords = [
-    "brücke.com,äste.com,2"
+    "brücke.com,äste.com,2",
+    "pihole.mydomain.net,pi.hole"
   ] ### CHANGED, default = []
 
   # Port used by the DNS server
@@ -431,26 +433,26 @@
       #
       # Allowed values are:
       #     true or false
-      force4 = true ### CHANGED, default = false
+      force4 = false
 
       # Custom IPv4 address for the Pi-hole host
       #
       # Allowed values are:
       #     A valid IPv4 address or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = ""
+      IPv4 = ""
 
       # Use a specific IPv6 address for the Pi-hole host? See description for the IPv4
       # variant above for further details.
       #
       # Allowed values are:
       #     true or false
-      force6 = true ### CHANGED, default = false
+      force6 = false
 
       # Custom IPv6 address for the Pi-hole host
       #
       # Allowed values are:
       #     A valid IPv6 address or empty string ("")
-      IPv6 = "fe80::10" ### CHANGED, default = ""
+      IPv6 = ""
 
     [dns.reply.blocking]
       # Use a specific IPv4 address in IP blocking mode? By default, FTL determines the
@@ -1612,8 +1614,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 157 total entries out of which 100 entries are default
-# --> 57 entries are modified
+# 157 total entries out of which 104 entries are default
+# --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

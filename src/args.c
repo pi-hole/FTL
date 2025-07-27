@@ -70,6 +70,8 @@
 #include "ntp/ntp.h"
 // check_capability()
 #include "capabilities.h"
+// get_gateway_name()
+#include "tools/netlink.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -611,13 +613,21 @@ void parse_args(int argc, char *argv[])
 		exit(EXIT_SUCCESS);
 	}
 
-
 	// Set config option through CLI
 	if(argc == 3 && strcmp(argv[1], "migrate") == 0 && strcmp(argv[2], "v6") == 0)
 	{
 		cli_mode = true;
 		log_ctrl(false, true);
 		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Get name of the default gateway
+	if(argc == 2 && strcmp(argv[1], "--default-gateway") == 0)
+	{
+		cli_mode = true;
+		char *name = get_gateway_name();
+		printf("%s\n", name);
+		exit(EXIT_SUCCESS);
 	}
 
 	// Undocumented option to create an all-default dummy config file
@@ -1187,6 +1197,7 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    authentication (if enabled)\n");
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
+			printf("\t%s--default-gateway%s   Get default network interface's name\n", green, normal);
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);

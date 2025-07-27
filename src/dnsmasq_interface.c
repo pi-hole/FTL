@@ -1777,10 +1777,54 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	return blockDomain;
 }
 
+/**
+ * @brief Updates the cache record for the "pi.hole" domain with the current interface addresses.
+ *
+ * This function searches the DNS cache for entries corresponding to the "pi.hole" domain,
+ * for both IPv4 and IPv6 address families. For each matching cache entry found, it updates
+ * the stored address with the address from the next available network interface. It also
+ * sets flags indicating the presence of IPv4 and/or IPv6 addresses in the interface structure.
+ */
+static void update_pihole_cache_record(void)
+{
+	struct crec *lookup = NULL;
+	while ((lookup = cache_find_by_name(lookup, (char*)"pi.hole", 0, F_IPV4 | F_IPV6)))
+	{
+		// We have a cache entry for "pi.hole", so we can use it
+		log_debug(DEBUG_NETWORKING, "Found cache entry for pi.hole: %p", lookup);
+		if(lookup->flags & F_IPV4)
+		{
+			if(config.dns.reply.host.force4.v.b)
+				memcpy(&lookup->addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(lookup->addr.addr4));
+			else
+				memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(lookup->addr.addr4));
+			log_debug(DEBUG_NETWORKING, "Updating IPv4 address in cache");
+		}
+		if(lookup->flags & F_IPV6)
+		{
+			if(config.dns.reply.host.force6.v.b)
+				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
+			else
+				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(lookup->addr.addr6));
+			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
+		}
+	}
+}
+
 bool FTL_CNAME(const char *dst, const char *src, const int id)
 {
 	const double now = double_time();
 	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
+
+	if((src != NULL && strcasecmp(src, "pi.hole") == 0) ||
+	   (dst != NULL && strcasecmp(dst, "pi.hole") == 0))
+	{
+		// If "pi.hole" occurs in the CNAME chain we need to make sure
+		// the "pi.hole" cache record is up-to-date with the current
+		// interface addresses for interface-dependent replies
+		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is part of the CNAME chain");
+		update_pihole_cache_record();
+	}
 
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.dns.CNAMEdeepInspect.v.b)
