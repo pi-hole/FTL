@@ -554,10 +554,12 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		}
 	}
 
+	// Do not allow enforcing colors from --config
+	const char *red = getenv("FORCE_COLOR") == NULL ? cli_color(COL_RED) : "";
+	const char *normal = getenv("FORCE_COLOR") == NULL ? cli_normal() : "";
+
 	// Loop over all config options again to find the one we are looking for
 	// (possibly partial match)
-	const char *red = cli_color(COL_RED);
-	const char *normal = cli_normal();
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
