@@ -344,7 +344,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	char not_before[16] = { 0 };
 	char not_after[16] = { 0 };
 	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
-	tm->tm_mday += validity_days;
+	tm->tm_mday += validity_days > 0 ? validity_days : 30*365; // If no validity is specified, use 30 years
 	tm->tm_isdst = -1; // Not set, let mktime() determine it
 	mktime(tm); // normalize time
 	// Check for leap year, and adjust the date accordingly

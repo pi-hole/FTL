@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-103-g89ce55ca-dirty) on branch new/renew_tls_cert
+# Pi-hole configuration file (v6.2.3-122-g2495f42f-dirty) on branch new/renew_tls_cert
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-27 10:05:29 UTC
+# Last updated on 2025-07-29 18:07:54 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -997,7 +997,9 @@
     # Pi-hole will regenerate certificates it created itself two days prior to expiration.
     # If you are using your own certificate, you need to regenerate it yourself. In this
     # case, it is advised to set the validity range to 0 days, so that Pi-hole does not
-    # try to regenerate your certificate.
+    # try to regenerate your certificate. If you set the validity range to 0 days and
+    # still try to generate a certificate, Pi-hole will set a fixed validity range of
+    # roughly 30 years for the certificate.
     validity = 47
 
   [webserver.paths]
