@@ -919,29 +919,31 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 {
 	log_debug(DEBUG_DATABASE, "Finalizing gravity statements for %s", getstr(client->ippos));
 
+	sqlite3_stmt *stmt;
+	// Finalize all prepared statements for this client
 	if(whitelist_stmt != NULL &&
-	   whitelist_stmt->get(whitelist_stmt, client->id) != NULL)
+	   (stmt = whitelist_stmt->get(whitelist_stmt, client->id)) != NULL)
 	{
-		sqlite3_finalize(whitelist_stmt->get(whitelist_stmt, client->id));
 		whitelist_stmt->set(whitelist_stmt, client->id, NULL);
+		sqlite3_finalize(stmt);
 	}
 	if(blacklist_stmt != NULL &&
-	   blacklist_stmt->get(blacklist_stmt, client->id) != NULL)
+	   (stmt = blacklist_stmt->get(blacklist_stmt, client->id)) != NULL)
 	{
-		sqlite3_finalize(blacklist_stmt->get(blacklist_stmt, client->id));
 		blacklist_stmt->set(blacklist_stmt, client->id, NULL);
+		sqlite3_finalize(stmt);
 	}
 	if(gravity_stmt != NULL &&
-	   gravity_stmt->get(gravity_stmt, client->id) != NULL)
+	   (stmt = gravity_stmt->get(gravity_stmt, client->id)) != NULL)
 	{
-		sqlite3_finalize(gravity_stmt->get(gravity_stmt, client->id));
 		gravity_stmt->set(gravity_stmt, client->id, NULL);
+		sqlite3_finalize(stmt);
 	}
 	if(antigravity_stmt != NULL &&
-	   antigravity_stmt->get(antigravity_stmt, client->id) != NULL)
+	   (stmt = antigravity_stmt->get(antigravity_stmt, client->id)) != NULL)
 	{
-		sqlite3_finalize(antigravity_stmt->get(antigravity_stmt, client->id));
 		antigravity_stmt->set(antigravity_stmt, client->id, NULL);
+		sqlite3_finalize(stmt);
 	}
 
 	// Unset group found property to trigger a check next time the

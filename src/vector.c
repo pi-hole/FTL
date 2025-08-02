@@ -100,6 +100,13 @@ sqlite3_stmt * __attribute__((pure)) get_sqlite3_stmt_vec(sqlite3_stmt_vec *v, u
 		return NULL;
 	}
 
+	if(v->items == NULL)
+	{
+		log_err("Passed vector with NULL items to get_sqlite3_stmt_vec(%p, %u)",
+		        v, index);
+		return NULL;
+	}
+
 	if(index >= v->capacity)
 	{
 		// Silently increase size of vector if trying to read out-of-bounds
