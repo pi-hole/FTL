@@ -187,11 +187,18 @@ bool another_FTL(void)
 	}
 	else if(process_alive(pid))
 	{
-		// If we found another FTL process by looking at the PID file, we
-		// check if it is still alive. If it is, we log a critical message
-		// and return true. This will terminate the current process.
-		log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
-		return true;
+		char pname[PROC_PATH_SIZ + 1] = { 0 };
+		if(get_process_name(pid, pname) && strcasecmp(pname, PROCESS_NAME) == 0)
+		{
+			// If we found another FTL process by looking at the PID
+			// file, we log an info message and return true. This
+			// will terminate the current process.
+			log_crit("%s is already running (PID %d)!", PROCESS_NAME, pid);
+			return true;
+		}
+		// If we found another process by looking at the PID file, which
+		// is, however, not FTL, we log this and continue.
+		log_warn("Found process \"%s\" at PID %d suggested by PID file, ignoring", pname, pid);
 	}
 
 	// If we did not find another FTL process by looking at the PID file, we assume
