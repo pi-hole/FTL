@@ -1473,7 +1473,7 @@ void suggest_complete(const int argc, char *argv[])
 						// Provide matching suggestions
 						for(size_t j = 0; j < THEME_MAX; j++)
 						{
-							const char *theme = get_theme_name(j);
+							const char *theme = get_web_theme_str(j);
 							if(strStartsWithIgnoreCase(theme, last_word) || strlen(last_word) == 0)
 								puts(theme);
 						}
