@@ -47,7 +47,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
 	// Do not redirect for ACME challenges
-	log_debug(DEBUG_API, "Local URI: \"%s\"", req_info->local_uri_raw);
+	log_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", req_info->local_uri_raw);
 	const char acme_challenge[] = "/.well-known/acme-challenge/";
 	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
@@ -100,7 +100,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	// Check if the request is for something in the webhome directory
 	const bool in_webhome = (strncmp(req_info->local_uri_raw, prefix_webhome, strlen(prefix_webhome)) == 0);
-	log_debug(DEBUG_API, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	log_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
 	          req_info->local_uri_raw, login, in_webhome, no_dot);
 
 	// Check if the request is for a LUA page (every XYZ.lp has already been
