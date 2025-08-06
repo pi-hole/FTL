@@ -87,3 +87,16 @@ int __attribute__ ((pure)) get_web_theme_val(const char *web_theme)
 	// Invalid value
 	return -1;
 }
+
+const char * __attribute__ ((pure)) get_theme_name(const enum web_theme web_theme)
+{
+	// Iterate over all possible theme values
+	for(unsigned int i = 0; i < THEME_MAX; i++)
+	{
+		if(webthemes[i].id == web_theme)
+			return webthemes[i].name;
+	}
+
+	// Invalid value
+	return NULL;
+}

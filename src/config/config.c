@@ -46,7 +46,6 @@ uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 // Private prototypes
 static bool port_in_use(const in_port_t port);
 static void reset_config_default(struct conf_item *conf_item);
-static void initConfig(struct config *conf);
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -387,7 +386,7 @@ void free_config(struct config *conf)
 	}
 }
 
-static void initConfig(struct config *conf)
+void initConfig(struct config *conf)
 {
 	if(config_initialized)
 		return;
@@ -1593,7 +1592,7 @@ static void initConfig(struct config *conf)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&config, i);
+		struct conf_item *conf_item = get_conf_item(conf, i);
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &conf->files.log.ftl)

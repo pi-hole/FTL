@@ -87,6 +87,9 @@ bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
+// Prototypes
+static void suggest_complete(const int argc, char *argv[]);
+
 static bool __attribute__ ((pure)) is_term(void)
 {
 	// test whether STDOUT refers to a terminal or if env variable
@@ -159,9 +162,54 @@ const char __attribute__ ((pure)) *cli_over(void)
 	return is_term() ? CLI_OVER : "\r";
 }
 
+/**
+ * @brief Checks if a given string ends with a specified substring.
+ *
+ * This function determines whether the string pointed to by @p input ends with the substring pointed to by @p end.
+ *
+ * @param input The input string to check.
+ * @param end The substring to check for at the end of @p input.
+ * @return true if @p input ends with @p end, false otherwise.
+ */
 static bool strEndsWith(const char *input, const char *end)
 {
-	return strcmp(input + strlen(input) - strlen(end), end) == 0;
+	const size_t input_len = strlen(input);
+	const size_t end_len = strlen(end);
+	// If the input is shorter than the end, it cannot end with it
+	if(input_len < end_len)
+		return false;
+	return strcmp(input + input_len - end_len, end) == 0;
+}
+
+/**
+ * @brief Checks if a given string starts with a specified prefix.
+ *
+ * This function compares the beginning of the input string with the start string.
+ * It returns true if the input string starts with the prefix specified by start.
+ *
+ * @param input The string to check.
+ * @param start The prefix to look for at the beginning of input.
+ * @return true if input starts with start, false otherwise.
+ */
+static bool strStartsWith(const char *input, const char *start)
+{
+	return strncmp(input, start, strlen(start)) == 0;
+}
+
+/**
+ * @brief Checks if a string starts with a given prefix, ignoring case.
+ *
+ * This function compares the beginning of the input string with the specified
+ * prefix (start), ignoring the case of the characters. It returns true if the
+ * input string starts with the prefix, false otherwise.
+ *
+ * @param input The input string to check.
+ * @param start The prefix to look for at the start of the input string.
+ * @return true if input starts with start (case-insensitive), false otherwise.
+ */
+static bool strStartsWithIgnoreCase(const char *input, const char *start)
+{
+	return strncasecmp(input, start, strlen(start)) == 0;
 }
 
 void parse_args(int argc, char *argv[])
@@ -212,6 +260,9 @@ void parse_args(int argc, char *argv[])
 	// we operate in drop-in mode and consume all arguments for the embedded sqlite3_rsync tool
 	if(strEndsWith(argv[0], "sqlite3_rsync"))
 		exit(sqlite3_rsync_main(argc, argv));
+
+	if(argc > 1 && strcmp(argv[1], "--complete") == 0)
+		suggest_complete(argc, argv);
 
 	// Compression feature
 	if((argc == 3 || argc == 4) &&
@@ -1215,4 +1266,242 @@ void test_dnsmasq_options(int argc, const char *argv[])
 	// Call dnsmasq's option parser
 	reset_usage_indicator();
 	read_opts(argc, (char**)argv, NULL);
+}
+
+static void list_matches(const char *last_word, const char *const *list, size_t list_size, const bool case_sensitive)
+{
+	// List all matching entries from the given list
+	// that start with the last word we are trying to complete
+	// If last_word is empty, all entries are listed
+
+	if(!case_sensitive)
+	{
+		for(size_t i = 0; i < list_size; i++)
+			if(strStartsWithIgnoreCase(list[i], last_word) || strlen(last_word) == 0)
+				puts(list[i]);
+		return;
+	}
+
+	// Case-sensitive matching
+	for(size_t i = 0; i < list_size; i++)
+		if(strStartsWith(list[i], last_word) || strlen(last_word) == 0)
+			puts(list[i]);
+}
+
+/**
+ * @brief Provides auto-complete suggestions for the CLI based on the current command-line arguments.
+ *
+ * This function analyzes the provided arguments and prints possible completions to stdout,
+ * aiding in command-line auto-completion for the `pihole-FTL` utility and its subcommands.
+ * It supports suggestions for root-level commands, subcommands, and configuration keys/values.
+ *
+ * @param argc The number of command-line arguments.
+ * @param argv The array of command-line argument strings.
+ */
+void suggest_complete(const int argc, char *argv[])
+{
+	// Auto-complete suggestions for the CLI
+	// Enable stdout printing
+	cli_mode = true;
+	log_ctrl(false, true);
+
+	// Get the last word we are currently trying to complete
+	// This is the last argument in the command line
+	const char *last_word = argv[argc-1];
+
+	if(argc == 4 && strEndsWith(argv[2], "pihole-FTL"))
+	{
+		// Root-level suggestion: "pihole-FTL ..."
+		const char *options[] = {
+			"version", "tag", "branch", "help", "dnsmasq-test",
+			"regex-test", "lua", "sqlite3", "--config",
+			"--teleporter", "--gen-x509", "--read-x509",
+			"--read-x509-key", "--list-dhcp4", "--list-dhcp6",
+			"gravity", "ntp", "gzip", "dhcp-discover",
+			"arp-scan", "idn2", "sha256sum", "verify",
+			"--default-gateway", "--totp", "--perf",
+			"verify", "ptr", "sqlite3_rsync",
+			"sha256sum", "lua", "--lua",
+			"luac", "--luac", "debug", "test",
+			"-f", "no-daemon", "--gzip"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "gravity"))
+	{
+		// pihole-FTL gravity ...
+		const char *options[] = {
+			"checkList"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "ntp"))
+	{
+		// pihole-FTL ntp ...
+		const char *options[] = {
+			"--update"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "sqlite3"))
+	{
+		// pihole-FTL sqlite3 ...
+		const char *options[] = {
+			"-h", "-ni"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "arp-scan"))
+	{
+		// pihole-FTL lua ...
+		const char *options[] = {
+			"-a", "-x"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "idn2"))
+	{
+		// pihole-FTL gzip ...
+		const char *options[] = {
+			"-d", "--decode"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc > 4 && strEndsWith(argv[3], "--config"))
+	{
+		getLogFilePath(false);
+		initConfig(&config);
+		if(argc == 5)
+		{
+			// pihole-FTL --config ...
+			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+			{
+				struct conf_item *conf_item = get_conf_item(&config, i);
+				if(!conf_item)
+					continue;
+				if(strStartsWith(conf_item->k, last_word) || strlen(last_word) == 0)
+					puts(conf_item->k);
+			}
+		}
+		else if(argc == 6)
+		{
+			// pihole-FTL --config <some key> ...
+			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+			{
+				struct conf_item *conf_item = get_conf_item(&config, i);
+				if(!conf_item)
+					continue;
+				if(strcmp(conf_item->k, argv[4]) == 0)
+				{
+					// See if we can suggest a value
+					if(conf_item->t == CONF_BOOL || conf_item->t == CONF_ALL_DEBUG_BOOL)
+					{
+						// pihole-FTL --config <boolean option>> ...
+						const char *options[] = {
+							"true", "false"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_PTR_TYPE)
+					{
+						// pihole-FTL --config dns.piholePTR ...
+						const char *options[] = {
+							"pi.hole", "hostname", "hostnamefqdn", "none"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_BUSY_TYPE)
+					{
+						// pihole-FTL --config dns.replyWhenBusy ...
+						const char *options[] = {
+							"block", "allow", "refuse", "drop"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_BLOCKING_MODE)
+					{
+						// pihole-FTL --config dns.blocking.mode ...
+						const char *options[] = {
+							"IP", "NX", "NULL", "IP_NODATA_AAAA", "NODATA"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_REFRESH_HOSTNAMES)
+					{
+						// pihole-FTL --config resolver.refreshNames ...
+						const char *options[] = {
+							"ALL", "IPV4_ONLY", "UNKNOWN", "NONE"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_LISTENING_MODE)
+					{
+						// pihole-FTL --config dns.listeningMode ...
+						const char *options[] = {
+							"local", "all", "single", "bind", "none"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_WEB_THEME)
+					{
+						// pihole-FTL --config webserver.interface.theme ...
+
+						// Provide matching suggestions
+						for(size_t j = 0; j < THEME_MAX; j++)
+						{
+							const char *theme = get_theme_name(j);
+							if(strStartsWithIgnoreCase(theme, last_word) || strlen(last_word) == 0)
+								puts(theme);
+						}
+					}
+					else if(conf_item->t == CONF_ENUM_BLOCKING_EDNS_MODE)
+					{
+						// pihole-FTL --config dns.blocking.edns ...
+						const char *options[] = {
+							"NONE", "CODE", "TEXT"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+					else if(conf_item->t == CONF_ENUM_TEMP_UNIT)
+					{
+						// pihole-FTL --config webserver.api.temp.unit ...
+						const char *options[] = {
+							"C", "F", "K"
+						};
+
+						// Provide matching suggestions
+						list_matches(last_word, options, ArraySize(options), false);
+					}
+				}
+			}
+		}
+	}
+
+	exit(EXIT_SUCCESS);
 }

@@ -37,5 +37,6 @@ extern struct web_themes webthemes[THEME_MAX];
 // Prototypes
 const char * __attribute__ ((pure)) get_web_theme_str(const enum web_theme web_theme);
 int __attribute__ ((pure)) get_web_theme_val(const char *web_theme);
+const char * __attribute__ ((pure)) get_theme_name(const enum web_theme web_theme);
 
 #endif // THEME_H
