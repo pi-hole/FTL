@@ -99,7 +99,9 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
 	// Check if the request is for something in the webhome directory
-	const bool in_webhome = (strncmp(req_info->local_uri_raw, prefix_webhome, strlen(prefix_webhome)) == 0);
+	const bool in_webhome = (strncmp(req_info->local_uri_raw,
+	                                 config.webserver.paths.webhome.v.s,
+	                                 strlen(config.webserver.paths.webhome.v.s)) == 0);
 	log_debug(DEBUG_API, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
 	          req_info->local_uri_raw, login, in_webhome, no_dot);
 
