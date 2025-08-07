@@ -1416,6 +1416,51 @@ void suggest_complete(const int argc, char *argv[])
 						// Provide matching suggestions
 						list_matches(last_word, options, ArraySize(options), false);
 					}
+					else if(conf_item->t == CONF_INT ||
+					        conf_item->t == CONF_UINT ||
+					        conf_item->t == CONF_UINT16 ||
+					        conf_item->t == CONF_LONG ||
+					        conf_item->t == CONF_DOUBLE ||
+					        conf_item->t == CONF_STRING ||
+					        conf_item->t == CONF_STRING_ALLOCATED ||
+						conf_item->t == CONF_JSON_STRING_ARRAY)
+					{
+						cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
+						if(val != NULL)
+						{
+							// pihole-FTL --config ... <int/long/double/string>
+							// Provide the default value as suggestion
+							char *value = cJSON_PrintUnformatted(val);
+							if(value != NULL)
+							{
+								// Add '' to the output if it is a string
+								if(conf_item->t == CONF_STRING ||
+								   conf_item->t == CONF_STRING_ALLOCATED ||
+								   conf_item->t == CONF_JSON_STRING_ARRAY)
+								{
+									// If the value is a string, we need to add quotes
+									if(value[0] != '\'')
+									{
+										char *tmp = malloc(strlen(value) + 3);
+										if(tmp != NULL)
+										{
+											sprintf(tmp, "'%s'", value);
+											free(value);
+											value = tmp;
+										}
+									}
+								}
+
+								// If the default value starts with the last word we are trying to complete,
+								// print it as a suggestion
+								// If the last word is empty, print the value anyway
+								if(strStartsWith(value, last_word) || strlen(last_word) == 0)
+									puts(value);
+								free(value);
+							}
+							cJSON_Delete(val);
+						}
+					}
 					else if(conf_item->t == CONF_ENUM_PTR_TYPE)
 					{
 						// pihole-FTL --config dns.piholePTR ...
