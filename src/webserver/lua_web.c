@@ -117,7 +117,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
-		// Check if the user is authenticated
 		if(!authorized)
 		{
 			// User is not authenticated, redirect to login page
@@ -132,7 +131,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	else
 	{
 		// This is the login page - check if the user is already authenticated
-		// Check if the user is authenticated
 		if(authorized)
 		{
 			// User is already authenticated, redirecting to index page
