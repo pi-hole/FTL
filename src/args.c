@@ -1313,17 +1313,15 @@ void suggest_complete(const int argc, char *argv[])
 	{
 		// Root-level suggestion: "pihole-FTL ..."
 		const char *options[] = {
-			"version", "tag", "branch", "help", "dnsmasq-test",
-			"regex-test", "lua", "sqlite3", "--config",
-			"--teleporter", "--gen-x509", "--read-x509",
-			"--read-x509-key", "--list-dhcp4", "--list-dhcp6",
-			"gravity", "ntp", "gzip", "dhcp-discover",
-			"arp-scan", "idn2", "sha256sum", "verify",
-			"--default-gateway", "--totp", "--perf",
-			"verify", "ptr", "sqlite3_rsync",
-			"sha256sum", "lua", "--lua",
-			"luac", "--luac", "debug", "test",
-			"-f", "no-daemon", "--gzip"
+			"arp-scan", "branch", "--config", "debug", "--default-gateway",
+			"dhcp-discover", "dnsmasq-test", "-f", "--gen-x509",
+			"gravity", "gzip", "help", "-h", "--help", "idn2",
+			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac",
+			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr",
+			"--read-x509", "--read-x509-key", "regex-test",
+			"sha256sum", "sqlite3", "sqlite3_rsync", "tag",
+			"--teleporter", "test", "--totp",
+			"-v", "-vv", "--v", "version", "verify"
 		};
 
 		// Provide matching suggestions
@@ -1425,41 +1423,38 @@ void suggest_complete(const int argc, char *argv[])
 					        conf_item->t == CONF_STRING_ALLOCATED ||
 						conf_item->t == CONF_JSON_STRING_ARRAY)
 					{
+						// pihole-FTL --config ... <int/long/double/string>
+						// Provide the default value as suggestion
+						char *value = NULL;
 						cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
-						if(val != NULL)
+						if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
 						{
-							// pihole-FTL --config ... <int/long/double/string>
-							// Provide the default value as suggestion
-							char *value = cJSON_PrintUnformatted(val);
-							if(value != NULL)
+							// Add '' to the output if it is a string
+							if(conf_item->t == CONF_STRING ||
+							   conf_item->t == CONF_STRING_ALLOCATED ||
+							   conf_item->t == CONF_JSON_STRING_ARRAY)
 							{
-								// Add '' to the output if it is a string
-								if(conf_item->t == CONF_STRING ||
-								   conf_item->t == CONF_STRING_ALLOCATED ||
-								   conf_item->t == CONF_JSON_STRING_ARRAY)
+								// If the value is a string, we need to add quotes
+								if(value[0] != '\'')
 								{
-									// If the value is a string, we need to add quotes
-									if(value[0] != '\'')
+									char *tmp = malloc(strlen(value) + 3);
+									if(tmp != NULL)
 									{
-										char *tmp = malloc(strlen(value) + 3);
-										if(tmp != NULL)
-										{
-											sprintf(tmp, "'%s'", value);
-											free(value);
-											value = tmp;
-										}
+										sprintf(tmp, "'%s'", value);
+										free(value);
+										value = tmp;
 									}
 								}
-
-								// If the default value starts with the last word we are trying to complete,
-								// print it as a suggestion
-								// If the last word is empty, print the value anyway
-								if(strStartsWith(value, last_word) || strlen(last_word) == 0)
-									puts(value);
-								free(value);
 							}
-							cJSON_Delete(val);
+
+							// If the default value starts with the last word we are trying to complete,
+							// print it as a suggestion
+							// If the last word is empty, print the value anyway
+							if(strStartsWith(value, last_word) || strlen(last_word) == 0)
+								puts(value);
+							free(value);
 						}
+						cJSON_Delete(val);
 					}
 					else if(conf_item->t == CONF_ENUM_PTR_TYPE)
 					{
