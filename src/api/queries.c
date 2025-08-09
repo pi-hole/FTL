@@ -517,21 +517,6 @@ int api_queries(struct ftl_conn *api)
 						search[j][0] = '%';
 					}
 
-					// Escape any possible underscore in the
-					// search string to ensure it is not
-					// interpreted as a wildcard by SQLite3
-					for(unsigned int i = 0; i < searchlen; i++)
-					{
-						if(search[j][i] == '_')
-						{
-							// Escape underscore
-							memmove(search[j] + i + 1, search[j] + i, searchlen - i + 1);
-							search[j][i] = '\\';
-							searchlen++;
-							i++;
-						}
-					}
-
 					// Apply the search string to the query if this is an allowed column
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{

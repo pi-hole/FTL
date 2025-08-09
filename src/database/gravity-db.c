@@ -2098,7 +2098,9 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	if(!exact && item != NULL && item[0] != '\0')
 	{
 		// Build LIKE string (% + item + %)
-		const size_t maxlen = 2*strlen(item)+  3;
+		// 2 for '%' at start and end, 1 for null terminator
+		const size_t LIKE_PATTERN_EXTRA_CHARS = 3;
+		const size_t maxlen = 2*strlen(item) + LIKE_PATTERN_EXTRA_CHARS;
 		like_name = calloc(maxlen, sizeof(char));
 		if(like_name == NULL)
 		{
@@ -2106,30 +2108,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			*message = "Failed to allocate memory for like_name";
 			return false;
 		}
-		// Iterate through item and escape any possible underscore (if
-		// present)
-		if(strchr(item, '_') != NULL)
-		{
-			// Add initial percent sign
-			like_name[0] = '%';
-
-			// Iterate through item
-			char *p = like_name + 1;
-			for(const char *c = item; *c != '\0'; c++)
-			{
-				// Add escape character when needed
-				if(*c == '_') *p++ = '\\';
-				*p++ = *c;
-			}
-			// Ensure the string is nul-terminated
-			*p = '\0';
-
-			// Add final percent sign
-			strncat(like_name, "%", maxlen - strlen(like_name) - 1);
-		}
-		else
-			// No escaping needed, just add percent signs
-			snprintf(like_name, maxlen, "%%%s%%", item);
+		snprintf(like_name, maxlen, "%%%s%%", item);
 	}
 	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
