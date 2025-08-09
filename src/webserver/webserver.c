@@ -160,7 +160,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
 			if(strcmp(uri, prefix_webhome) == 0)
 			{
@@ -734,7 +734,7 @@ void http_init(void)
 		// Replace trailing slash with end-of-string marker for matcher
 		char *prefix_webhome_matcher = strdup(prefix_webhome);
 		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
-	
+
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          prefix_webhome, config.webserver.paths.webhome.v.s);
 		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);

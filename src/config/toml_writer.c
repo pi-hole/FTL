@@ -12,7 +12,7 @@
 #include "config.h"
 // get_timestr(), get_FTL_version())
 #include "log.h"
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 #include "toml_writer.h"
 #include "toml_helper.h"
 // get_blocking_mode_str()
@@ -21,11 +21,13 @@
 #include "config/inotify.h"
 // files_different()
 #include "files.h"
+// git_branch()
+#include "version.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
 
-bool writeFTLtoml(const bool verbose)
+bool writeFTLtoml(const bool verbose, FILE *fp)
 {
 	// Return early without writing if we are in config read-only mode
 	if(config.misc.readOnly.v.b)
@@ -40,15 +42,23 @@ bool writeFTLtoml(const bool verbose)
 		return true;
 	}
 
-	// Try to open a temporary config file for writing
+	// open temporary config file for writing *unless* we are provided with
+	// a file pointer to an already opened file
 	bool locked = false;
-	FILE *fp = openFTLtoml("w", 0, &locked);
+	const bool opened = fp == NULL;
 	if(fp == NULL)
-		return false;
+	{
+		// Try to open a temporary config file for writing
+		fp = openFTLtoml("w", 0, &locked);
+		if(fp == NULL)
+			return false;
+	}
 
 	// Write header
-	fprintf(fp, "# Pi-hole configuration file (%s)\n", get_FTL_version());
-	fputs("# Encoding: UTF-8\n", fp);
+	fprintf(fp, "# Pi-hole configuration file (%s)", get_FTL_version());
+	if(strcmp(git_branch(), "master") != 0)
+		fprintf(fp, " on branch %s", git_branch());
+	fputs("\n# Encoding: UTF-8\n", fp);
 	fputs("# This file is managed by pihole-FTL\n", fp);
 	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, time(NULL), false, false);
@@ -91,7 +101,7 @@ bool writeFTLtoml(const bool verbose)
 		if(conf_item->a != NULL)
 		{
 			// Write possible values if applicable
-			print_toml_allowed_values(conf_item->a, fp, 85, level-1);
+			print_toml_allowed_values(conf_item->a, fp, level-1);
 		}
 
 		// Write value
@@ -163,8 +173,13 @@ bool writeFTLtoml(const bool verbose)
 	// Free cJSON array
 	cJSON_Delete(env_vars);
 
-	// Close file and release exclusive lock
-	closeFTLtoml(fp, locked);
+	// Close file and release exclusive lock unless we are provided with a
+	// file pointer in which case we assume that the caller takes care of
+	// this
+	if(opened)
+		closeFTLtoml(fp, locked);
+	else
+		return true;
 
 	// Move temporary file to the final location if it is different
 	// We skip the first 8 lines as they contain the header and will always

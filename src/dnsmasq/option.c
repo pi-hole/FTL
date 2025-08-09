@@ -200,6 +200,7 @@ struct myoption {
 #define LOPT_NO_ENCODE     387
 #define LOPT_DO_ENCODE     388
 #define LOPT_LEASEQUERY    389
+#define LOPT_SPLIT_RELAY   390
 
 #ifdef HAVE_GETOPT_LONG
 static const struct option opts[] =  
@@ -378,6 +379,7 @@ static const struct myoption opts[] =
     { "dnssec-timestamp", 1, 0, LOPT_DNSSEC_STAMP },
     { "dnssec-limits", 1, 0, LOPT_DNSSEC_LIMITS },
     { "dhcp-relay", 1, 0, LOPT_RELAY },
+    { "dhcp-split-relay", 1, 0, LOPT_SPLIT_RELAY },
     { "ra-param", 1, 0, LOPT_RA_PARAM },
     { "quiet-dhcp", 0, 0, LOPT_QUIET_DHCP },
     { "quiet-dhcp6", 0, 0, LOPT_QUIET_DHCP6 },
@@ -546,6 +548,7 @@ static struct {
   { LOPT_GEN_NAMES, ARG_DUP, "[=tag:<tag>]", gettext_noop("Generate hostnames based on MAC address for nameless clients."), NULL},
   { LOPT_PROXY, ARG_DUP, "[=<ipaddr>]...", gettext_noop("Use these DHCP relays as full proxies."), NULL },
   { LOPT_RELAY, ARG_DUP, "<local-addr>,<server>[,<iface>]", gettext_noop("Relay DHCP requests to a remote server"), NULL},
+  { LOPT_SPLIT_RELAY, ARG_DUP, "<local-addr>,<server>,<iface>", gettext_noop("Relay DHCP requests to a remote server"), NULL},
   { LOPT_CNAME, ARG_DUP, "<alias>,<target>[,<ttl>]", gettext_noop("Specify alias name for LOCAL DNS name."), NULL },
   { LOPT_PXE_PROMT, ARG_DUP, "<prompt>,[<timeout>]", gettext_noop("Prompt to send to PXE clients."), NULL },
   { LOPT_PXE_SERV, ARG_DUP, "<service>", gettext_noop("Boot service for PXE menu."), NULL },
@@ -2920,13 +2923,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
 
 #ifdef HAVE_DHCP
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+# endif
     case LOPT_LEASEQUERY:
       set_option_bool(OPT_LEASEQUERY);
       if (!arg)
 	break;
-#pragma GCC diagnostic pop
+# if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
+# pragma GCC diagnostic pop
+# endif
 #endif
     case 'B':  /* --bogus-nxdomain */
     case LOPT_IGNORE_ADDR: /* --ignore-address */
@@ -4715,11 +4722,21 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
       
     case LOPT_RELAY: /* --dhcp-relay */
+    case LOPT_SPLIT_RELAY: /* --dhcp-splt-relay */
       {
 	struct dhcp_relay *new = opt_malloc(sizeof(struct dhcp_relay));
 	char *two = split(arg);
 	char *three = split(two);
-	
+
+	if (option == LOPT_SPLIT_RELAY)
+	  {
+	    new->split_mode = 1;
+	    
+	    /* split mode must have two addresses and a non-wildcard interface name. */
+	    if (!three || strchr(three, '*'))
+	      two = NULL;
+	  }
+		    
 	new->iface_index = 0;
 
 	if (two)
@@ -4747,7 +4764,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		daemon->relay4 = new;
 	      }
 #ifdef HAVE_DHCP6
-	    else if (inet_pton(AF_INET6, arg, &new->local))
+	    else if (inet_pton(AF_INET6, arg, &new->local) && !new->split_mode)
 	      {
 		char *hash = split_chr(two, '#');
 
@@ -4768,7 +4785,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		daemon->relay6 = new;
 	      }
 #endif
-
+	    else
+	      two = NULL;
+	    
 	    new->interface = opt_string_alloc(three);
 	  }
 	
@@ -6267,6 +6286,8 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	    strchr(srv->name, '.') && 
 	    strchr(srv->name, '.') == strrchr(srv->name, '.'))
 	  {
+	    if (strlen(srv->name) + 1 + strlen(daemon->domain_suffix) > MAXDNAME)
+	      die(_("srv-host name %s too long after domain appended"), srv->name, EC_MISC);
 	    strcpy(buff, srv->name);
 	    strcat(buff, ".");
 	    strcat(buff, daemon->domain_suffix);

@@ -73,6 +73,7 @@
 #define SUBOPT_REMOTE_ID         2
 #define SUBOPT_SUBNET_SELECT     5     /* RFC 3527 */
 #define SUBOPT_SUBSCR_ID         6     /* RFC 3393 */
+#define SUBOPT_FLAGS             10    /* RFC 5010 */
 #define SUBOPT_SERVER_OR         11    /* RFC 5107 */
 
 #define SUBOPT_PXE_BOOT_ITEM     71    /* PXE standard */

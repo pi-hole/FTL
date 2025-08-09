@@ -17,13 +17,15 @@
 #include "log.h"
 #include "datastructure.h"
 // toml_table_t
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 // hash_password()
 #include "config/password.h"
 // check_capability()
 #include "capabilities.h"
 // suggest_closest_conf_key()
 #include "config/suggest.h"
+// CLI colors
+#include "args.h"
 
 enum exit_codes {
 	OKAY = 0,
@@ -123,18 +125,6 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			else
 			{
 				log_err("Config setting %s is invalid, allowed options are: long integer", conf_item->k);
-				return false;
-			}
-			break;
-		}
-		case CONF_ULONG:
-		{
-			unsigned long val;
-			if(sscanf(value, "%lu", &val) == 1)
-				conf_item->v.ul = val;
-			else
-			{
-				log_err("Config setting %s is invalid, allowed options are: unsigned long integer", conf_item->k);
 				return false;
 			}
 			break;
@@ -536,7 +526,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	}
 
 	putchar('\n');
-	writeFTLtoml(false);
+	writeFTLtoml(false, NULL);
 	return OKAY;
 }
 
@@ -564,6 +554,10 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		}
 	}
 
+	// Do not allow enforcing colors from --config
+	const char *red = getenv("FORCE_COLOR") == NULL ? cli_color(COL_RED) : "";
+	const char *normal = getenv("FORCE_COLOR") == NULL ? cli_normal() : "";
+
 	// Loop over all config options again to find the one we are looking for
 	// (possibly partial match)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -584,16 +578,18 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		// This is the config option we are looking for
 		conf_item = item;
 
+		const bool is_default = compare_config_item(item->t, &item->v, &item->d);
+
 		// Print key if this is not an exact match
 		if(key == NULL || strcmp(item->k, key) != 0)
-			printf("%s = ", item->k);
+			printf("%s%s = ", is_default ? "" : red, item->k);
 
 		// Print value
 		if(conf_item-> f & FLAG_WRITE_ONLY)
 			puts("<write-only property>");
 		else
 			writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
-		putchar('\n');
+		puts(normal);
 	}
 
 	// Check if we found the config option

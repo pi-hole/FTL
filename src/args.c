@@ -70,6 +70,8 @@
 #include "ntp/ntp.h"
 // check_capability()
 #include "capabilities.h"
+// get_gateway_name()
+#include "tools/netlink.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -85,36 +87,11 @@ bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
-// Extended SGR sequence:
-//
-// "\x1b[%dm"
-//
-// where %d is one of the following values for commonly supported colors:
-//
-// 0: reset colors/style
-// 1: bold
-// 4: underline
-// 30 - 37: black, red, green, yellow, blue, magenta, cyan, and white text
-// 40 - 47: black, red, green, yellow, blue, magenta, cyan, and white background
-//
-// https://en.wikipedia.org/wiki/ANSI_escape_code#SGR
-//
-#define COL_NC		"\x1b[0m"  // normal font
-#define COL_BOLD	"\x1b[1m"  // bold font
-#define COL_ITALIC	"\x1b[3m"  // italic font
-#define COL_ULINE	"\x1b[4m"  // underline font
-#define COL_GREEN	"\x1b[32m" // normal foreground color
-#define COL_YELLOW	"\x1b[33m" // normal foreground color
-#define COL_RED		"\x1b[91m" // bright foreground color
-#define COL_BLUE	"\x1b[94m" // bright foreground color
-#define COL_PURPLE	"\x1b[95m" // bright foreground color
-#define COL_CYAN	"\x1b[96m" // bright foreground color
-#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
-
 static bool __attribute__ ((pure)) is_term(void)
 {
-	// test whether STDOUT refers to a terminal
-	return isatty(fileno(stdout)) == 1;
+	// test whether STDOUT refers to a terminal or if env variable
+	// FORCE_COLOR is set
+	return getenv("FORCE_COLOR") != NULL || isatty(fileno(stdout)) == 1;
 }
 
 // Returns green [✓]
@@ -170,7 +147,7 @@ const char __attribute__ ((pure)) *cli_normal(void)
 }
 
 // Set color if STDOUT is a terminal
-static const char __attribute__ ((pure)) *cli_color(const char *color)
+const char __attribute__ ((pure)) *cli_color(const char *color)
 {
 	return is_term() ? color : "";
 }
@@ -218,6 +195,11 @@ void parse_args(int argc, char *argv[])
 	// Special (undocumented) mode to test kernel signal handling
 	if(argc == 2 && strcmp(argv[1], "sigtest") == 0)
 		exit(sigtest());
+
+	// Print the value of SIGRTMIN, for use in the scripts to avoid issues
+	// caused by its inconsistent value across environments
+	if(argc == 2 && strcmp(argv[1], "sigrtmin") == 0)
+		exit(sigrtmin());
 
 	// If the binary name is "sqlite3"  (e.g., symlink /usr/bin/sqlite3 -> /usr/bin/pihole-FTL),
 	// we operate in drop-in mode and consume all arguments for the embedded SQLite3 engine
@@ -600,13 +582,42 @@ void parse_args(int argc, char *argv[])
 		exit(EXIT_SUCCESS);
 	}
 
-
 	// Set config option through CLI
 	if(argc == 3 && strcmp(argv[1], "migrate") == 0 && strcmp(argv[2], "v6") == 0)
 	{
 		cli_mode = true;
 		log_ctrl(false, true);
 		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	// Get name of the default gateway
+	if(argc == 2 && strcmp(argv[1], "--default-gateway") == 0)
+	{
+		cli_mode = true;
+		char *name = get_gateway_name();
+		printf("%s\n", name);
+		exit(EXIT_SUCCESS);
+	}
+
+	// Undocumented option to create an all-default dummy config file
+	if(argc == 3 && strcmp(argv[1], "create-default-config") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+
+		// Validate the output filename
+		if(strstr(argv[2], "..") || strchr(argv[2], '/') || strchr(argv[2], '\\'))
+		{
+			fprintf(stderr, "Error: Invalid filename. Path traversal or special characters are not allowed.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		// Create the default config file
+		if(create_default_config(argv[2]))
+			exit(EXIT_SUCCESS);
+		else
+			exit(EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -974,6 +985,7 @@ void parse_args(int argc, char *argv[])
 			const char *bold = cli_bold();
 			const char *uline = cli_underline();
 			const char *normal = cli_normal();
+			const char *red = cli_color(COL_RED);
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
 			const char *green = cli_color(COL_GREEN);
@@ -1021,7 +1033,7 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sEmbedded SQLite3 shell:%s\n", yellow, normal);
 			printf("\t%ssql%s, %ssqlite3%s                      FTL's SQLite3 shell\n", green, normal, green, normal);
-			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, cyan, normal);
+			printf("    Usage: %s sqlite3 %s[OPTIONS] [FILENAME [SQL...]]%s\n\n", green, cyan, normal);
 			printf("    Options:\n\n");
 			printf("    - %s[OPTIONS]%s is an optional set of options. All available\n", cyan, normal);
 			printf("      options can be found in %s%s sqlite3 --help%s.\n", green, argv[0], normal);
@@ -1030,7 +1042,7 @@ void parse_args(int argc, char *argv[])
 			printf("      A new database is created if the file does not previously\n");
 			printf("      exist. If this argument is omitted, SQLite3 will use a\n");
 			printf("      transient in-memory database instead.\n");
-			printf("    - %s[SQL]%s is an optional SQL statement to be executed. If\n", cyan, normal);
+			printf("    - %s[SQL...]%s is an optional SQL statement to be executed. If\n", cyan, normal);
 			printf("      omitted, an interactive shell is started instead.\n\n");
 			printf("    There are two special %s%s sqlite3%s mode switches:\n", green, argv[0], normal);
 			printf("    %s-h%s  %shuman-readable%s mode:\n", purple, normal, bold, normal);
@@ -1042,7 +1054,7 @@ void parse_args(int argc, char *argv[])
 			printf("        In this mode, batch mode is enforced and any possibly\n");
 			printf("        existing .sqliterc file is ignored. %s-ni%s is a shortcut\n", purple, normal);
 			printf("        for %s%s sqlite3 %s-batch -init /dev/null%s\n\n", green, argv[0], purple, normal);
-			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME] [SQL]%s\n\n", green, argv[0], purple, cyan, normal);
+			printf("    Usage: %s%s sqlite3 %s-ni %s[OPTIONS] [FILENAME [SQL...]]%s\n\n", green, argv[0], purple, cyan, normal);
 
 			printf("%ssqlite3_rsync%s tool:\n", yellow, normal);
 			printf("\t%ssqlite3_rsync%s           Synchronize SQLite3 databases\n", green, normal);
@@ -1070,6 +1082,8 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t                    Config items with non-default values may\n");
+			printf("\t                    be colored in %sred%s\n", red, normal);
 			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
@@ -1155,6 +1169,7 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    authentication (if enabled)\n");
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
+			printf("\t%s--default-gateway%s   Get default network interface's name\n", green, normal);
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);

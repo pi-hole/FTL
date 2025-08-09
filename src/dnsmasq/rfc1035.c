@@ -416,6 +416,7 @@ int private_net(struct in_addr addr, int ban_localhost)
     (((ip_addr & 0xFF000000) == 0x7F000000) && ban_localhost)  /* 127.0.0.0/8    (loopback) */ ||
     (((ip_addr & 0xFF000000) == 0x00000000) && ban_localhost) /* RFC 5735 section 3. "here" network */ ||
     ((ip_addr & 0xFF000000) == 0x0A000000)  /* 10.0.0.0/8     (private)  */ ||
+    ((ip_addr & 0xFFC00000) == 0x64400000)  /* 100.64.0.0/10  (CG-NAT) RFC6598/RFC7793*/ ||
     ((ip_addr & 0xFFF00000) == 0xAC100000)  /* 172.16.0.0/12  (private)  */ ||
     ((ip_addr & 0xFFFF0000) == 0xC0A80000)  /* 192.168.0.0/16 (private)  */ ||
     ((ip_addr & 0xFFFF0000) == 0xA9FE0000)  /* 169.254.0.0/16 (zeroconf) */ ||
@@ -1277,12 +1278,10 @@ unsigned int extract_request(struct dns_header *header, size_t qlen, char *name,
 	return  F_IPV4 | F_IPV6;
     }
 
-#ifdef HAVE_DNSSEC
   /* Make the behaviour for DS and DNSKEY queries we forward the same
      as for DS and DNSKEY queries we originate. */
-  if (option_bool(OPT_DNSSEC_VALID) && (qtype == T_DS || qtype == T_DNSKEY))
-    return F_DNSSECOK;
-#endif
+  if (qtype == T_DS || qtype == T_DNSKEY)
+    return F_DNSSECOK | (qtype == T_DS ? F_DS : 0);
   
   return F_QUERY;
 }

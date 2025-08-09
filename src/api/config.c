@@ -107,8 +107,6 @@ cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 			return cJSON_CreateNumber(val->u16);
 		case CONF_LONG:
 			return cJSON_CreateNumber(val->l);
-		case CONF_ULONG:
-			return cJSON_CreateNumber(val->ul);
 		case CONF_DOUBLE:
 			return cJSON_CreateNumber(val->d);
 		case CONF_STRING:
@@ -245,18 +243,6 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.l = elem->valuedouble;
 			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
-			break;
-		}
-		case CONF_ULONG:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < 0 || elem->valuedouble > (double)ULONG_MAX)
-				return "not of type unsigned long";
-			// Set item
-			conf_item->v.ul = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %lu", conf_item->k, conf_item->v.ul);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -861,7 +847,7 @@ static int api_config_patch(struct ftl_conn *api)
 		set_debug_flags(&config);
 
 		// Store changed configuration to disk
-		writeFTLtoml(true);
+		writeFTLtoml(true, NULL);
 
 		// Rewrite HOSTS file if required
 		if(rewrite_hosts)
@@ -1075,7 +1061,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	set_debug_flags(&config);
 
 	// Store changed configuration to disk
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 
 	// Rewrite HOSTS file if required
 	if(rewrite_hosts)

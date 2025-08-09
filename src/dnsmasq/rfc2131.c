@@ -204,6 +204,10 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	      memcpy(agent_id, opt, total);
 	    }
 
+	  /* look for RFC5010 flags sub-option */
+	  if ((sopt = option_find1(option_ptr(opt, 0), option_ptr(opt, option_len(opt)), SUBOPT_FLAGS, INADDRSZ)))
+	    unicast_dest = !!(option_uint(opt, 0, 1) & 0x80);
+	      
 	  /* look for RFC3527 Link selection sub-option */
 	  if ((sopt = option_find1(option_ptr(opt, 0), option_ptr(opt, option_len(opt)), SUBOPT_SUBNET_SELECT, INADDRSZ)))
 	    subnet_addr = option_addr(sopt);
@@ -289,6 +293,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	{
 	  addr = subnet_addr;
 	  force = 1;
+	  if (mess->giaddr.s_addr)
+	    via_relay = 1;
 	}
       else if (mess->giaddr.s_addr)
 	{
@@ -357,7 +363,12 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  if (context_tmp->local.s_addr == 0)
 		    context_tmp->local = fallback;
 		  if (context_tmp->router.s_addr == 0 && !share)
-		    context_tmp->router = mess->giaddr;
+		    {
+		      if (override.s_addr)
+			context_tmp->router = override;
+		      else
+			context_tmp->router = mess->giaddr;
+		    }
 		  
 		  /* fill in missing broadcast addresses for relayed ranges */
 		  if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
@@ -3043,5 +3054,188 @@ static void apply_delay(u32 xid, time_t recvtime, struct dhcp_netid *netid)
       delay_dhcp(recvtime, delay_conf->delay, -1, 0, 0);
     }
 }
+
+void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz, int unicast)
+{
+  struct in_addr giaddr = mess->giaddr;
+  u8 hops = mess->hops;
+  struct dhcp_relay *relay;
+  size_t orig_sz = sz;
+  unsigned char *endopt = NULL;
+    
+  if (mess->op != BOOTREQUEST)
+    return;
+
+  for (relay = daemon->relay4; relay; relay = relay->next)
+    if (relay->iface_index != 0 && relay->iface_index == iface_index)
+      {
+	union mysockaddr to;
+	union all_addr from;
+	struct ifreq ifr;
+	
+	/* restore orig packet */
+	mess->hops = hops;
+	mess->giaddr = giaddr;
+	if (endopt)
+	  *endopt = OPTION_END;
+	sz = orig_sz;
+	
+	if ((mess->hops++) > 20)
+	  continue;
+
+	if (relay->interface)
+	  {
+	    safe_strncpy(ifr.ifr_name, relay->interface, IF_NAMESIZE);
+	    ifr.ifr_addr.sa_family = AF_INET;
+	  }
+	
+	if (!relay->split_mode)
+	  {
+	    /* already gatewayed ? */
+	    if (giaddr.s_addr)
+	      {
+		/* if so check if by us, to stomp on loops. */
+		if (giaddr.s_addr == relay->local.addr4.s_addr)
+		  continue;
+	      }
+
+	    /* plug in our address */
+	    from.addr4 = mess->giaddr = relay->local.addr4;
+	  }
+	else
+	  {
+	    /* Split mode. We put our address on the server-facing interface
+	       into giaddr for the server to talk back to us on.
+
+	       Our address on client-facing interface goes into agent-id
+	       subnet-selector subopt, so that the server allocates the correct address. */
+	    
+	    /* get our address on the server-facing interface. */
+	    if (ioctl(daemon->dhcpfd, SIOCGIFADDR, &ifr) == -1)
+	      continue;
+	    
+	    /* already gatewayed ? */
+	    if (giaddr.s_addr)
+	      {
+		/* if so check if by us, to stomp on loops. */
+		if (giaddr.s_addr == ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr)
+		  continue;
+	      }
+	    
+	    /* giaddr is our address on the outgoing interface in split mode. */
+	    from.addr4 = mess->giaddr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
+	    
+	    if (!endopt)
+	      {
+		/* Add an RFC3026 relay agent information option (2 bytes) at the very end of the options.
+		   Said option to contain a RFC 3527 link selection sub option (6 bytes) and
+		   RFC 5017 serverid-override option (6 bytes) and RFC5010 (3 bytes).
+		   New END option is a 18th byte, so we need 18 bytes free.
+		   We only need to do this once, and poke the address into the same place each time. */
+		
+		if (!(endopt = option_find1((&mess->options[0] + sizeof(u32)), ((unsigned char *)mess) + sz, OPTION_END, 0)) ||
+		    (endopt + 18 > (unsigned char *)(mess + 1)))
+		  continue;
+		
+		endopt[1] = 15; /* length */
+		endopt[2] = SUBOPT_SUBNET_SELECT;
+		endopt[3] = 4; /* length */
+		endopt[8] = SUBOPT_SERVER_OR;
+		endopt[9] = 4;
+		endopt[14] = SUBOPT_FLAGS;
+		endopt[15] = 1; /* length */
+		endopt[17] = OPTION_END;
+		sz = (endopt - (unsigned char *)mess) + 18;
+	      }
+	    
+	    /* IP address is already in network byte order */
+	    memcpy(&endopt[4], &relay->local.addr4.s_addr, INADDRSZ);
+	    memcpy(&endopt[10], &relay->local.addr4.s_addr, INADDRSZ);
+	    endopt[16] = unicast ? 0x80 : 0x00;
+	    endopt[0] = OPTION_AGENT_ID;
+	  }
+	
+	to.sa.sa_family = AF_INET;
+	to.in.sin_addr = relay->server.addr4;
+	to.in.sin_port = htons(relay->port);
+#ifdef HAVE_SOCKADDR_SA_LEN
+	to.in.sin_len = sizeof(struct sockaddr_in);
+#endif
+	
+	/* Broadcasting to server. */
+	if (relay->server.addr4.s_addr == 0)
+	  {
+	    if (!relay->interface || strchr(relay->interface, '*') ||
+		ioctl(daemon->dhcpfd, SIOCGIFBRDADDR, &ifr) == -1)
+	      {
+		my_syslog(MS_DHCP | LOG_ERR, _("Cannot broadcast DHCP relay via interface %s"), relay->interface);
+		continue;
+	      }
+	    
+	    to.in.sin_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
+	  }
+	
+#ifdef HAVE_DUMPFILE
+	{
+	  union mysockaddr fromsock;
+	  fromsock.in.sin_port = htons(daemon->dhcp_server_port);
+	  fromsock.in.sin_addr = from.addr4;
+	  fromsock.sa.sa_family = AF_INET;
+
+	  dump_packet_udp(DUMP_DHCP, (void *)mess, sz, &fromsock, &to, -1);
+	}
+#endif
+	
+	 send_from(daemon->dhcpfd, 0, (char *)mess, sz, &to, &from, 0);
+	 
+	 if (option_bool(OPT_LOG_OPTS))
+	   {
+	     inet_ntop(AF_INET, &relay->local, daemon->addrbuff, ADDRSTRLEN);
+	     if (relay->server.addr4.s_addr == 0)
+	       snprintf(daemon->dhcp_buff2, DHCP_BUFF_SZ, _("broadcast via %s"), relay->interface);
+	     else
+	       inet_ntop(AF_INET, &relay->server.addr4, daemon->dhcp_buff2, DHCP_BUFF_SZ);
+	     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay at %s -> %s"), daemon->addrbuff, daemon->dhcp_buff2);
+	   }
+      }
+  
+  /* restore in case of a local reply. */
+  mess->hops = hops;
+  mess->giaddr = giaddr;
+  if (endopt)
+    *endopt = OPTION_END;
+}
+
+struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface)
+{
+  struct dhcp_relay *relay;
+
+  if (mess->giaddr.s_addr == 0 || mess->op != BOOTREPLY)
+    return NULL;
+
+  for (relay = daemon->relay4; relay; relay = relay->next)
+    {
+      if (relay->split_mode)
+	{
+	  struct ifreq ifr;
+
+	  safe_strncpy(ifr.ifr_name, arrival_interface, IF_NAMESIZE);
+	  ifr.ifr_addr.sa_family = AF_INET;
+
+	  /* giaddr is our address on the returning interface in split mode. */
+	  if (ioctl(daemon->dhcpfd, SIOCGIFADDR, &ifr) == -1 ||
+	      mess->giaddr.s_addr != ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr)
+	    continue;
+	}
+      else if (mess->giaddr.s_addr != relay->local.addr4.s_addr)
+	continue;
+      
+      if (!relay->interface || wildcard_match(relay->interface, arrival_interface))
+	return relay->iface_index != 0 ? relay : NULL;
+    }
+  
+  return NULL;	 
+}     
+
 
 #endif /* HAVE_DHCP */
