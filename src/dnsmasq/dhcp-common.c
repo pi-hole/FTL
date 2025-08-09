@@ -1067,10 +1067,12 @@ void log_relay(int family, struct dhcp_relay *relay)
     {
       if (broadcast)
 	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s via %s"), daemon->addrbuff, relay->interface);
+      else if (relay->split_mode)
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP split-relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
       else
 	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
     }
-  else
+  else 
     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s"), daemon->addrbuff, daemon->namebuff);
 }
    
