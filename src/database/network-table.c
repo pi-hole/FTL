@@ -23,7 +23,7 @@
 #include "resolve.h"
 // killed
 #include "signals.h"
-// nlarp_cache()
+// nlneigh(), nllinks()
 #include "tools/netlink.h"
 
 static char *getMACVendor(const char *hwaddr) __attribute__ ((malloc));
@@ -1065,155 +1065,106 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		return SQLITE_ERROR;
 
 	log_debug(DEBUG_ARP, "Network table: Adding local interfaces to network table");
-
-	// Try to access the kernel's Internet protocol address management
-	FILE *ip_pipe = NULL;
-	const char cmd[] = "ip address show";
-	errno = ENOMEM;
-	if((ip_pipe = popen(cmd, "r")) == NULL)
+	cJSON *links = cJSON_CreateArray();
+	if(!nllinks(links, false))
 	{
-		log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
+		log_err("Failed to get links, cannot update network table");
 		return false;
 	}
+		log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
+		          cJSON_GetArraySize(links));
 
-	// Buffers
-	char *linebuffer = NULL;
-	size_t linebuffersize = 0u;
-	int iface_no;
-	bool has_iface = false, has_hwaddr = false;
-	char ipaddr[128], hwaddr[128], iface[128];
-
-	// Read response line by line
-	while(getline(&linebuffer, &linebuffersize, ip_pipe) != -1)
+	// Parse link information
+	cJSON *link = NULL;
+	cJSON_ArrayForEach(link, links)
 	{
-		// Skip if line buffer is invalid
-		if(linebuffer == NULL)
+		// Skip if entry is invalid
+		if(link == NULL)
 			continue;
 
-		if(sscanf(linebuffer, "%i: %99[^:]", &iface_no, iface) == 2)
-		{
-			// Obtained an interface, continue to the next line
-			has_iface = true;
-			has_hwaddr = false;
-			iface[sizeof(iface)-1] = '\0';
-			continue;
-		}
+		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "ifname"));
+		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "mac"));
 
 		// Do not try to read IP addresses when the information above is incomplete
-		if(!has_iface)
+		if(iface == NULL || strlen(iface) == 0 ||
+		   hwaddr == NULL || strlen(hwaddr) == 0)
 			continue;
 
-		// Try to read hardware address
-		// We skip lines with "link/none" (virtual, e.g., wireguard interfaces)
-		if(sscanf(linebuffer, "    link/ether %99s", hwaddr) == 1)
+		cJSON *addr = NULL;
+		cJSON_ArrayForEach(addr, cJSON_GetObjectItem(link, "addresses"))
 		{
-			// Obtained an Ethernet hardware address, continue to the next line
-			has_hwaddr = true;
-			hwaddr[sizeof(hwaddr)-1] = '\0';
-			continue;
-		}
-		else if(sscanf(linebuffer, "    link/loopback %99s", hwaddr) == 1)
-		{
-			// Obtained a loopback hardware address, continue to the next line
-			has_hwaddr = true;
-			hwaddr[sizeof(hwaddr)-1] = '\0';
-			continue;
-		}
-
-		// Do not try to read IP addresses when the information above is incomplete
-		if(!has_hwaddr)
-			continue;
-
-		// Try to read IPv4 address
-		// We need a special rule here to avoid "inet6 ..." being accepted as IPv4 address
-		if(sscanf(linebuffer, "    inet%*[ ]%127[0-9.] brd", ipaddr) == 1)
-		{
-			// Obtained an IPv4 address
-			ipaddr[sizeof(ipaddr)-1] = '\0';
-		}
-		else
-		{
-			// Try to read IPv6 address
-			if(sscanf(linebuffer, "    inet6%*[ ]%127[0-9a-fA-F:] scope", ipaddr) == 1)
-			{
-				// Obtained an IPv6 address
-				ipaddr[sizeof(ipaddr)-1] = '\0';
-			}
-			else
-			{
-				// No address data, continue to next line
+			// Skip if entry is invalid
+			if(addr == NULL)
 				continue;
-			}
-		}
 
-		log_debug(DEBUG_ARP, "Network table: read interface details for interface %s (%s) with address %s",
-		          iface, hwaddr, ipaddr);
+			char *ipaddr = cJSON_GetStringValue(cJSON_GetObjectItem(addr, "address"));
+			if(ipaddr == NULL || strlen(ipaddr) == 0)
+				continue;
 
-		// Try to find the device we parsed above
-		int dbID = find_device_by_hwaddr(db, hwaddr);
-		if(dbID >= 0)
-		{
-			log_debug(DEBUG_ARP, "Network table (ip a): Client with MAC %s was recently be seen for network ID %i",
-			          hwaddr, dbID);
-		}
+			log_debug(DEBUG_ARP, "Network table: read interface details for interface %s (%s) with address %s",
+				iface, hwaddr, ipaddr);
 
-		// Break on SQLite error
-		if(dbID == DB_FAILED)
-		{
-			// SQLite error
-			break;
-		}
-
-		// Get vendor
-		char *macVendor = getMACVendor(hwaddr);
-
-		// Device not in database, add new entry
-		if(dbID == DB_NODATA)
-		{
-
-			log_debug(DEBUG_ARP, "Network table: Creating new ip a device MAC = %s, IP = %s, vendor = \"%s\", interface = \"%s\"",
-			          hwaddr, ipaddr, macVendor, iface);
-
-			// Try to import query data from a possibly previously existing mock-device
-			int mockID = find_device_by_mock_hwaddr(db, ipaddr);
-			int lastQuery = 0, firstSeen = now, numQueries = 0;
-			if(mockID >= 0)
+			// Try to find the device we parsed above
+			int dbID = find_device_by_hwaddr(db, hwaddr);
+			if(dbID >= 0)
 			{
-				lastQuery = db_query_int_int(db, "SELECT lastQuery from network where id = ?1", mockID);
-				firstSeen = db_query_int_int(db, "SELECT firstSeen from network where id = ?1", mockID);
-				numQueries = db_query_int_int(db, "SELECT numQueries from network where id = ?1", mockID);
+				log_debug(DEBUG_ARP, "Network table (ip a): Client with MAC %s was recently be seen for network ID %i",
+					hwaddr, dbID);
 			}
 
-			// Add new device to database
-			if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
+			// Break on SQLite error
+			if(dbID == DB_FAILED)
+			{
+				// SQLite error
 				break;
+			}
+
+			// Get vendor
+			char *macVendor = getMACVendor(hwaddr);
+
+			// Device not in database, add new entry
+			if(dbID == DB_NODATA)
+			{
+
+				log_debug(DEBUG_ARP, "Network table: Creating new ip a device MAC = %s, IP = %s, vendor = \"%s\", interface = \"%s\"",
+					hwaddr, ipaddr, macVendor, iface);
+
+				// Try to import query data from a possibly previously existing mock-device
+				int mockID = find_device_by_mock_hwaddr(db, ipaddr);
+				int lastQuery = 0, firstSeen = now, numQueries = 0;
+				if(mockID >= 0)
+				{
+					lastQuery = db_query_int_int(db, "SELECT lastQuery from network where id = ?1", mockID);
+					firstSeen = db_query_int_int(db, "SELECT firstSeen from network where id = ?1", mockID);
+					numQueries = db_query_int_int(db, "SELECT numQueries from network where id = ?1", mockID);
+				}
+
+				// Add new device to database
+				if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
+					break;
+			}
+			else	// Device already in database
+			{
+				log_debug(DEBUG_ARP, "Network table: Updating existing ip a device MAC = %s, IP = %s, interface = \"%s\"",
+					hwaddr, ipaddr, iface);
+			}
+
+			//Free allocated memory
+			if(macVendor != NULL)
+				free(macVendor);
+
+			// Add unique IP address / mock-MAC pair to network_addresses table
+			if(!add_netDB_network_address(db, dbID, ipaddr))
+				break;
+
+			// Update interface if available
+			if(!update_netDB_interface(db, dbID, iface))
+				break;
+
+			// Add to number of processed ARP cache entries
+			(*additional_entries)++;
 		}
-		else	// Device already in database
-		{
-			log_debug(DEBUG_ARP, "Network table: Updating existing ip a device MAC = %s, IP = %s, interface = \"%s\"",
-			          hwaddr, ipaddr, iface);
-		}
-
-		//Free allocated memory
-		if(macVendor != NULL)
-			free(macVendor);
-
-		// Add unique IP address / mock-MAC pair to network_addresses table
-		if(!add_netDB_network_address(db, dbID, ipaddr))
-			break;
-
-		// Update interface if available
-		if(!update_netDB_interface(db, dbID, iface))
-			break;
-
-		// Add to number of processed ARP cache entries
-		(*additional_entries)++;
 	}
-
-	// Close pipe handle and free allocated memory
-	pclose(ip_pipe);
-	if(linebuffer != NULL)
-		free(linebuffer);
 
 	return true;
 }
@@ -1324,17 +1275,19 @@ void parse_neighbor_cache(sqlite3 *db)
 	{
 		// Parse ARP cache and add new entries to network table
 		log_debug(DEBUG_ARP, "Network table: Calling Netlink to get ARP cache entries");
-		cJSON *arp_json = NULL;
-		if(!nlarp_cache(arp_json))
+		cJSON *json = cJSON_CreateArray();
+		if(!nlneigh(json))
 		{
 			log_err("Failed to read ARP cache, cannot update network table");
 			free(client_status);
 			return;
 		}
+		log_debug(DEBUG_ARP, "Network table: Successfully read ARP cache with %i entries",
+		          cJSON_GetArraySize(json));
 
 		// Read ARP cache line by line
 		cJSON *entry = NULL;
-		cJSON_ArrayForEach(entry, arp_json)
+		cJSON_ArrayForEach(entry, json)
 		{
 			// Skip if entry is invalid
 			if(entry == NULL)
@@ -1362,17 +1315,11 @@ void parse_neighbor_cache(sqlite3 *db)
 			char *ip = NULL, *iface = NULL, *hwaddr = NULL;
 			if((ip = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "ip"))) == NULL ||
 			   (iface = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "iface"))) == NULL ||
-			   (hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "hwaddr"))) == NULL)
+			   (hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "mac"))) == NULL)
 			{
 				log_err("Failed to extract ARP cache entry data");
 				continue;
 			}
-
-			// Ensure strings are null-terminated in case we hit the max.
-			// length limitation
-			ip[sizeof(ip)-1] = '\0';
-			iface[sizeof(iface)-1] = '\0';
-			hwaddr[sizeof(hwaddr)-1] = '\0';
 
 			// Check if we want to process the line we just read
 			if(strlen(hwaddr) != 17 ||	// MAC address must be 17 characters long
@@ -1862,7 +1809,7 @@ getMACVendor_end:
 	sqlite3_finalize(stmt);
 	sqlite3_close(macvendor_db);
 
-	log_debug(DEBUG_ARP, "DEBUG: MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
+	log_debug(DEBUG_ARP, "MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 
 	return vendor;
 }

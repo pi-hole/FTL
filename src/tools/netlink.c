@@ -1382,9 +1382,9 @@ bool nllinks(cJSON *interfaces, const bool detailed)
  * @param arp_entries cJSON array to fill with ARP entries
  * @return true on success, false on failure
  */
-bool nlarp_cache(cJSON *arp_entries)
+bool nlneigh(cJSON *arp_entries)
 {
-	log_debug(DEBUG_NETLINK, "Called nlarp_cache");
+	log_debug(DEBUG_NETLINK, "Called nlneigh");
 	return nlquery(RTM_GETNEIGH, arp_entries, false) == 0;
 }
 
