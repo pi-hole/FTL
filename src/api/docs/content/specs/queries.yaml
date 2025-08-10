@@ -114,9 +114,7 @@ components:
             description: Load queries from on-disk database rather than from in-memory
             required: false
             schema:
-              enum:
-                - true
-                - false
+              type: boolean
               default: false
         responses:
           '200':

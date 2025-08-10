@@ -162,7 +162,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
 			if(strcmp(uri, prefix_webhome) == 0)
 			{

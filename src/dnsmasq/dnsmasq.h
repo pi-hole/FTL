@@ -1163,6 +1163,7 @@ struct dhcp_relay {
   char *interface; /* Allowable interface for replies from server, and dest for IPv6 multicast */
   int iface_index; /* working - interface in which requests arrived, for return */
   int port;        /* Port of relay we forward to. */
+  int split_mode;  /* Split address allocation and relay address. */
 #ifdef HAVE_SCRIPT
   struct snoop_record {
     struct in6_addr client, prefix;
@@ -1685,6 +1686,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  time_t recvtime, struct in_addr leasequery_source);
 unsigned char *extended_hwaddr(int hwtype, int hwlen, unsigned char *hwaddr, 
 			       int clid_len, unsigned char *clid, int *len_out);
+void relay_upstream4(int iface_index, struct dhcp_packet *mess, size_t sz, int unicast);
+struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_interface);
 #endif
 
 /* dnsmasq.c */
@@ -1820,7 +1823,7 @@ void get_client_mac(struct in6_addr *client, int iface, unsigned char *mac,
   
 /* rfc3315.c */
 #ifdef HAVE_DHCP6
-unsigned short dhcp6_reply(struct dhcp_context *context, int interface, char *iface_name,  
+unsigned short dhcp6_reply(struct dhcp_context *context, int multicast_dest, int interface, char *iface_name,  
 			   struct in6_addr *fallback, struct in6_addr *ll_addr, struct in6_addr *ula_addr,
 			   size_t sz, struct in6_addr *client_addr, time_t now);
 int relay_upstream6(int iface_index, ssize_t sz, struct in6_addr *peer_address, 

@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-122-g2495f42f-dirty) on branch new/renew_tls_cert
+# Pi-hole configuration file (v6.2.3-158-g0476f281-dirty) on branch new/renew_tls_cert
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-29 18:07:54 UTC
+# Last updated on 2025-08-10 06:08:44 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -904,24 +904,24 @@
   #
   # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
-  # - "X-DNS-Prefetch-Control: off": Usually browsers proactively perform domain name
+  # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
   # resolution on links that the user may choose to follow. We disable DNS prefetching
   # here.
-  # - "Content-Security-Policy: [...] 'unsafe-inline'" is both required by Chart.js
+  # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
   # styling some elements directly, and index.html containing some inlined Javascript
   # code.
-  # - "X-Frame-Options: DENY": The page can not be displayed in a frame, regardless of
-  # the site attempting to do so.
-  # - "X-Xss-Protection: 0": Disables XSS filtering in browsers that support it. This
+  # - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the
+  # site attempting to do so.
+  # - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This
   # header is usually enabled by default in browsers, and is not recommended as it can
   # hurt the security of the site.
   # (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).
-  # - "X-Content-Type-Options: nosniff": Marker used by the server to indicate that the
+  # - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the
   # MIME types advertised in the  Content-Type headers should not be changed and be
   # followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a
   # way to say that the webmasters knew what they were doing. Site security testers
   # usually expect this header to be set.
-  # - "Referrer-Policy: strict-origin-when-cross-origin": A referrer will be sent for
+  # - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for
   # same-site origins, but cross-origin requests will send no referrer information.
   # The latter four headers are set as expected by https://securityheaders.io
   #
@@ -929,7 +929,7 @@
   #     An array of HTTP headers
   headers = [
     "X-DNS-Prefetch-Control: off",
-    "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
+    "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
     "X-Content-Type-Options: nosniff",

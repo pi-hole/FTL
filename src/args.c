@@ -87,32 +87,6 @@ bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
-// Extended SGR sequence:
-//
-// "\x1b[%dm"
-//
-// where %d is one of the following values for commonly supported colors:
-//
-// 0: reset colors/style
-// 1: bold
-// 4: underline
-// 30 - 37: black, red, green, yellow, blue, magenta, cyan, and white text
-// 40 - 47: black, red, green, yellow, blue, magenta, cyan, and white background
-//
-// https://en.wikipedia.org/wiki/ANSI_escape_code#SGR
-//
-#define COL_NC		"\x1b[0m"  // normal font
-#define COL_BOLD	"\x1b[1m"  // bold font
-#define COL_ITALIC	"\x1b[3m"  // italic font
-#define COL_ULINE	"\x1b[4m"  // underline font
-#define COL_GREEN	"\x1b[32m" // normal foreground color
-#define COL_YELLOW	"\x1b[33m" // normal foreground color
-#define COL_RED		"\x1b[91m" // bright foreground color
-#define COL_BLUE	"\x1b[94m" // bright foreground color
-#define COL_PURPLE	"\x1b[95m" // bright foreground color
-#define COL_CYAN	"\x1b[96m" // bright foreground color
-#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
-
 static bool __attribute__ ((pure)) is_term(void)
 {
 	// test whether STDOUT refers to a terminal or if env variable
@@ -173,7 +147,7 @@ const char __attribute__ ((pure)) *cli_normal(void)
 }
 
 // Set color if STDOUT is a terminal
-static const char __attribute__ ((pure)) *cli_color(const char *color)
+const char __attribute__ ((pure)) *cli_color(const char *color)
 {
 	return is_term() ? color : "";
 }
@@ -1016,6 +990,7 @@ void parse_args(int argc, char *argv[])
 			const char *bold = cli_bold();
 			const char *uline = cli_underline();
 			const char *normal = cli_normal();
+			const char *red = cli_color(COL_RED);
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
 			const char *green = cli_color(COL_GREEN);
@@ -1112,6 +1087,8 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t                    Config items with non-default values may\n");
+			printf("\t                    be colored in %sred%s\n", red, normal);
 			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
