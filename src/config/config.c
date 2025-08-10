@@ -522,7 +522,7 @@ static void initConfig(struct config *conf)
 	conf->dns.dnssec.d.b = false;
 
 	conf->dns.interface.k = "dns.interface";
-	conf->dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled). Leave empty for auto-detection.";
+	conf->dns.interface.h = "Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave empty for auto-detection.";
 	conf->dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	conf->dns.interface.t = CONF_STRING;
 	conf->dns.interface.f = FLAG_RESTART_FTL;
