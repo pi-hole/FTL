@@ -25,7 +25,7 @@
 #include "database/network-table.h"
 // resolver_ready
 #include "daemon.h"
-// logg_hostname_warning()
+// log_hostname_warning()
 #include "database/message-table.h"
 // Eventqueue routines
 #include "events.h"
@@ -215,8 +215,7 @@ static bool valid_hostname(char *name, const char *clientip)
 			 c == '.' )
 			continue;
 
-		// Invalid character found, log and return hostname being invalid
-		logg_hostname_warning(clientip, name, i);
+		// Invalid character found => return hostname being invalid
 		return false;
 	}
 
@@ -452,7 +451,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 
 		name = (char *)answers[i].rdata;
 		log_debug(DEBUG_RESOLVER, "Answer %u is PTR \"%s\" => \"%s\"",
-		          i, answers[i].name, answers[i].rdata);
+		          i, answers[i].name, name);
 
 		// We break out of the loop if this is a valid hostname
 		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
@@ -462,9 +461,19 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 		}
 		else
 		{
+			char *escaped_name = escape_str(name, strlen(name));
+			log_warn("Resolved PTR \"%s\" on 127.0.0.1#%u (%s) with status %s (%i): answer %u (PTR \"%s\" => \"%s\") is invalid",
+			         host, config.dns.port.v.u16, tcp ? "TCP" : "UDP",
+			         getDNScode(dns->rcode), dns->rcode, i, answers[i].name, escaped_name);
+			log_hostname_warning(ipaddr, escaped_name, i);
+
 			// Discard this answer: free memory and set name to NULL
 			free(answers[i].name);
 			free(answers[i].rdata);
+			if(escaped_name != NULL)
+				free(escaped_name);
+
+			// Set name to NULL so we can return an empty string later
 			name = NULL;
 		}
 	}

@@ -624,40 +624,18 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 
 static void format_hostname_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *ip, const char *name, const int pos)
 {
-	char *namep = escape_json(name);
-	if(namep == NULL)
-	{
-		log_err("format_hostname_message(): Failed to JSON escape host name \"%s\" of client \"%s\"", name, ip);
-		return;
-	}
-
-	// Check if the position is within the string before proceeding
-	// This is a safety measure to prevent buffer overflows caused by
-	// malicious database records
-	if(pos > (int)strlen(name))
-	{
-		log_err("format_hostname_message(): Invalid position %i for host name \"%s\" of client \"%s\"", pos, namep, ip);
-		if(namep != NULL)
-			free(namep);
-		return;
-	}
-
 	// Format the plain text message (the JSON string is already escaped and
 	// contains "" around the string)
-	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character (hex %02x) at position %i",
-			ip, namep, (unsigned char)name[pos], pos) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character at position %i",
+			ip, name, pos) > sizeof_plain)
 		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
-	{
-		if(namep != NULL)
-			free(namep);
 		return;
-	}
 
 	char *escaped_ip = escape_html(ip);
-	char *escaped_name = escape_html(namep);
+	char *escaped_name = escape_html(name);
 
 	// Return early if memory allocation failed
 	if(escaped_ip == NULL || escaped_name == NULL)
@@ -666,8 +644,6 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 			free(escaped_ip);
 		if(escaped_name != NULL)
 			free(escaped_name);
-		if(namep != NULL)
-			free(namep);
 		return;
 	}
 
@@ -677,8 +653,6 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 
 	free(escaped_ip);
 	free(escaped_name);
-	if(namep != NULL)
-		free(namep);
 }
 
 static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
@@ -1394,7 +1368,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 	free(names);
 }
 
-void logg_hostname_warning(const char *ip, const char *name, const unsigned int pos)
+void log_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	// Create message
 	char buf[2048] = { 0 };

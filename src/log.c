@@ -572,8 +572,8 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 // Converts a buffer of specified length to ASCII representation as it was a C
 // string literal. Returns how much bytes from source was processed
 // Inspired by https://stackoverflow.com/a/56123950
-int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
-                                      char *dst_str, size_t dst_sz)
+static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
+                                       char *dst_str, size_t dst_sz)
 {
 	const char *src = src_buf;
 	char *dst = dst_str;
@@ -628,7 +628,7 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%02X", (unsigned char)*src);
+					sprintf(dst, "\\x%02X", (unsigned char)*src);
 					dst += 4;
 					break;
 			}
@@ -640,6 +640,37 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+/**
+ * @brief Escapes a binary string to be printable as a C string literal.
+ *
+ * This function allocates a new string and converts the input buffer into an escaped
+ * C string literal, suitable for safe printing or logging. Each character in the source
+ * buffer may be escaped, so the output buffer is allocated with enough space for the
+ * worst-case scenario (every character is escaped as \xNN).
+ *
+ * @param src_buf Pointer to the source buffer to escape.
+ * @param src_sz  Size of the source buffer in bytes.
+ * @return Pointer to the newly allocated escaped string, or NULL on allocation or conversion failure.
+ *         The returned string must be freed by the caller.
+ */
+char * __attribute__((malloc)) escape_str(const char *src_buf, size_t src_sz)
+{
+	// Allocate memory for the escaped string
+	char *escaped_str = malloc(src_sz * 4 + 1); // Worst case: every char is escaped
+	if(!escaped_str)
+		return NULL;
+
+	// Convert buffer to escaped C literal
+	const int processed = binbuf_to_escaped_C_literal(src_buf, src_sz, escaped_str, src_sz * 4 + 1);
+	if(processed < 0)
+	{
+		free(escaped_str);
+		return NULL;
+	}
+
+	return escaped_str;
 }
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)
