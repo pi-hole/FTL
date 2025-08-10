@@ -1746,6 +1746,8 @@ bool updateMACVendorRecords(sqlite3 *db)
 	if(FTLDBerror())
 		return false;
 
+	log_debug(DEBUG_DATABASE, "Updating MAC vendor records");
+
 	struct stat st;
 	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{

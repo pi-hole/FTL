@@ -62,6 +62,7 @@ static bool analyze_database(sqlite3 *db)
 	// stores the collected information in internal tables of the database
 	// where the query optimizer can access the information and use it to
 	// help make better query planning choices.
+	log_debug(DEBUG_DATABASE, "Optimizing database %s", config.files.database.v.s);
 
 	// Measure time
 	struct timespec start, end;
