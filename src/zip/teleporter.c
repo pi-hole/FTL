@@ -41,6 +41,8 @@
 #include "webserver/json_macros.h"
 // exit_code
 #include "signals.h"
+// sqliteBusyCallback()
+#include "database/common.h"
 
 // Tables to copy from the gravity database to the Teleporter database
 static const char *gravity_tables[] = {
@@ -87,7 +89,7 @@ static bool create_teleporter_database(const char *filename, const char **tables
 
 	// Set busy timeout to 1 second to access the database in a
 	// multi-threaded environment
-	if(sqlite3_busy_timeout(db, 1000) != SQLITE_OK)
+	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
 		log_warn("Failed to set busy timeout during creation of in-memory Teleporter database: %s", sqlite3_errmsg(db));
 
 	if(sqlite3_exec(db, attach_stmt, NULL, NULL, &err) != SQLITE_OK)

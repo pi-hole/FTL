@@ -98,11 +98,11 @@ bool init_memory_database(void)
 	}
 
 	// Explicitly set busy handler to value defined in FTL.h
-	rc = sqlite3_busy_timeout(_memdb, DATABASE_BUSY_TIMEOUT);
+	rc = sqlite3_busy_handler(_memdb, sqliteBusyCallback, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("init_memory_database(): Step error while trying to set busy timeout (%d ms): %s",
-		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		log_err("init_memory_database(): Step error while trying to set busy timeout: %s",
+		        sqlite3_errstr(rc));
 		sqlite3_close(_memdb);
 		return false;
 	}
