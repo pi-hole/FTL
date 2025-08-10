@@ -273,6 +273,8 @@ static int find_device_by_hwaddr(sqlite3 *db, const char hwaddr[])
 	if(FTLDBerror())
 		return DB_FAILED;
 
+	log_debug(DEBUG_ARP, "find_device_by_hwaddr(%s)", hwaddr);
+
 	const char *querystr = "SELECT id FROM network WHERE hwaddr = ?1 COLLATE NOCASE;";
 
 	// Perform SQL query
@@ -285,6 +287,8 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return DB_FAILED;
+
+	log_debug(DEBUG_ARP, "find_recent_device_by_mock_hwaddr(%s)", ipaddr);
 
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
@@ -311,6 +315,8 @@ static bool update_netDB_name(sqlite3 *db, const char *ip, const char *name)
 	// Skip if hostname is NULL or an empty string (= no result)
 	if(name == NULL || strlen(name) < 1)
 		return true;
+
+	log_debug(DEBUG_ARP, "update_netDB_name(%s, \"%s\")", ip, name);
 
 	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
@@ -394,6 +400,8 @@ static bool update_netDB_lastQuery(sqlite3 *db, const int network_id, const time
 	if(lastQuery < 1)
 		return true;
 
+	log_debug(DEBUG_ARP, "update_netDB_lastQuery(%i, %lu)", network_id, (unsigned long)lastQuery);
+
 	const int ret = dbquery(db, "UPDATE network "\
 	                            "SET lastQuery = MAX(lastQuery, %lu) "\
 	                            "WHERE id = %i;",
@@ -419,6 +427,8 @@ static bool update_netDB_numQueries(sqlite3 *db, const int dbID, const int numQu
 	// Return early if there is nothing to update
 	if(numQueries < 1)
 		return true;
+
+	log_debug(DEBUG_ARP, "update_netDB_numQueries(%i, %i)", dbID, numQueries);
 
 	const int ret = dbquery(db, "UPDATE network "
 	                            "SET numQueries = numQueries + %i "
@@ -449,6 +459,8 @@ static bool add_netDB_network_address(sqlite3 *db, const int network_id, const c
 	// Return early if there is nothing to be done in here
 	if(ip == NULL || strlen(ip) == 0)
 		return true;
+
+	log_debug(DEBUG_ARP, "add_netDB_network_address(%i, \"%s\")", network_id, ip);
 
 	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
@@ -525,6 +537,9 @@ static bool insert_netDB_device(sqlite3 *db, const char *hwaddr, const time_t fi
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
+
+	log_debug(DEBUG_ARP, "insert_netDB_device(\"%s\", %lu, %lu, %u, \"%s\")",
+		      hwaddr, (unsigned long)firstSeen, (unsigned long)lastQuery, numQueriesARP, macVendor);
 
 	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
@@ -626,6 +641,8 @@ static bool unmock_netDB_device(sqlite3 *db, const char *hwaddr, const char *mac
 	if(dbID < 0)
 		return false;
 
+	log_debug(DEBUG_ARP, "unmock_netDB_device(\"%s\", \"%s\", %i)", hwaddr, macVendor, dbID);
+
 	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "UPDATE network SET "\
@@ -709,6 +726,8 @@ static bool update_netDB_interface(sqlite3 *db, const int network_id, const char
 	if(iface == NULL || strlen(iface) == 0)
 		return true;
 
+	log_debug(DEBUG_ARP, "update_netDB_interface(%i, \"%s\")", network_id, iface);
+
 	bool success = false;
 	sqlite3_stmt *query_stmt = NULL;
 	const char querystr[] = "UPDATE network SET interface = ?1 WHERE id = ?2";
@@ -767,6 +786,8 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
+
+	log_debug(DEBUG_ARP, "Network table: Adding up to %u FTL clients to network table", clients);
 
 	int rc = SQLITE_OK;
 	char hwaddr[128];
@@ -1041,6 +1062,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	if(FTLDBerror())
 		return SQLITE_ERROR;
 
+	log_debug(DEBUG_ARP, "Network table: Adding local interfaces to network table");
+
 	// Try to access the kernel's Internet protocol address management
 	FILE *ip_pipe = NULL;
 	const char cmd[] = "ip address show";
@@ -1214,6 +1237,8 @@ static bool clean_network_table(sqlite3 *db)
 	if(config.database.network.expire.v.ui == 0)
 		return true;
 
+	log_debug(DEBUG_ARP, "Cleaning network table");
+
 	// Remove all but the most recent IP addresses not seen for more than a certain time
 	const time_t limit = time(NULL)-24*3600*config.database.network.expire.v.ui;
 	int rc = dbquery(db, "DELETE FROM network_addresses "
@@ -1264,6 +1289,8 @@ void parse_neighbor_cache(sqlite3 *db)
 	unsigned int entries = 0u, additional_entries = 0u;
 	const time_t now = time(NULL);
 
+	log_debug(DEBUG_ARP, "Parsing kernel's neighbor cache");
+
 	// Start ARP timer
 	if(config.debug.arp.v.b)
 		timer_start(ARP_TIMER);
@@ -1303,7 +1330,7 @@ void parse_neighbor_cache(sqlite3 *db)
 		// Parse ARP cache and add new entries to network table
 		FILE *arpfp = NULL;
 		const char cmd[] = "ip neigh show";
-		errno = ENOMEM;
+		log_debug(DEBUG_ARP, "Network table: Running \"%s\"", cmd);
 		if((arpfp = popen(cmd, "r")) == NULL)
 		{
 			log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
@@ -1321,6 +1348,8 @@ void parse_neighbor_cache(sqlite3 *db)
 			// Check thread cancellation
 			if(killed)
 				break;
+
+			log_debug(DEBUG_ARP, "Network table: Parsing ARP cache line: %s", linebuffer);
 
 			// Analyze line
 			char ip[128], hwaddr[128], iface[128];
@@ -1557,6 +1586,8 @@ void parse_neighbor_cache(sqlite3 *db)
 		if(linebuffer != NULL)
 			free(linebuffer);
 
+		log_debug(DEBUG_ARP, "Network table: Finished parsing ARP cache with %u entries", entries);
+
 		if(rc != SQLITE_OK)
 		{
 			log_err("Database error in ARP cache processing loop");
@@ -1599,6 +1630,7 @@ void parse_neighbor_cache(sqlite3 *db)
 
 	// Ensure mock-devices which are not assigned to any addresses any more
 	// (they have been converted to "real" devices), are removed at this point
+	log_debug(DEBUG_ARP, "Network table: Cleaning up mock-devices");
 	rc = dbquery(db, "DELETE FROM network WHERE id NOT IN "
 	                                           "(SELECT network_id from network_addresses) "
 	                                           "AND hwaddr LIKE 'ip-%%';");
@@ -1610,6 +1642,7 @@ void parse_neighbor_cache(sqlite3 *db)
 	}
 
 	// Actually update the database
+	log_debug(DEBUG_ARP, "Network table: Committing changes to database");
 	if((rc = dbquery(db, "END TRANSACTION")) != SQLITE_OK)
 	{
 		if( rc == SQLITE_BUSY )
@@ -1741,6 +1774,8 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	// Special handling for the loopback interface
 	if(strcmp(hwaddr, "00:00:00:00:00:00") == 0)
 			return strdup("virtual interface");
+
+	log_debug(DEBUG_ARP, "getMACVendor(\"%s\")", hwaddr);
 
 	struct stat st;
 	if(stat(config.files.macvendor.v.s, &st) != 0)
