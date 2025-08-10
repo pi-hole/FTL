@@ -476,6 +476,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		case LISTEN_NONE:
 			fputs("# No interface configuration applied, make sure to cover this yourself\n", pihole_conf);
 			break;
+		case LISTEN_MAX:
+		default:
+			log_err("Unknown listening mode %d, unable to update dnsmasq configuration", conf->dns.listeningMode.v.listeningMode);
 	}
 	fputs("\n", pihole_conf);
 

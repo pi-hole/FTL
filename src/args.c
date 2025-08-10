@@ -1277,14 +1277,18 @@ static void list_matches(const char *last_word, const char *const *list, size_t 
 	if(!case_sensitive)
 	{
 		for(size_t i = 0; i < list_size; i++)
-			if(strStartsWithIgnoreCase(list[i], last_word) || strlen(last_word) == 0)
+			if(list[i] != NULL &&
+			   (strStartsWithIgnoreCase(list[i], last_word) ||
+			    strlen(last_word) == 0))
 				puts(list[i]);
 		return;
 	}
 
 	// Case-sensitive matching
 	for(size_t i = 0; i < list_size; i++)
-		if(strStartsWith(list[i], last_word) || strlen(last_word) == 0)
+		if(list[i] != NULL &&
+		   (strStartsWith(list[i], last_word) ||
+		    strlen(last_word) == 0))
 			puts(list[i]);
 }
 
@@ -1347,12 +1351,23 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc == 5 && strEndsWith(argv[3], "sqlite3"))
+	else if((argc == 5 || argc == 6) && strEndsWith(argv[3], "sqlite3"))
 	{
 		// pihole-FTL sqlite3 ...
 		const char *options[] = {
 			"-h", "-ni"
 		};
+
+		if(argc ==6 && strcmp(argv[4], "-h") == 0)
+		{
+			// Remove the -h option from the list
+			options[0] = NULL;
+		}
+		else if(argc == 6 && strcmp(argv[4], "-ni") == 0)
+		{
+			// Remove the -ni option from the list
+			options[1] = NULL;
+		}
 
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
@@ -1458,53 +1473,53 @@ void suggest_complete(const int argc, char *argv[])
 					}
 					else if(conf_item->t == CONF_ENUM_PTR_TYPE)
 					{
-						// pihole-FTL --config dns.piholePTR ...
-						const char *options[] = {
-							"pi.hole", "hostname", "hostnamefqdn", "none"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < PTR_MAX; j++)
+						{
+							const char *ptr = get_ptr_type_str(j);
+							if(strStartsWithIgnoreCase(ptr, last_word) || strlen(last_word) == 0)
+								puts(ptr);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_BUSY_TYPE)
 					{
-						// pihole-FTL --config dns.replyWhenBusy ...
-						const char *options[] = {
-							"block", "allow", "refuse", "drop"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < BUSY_MAX; j++)
+						{
+							const char *busy = get_busy_reply_str(j);
+							if(strStartsWithIgnoreCase(busy, last_word) || strlen(last_word) == 0)
+								puts(busy);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_BLOCKING_MODE)
 					{
-						// pihole-FTL --config dns.blocking.mode ...
-						const char *options[] = {
-							"IP", "NX", "NULL", "IP_NODATA_AAAA", "NODATA"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < MODE_MAX; j++)
+						{
+							const char *mode = get_blocking_mode_str(j);
+							if(strStartsWithIgnoreCase(mode, last_word) || strlen(last_word) == 0)
+								puts(mode);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_REFRESH_HOSTNAMES)
 					{
-						// pihole-FTL --config resolver.refreshNames ...
-						const char *options[] = {
-							"ALL", "IPV4_ONLY", "UNKNOWN", "NONE"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < REFRESH_MAX; j++)
+						{
+							const char *refresh = get_refresh_hostnames_str(j);
+							if(strStartsWithIgnoreCase(refresh, last_word) || strlen(last_word) == 0)
+								puts(refresh);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_LISTENING_MODE)
 					{
-						// pihole-FTL --config dns.listeningMode ...
-						const char *options[] = {
-							"local", "all", "single", "bind", "none"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < LISTEN_MAX; j++)
+						{
+							const char *listen = get_listeningMode_str(j);
+							if(strStartsWithIgnoreCase(listen, last_word) || strlen(last_word) == 0)
+								puts(listen);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_WEB_THEME)
 					{
@@ -1520,23 +1535,23 @@ void suggest_complete(const int argc, char *argv[])
 					}
 					else if(conf_item->t == CONF_ENUM_BLOCKING_EDNS_MODE)
 					{
-						// pihole-FTL --config dns.blocking.edns ...
-						const char *options[] = {
-							"NONE", "CODE", "TEXT"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < EDNS_MODE_MAX; j++)
+						{
+							const char *edns = get_edns_mode_str(j);
+							if(strStartsWithIgnoreCase(edns, last_word) || strlen(last_word) == 0)
+								puts(edns);
+						}
 					}
 					else if(conf_item->t == CONF_ENUM_TEMP_UNIT)
 					{
-						// pihole-FTL --config webserver.api.temp.unit ...
-						const char *options[] = {
-							"C", "F", "K"
-						};
-
 						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
+						for(size_t j = 0; j < TEMP_UNIT_MAX; j++)
+						{
+							const char *temp = get_temp_unit_str(j);
+							if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
+								puts(temp);
+						}
 					}
 				}
 			}
