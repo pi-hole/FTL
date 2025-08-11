@@ -184,7 +184,7 @@
   #     true or false
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
+  # Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled).
   # Leave empty for auto-detection.
   #
   # Allowed values are:
