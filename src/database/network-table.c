@@ -1071,8 +1071,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		log_err("Failed to get links, cannot update network table");
 		return false;
 	}
-		log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
-		          cJSON_GetArraySize(links));
+	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
+	          cJSON_GetArraySize(links));
 
 	// Parse link information
 	cJSON *link = NULL;

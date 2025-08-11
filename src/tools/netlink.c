@@ -1149,6 +1149,21 @@ static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJ
 	return 0;
 }
 
+/**
+ * @brief Parses Netlink messages from a buffer and populates a JSON object.
+ *
+ * Iterates over Netlink messages in the provided buffer, dispatching each message
+ * to the appropriate handler based on its type (e.g., route, address, link, neighbor).
+ * Handles special Netlink flags such as NLM_F_DUMP_INTR, and logs relevant information
+ * for debugging and error handling. Supports detailed output based on the 'detailed' flag.
+ *
+ * @param buf      Pointer to the buffer containing Netlink messages.
+ * @param len      Length of the buffer in bytes.
+ * @param json     Pointer to a cJSON object to be populated with parsed data.
+ * @param detailed Boolean flag indicating whether to include detailed information.
+ *
+ * @return The type of the last Netlink message processed (nlmsg_type).
+ */
 static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool detailed)
 {
 	struct nlmsghdr *nl = NULL;
@@ -1243,14 +1258,28 @@ static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool deta
 	return nl->nlmsg_type;
 }
 
-static int nlquery(const int type, cJSON *json, const bool detailed)
+/**
+ * @brief Sends a netlink request of the specified type and parses the response.
+ *
+ * This function creates a netlink socket, configures it, and sends a request of the given
+ * type (e.g., RTM_GETROUTE, RTM_GETADDR, RTM_GETLINK, RTM_GETNEIGH) to the kernel. It then
+ * receives and parses the response messages, storing the results in the provided cJSON object.
+ * The function continues to receive messages until a NLMSG_DONE, NLMSG_ERROR, or NLMSG_OVERRUN
+ * message is encountered, or no more data is received.
+ *
+ * @param type     The netlink message type to request (e.g., RTM_GETROUTE).
+ * @param json     Pointer to a cJSON object where the parsed response will be stored.
+ * @param detailed If true, requests detailed information in the response.
+ * @return true on success, false on failure.
+ */
+static bool nlquery(const int type, cJSON *json, const bool detailed)
 {
 	// First of all, we need to create a socket with the AF_NETLINK domain
 	const int fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if(fd < 0)
 	{
 		log_err("netlink socket error: %s", strerror(errno));
-		return -1;
+		return false;
 	}
 
 	// Set the buffer size for the socket (this is the maximum size of a
@@ -1301,7 +1330,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	{
 		log_err("nlrequest error(type = %s, %d): %s", nltype, type, strerror(errno));
 		close(fd);
-		return -1;
+		return false;
 	}
 
 	// Receive and parse the response, continue until we receive a
@@ -1317,7 +1346,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 		{
 			log_err("nlgetmsg error: %s", strerror(errno));
 			close(fd);
-			return -1;
+			return false;
 		}
 
 		// Parse the contained messages
@@ -1336,9 +1365,9 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 			break;
 	}
 
+	// Close the socket
 	close(fd);
-	return 0;
-
+	return true;
 }
 
 /**
@@ -1401,7 +1430,7 @@ bool nllinks(cJSON *interfaces, const bool detailed)
 bool nlneigh(cJSON *arp_entries)
 {
 	log_debug(DEBUG_NETLINK, "Called nlneigh");
-	return nlquery(RTM_GETNEIGH, arp_entries, false) == 0;
+	return nlquery(RTM_GETNEIGH, arp_entries, false);
 }
 
 /**
