@@ -26,8 +26,7 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 {
 	char buf[BUFLEN] = { 0 };
 	// Assemble the message according to the netlink protocol
-	struct nlmsghdr *nl;
-	nl = (struct nlmsghdr*)(void*)buf;
+	struct nlmsghdr *nl = (struct nlmsghdr*)(void*)buf;
 	// Prepare the netlink message header
 	nl->nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ACK;
 
@@ -54,6 +53,14 @@ static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 
 		struct ifinfomsg *link = (struct ifinfomsg*)NLMSG_DATA(nl);
 		link->ifi_family = AF_UNSPEC;
+	}
+	else if(nlmsg_type == RTM_GETNEIGH)
+	{
+		// Request ARP information
+		nl->nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg));
+
+		struct ndmsg *ndm = (struct ndmsg*)NLMSG_DATA(nl);
+		ndm->ndm_family = AF_UNSPEC;
 	}
 	nl->nlmsg_type = nlmsg_type;
 
@@ -1106,6 +1113,42 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 	return 0;
 }
 
+static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJSON *arp_entries, const bool detailed)
+{
+	char ip[INET6_ADDRSTRLEN] = {0};
+	char mac[18] = {0};
+	char ifname[IF_NAMESIZE] = {0};
+	for(; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+		if(rta->rta_type == NDA_DST) {
+			if(ndm->ndm_family == AF_INET)
+				inet_ntop(AF_INET, RTA_DATA(rta), ip, sizeof(ip));
+			else if(ndm->ndm_family == AF_INET6)
+				inet_ntop(AF_INET6, RTA_DATA(rta), ip, sizeof(ip));
+		}
+		else if(rta->rta_type == NDA_LLADDR) {
+			const unsigned char *addr = RTA_DATA(rta);
+			snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+				addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+		}
+	}
+	if_indextoname(ndm->ndm_ifindex, ifname);
+	cJSON *entry = cJSON_CreateObject();
+	cJSON_AddStringToObject(entry, "ip", ip);
+	cJSON_AddStringToObject(entry, "mac", mac);
+	cJSON_AddStringToObject(entry, "iface", ifname);
+	if(config.debug.arp.v.b || config.debug.netlink.v.b)
+	{
+		cJSON_AddNumberToObject(entry, "state", ndm->ndm_state);
+		cJSON_AddNumberToObject(entry, "type", ndm->ndm_type);
+		cJSON_AddNumberToObject(entry, "flags", ndm->ndm_flags);
+
+		log_debug(DEBUG_NETLINK, "ARP entry: %s -> %s on %s",
+		          ip, mac, ifname);
+	}
+	cJSON_AddItemToArray(arp_entries, entry);
+	return 0;
+}
+
 static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool detailed)
 {
 	struct nlmsghdr *nl = NULL;
@@ -1144,17 +1187,24 @@ static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool deta
 			nlparsemsg_link(ifi, IFLA_RTA(ifi), IFLA_PAYLOAD(nl), json, detailed);
 			continue;
 		}
+		else if (nl->nlmsg_type == RTM_NEWNEIGH)
+		{
+			struct ndmsg *ndm = (struct ndmsg*)NLMSG_DATA(nl);
+			struct rtattr *rta = (struct rtattr*)(((void*)ndm) + NLMSG_ALIGN(sizeof(struct ndmsg)));
+			const int rta_len = nl->nlmsg_len - NLMSG_LENGTH(sizeof(struct ndmsg));
+			nlparsemsg_arp(ndm, rta, rta_len, json, detailed);
+			continue;
+		}
 		else
 		{
 			log_warn("Unknown Netlink message type: %d", nl->nlmsg_type);
 		}
-
 	}
 
 	// Print message properties in debug mode
 	if(config.debug.netlink.v.b)
 	{
-		const char *nltype = "";
+		const char *nltype = "<unknown>";
 		if(nl->nlmsg_type == NLMSG_DONE)
 			nltype = " (NLMSG_DONE)";
 		else if(nl->nlmsg_type == NLMSG_ERROR)
@@ -1169,6 +1219,8 @@ static uint32_t parse_nl_msg(void *buf, size_t len, cJSON *json, const bool deta
 			nltype = " (RTM_NEWADDR)";
 		else if(nl->nlmsg_type == RTM_NEWLINK)
 			nltype = " (RTM_NEWLINK)";
+		else if(nl->nlmsg_type == RTM_NEWNEIGH)
+			nltype = " (RTM_NEWNEIGH)";
 
 		log_debug(DEBUG_NETLINK, "Returning next nl_msg_type: %u%s, remaining len: %u/%zu",
 		          nl->nlmsg_type, nltype, nl->nlmsg_len, len);
@@ -1201,7 +1253,7 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 		return -1;
 	}
 
-	// Set the buffer size for the socket (this is the maximum size of the
+	// Set the buffer size for the socket (this is the maximum size of a
 	// message that can be received). The buffer size is set to 32 KiB as
 	// this is the maximum size of a netlink message.
 	const int buffer_size = 32768;
@@ -1273,22 +1325,67 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 
 }
 
+/**
+ * @brief Queries network route information and populates a cJSON object.
+ * This function logs the invocation and calls nlquery() to retrieve network
+ * route information using the RTM_GETROUTE netlink message. The results
+ * are stored in the provided cJSON object.
+ *
+ * @param interfaces Pointer to a cJSON object where interface routing data will be stored.
+ * @param detailed   Boolean flag indicating whether to retrieve detailed information.
+ * @return true on success, false on failure.
+ */
 bool nlroutes(cJSON *routes, const bool detailed)
 {
-	log_debug(DEBUG_NETLINK, "Called nlroutes");
+	log_debug(DEBUG_NETLINK, "Called nlroutes (detailed = %s)", detailed ? "true" : "false");
 	return nlquery(RTM_GETROUTE, routes, detailed);
 }
 
+/**
+ * @brief Queries network link address information and populates a cJSON object.
+ *
+ * This function logs the invocation and calls nlquery() to retrieve network
+ * interface address information using the RTM_GETADDR netlink message. The results
+ * are stored in the provided cJSON object.
+ *
+ * @param interfaces Pointer to a cJSON object where interface address data will be stored.
+ * @param detailed   Boolean flag indicating whether to retrieve detailed information.
+ * @return true on success, false on failure.
+ */
 bool nladdrs(cJSON *interfaces, const bool detailed)
 {
-	log_debug(DEBUG_NETLINK, "Called nladdrs");
+	log_debug(DEBUG_NETLINK, "Called nladdrs (detailed = %s)", detailed ? "true" : "false");
 	return nlquery(RTM_GETADDR, interfaces, detailed);
 }
 
+/**
+ * @brief Queries network link information and populates a cJSON object.
+ *
+ * This function logs the invocation and calls nlquery() to retrieve network
+ * interface information using the RTM_GETLINK netlink message. The results
+ * are stored in the provided cJSON object.
+ *
+ * @param interfaces Pointer to a cJSON object where interface data will be stored.
+ * @param detailed   Boolean flag indicating whether to retrieve detailed information.
+ * @return true on success, false on failure.
+ */
 bool nllinks(cJSON *interfaces, const bool detailed)
 {
-	log_debug(DEBUG_NETLINK, "Called nllinks");
+	log_debug(DEBUG_NETLINK, "Called nllinks (detailed = %s)", detailed ? "true" : "false");
 	return nlquery(RTM_GETLINK, interfaces, detailed);
+}
+
+/**
+ * @brief Reads the ARP cache using netlink and fills a cJSON array with entries.
+ *
+ * Each entry contains IP address, MAC address, interface, and state.
+ * @param arp_entries cJSON array to fill with ARP entries
+ * @return true on success, false on failure
+ */
+bool nlarp_cache(cJSON *arp_entries)
+{
+	log_debug(DEBUG_NETLINK, "Called nlarp_cache");
+	return nlquery(RTM_GETNEIGH, arp_entries, false) == 0;
 }
 
 /**

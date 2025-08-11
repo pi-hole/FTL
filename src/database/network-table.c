@@ -23,6 +23,8 @@
 #include "resolve.h"
 // killed
 #include "signals.h"
+// nlarp_cache()
+#include "tools/netlink.h"
 
 static char *getMACVendor(const char *hwaddr) __attribute__ ((malloc));
 enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE } __attribute__ ((packed));
@@ -1284,8 +1286,7 @@ bool flush_network_table(void)
 void parse_neighbor_cache(sqlite3 *db)
 {
 	// Prepare buffers
-	char *linebuffer = NULL;
-	size_t linebuffersize = 0u;
+	int rc = SQLITE_OK;
 	unsigned int entries = 0u, additional_entries = 0u;
 	const time_t now = time(NULL);
 
@@ -1298,16 +1299,10 @@ void parse_neighbor_cache(sqlite3 *db)
 	// Start transaction to speed up database queries, to avoid that the
 	// database is locked by other processes and to allow for a rollback in
 	// case of an error
-	const char sql[] = "BEGIN TRANSACTION IMMEDIATE";
-	int rc = dbquery(db, sql);
-	if(rc != SQLITE_OK)
+	if(dbquery(db, "BEGIN TRANSACTION"))
 	{
 		// dbquery() above already logs the reason for why the query failed
-		if( rc == SQLITE_BUSY )
-			log_warn("Storing devices in network table (\"%s\") failed", sql);
-		else
-			log_err("Storing devices in network table (\"%s\") failed", sql);
-
+		log_warn("Starting first transaction failed during ARP parsing");
 		return;
 	}
 
@@ -1328,33 +1323,50 @@ void parse_neighbor_cache(sqlite3 *db)
 	if(config.database.network.parseARPcache.v.b)
 	{
 		// Parse ARP cache and add new entries to network table
-		FILE *arpfp = NULL;
-		const char cmd[] = "ip neigh show";
-		log_debug(DEBUG_ARP, "Network table: Running \"%s\"", cmd);
-		if((arpfp = popen(cmd, "r")) == NULL)
+		log_debug(DEBUG_ARP, "Network table: Calling Netlink to get ARP cache entries");
+		cJSON *arp_json = NULL;
+		if(!nlarp_cache(arp_json))
 		{
-			log_warn("Command \"%s\" failed: %s", cmd, strerror(errno));
+			log_err("Failed to read ARP cache, cannot update network table");
 			free(client_status);
 			return;
 		}
 
 		// Read ARP cache line by line
-		while(getline(&linebuffer, &linebuffersize, arpfp) != -1)
+		cJSON *entry = NULL;
+		cJSON_ArrayForEach(entry, arp_json)
 		{
-			// Skip if line buffer is invalid
-			if(linebuffer == NULL)
+			// Skip if entry is invalid
+			if(entry == NULL)
 				continue;
 
 			// Check thread cancellation
 			if(killed)
 				break;
 
-			log_debug(DEBUG_ARP, "Network table: Parsing ARP cache line: %s", linebuffer);
+			if(config.debug.arp.v.b)
+			{
+				// Get line from JSON object
+				char *line = cJSON_Print(entry);
+				if(line == NULL)
+				{
+					log_err("Failed to print ARP cache entry");
+					continue;
+				}
 
-			// Analyze line
-			char ip[128], hwaddr[128], iface[128];
-			int num = sscanf(linebuffer, "%99s dev %99s lladdr %99s",
-			                 ip, iface, hwaddr);
+				log_debug(DEBUG_ARP, "Network table: Parsing ARP cache line: %s", line);
+				free(line);
+			}
+
+			// Extract IP address, interface, and hardware address from JSON object
+			char *ip = NULL, *iface = NULL, *hwaddr = NULL;
+			if((ip = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "ip"))) == NULL ||
+			   (iface = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "iface"))) == NULL ||
+			   (hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(entry, "hwaddr"))) == NULL)
+			{
+				log_err("Failed to extract ARP cache entry data");
+				continue;
+			}
 
 			// Ensure strings are null-terminated in case we hit the max.
 			// length limitation
@@ -1363,9 +1375,13 @@ void parse_neighbor_cache(sqlite3 *db)
 			hwaddr[sizeof(hwaddr)-1] = '\0';
 
 			// Check if we want to process the line we just read
-			if(num != 3)
+			if(strlen(hwaddr) != 17 ||	// MAC address must be 17 characters long
+			   strlen(ip) == 0 ||		// IP address must not be empty
+			   strlen(iface) == 0)		// Interface must not be empty
 			{
-				if(num == 2)
+				log_debug(DEBUG_ARP, "Network table: Skipping incomplete ARP cache entry: %s",
+				          strlen(hwaddr) == 0 ? "no MAC address" : "incomplete");
+				if(strlen(hwaddr) == 0)
 				{
 					// This line is incomplete, remember this to skip
 					// mock-device creation after ARP processing
@@ -1580,11 +1596,6 @@ void parse_neighbor_cache(sqlite3 *db)
 			// Count number of processed ARP cache entries
 			entries++;
 		}
-
-		// Close pipe handle and free allocated memory
-		pclose(arpfp);
-		if(linebuffer != NULL)
-			free(linebuffer);
 
 		log_debug(DEBUG_ARP, "Network table: Finished parsing ARP cache with %u entries", entries);
 

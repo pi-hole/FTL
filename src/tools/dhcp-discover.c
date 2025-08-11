@@ -697,7 +697,7 @@ static void *dhcp_discover_iface_v4(void *args)
 	get_hardware_address(dhcp_socket, tdata->iface, mac);
 
 	// Generate pseudo-random transaction ID
-	srand((unsigned int)time(NULL));
+	srand((unsigned int)time(NULL) + getpid());
 	const uint32_t xid = (uint32_t)random();
 
 	// Probe servers on this interface
