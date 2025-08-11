@@ -1280,10 +1280,26 @@ static int nlquery(const int type, cJSON *json, const bool detailed)
 	bind(fd, (struct sockaddr*)&local, sizeof(local));
 
 	// Send the request
-	log_debug(DEBUG_NETLINK, "Calling nlrequest(type = %d)", type);
+	const char *nltype = "<unknown>";
+	switch(type)
+	{
+		case RTM_GETROUTE:
+			nltype = "route";
+			break;
+		case RTM_GETADDR:
+			nltype = "addr";
+			break;
+		case RTM_GETLINK:
+			nltype = "link";
+			break;
+		case RTM_GETNEIGH:
+			nltype = "neigh";
+			break;
+	}
+	log_debug(DEBUG_NETLINK, "Calling nlrequest(type = %s, %d)", nltype, type);
 	if(!nlrequest(fd, &kernel, type))
 	{
-		log_err("nlrequest error: %s", strerror(errno));
+		log_err("nlrequest error(type = %s, %d): %s", nltype, type, strerror(errno));
 		close(fd);
 		return -1;
 	}
