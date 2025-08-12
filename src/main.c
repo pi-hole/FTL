@@ -114,7 +114,7 @@ int main (int argc, char *argv[])
 		check_capabilities();
 
 	// Initialize pseudo-random number generator
-	srand(time(NULL));
+	srand(time(NULL) + getpid());
 
 	// Start the resolver
 	startup = false;
