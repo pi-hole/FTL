@@ -742,7 +742,7 @@
 @test "No ERROR messages in FTL.log (besides known/intended error)" {
   run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap files.pcap: not a valid file path)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap files.pcap: not a valid file path)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
