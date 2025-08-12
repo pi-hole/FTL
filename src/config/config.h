@@ -361,6 +361,7 @@ extern struct config config;
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
 
 // Defined in config.c
+void initConfig(struct config *conf);
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 bool migrate_config_v6(void);

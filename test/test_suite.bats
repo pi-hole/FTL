@@ -2207,3 +2207,19 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
+
+@test "Suggest expected completions" {
+  run bash -c './pihole-FTL --complete pihole-FTL versio'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "version" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c './pihole-FTL --complete pihole-FTL --config debug.ne'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "debug.networking" ]]
+  [[ ${lines[1]} == "debug.netlink" ]]
+  [[ ${lines[2]} == "" ]]
+  run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
+  [[ ${lines[1]} == "" ]]
+}

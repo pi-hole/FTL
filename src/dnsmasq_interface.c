@@ -3405,6 +3405,7 @@ static char *get_ptrname(const struct in_addr *addr)
 	switch (config.dns.piholePTR.v.ptr_type)
 	{
 		default:
+		case PTR_MAX:
 		case PTR_NONE:
 		case PTR_PIHOLE:
 			ptrname = (char*)"pi.hole";
