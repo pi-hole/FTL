@@ -39,10 +39,10 @@
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
 // gravity database
-sqlite3_stmt_vec *whitelist_stmt = NULL;
+sqlite3_stmt_vec *allowlist_stmt = NULL;
 sqlite3_stmt_vec *gravity_stmt = NULL;
 sqlite3_stmt_vec *antigravity_stmt = NULL;
-sqlite3_stmt_vec *blacklist_stmt = NULL;
+sqlite3_stmt_vec *denylist_stmt = NULL;
 
 // Private variables
 static sqlite3 *gravity_db = NULL;
@@ -53,16 +53,16 @@ static bool gravity_abp_format = false;
 // Variables memorizing the parent gravity database connection and prepared
 // statements to avoid valgrind warnings about memory leaks
 static sqlite3 *parent_gravity_db = NULL;
-sqlite3_stmt_vec *parent_whitelist_stmt = NULL;
+sqlite3_stmt_vec *parent_allowlist_stmt = NULL;
 sqlite3_stmt_vec *parent_gravity_stmt = NULL;
 sqlite3_stmt_vec *parent_antigravity_stmt = NULL;
-sqlite3_stmt_vec *parent_blacklist_stmt = NULL;
+sqlite3_stmt_vec *parent_denylist_stmt = NULL;
 
 // Private prototypes
 static bool gravityDB_open(void);
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_blacklist", "vw_whitelist", "vw_regex_blacklist", "vw_regex_whitelist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
+static const char* tablename[] = { "vw_gravity", "vw_denylist", "vw_allowlist", "vw_regex_denylist", "vw_regex_allowlist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
 
 // Prototypes from functions in dnsmasq's source
 extern void rehash(int size);
@@ -101,10 +101,10 @@ void gravityDB_forked(void)
 	gravity_db = NULL;
 
 	// Also pretend we have not yet prepared the list statements
-	parent_whitelist_stmt = whitelist_stmt;
-	whitelist_stmt = NULL;
-	parent_blacklist_stmt = blacklist_stmt;
-	blacklist_stmt = NULL;
+	parent_allowlist_stmt = allowlist_stmt;
+	allowlist_stmt = NULL;
+	parent_denylist_stmt = denylist_stmt;
+	denylist_stmt = NULL;
 	parent_gravity_stmt = gravity_stmt;
 	gravity_stmt = NULL;
 	parent_antigravity_stmt = antigravity_stmt;
@@ -197,10 +197,10 @@ static bool gravityDB_open(void)
 	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
 
 	// Prepare private vector of statements for this process (might be a TCP fork!)
-	if(whitelist_stmt == NULL)
-		whitelist_stmt = new_sqlite3_stmt_vec(counters->clients);
-	if(blacklist_stmt == NULL)
-		blacklist_stmt = new_sqlite3_stmt_vec(counters->clients);
+	if(allowlist_stmt == NULL)
+		allowlist_stmt = new_sqlite3_stmt_vec(counters->clients);
+	if(denylist_stmt == NULL)
+		denylist_stmt = new_sqlite3_stmt_vec(counters->clients);
 	if(gravity_stmt == NULL)
 		gravity_stmt = new_sqlite3_stmt_vec(counters->clients);
 	if(antigravity_stmt == NULL)
@@ -836,10 +836,10 @@ char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	return result;
 }
 
-// Prepare statements for scanning white- and blacklist as well as gravit for one client
+// Prepare statements for scanning white- and denylist as well as gravit for one client
 
 
-// Prepare statements for scanning white- and blacklist as well as gravit for one client
+// Prepare statements for scanning white- and denylist as well as gravit for one client
 bool gravityDB_prepare_client_statements(clientsData *client)
 {
 	// Return early if gravity database is not available
@@ -857,7 +857,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Allocate memory for SQL statement preparation
 	// We need to have space for 60 characters
-	// plus the longest table name (vw_blacklist = 17)
+	// plus the longest table name (vw_denylist = 17)
 	// plus the dynamic length of the client's group selector
 	const size_t querystrsz = 100 + strlen(client_groups);
 	char *querystr = calloc(querystrsz, sizeof(char));
@@ -867,14 +867,14 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		return false;
 	}
 
-	// Prepare whitelist statement
+	// Prepare allowlist statement
 	// We use SELECT EXISTS() as this is known to efficiently use the index
 	// We are only interested in whether the domain exists or not in the
 	// list but don't case about duplicates or similar. SELECT EXISTS(...)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_whitelist", "id", client_groups))
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_allowlist statement for client %s", clientip);
+	if(!get_client_querystr(querystr, querystrsz, "vw_allowlist", "id", client_groups))
 	{
 		free(querystr);
 		return false;
@@ -883,13 +883,13 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	int rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("gravityDB_open(\"SELECT(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
-		whitelist_stmt->set(whitelist_stmt, client->id, NULL);
+		log_err("gravityDB_open(\"SELECT(... vw_allowlist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		allowlist_stmt->set(allowlist_stmt, client->id, NULL);
 		gravityDB_close();
 		free(querystr);
 		return false;
 	}
-	whitelist_stmt->set(whitelist_stmt, client->id, stmt);
+	allowlist_stmt->set(allowlist_stmt, client->id, stmt);
 
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
@@ -927,9 +927,9 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	}
 	antigravity_stmt->set(antigravity_stmt, client->id, stmt);
 
-	// Prepare blacklist statement
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_blacklist", "id", client_groups))
+	// Prepare denylist statement
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_denylist statement for client %s", clientip);
+	if(!get_client_querystr(querystr, querystrsz, "vw_denylist", "id", client_groups))
 	{
 		free(querystr);
 		return false;
@@ -937,13 +937,13 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("gravityDB_open(\"SELECT(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
-		blacklist_stmt->set(blacklist_stmt, client->id, NULL);
+		log_err("gravityDB_open(\"SELECT(... vw_denylist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		denylist_stmt->set(denylist_stmt, client->id, NULL);
 		gravityDB_close();
 		free(querystr);
 		return false;
 	}
-	blacklist_stmt->set(blacklist_stmt, client->id, stmt);
+	denylist_stmt->set(denylist_stmt, client->id, stmt);
 
 	// Free allocated memory
 	free(querystr);
@@ -956,17 +956,17 @@ static inline void gravityDB_finalize_client_statements(clientsData *client)
 {
 	log_debug(DEBUG_DATABASE, "Finalizing gravity statements for %s", getstr(client->ippos));
 
-	if(whitelist_stmt != NULL &&
-	   whitelist_stmt->get(whitelist_stmt, client->id) != NULL)
+	if(allowlist_stmt != NULL &&
+	   allowlist_stmt->get(allowlist_stmt, client->id) != NULL)
 	{
-		sqlite3_finalize(whitelist_stmt->get(whitelist_stmt, client->id));
-		whitelist_stmt->set(whitelist_stmt, client->id, NULL);
+		sqlite3_finalize(allowlist_stmt->get(allowlist_stmt, client->id));
+		allowlist_stmt->set(allowlist_stmt, client->id, NULL);
 	}
-	if(blacklist_stmt != NULL &&
-	   blacklist_stmt->get(blacklist_stmt, client->id) != NULL)
+	if(denylist_stmt != NULL &&
+	   denylist_stmt->get(denylist_stmt, client->id) != NULL)
 	{
-		sqlite3_finalize(blacklist_stmt->get(blacklist_stmt, client->id));
-		blacklist_stmt->set(blacklist_stmt, client->id, NULL);
+		sqlite3_finalize(denylist_stmt->get(denylist_stmt, client->id));
+		denylist_stmt->set(denylist_stmt, client->id, NULL);
 	}
 	if(gravity_stmt != NULL &&
 	   gravity_stmt->get(gravity_stmt, client->id) != NULL)
@@ -1002,8 +1002,8 @@ void gravityDB_close(void)
 	}
 
 	// Free allocated memory for vectors of prepared client statements
-	free_sqlite3_stmt_vec(&whitelist_stmt);
-	free_sqlite3_stmt_vec(&blacklist_stmt);
+	free_sqlite3_stmt_vec(&allowlist_stmt);
+	free_sqlite3_stmt_vec(&denylist_stmt);
 	free_sqlite3_stmt_vec(&gravity_stmt);
 	free_sqlite3_stmt_vec(&antigravity_stmt);
 
@@ -1037,14 +1037,14 @@ bool gravityDB_getTable(const unsigned char list)
 	// when domains are included in more than one group
 	if(list == GRAVITY_TABLE)
 		querystr = "SELECT DISTINCT domain FROM vw_gravity";
-	else if(list == EXACT_BLACKLIST_TABLE)
-		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
-	else if(list == EXACT_WHITELIST_TABLE)
-		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
+	else if(list == EXACT_DENY_TABLE)
+		querystr = "SELECT domain, id FROM vw_denylist GROUP BY id";
+	else if(list == EXACT_ALLOW_TABLE)
+		querystr = "SELECT domain, id FROM vw_allowlist GROUP BY id";
 	else if(list == REGEX_DENY_TABLE)
-		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
+		querystr = "SELECT domain, id FROM vw_regex_denylist GROUP BY id";
 	else if(list == REGEX_ALLOW_TABLE)
-		querystr = "SELECT domain, id FROM vw_regex_whitelist GROUP BY id";
+		querystr = "SELECT domain, id FROM vw_regex_allowlist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -1128,17 +1128,17 @@ int gravityDB_count(const enum gravity_tables list)
 			// very low-end devices such as the Raspierry Pi Zero
 			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
 			break;
-		case EXACT_BLACKLIST_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_blacklist";
+		case EXACT_DENY_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_denylist";
 			break;
-		case EXACT_WHITELIST_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
+		case EXACT_ALLOW_TABLE:
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_allowlist";
 			break;
 		case REGEX_DENY_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_denylist";
 			break;
 		case REGEX_ALLOW_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
+			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_allowlist";
 			break;
 		case CLIENTS_TABLE:
 			querystr = "SELECT COUNT(1) FROM client";
@@ -1287,7 +1287,7 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
-	if(whitelist_stmt == NULL)
+	if(allowlist_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
@@ -1295,14 +1295,14 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 
 	// Check again as the client may have been reloaded if this is a TCP
 	// worker
-	if(whitelist_stmt == NULL)
+	if(allowlist_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
-	// Get whitelist statement from vector of prepared statements if available
-	sqlite3_stmt *stmt = whitelist_stmt->get(whitelist_stmt, client->id);
+	// Get allowlist statement from vector of prepared statements if available
+	sqlite3_stmt *stmt = allowlist_stmt->get(allowlist_stmt, client->id);
 
 	// If client statement is not ready and cannot be initialized (e.g. no access to
-	// the database), we return false (not in whitelist) to prevent an FTL crash
+	// the database), we return false (not in allowlist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
 		log_err("Gravity database not available (allowlist)");
@@ -1311,12 +1311,12 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-		stmt = whitelist_stmt->get(whitelist_stmt, client->id);
+		stmt = allowlist_stmt->get(allowlist_stmt, client->id);
 
-	// We have to check both the exact whitelist (using a prepared database statement)
-	// as well the compiled regex whitelist filters to check if the current domain is
-	// whitelisted.
-	return domain_in_list(domain, stmt, "whitelist", &dns_cache->list_id);
+	// We have to check both the exact allowlist (using a prepared database statement)
+	// as well the compiled regex allowlist filters to check if the current domain is
+	// allowlisted.
+	return domain_in_list(domain, stmt, "allowlist", &dns_cache->list_id);
 }
 
 cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
@@ -1436,7 +1436,7 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	if(gravity_stmt == NULL || antigravity_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
-	// Get whitelist statement from vector of prepared statements
+	// Get allowlist statement from vector of prepared statements
 	sqlite3_stmt *stmt = antigravity ?
 		antigravity_stmt->get(antigravity_stmt, client->id) :
 		gravity_stmt->get(gravity_stmt, client->id);
@@ -1504,7 +1504,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
-	if(blacklist_stmt == NULL)
+	if(denylist_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
 	// Check if this client needs a rechecking of group membership
@@ -1512,14 +1512,14 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 
 	// Check again as the client may have been reloaded if this is a TCP
 	// worker
-	if(blacklist_stmt == NULL)
+	if(denylist_stmt == NULL)
 		return LIST_NOT_AVAILABLE;
 
-	// Get whitelist statement from vector of prepared statements
-	sqlite3_stmt *stmt = blacklist_stmt->get(blacklist_stmt, client->id);
+	// Get allowlist statement from vector of prepared statements
+	sqlite3_stmt *stmt = denylist_stmt->get(denylist_stmt, client->id);
 
 	// If client statement is not ready and cannot be initialized (e.g. no access to
-	// the database), we return false (not in blacklist) to prevent an FTL crash
+	// the database), we return false (not in denylist) to prevent an FTL crash
 	if(stmt == NULL && !gravityDB_prepare_client_statements(client))
 	{
 		log_err("Gravity database not available (denylist)");
@@ -1528,9 +1528,9 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 
 	// Update statement if has just been initialized
 	if(stmt == NULL)
-		stmt = blacklist_stmt->get(blacklist_stmt, client->id);
+		stmt = denylist_stmt->get(denylist_stmt, client->id);
 
-	return domain_in_list(domain, stmt, "blacklist", &dns_cache->list_id);
+	return domain_in_list(domain, stmt, "denylist", &dns_cache->list_id);
 }
 
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
