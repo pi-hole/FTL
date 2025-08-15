@@ -230,19 +230,18 @@ bool gravityDB_reopen(void)
 	return gravityDB_open();
 }
 
-static char* get_client_querystr(const char *table, const char *column, const char *groups)
+static bool get_client_querystr(char *querystr, const size_t querystrsz, const char *table, const char *column, const char *groups)
 {
 	// Build query string with group filtering
-	char *querystr = NULL;
-	if(asprintf(&querystr, "SELECT %s from %s WHERE domain = ? AND group_id IN (%s);", column, table, groups) < 1)
+	if(snprintf(querystr, querystrsz, "SELECT %s from %s WHERE domain = ? AND group_id IN (%s);", column, table, groups) < 1)
 	{
-		log_err("get_client_querystr(%s, %s) - asprintf() error", table, groups);
-		return NULL;
+		log_err("get_client_querystr(%s, %s) - snprintf() error: %s", table, groups, strerror(errno));
+		return false;
 	}
 
 	log_debug(DEBUG_DATABASE, "get_client_querystr: %s", querystr);
 
-	return querystr;
+	return true;
 }
 
 // Determine whether to show IP or hardware address
@@ -838,6 +837,9 @@ char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 }
 
 // Prepare statements for scanning white- and blacklist as well as gravit for one client
+
+
+// Prepare statements for scanning white- and blacklist as well as gravit for one client
 bool gravityDB_prepare_client_statements(clientsData *client)
 {
 	// Return early if gravity database is not available
@@ -849,9 +851,21 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	log_debug(DEBUG_DATABASE, "Initializing gravity statements for %s", clientip);
 
 	// Get associated groups for this client (if defined)
-	char *querystr = NULL;
 	if(!client->flags.found_group && !get_client_groupids(client))
 		return false;
+	const char *client_groups = getstr(client->groupspos);
+
+	// Allocate memory for SQL statement preparation
+	// We need to have space for 60 characters
+	// plus the longest table name (vw_blacklist = 17)
+	// plus the dynamic length of the client's group selector
+	const size_t querystrsz = 100 + strlen(client_groups);
+	char *querystr = calloc(querystrsz, sizeof(char));
+	if(querystr == NULL)
+	{
+		log_err("gravityDB_prepare_client_statements() - Fatal memory allocation error");
+		return false;
+	}
 
 	// Prepare whitelist statement
 	// We use SELECT EXISTS() as this is known to efficiently use the index
@@ -860,55 +874,78 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_whitelist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_whitelist", "id", getstr(client->groupspos));
+	if(!get_client_querystr(querystr, querystrsz, "vw_whitelist", "id", client_groups))
+	{
+		free(querystr);
+		return false;
+	}
 	sqlite3_stmt* stmt = NULL;
 	int rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT(... vw_whitelist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		whitelist_stmt->set(whitelist_stmt, client->id, NULL);
 		gravityDB_close();
+		free(querystr);
 		return false;
 	}
 	whitelist_stmt->set(whitelist_stmt, client->id, stmt);
-	free(querystr);
 
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_gravity", "adlist_id", getstr(client->groupspos));
+	if(!get_client_querystr(querystr, querystrsz, "vw_gravity", "adlist_id", client_groups))
+	{
+		free(querystr);
+		return false;
+	}
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT(... vw_gravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		gravity_stmt->set(gravity_stmt, client->id, NULL);
 		gravityDB_close();
+		free(querystr);
 		return false;
 	}
 	gravity_stmt->set(gravity_stmt, client->id, stmt);
-	free(querystr);
 
 	// Prepare antigravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
-	querystr = get_client_querystr("vw_antigravity", "adlist_id", getstr(client->groupspos));
+	if(!get_client_querystr(querystr, querystrsz, "vw_antigravity", "adlist_id", client_groups))
+	{
+		free(querystr);
+		return false;
+	}
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT(... vw_antigravity ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		antigravity_stmt->set(antigravity_stmt, client->id, NULL);
 		gravityDB_close();
+		free(querystr);
 		return false;
 	}
 	antigravity_stmt->set(antigravity_stmt, client->id, stmt);
-	free(querystr);
 
 	// Prepare blacklist statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_blacklist statement for client %s", clientip);
-	querystr = get_client_querystr("vw_blacklist", "id", getstr(client->groupspos));
+	if(!get_client_querystr(querystr, querystrsz, "vw_blacklist", "id", client_groups))
+	{
+		free(querystr);
+		return false;
+	}
 	rc = sqlite3_prepare_v3(gravity_db, querystr, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open(\"SELECT(... vw_blacklist ...)\") - SQL error prepare: %s", sqlite3_errstr(rc));
+		blacklist_stmt->set(blacklist_stmt, client->id, NULL);
 		gravityDB_close();
+		free(querystr);
 		return false;
 	}
 	blacklist_stmt->set(blacklist_stmt, client->id, stmt);
+
+	// Free allocated memory
 	free(querystr);
 
 	return true;
