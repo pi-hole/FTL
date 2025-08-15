@@ -448,8 +448,12 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("\n", pihole_conf);
 	}
 
+	// Check if an explicit interface is configured
 	char *interface = conf->dns.interface.v.s;
-	const bool interface_allocated = strlen(interface) > 0;
+
+	// If not, get the name of the current gateway (we need to free this
+	// memory later on)
+	const bool interface_allocated = strlen(interface) < 1;
 	if(interface_allocated)
 		interface = get_gateway_name();
 
