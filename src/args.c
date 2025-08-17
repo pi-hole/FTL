@@ -1445,20 +1445,15 @@ void suggest_complete(const int argc, char *argv[])
 						if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
 						{
 							// Add '' to the output if it is a string
-							if(conf_item->t == CONF_STRING ||
-							   conf_item->t == CONF_STRING_ALLOCATED ||
-							   conf_item->t == CONF_JSON_STRING_ARRAY)
+							if(conf_item->t == CONF_JSON_STRING_ARRAY &&
+							   value[0] != '\'')
 							{
-								// If the value is a string, we need to add quotes
-								if(value[0] != '\'')
+								char *tmp = calloc(strlen(value) + 3, sizeof(char));
+								if(tmp != NULL)
 								{
-									char *tmp = malloc(strlen(value) + 3);
-									if(tmp != NULL)
-									{
-										sprintf(tmp, "'%s'", value);
-										free(value);
-										value = tmp;
-									}
+									sprintf(tmp, "'%s'", value);
+									free(value);
+									value = tmp;
 								}
 							}
 
