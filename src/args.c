@@ -1445,13 +1445,38 @@ void suggest_complete(const int argc, char *argv[])
 						if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
 						{
 							// Add '' to the output if it is a string
-							if(conf_item->t == CONF_JSON_STRING_ARRAY &&
-							   value[0] != '\'')
+							if(conf_item->t == CONF_JSON_STRING_ARRAY)
 							{
-								char *tmp = calloc(strlen(value) + 3, sizeof(char));
+								// Count number of ' in the string
+								char *p = value;
+								int count = 0;
+								while(p != NULL && *p != '\0')
+								{
+									if(*p == '\'')
+										count++;
+									p++;
+								}
+
+								// Allocate enough space for the new string
+								char *tmp = calloc(strlen(value) + 5*count + 3, sizeof(char));
 								if(tmp != NULL)
 								{
-									sprintf(tmp, "'%s'", value);
+									memcpy(tmp + 1, value, strlen(value) + 1);
+									// We also need to replace all in-string ' by '"'"'
+									for(p = tmp + 1; *p != '\0'; p++)
+									{
+										if(*p == '\'')
+										{
+											memmove(p + 4, p, strlen(p) + 1);
+											*(p++) = '\'';
+											*(p++) = '"';
+											*(p++) = '\'';
+											*(p++) = '"';
+										}
+									}
+
+									tmp[0] = '\'';
+									tmp[strlen(tmp)] = '\'';
 									free(value);
 									value = tmp;
 								}
