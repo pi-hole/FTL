@@ -1436,7 +1436,7 @@ void suggest_complete(const int argc, char *argv[])
 					        conf_item->t == CONF_DOUBLE ||
 					        conf_item->t == CONF_STRING ||
 					        conf_item->t == CONF_STRING_ALLOCATED ||
-						conf_item->t == CONF_JSON_STRING_ARRAY)
+					        conf_item->t == CONF_JSON_STRING_ARRAY)
 					{
 						// pihole-FTL --config ... <int/long/double/string>
 						// Provide the default value as suggestion
@@ -1572,6 +1572,11 @@ void suggest_complete(const int argc, char *argv[])
 							if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
 								puts(temp);
 						}
+					}
+					else if(conf_item->t == CONF_ENUM_PRIVACY_LEVEL)
+					{
+						// This enum is in reality a numeric value
+						printf("%d\n", (int)conf_item->d.privacy_level);
 					}
 				}
 			}
