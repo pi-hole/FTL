@@ -1467,17 +1467,20 @@ void suggest_complete(const int argc, char *argv[])
 									if(tmp != NULL)
 									{
 										memcpy(tmp + 1, value, strlen(value) + 1);
-										// We also need to replace all in-string ' by '"'"'
-										for(p = tmp + 1; *p != '\0'; p++)
+										// Scan for ' characters ...
+										p = tmp + 1;
+										while(*p != '\0')
 										{
 											if(*p == '\'')
 											{
+												// ... and replace them by '"'"'
 												memmove(p + 4, p, strlen(p) + 1);
 												*(p++) = '\'';
 												*(p++) = '"';
 												*(p++) = '\'';
 												*(p++) = '"';
 											}
+											p++;
 										}
 
 										tmp[0] = '\'';
