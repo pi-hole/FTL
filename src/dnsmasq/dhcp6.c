@@ -89,6 +89,7 @@ void dhcp6_init(void)
 void dhcp6_packet(time_t now)
 {
   struct dhcp_context *context;
+  struct dhcp_relay *relay;
   struct iface_param parm;
   struct cmsghdr *cmptr;
   struct msghdr msg;
@@ -231,7 +232,10 @@ void dhcp6_packet(time_t now)
 	    context->current = context;
 	    memset(&context->local6, 0, IN6ADDRSZ);
 	  }
-      
+
+      for (relay = daemon->relay6; relay; relay = relay->next)
+	relay->matchcount = 0;
+
       inet_pton(AF_INET6, ALL_RELAY_AGENTS_AND_SERVERS, &all_servers);
       if (IN6_ARE_ADDR_EQUAL(&dst_addr, &all_servers))
 	multicast_dest = 1;
@@ -452,7 +456,17 @@ static int complete_context6(struct in6_addr *local,  int prefix,
   if (match)
     for (relay = daemon->relay6; relay; relay = relay->next)
       if (IN6_ARE_ADDR_EQUAL(local, &relay->local.addr6))
-	relay->iface_index = if_index;
+	{
+	  relay->iface_index = if_index;
+
+	  /* More than one interface with the relay address breaks things. */
+	  if (relay->matchcount++ == 1 && !relay->warned)
+	    {
+	      relay->warned = 1;
+	      inet_ntop(AF_INET6, &local, daemon->addrbuff, ADDRSTRLEN);
+	      my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
+	    }
+	}
   
   return 1;
 }
