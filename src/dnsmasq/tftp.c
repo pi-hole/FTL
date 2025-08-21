@@ -326,6 +326,7 @@ static void tftp_request(struct listener *listen, time_t now)
   transfer->start = now;
   transfer->backoff = 1;
   transfer->block = 1;
+  transfer->ackblock = 0; 
   transfer->blocksize = 512;
   transfer->windowsize = 1;
   
@@ -754,26 +755,39 @@ static void handle_tftp(time_t now, struct tftp_transfer *transfer, ssize_t len)
     {
       if (ntohs(mess->op) == OP_ACK)
 	{
-	  /* try and handle 16-bit blockno wrap-around */
-	  unsigned int block = (unsigned short)ntohs(mess->block);
-	  if (block < transfer->lastack)
-	    block |= transfer->block & 0xffff0000;
+	  /* Handle 16-bit block number wrap-around. */
+	  u16 new = ntohs(mess->block);
+	  u16 prev = transfer->ackblock;
 	  
-	  /* ignore duplicate ACKs and ACKs for blocks we've not yet sent. */
-	  if (block >= transfer->lastack &&
-	      block <= transfer->block) 
+	  transfer->ackblock = new | (transfer->ackblock & 0xffff0000);
+	  
+	  /* If the last ack received was in the top quarter of a 64k block
+	     and this one is in the bottom quarter, assume it has wrapped.
+
+	     Since this is UDP and an old packet can in theory wander in we may also
+	     need to drop back to a previous segment. Such an ACK is ignored below;
+	     here we're just getting the most likely 32 bit value from the
+	     16 bits that we have. */
+	  if (new <= 0x4000 && prev >= 0xc000)
+	    transfer->ackblock += 0x10000;
+	  else if (new >= 0xc000 && prev <= 0x4000 && transfer->ackblock != 0)
+	    transfer->ackblock -= 0x10000;
+	  
+	  /* Ignore duplicate ACKs and ACKs for blocks we've not yet sent. */
+	  if (transfer->ackblock >= transfer->lastack &&
+	      transfer->ackblock <= transfer->block) 
 	    {
 	      /* Got ack, move forward and ensure we take the (re)transmit path */
 	      transfer->retransmit = transfer->start = now;
 	      transfer->backoff = 0;
-	      transfer->lastack = block + 1;
+	      transfer->lastack = transfer->ackblock + 1;
 	      
 	      /* We have no easy function from block no. to file offset when
 		 expanding line breaks in netascii mode, so we update the offset here
 		 as each block is acknowledged. This explains why the window size must be
 		 one for a netascii transfer; to avoid  the block no. doing anything
 		 other than incrementing by one. */
-	      if (transfer->netascii && block != 0)
+	      if (transfer->netascii && transfer->ackblock != 0)
 		transfer->offset += transfer->blocksize - transfer->expansion;
 	    }
 	}
@@ -936,13 +950,13 @@ static ssize_t get_block(char *packet, struct tftp_transfer *transfer)
       size_t size;
       
       if (!transfer->netascii)
-	transfer->offset = (transfer->block - 1) * transfer->blocksize;
+	transfer->offset = (off_t)(transfer->block - 1) * (off_t)transfer->blocksize;
       
       if (transfer->offset > transfer->file->size)
 	return 0; /* finished */
       
-      if ((size = transfer->file->size - transfer->offset) > transfer->blocksize)
-	size = transfer->blocksize;
+      if ((size = transfer->file->size - transfer->offset) > (size_t)transfer->blocksize)
+	size = (size_t)transfer->blocksize;
       
       mess->op = htons(OP_DATA);
       mess->block = htons((unsigned short)(transfer->block));

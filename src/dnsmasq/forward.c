@@ -3248,7 +3248,7 @@ static void free_frec(struct frec *f)
 /* Impose an absolute
    limit of 4*TIMEOUT before we wipe things (for random sockets).
    If force is set, always return a result, even if we have
-   to allocate above the limit, and don'y free any records.
+   to allocate above the limit, and don't free any records.
    This is set when allocating for DNSSEC to avoid cutting off
    the branch we are sitting on. */
 static struct frec *get_new_frec(time_t now, struct server *master, int force)
