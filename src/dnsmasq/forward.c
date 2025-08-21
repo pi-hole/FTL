@@ -3270,36 +3270,40 @@ static struct frec *get_new_frec(time_t now, struct server *master, int force)
 	  /* Don't free DNSSEC sub-queries here, as we may end up with
 	     dangling references to them. They'll go when their "real" query 
 	     is freed. */
-	  if (!f->dependent && !force)
+	  if (!f->dependent)
 #endif
-	    {
-	      if (difftime(now, f->time) >= 4*TIMEOUT)
-		{
-		  daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
-		  free_frec(f);
-		  target = f;
-		}
-	      else if (!oldest || difftime(f->time, oldest->time) <= 0)
-		oldest = f;
-	    }
+	    if (!force)
+	      {
+		if (difftime(now, f->time) >= 4*TIMEOUT)
+		  {
+		    daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
+		    free_frec(f);
+		    target = f;
+		  }
+		else if (!oldest || difftime(f->time, oldest->time) <= 0)
+		  oldest = f;
+	      }
 	}
       
       if (f->sentto && ((int)difftime(now, f->time)) < TIMEOUT && server_samegroup(f->sentto, master))
 	count++;
     }
-
-  if (!force && count >= daemon->ftabsize)
-    {
-      query_full(now, master->domain);
-      return NULL;
-    }
   
-  if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
-    { 
-      /* can't find empty one, use oldest if there is one and it's older than timeout */
-      daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
-      free_frec(oldest);
-      target = oldest;
+  if (!force)
+    {
+      if (count >= daemon->ftabsize)
+	{
+	  query_full(now, master->domain);
+	  return NULL;
+	}
+      
+      if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
+	{ 
+	  /* can't find empty one, use oldest if there is one and it's older than timeout */
+	  daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
+	  free_frec(oldest);
+	  target = oldest;
+	}      
     }
   
   if (!target && (target = (struct frec *)whine_malloc(sizeof(struct frec))))
