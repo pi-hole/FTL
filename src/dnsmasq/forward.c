@@ -18,7 +18,7 @@
 #include "dnsmasq_interface.h"
 
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
-static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int flags, int flagmask);
+static struct frec *lookup_frec(time_t now, char *target, int class, int rrtype, int id, int flags, int flagmask);
 #ifdef HAVE_DNSSEC
 static int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
 			   int class, char *name, char *keyname, struct server *server, 
@@ -200,7 +200,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       old_reply = 1;
       fwd_flags = forward->flags;
     }
-  else if (gotname && (forward = lookup_frec(daemon->namebuff, (int)rrclass, (int)rrtype, -1, fwd_flags,
+  else if (gotname && (forward = lookup_frec(now, daemon->namebuff, (int)rrclass, (int)rrtype, -1, fwd_flags,
 					     FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
@@ -1024,7 +1024,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  unsigned int flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
 	  struct frec *old;
 	  
-	  if ((old = lookup_frec(daemon->keyname, forward->class, -1, -1, flags, flags)))
+	  if ((old = lookup_frec(now, daemon->keyname, forward->class, -1, -1, flags, flags)))
 	    {
 	      /* This is tricky; it detects loops in the dependency
 		 graph for DNSSEC validation, say validating A requires DS B
@@ -1214,7 +1214,7 @@ void reply_query(int fd, time_t now)
   GETSHORT(rrtype, p); 
   GETSHORT(class, p);
 
-  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
+  if (!(forward = lookup_frec(now, daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
     return;
 
   filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last);
@@ -3338,7 +3338,7 @@ static void query_full(time_t now, char *domain)
     }
 }
 
-static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int flags, int flagmask)
+static struct frec *lookup_frec(time_t now, char *target, int class, int rrtype, int id, int flags, int flagmask)
 {
   struct frec *f;
   struct dns_header *header;
@@ -3388,7 +3388,14 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 	    
 	    continue;
 	  }
-		
+
+	/* frecs older than this will get garbage-collected in
+	   get_new_frec(), so don't return them here, so we have
+	   consistent behaviour from an idle dnsmasq which
+	   is not calling get_new_frec() often. */
+	if (difftime(now, f->time) >= 4*TIMEOUT)
+	  return NULL;
+	
 	return f;
       }
   
