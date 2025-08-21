@@ -3114,7 +3114,11 @@ void relay_upstream4(struct in_addr iface_addr, int iface_index, struct dhcp_pac
 	    {
 	      /* get our address on the server-facing interface. */
 	      if (ioctl(daemon->dhcpfd, SIOCGIFADDR, &ifr) == -1)
-		continue;
+		{
+		  my_syslog(MS_DHCP | LOG_ERR, _("Cannot send to server via interface %s: %s"), relay->interface, strerror(errno));
+		  continue;
+		}
+	      
 	      relay->uplink.addr4 = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
 	    }
 	  
