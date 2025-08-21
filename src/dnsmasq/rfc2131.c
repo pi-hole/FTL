@@ -3252,7 +3252,7 @@ unsigned int relay_reply4(struct dhcp_packet *mess, size_t sz, char *arrival_int
 	    }
 	}
       else if (mess->giaddr.s_addr == relay->local.addr4.s_addr)
-	    return_iface = relay->iface_index;
+	return_iface = relay->iface_index;
       
       if (return_iface && (!relay->interface || wildcard_match(relay->interface, arrival_interface)))
 	return return_iface;
