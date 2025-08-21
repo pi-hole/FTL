@@ -1132,8 +1132,9 @@ struct tftp_file {
 
 struct tftp_transfer {
   int sockfd;
+  u16 block_hi, ackprev;
   time_t retransmit, start;
-  unsigned int lastack, block, ackblock, blocksize, windowsize, timeout, expansion;
+  unsigned int lastack, block, blocksize, windowsize, timeout, expansion;
   off_t offset;
   union mysockaddr peer;
   union all_addr source;
