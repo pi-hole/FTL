@@ -1503,6 +1503,8 @@ void suggest_complete(const int argc, char *argv[])
 
 						case CONF_ENUM_PTR_TYPE:
 							// Provide matching suggestions
+							if(strlen(last_word) == 0)
+								fprintf(stderr, "\nDefault value is: %s", get_ptr_type_str(conf_item->d.ptr_type));
 							for(size_t j = 0; j < PTR_MAX; j++)
 							{
 								const char *ptr = get_ptr_type_str(j);
