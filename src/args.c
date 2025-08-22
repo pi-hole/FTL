@@ -1313,7 +1313,20 @@ void suggest_complete(const int argc, char *argv[])
 	// This is the last argument in the command line
 	const char *last_word = argv[argc-1];
 
-	if(argc == 4 && strEndsWith(argv[2], "pihole-FTL"))
+	// Get completion type
+	const int comp_type = atoi(argv[2]);
+	// This is not well-documented but from the complete source code, it
+	// seems the following types exist:
+	// TAB = ASCII 9 => normal completion
+	const bool is_normal_complete = (comp_type == 9);
+	// "?" == ASCII 63 => listing completions after successive tabs
+	// const bool is_successive_complete = (comp_type == 63);
+	// "!" == ASCII 33 => listing alternatives on partial word completion
+	// not relevant for us here:
+	// "@" == ASCII 64 => listing completions if the word is not unmodified
+	// "%" == ASCII 37 => listing menu completions
+
+	if(argc == 5 && strEndsWith(argv[3], "pihole-FTL"))
 	{
 		// Root-level suggestion: "pihole-FTL ..."
 		const char *options[] = {
@@ -1331,7 +1344,7 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc == 5 && strEndsWith(argv[3], "gravity"))
+	else if(argc == 6 && strEndsWith(argv[4], "gravity"))
 	{
 		// pihole-FTL gravity ...
 		const char *options[] = {
@@ -1341,7 +1354,7 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc == 5 && strEndsWith(argv[3], "ntp"))
+	else if(argc == 6 && strEndsWith(argv[4], "ntp"))
 	{
 		// pihole-FTL ntp ...
 		const char *options[] = {
@@ -1351,19 +1364,19 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if((argc == 5 || argc == 6) && strEndsWith(argv[3], "sqlite3"))
+	else if((argc == 6 || argc == 7) && strEndsWith(argv[4], "sqlite3"))
 	{
 		// pihole-FTL sqlite3 ...
 		const char *options[] = {
 			"-h", "-ni"
 		};
 
-		if(argc ==6 && strcmp(argv[4], "-h") == 0)
+		if(argc ==6 && strcmp(argv[5], "-h") == 0)
 		{
 			// Remove the -h option from the list
 			options[0] = NULL;
 		}
-		else if(argc == 6 && strcmp(argv[4], "-ni") == 0)
+		else if(argc == 6 && strcmp(argv[5], "-ni") == 0)
 		{
 			// Remove the -ni option from the list
 			options[1] = NULL;
@@ -1372,7 +1385,7 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc == 5 && strEndsWith(argv[3], "arp-scan"))
+	else if(argc == 6 && strEndsWith(argv[4], "arp-scan"))
 	{
 		// pihole-FTL lua ...
 		const char *options[] = {
@@ -1382,7 +1395,7 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc == 5 && strEndsWith(argv[3], "idn2"))
+	else if(argc == 6 && strEndsWith(argv[4], "idn2"))
 	{
 		// pihole-FTL gzip ...
 		const char *options[] = {
@@ -1392,11 +1405,11 @@ void suggest_complete(const int argc, char *argv[])
 		// Provide matching suggestions
 		list_matches(last_word, options, ArraySize(options), true);
 	}
-	else if(argc > 4 && strEndsWith(argv[3], "--config"))
+	else if(argc > 5 && strEndsWith(argv[4], "--config"))
 	{
 		getLogFilePath(false);
 		initConfig(&config);
-		if(argc == 5)
+		if(argc == 6)
 		{
 			// pihole-FTL --config ...
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -1408,7 +1421,7 @@ void suggest_complete(const int argc, char *argv[])
 					puts(conf_item->k);
 			}
 		}
-		else if(argc == 6)
+		else if(argc == 7)
 		{
 			// pihole-FTL --config <some key> ...
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -1416,7 +1429,7 @@ void suggest_complete(const int argc, char *argv[])
 				struct conf_item *conf_item = get_conf_item(&config, i);
 				if(!conf_item)
 					continue;
-				if(strcmp(conf_item->k, argv[4]) == 0)
+				if(strcmp(conf_item->k, argv[5]) == 0)
 				{
 					// See if we can suggest a value
 					switch(conf_item->t)
@@ -1424,6 +1437,12 @@ void suggest_complete(const int argc, char *argv[])
 						case CONF_BOOL:
 						case CONF_ALL_DEBUG_BOOL:
 						{
+							if(is_normal_complete)
+							{
+								fprintf(stderr, "\nDefault value is: %s", conf_item->d.b ? "true" : "false");
+								break;
+							}
+
 							// pihole-FTL --config <boolean option>> ...
 							const char *options[] = {
 								"true", "false"
@@ -1447,8 +1466,12 @@ void suggest_complete(const int argc, char *argv[])
 							// Provide the default value as suggestion
 							char *value = NULL;
 							cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
+							// If the default value starts with the last word we are trying to complete,
+							// print it as a suggestion
+							// If the last word is empty, print the value anyway
 							if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
 							{
+								// else: successive completion, really apply the completion
 								// Add '' to the output if it is a string
 								if(conf_item->t == CONF_JSON_STRING_ARRAY)
 								{
@@ -1490,11 +1513,7 @@ void suggest_complete(const int argc, char *argv[])
 									}
 								}
 
-								// If the default value starts with the last word we are trying to complete,
-								// print it as a suggestion
-								// If the last word is empty, print the value anyway
-								if(strStartsWith(value, last_word) || strlen(last_word) == 0)
-									puts(value);
+								puts(value);
 								free(value);
 							}
 							cJSON_Delete(val);
@@ -1502,9 +1521,11 @@ void suggest_complete(const int argc, char *argv[])
 						}
 
 						case CONF_ENUM_PTR_TYPE:
-							// Provide matching suggestions
-							if(strlen(last_word) == 0)
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
 								fprintf(stderr, "\nDefault value is: %s", get_ptr_type_str(conf_item->d.ptr_type));
+
+							// Provide matching suggestions
 							for(size_t j = 0; j < PTR_MAX; j++)
 							{
 								const char *ptr = get_ptr_type_str(j);
@@ -1514,6 +1535,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_BUSY_TYPE:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_busy_reply_str(conf_item->d.busy_reply));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < BUSY_MAX; j++)
 							{
@@ -1524,6 +1549,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_BLOCKING_MODE:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_blocking_mode_str(conf_item->d.blocking_mode));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < MODE_MAX; j++)
 							{
@@ -1534,6 +1563,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_REFRESH_HOSTNAMES:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_refresh_hostnames_str(conf_item->d.refresh_hostnames));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < REFRESH_MAX; j++)
 							{
@@ -1544,6 +1577,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_LISTENING_MODE:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_listeningMode_str(conf_item->d.listeningMode));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < LISTEN_MAX; j++)
 							{
@@ -1554,7 +1591,9 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_WEB_THEME:
-							// pihole-FTL --config webserver.interface.theme ...
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_web_theme_str(conf_item->d.web_theme));
 
 							// Provide matching suggestions
 							for(size_t j = 0; j < THEME_MAX; j++)
@@ -1566,6 +1605,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_BLOCKING_EDNS_MODE:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_edns_mode_str(conf_item->d.edns_mode));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < EDNS_MODE_MAX; j++)
 							{
@@ -1576,6 +1619,10 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_TEMP_UNIT:
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %s", get_temp_unit_str(conf_item->d.temp_unit));
+
 							// Provide matching suggestions
 							for(size_t j = 0; j < TEMP_UNIT_MAX; j++)
 							{
@@ -1586,12 +1633,20 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_PRIVACY_LEVEL:
-							// This enum is in reality a numeric value
-							printf("%d\n", (int)conf_item->d.privacy_level);
+							// Provide default hint
+							if(strlen(last_word) == 0 && is_normal_complete)
+								fprintf(stderr, "\nDefault value is: %d", PRIVACY_SHOW_ALL);
+
+							// Provide matching suggestions
+							for(unsigned int j = PRIVACY_SHOW_ALL; j <= PRIVACY_MAXIMUM; j++)
+								printf("%u\n", j);
+
 							break;
 
 							case CONF_PASSWORD:
 							// No suggestions
+								if(strlen(last_word) == 0)
+									fprintf(stderr, "\nThis option does not provide auto-completions");
 							break;
 
 						case CONF_STRUCT_IN_ADDR:
