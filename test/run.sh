@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -xe
+
 # Skip tests on targets not supporting them
 if [[ ${TEST} == "false" ]]; then
   echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
@@ -56,7 +58,7 @@ cp test/pihole.toml /etc/pihole/pihole.toml
 chown pihole:pihole /etc/pihole/pihole.toml
 
 # Prepare 01-pihole-tests.conf
-mkdir /etc/dnsmasq.d
+mkdir -p /etc/dnsmasq.d
 cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
 
 # Prepare versions file (read by /api/version)

@@ -1107,6 +1107,15 @@
     #     true or false
     cli_pw = true
 
+    # Path to create a UNIX socket path, used by the pihole command for local API requests.
+    # This socket will be owned by the user running FTL (typically pihole). Note, if you
+    # change from the default value, give the path as an environment variable
+    # PIHOLE_API_SOCKET when running the pihole command.
+    #
+    # Possible values are:
+    #     <any writeable path without a comma>
+    private_socket = "/run/pihole-FTL.sock"
+
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
@@ -1593,9 +1602,5 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 156 total entries out of which 103 entries are default
-# --> 53 entries are modified
-# 3 entries are forced through environment:
-#   - misc.nice
-#   - misc.check.shmem
-#   - debug.api
+# 157 total entries out of which 103 entries are default
+# --> 57 entries are modified
