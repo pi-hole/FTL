@@ -1069,6 +1069,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	if(!nllinks(links, false))
 	{
 		log_err("Failed to get links, cannot update network table");
+		cJSON_Delete(links);
 		return false;
 	}
 	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
@@ -1165,6 +1166,9 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 			(*additional_entries)++;
 		}
 	}
+
+	// Free allocated memory
+	cJSON_Delete(link);
 
 	return true;
 }
@@ -1543,6 +1547,9 @@ void parse_neighbor_cache(sqlite3 *db)
 			// Count number of processed ARP cache entries
 			entries++;
 		}
+
+		// Free allocated JSON array
+		cJSON_Delete(json);
 
 		log_debug(DEBUG_ARP, "Network table: Finished parsing ARP cache with %u entries", entries);
 
