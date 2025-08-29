@@ -2209,17 +2209,25 @@
 }
 
 @test "Suggest expected completions" {
-  run bash -c './pihole-FTL --complete pihole-FTL versio'
+  # Hard-code 63 as COMP_TYPE = successive completion
+  export COMP_TYPE=63
+  run bash -c './pihole-FTL --complete ${COMP_TYPE} pihole-FTL versio'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "version" ]]
   [[ ${lines[1]} == "" ]]
-  run bash -c './pihole-FTL --complete pihole-FTL --config debug.ne'
+  run bash -c './pihole-FTL --complete ${COMP_TYPE} pihole-FTL --config debug.ne'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "debug.networking" ]]
   [[ ${lines[1]} == "debug.netlink" ]]
   [[ ${lines[2]} == "" ]]
-  run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
+  run bash -c './pihole-FTL --complete ${COMP_TYPE} pihole-FTL --config debug.networking t'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "true" ]]
+  [[ ${lines[1]} == "" ]]
+  # Hard-code 9 as COMP_TYPE = normal completion
+  export COMP_TYPE=9
+  run bash -c './pihole-FTL --complete ${COMP_TYPE} pihole-FTL --config debug.networking t'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "Default value is: false" ]]
   [[ ${lines[1]} == "" ]]
 }
