@@ -32,7 +32,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v5
       -
         name: "Calculate required variables"
         id: variables
@@ -100,14 +100,14 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@v5
       # QEMU should come before Buildx
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v3.6.0
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.10.0
+        uses: docker/setup-buildx-action@v3.11.1
       -
         name: Print directory contents
         shell: bash
@@ -175,7 +175,7 @@ jobs:
           path: '${{ matrix.bin_name }}*'
       -
         name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2.3.0
+        uses: actions/attest-build-provenance@v3.0.0
         # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
         # available (e.g., PR originating from a fork)
         if: env.DO_DEPLOY == 'true' && env.ACTIONS_ID_TOKEN_REQUEST_URL != ''
@@ -198,7 +198,7 @@ jobs:
       -
         name: Get binaries built in previous jobs
         if: env.DO_DEPLOY == 'true'
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@v5.0.0
         id: download
         with:
           path: ftl_builds/
@@ -207,14 +207,14 @@ jobs:
       -
         name: Get documentation files built in previous jobs
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@v5.0.0
         with:
           path: ftl_builds/
           name: pihole-api-docs
       -
         name: Get pihole.toml built in previous job
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@v5.0.0
         with:
           path: ftl_builds/
           name: pihole-toml
@@ -278,7 +278,7 @@ jobs:
       -
         name: Create Pull Request to pi-hole/docs
         if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'        
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.PRALOR_PULL_REQUESTS }}
           commit-message: "docs: update pihole.toml documentation"
