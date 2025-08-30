@@ -706,7 +706,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		check_pihole_PTR((char*)name);
 
 	// Convert domain to lower case
-	char *domainString = strdup(name);
+	char domainString[256];
+	strncpy(domainString, name, sizeof(domainString));
+	domainString[sizeof(domainString) - 1] = '\0';
 	strtolower(domainString);
 
 	// Get client IP address
@@ -741,10 +743,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check if user wants to skip queries coming from localhost
 	if(config.dns.ignoreLocalhost.v.b &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
-	{
-		free(domainString);
 		return false;
-	}
 
 	// Lock shared memory
 	lock_shm();
@@ -758,8 +757,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
-		// Free allocated memory
-		free(domainString);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -793,9 +790,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
 		blockingreason = "Rate-limiting";
-
-		// Free allocated memory
-		free(domainString);
 
 		// Do not further process this query, Pi-hole has never seen it
 		unlock_shm();
@@ -838,7 +832,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
-		free(domainString);
 		unlock_shm();
 		return false;
 	}
@@ -852,8 +845,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		// Encountered memory error, skip query
 		log_err("No memory available, skipping query analysis");
-		// Free allocated memory
-		free(domainString);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -988,9 +979,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// (skipped for internally generated ones, e.g., DNSSEC)
 	if(!internal_query && querytype != TYPE_NONE)
 		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
-
-	// Free allocated memory
-	free(domainString);
 
 	// Store query in database
 	query->flags.database.changed = true;
@@ -1685,18 +1673,20 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
 	// valid for all time.
-	domainstr = strdup(domainstr);
-	const char *blockedDomain = domainstr;
+	char domain_lower[256];
+	strncpy(domain_lower, domainstr, sizeof(domain_lower) - 1);
+	domain_lower[sizeof(domain_lower) - 1] = '\0';
+	const char *blockedDomain = domain_lower;
 
 	// Check exact whitelist for match
-	query->flags.allowed = in_allowlist(domainstr, dns_cache, client) == FOUND;
+	query->flags.allowed = in_allowlist(domain_lower, dns_cache, client) == FOUND;
 
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
-		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
+		query->flags.allowed = in_regex(domain_lower, dns_cache, client->id, REGEX_ALLOW);
 
 	// Check if this is a special domain
-	if(!query->flags.allowed && special_domain(query, domainstr))
+	if(!query->flags.allowed && special_domain(query, domain_lower))
 	{
 		// Set DNS cache properties
 		dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
@@ -1707,8 +1697,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
-		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
-		free(domainstr);
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domain_lower, blockingreason);
 
 		return true;
 	}
@@ -1716,15 +1705,15 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
 	bool db_okay = true;
-	bool blockDomain = check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay);
+	bool blockDomain = check_domain_blocked(domain_lower, client, query, dns_cache, &new_status, &db_okay);
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
 	if(config.dns.blockESNI.v.b &&
 	   !query->flags.allowed && blockDomain == NOT_FOUND &&
-	   strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	   strlen(domain_lower) > 6 && strncasecmp(domain_lower, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay);
+		blockDomain = check_domain_blocked(domain_lower + 6u, client, query, dns_cache, &new_status, &db_okay);
 
 		// Update DNS cache status
 		cacheStatus = dns_cache->blocking_status;
@@ -1733,7 +1722,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		{
 			// Truncate "_esni." from queried domain if the parenting domain was
 			// the reason for blocking this query
-			blockedDomain = domainstr + 6u;
+			blockedDomain = domain_lower + 6u;
 			// Force next DNS reply to be NXDOMAIN for _esni.* queries
 			force_next_DNS_reply = REPLY_NXDOMAIN;
 
@@ -1754,7 +1743,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		if(config.debug.queries.v.b)
 		{
 			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s (domainlist ID: %i)",
-			          domainstr, blockedDomain, blockingreason, dns_cache->list_id);
+			          domain_lower, blockedDomain, blockingreason, dns_cache->list_id);
 			if(force_next_DNS_reply != 0)
 				log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 		}
@@ -1770,10 +1759,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		// client is guaranteed to be non-NULL above
 		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s is %s (domainlist ID: %i)",
 		          get_query_type_str(query->type, NULL, NULL), getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
+		          domain_lower, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
 	}
 
-	free(domainstr);
 	return blockDomain;
 }
 
@@ -1871,7 +1859,10 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char *child_domain = strdup(dst);
+	char child_domain[256];
+	strncpy(child_domain, dst, sizeof(child_domain) - 1);
+	child_domain[sizeof(child_domain) - 1] = '\0';
+
 	// Convert to lowercase for matching
 	strtolower(child_domain);
 	const int child_domainID = findDomainID(child_domain, false);
@@ -2000,7 +1991,9 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	}
 
 	// Convert upstreamIP to lower case
-	char *upstreamIP = strdup(dest);
+	char upstreamIP[INET6_ADDRSTRLEN];
+	strncpy(upstreamIP, dest, INET6_ADDRSTRLEN);
+	upstreamIP[INET6_ADDRSTRLEN - 1] = '\0';
 	strtolower(upstreamIP);
 
 	// Debug logging
@@ -2013,7 +2006,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
-		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -2022,7 +2014,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	queriesData *query = getQuery(queryID, true);
 	if(query == NULL)
 	{
-		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -2047,7 +2038,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	//   (this is a special case further described below)
 	if(query->flags.complete && query->status != QUERY_CACHE)
 	{
-		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -2094,9 +2084,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// from above as otherwise this check will always
 	// be negative
 	query_set_status(query, QUERY_FORWARDED);
-
-	// Release allocated memory
-	free(upstreamIP);
 
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
@@ -3497,7 +3484,9 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 	}
 
 	// Convert upstream to lower case
-	char *upstreamIP = strdup(dest);
+	char upstreamIP[INET6_ADDRSTRLEN];
+	strncpy(upstreamIP, dest, INET6_ADDRSTRLEN);
+	upstreamIP[INET6_ADDRSTRLEN - 1] = '\0';
 	strtolower(upstreamIP);
 
 	// Get upstream ID
@@ -3548,8 +3537,7 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 		}
 	}
 
-	// Clean up and unlock shared memory
-	free(upstreamIP);
+	// Unlock shared memory
 	unlock_shm();
 	return;
 }
