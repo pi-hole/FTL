@@ -618,18 +618,19 @@ void parse_args(int argc, char *argv[])
 		// Create a socket
 		struct sockaddr_in dest;
 		const int sock = create_socket(tcp, &dest);
-		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
+		char hostn[MAXDOMAINLEN] = { 0 };
+		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		{
+			// Close the socket
+			close(sock);
+			exit(EXIT_FAILURE);
+		}
 
 		// Close the socket
 		close(sock);
 
-		// Exit early if no name was found
-		if(name == NULL)
-			exit(EXIT_FAILURE);
-
 		// Print result
-		printf("%s\n", name);
-		free(name);
+		printf("%s\n", hostn);
 		exit(EXIT_SUCCESS);
 	}
 

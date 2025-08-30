@@ -706,7 +706,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		check_pihole_PTR((char*)name);
 
 	// Convert domain to lower case
-	char domainString[256];
+	char domainString[MAXDOMAINLEN];
 	strncpy(domainString, name, sizeof(domainString));
 	domainString[sizeof(domainString) - 1] = '\0';
 	strtolower(domainString);
@@ -1216,6 +1216,8 @@ static void check_pihole_PTR(char *domain)
 
 		// If we reached this point, we have a match between the address the client
 		struct ptr_record *pihole_ptr = calloc(1, sizeof(struct ptr_record));
+		// It is okay to use allocate heap memory here as this branch of
+		// the code is only ever called once per interface on demand
 		pihole_ptr->name = strdup(domain);
 		if(family == AF_INET)
 		{
@@ -1673,7 +1675,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
 	// valid for all time.
-	char domain_lower[256];
+	char domain_lower[MAXDOMAINLEN];
 	strncpy(domain_lower, domainstr, sizeof(domain_lower) - 1);
 	domain_lower[sizeof(domain_lower) - 1] = '\0';
 	const char *blockedDomain = domain_lower;
@@ -1859,7 +1861,7 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char child_domain[256];
+	char child_domain[MAXDOMAINLEN];
 	strncpy(child_domain, dst, sizeof(child_domain) - 1);
 	child_domain[sizeof(child_domain) - 1] = '\0';
 
@@ -1892,7 +1894,6 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		if(parent_domain == NULL)
 		{
 			// Memory error, return
-			free(child_domain);
 			unlock_shm();
 			return false;
 		}
@@ -1945,7 +1946,6 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	query->flags.database.changed = true;
 
 	// Return result
-	free(child_domain);
 	unlock_shm();
 	return block;
 }

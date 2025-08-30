@@ -59,23 +59,19 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
-			char *name = NULL;
+			char name[MAXDOMAINLEN] = { 0 };
 			if(table.client != NULL)
 			{
 				// Try to obtain hostname
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
-					name = getNameFromIP(NULL, table.client);
+					getNameFromIP(NULL, name, table.client);
 				else if(isMAC(table.client))
-					name = getNameFromMAC(table.client);
+					getNameFromMAC(table.client, name);
 			}
 
 			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
 			JSON_COPY_STR_TO_OBJECT(row, "name", name);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
-
-			// Free allocated memory (if applicable)
-			if(name != NULL)
-				free(name);
 		}
 		else // domainlists
 		{
