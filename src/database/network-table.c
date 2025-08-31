@@ -1115,7 +1115,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	}
 
 	// Free allocated memory
-	cJSON_Delete(link);
+	cJSON_Delete(links);
 
 	return true;
 }
