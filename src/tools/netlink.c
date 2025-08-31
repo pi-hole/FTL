@@ -677,6 +677,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				// See description of the individual statistics
 				// below in the IFLA_STATS64 case
 				jstats = JSON_NEW_OBJECT();
+				cJSON_AddItemToObject(link, "stas", jstats);
 				const struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
 				{
 					// Warning: May be overflown if the interface has been up for a long time
@@ -735,6 +736,7 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_STATS64:
 			{
 				jstats64 = JSON_NEW_OBJECT();
+				cJSON_AddItemToObject(link, "stas64", jstats64);
 				const struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
 				{
 					char prefix[2] = { 0 };
