@@ -313,15 +313,15 @@ static bool get_client_groupids(clientsData *client)
 	// Perform query
 	rc = sqlite3_step(table_stmt);
 	int matching_count = 0, chosen_match_id = -1, matching_bits = 0;
-	char *matching_ids = NULL, *chosen_match_text = NULL;
+	const char *matching_ids = NULL, *chosen_match_text = NULL;
 	if(rc == SQLITE_ROW)
 	{
 		// There is a record for this client in the database,
 		// extract the result (there can be at most one line)
 		matching_count = sqlite3_column_int(table_stmt, 0);
 		chosen_match_id = sqlite3_column_int(table_stmt, 1);
-		chosen_match_text = strdup((const char*)sqlite3_column_text(table_stmt, 2));
-		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
+		chosen_match_text = (const char*)sqlite3_column_text(table_stmt, 2);
+		matching_ids = (const char*)sqlite3_column_text(table_stmt, 3);
 		matching_bits = sqlite3_column_int(table_stmt, 4);
 
 		if(matching_count == 1)
@@ -341,9 +341,6 @@ static bool get_client_groupids(clientsData *client)
 		return false;
 	}
 
-	// Finalize statement
-	gravityDB_finalizeTable();
-
 	if(matching_count > 1)
 	{
 		// There is more than one configured subnet that matches to current device
@@ -356,17 +353,8 @@ static bool get_client_groupids(clientsData *client)
 		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
 	}
 
-	// Free memory if applicable
-	if(matching_ids != NULL)
-	{
-		free(matching_ids);
-		matching_ids = NULL;
-	}
-	if(chosen_match_text != NULL)
-	{
-		free(chosen_match_text);
-		chosen_match_text = NULL;
-	}
+	// Finalize statement
+	gravityDB_finalizeTable();
 
 	// If we didn't find an IP address match above, try with MAC address matches
 	// 1. Look up MAC address of this client
@@ -725,6 +713,8 @@ static bool get_client_groupids(clientsData *client)
 	return true;
 }
 
+// This function is a helper, only called from message-table:logg_subnet_warning()
+// Using heap allocations here doesn't matter performance-wise
 char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 {
 	// Build query string to get concatenated groups
@@ -1227,15 +1217,17 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 {
 	// Make a private copy of the domain we will slowly truncate while
 	// extracting the individual components below
-	char *domainBuf = strdup(domain);
-	const size_t domainBufLen = strlen(domainBuf);
+	char domainBuf[256];
+	strncpy(domainBuf, domain, sizeof(domainBuf) - 1);
+	domainBuf[sizeof(domainBuf) - 1] = '\0';
 
 	// Buffer to hold the constructed (sub)domain in ABP format
 	const char *abp_template = antigravity ? "@@||^" : "||^";
 	const size_t intro_len = strlen(abp_template) - 1; // "@@||" or "||" without the trailing "^"
-	char *abpDomain = calloc(domainBufLen + intro_len + 4, sizeof(char));
+	char abpDomain[512];
 	// Prime abp matcher with minimal content
-	strcpy(abpDomain, abp_template);
+	strncpy(abpDomain, abp_template, sizeof(abpDomain) - 1);
+	abpDomain[sizeof(abpDomain) - 1] = '\0';
 
 	// Get number of domain parts (equals the number of dots + 1)
 	unsigned int N = 1u;
@@ -1318,9 +1310,6 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 		// ... and insert '.' for the next iteration
 		abpDomain[intro_len] = '.';
 	}
-
-	free(domainBuf);
-	free(abpDomain);
 
 	return patterns;
 }

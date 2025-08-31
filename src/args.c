@@ -646,8 +646,9 @@ void parse_args(int argc, char *argv[])
 	if(argc == 2 && strcmp(argv[1], "--default-gateway") == 0)
 	{
 		cli_mode = true;
-		char *name = get_gateway_name();
-		printf("%s\n", name);
+		char gateway[MAXIFACESTRLEN];
+		get_gateway_name(gateway);
+		printf("%s\n", gateway);
 		exit(EXIT_SUCCESS);
 	}
 
