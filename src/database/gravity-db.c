@@ -373,25 +373,27 @@ static bool get_client_groupids(clientsData *client)
 	//   1.1. Look up IP address in network_addresses table
 	//   1.2. Get MAC address from this network_id
 	// 2. If found -> Get groups by looking up MAC address in client table
-	char *hwaddr = NULL;
+	char hwaddr[MAXMACLEN] = { 0 };
+	bool got_hwaddr = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		hwaddr = getMACfromIP(NULL, ip);
+		got_hwaddr = getMACfromIP(NULL, hwaddr, ip);
 
-		if(hwaddr == NULL)
+		if(!got_hwaddr)
 		{
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 		}
 		else if(strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
-			free(hwaddr);
-			hwaddr = NULL;
-
+			// This is a mock device hardware address, clear it
+			memset(hwaddr, 0, sizeof(hwaddr));
 			log_debug(DEBUG_CLIENTS, "Skipping mock-device hardware address lookup");
+			got_hwaddr = false;
 		}
+
 		// Set MAC address from database information if available and the MAC address is not already set
 		else if(client->hwlen != 6)
 		{
@@ -410,10 +412,9 @@ static bool get_client_groupids(clientsData *client)
 		}
 
 		// MAC address fallback: Try to synthesize MAC address from internal buffer
-		if(hwaddr == NULL && client->hwlen == 6)
+		if(!got_hwaddr && client->hwlen == 6)
 		{
-			hwaddr = calloc(18, sizeof(char)); // 18 == sizeof("AA:BB:CC:DD:EE:FF")
-			snprintf(hwaddr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
 			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
 
@@ -423,7 +424,7 @@ static bool get_client_groupids(clientsData *client)
 
 	// Check if we received a valid MAC address
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
-	if(hwaddr != NULL)
+	if(got_hwaddr)
 	{
 		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hwaddr);
 
@@ -438,7 +439,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -449,7 +449,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, hwaddr, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -473,7 +472,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, hwaddr, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -485,28 +483,24 @@ static bool get_client_groupids(clientsData *client)
 	// up the client using its host name
 	// 1. Look up host name address of this client
 	// 2. If found -> Get groups by looking up host name in client table
-	char *hostname = NULL;
+	char hostname[MAXDOMAINLEN] = { 0 };
+	bool got_name = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
-		hostname = getNameFromIP(NULL, ip);
-
-		if(hostname == NULL)
+		got_name = getNameFromIP(NULL, hostname, ip);
+		if(!got_name)
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 
-		if(hostname != NULL && strlen(hostname) == 0)
-		{
-			free(hostname);
-			hostname = NULL;
+		if(got_name && hostname[0] == '\0')
 			log_debug(DEBUG_CLIENTS, "Skipping empty host name lookup");
-		}
 	}
 
 	// Check if we received a valid MAC address
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
-	if(hostname != NULL)
+	if(!got_name)
 	{
 		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hostname);
 
@@ -521,8 +515,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -533,8 +525,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, hostname, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -558,8 +548,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, hostname, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -572,27 +560,24 @@ static bool get_client_groupids(clientsData *client)
 	// 1. Look up the interface of this client (FTL isn't aware of it
 	//    when creating the client from history data!)
 	// 2. If found -> Get groups by looking up interface in client table
-	char *interface = NULL;
+	char interface[MAXIFACESTRLEN] = { 0 };
+	bool got_iface = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for interface of %s...", ip);
 
 		// Do the lookup
-		interface = getIfaceFromIP(NULL, ip);
+		got_iface = getIfaceFromIP(NULL, interface, ip);
 
-		if(interface == NULL)
+		if(!got_iface)
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 
-		if(interface != NULL && strlen(interface) == 0)
-		{
-			free(interface);
-			interface = 0;
+		if(got_iface && interface[0] == '\0')
 			log_debug(DEBUG_CLIENTS, "Skipping empty interface lookup");
-		}
 	}
 
 	// Check if we received a valid interface
-	if(interface != NULL)
+	if(got_iface)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying client table for interface "INTERFACE_SEP"%s", interface);
 
@@ -608,9 +593,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -621,9 +603,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, interface, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -647,9 +626,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, interface, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -667,24 +643,6 @@ static bool get_client_groupids(clientsData *client)
 
 		client->groupspos = addstr("0");
 		client->flags.found_group = true;
-
-		if(hwaddr != NULL)
-		{
-			free(hwaddr);
-			hwaddr = NULL;
-		}
-
-		if(hostname != NULL)
-		{
-			free(hostname);
-			hostname = NULL;
-		}
-
-		if(interface != NULL)
-		{
-			free(interface);
-			interface = NULL;
-		}
 
 		return true;
 	}
@@ -751,7 +709,7 @@ static bool get_client_groupids(clientsData *client)
 	// Debug logging
 	if(config.debug.clients.v.b)
 	{
-		if(interface != NULL)
+		if(got_iface)
 		{
 			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
 			          show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
@@ -761,23 +719,6 @@ static bool get_client_groupids(clientsData *client)
 			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found. Using groups (%s)\n",
 			          show_client_string(hwaddr, hostname, ip), getstr(client->groupspos));
 		}
-	}
-
-	// Free possibly allocated memory
-	if(hwaddr != NULL)
-	{
-		free(hwaddr);
-		hwaddr = NULL;
-	}
-	if(hostname != NULL)
-	{
-		free(hostname);
-		hostname = NULL;
-	}
-	if(interface != NULL)
-	{
-		free(interface);
-		interface = NULL;
 	}
 
 	// Return success

@@ -144,7 +144,30 @@
 // Default: 2 x database.DBinterval (seconds) = 120 s
 #define DELAY_V6_RESOLUTION 2*config.database.DBinterval.v.ui
 
-// Use out own syscalls handling functions that will detect possible errors
+// How many characters do we expect domains to have at maximum?
+// Background: The maximum length for a full domain name is 253 characters in
+// its textual representation, while individual labels (parts of the domain name
+// separated by dots) are limited to a maximum of 63 characters. The 255-octet
+// limit on the internal network "wire" format is effectively 253 characters
+// when converted to the standard dot-separated, user-facing string without a
+// trailing dot.
+// RFC 1034 section 3.1 applies
+// Default: 256, should not be changed
+#define MAXDOMAINLEN 256
+
+// Maximum length of an interface name string
+// Background: The maximum length for an interface name is 15 characters
+// (e.g., "eth0", "wlan0", etc.) in its textual representation.
+// Default: 32 (2x safety margin, just in case), should not be changed
+#define MAXIFACESTRLEN 32
+
+// Maximum length of a MAC address string
+// Background: The maximum length for a MAC address is 17 characters
+// (e.g., "00:11:22:33:44:55") in its textual representation.
+// Default: 18, should not be changed
+#define MAXMACLEN 18
+
+// Use our own syscalls handling functions that will detect possible errors
 // and report accordingly in the log. This will make debugging FTL crash
 // caused by insufficient memory or by code bugs (not properly dealing
 // with NULL pointers) much easier.

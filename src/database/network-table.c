@@ -1924,11 +1924,13 @@ updateMACVendorRecords_end:
 }
 
 // Get hardware address of device identified by IP address
-char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
+bool getMACfromIP(sqlite3 *db, char hwaddr[MAXMACLEN], const char *ipaddr)
 {
+	bool got_hwaddr = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
@@ -1937,7 +1939,7 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -1947,8 +1949,6 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 	// Prepare SQLite statement
 	// We request the most recent IP entry in case there an IP appears
 	// multiple times in the network_addresses table
-	char *hwaddr = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT hwaddr FROM network WHERE id = "
 	                       "(SELECT network_id FROM network_addresses "
@@ -1970,31 +1970,26 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	rc = sqlite3_step(stmt);
+	got_hwaddr = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		hwaddr = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hwaddr, (char*)sqlite3_column_text(stmt, 0), MAXMACLEN);
+		hwaddr[MAXMACLEN - 1] = '\0'; // Ensure NULL termination
 	}
-	else if(rc == SQLITE_DONE)
-	{
-		// Not found
-		hwaddr = NULL;
-	}
-	else
+	else if(rc != SQLITE_DONE)
 	{
 		log_err("getMACfromIP(\"%s\"): Failed step: %s",
 		        ipaddr, sqlite3_errstr(rc));
 		goto getMACfromIP_end;
 	}
 
-	if(hwaddr != NULL)
+	if(got_hwaddr)
 		log_debug(DEBUG_DATABASE, "Found database hardware address %s -> %s", ipaddr, hwaddr);
-
-	success = true;
 
 getMACfromIP_end:
 
-	if(!success)
+	if(!got_hwaddr)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -2005,7 +2000,7 @@ getMACfromIP_end:
 		dbclose(&db);
 
 	// Return hardware address, may be NULL on error
-	return hwaddr;
+	return got_hwaddr;
 }
 
 // Get aliasclient ID of device identified by IP address (if available)
@@ -2094,18 +2089,20 @@ getAliasclientIDfromIP_end:
 }
 
 // Get host name of device identified by IP address
-char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
+bool getNameFromIP(sqlite3 *db, char hostn[MAXDOMAINLEN], const char *ipaddr)
 {
+	bool got_name = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 	log_debug(DEBUG_RESOLVER, "Trying to obtain host name of \"%s\" from network_addresses table", ipaddr);
 
 	// Check if we want to resolve host names
 	if(!resolve_this_name(ipaddr))
 	{
 		log_debug(DEBUG_RESOLVER, "getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
-		return NULL;
+		return false;
 	}
 
 	// Open pihole-FTL.db database file if needed
@@ -2115,7 +2112,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getNameFromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -2123,7 +2120,6 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Check for a host name associated with the same IP address
-	char *name = NULL;
 	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
@@ -2146,12 +2142,14 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with IP address %s", ipaddr);
 
 	rc = sqlite3_step(stmt);
+	got_name = rc == SQLITE_ROW;
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
-		log_debug(DEBUG_RESOLVER, "Found database host name (same address) %s -> %s", ipaddr, name);
+		log_debug(DEBUG_RESOLVER, "Found database host name (same address) %s -> %s", ipaddr, hostn);
 	}
 	else if(rc != SQLITE_DONE)
 	{
@@ -2166,13 +2164,13 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	sqlite3_finalize(stmt);
 
 	// Return here if we found the name
-	if(name != NULL)
+	if(got_name)
 	{
 		if(db_opened)
 			dbclose(&db);
 
 		// Return early
-		return name;
+		return true;
 	}
 
 	log_debug(DEBUG_RESOLVER, " ---> not found");
@@ -2203,14 +2201,16 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	log_debug(DEBUG_RESOLVER, "Checking for a host name associated with the same device (but another IP address)");
 
 	rc = sqlite3_step(stmt);
+	got_name = rc == SQLITE_ROW;
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
 		if(config.debug.resolver.v.b)
 			log_debug(DEBUG_RESOLVER, "Found database host name (same device) %s -> %s",
-			          ipaddr, name);
+			          ipaddr, hostn);
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -2240,22 +2240,24 @@ getNameFromIP_end:
 	if(db_opened)
 		dbclose(&db);
 
-	return name;
+	return got_name;
 }
 
 // Get most recently seen host name of device identified by MAC address
-char *__attribute__((malloc)) getNameFromMAC(const char *client)
+bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
 {
+	bool got_name = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file
 	sqlite3 *db = NULL;
 	if((db = dbopen(false, false)) == NULL)
 	{
 		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
-		return NULL;
+		return false;
 	}
 
 	// Check for a host name associated with the given client as MAC address
@@ -2264,8 +2266,6 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	                               "WHERE name IS NOT NULL AND "
 	                                     "network_id = (SELECT id FROM network WHERE hwaddr = ? COLLATE NOCASE) "
 	                               "ORDER BY lastSeen DESC LIMIT 1";
-	char *name = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -2286,14 +2286,16 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with MAC address %s", client);
 
 	rc = sqlite3_step(stmt);
+	got_name = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
 		if(config.debug.resolver.v.b)
 			log_debug(DEBUG_RESOLVER, "Found database host name (by MAC) %s -> %s",
-			          client, name);
+			          client, hostn);
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -2309,11 +2311,9 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 		goto getNameFromMAC_end;
 	}
 
-	success = true;
-
 getNameFromMAC_end:
 
-	if(!success)
+	if(!got_name)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -2321,15 +2321,17 @@ getNameFromMAC_end:
 	sqlite3_finalize(stmt);
 
 	dbclose(&db);
-	return name;
+	return got_name;
 }
 
 // Get interface of device identified by IP address
-char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
+bool getIfaceFromIP(sqlite3 *db, char iface[MAXIFACESTRLEN], const char *ipaddr)
 {
+	bool got_iface = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
@@ -2338,7 +2340,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -2346,8 +2348,6 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Prepare SQLite statement
-	char *iface = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT interface FROM network "
 	                               "JOIN network_addresses "
@@ -2375,10 +2375,12 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	rc = sqlite3_step(stmt);
+	got_iface = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		iface = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(iface, (char*)sqlite3_column_text(stmt, 0), MAXIFACESTRLEN);
+		iface[MAXIFACESTRLEN - 1] = '\0';
 	}
 	else if(rc != SQLITE_DONE)
 	{
@@ -2391,11 +2393,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	if(iface != NULL)
 		log_debug(DEBUG_DATABASE, "Found database interface %s -> %s", ipaddr, iface);
 
-	success = true;
-
 getIfaceFromIP_end:
 
-	if(!success)
+	if(!got_iface)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -2405,7 +2405,7 @@ getIfaceFromIP_end:
 	if(db_opened)
 		dbclose(&db);
 
-	return iface;
+	return got_iface;
 }
 
 // Select records from the network table
