@@ -1213,8 +1213,12 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	return domain_in_list(domain, stmt, "whitelist", &dns_cache->list_id);
 }
 
-cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
+cJSON *gen_abp_patterns(const char *domain)
 {
+	// Return early if ABP patterns are not used
+	if(!gravity_abp_format)
+		return NULL;
+
 	// Make a private copy of the domain we will slowly truncate while
 	// extracting the individual components below
 	char domainBuf[256];
@@ -1222,8 +1226,8 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 	domainBuf[sizeof(domainBuf) - 1] = '\0';
 
 	// Buffer to hold the constructed (sub)domain in ABP format
-	const char *abp_template = antigravity ? "@@||^" : "||^";
-	const size_t intro_len = strlen(abp_template) - 1; // "@@||" or "||" without the trailing "^"
+	const char abp_template[] = "@@||^";
+	const size_t intro_len = sizeof(abp_template) - 1; // "@@||" without the trailing "^"
 	char abpDomain[512];
 	// Prime abp matcher with minimal content
 	strncpy(abpDomain, abp_template, sizeof(abpDomain) - 1);
@@ -1294,6 +1298,7 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 
 		// Add the current ABP domain to the list of patterns
 		cJSON_AddItemToArray(patterns, cJSON_CreateString(abpDomain));
+		log_debug(DEBUG_QUERIES, "ABP pattern matcher %u: \"%s\"", N, abpDomain);
 
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
@@ -1314,7 +1319,7 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 	return patterns;
 }
 
-enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int *domain_id)
+enum db_result in_gravity(const char *domain, cJSON *abp_patterns, clientsData *client, const bool antigravity, int *domain_id)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1365,8 +1370,6 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	if(!gravity_abp_format)
 		return NOT_FOUND;
 
-	// Generate ABP patterns for domain
-	cJSON *abp_patterns = gen_abp_patterns(domain, antigravity);
 	if(abp_patterns == NULL)
 	{
 		log_err("Failed to generate ABP patterns for domain \"%s\"", domain);
@@ -1377,19 +1380,23 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	cJSON * abp_pattern = NULL;
 	cJSON_ArrayForEach(abp_pattern, abp_patterns)
 	{
+		// Get pattern from array
 		const char *pattern = cJSON_GetStringValue(abp_pattern);
+
+		// Skip leading "@@" for gravity matches
+		const char *this_pattern = antigravity ? pattern : pattern + 2;
 		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (ABP): %s",
-		          pattern, listname, exact_match == FOUND ? "yes" : "no");
+		          this_pattern, listname, exact_match == FOUND ? "yes" : "no");
+
+		// Check domain pattern against database
 		const enum db_result abp_match = domain_in_list(pattern, stmt, listname, domain_id);
 		if(abp_match == FOUND || abp_match == LIST_NOT_AVAILABLE)
 		{
-			cJSON_Delete(abp_patterns);
 			return FOUND;
 		}
 	}
 
 	// Domain not found in gravity list
-	cJSON_Delete(abp_patterns);
 	return NOT_FOUND;
 }
 

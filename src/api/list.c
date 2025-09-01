@@ -401,7 +401,7 @@ static int api_list_write(struct ftl_conn *api,
 			   strchr(it->valuestring, '\n') != NULL)
 			{
 				if(allocated_json)
-					cJSON_free(row.items);
+					cJSON_Delete(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
 				                       "bad_request",
 				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
@@ -431,7 +431,7 @@ static int api_list_write(struct ftl_conn *api,
 				if(!valid_domain(punycode, strlen(punycode), false))
 				{
 					if(allocated_json)
-						cJSON_free(row.items);
+						cJSON_Delete(row.items);
 					return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
 							"Invalid domain",
@@ -453,7 +453,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Send error reply
 		if(allocated_json)
-			cJSON_free(row.items);
+			cJSON_Delete(row.items);
 		return send_json_error_free(api, 400, // 400 Bad Request
 		                            "regex_error",
 		                            "Regex validation failed",
@@ -523,7 +523,7 @@ static int api_list_write(struct ftl_conn *api,
 
 	// Free allocated memory
 	if(allocated_json)
-		cJSON_free(row.items);
+		cJSON_Delete(row.items);
 
 	return ret;
 }
@@ -714,7 +714,7 @@ static int api_list_remove(struct ftl_conn *api,
 
 		// Free memory allocated above
 		if(allocated_json)
-			cJSON_free(array);
+			cJSON_Delete(array);
 
 		// Send empty reply with codes:
 		// - 204 No Content (if any items were deleted)
@@ -726,7 +726,7 @@ static int api_list_remove(struct ftl_conn *api,
 	{
 		// Free memory allocated above
 		if(allocated_json)
-			cJSON_free(array);
+			cJSON_Delete(array);
 
 		// Send error reply
 		return send_json_error(api, 400,
