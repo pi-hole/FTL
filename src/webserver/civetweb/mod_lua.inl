@@ -3278,7 +3278,7 @@ handle_lsp_request(struct mg_connection *conn,
 	 *
 	 */
 	run_lsp = run_lsp_civetweb;
-	if ((addr[0] != 'H')) { // Pi-hole change: Check if file starts with "H" for HTTP
+	if ((addr[0] == '<') && (addr[1] != '?')) {
 		run_lsp = run_lsp_kepler;
 	}
 
