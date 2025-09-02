@@ -2032,6 +2032,17 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		return;
 	}
 
+	// Check if this query is already marked as complete
+	// This can happen when multiple upstream servers respond to the same
+	// query or when the query has already been replied to from stale cache
+	// data (cache-optimizer) and this is the followup to refresh the cache
+	// record with possibly changed data
+	if(query->flags.complete)
+	{
+		unlock_shm();
+		return;
+	}
+
 	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
 	const unsigned int upstreamID = findUpstreamID(upstreamIP, upstreamPort);
