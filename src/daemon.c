@@ -476,11 +476,6 @@ void calc_cpu_usage(const unsigned int interval)
 	// Store the current time for the next call to this function
 	last_ftl_cpu_time = ftl_cpu_time;
 
-	// The number of clock ticks per second
-	static long user_hz = 0;
-	if(user_hz == 0)
-		user_hz = sysconf(_SC_CLK_TCK);
-
 	// Calculate the total CPU usage
 	unsigned long total_total, total_idle;
 	if(!parse_proc_stat(&total_total, &total_idle))
