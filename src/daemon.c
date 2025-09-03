@@ -231,10 +231,8 @@ const char *hostname(void)
 			strncpy(nodename, buf.nodename, HOSTNAMESIZE);
 
 			// Only set domain name if node name is not empty: the
-			// kernel replies with '(none)' in this case. When the
-			// domainname starts with '(', we know this cannot be
-			// valid
-			if(buf.nodename[0] != '(')
+			// kernel replies with '(none)' in this case.
+			if(!(buf.domainname[0] == '(' && strncmp(buf.domainname, "(none)", 6) == 0))
 				strncpy(dname, buf.domainname, HOSTNAMESIZE);
 		}
 		nodename[HOSTNAMESIZE - 1] = '\0';
