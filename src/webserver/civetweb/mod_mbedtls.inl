@@ -83,6 +83,10 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	mbedtls_ssl_conf_dbg(conf, mbed_debug, (void *)ctx);
 #endif
 
+	/****************** Pi-hole change ******************/
+	mbedtls_ssl_conf_dbg(conf, FTL_mbed_debug, NULL);
+	/****************************************************/
+
 	/* Initialize TLS key and cert */
 	mbedtls_pk_init(&ctx->pkey);
 	mbedtls_ctr_drbg_init(&ctx->ctr);
