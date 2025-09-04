@@ -1,14 +1,3 @@
-From f59235a1973d13d1271b50546c28cf4d9d2f921a Mon Sep 17 00:00:00 2001
-From: DL6ER <dl6er@dl6er.de>
-Date: Sat, 31 Dec 2022 07:08:23 +0100
-Subject: [PATCH] Add Pi-hole specific method to send HTTP headers
-
-Signed-off-by: DL6ER <dl6er@dl6er.de>
----
- src/webserver/civetweb/civetweb.c | 53 +++++++++++++++++++++++++++++++++++++++++
- src/webserver/civetweb/civetweb.h | 11 +++++++++
- 2 files changed, 64 insertions(+)
-
 diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
 index 81f642be..ed360a76 100644
 --- a/src/webserver/civetweb/civetweb.c
@@ -98,6 +87,3 @@ index 7ea45fb2..f879ff3e 100644
  
  /* Send "HTTP 200 OK" response header.
   * After calling this function, use mg_write or mg_send_chunk to send the
--- 
-2.34.1
-
