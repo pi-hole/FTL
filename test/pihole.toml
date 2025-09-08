@@ -124,7 +124,7 @@
   # Example: [ "127.0.0.1 mylocal", "192.168.0.1 therouter" ]
   #
   # Allowed values are:
-  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
+  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME [HOSTNAME ...]"
   hosts = [
     "1.1.1.1 abc-custom.com def-custom.de",
     "2.2.2.2 äste.com steä.com"
