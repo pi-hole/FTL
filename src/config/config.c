@@ -479,7 +479,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.hosts.k = "dns.hosts";
 	conf->dns.hosts.h = "Array of custom DNS records\n\n Example: [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
-	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
+	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME [HOSTNAME ...]\"");
 	conf->dns.hosts.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 	conf->dns.hosts.c = validate_dns_hosts;
