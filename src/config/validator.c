@@ -598,7 +598,8 @@ void sanitize_dns_hosts(union conf_value *val)
 			free(str);
 			continue;
 		}
-		strncpy(sanitized, ip, original_len);
+		strcpy(sanitized, ip);
+		size_t current_len = strlen(ip);
 		
 		// Process hostnames
 		char *host = NULL;
@@ -616,21 +617,45 @@ void sanitize_dns_hosts(union conf_value *val)
 			if(host[0] == '#')
 			{
 				// Add the comment part with single space separator
-				strncat(sanitized, " ", original_len - strlen(sanitized));
-				strncat(sanitized, host, original_len - strlen(sanitized));
+				if(current_len < original_len)
+				{
+					sanitized[current_len++] = ' ';
+				}
+				size_t host_len = strlen(host);
+				if(current_len + host_len <= original_len)
+				{
+					strcpy(sanitized + current_len, host);
+					current_len += host_len;
+				}
 				
 				// Add any remaining content after this comment token
 				if(tmp && strlen(tmp) > 0)
 				{
-					strncat(sanitized, " ", original_len - strlen(sanitized));
-					strncat(sanitized, tmp, original_len - strlen(sanitized));
+					size_t tmp_len = strlen(tmp);
+					if(current_len < original_len)
+					{
+						sanitized[current_len++] = ' ';
+					}
+					if(current_len + tmp_len <= original_len)
+					{
+						strcpy(sanitized + current_len, tmp);
+						current_len += tmp_len;
+					}
 				}
 				break;
 			}
 
 			// Add hostname to sanitized string with single space separator
-			strncat(sanitized, " ", original_len - strlen(sanitized));
-			strncat(sanitized, host, original_len - strlen(sanitized));
+			if(current_len < original_len)
+			{
+				sanitized[current_len++] = ' ';
+			}
+			size_t host_len = strlen(host);
+			if(current_len + host_len <= original_len)
+			{
+				strcpy(sanitized + current_len, host);
+				current_len += host_len;
+			}
 		}
 
 		// Update the JSON item with the sanitized string

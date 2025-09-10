@@ -1919,7 +1919,7 @@
   # Set dns.hosts with various whitespace formatting issues
   run bash -c './pihole-FTL --config dns.hosts "[\"  192.168.1.1    host1.local  \", \"   10.0.0.1\\t\\thost2.local   host3.local\", \"127.0.0.1     host4.local\\t\\thost5.local\"]"'
   [[ $status == 0 ]]
-   
+
   # Check that the sanitized entries are properly formatted
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
@@ -1931,7 +1931,7 @@
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
   [[ $status == 0 ]]
 
-   # Check that the sanitized entries are properly formatted
+  # Check that the sanitized entries are properly formatted
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]' ]]
