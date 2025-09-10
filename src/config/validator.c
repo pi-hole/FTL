@@ -48,7 +48,16 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// Check if it's in the form "IP[ \t]HOSTNAME"
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
+		
+		// Strip leading spaces/tabs
+		while(isspace((unsigned char)*tmp))
+			tmp++;
+		
 		char *ip = strsep(&tmp, " \t");
+
+		// Skip any extra whitespace/tabs after the IP
+		while(tmp && isspace((unsigned char)*tmp))
+			tmp++;
 
 		if(!ip || !*ip)
 		{
@@ -81,9 +90,9 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 				host++;
 
 			// Skip this entry if it's empty after trimming
-			// the whitespaces/tabs at the end of the line
+			// the whitespaces/tabs (due to multiple consecutive spaces)
 			if(strlen(host) == 0)
-				break;
+				continue;
 
 			// If this hostname is actually the start of a comment
 			// (first letter is '#'), skip parsing the rest of the
