@@ -612,9 +612,21 @@ void sanitize_dns_hosts(union conf_value *val)
 			if(strlen(host) == 0)
 				continue;
 
-			// If this hostname starts with a comment, stop processing
+			// If this hostname starts with a comment, add it and the rest to the sanitized string, then stop processing
 			if(host[0] == '#')
+			{
+				// Add the comment part with single space separator
+				strncat(sanitized, " ", original_len - strlen(sanitized));
+				strncat(sanitized, host, original_len - strlen(sanitized));
+				
+				// Add any remaining content after this comment token
+				if(tmp && strlen(tmp) > 0)
+				{
+					strncat(sanitized, " ", original_len - strlen(sanitized));
+					strncat(sanitized, tmp, original_len - strlen(sanitized));
+				}
 				break;
+			}
 
 			// Add hostname to sanitized string with single space separator
 			strncat(sanitized, " ", original_len - strlen(sanitized));
