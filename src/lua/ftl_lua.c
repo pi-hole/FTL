@@ -104,14 +104,16 @@ int run_luac(const int argc, char **argv)
 
 // pihole.ftl_version()
 static int pihole_ftl_version(lua_State *L) {
-	lua_pushstring(L, get_FTL_version());
+	const char *version = get_FTL_version();
+	lua_pushexternalstring(L, version, strlen(version), NULL, NULL);
 	return 1; // number of results
 }
 
 // pihole.hostname()
 static int pihole_hostname(lua_State *L) {
 	// Get and immediately push host name
-	lua_pushstring(L, hostname());
+	const char *hname = hostname();
+	lua_pushexternalstring(L, hname, strlen(hname), NULL, NULL);
 	return 1; // number of results
 }
 
@@ -200,17 +202,17 @@ static int pihole_webtheme(lua_State *L) {
 	lua_newtable(L);
 
 	// Set table["name"] = this_theme.name (string)
-	lua_pushstring(L, "name");
+	lua_pushliteral(L, "name");
 	lua_pushstring(L, this_theme.name);
 	lua_settable(L, -3);
 
 	// Set table["dark"] = this_theme.dark (boolean)
-	lua_pushstring(L, "dark");
+	lua_pushliteral(L, "dark");
 	lua_pushboolean(L, this_theme.dark);
 	lua_settable(L, -3);
 
 	// Set table["color"] = this_theme.color (string)
-	lua_pushstring(L, "color");
+	lua_pushliteral(L, "color");
 	lua_pushstring(L, this_theme.color);
 	lua_settable(L, -3);
 

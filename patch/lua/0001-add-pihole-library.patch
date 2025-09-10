@@ -3,9 +3,9 @@ index 69808f84..83b89555 100644
 --- a/src/lua/linit.c
 +++ b/src/lua/linit.c
 @@ -50,6 +50,9 @@ static const luaL_Reg loadedlibs[] = {
-   {LUA_MATHLIBNAME, luaopen_math},
+   {LUA_STRLIBNAME, luaopen_string},
+   {LUA_TABLIBNAME, luaopen_table},
    {LUA_UTF8LIBNAME, luaopen_utf8},
-   {LUA_DBLIBNAME, luaopen_debug},
 +  /****** Pi-hole modification ******/
 +  {LUA_PIHOLELIBNAME, luaopen_pihole},
 +  /**********************************/
