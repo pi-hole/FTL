@@ -1302,7 +1302,7 @@ cJSON *gen_abp_patterns(const char *domain)
 		const size_t final_pos = strlen(abpDomain);
 		if(final_pos > 0 && abpDomain[final_pos - 1] != '^')
 		{
-			log_info("Appending ^ to \"%s\"", abpDomain);
+			log_debug(DEBUG_QUERIES, "Appending ^ to \"%s\"", abpDomain);
 			abpDomain[final_pos] = '^';
 			abpDomain[final_pos + 1] = '\0';
 		}
