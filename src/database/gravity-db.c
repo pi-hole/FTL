@@ -836,10 +836,7 @@ char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 	return result;
 }
 
-// Prepare statements for scanning white- and denylist as well as gravit for one client
-
-
-// Prepare statements for scanning white- and denylist as well as gravit for one client
+// Prepare statements for scanning allow- and denylist as well as gravit for one client
 bool gravityDB_prepare_client_statements(clientsData *client)
 {
 	// Return early if gravity database is not available
@@ -870,7 +867,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Prepare allowlist statement
 	// We use SELECT EXISTS() as this is known to efficiently use the index
 	// We are only interested in whether the domain exists or not in the
-	// list but don't case about duplicates or similar. SELECT EXISTS(...)
+	// list but don't care about duplicates or similar. SELECT EXISTS(...)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_allowlist statement for client %s", clientip);
