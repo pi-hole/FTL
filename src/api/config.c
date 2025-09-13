@@ -718,7 +718,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, not via the API",
@@ -740,7 +740,7 @@ static int api_config_patch(struct ftl_conn *api)
 			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
 			if(hint == NULL)
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Failed to allocate memory for hint",
@@ -749,7 +749,7 @@ static int api_config_patch(struct ftl_conn *api)
 			strcpy(hint, new_item->k);
 			strcat(hint, ": ");
 			strcat(hint, response);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config item is invalid",
@@ -764,7 +764,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_ENV_VAR && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
@@ -789,7 +789,7 @@ static int api_config_patch(struct ftl_conn *api)
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
 		{
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Config item validation failed",
@@ -832,7 +832,7 @@ static int api_config_patch(struct ftl_conn *api)
 			}
 			else
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Invalid configuration",
@@ -856,7 +856,7 @@ static int api_config_patch(struct ftl_conn *api)
 	else
 	{
 		// Nothing changed, merely release copied config memory
-		free_config(&newconf);
+		free_config(&newconf, false);
 		log_info("No config changes detected");
 	}
 
@@ -932,7 +932,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(new_item->f & FLAG_ENV_VAR)
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			free_config_path(requested_path);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
@@ -992,7 +992,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				free_config_path(requested_path);
 				return send_json_error(api, 400,
 				                       "bad_request",
@@ -1018,7 +1018,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 404 if config element not found
 	if(!found)
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		cJSON *json = JSON_NEW_OBJECT();
 		JSON_SEND_OBJECT_CODE(json, 404);
 	}
@@ -1026,7 +1026,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 400 if unique item already present
 	if(message != NULL)
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,

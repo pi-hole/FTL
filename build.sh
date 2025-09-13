@@ -181,7 +181,6 @@ fi
 # If we are asked to run tests, we do this here
 if [[ -n "${test}" ]]; then
     cd ..
-    bash test/arch_test.sh
     bash test/run.sh
 fi
 

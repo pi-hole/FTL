@@ -674,9 +674,18 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 
 			case IFLA_STATS:
 			{
+				// Don't collect 32 bit statistics if we
+				// already have their 64 bit equivalent
+				if(jstats64 != NULL)
+					break;
 				// See description of the individual statistics
 				// below in the IFLA_STATS64 case
 				jstats = JSON_NEW_OBJECT();
+				if(jstats == NULL)
+				{
+					log_err("Memory allocation failed in %s(IFLA_STATS64)", __FUNCTION__);
+					break;
+				}
 				const struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
 				{
 					// Warning: May be overflown if the interface has been up for a long time
@@ -735,6 +744,19 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_STATS64:
 			{
 				jstats64 = JSON_NEW_OBJECT();
+				if(jstats64 == NULL)
+				{
+					log_err("Memory allocation failed in %s(IFLA_STATS64)", __FUNCTION__);
+					break;
+				}
+				// Free 32 bit statistics if we already
+				// collected them before. We only want to keep
+				// the most accurate statistics
+				if(jstats)
+				{
+					cJSON_Delete(jstats);
+					jstats = NULL;
+				}
 				const struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
 				{
 					char prefix[2] = { 0 };
@@ -1090,17 +1112,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 		}
 	}
 
-	// Add 64 bit statistics if available and delete the 32 bit statistics
-	if(jstats64)
-	{
+	// Add 64 bit statistics if available
+	if(jstats64 != NULL)
 		cJSON_AddItemToObject(link, "stats", jstats64);
-		if(jstats)
-		{
-			cJSON_Delete(jstats);
-			jstats = NULL;
-		}
-	}
-	// otherwise add the 32 bit statistics (64 has never been allocated)
+	// otherwise add the 32 bit statistics
 	else if(jstats)
 		cJSON_AddItemToObject(link, "stats", jstats);
 
@@ -1437,19 +1452,16 @@ bool nlneigh(cJSON *arp_entries)
  * @brief Retrieves the name of the default gateway.
  *
  * This function queries the system's routing table to find the default
- * gateway and returns its name. The returned string is dynamically allocated
- * and must be freed by the caller to avoid memory leaks.
+ * gateway and stores its name in the provided buffer.
  *
- * @return A pointer to a dynamically allocated string containing the name
- *         of the default gateway, or NULL if no default gateway is found.
+ * @return No return value, this function always succeeds
  *
  * @note The function uses JSON objects to parse and process routing
  *       information. Ensure that the required JSON handling utilities
  *       (e.g., cJSON) are available and properly linked.
  */
-char * __attribute__((malloc)) get_gateway_name(void)
+void get_gateway_name(char gateway[MAXIFACESTRLEN])
 {
-	char *gateway_name = NULL;
 	cJSON *json = cJSON_CreateObject();
 	cJSON *routes = cJSON_CreateArray();
 	nlroutes(routes, false);
@@ -1464,16 +1476,16 @@ char * __attribute__((malloc)) get_gateway_name(void)
 		   cJSON_IsString(dst) &&
 		   strcmp(cJSON_GetStringValue(dst), "default") == 0)
 		{
-			gateway_name = strdup(cJSON_GetStringValue(cJSON_GetObjectItem(route, "oif")));
+			strncpy(gateway, cJSON_GetStringValue(cJSON_GetObjectItem(route, "oif")), MAXIFACESTRLEN - 1);
+			gateway[MAXIFACESTRLEN - 1] = '\0';
 			break;
 		}
 	}
 
 	// Fallback to "eth0" if no default gateway is found (unlikely to
 	// happen)
-	if(gateway_name == NULL)
-		gateway_name = strdup("eth0");
+	if(gateway[0] == '\0')
+		strncpy(gateway, "eth0", MAXIFACESTRLEN - 1);
 
 	cJSON_Delete(json);
-	return gateway_name;
 }

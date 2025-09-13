@@ -312,15 +312,15 @@ static bool get_client_groupids(clientsData *client)
 	// Perform query
 	rc = sqlite3_step(table_stmt);
 	int matching_count = 0, chosen_match_id = -1, matching_bits = 0;
-	char *matching_ids = NULL, *chosen_match_text = NULL;
+	const char *matching_ids = NULL, *chosen_match_text = NULL;
 	if(rc == SQLITE_ROW)
 	{
 		// There is a record for this client in the database,
 		// extract the result (there can be at most one line)
 		matching_count = sqlite3_column_int(table_stmt, 0);
 		chosen_match_id = sqlite3_column_int(table_stmt, 1);
-		chosen_match_text = strdup((const char*)sqlite3_column_text(table_stmt, 2));
-		matching_ids = strdup((const char*)sqlite3_column_text(table_stmt, 3));
+		chosen_match_text = (const char*)sqlite3_column_text(table_stmt, 2);
+		matching_ids = (const char*)sqlite3_column_text(table_stmt, 3);
 		matching_bits = sqlite3_column_int(table_stmt, 4);
 
 		if(matching_count == 1)
@@ -340,9 +340,6 @@ static bool get_client_groupids(clientsData *client)
 		return false;
 	}
 
-	// Finalize statement
-	gravityDB_finalizeTable();
-
 	if(matching_count > 1)
 	{
 		// There is more than one configured subnet that matches to current device
@@ -355,42 +352,35 @@ static bool get_client_groupids(clientsData *client)
 		logg_subnet_warning(ip, matching_count, matching_ids, matching_bits, chosen_match_text, chosen_match_id);
 	}
 
-	// Free memory if applicable
-	if(matching_ids != NULL)
-	{
-		free(matching_ids);
-		matching_ids = NULL;
-	}
-	if(chosen_match_text != NULL)
-	{
-		free(chosen_match_text);
-		chosen_match_text = NULL;
-	}
+	// Finalize statement
+	gravityDB_finalizeTable();
 
 	// If we didn't find an IP address match above, try with MAC address matches
 	// 1. Look up MAC address of this client
 	//   1.1. Look up IP address in network_addresses table
 	//   1.2. Get MAC address from this network_id
 	// 2. If found -> Get groups by looking up MAC address in client table
-	char *hwaddr = NULL;
+	char hwaddr[MAXMACLEN] = { 0 };
+	bool got_hwaddr = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		hwaddr = getMACfromIP(NULL, ip);
+		got_hwaddr = getMACfromIP(NULL, hwaddr, ip);
 
-		if(hwaddr == NULL)
+		if(!got_hwaddr)
 		{
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 		}
 		else if(strlen(hwaddr) > 3 && strncasecmp(hwaddr, "ip-", 3) == 0)
 		{
-			free(hwaddr);
-			hwaddr = NULL;
-
+			// This is a mock device hardware address, clear it
+			memset(hwaddr, 0, sizeof(hwaddr));
 			log_debug(DEBUG_CLIENTS, "Skipping mock-device hardware address lookup");
+			got_hwaddr = false;
 		}
+
 		// Set MAC address from database information if available and the MAC address is not already set
 		else if(client->hwlen != 6)
 		{
@@ -409,10 +399,9 @@ static bool get_client_groupids(clientsData *client)
 		}
 
 		// MAC address fallback: Try to synthesize MAC address from internal buffer
-		if(hwaddr == NULL && client->hwlen == 6)
+		if(!got_hwaddr && client->hwlen == 6)
 		{
-			hwaddr = calloc(18, sizeof(char)); // 18 == sizeof("AA:BB:CC:DD:EE:FF")
-			snprintf(hwaddr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
 			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
 			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
 
@@ -422,7 +411,7 @@ static bool get_client_groupids(clientsData *client)
 
 	// Check if we received a valid MAC address
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
-	if(hwaddr != NULL)
+	if(got_hwaddr)
 	{
 		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hwaddr);
 
@@ -437,7 +426,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -448,7 +436,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, hwaddr, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -472,7 +459,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, hwaddr, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			free(hwaddr); // hwaddr != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -484,28 +470,24 @@ static bool get_client_groupids(clientsData *client)
 	// up the client using its host name
 	// 1. Look up host name address of this client
 	// 2. If found -> Get groups by looking up host name in client table
-	char *hostname = NULL;
+	char hostname[MAXDOMAINLEN] = { 0 };
+	bool got_name = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for host name of %s...", ip);
 
 		// Do the lookup
-		hostname = getNameFromIP(NULL, ip);
-
-		if(hostname == NULL)
+		got_name = getNameFromIP(NULL, hostname, ip);
+		if(!got_name)
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 
-		if(hostname != NULL && strlen(hostname) == 0)
-		{
-			free(hostname);
-			hostname = NULL;
+		if(got_name && hostname[0] == '\0')
 			log_debug(DEBUG_CLIENTS, "Skipping empty host name lookup");
-		}
 	}
 
 	// Check if we received a valid MAC address
 	// This ensures we skip mock hardware addresses such as "ip-127.0.0.1"
-	if(hostname != NULL)
+	if(!got_name)
 	{
 		log_debug(DEBUG_CLIENTS, "--> Querying client table for %s", hostname);
 
@@ -520,8 +502,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -532,8 +512,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, hostname, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -557,8 +535,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, hostname, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			if(hwaddr) free(hwaddr);
-			free(hostname); // hostname != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -571,27 +547,24 @@ static bool get_client_groupids(clientsData *client)
 	// 1. Look up the interface of this client (FTL isn't aware of it
 	//    when creating the client from history data!)
 	// 2. If found -> Get groups by looking up interface in client table
-	char *interface = NULL;
+	char interface[MAXIFACESTRLEN] = { 0 };
+	bool got_iface = false;
 	if(chosen_match_id < 0)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for interface of %s...", ip);
 
 		// Do the lookup
-		interface = getIfaceFromIP(NULL, ip);
+		got_iface = getIfaceFromIP(NULL, interface, ip);
 
-		if(interface == NULL)
+		if(!got_iface)
 			log_debug(DEBUG_CLIENTS, "--> No result.");
 
-		if(interface != NULL && strlen(interface) == 0)
-		{
-			free(interface);
-			interface = 0;
+		if(got_iface && interface[0] == '\0')
 			log_debug(DEBUG_CLIENTS, "Skipping empty interface lookup");
-		}
 	}
 
 	// Check if we received a valid interface
-	if(interface != NULL)
+	if(got_iface)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying client table for interface "INTERFACE_SEP"%s", interface);
 
@@ -607,9 +580,6 @@ static bool get_client_groupids(clientsData *client)
 		{
 			log_err("get_client_groupids(%s) - SQL error prepare: %s",
 			        querystr, sqlite3_errstr(rc));
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -620,9 +590,6 @@ static bool get_client_groupids(clientsData *client)
 			        ip, interface, sqlite3_errstr(rc));
 			sqlite3_reset(table_stmt);
 			sqlite3_finalize(table_stmt);
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -646,9 +613,6 @@ static bool get_client_groupids(clientsData *client)
 			log_err("get_client_groupids(\"%s\", \"%s\") - SQL error step: %s",
 			        ip, interface, sqlite3_errstr(rc));
 			gravityDB_finalizeTable();
-			if(hwaddr) free(hwaddr);
-			if(hostname) free(hostname);
-			free(interface); // interface != NULL -> memory has been allocated
 			return false;
 		}
 
@@ -666,24 +630,6 @@ static bool get_client_groupids(clientsData *client)
 
 		client->groupspos = addstr("0");
 		client->flags.found_group = true;
-
-		if(hwaddr != NULL)
-		{
-			free(hwaddr);
-			hwaddr = NULL;
-		}
-
-		if(hostname != NULL)
-		{
-			free(hostname);
-			hostname = NULL;
-		}
-
-		if(interface != NULL)
-		{
-			free(interface);
-			interface = NULL;
-		}
 
 		return true;
 	}
@@ -750,7 +696,7 @@ static bool get_client_groupids(clientsData *client)
 	// Debug logging
 	if(config.debug.clients.v.b)
 	{
-		if(interface != NULL)
+		if(got_iface)
 		{
 			log_debug(DEBUG_CLIENTS, "Gravity database: Client %s found (identified by interface %s). Using groups (%s)\n",
 			          show_client_string(hwaddr, hostname, ip), interface, getstr(client->groupspos));
@@ -762,27 +708,12 @@ static bool get_client_groupids(clientsData *client)
 		}
 	}
 
-	// Free possibly allocated memory
-	if(hwaddr != NULL)
-	{
-		free(hwaddr);
-		hwaddr = NULL;
-	}
-	if(hostname != NULL)
-	{
-		free(hostname);
-		hostname = NULL;
-	}
-	if(interface != NULL)
-	{
-		free(interface);
-		interface = NULL;
-	}
-
 	// Return success
 	return true;
 }
 
+// This function is a helper, only called from message-table:logg_subnet_warning()
+// Using heap allocations here doesn't matter performance-wise
 char *__attribute__ ((malloc)) get_client_names_from_ids(const char *group_ids)
 {
 	// Build query string to get concatenated groups
@@ -1316,19 +1247,27 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 	return domain_in_list(domain, stmt, "allowlist", &dns_cache->list_id);
 }
 
-cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
+cJSON *gen_abp_patterns(const char *domain)
 {
+	// Return early if ABP patterns are not used
+	if(!gravity_abp_format)
+		return NULL;
+
 	// Make a private copy of the domain we will slowly truncate while
 	// extracting the individual components below
-	char *domainBuf = strdup(domain);
-	const size_t domainBufLen = strlen(domainBuf);
+	char domainBuf[256];
+	strncpy(domainBuf, domain, sizeof(domainBuf) - 1);
+	domainBuf[sizeof(domainBuf) - 1] = '\0';
 
 	// Buffer to hold the constructed (sub)domain in ABP format
-	const char *abp_template = antigravity ? "@@||^" : "||^";
-	const size_t intro_len = strlen(abp_template) - 1; // "@@||" or "||" without the trailing "^"
-	char *abpDomain = calloc(domainBufLen + intro_len + 4, sizeof(char));
+	// NOTE: the leading "@@" must be removed for gravity matches when used
+	//       in other functions
+	const char abp_template[] = "@@||";
+	const size_t intro_len = sizeof(abp_template) - 1;
+	char abpDomain[512];
 	// Prime abp matcher with minimal content
-	strcpy(abpDomain, abp_template);
+	strncpy(abpDomain, abp_template, sizeof(abpDomain) - 1);
+	abpDomain[sizeof(abpDomain) - 1] = '\0';
 
 	// Get number of domain parts (equals the number of dots + 1)
 	unsigned int N = 1u;
@@ -1393,8 +1332,18 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 			memcpy(abpDomain + intro_len, ptr, component_size);
 		}
 
+		// Append final "^" to the pattern
+		const size_t final_pos = strlen(abpDomain);
+		if(final_pos > 0 && abpDomain[final_pos - 1] != '^')
+		{
+			log_debug(DEBUG_QUERIES, "Appending ^ to \"%s\"", abpDomain);
+			abpDomain[final_pos] = '^';
+			abpDomain[final_pos + 1] = '\0';
+		}
+
 		// Add the current ABP domain to the list of patterns
 		cJSON_AddItemToArray(patterns, cJSON_CreateString(abpDomain));
+		log_debug(DEBUG_QUERIES, "ABP pattern matcher %u: \"%s\"", N, abpDomain);
 
 		// Truncate the domain buffer to the left of the
 		// last dot, effectively removing the last component
@@ -1412,13 +1361,10 @@ cJSON *gen_abp_patterns(const char *domain, const bool antigravity)
 		abpDomain[intro_len] = '.';
 	}
 
-	free(domainBuf);
-	free(abpDomain);
-
 	return patterns;
 }
 
-enum db_result in_gravity(const char *domain, clientsData *client, const bool antigravity, int *domain_id)
+enum db_result in_gravity(const char *domain, cJSON *abp_patterns, clientsData *client, const bool antigravity, int *domain_id)
 {
 	// If list statement is not ready and cannot be initialized (e.g. no
 	// access to the database), we return false to prevent an FTL crash
@@ -1469,8 +1415,6 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	if(!gravity_abp_format)
 		return NOT_FOUND;
 
-	// Generate ABP patterns for domain
-	cJSON *abp_patterns = gen_abp_patterns(domain, antigravity);
 	if(abp_patterns == NULL)
 	{
 		log_err("Failed to generate ABP patterns for domain \"%s\"", domain);
@@ -1481,19 +1425,21 @@ enum db_result in_gravity(const char *domain, clientsData *client, const bool an
 	cJSON * abp_pattern = NULL;
 	cJSON_ArrayForEach(abp_pattern, abp_patterns)
 	{
+		// Get pattern from array
 		const char *pattern = cJSON_GetStringValue(abp_pattern);
+
+		// Skip leading "@@" for gravity matches
+		const char *this_pattern = antigravity ? pattern : pattern + 2;
 		log_debug(DEBUG_QUERIES, "Checking if \"%s\" is in %s (ABP): %s",
-		          pattern, listname, exact_match == FOUND ? "yes" : "no");
-		const enum db_result abp_match = domain_in_list(pattern, stmt, listname, domain_id);
+		          this_pattern, listname, exact_match == FOUND ? "yes" : "no");
+
+		// Check domain pattern against database
+		const enum db_result abp_match = domain_in_list(this_pattern, stmt, listname, domain_id);
 		if(abp_match == FOUND || abp_match == LIST_NOT_AVAILABLE)
-		{
-			cJSON_Delete(abp_patterns);
 			return FOUND;
-		}
 	}
 
 	// Domain not found in gravity list
-	cJSON_Delete(abp_patterns);
 	return NOT_FOUND;
 }
 

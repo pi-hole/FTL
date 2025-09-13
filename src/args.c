@@ -618,18 +618,19 @@ void parse_args(int argc, char *argv[])
 		// Create a socket
 		struct sockaddr_in dest;
 		const int sock = create_socket(tcp, &dest);
-		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
+		char hostn[MAXDOMAINLEN] = { 0 };
+		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		{
+			// Close the socket
+			close(sock);
+			exit(EXIT_FAILURE);
+		}
 
 		// Close the socket
 		close(sock);
 
-		// Exit early if no name was found
-		if(name == NULL)
-			exit(EXIT_FAILURE);
-
 		// Print result
-		printf("%s\n", name);
-		free(name);
+		printf("%s\n", hostn);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -645,8 +646,9 @@ void parse_args(int argc, char *argv[])
 	if(argc == 2 && strcmp(argv[1], "--default-gateway") == 0)
 	{
 		cli_mode = true;
-		char *name = get_gateway_name();
-		printf("%s\n", name);
+		char gateway[MAXIFACESTRLEN];
+		get_gateway_name(gateway);
+		printf("%s\n", gateway);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -1419,139 +1421,194 @@ void suggest_complete(const int argc, char *argv[])
 				if(strcmp(conf_item->k, argv[4]) == 0)
 				{
 					// See if we can suggest a value
-					if(conf_item->t == CONF_BOOL || conf_item->t == CONF_ALL_DEBUG_BOOL)
+					switch(conf_item->t)
 					{
-						// pihole-FTL --config <boolean option>> ...
-						const char *options[] = {
-							"true", "false"
-						};
-
-						// Provide matching suggestions
-						list_matches(last_word, options, ArraySize(options), false);
-					}
-					else if(conf_item->t == CONF_INT ||
-					        conf_item->t == CONF_UINT ||
-					        conf_item->t == CONF_UINT16 ||
-					        conf_item->t == CONF_LONG ||
-					        conf_item->t == CONF_DOUBLE ||
-					        conf_item->t == CONF_STRING ||
-					        conf_item->t == CONF_STRING_ALLOCATED ||
-						conf_item->t == CONF_JSON_STRING_ARRAY)
-					{
-						// pihole-FTL --config ... <int/long/double/string>
-						// Provide the default value as suggestion
-						char *value = NULL;
-						cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
-						if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
+						case CONF_BOOL:
+						case CONF_ALL_DEBUG_BOOL:
 						{
-							// Add '' to the output if it is a string
-							if(conf_item->t == CONF_STRING ||
-							   conf_item->t == CONF_STRING_ALLOCATED ||
-							   conf_item->t == CONF_JSON_STRING_ARRAY)
+							// pihole-FTL --config <boolean option>> ...
+							const char *options[] = {
+								"true", "false"
+							};
+
+							// Provide matching suggestions
+							list_matches(last_word, options, ArraySize(options), false);
+							break;
+						}
+
+						case CONF_INT:
+						case CONF_UINT:
+						case CONF_UINT16:
+						case CONF_LONG:
+						case CONF_DOUBLE:
+						case CONF_STRING:
+						case CONF_STRING_ALLOCATED:
+						case CONF_JSON_STRING_ARRAY:
+						{
+							// pihole-FTL --config ... <int/long/double/string>
+							// Provide the default value as suggestion
+							char *value = NULL;
+							cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
+							if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
 							{
-								// If the value is a string, we need to add quotes
-								if(value[0] != '\'')
+								// Add '' to the output if it is a string
+								if(conf_item->t == CONF_JSON_STRING_ARRAY)
 								{
-									char *tmp = malloc(strlen(value) + 3);
+									// Count number of ' in the string
+									char *p = value;
+									unsigned int count = 0;
+									while(p != NULL && *p != '\0')
+									{
+										if(*p == '\'')
+											count++;
+										p++;
+									}
+
+									// Allocate enough space for the new string
+									char *tmp = calloc(strlen(value) + 5*count + 3, sizeof(char));
 									if(tmp != NULL)
 									{
-										sprintf(tmp, "'%s'", value);
+										memcpy(tmp + 1, value, strlen(value) + 1);
+										// Scan for ' characters ...
+										p = tmp + 1;
+										while(*p != '\0')
+										{
+											if(*p == '\'')
+											{
+												// ... and replace them by '"'"'
+												memmove(p + 4, p, strlen(p) + 1);
+												*(p++) = '\'';
+												*(p++) = '"';
+												*(p++) = '\'';
+												*(p++) = '"';
+											}
+											p++;
+										}
+
+										tmp[0] = '\'';
+										tmp[strlen(tmp)] = '\'';
 										free(value);
 										value = tmp;
 									}
 								}
+
+								// If the default value starts with the last word we are trying to complete,
+								// print it as a suggestion
+								// If the last word is empty, print the value anyway
+								if(strStartsWith(value, last_word) || strlen(last_word) == 0)
+									puts(value);
+								free(value);
 							}
+							cJSON_Delete(val);
+							break;
+						}
 
-							// If the default value starts with the last word we are trying to complete,
-							// print it as a suggestion
-							// If the last word is empty, print the value anyway
-							if(strStartsWith(value, last_word) || strlen(last_word) == 0)
-								puts(value);
-							free(value);
-						}
-						cJSON_Delete(val);
-					}
-					else if(conf_item->t == CONF_ENUM_PTR_TYPE)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < PTR_MAX; j++)
-						{
-							const char *ptr = get_ptr_type_str(j);
-							if(strStartsWithIgnoreCase(ptr, last_word) || strlen(last_word) == 0)
-								puts(ptr);
-						}
-					}
-					else if(conf_item->t == CONF_ENUM_BUSY_TYPE)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < BUSY_MAX; j++)
-						{
-							const char *busy = get_busy_reply_str(j);
-							if(strStartsWithIgnoreCase(busy, last_word) || strlen(last_word) == 0)
-								puts(busy);
-						}
-					}
-					else if(conf_item->t == CONF_ENUM_BLOCKING_MODE)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < MODE_MAX; j++)
-						{
-							const char *mode = get_blocking_mode_str(j);
-							if(strStartsWithIgnoreCase(mode, last_word) || strlen(last_word) == 0)
-								puts(mode);
-						}
-					}
-					else if(conf_item->t == CONF_ENUM_REFRESH_HOSTNAMES)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < REFRESH_MAX; j++)
-						{
-							const char *refresh = get_refresh_hostnames_str(j);
-							if(strStartsWithIgnoreCase(refresh, last_word) || strlen(last_word) == 0)
-								puts(refresh);
-						}
-					}
-					else if(conf_item->t == CONF_ENUM_LISTENING_MODE)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < LISTEN_MAX; j++)
-						{
-							const char *listen = get_listeningMode_str(j);
-							if(strStartsWithIgnoreCase(listen, last_word) || strlen(last_word) == 0)
-								puts(listen);
-						}
-					}
-					else if(conf_item->t == CONF_ENUM_WEB_THEME)
-					{
-						// pihole-FTL --config webserver.interface.theme ...
+						case CONF_ENUM_PTR_TYPE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < PTR_MAX; j++)
+							{
+								const char *ptr = get_ptr_type_str(j);
+								if(strStartsWithIgnoreCase(ptr, last_word) || strlen(last_word) == 0)
+									puts(ptr);
+							}
+							break;
 
-						// Provide matching suggestions
-						for(size_t j = 0; j < THEME_MAX; j++)
+						case CONF_ENUM_BUSY_TYPE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < BUSY_MAX; j++)
+							{
+								const char *busy = get_busy_reply_str(j);
+								if(strStartsWithIgnoreCase(busy, last_word) || strlen(last_word) == 0)
+									puts(busy);
+							}
+							break;
+
+						case CONF_ENUM_BLOCKING_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < MODE_MAX; j++)
+							{
+								const char *mode = get_blocking_mode_str(j);
+								if(strStartsWithIgnoreCase(mode, last_word) || strlen(last_word) == 0)
+									puts(mode);
+							}
+							break;
+
+						case CONF_ENUM_REFRESH_HOSTNAMES:
+							// Provide matching suggestions
+							for(size_t j = 0; j < REFRESH_MAX; j++)
+							{
+								const char *refresh = get_refresh_hostnames_str(j);
+								if(strStartsWithIgnoreCase(refresh, last_word) || strlen(last_word) == 0)
+									puts(refresh);
+							}
+							break;
+
+						case CONF_ENUM_LISTENING_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < LISTEN_MAX; j++)
+							{
+								const char *listen = get_listeningMode_str(j);
+								if(strStartsWithIgnoreCase(listen, last_word) || strlen(last_word) == 0)
+									puts(listen);
+							}
+							break;
+
+						case CONF_ENUM_WEB_THEME:
+							// pihole-FTL --config webserver.interface.theme ...
+
+							// Provide matching suggestions
+							for(size_t j = 0; j < THEME_MAX; j++)
+							{
+								const char *theme = get_web_theme_str(j);
+								if(strStartsWithIgnoreCase(theme, last_word) || strlen(last_word) == 0)
+									puts(theme);
+							}
+							break;
+
+						case CONF_ENUM_BLOCKING_EDNS_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < EDNS_MODE_MAX; j++)
+							{
+								const char *edns = get_edns_mode_str(j);
+								if(strStartsWithIgnoreCase(edns, last_word) || strlen(last_word) == 0)
+									puts(edns);
+							}
+							break;
+
+						case CONF_ENUM_TEMP_UNIT:
+							// Provide matching suggestions
+							for(size_t j = 0; j < TEMP_UNIT_MAX; j++)
+							{
+								const char *temp = get_temp_unit_str(j);
+								if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
+									puts(temp);
+							}
+							break;
+
+						case CONF_ENUM_PRIVACY_LEVEL:
+							// This enum is in reality a numeric value
+							printf("%d\n", (int)conf_item->d.privacy_level);
+							break;
+
+							case CONF_PASSWORD:
+							// No suggestions
+							break;
+
+						case CONF_STRUCT_IN_ADDR:
 						{
-							const char *theme = get_web_theme_str(j);
-							if(strStartsWithIgnoreCase(theme, last_word) || strlen(last_word) == 0)
-								puts(theme);
+							char ip[INET_ADDRSTRLEN] = { 0 };
+							inet_ntop(AF_INET, &conf_item->d.in_addr.s_addr, ip, sizeof(ip));
+							printf("%s\n", ip);
 						}
-					}
-					else if(conf_item->t == CONF_ENUM_BLOCKING_EDNS_MODE)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < EDNS_MODE_MAX; j++)
+						break;
+
+						case CONF_STRUCT_IN6_ADDR:
 						{
-							const char *edns = get_edns_mode_str(j);
-							if(strStartsWithIgnoreCase(edns, last_word) || strlen(last_word) == 0)
-								puts(edns);
+							char ip[INET6_ADDRSTRLEN] = { 0 };
+							inet_ntop(AF_INET6, &conf_item->d.in6_addr, ip, sizeof(ip));
+							printf("%s\n", ip);
 						}
-					}
-					else if(conf_item->t == CONF_ENUM_TEMP_UNIT)
-					{
-						// Provide matching suggestions
-						for(size_t j = 0; j < TEMP_UNIT_MAX; j++)
-						{
-							const char *temp = get_temp_unit_str(j);
-							if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
-								puts(temp);
-						}
+						break;
 					}
 				}
 			}

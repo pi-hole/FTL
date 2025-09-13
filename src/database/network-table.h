@@ -10,6 +10,7 @@
 #ifndef NETWORKTABLE_H
 #define NETWORKTABLE_H
 
+#include "FTL.h"
 #include "sqlite3.h"
 
 bool create_network_table(sqlite3 *db);
@@ -19,11 +20,11 @@ bool create_network_addresses_network_id_index(sqlite3 *db);
 void parse_neighbor_cache(sqlite3 *db);
 bool updateMACVendorRecords(sqlite3 *db);
 bool unify_hwaddr(sqlite3 *db);
-char *getMACfromIP(sqlite3 *db, const char* ipaddr) __attribute__((malloc));
+bool getMACfromIP(sqlite3 *db, char mac[MAXMACLEN], const char* ipaddr);
 int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
-char *getNameFromIP(sqlite3 *db, const char* ipaddr) __attribute__((malloc));
-char *getNameFromMAC(const char *client) __attribute__((malloc));
-char *getIfaceFromIP(sqlite3 *db, const char* ipaddr) __attribute__((malloc));
+bool getNameFromIP(sqlite3 *db, char hostn[MAXDOMAINLEN], const char* ipaddr);
+bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN]);
+bool getIfaceFromIP(sqlite3 *db, char iface[MAXIFACESTRLEN], const char* ipaddr);
 void resolveNetworkTableNames(void);
 bool flush_network_table(void);
 bool isMAC(const char *input) __attribute__ ((pure));
