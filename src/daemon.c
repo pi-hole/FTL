@@ -65,6 +65,9 @@ void go_daemon(void)
 	if (process_id > 0)
 	{
 		printf("FTL started!\n");
+		// Free config to silence meaningless (but still loud) memcheck
+		// warnings about lost memory concerning the parsed config
+		free_config(&config, true);
 		// Return success in exit status
 		exit(EXIT_SUCCESS);
 	}
@@ -427,17 +430,20 @@ void cleanup(const int ret)
 	// Close memory database
 	close_memory_database();
 
-	// Remove shared memory objects
-	// Important: This invalidated all objects such as
-	//            counters-> ... etc.
-	// This should be the last action when c
-	destroy_shmem();
-
 	// De-initialize the random number generator and entropy collector
 	destroy_entropy();
 
 	// Free environment variables
 	freeEnvVars();
+
+	// Free config
+	free_config(&config, true);
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... etc.
+	// This should be the last action when cleaning up
+	destroy_shmem();
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
@@ -473,11 +479,6 @@ void calc_cpu_usage(const unsigned int interval)
 
 	// Store the current time for the next call to this function
 	last_ftl_cpu_time = ftl_cpu_time;
-
-	// The number of clock ticks per second
-	static long user_hz = 0;
-	if(user_hz == 0)
-		user_hz = sysconf(_SC_CLK_TCK);
 
 	// Calculate the total CPU usage
 	unsigned long total_total, total_idle;

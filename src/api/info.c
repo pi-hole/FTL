@@ -995,7 +995,7 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 
 	// Free memory
 	free(id);
-	cJSON_free(ids);
+	cJSON_Delete(ids);
 
 	// Send empty reply with codes:
 	// - 204 No Content (if any items were deleted)
