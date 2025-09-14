@@ -4759,6 +4759,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    else
 		      three = two;
 		  }
+		else if (new->split_mode && inet_pton(AF_INET, three, &new->uplink))
+		  /* Third arg in split mode can be an address. */
+		  three = NULL;
 		
 		new->next = daemon->relay4;
 		daemon->relay4 = new;

@@ -40,6 +40,7 @@ static char *prefix_webhome = NULL;
 static char *api_uri = NULL;
 static char *admin_api_uri = NULL;
 static char *login_uri = NULL;
+static char *webheaders = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
@@ -579,7 +580,7 @@ void http_init(void)
 	}
 
 	// Construct additional headers
-	char *webheaders = strdup("");
+	webheaders = strdup("");
 	if (webheaders == NULL) {
 		log_err("Failed to allocate memory for webheaders!");
 		return;
@@ -597,11 +598,14 @@ void http_init(void)
 		const char *h = cJSON_GetStringValue(header);
 
 		// Allocate memory for the new header
-		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
-		if (webheaders == NULL) {
-			log_err("Failed to allocate memory for webheaders!");
+		char *new_webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (new_webheaders == NULL) {
+			log_err("Failed to (re)allocate memory for webheaders!");
+			free(webheaders);
+			webheaders = NULL;
 			return;
 		}
+		webheaders = new_webheaders;
 		strcat(webheaders, h);
 		strcat(webheaders, "\r\n");
 	}
@@ -872,6 +876,9 @@ void http_terminate(void)
 	// Free login_uri path
 	if(login_uri != NULL)
 		free(login_uri);
+
+	if(webheaders != NULL)
+		free(webheaders);
 }
 
 static void restart_http(void)

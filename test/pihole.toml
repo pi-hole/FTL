@@ -124,7 +124,7 @@
   # Example: [ "127.0.0.1 mylocal", "192.168.0.1 therouter" ]
   #
   # Allowed values are:
-  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
+  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME [HOSTNAME ...]"
   hosts = [
     "1.1.1.1 abc-custom.com def-custom.de",
     "2.2.2.2 äste.com steä.com"
@@ -184,8 +184,8 @@
   #     true or false
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
-  # Leave empty for auto-detection.
+  # Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave
+  # empty for auto-detection.
   #
   # Allowed values are:
   #     a valid interface name

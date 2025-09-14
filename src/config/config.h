@@ -362,6 +362,7 @@ extern struct config config;
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
 
 // Defined in config.c
+void initConfig(struct config *conf);
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 bool migrate_config_v6(void);
@@ -371,7 +372,7 @@ struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);
-void free_config(struct config *conf);
+void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);

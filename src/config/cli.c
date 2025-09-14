@@ -427,7 +427,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(item->f & FLAG_ENV_VAR)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return ENV_VAR_FORCED;
 		}
 
@@ -435,7 +435,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(item->f & FLAG_READ_ONLY)
 		{
 			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return EXIT_FAILURE;
 		}
 
@@ -459,14 +459,14 @@ int set_config_from_CLI(const char *key, const char *value)
 			log_err(" - %s", matches[i]);
 		free(matches);
 
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return KEY_UNKNOWN;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return VALUE_INVALID;
 	}
 
@@ -484,7 +484,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				log_err("Invalid value: %s", errbuf);
 				return 3;
 			}
@@ -498,7 +498,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return DNSMASQ_TEST_FAILED;
 			}
 		}
@@ -519,7 +519,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	{
 		// No change
 		log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
-		free_config(&newconf);
+		free_config(&newconf, false);
 
 		// Print value
 		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
