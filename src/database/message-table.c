@@ -359,9 +359,9 @@ static int _add_message(const enum message_type type,
 		return -1;
 	}
 
-	sqlite3 *db;
+	sqlite3 *db = dbopen(false, false);
 	// Open database connection
-	if((db = dbopen(false, false)) == NULL)
+	if(db == NULL)
 		// Reason for failure is logged in dbopen()
 		return -1;
 
@@ -380,8 +380,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
 			type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -390,8 +388,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
 			type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -423,8 +419,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind type: %s",
 		        type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -433,8 +427,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind message: %s",
 		        type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -489,15 +481,19 @@ static int _add_message(const enum message_type type,
 		goto end_of_add_message;
 	}
 
-	// Final database handling
-	sqlite3_clear_bindings(stmt);
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
-
-	// Get row ID of the newly added message
-	rowid = sqlite3_last_insert_rowid(db);
-
 end_of_add_message: // Close database connection
+
+	// Final database handling
+	if(stmt != NULL)
+	{
+		sqlite3_clear_bindings(stmt);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+
+		// Get row ID of the newly added message
+		rowid = sqlite3_last_insert_rowid(db);
+	}
+
 	dbclose(&db);
 
 	return rowid;

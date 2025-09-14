@@ -955,15 +955,14 @@ int cache_recv_insert(time_t now, int fd)
 		if (newc)
 		  {
 		    newc->addr.cname.is_name_ptr = 0;
+		    newc->addr.cname.target.cache = crecp;
 		    
-		    if (!crecp)
-		      newc->addr.cname.target.cache = NULL;
-		    else
+		    if (crecp)
 		      {
 			next_uid(crecp);
-			newc->addr.cname.target.cache = crecp;
 			newc->addr.cname.uid = crecp->uid;
 		      }
+		    crecp = newc;
 		  }
 	      }
 	    else

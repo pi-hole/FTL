@@ -1,14 +1,3 @@
-From f785e181f8b43fa9f77bf7dcc6711f16206c9e89 Mon Sep 17 00:00:00 2001
-From: DL6ER <dl6er@dl6er.de>
-Date: Thu, 25 May 2023 18:26:45 +0200
-Subject: [PATCH] Add mbedTLS debug logging hook
-
-Signed-off-by: DL6ER <dl6er@dl6er.de>
----
- src/webserver/civetweb/civetweb.h      | 4 ++++
- src/webserver/civetweb/mod_mbedtls.inl | 4 ++++
- 2 files changed, 8 insertions(+)
-
 diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
 index 2ad76693..52724199 100644
 --- a/src/webserver/civetweb/civetweb.h
@@ -39,6 +28,3 @@ index e72685f4..00b9280a 100644
  	/* Initialize TLS key and cert */
  	mbedtls_pk_init(&ctx->pkey);
  	mbedtls_ctr_drbg_init(&ctx->ctr);
--- 
-2.34.1
-

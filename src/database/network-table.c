@@ -26,7 +26,8 @@
 // nlneigh(), nllinks()
 #include "tools/netlink.h"
 
-static char *getMACVendor(const char *hwaddr) __attribute__ ((malloc));
+#define MAXVENDORLEN 128
+static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN]);
 enum arp_status { CLIENT_NOT_HANDLED, CLIENT_ARP_COMPLETE, CLIENT_ARP_INCOMPLETE } __attribute__ ((packed));
 
 bool create_network_table(sqlite3 *db)
@@ -817,10 +818,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		}
 
 		// Get hostname and IP address of this client
-		char *hostname, *ipaddr, *interface;
-		ipaddr = strdup(getstr(client->ippos));
-		hostname = strdup(getstr(client->namepos));
-		interface = strdup(getstr(client->ifacepos));
+		char hostname[MAXHOSTNAMELEN], ipaddr[INET6_ADDRSTRLEN], interface[MAXIFACESTRLEN];
+		strncpy(ipaddr, getstr(client->ippos), sizeof(ipaddr));
+		strncpy(hostname, getstr(client->namepos), sizeof(hostname));
+		strncpy(interface, getstr(client->ifacepos), sizeof(interface));
 
 		// Skip if already handled above (first check against clients_array_size as we might have added
 		// more clients to FTL's memory herein (those known only from the database))
@@ -828,9 +829,6 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		{
 			log_debug(DEBUG_ARP, "Network table: Client %s known through ARP/neigh cache",
 			          ipaddr);
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			unlock_shm();
 			continue;
 		}
@@ -907,21 +905,18 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		if(dbID == DB_FAILED)
 		{
 			// SQLite error
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			break;
 		}
 
 		// Device not in database, add new entry
 		else if(dbID == DB_NODATA)
 		{
-			char *macVendor = NULL;
+			char macVendor[MAXVENDORLEN] = { 0 };
 			if(client->hwlen == 6)
 			{
 				// Normal client, MAC was likely obtained from EDNS(0) data
 				unlock_shm();
-				macVendor = getMACVendor(hwaddr);
+				getMACVendor(hwaddr, macVendor);
 				lock_shm();
 
 				// Reacquire client pointer (if may have changed when unlocking above)
@@ -937,12 +932,8 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			const unsigned int numQueries = client->count;
 			unlock_shm();
 			if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
-			{
-				if(ipaddr) free(ipaddr);
-				if(hostname) free(hostname);
-				if(interface) free(interface);
 				break;
-			}
+
 			lock_shm();
 
 			// Reacquire client pointer (if may have changed when unlocking above)
@@ -950,13 +941,6 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 
 			// Reset client counter
 			client->numQueriesARP = 0;
-
-			// Free allocated memory (if allocated)
-			if(macVendor != NULL)
-			{
-				free(macVendor);
-				macVendor = NULL;
-			}
 		}
 		else	// Device already in database
 		{
@@ -968,21 +952,11 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			const unsigned int numQueriesARP = client->numQueriesARP;
 			unlock_shm();
 			if(!update_netDB_lastQuery(db, dbID, lastQuery))
-			{
-				if(ipaddr) free(ipaddr);
-				if(hostname) free(hostname);
-				if(interface) free(interface);
 				break;
-			}
 
 			// Update number of queries if applicable
 			if(!update_netDB_numQueries(db, dbID, numQueriesARP))
-			{
-				if(ipaddr) free(ipaddr);
-				if(hostname) free(hostname);
-				if(interface) free(interface);
 				break;
-			}
 
 			lock_shm();
 			// Reacquire client pointer (if may have changed when unlocking above)
@@ -995,50 +969,25 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// Break early if we failed to add the new device to the
 		// database above, continuing is not possible anymore
 		if(dbID < 0)
-		{
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			break;
-		}
 
 		// Add unique IP address / mock-MAC pair to network_addresses table
 		// ipaddr is a local copy
 		if(!add_netDB_network_address(db, dbID, ipaddr))
-		{
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			break;
-		}
 
 		// Update hostname if available
 		// hostname is a local copy
 		if(!update_netDB_name(db, ipaddr, hostname))
-		{
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			break;
-		}
 
 		// Update interface if available
 		// interface is a local copy
 		if(!update_netDB_interface(db, dbID, interface))
-		{
-			if(ipaddr) free(ipaddr);
-			if(hostname) free(hostname);
-			if(interface) free(interface);
 			break;
-		}
 
 		// Add to number of processed ARP cache entries
 		(*additional_entries)++;
-
-		// Free allocated memory
-		free(ipaddr);
-		free(hostname);
-		free(interface);
 	}
 
 	// Check for possible error in loop
@@ -1069,6 +1018,7 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	if(!nllinks(links, false))
 	{
 		log_err("Failed to get links, cannot update network table");
+		cJSON_Delete(links);
 		return false;
 	}
 	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
@@ -1102,14 +1052,14 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 				continue;
 
 			log_debug(DEBUG_ARP, "Network table: read interface details for interface %s (%s) with address %s",
-				iface, hwaddr, ipaddr);
+			          iface, hwaddr, ipaddr);
 
 			// Try to find the device we parsed above
 			int dbID = find_device_by_hwaddr(db, hwaddr);
 			if(dbID >= 0)
 			{
 				log_debug(DEBUG_ARP, "Network table (ip a): Client with MAC %s was recently be seen for network ID %i",
-					hwaddr, dbID);
+				          hwaddr, dbID);
 			}
 
 			// Break on SQLite error
@@ -1120,14 +1070,15 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 			}
 
 			// Get vendor
-			char *macVendor = getMACVendor(hwaddr);
+			char macVendor[MAXVENDORLEN] = { 0 };
+			getMACVendor(hwaddr, macVendor);
 
 			// Device not in database, add new entry
 			if(dbID == DB_NODATA)
 			{
 
 				log_debug(DEBUG_ARP, "Network table: Creating new ip a device MAC = %s, IP = %s, vendor = \"%s\", interface = \"%s\"",
-					hwaddr, ipaddr, macVendor, iface);
+				          hwaddr, ipaddr, macVendor, iface);
 
 				// Try to import query data from a possibly previously existing mock-device
 				int mockID = find_device_by_mock_hwaddr(db, ipaddr);
@@ -1143,15 +1094,12 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 				if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
 					break;
 			}
-			else	// Device already in database
+			else
 			{
+				// Device already in database
 				log_debug(DEBUG_ARP, "Network table: Updating existing ip a device MAC = %s, IP = %s, interface = \"%s\"",
-					hwaddr, ipaddr, iface);
+				          hwaddr, ipaddr, iface);
 			}
-
-			//Free allocated memory
-			if(macVendor != NULL)
-				free(macVendor);
 
 			// Add unique IP address / mock-MAC pair to network_addresses table
 			if(!add_netDB_network_address(db, dbID, ipaddr))
@@ -1165,6 +1113,9 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 			(*additional_entries)++;
 		}
 	}
+
+	// Free allocated memory
+	cJSON_Delete(links);
 
 	return true;
 }
@@ -1279,6 +1230,7 @@ void parse_neighbor_cache(sqlite3 *db)
 		if(!nlneigh(json))
 		{
 			log_err("Failed to read ARP cache, cannot update network table");
+			cJSON_Delete(json);
 			free(client_status);
 			return;
 		}
@@ -1323,12 +1275,12 @@ void parse_neighbor_cache(sqlite3 *db)
 
 			// Check if we want to process the line we just read
 			if(strlen(hwaddr) != 17 ||	// MAC address must be 17 characters long
-			   strlen(ip) == 0 ||		// IP address must not be empty
-			   strlen(iface) == 0)		// Interface must not be empty
+			   ip[0] == '\0' ||		// IP address must not be empty
+			   iface[0] == '\0')		// Interface must not be empty
 			{
 				log_debug(DEBUG_ARP, "Network table: Skipping incomplete ARP cache entry: %s",
-				          strlen(hwaddr) == 0 ? "no MAC address" : "incomplete");
-				if(strlen(hwaddr) == 0)
+				          hwaddr[0] == '\0' ? "no MAC address" : "incomplete");
+				if(hwaddr[0] == '\0')
 				{
 					// This line is incomplete, remember this to skip
 					// mock-device creation after ARP processing
@@ -1377,7 +1329,7 @@ void parse_neighbor_cache(sqlite3 *db)
 
 			// Set default values for a new device, may be updated
 			// below if the client is known to pihole-FTL
-			char *hostname = NULL;
+			char hostname[MAXHOSTNAMELEN] = { 0 };
 			bool client_valid = false;
 			time_t lastQuery = 0;
 			time_t firstSeen = now;
@@ -1394,27 +1346,28 @@ void parse_neighbor_cache(sqlite3 *db)
 				// Client is known to Pi-hole, update properties
 				// with their real values
 				client_valid = true;
-				hostname = strdup(getstr(client->namepos));
+				strncpy(hostname, getstr(client->namepos), sizeof(hostname) - 1);
+				hostname[sizeof(hostname) - 1] = '\0';
 				firstSeen = client->firstSeen;
 				lastQuery = client->lastQuery;
 				numQueries = client->numQueriesARP;
 				totalQueries = client->count;
 				client_status[clientID] = CLIENT_ARP_COMPLETE;
 			}
-			else
-			{
+			// else
+			// {
 				// Client is not known to Pi-hole, create a
 				// mock-device with the default values set above
 				// and an empty hostname
-				hostname = strdup("");
-			}
+			// }
 			unlock_shm();
 
 			// Device not in database, add new entry
 			if(client_valid && dbID == DB_NODATA)
 			{
 				// Try to obtain vendor from MAC database
-				char *macVendor = getMACVendor(hwaddr);
+				char macVendor[MAXVENDORLEN] = { 0 };
+				getMACVendor(hwaddr, macVendor);
 
 				// Check if we recently added a mock-device with the same IP address
 				// and the ARP entry just came a bit delayed (reported by at least one user)
@@ -1437,12 +1390,7 @@ void parse_neighbor_cache(sqlite3 *db)
 
 					// Create new record (INSERT)
 					if(!insert_netDB_device(db, hwaddr, firstSeen, lastQuery, numQueries, macVendor, &dbID))
-					{
-						// Free allocated memory
-						free(hostname);
-						free(macVendor);
 						break;
-					}
 
 					lock_shm();
 					clientsData *client = getClient(clientID, true);
@@ -1454,15 +1402,10 @@ void parse_neighbor_cache(sqlite3 *db)
 					unlock_shm();
 
 					// Store hostname in the appropriate network_address record (if available)
-					if(strlen(hostname) > 0)
+					if(hostname[0] != '\0')
 					{
 						if(!update_netDB_name(db, ip, hostname))
-						{
-							// Free allocated memory
-							free(hostname);
-							free(macVendor);
 							break;
-						}
 					}
 				}
 				else
@@ -1473,19 +1416,11 @@ void parse_neighbor_cache(sqlite3 *db)
 
 					// Update/replace important device properties
 					if(!unmock_netDB_device(db, hwaddr, macVendor, dbID))
-					{
-						// Free allocated memory
-						free(hostname);
-						free(macVendor);
 						break;
-					}
 
 					// Host name, count and last query timestamp will be set in the next
 					// loop iteration for the sake of simplicity
 				}
-
-				// Free allocated memory
-				free(macVendor);
 			}
 			// Device in database AND client known to Pi-hole
 			else if(client_valid)
@@ -1495,19 +1430,11 @@ void parse_neighbor_cache(sqlite3 *db)
 
 				// Update timestamp of last query if applicable
 				if(!update_netDB_lastQuery(db, dbID, lastQuery))
-				{
-					// Free allocated memory
-					free(hostname);
 					break;
-				}
 
 				// Update number of queries if applicable
 				if(!update_netDB_numQueries(db, dbID, numQueries))
-				{
-					// Free allocated memory
-					free(hostname);
 					break;
-				}
 
 				lock_shm();
 				// Acquire client pointer
@@ -1521,16 +1448,9 @@ void parse_neighbor_cache(sqlite3 *db)
 
 				// Update hostname if available
 				if(!update_netDB_name(db, ip, hostname))
-				{
-					// Free allocated memory
-					free(hostname);
 					break;
-				}
 			}
 			// else: Device in database but not known to Pi-hole
-
-			free(hostname);
-			hostname = NULL;
 
 			// Store interface if available
 			if(dbID > DB_NODATA && !update_netDB_interface(db, dbID, iface))
@@ -1543,6 +1463,9 @@ void parse_neighbor_cache(sqlite3 *db)
 			// Count number of processed ARP cache entries
 			entries++;
 		}
+
+		// Free allocated JSON array
+		cJSON_Delete(json);
 
 		log_debug(DEBUG_ARP, "Network table: Finished parsing ARP cache with %u entries", entries);
 
@@ -1665,7 +1588,7 @@ bool unify_hwaddr(sqlite3 *db)
 
 		// Obtain id and hwaddr of the most recent entry for this particular client
 		const int id = sqlite3_column_int(stmt, 0);
-		char *hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
+		const char *hwaddr = (char*)sqlite3_column_text(stmt, 1);
 
 		// Reset statement
 		sqlite3_reset(stmt);
@@ -1684,8 +1607,6 @@ bool unify_hwaddr(sqlite3 *db)
 		dbquery(db, "DELETE FROM network "\
 		            "WHERE hwaddr = \'%s\' COLLATE NOCASE "\
 		            "AND id != %i;", hwaddr, id);
-
-		free(hwaddr);
 	}
 
 	// Update database version to 4
@@ -1727,11 +1648,14 @@ unify_hwaddr_end:
  * - If the MAC address is "00:00:00:00:00:00", the function returns "virtual interface".
  * - If the MAC address is invalid (not 17 characters long or contains "ip-"), an empty string is returned.
  */
-static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
+static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 {
 	// Special handling for the loopback interface
 	if(strcmp(hwaddr, "00:00:00:00:00:00") == 0)
-			return strdup("virtual interface");
+	{
+		strncpy(vendor, "virtual interface", MAXVENDORLEN);
+		return true;
+	}
 
 	log_debug(DEBUG_ARP, "getMACVendor(\"%s\")", hwaddr);
 
@@ -1739,14 +1663,14 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{
 		// File does not exist
-		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): %s does not exist", hwaddr, config.files.macvendor.v.s);
-		return strdup("");
+		log_debug(DEBUG_ARP, "getMACVendor(\"%s\"): %s does not exist", hwaddr, config.files.macvendor.v.s);
+		return false;
 	}
 	else if(strlen(hwaddr) != 17 || strstr(hwaddr, "ip-") != NULL)
 	{
 		// MAC address is incomplete or mock address (for distant clients)
-		log_debug(DEBUG_ARP, "getMACVenor(\"%s\"): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
-		return strdup("");
+		log_debug(DEBUG_ARP, "getMACVendor(\"%s\"): MAC invalid (length %zu)", hwaddr, strlen(hwaddr));
+		return false;
 	}
 
 	bool success = false;
@@ -1756,7 +1680,7 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
 		sqlite3_close(macvendor_db);
-		return strdup("");
+		return false;
 	}
 
 	// Only keep "XX:YY:ZZ" (8 characters)
@@ -1765,7 +1689,6 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	hwaddrshort[8] = '\0';
 	const char querystr[] = "SELECT vendor FROM macvendor WHERE mac LIKE ?;";
 
-	char *vendor = NULL;
 	sqlite3_stmt *stmt = NULL;
 	rc = sqlite3_prepare_v2(macvendor_db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -1785,7 +1708,8 @@ static char * __attribute__ ((malloc)) getMACVendor(const char *hwaddr)
 	rc = sqlite3_step(stmt);
 	if(rc == SQLITE_ROW)
 	{
-		vendor = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(vendor, (char*)sqlite3_column_text(stmt, 0), MAXVENDORLEN);
+		vendor[MAXVENDORLEN - 1] = '\0';
 	}
 
 	if(rc != SQLITE_DONE && rc != SQLITE_ROW)
@@ -1801,9 +1725,6 @@ getMACVendor_end:
 	if(!success)
 		checkFTLDBrc(rc);
 
-	if(vendor == NULL)
-		vendor = strdup("");
-
 	// Finalize statement and close database
 	sqlite3_reset(stmt);
 	sqlite3_finalize(stmt);
@@ -1811,7 +1732,7 @@ getMACVendor_end:
 
 	log_debug(DEBUG_ARP, "MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 
-	return vendor;
+	return success;
 }
 
 /**
@@ -1846,14 +1767,10 @@ bool updateMACVendorRecords(sqlite3 *db)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const int id = sqlite3_column_int(stmt, 0);
-		char *hwaddr = strdup((char*)sqlite3_column_text(stmt, 1));
 
 		// Get vendor for MAC
-		char *vendor = getMACVendor(hwaddr);
-
-		// Free allocated memory
-		free(hwaddr);
-		hwaddr = NULL;
+		char vendor[MAXVENDORLEN];
+		getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor);
 
 		// Prepare statement
 		sqlite3_stmt *stmt2 = NULL;
@@ -1862,7 +1779,6 @@ bool updateMACVendorRecords(sqlite3 *db)
 		if(rc != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - SQL error prepare \"%s\": %s", updatestr, sqlite3_errstr(rc));
-			free(vendor);
 			goto updateMACVendorRecords_end;
 		}
 
@@ -1870,7 +1786,6 @@ bool updateMACVendorRecords(sqlite3 *db)
 		if((rc = sqlite3_bind_text(stmt2, 1, vendor, -1, SQLITE_STATIC)) != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - Failed to bind vendor: %s", sqlite3_errstr(rc));
-			free(vendor);
 			goto updateMACVendorRecords_end;
 		}
 
@@ -1878,21 +1793,14 @@ bool updateMACVendorRecords(sqlite3 *db)
 		if((rc = sqlite3_bind_int(stmt2, 2, id)) != SQLITE_OK)
 		{
 			log_err("updateMACVendorRecords() - Failed to bind id: %s", sqlite3_errstr(rc));
-			free(vendor);
 			goto updateMACVendorRecords_end;
 		}
 
 		// Execute statement
 		rc = sqlite3_step(stmt2);
 		if(rc != SQLITE_DONE)
-		{
-			log_err("updateMACVendorRecords() - SQL error step: %s", sqlite3_errstr(rc));
-			free(vendor);
 			goto updateMACVendorRecords_end;
-		}
 
-		// Free allocated memory
-		free(vendor);
 	}
 	if(rc != SQLITE_DONE)
 	{
@@ -1917,11 +1825,13 @@ updateMACVendorRecords_end:
 }
 
 // Get hardware address of device identified by IP address
-char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
+bool getMACfromIP(sqlite3 *db, char hwaddr[MAXMACLEN], const char *ipaddr)
 {
+	bool got_hwaddr = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
@@ -1930,7 +1840,7 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getMACfromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -1940,8 +1850,6 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 	// Prepare SQLite statement
 	// We request the most recent IP entry in case there an IP appears
 	// multiple times in the network_addresses table
-	char *hwaddr = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT hwaddr FROM network WHERE id = "
 	                       "(SELECT network_id FROM network_addresses "
@@ -1963,31 +1871,26 @@ char *__attribute__((malloc)) getMACfromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	rc = sqlite3_step(stmt);
+	got_hwaddr = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		hwaddr = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hwaddr, (char*)sqlite3_column_text(stmt, 0), MAXMACLEN);
+		hwaddr[MAXMACLEN - 1] = '\0'; // Ensure NULL termination
 	}
-	else if(rc == SQLITE_DONE)
-	{
-		// Not found
-		hwaddr = NULL;
-	}
-	else
+	else if(rc != SQLITE_DONE)
 	{
 		log_err("getMACfromIP(\"%s\"): Failed step: %s",
 		        ipaddr, sqlite3_errstr(rc));
 		goto getMACfromIP_end;
 	}
 
-	if(hwaddr != NULL)
+	if(got_hwaddr)
 		log_debug(DEBUG_DATABASE, "Found database hardware address %s -> %s", ipaddr, hwaddr);
-
-	success = true;
 
 getMACfromIP_end:
 
-	if(!success)
+	if(!got_hwaddr)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -1998,7 +1901,7 @@ getMACfromIP_end:
 		dbclose(&db);
 
 	// Return hardware address, may be NULL on error
-	return hwaddr;
+	return got_hwaddr;
 }
 
 // Get aliasclient ID of device identified by IP address (if available)
@@ -2087,18 +1990,20 @@ getAliasclientIDfromIP_end:
 }
 
 // Get host name of device identified by IP address
-char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
+bool getNameFromIP(sqlite3 *db, char hostn[MAXDOMAINLEN], const char *ipaddr)
 {
+	bool got_name = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 	log_debug(DEBUG_RESOLVER, "Trying to obtain host name of \"%s\" from network_addresses table", ipaddr);
 
 	// Check if we want to resolve host names
 	if(!resolve_this_name(ipaddr))
 	{
 		log_debug(DEBUG_RESOLVER, "getNameFromIP(\"%s\") - configured to not resolve host name", ipaddr);
-		return NULL;
+		return false;
 	}
 
 	// Open pihole-FTL.db database file if needed
@@ -2108,7 +2013,7 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getNameFromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -2116,7 +2021,6 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Check for a host name associated with the same IP address
-	char *name = NULL;
 	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT name FROM network_addresses WHERE name IS NOT NULL AND ip = ?;";
@@ -2139,12 +2043,14 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with IP address %s", ipaddr);
 
 	rc = sqlite3_step(stmt);
+	got_name = rc == SQLITE_ROW;
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
-		log_debug(DEBUG_RESOLVER, "Found database host name (same address) %s -> %s", ipaddr, name);
+		log_debug(DEBUG_RESOLVER, "Found database host name (same address) %s -> %s", ipaddr, hostn);
 	}
 	else if(rc != SQLITE_DONE)
 	{
@@ -2159,13 +2065,13 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	sqlite3_finalize(stmt);
 
 	// Return here if we found the name
-	if(name != NULL)
+	if(got_name)
 	{
 		if(db_opened)
 			dbclose(&db);
 
 		// Return early
-		return name;
+		return true;
 	}
 
 	log_debug(DEBUG_RESOLVER, " ---> not found");
@@ -2196,14 +2102,16 @@ char *__attribute__((malloc)) getNameFromIP(sqlite3 *db, const char *ipaddr)
 	log_debug(DEBUG_RESOLVER, "Checking for a host name associated with the same device (but another IP address)");
 
 	rc = sqlite3_step(stmt);
+	got_name = rc == SQLITE_ROW;
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
 		if(config.debug.resolver.v.b)
 			log_debug(DEBUG_RESOLVER, "Found database host name (same device) %s -> %s",
-			          ipaddr, name);
+			          ipaddr, hostn);
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -2233,22 +2141,24 @@ getNameFromIP_end:
 	if(db_opened)
 		dbclose(&db);
 
-	return name;
+	return got_name;
 }
 
 // Get most recently seen host name of device identified by MAC address
-char *__attribute__((malloc)) getNameFromMAC(const char *client)
+bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
 {
+	bool got_name = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file
 	sqlite3 *db = NULL;
 	if((db = dbopen(false, false)) == NULL)
 	{
 		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
-		return NULL;
+		return false;
 	}
 
 	// Check for a host name associated with the given client as MAC address
@@ -2257,8 +2167,6 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	                               "WHERE name IS NOT NULL AND "
 	                                     "network_id = (SELECT id FROM network WHERE hwaddr = ? COLLATE NOCASE) "
 	                               "ORDER BY lastSeen DESC LIMIT 1";
-	char *name = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -2279,14 +2187,16 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 	log_debug(DEBUG_RESOLVER, "Check for a host name associated with MAC address %s", client);
 
 	rc = sqlite3_step(stmt);
+	got_name = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		name = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(hostn, (char*)sqlite3_column_text(stmt, 0), MAXDOMAINLEN);
+		hostn[MAXDOMAINLEN - 1] = '\0';
 
 		if(config.debug.resolver.v.b)
 			log_debug(DEBUG_RESOLVER, "Found database host name (by MAC) %s -> %s",
-			          client, name);
+			          client, hostn);
 	}
 	else if(rc == SQLITE_DONE)
 	{
@@ -2302,11 +2212,9 @@ char *__attribute__((malloc)) getNameFromMAC(const char *client)
 		goto getNameFromMAC_end;
 	}
 
-	success = true;
-
 getNameFromMAC_end:
 
-	if(!success)
+	if(!got_name)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -2314,15 +2222,17 @@ getNameFromMAC_end:
 	sqlite3_finalize(stmt);
 
 	dbclose(&db);
-	return name;
+	return got_name;
 }
 
 // Get interface of device identified by IP address
-char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
+bool getIfaceFromIP(sqlite3 *db, char iface[MAXIFACESTRLEN], const char *ipaddr)
 {
+	bool got_iface = false;
+
 	// Return early if database is known to be broken
 	if(FTLDBerror())
-		return NULL;
+		return false;
 
 	// Open pihole-FTL.db database file if needed
 	bool db_opened = false;
@@ -2331,7 +2241,7 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 		if((db = dbopen(false, false)) == NULL)
 		{
 			log_warn("getIfaceFromIP(\"%s\") - Failed to open DB", ipaddr);
-			return NULL;
+			return false;
 		}
 
 		// Successful
@@ -2339,8 +2249,6 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	// Prepare SQLite statement
-	char *iface = NULL;
-	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	const char *querystr = "SELECT interface FROM network "
 	                               "JOIN network_addresses "
@@ -2368,10 +2276,12 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	}
 
 	rc = sqlite3_step(stmt);
+	got_iface = (rc == SQLITE_ROW);
 	if(rc == SQLITE_ROW)
 	{
 		// Database record found (result might be empty)
-		iface = strdup((char*)sqlite3_column_text(stmt, 0));
+		strncpy(iface, (char*)sqlite3_column_text(stmt, 0), MAXIFACESTRLEN);
+		iface[MAXIFACESTRLEN - 1] = '\0';
 	}
 	else if(rc != SQLITE_DONE)
 	{
@@ -2384,11 +2294,9 @@ char *__attribute__((malloc)) getIfaceFromIP(sqlite3 *db, const char *ipaddr)
 	if(iface != NULL)
 		log_debug(DEBUG_DATABASE, "Found database interface %s -> %s", ipaddr, iface);
 
-	success = true;
-
 getIfaceFromIP_end:
 
-	if(!success)
+	if(!got_iface)
 		checkFTLDBrc(rc);
 
 	// Finalize statement and close database handle
@@ -2398,7 +2306,7 @@ getIfaceFromIP_end:
 	if(db_opened)
 		dbclose(&db);
 
-	return iface;
+	return got_iface;
 }
 
 // Select records from the network table

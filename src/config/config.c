@@ -46,7 +46,6 @@ uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 // Private prototypes
 static bool port_in_use(const in_port_t port);
 static void reset_config_default(struct conf_item *conf_item);
-static void initConfig(struct config *conf);
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -335,14 +334,14 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 }
 
 
-void free_config(struct config *conf)
+void free_config(struct config *conf, const bool terminating)
 {
 	// Post-processing:
 	// Initialize and verify config data
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
-		// Get pointer to memory location of this conf_item (copy)
-		struct conf_item *copy_item = get_conf_item(conf, i);
+		// Get pointer to memory location of this conf_item
+		struct conf_item *conf_item = get_conf_item(conf, i);
 
 		// Free allowed values (if defined)
 		// Note: This is no necessary as we simply leave the allowed values
@@ -351,7 +350,7 @@ void free_config(struct config *conf)
 		// if(conf->a != NULL) cJSON_Delete(conf->a);
 
 		// Make a type-dependent copy of the value
-		switch(copy_item->t)
+		switch(conf_item->t)
 		{
 			case CONF_BOOL:
 			case CONF_INT:
@@ -376,18 +375,25 @@ void free_config(struct config *conf)
 				// Nothing to do
 				break;
 			case CONF_STRING_ALLOCATED:
-				free(copy_item->v.s);
-				copy_item->v.s = NULL;
-				copy_item->t = CONF_STRING; // not allocated anymore
+				free(conf_item->v.s);
+				conf_item->v.s = NULL;
+				conf_item->t = CONF_STRING; // not allocated anymore
 				break;
 			case CONF_JSON_STRING_ARRAY:
-				cJSON_Delete(copy_item->v.json);
+				// Delete default JSON only when terminating.
+				// During config replacements, it is simply
+				// handed over from the old to the new config
+				// structure to avoid unnecessary memory
+				// duplications
+				if(terminating)
+					cJSON_Delete(conf_item->d.json);
+				cJSON_Delete(conf_item->v.json);
 				break;
 		}
 	}
 }
 
-static void initConfig(struct config *conf)
+void initConfig(struct config *conf)
 {
 	if(config_initialized)
 		return;
@@ -480,7 +486,7 @@ static void initConfig(struct config *conf)
 
 	conf->dns.hosts.k = "dns.hosts";
 	conf->dns.hosts.h = "Array of custom DNS records\n\n Example: [ \"127.0.0.1 mylocal\", \"192.168.0.1 therouter\" ]";
-	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME\"");
+	conf->dns.hosts.a = cJSON_CreateStringReference("Array of custom DNS records each one in HOSTS form: \"IP HOSTNAME [HOSTNAME ...]\"");
 	conf->dns.hosts.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 	conf->dns.hosts.c = validate_dns_hosts;
@@ -522,7 +528,7 @@ static void initConfig(struct config *conf)
 	conf->dns.dnssec.d.b = false;
 
 	conf->dns.interface.k = "dns.interface";
-	conf->dns.interface.h = "Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled). Leave empty for auto-detection.";
+	conf->dns.interface.h = "Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave empty for auto-detection.";
 	conf->dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	conf->dns.interface.t = CONF_STRING;
 	conf->dns.interface.f = FLAG_RESTART_FTL;
@@ -1044,12 +1050,12 @@ static void initConfig(struct config *conf)
 	conf->webserver.headers.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.headers.f = FLAG_RESTART_FTL;
 	conf->webserver.headers.d.json = cJSON_CreateArray();
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-DNS-Prefetch-Control: off"));
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"));
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Frame-Options: DENY"));
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-XSS-Protection: 0"));
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));
-	cJSON_AddItemReferenceToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-DNS-Prefetch-Control: off"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Frame-Options: DENY"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-XSS-Protection: 0"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Referrer-Policy: strict-origin-when-cross-origin"));
 	conf->webserver.headers.c = validate_stub; // Only type-based checking
 
 	conf->webserver.serve_all.k = "webserver.serve_all";
@@ -1068,7 +1074,7 @@ static void initConfig(struct config *conf)
 
 	conf->webserver.session.restore.k = "webserver.session.restore";
 	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
-	conf->webserver.session.restore.a = cJSON_CreateStringReference("true or false");	
+	conf->webserver.session.restore.a = cJSON_CreateStringReference("true or false");
 	conf->webserver.session.restore.t = CONF_BOOL;
 	conf->webserver.session.restore.d.b = true;
 	conf->webserver.session.restore.c = validate_stub; // Only type-based checking
@@ -1593,7 +1599,7 @@ static void initConfig(struct config *conf)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
 		// Get pointer to memory location of this conf_item
-		struct conf_item *conf_item = get_conf_item(&config, i);
+		struct conf_item *conf_item = get_conf_item(conf, i);
 
 		// Initialize config value with default one for all *except* the log file path
 		if(conf_item != &conf->files.log.ftl)
@@ -1666,7 +1672,6 @@ static void initConfig(struct config *conf)
 		{
 			conf_item->a = cJSON_CreateStringReference("true or false");
 		}
-	
 	}
 }
 
@@ -1957,7 +1962,7 @@ void replace_config(struct config *newconf)
 	memcpy(&config, newconf, sizeof(struct config));
 
 	// Free old backup struct
-	free_config(&old_conf);
+	free_config(&old_conf, false);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -2017,7 +2022,7 @@ void reread_config(void)
 	{
 		// New configuration is invalid, restore old one
 		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
-		free_config(&conf_copy);
+		free_config(&conf_copy, false);
 	}
 
 	// Write the config file back to disk to ensure that all options and

@@ -1,15 +1,3 @@
-From 445aed4fd5ef53a52ac974aa5123ba56b11d8a1f Mon Sep 17 00:00:00 2001
-From: DL6ER <dl6er@dl6er.de>
-Date: Sat, 14 Oct 2023 15:39:21 +0200
-Subject: [PATCH] Log debug messages to webserver.log when debug.webserver is
- true
-
-Signed-off-by: DL6ER <dl6er@dl6er.de>
----
- src/webserver/civetweb/civetweb.c      | 5 +++--
- src/webserver/civetweb/mod_mbedtls.inl | 4 ++--
- 2 files changed, 5 insertions(+), 4 deletions(-)
-
 diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
 index 3df8eab9..9b0c6308 100644
 --- a/src/webserver/civetweb/civetweb.c
@@ -27,6 +15,3 @@ index 3df8eab9..9b0c6308 100644
  #endif /* DEBUG */
  #endif /* DEBUG_TRACE */
  
--- 
-2.34.1
-

@@ -142,7 +142,7 @@ void dhcp_packet(time_t now, int pxe_fd)
   struct iovec iov;
   ssize_t sz; 
   int iface_index = 0, unicast_dest = 0, is_inform = 0, loopback = 0;
-  int rcvd_iface_index;
+  int rcvd_iface_index, relay_index;
   struct in_addr iface_addr;
   struct iface_param parm;
   time_t recvtime = now;
@@ -302,10 +302,10 @@ void dhcp_packet(time_t now, int pxe_fd)
     unicast_dest = 1;
 #endif
   
-  if ((relay = relay_reply4((struct dhcp_packet *)daemon->dhcp_packet.iov_base, ifr.ifr_name)))
+  if ((relay_index = relay_reply4((struct dhcp_packet *)daemon->dhcp_packet.iov_base, (size_t)sz, ifr.ifr_name)))
     {
       /* Reply from server, using us as relay. */
-      rcvd_iface_index = relay->iface_index;
+      rcvd_iface_index = relay_index;
       if (!indextoname(daemon->dhcpfd, rcvd_iface_index, ifr.ifr_name))
 	return;
       is_relay_reply = 1; 
@@ -330,9 +330,12 @@ void dhcp_packet(time_t now, int pxe_fd)
 	if (tmp->name && (tmp->flags & INAME_4) && wildcard_match(tmp->name, ifr.ifr_name))
 	  return;
       
-      /* unlinked contexts/relays are marked by context->current == context */
+      /* unlinked contexts are marked by context->current == context */
       for (context = daemon->dhcp; context; context = context->next)
 	context->current = context;
+
+      for (relay = daemon->relay4; relay; relay = relay->next)
+	relay->matchcount = 0;
       
       parm.current = NULL;
       parm.ind = iface_index;
@@ -360,7 +363,7 @@ void dhcp_packet(time_t now, int pxe_fd)
       if (!iface_enumerate(AF_INET, &parm, (callback_t){.af_inet=complete_context}))
 	return;
 
-      relay_upstream4(iface_index, mess, (size_t)sz, unicast_dest);
+      relay_upstream4(iface_addr, iface_index, mess, (size_t)sz, unicast_dest);
        
       /* May have configured relay, but not DHCP server */
       if (!daemon->dhcp)
@@ -664,8 +667,19 @@ static int complete_context(struct in_addr local, int if_index, char *label,
     }
 
   for (relay = daemon->relay4; relay; relay = relay->next)
-    if (relay->local.addr4.s_addr == local.s_addr)
-      relay->iface_index = if_index;
+    if (!relay->split_mode && relay->local.addr4.s_addr == local.s_addr)
+      {
+	if (if_index == param->ind)
+	  relay->iface_index = if_index;
+	
+	/* More than one interface with the relay address breaks things. */
+	if (relay->matchcount++ == 1 && !relay->warned)
+	  {
+	    relay->warned = 1;
+	    inet_ntop(AF_INET, &local, daemon->addrbuff, ADDRSTRLEN);
+	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
+	  }
+      }
   
   return 1;
 }
