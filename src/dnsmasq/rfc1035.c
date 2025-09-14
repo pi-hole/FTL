@@ -517,7 +517,7 @@ int do_doctor(struct dns_header *header, size_t qlen, char *namebuff)
    Cache said SOA and return the difference in length between name and the name of the 
    SOA RR so we can look it up again.
 */
-static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, unsigned long *ttlp, int no_cache, time_t now)
+static int find_soa(struct dns_header *header, size_t qlen, char *name, int *substring, unsigned long *ttlp, int cache, time_t now)
 {
   unsigned char *p, *psave;
   int qtype, qclass, rdlen;
@@ -557,7 +557,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 	    {
 	      int prefix = name_len - soa_len;
 	      
-	      if (!no_cache)
+	      if (cache)
 		{
 		  if (!(addr.rrblock.rrdata = blockdata_alloc(NULL, 0)))
 		    return 0;
@@ -569,12 +569,12 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 		{
 		  if (!extract_name(header, qlen, &p, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
 		    {
-		      if (!no_cache)
+		      if (cache)
 			blockdata_free(addr.rrblock.rrdata);
 		      return 0;
 		    }
 		  
-		  if (!no_cache)
+		  if (cache)
 		    {
 		      len = to_wire(daemon->workspacename);
 		      if (!blockdata_expand(addr.rrblock.rrdata, addr.rrblock.datalen, daemon->workspacename, len))
@@ -589,13 +589,13 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 
 	      if (!CHECK_LEN(header, p, qlen, 20))
 		{
-		  if (!no_cache)
+		  if (cache)
 		    blockdata_free(addr.rrblock.rrdata);
 		  return 0;
 		}
 	      
 	      /* rest of RR */
-	      if (!no_cache)
+	      if (cache)
 		{
 		  int secflag = 0;
 
@@ -1112,7 +1112,17 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 	  
 	  if (insert && !option_bool(OPT_NO_NEG))
 	    {
-	      int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, no_cache_dnssec, now);
+	      /* The order of records going into the cache matters (see  cache_recv_insert()).
+		 The target of a CNAME must immediately follow the CNAME.
+		 (CNAME has already gone into the cache at this point)
+		 Here we call find_soa to get the ttl and substring, but
+		 we DON'T LET IT INSERT the SOA into the cache if our negative record is a CNAME target
+		 so that the SOA doesn't come before the CNAME target.
+
+		 We call find_soa() again after inserting the CNAME target to insert the SOA
+		 if necessary. */
+
+	      int substring, have_soa = find_soa(header, qlen, name, &substring, &ttl, cpp == NULL, now);
 	      
 	      if (have_soa || daemon->neg_ttl)
 		{		  
@@ -1134,6 +1144,10 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		      next_uid(newc);
 		      cpp->addr.cname.target.cache = newc;
 		      cpp->addr.cname.uid = newc->uid;
+		    
+		      /* we didn't insert the SOA before a CNAME target above, do it now. */
+		      if (have_soa)
+			find_soa(header, qlen, name, NULL, NULL, 1, now);
 		    }
 		}
 	    }

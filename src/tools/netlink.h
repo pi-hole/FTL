@@ -28,7 +28,8 @@
 bool nlroutes(cJSON *routes, const bool detailed);
 bool nladdrs(cJSON *interfaces, const bool detailed);
 bool nllinks(cJSON *interfaces, const bool detailed);
-char *get_gateway_name(void) __attribute__((malloc));
+bool nlneigh(cJSON *arp_entries);
+void get_gateway_name(char gateway[MAXIFACESTRLEN]);
 
 // Netlink expects that the user buffer will be at least 8kB or a page size of
 // the CPU architecture, whichever is bigger. Particular Netlink families may,

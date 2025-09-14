@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-47-g12f201b3-dirty) on branch new/docs_config_pr
+# Pi-hole configuration file (v6.2.3-55-g023f9f61-dirty) on branch xmr/csp
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-07 17:21:54 UTC
+# Last updated on 2025-07-18 09:03:36 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -124,7 +124,7 @@
   # Example: [ "127.0.0.1 mylocal", "192.168.0.1 therouter" ]
   #
   # Allowed values are:
-  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME"
+  #     Array of custom DNS records each one in HOSTS form: "IP HOSTNAME [HOSTNAME ...]"
   hosts = [
     "1.1.1.1 abc-custom.com def-custom.de",
     "2.2.2.2 äste.com steä.com"
@@ -184,8 +184,8 @@
   #     true or false
   dnssec = true ### CHANGED, default = false
 
-  # Interface to use for DNS (see also dnsmasq.listening.mode) and DHCP (if enabled).
-  # Leave empty for auto-detection.
+  # Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave
+  # empty for auto-detection.
   #
   # Allowed values are:
   #     a valid interface name
@@ -248,7 +248,8 @@
   # Allowed values are:
   #     Array of CNAMEs, each one in the following form: "<cname>,<target>[,<TTL>]"
   cnameRecords = [
-    "brücke.com,äste.com,2"
+    "brücke.com,äste.com,2",
+    "pihole.mydomain.net,pi.hole"
   ] ### CHANGED, default = []
 
   # Port used by the DNS server
@@ -432,26 +433,26 @@
       #
       # Allowed values are:
       #     true or false
-      force4 = true ### CHANGED, default = false
+      force4 = false
 
       # Custom IPv4 address for the Pi-hole host
       #
       # Allowed values are:
       #     A valid IPv4 address or empty string ("")
-      IPv4 = "10.100.0.10" ### CHANGED, default = ""
+      IPv4 = ""
 
       # Use a specific IPv6 address for the Pi-hole host? See description for the IPv4
       # variant above for further details.
       #
       # Allowed values are:
       #     true or false
-      force6 = true ### CHANGED, default = false
+      force6 = false
 
       # Custom IPv6 address for the Pi-hole host
       #
       # Allowed values are:
       #     A valid IPv6 address or empty string ("")
-      IPv6 = "fe80::10" ### CHANGED, default = ""
+      IPv6 = ""
 
     [dns.reply.blocking]
       # Use a specific IPv4 address in IP blocking mode? By default, FTL determines the
@@ -902,32 +903,32 @@
   # Additional HTTP headers added to the web server responses.
   # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
-  # - "X-DNS-Prefetch-Control: off": Usually browsers proactively perform domain name
+  # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
   # resolution on links that the user may choose to follow. We disable DNS prefetching
   # here.
-  # - "Content-Security-Policy: [...] 'unsafe-inline'" is both required by Chart.js
+  # - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js
   # styling some elements directly, and index.html containing some inlined Javascript
   # code.
-  # - "X-Frame-Options: DENY": The page can not be displayed in a frame, regardless of
-  # the site attempting to do so.
-  # - "X-Xss-Protection: 0": Disables XSS filtering in browsers that support it. This
+  # - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the
+  # site attempting to do so.
+  # - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This
   # header is usually enabled by default in browsers, and is not recommended as it can
   # hurt the security of the site.
   # (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).
-  # - "X-Content-Type-Options: nosniff": Marker used by the server to indicate that the
+  # - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the
   # MIME types advertised in the  Content-Type headers should not be changed and be
   # followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a
   # way to say that the webmasters knew what they were doing. Site security testers
   # usually expect this header to be set.
-  # - "Referrer-Policy: strict-origin-when-cross-origin": A referrer will be sent for
+  # - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for
   # same-site origins, but cross-origin requests will send no referrer information.
   # The latter four headers are set as expected by https://securityheaders.io
   #
   # Allowed values are:
-  #     An array of HTTP headers
+  #     array of HTTP headers
   headers = [
     "X-DNS-Prefetch-Control: off",
-    "Content-Security-Policy: default-src 'self' 'unsafe-inline';",
+    "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
     "X-Content-Type-Options: nosniff",
@@ -1592,8 +1593,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 156 total entries out of which 99 entries are default
-# --> 57 entries are modified
+# 156 total entries out of which 103 entries are default
+# --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

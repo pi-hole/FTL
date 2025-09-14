@@ -47,7 +47,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
 	// Do not redirect for ACME challenges
-	log_debug(DEBUG_API, "Local URI: \"%s\"", req_info->local_uri_raw);
+	log_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", req_info->local_uri_raw);
 	const char acme_challenge[] = "/.well-known/acme-challenge/";
 	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
@@ -99,8 +99,10 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
 	// Check if the request is for something in the webhome directory
-	const bool in_webhome = (strncmp(req_info->local_uri_raw, prefix_webhome, strlen(prefix_webhome)) == 0);
-	log_debug(DEBUG_API, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	const bool in_webhome = (strncmp(req_info->local_uri_raw,
+	                                 config.webserver.paths.webhome.v.s,
+	                                 strlen(config.webserver.paths.webhome.v.s)) == 0);
+	log_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
 	          req_info->local_uri_raw, login, in_webhome, no_dot);
 
 	// Check if the request is for a LUA page (every XYZ.lp has already been
@@ -117,7 +119,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
-		// Check if the user is authenticated
 		if(!authorized)
 		{
 			// User is not authenticated, redirect to login page
@@ -132,7 +133,6 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	else
 	{
 		// This is the login page - check if the user is already authenticated
-		// Check if the user is authenticated
 		if(authorized)
 		{
 			// User is already authenticated, redirecting to index page

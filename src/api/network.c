@@ -186,7 +186,7 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	{
 		networkTable_readDevicesFinalize(device_stmt);
 		dbclose(&db);
-	
+
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
 		                       "database_error",

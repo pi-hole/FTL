@@ -24,6 +24,8 @@
 #include "capabilities.h"
 // suggest_closest_conf_key()
 #include "config/suggest.h"
+// CLI colors
+#include "args.h"
 
 enum exit_codes {
 	OKAY = 0,
@@ -425,7 +427,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(item->f & FLAG_ENV_VAR)
 		{
 			log_err("Config option %s is read-only (set via environmental variable)", key);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return ENV_VAR_FORCED;
 		}
 
@@ -433,7 +435,7 @@ int set_config_from_CLI(const char *key, const char *value)
 		if(item->f & FLAG_READ_ONLY)
 		{
 			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return EXIT_FAILURE;
 		}
 
@@ -457,14 +459,14 @@ int set_config_from_CLI(const char *key, const char *value)
 			log_err(" - %s", matches[i]);
 		free(matches);
 
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return KEY_UNKNOWN;
 	}
 
 	// Parse value
 	if(!readStringValue(new_item, value, &newconf))
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return VALUE_INVALID;
 	}
 
@@ -482,7 +484,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				log_err("Invalid value: %s", errbuf);
 				return 3;
 			}
@@ -496,7 +498,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return DNSMASQ_TEST_FAILED;
 			}
 		}
@@ -517,7 +519,7 @@ int set_config_from_CLI(const char *key, const char *value)
 	{
 		// No change
 		log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
-		free_config(&newconf);
+		free_config(&newconf, false);
 
 		// Print value
 		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
@@ -552,6 +554,10 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		}
 	}
 
+	// Do not allow enforcing colors from --config
+	const char *red = getenv("FORCE_COLOR") == NULL ? cli_color(COL_RED) : "";
+	const char *normal = getenv("FORCE_COLOR") == NULL ? cli_normal() : "";
+
 	// Loop over all config options again to find the one we are looking for
 	// (possibly partial match)
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -572,16 +578,18 @@ int get_config_from_CLI(const char *key, const bool quiet)
 		// This is the config option we are looking for
 		conf_item = item;
 
+		const bool is_default = compare_config_item(item->t, &item->v, &item->d);
+
 		// Print key if this is not an exact match
 		if(key == NULL || strcmp(item->k, key) != 0)
-			printf("%s = ", item->k);
+			printf("%s%s = ", is_default ? "" : red, item->k);
 
 		// Print value
 		if(conf_item-> f & FLAG_WRITE_ONLY)
 			puts("<write-only property>");
 		else
 			writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
-		putchar('\n');
+		puts(normal);
 	}
 
 	// Check if we found the config option

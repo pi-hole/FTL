@@ -365,7 +365,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("localise-queries\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
-	
+
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
@@ -448,10 +448,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("\n", pihole_conf);
 	}
 
-	char *interface = conf->dns.interface.v.s;
-	const bool interface_allocated = strlen(interface) > 0;
-	if(interface_allocated)
-		interface = get_gateway_name();
+	// Check if an explicit interface is configured
+	char interface[MAXIFACESTRLEN];
+	strncpy(interface, conf->dns.interface.v.s, sizeof(interface) - 1);
+	interface[sizeof(interface) - 1] = '\0';
+
+	// If not, get the name of the current gateway (we need to free this
+	// memory later on)
+	if(strlen(interface) < 1)
+		get_gateway_name(interface);
 
 	switch(conf->dns.listeningMode.v.listeningMode)
 	{
@@ -476,6 +481,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		case LISTEN_NONE:
 			fputs("# No interface configuration applied, make sure to cover this yourself\n", pihole_conf);
 			break;
+		case LISTEN_MAX:
+		default:
+			log_err("Unknown listening mode %d, unable to update dnsmasq configuration", conf->dns.listeningMode.v.listeningMode);
 	}
 	fputs("\n", pihole_conf);
 
@@ -607,7 +615,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fputs("# NXDOMAIN responses for queries on this domain. The actual response\n", pihole_conf);
 	fputs("# is handled by FTL at runtime\n", pihole_conf);
 	fputs("local=/pi.hole/\n", pihole_conf);
-	fputs("host-record=pi.hole,0.0.0.0\n", pihole_conf);
+	fputs("host-record=pi.hole,0.0.0.0,::\n", pihole_conf);
 
 	if(conf->dhcp.active.v.b)
 	{
@@ -802,10 +810,6 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
 	}
-
-	// Free memory allocated for interface name
-	if(interface_allocated)
-		free(interface);
 
 	// Flush config file to disk
 	fflush(pihole_conf);

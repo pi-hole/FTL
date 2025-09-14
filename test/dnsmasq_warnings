@@ -25,6 +25,8 @@ src/dnsmasq/dhcp6.c
 		    my_syslog(MS_DHCP | LOG_WARNING,
 			      _("unknown interface %s in bridge-interface"),
 			      bridge->iface);
+src/dnsmasq/dhcp6.c
+	      my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
 src/dnsmasq/dhcp.c
 		my_syslog(MS_DHCP | LOG_WARNING,
 			  _("unknown interface %s in bridge-interface"),
@@ -37,6 +39,8 @@ src/dnsmasq/dhcp.c
 src/dnsmasq/dhcp.c
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
 		      daemon->dhcp_buff, daemon->dhcp_buff2, daemon->addrbuff);
+src/dnsmasq/dhcp.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
 src/dnsmasq/dhcp-common.c
 	  my_syslog(MS_DHCP | LOG_WARNING, _("Ignoring duplicate dhcp-option %d"), tmp->opt); 
 src/dnsmasq/dhcp-common.c

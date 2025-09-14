@@ -38,6 +38,7 @@ static char *prefix_webhome = NULL;
 static char *api_uri = NULL;
 static char *admin_api_uri = NULL;
 static char *login_uri = NULL;
+static char *webheaders = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
@@ -160,7 +161,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
 			if(strcmp(uri, prefix_webhome) == 0)
 			{
@@ -577,7 +578,7 @@ void http_init(void)
 	}
 
 	// Construct additional headers
-	char *webheaders = strdup("");
+	webheaders = strdup("");
 	if (webheaders == NULL) {
 		log_err("Failed to allocate memory for webheaders!");
 		return;
@@ -595,11 +596,14 @@ void http_init(void)
 		const char *h = cJSON_GetStringValue(header);
 
 		// Allocate memory for the new header
-		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
-		if (webheaders == NULL) {
-			log_err("Failed to allocate memory for webheaders!");
+		char *new_webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (new_webheaders == NULL) {
+			log_err("Failed to (re)allocate memory for webheaders!");
+			free(webheaders);
+			webheaders = NULL;
 			return;
 		}
+		webheaders = new_webheaders;
 		strcat(webheaders, h);
 		strcat(webheaders, "\r\n");
 	}
@@ -734,7 +738,7 @@ void http_init(void)
 		// Replace trailing slash with end-of-string marker for matcher
 		char *prefix_webhome_matcher = strdup(prefix_webhome);
 		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
-	
+
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          prefix_webhome, config.webserver.paths.webhome.v.s);
 		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
@@ -866,8 +870,11 @@ void http_terminate(void)
 	// Free admin_api_uri path
 	if(admin_api_uri != NULL)
 		free(admin_api_uri);
-	
+
 	// Free login_uri path
 	if(login_uri != NULL)
 		free(login_uri);
+
+	if(webheaders != NULL)
+		free(webheaders);
 }

@@ -22,8 +22,6 @@
 #include "config/config.h"
 // uname()
 #include <sys/utsname.h>
-// nlroutes(), nladdrs(), nllinks()
-#include "tools/netlink.h"
 // struct proc_mem, getProcessMemory()
 #include "procps.h"
 // getcpu_percentage()

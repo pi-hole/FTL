@@ -87,31 +87,8 @@ bool daemonmode = true, cli_mode = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
-// Extended SGR sequence:
-//
-// "\x1b[%dm"
-//
-// where %d is one of the following values for commonly supported colors:
-//
-// 0: reset colors/style
-// 1: bold
-// 4: underline
-// 30 - 37: black, red, green, yellow, blue, magenta, cyan, and white text
-// 40 - 47: black, red, green, yellow, blue, magenta, cyan, and white background
-//
-// https://en.wikipedia.org/wiki/ANSI_escape_code#SGR
-//
-#define COL_NC		"\x1b[0m"  // normal font
-#define COL_BOLD	"\x1b[1m"  // bold font
-#define COL_ITALIC	"\x1b[3m"  // italic font
-#define COL_ULINE	"\x1b[4m"  // underline font
-#define COL_GREEN	"\x1b[32m" // normal foreground color
-#define COL_YELLOW	"\x1b[33m" // normal foreground color
-#define COL_RED		"\x1b[91m" // bright foreground color
-#define COL_BLUE	"\x1b[94m" // bright foreground color
-#define COL_PURPLE	"\x1b[95m" // bright foreground color
-#define COL_CYAN	"\x1b[96m" // bright foreground color
-#define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
+// Prototypes
+static void suggest_complete(const int argc, char *argv[]);
 
 static bool __attribute__ ((pure)) is_term(void)
 {
@@ -173,7 +150,7 @@ const char __attribute__ ((pure)) *cli_normal(void)
 }
 
 // Set color if STDOUT is a terminal
-static const char __attribute__ ((pure)) *cli_color(const char *color)
+const char __attribute__ ((pure)) *cli_color(const char *color)
 {
 	return is_term() ? color : "";
 }
@@ -185,9 +162,54 @@ const char __attribute__ ((pure)) *cli_over(void)
 	return is_term() ? CLI_OVER : "\r";
 }
 
+/**
+ * @brief Checks if a given string ends with a specified substring.
+ *
+ * This function determines whether the string pointed to by @p input ends with the substring pointed to by @p end.
+ *
+ * @param input The input string to check.
+ * @param end The substring to check for at the end of @p input.
+ * @return true if @p input ends with @p end, false otherwise.
+ */
 static bool strEndsWith(const char *input, const char *end)
 {
-	return strcmp(input + strlen(input) - strlen(end), end) == 0;
+	const size_t input_len = strlen(input);
+	const size_t end_len = strlen(end);
+	// If the input is shorter than the end, it cannot end with it
+	if(input_len < end_len)
+		return false;
+	return strcmp(input + input_len - end_len, end) == 0;
+}
+
+/**
+ * @brief Checks if a given string starts with a specified prefix.
+ *
+ * This function compares the beginning of the input string with the start string.
+ * It returns true if the input string starts with the prefix specified by start.
+ *
+ * @param input The string to check.
+ * @param start The prefix to look for at the beginning of input.
+ * @return true if input starts with start, false otherwise.
+ */
+static bool strStartsWith(const char *input, const char *start)
+{
+	return strncmp(input, start, strlen(start)) == 0;
+}
+
+/**
+ * @brief Checks if a string starts with a given prefix, ignoring case.
+ *
+ * This function compares the beginning of the input string with the specified
+ * prefix (start), ignoring the case of the characters. It returns true if the
+ * input string starts with the prefix, false otherwise.
+ *
+ * @param input The input string to check.
+ * @param start The prefix to look for at the start of the input string.
+ * @return true if input starts with start (case-insensitive), false otherwise.
+ */
+static bool strStartsWithIgnoreCase(const char *input, const char *start)
+{
+	return strncasecmp(input, start, strlen(start)) == 0;
 }
 
 void parse_args(int argc, char *argv[])
@@ -238,6 +260,9 @@ void parse_args(int argc, char *argv[])
 	// we operate in drop-in mode and consume all arguments for the embedded sqlite3_rsync tool
 	if(strEndsWith(argv[0], "sqlite3_rsync"))
 		exit(sqlite3_rsync_main(argc, argv));
+
+	if(argc > 1 && strcmp(argv[1], "--complete") == 0)
+		suggest_complete(argc, argv);
 
 	// Compression feature
 	if((argc == 3 || argc == 4) &&
@@ -593,18 +618,19 @@ void parse_args(int argc, char *argv[])
 		// Create a socket
 		struct sockaddr_in dest;
 		const int sock = create_socket(tcp, &dest);
-		char *name = resolveHostname(sock, tcp, &dest, argv[2], true, NULL);
+		char hostn[MAXDOMAINLEN] = { 0 };
+		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		{
+			// Close the socket
+			close(sock);
+			exit(EXIT_FAILURE);
+		}
 
 		// Close the socket
 		close(sock);
 
-		// Exit early if no name was found
-		if(name == NULL)
-			exit(EXIT_FAILURE);
-
 		// Print result
-		printf("%s\n", name);
-		free(name);
+		printf("%s\n", hostn);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -620,8 +646,9 @@ void parse_args(int argc, char *argv[])
 	if(argc == 2 && strcmp(argv[1], "--default-gateway") == 0)
 	{
 		cli_mode = true;
-		char *name = get_gateway_name();
-		printf("%s\n", name);
+		char gateway[MAXIFACESTRLEN];
+		get_gateway_name(gateway);
+		printf("%s\n", gateway);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -1011,6 +1038,7 @@ void parse_args(int argc, char *argv[])
 			const char *bold = cli_bold();
 			const char *uline = cli_underline();
 			const char *normal = cli_normal();
+			const char *red = cli_color(COL_RED);
 			const char *blue = cli_color(COL_BLUE);
 			const char *cyan = cli_color(COL_CYAN);
 			const char *green = cli_color(COL_GREEN);
@@ -1107,6 +1135,8 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
+			printf("\t                    Config items with non-default values may\n");
+			printf("\t                    be colored in %sred%s\n", red, normal);
 			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
@@ -1238,4 +1268,352 @@ void test_dnsmasq_options(int argc, const char *argv[])
 	// Call dnsmasq's option parser
 	reset_usage_indicator();
 	read_opts(argc, (char**)argv, NULL);
+}
+
+static void list_matches(const char *last_word, const char *const *list, size_t list_size, const bool case_sensitive)
+{
+	// List all matching entries from the given list
+	// that start with the last word we are trying to complete
+	// If last_word is empty, all entries are listed
+
+	if(!case_sensitive)
+	{
+		for(size_t i = 0; i < list_size; i++)
+			if(list[i] != NULL &&
+			   (strStartsWithIgnoreCase(list[i], last_word) ||
+			    strlen(last_word) == 0))
+				puts(list[i]);
+		return;
+	}
+
+	// Case-sensitive matching
+	for(size_t i = 0; i < list_size; i++)
+		if(list[i] != NULL &&
+		   (strStartsWith(list[i], last_word) ||
+		    strlen(last_word) == 0))
+			puts(list[i]);
+}
+
+/**
+ * @brief Provides auto-complete suggestions for the CLI based on the current command-line arguments.
+ *
+ * This function analyzes the provided arguments and prints possible completions to stdout,
+ * aiding in command-line auto-completion for the `pihole-FTL` utility and its subcommands.
+ * It supports suggestions for root-level commands, subcommands, and configuration keys/values.
+ *
+ * @param argc The number of command-line arguments.
+ * @param argv The array of command-line argument strings.
+ */
+void suggest_complete(const int argc, char *argv[])
+{
+	// Auto-complete suggestions for the CLI
+	// Enable stdout printing
+	cli_mode = true;
+	log_ctrl(false, true);
+
+	// Get the last word we are currently trying to complete
+	// This is the last argument in the command line
+	const char *last_word = argv[argc-1];
+
+	if(argc == 4 && strEndsWith(argv[2], "pihole-FTL"))
+	{
+		// Root-level suggestion: "pihole-FTL ..."
+		const char *options[] = {
+			"arp-scan", "branch", "--config", "debug", "--default-gateway",
+			"dhcp-discover", "dnsmasq-test", "-f", "--gen-x509",
+			"gravity", "gzip", "help", "-h", "--help", "idn2",
+			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac",
+			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr",
+			"--read-x509", "--read-x509-key", "regex-test",
+			"sha256sum", "sqlite3", "sqlite3_rsync", "tag",
+			"--teleporter", "test", "--totp",
+			"-v", "-vv", "--v", "version", "verify"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "gravity"))
+	{
+		// pihole-FTL gravity ...
+		const char *options[] = {
+			"checkList"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "ntp"))
+	{
+		// pihole-FTL ntp ...
+		const char *options[] = {
+			"--update"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if((argc == 5 || argc == 6) && strEndsWith(argv[3], "sqlite3"))
+	{
+		// pihole-FTL sqlite3 ...
+		const char *options[] = {
+			"-h", "-ni"
+		};
+
+		if(argc ==6 && strcmp(argv[4], "-h") == 0)
+		{
+			// Remove the -h option from the list
+			options[0] = NULL;
+		}
+		else if(argc == 6 && strcmp(argv[4], "-ni") == 0)
+		{
+			// Remove the -ni option from the list
+			options[1] = NULL;
+		}
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "arp-scan"))
+	{
+		// pihole-FTL lua ...
+		const char *options[] = {
+			"-a", "-x"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "idn2"))
+	{
+		// pihole-FTL gzip ...
+		const char *options[] = {
+			"-d", "--decode"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc > 4 && strEndsWith(argv[3], "--config"))
+	{
+		getLogFilePath(false);
+		initConfig(&config);
+		if(argc == 5)
+		{
+			// pihole-FTL --config ...
+			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+			{
+				struct conf_item *conf_item = get_conf_item(&config, i);
+				if(!conf_item)
+					continue;
+				if(strStartsWith(conf_item->k, last_word) || strlen(last_word) == 0)
+					puts(conf_item->k);
+			}
+		}
+		else if(argc == 6)
+		{
+			// pihole-FTL --config <some key> ...
+			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+			{
+				struct conf_item *conf_item = get_conf_item(&config, i);
+				if(!conf_item)
+					continue;
+				if(strcmp(conf_item->k, argv[4]) == 0)
+				{
+					// See if we can suggest a value
+					switch(conf_item->t)
+					{
+						case CONF_BOOL:
+						case CONF_ALL_DEBUG_BOOL:
+						{
+							// pihole-FTL --config <boolean option>> ...
+							const char *options[] = {
+								"true", "false"
+							};
+
+							// Provide matching suggestions
+							list_matches(last_word, options, ArraySize(options), false);
+							break;
+						}
+
+						case CONF_INT:
+						case CONF_UINT:
+						case CONF_UINT16:
+						case CONF_LONG:
+						case CONF_DOUBLE:
+						case CONF_STRING:
+						case CONF_STRING_ALLOCATED:
+						case CONF_JSON_STRING_ARRAY:
+						{
+							// pihole-FTL --config ... <int/long/double/string>
+							// Provide the default value as suggestion
+							char *value = NULL;
+							cJSON *val = addJSONConfValue(conf_item->t, &conf_item->d);
+							if(val != NULL && (value = cJSON_PrintUnformatted(val)) != NULL)
+							{
+								// Add '' to the output if it is a string
+								if(conf_item->t == CONF_JSON_STRING_ARRAY)
+								{
+									// Count number of ' in the string
+									char *p = value;
+									unsigned int count = 0;
+									while(p != NULL && *p != '\0')
+									{
+										if(*p == '\'')
+											count++;
+										p++;
+									}
+
+									// Allocate enough space for the new string
+									char *tmp = calloc(strlen(value) + 5*count + 3, sizeof(char));
+									if(tmp != NULL)
+									{
+										memcpy(tmp + 1, value, strlen(value) + 1);
+										// Scan for ' characters ...
+										p = tmp + 1;
+										while(*p != '\0')
+										{
+											if(*p == '\'')
+											{
+												// ... and replace them by '"'"'
+												memmove(p + 4, p, strlen(p) + 1);
+												*(p++) = '\'';
+												*(p++) = '"';
+												*(p++) = '\'';
+												*(p++) = '"';
+											}
+											p++;
+										}
+
+										tmp[0] = '\'';
+										tmp[strlen(tmp)] = '\'';
+										free(value);
+										value = tmp;
+									}
+								}
+
+								// If the default value starts with the last word we are trying to complete,
+								// print it as a suggestion
+								// If the last word is empty, print the value anyway
+								if(strStartsWith(value, last_word) || strlen(last_word) == 0)
+									puts(value);
+								free(value);
+							}
+							cJSON_Delete(val);
+							break;
+						}
+
+						case CONF_ENUM_PTR_TYPE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < PTR_MAX; j++)
+							{
+								const char *ptr = get_ptr_type_str(j);
+								if(strStartsWithIgnoreCase(ptr, last_word) || strlen(last_word) == 0)
+									puts(ptr);
+							}
+							break;
+
+						case CONF_ENUM_BUSY_TYPE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < BUSY_MAX; j++)
+							{
+								const char *busy = get_busy_reply_str(j);
+								if(strStartsWithIgnoreCase(busy, last_word) || strlen(last_word) == 0)
+									puts(busy);
+							}
+							break;
+
+						case CONF_ENUM_BLOCKING_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < MODE_MAX; j++)
+							{
+								const char *mode = get_blocking_mode_str(j);
+								if(strStartsWithIgnoreCase(mode, last_word) || strlen(last_word) == 0)
+									puts(mode);
+							}
+							break;
+
+						case CONF_ENUM_REFRESH_HOSTNAMES:
+							// Provide matching suggestions
+							for(size_t j = 0; j < REFRESH_MAX; j++)
+							{
+								const char *refresh = get_refresh_hostnames_str(j);
+								if(strStartsWithIgnoreCase(refresh, last_word) || strlen(last_word) == 0)
+									puts(refresh);
+							}
+							break;
+
+						case CONF_ENUM_LISTENING_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < LISTEN_MAX; j++)
+							{
+								const char *listen = get_listeningMode_str(j);
+								if(strStartsWithIgnoreCase(listen, last_word) || strlen(last_word) == 0)
+									puts(listen);
+							}
+							break;
+
+						case CONF_ENUM_WEB_THEME:
+							// pihole-FTL --config webserver.interface.theme ...
+
+							// Provide matching suggestions
+							for(size_t j = 0; j < THEME_MAX; j++)
+							{
+								const char *theme = get_web_theme_str(j);
+								if(strStartsWithIgnoreCase(theme, last_word) || strlen(last_word) == 0)
+									puts(theme);
+							}
+							break;
+
+						case CONF_ENUM_BLOCKING_EDNS_MODE:
+							// Provide matching suggestions
+							for(size_t j = 0; j < EDNS_MODE_MAX; j++)
+							{
+								const char *edns = get_edns_mode_str(j);
+								if(strStartsWithIgnoreCase(edns, last_word) || strlen(last_word) == 0)
+									puts(edns);
+							}
+							break;
+
+						case CONF_ENUM_TEMP_UNIT:
+							// Provide matching suggestions
+							for(size_t j = 0; j < TEMP_UNIT_MAX; j++)
+							{
+								const char *temp = get_temp_unit_str(j);
+								if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
+									puts(temp);
+							}
+							break;
+
+						case CONF_ENUM_PRIVACY_LEVEL:
+							// This enum is in reality a numeric value
+							printf("%d\n", (int)conf_item->d.privacy_level);
+							break;
+
+							case CONF_PASSWORD:
+							// No suggestions
+							break;
+
+						case CONF_STRUCT_IN_ADDR:
+						{
+							char ip[INET_ADDRSTRLEN] = { 0 };
+							inet_ntop(AF_INET, &conf_item->d.in_addr.s_addr, ip, sizeof(ip));
+							printf("%s\n", ip);
+						}
+						break;
+
+						case CONF_STRUCT_IN6_ADDR:
+						{
+							char ip[INET6_ADDRSTRLEN] = { 0 };
+							inet_ntop(AF_INET6, &conf_item->d.in6_addr, ip, sizeof(ip));
+							printf("%s\n", ip);
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	exit(EXIT_SUCCESS);
 }
