@@ -26,6 +26,7 @@
 #define DNSSEC_LIMIT_SIG_FAIL 20 /* Number of signature that can fail to validate in one answer */
 #define DNSSEC_LIMIT_CRYPTO 200 /* max no. of crypto operations to validate one query. */
 #define DNSSEC_LIMIT_NSEC3_ITERS 150 /* Max. number if iterations allowed in NSEC3 record. */
+#define DNSSEC_ASSUMED_DS_TTL 3600 /* TTL for negative DS records implied by server=/domain/ */
 #define TIMEOUT 10     /* drop UDP queries after TIMEOUT seconds */
 #define SMALL_PORT_RANGE 30 /* If DNS port range is smaller than this, use different allocation. */
 #define FORWARD_TEST 1000 /* try all servers every 1000 queries */
@@ -53,6 +54,8 @@
 #define CHGRP "root"
 /******************************/
 #define TFTP_MAX_CONNECTIONS 50 /* max simultaneous connections */
+#define TFTP_MAX_WINDOW 32 /* max window size to negotiate */
+#define TFTP_TRANSFER_TIME 120 /* Abandon TFTP transfers after this long. Two mins. */
 #define LOG_MAX 5 /* log-queue length */
 #define RANDFILE "/dev/urandom"
 #define DNSMASQ_SERVICE "uk.org.thekelleys.dnsmasq" /* Default - may be overridden by config */
@@ -154,6 +157,7 @@ NO_AUTH
 NO_DUMPFILE
 NO_LOOP
 NO_INOTIFY
+NO_IPSET
    these are available to explicitly disable compile time options which would 
    otherwise be enabled automatically or which are enabled  by default 
    in the distributed source tree. Building dnsmasq
@@ -309,7 +313,6 @@ HAVE_SOCKADDR_SA_LEN
 #ifndef SOL_TCP
 #  define SOL_TCP IPPROTO_TCP
 #endif
-#define NO_IPSET
 
 #elif defined(__NetBSD__)
 #define HAVE_BSD_NETWORK
@@ -359,8 +362,22 @@ HAVE_SOCKADDR_SA_LEN
 #undef HAVE_AUTH
 #endif
 
+#if !defined(HAVE_LINUX_NETWORK)
+#undef HAVE_NFTSET
+#endif
+
 #if defined(NO_IPSET)
 #undef HAVE_IPSET
+#endif
+
+#if defined(HAVE_IPSET)
+#  if defined(HAVE_LINUX_NETWORK)
+#    define HAVE_LINUX_IPSET
+#  elif defined(HAVE_BSD_NETWORK)
+#    define HAVE_BSD_IPSET
+#  else
+#    undef HAVE_IPSET
+#  endif
 #endif
 
 #ifdef NO_LOOP
@@ -472,4 +489,4 @@ static char *compile_opts =
 #endif
 "dumpfile";
 
-#endif /* defined(HAVE_DHCP) */
+#endif /* defined(DNSMASQ_COMPILE_OPTS) */

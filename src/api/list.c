@@ -59,23 +59,19 @@ static int api_list_read(struct ftl_conn *api,
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
-			char *name = NULL;
+			char name[MAXDOMAINLEN] = { 0 };
 			if(table.client != NULL)
 			{
 				// Try to obtain hostname
 				if(isValidIPv4(table.client) || isValidIPv6(table.client))
-					name = getNameFromIP(NULL, table.client);
+					getNameFromIP(NULL, name, table.client);
 				else if(isMAC(table.client))
-					name = getNameFromMAC(table.client);
+					getNameFromMAC(table.client, name);
 			}
 
 			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
 			JSON_COPY_STR_TO_OBJECT(row, "name", name);
 			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
-
-			// Free allocated memory (if applicable)
-			if(name != NULL)
-				free(name);
 		}
 		else // domainlists
 		{
@@ -405,7 +401,7 @@ static int api_list_write(struct ftl_conn *api,
 			   strchr(it->valuestring, '\n') != NULL)
 			{
 				if(allocated_json)
-					cJSON_free(row.items);
+					cJSON_Delete(row.items);
 				return send_json_error(api, 400, // 400 Bad Request
 				                       "bad_request",
 				                       "Spaces, newlines and tabs are not allowed in domains and URLs",
@@ -435,7 +431,7 @@ static int api_list_write(struct ftl_conn *api,
 				if(!valid_domain(punycode, strlen(punycode), false))
 				{
 					if(allocated_json)
-						cJSON_free(row.items);
+						cJSON_Delete(row.items);
 					return send_json_error(api, 400, // 400 Bad Request
 							"bad_request",
 							"Invalid domain",
@@ -457,7 +453,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// Send error reply
 		if(allocated_json)
-			cJSON_free(row.items);
+			cJSON_Delete(row.items);
 		return send_json_error_free(api, 400, // 400 Bad Request
 		                            "regex_error",
 		                            "Regex validation failed",
@@ -527,7 +523,7 @@ static int api_list_write(struct ftl_conn *api,
 
 	// Free allocated memory
 	if(allocated_json)
-		cJSON_free(row.items);
+		cJSON_Delete(row.items);
 
 	return ret;
 }
@@ -718,7 +714,7 @@ static int api_list_remove(struct ftl_conn *api,
 
 		// Free memory allocated above
 		if(allocated_json)
-			cJSON_free(array);
+			cJSON_Delete(array);
 
 		// Send empty reply with codes:
 		// - 204 No Content (if any items were deleted)
@@ -730,7 +726,7 @@ static int api_list_remove(struct ftl_conn *api,
 	{
 		// Free memory allocated above
 		if(allocated_json)
-			cJSON_free(array);
+			cJSON_Delete(array);
 
 		// Send error reply
 		return send_json_error(api, 400,
@@ -745,6 +741,7 @@ int api_list(struct ftl_conn *api)
 	enum gravity_list_type listtype;
 	bool can_modify = false;
 	bool batchDelete = false;
+	bool listtype_optional = true;
 	if((api->item = startsWith("/api/groups", api)) != NULL)
 	{
 		listtype = GRAVITY_GROUPS;
@@ -759,6 +756,7 @@ int api_list(struct ftl_conn *api)
 	else if((api->item = startsWith("/api/lists", api)) != NULL)
 	{
 		listtype = GRAVITY_ADLISTS;
+		listtype_optional = api->method == HTTP_GET;
 		can_modify = true;
 	}
 	else if((api->item = startsWith("/api/lists:batchDelete", api)) != NULL)
@@ -835,11 +833,12 @@ int api_list(struct ftl_conn *api)
 	// If this is a request for a list, we check if there is a request
 	// parameter narrowing down which kind of list. If so, we modify the
 	// list type accordingly
-	if(listtype == GRAVITY_ADLISTS && api->request->query_string != NULL)
+	if(listtype == GRAVITY_ADLISTS)
 	{
 		// Check if there is a type parameter
 		char typestr[16] = { 0 };
-		if(get_string_var(api->request->query_string, "type", typestr, sizeof(typestr)) > 0)
+		if(api->request->query_string != NULL &&
+		   get_string_var(api->request->query_string, "type", typestr, sizeof(typestr)) > 0)
 		{
 			if(strcasecmp(typestr, "allow") == 0)
 				listtype = GRAVITY_ADLISTS_ALLOW;
@@ -853,6 +852,14 @@ int api_list(struct ftl_conn *api)
 				                       "Invalid request: Invalid type parameter (should be either \"allow\" or \"block\")",
 				                       api->request->query_string);
 			}
+		}
+		else if(!listtype_optional)
+		{
+			// If this is not a GET request, we require the type parameter
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid request: Specify type parameter (should be either \"allow\" or \"block\")",
+			                       api->request->query_string);
 		}
 	}
 

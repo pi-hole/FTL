@@ -17,14 +17,14 @@ jobs:
       issues: write
 
     steps:
-    - uses: actions/stale@v9.1.0
+    - uses: actions/stale@3a9db7e6a41a89f618792c92c0e97cc736e1b13f #v10.0.0
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
         days-before-stale: 30
         days-before-close: 5
         stale-issue-message: 'This issue is stale because it has been open 30 days with no activity. Please comment or update this issue or it will be closed in 5 days.'
         stale-issue-label: '${{ env.stale_label }}'
-        exempt-issue-labels: 'Fixed in next release, Bug, Bug:Confirmed, Bugfix in progress, documentation needed, internal'
+        exempt-issue-labels: 'Fixed in next release, Bug, Bug:Confirmed, Bugfix in progress, documentation needed, internal, never-stale'
         exempt-all-issue-assignees: true
         operations-per-run: 300
         close-issue-reason: 'not_planned'
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.1.7
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
       - name: Remove 'stale' label
         run: gh issue edit ${{ github.event.issue.number }} --remove-label ${{ env.stale_label }}
         env:

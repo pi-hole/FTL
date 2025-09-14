@@ -20,12 +20,15 @@
 #include "log.h"
 // directory_exists()
 #include "files.h"
+// ftl_http_redirect()
+#include "webserver.h"
 
-static char *login_uri = NULL, *admin_api_uri = NULL;
-void allocate_lua(char *login_uri_in, char *admin_api_uri_in)
+static char *login_uri = NULL, *admin_api_uri = NULL, *prefix_webhome = NULL;
+void allocate_lua(char *login_uri_in, char *admin_api_uri_in, char *prefix_webhome_in)
 {
 	login_uri = login_uri_in;
 	admin_api_uri = admin_api_uri_in;
+	prefix_webhome = prefix_webhome_in;
 }
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
@@ -37,14 +40,14 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 {
 	// Fall back to CivetWeb's default handler if login URI is not available
 	// (should never happen)
-	if(login_uri == NULL || admin_api_uri == NULL)
+	if(login_uri == NULL || admin_api_uri == NULL || prefix_webhome == NULL)
 		return 0;
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
 
 	// Do not redirect for ACME challenges
-	log_debug(DEBUG_API, "Local URI: \"%s\"", req_info->local_uri_raw);
+	log_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", req_info->local_uri_raw);
 	const char acme_challenge[] = "/.well-known/acme-challenge/";
 	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
@@ -95,11 +98,19 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	// Check if the request is for the login page
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
+	// Check if the request is for something in the webhome directory
+	const bool in_webhome = (strncmp(req_info->local_uri_raw,
+	                                 config.webserver.paths.webhome.v.s,
+	                                 strlen(config.webserver.paths.webhome.v.s)) == 0);
+	log_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	          req_info->local_uri_raw, login, in_webhome, no_dot);
+
 	// Check if the request is for a LUA page (every XYZ.lp has already been
-	// rewritten at this point to XYZ)
-	if(!no_dot)
+	// rewritten at this point to XYZ), we also don't enforce authentication
+	// for pages outside the webhome directory
+	if(!no_dot || !in_webhome)
 	{
-		// Not a LUA page - fall back to CivetWeb's default handler
+		// Fall back to CivetWeb's default handler
 		return 0;
 	}
 
@@ -108,28 +119,28 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
-		// Check if the user is authenticated
 		if(!authorized)
 		{
 			// User is not authenticated, redirect to login page
 			log_web("Authentication required, redirecting to %s%slogin",
 			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%slogin\r\n\r\n",
-			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%slogin",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}
 	else
 	{
 		// This is the login page - check if the user is already authenticated
-		// Check if the user is authenticated
 		if(authorized)
 		{
-			// User is already authenticated, redirect to index page
+			// User is already authenticated, redirecting to index page
 			log_web("User is already authenticated, redirecting to %s%s",
 			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s%s\r\n\r\n",
-			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%s",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

@@ -46,8 +46,9 @@
 #include "timers.h"
 
 uint64_t ntp_last_sync = 0u;
-uint32_t ntp_root_delay = 0u;
+int32_t ntp_root_delay = 0u;
 uint32_t ntp_root_dispersion = 0u;
+uint8_t ntp_stratum = 0u;
 
 // RFC 5905 Appendix A.4: Kernel System Clock Interface
 uint64_t gettime64(void)
@@ -82,15 +83,17 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 		log_warn("Received invalid NTP request: not from an NTP client, ignoring");
 		return false;
 	}
+        // Check NTP version, log if it is an old unsupported version (< v4)
+        if (((recv_buf[0] >> 3) & 0x07) != 0x4) {
+                log_debug(DEBUG_NTP, "Received request has unsupported version");
+        }
 
 	// set LI = 0 (no warning about leap seconds), set version-number to
 	// 4 and set mode = 4 ("server")
 	send_buf[0] = (0x04 << 3) + 0x04;
 
-	// Set stratum to "secondary server" as we have derived time via
-	// external NTP as well. May be set to 1 if we want to be a primary
-	// server (synchronized by a hardware clock with GPS, etc.)
-	send_buf[1] = 0x02;
+	// Set stratum (one greater than upstream server)
+	send_buf[1] = ntp_stratum;
 
 	// Copy Poll value from client
 	send_buf[2] = recv_buf[2];
@@ -235,9 +238,16 @@ static void request_process_loop(const int fd, const char *ipstr, const int prot
 	while (true)
 	{
 		unsigned char buf[48];
-		struct sockaddr src_addr;
+		struct sockaddr_storage src_addr;
 		socklen_t src_addrlen = sizeof(src_addr);
-		while(recvfrom(fd, buf, sizeof(buf), 0, &src_addr, &src_addrlen) < 48);  // ignore invalid requests
+
+		// Receive packet
+		ssize_t received = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&src_addr, &src_addrlen);
+		if(received != 48)
+		{
+			log_debug(DEBUG_NTP, "Received invalid NTP packet size: %zd", received);
+			continue;
+		}
 
 		// Get the current time in NTP format directly after receiving
 		// the request
@@ -246,31 +256,36 @@ static void request_process_loop(const int fd, const char *ipstr, const int prot
 		// Print the request
 		if(config.debug.ntp.v.b)
 		{
-			if(protocol == AF_INET6)
+			if (src_addr.ss_family == AF_INET6)
 			{
-				struct sockaddr_in6 sin6;
-				memcpy(&sin6, &src_addr, sizeof(sin6));
-
-				char ip[INET6_ADDRSTRLEN];
-				const in_port_t port = ntohs(sin6.sin6_port);
-				inet_ntop(protocol, &sin6.sin6_addr, ip, sizeof(ip));
+				char ip[INET6_ADDRSTRLEN] = { 0 };
+				struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&src_addr;
+				inet_ntop(protocol, &sin6->sin6_addr, ip, sizeof(ip));
+				const in_port_t port = ntohs(sin6->sin6_port);
 				log_debug(DEBUG_NTP, "Received NTP request from [%s]:%u", ip, port);
+			}
+			else if (src_addr.ss_family == AF_INET)
+			{
+				char ip[INET_ADDRSTRLEN] = { 0 };
+				struct sockaddr_in *sin = (struct sockaddr_in *)&src_addr;
+				inet_ntop(protocol, &sin->sin_addr, ip, sizeof(ip));
+				const in_port_t port = ntohs(sin->sin_port);
+				log_debug(DEBUG_NTP, "Received NTP request from %s:%u", ip, port);
 			}
 			else
 			{
-				struct sockaddr_in sin;
-				memcpy(&sin, &src_addr, sizeof(sin));
-
-				char ip[INET6_ADDRSTRLEN];
-				const in_port_t port = ntohs(sin.sin_port);
-				inet_ntop(protocol, &sin.sin_addr, ip, sizeof(ip));
-				log_debug(DEBUG_NTP, "Received NTP request from %s:%u", ip, port);
+				// I don't think this should ever happen
+				log_debug(DEBUG_NTP, "Received NTP request with malformed address family");
+				continue;
 			}
 		}
 
 		// Handle the request
-		ntp_reply(fd, &src_addr, src_addrlen, buf, &recv_time);
-		log_debug(DEBUG_NTP, "NTP reply sent");
+		if (!ntp_reply(fd, (struct sockaddr *)&src_addr, src_addrlen, buf, &recv_time)) {
+			log_debug(DEBUG_NTP, "Failed to send NTP reply");
+		} else {
+			log_debug(DEBUG_NTP, "NTP reply sent");
+		}
 
 		// Sleep for 100 msec, this allows no more than 10 requests per
 		// second

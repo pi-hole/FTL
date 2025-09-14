@@ -496,7 +496,7 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 					free(config.webserver.api.pwhash.v.s);
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-				writeFTLtoml(true);
+				writeFTLtoml(true, NULL);
 			}
 
 			// Successful logins do not count against rate-limiting

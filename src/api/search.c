@@ -116,14 +116,17 @@ static int search_gravity(struct ftl_conn *api, const char *punycode, cJSON *arr
 			return ret;
 
 		// Search for ABP matches in (anti/)gravity
-		*abp_patterns = gen_abp_patterns(punycode, antigravity);
+		*abp_patterns = gen_abp_patterns(punycode);
 		cJSON *abp_pattern = NULL;
 		cJSON_ArrayForEach(abp_pattern, *abp_patterns)
 		{
 			const char *pattern = cJSON_GetStringValue(abp_pattern);
 			if(pattern == NULL)
 				continue;
-			ret = search_table(api, pattern, table, NULL, limit, N, partial, array);
+
+			// Skip leading "@@" for gravity matches
+			const char *this_pattern = antigravity ? pattern : pattern + 2;
+			ret = search_table(api, this_pattern, table, NULL, limit, N, partial, array);
 			if(ret != 200)
 				return ret;
 		}

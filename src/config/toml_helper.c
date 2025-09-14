@@ -250,10 +250,10 @@ void print_comment(FILE *fp, const char *str, const char *intro, const unsigned 
 	fputc('\n', fp);
 }
 
-void print_toml_allowed_values(cJSON *allowed_values, FILE *fp, const unsigned int width, const unsigned int indent)
+void print_toml_allowed_values(const cJSON *allowed_values, FILE *fp, const unsigned int indent)
 {
 	print_comment(fp, "", "", 85, indent);
-	print_comment(fp, "", "Possible values are:", 85, indent);
+	print_comment(fp, "", "Allowed values are:", 85, indent);
 	if(cJSON_IsArray(allowed_values))
 	{
 		// Loop over array items
@@ -335,9 +335,6 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			break;
 		case CONF_LONG:
 			fprintf(fp, "%li", v->l);
-			break;
-		case CONF_ULONG:
-			fprintf(fp, "%lu", v->ul);
 			break;
 		case CONF_DOUBLE:
 			fprintf(fp, "%f", v->d);
@@ -452,84 +449,75 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 }
 
 // Read a TOML value from a table depending on its type
-void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *toml, struct config *newconf)
+void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t toml, struct config *newconf)
 {
-	if(conf_item == NULL || key == NULL || toml == NULL)
+	if(conf_item == NULL || key == NULL || toml.type == TOML_UNKNOWN)
 	{
 		log_debug(DEBUG_CONFIG, "readTOMLvalue(%p, %p, %p) called with invalid arguments, skipping",
-		          conf_item, key, toml);
+		          (void*)conf_item, (void*)key, (void*)&toml);
 		return;
 	}
 	switch(conf_item->t)
 	{
 		case CONF_BOOL:
 		{
-			const toml_datum_t val = toml_bool_in(toml, key);
-			if(val.ok)
-				conf_item->v.b = val.u.b;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_BOOLEAN)
+				conf_item->v.b = val.u.boolean;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid bool", conf_item->k);
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
 		{
-			const toml_datum_t val = toml_bool_in(toml, key);
-			if(val.ok)
-				set_all_debug(newconf, val.u.b);
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_BOOLEAN)
+				set_all_debug(newconf, val.u.boolean);
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid bool", conf_item->k);
 			break;
 		}
 		case CONF_INT:
 		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok)
-				conf_item->v.i = val.u.i;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_INT64)
+				conf_item->v.i = val.u.int64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid integer", conf_item->k);
 			break;
 		}
 		case CONF_UINT:
 		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok && val.u.i >= 0)
-				conf_item->v.ui = val.u.i;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_INT64 && val.u.int64 >= 0)
+				conf_item->v.ui = val.u.int64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned integer", conf_item->k);
 			break;
 		}
 		case CONF_UINT16:
 		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok && val.u.i >= 0 && val.u.i <= UINT16_MAX)
-				conf_item->v.ui = val.u.i;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_INT64 && val.u.int64 >= 0 && val.u.int64 <= UINT16_MAX)
+				conf_item->v.u16 = val.u.int64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned integer (16 bit)", conf_item->k);
 			break;
 		}
 		case CONF_LONG:
 		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok)
-				conf_item->v.l = val.u.i;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_INT64 && val.u.int64 <= LONG_MAX)
+				conf_item->v.l = val.u.int64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid long integer", conf_item->k);
 			break;
 		}
-		case CONF_ULONG:
-		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok && val.u.i >= 0)
-				conf_item->v.ul = val.u.i;
-			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned long integer", conf_item->k);
-			break;
-		}
 		case CONF_DOUBLE:
 		{
-			const toml_datum_t val = toml_double_in(toml, key);
-			if(val.ok)
-				conf_item->v.d = val.u.d;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_FP64)
+				conf_item->v.d = val.u.fp64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid double", conf_item->k);
 			break;
@@ -537,12 +525,12 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRING:
 		case CONF_STRING_ALLOCATED:
 		{
-			const toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				if(conf_item->t == CONF_STRING_ALLOCATED)
 					free(conf_item->v.s);
-				conf_item->v.s = val.u.s; // allocated string
+				conf_item->v.s = strdup(val.u.s); // allocated string
 				conf_item->t = CONF_STRING_ALLOCATED;
 			}
 			else
@@ -551,11 +539,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_PTR_TYPE:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int ptr_type = get_ptr_type_val(val.u.s);
-				free(val.u.s);
 				if(ptr_type != -1)
 					conf_item->v.ptr_type = ptr_type;
 				else
@@ -567,11 +554,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BUSY_TYPE:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int busy_reply = get_busy_reply_val(val.u.s);
-				free(val.u.s);
 				if(busy_reply != -1)
 					conf_item->v.busy_reply = busy_reply;
 				else
@@ -583,11 +569,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BLOCKING_MODE:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int blocking_mode = get_blocking_mode_val(val.u.s);
-				free(val.u.s);
 				if(blocking_mode != -1)
 					conf_item->v.blocking_mode = blocking_mode;
 				else
@@ -599,11 +584,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int refresh_hostnames = get_refresh_hostnames_val(val.u.s);
-				free(val.u.s);
 				if(refresh_hostnames != -1)
 					conf_item->v.refresh_hostnames = refresh_hostnames;
 				else
@@ -615,11 +599,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_LISTENING_MODE:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int listeningMode = get_listeningMode_val(val.u.s);
-				free(val.u.s);
 				if(listeningMode != -1)
 					conf_item->v.listeningMode = listeningMode;
 				else
@@ -631,11 +614,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_WEB_THEME:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int web_theme = get_web_theme_val(val.u.s);
-				free(val.u.s);
 				if(web_theme != -1)
 					conf_item->v.web_theme = web_theme;
 				else
@@ -647,11 +629,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_TEMP_UNIT:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int temp_unit = get_temp_unit_val(val.u.s);
-				free(val.u.s);
 				if(temp_unit != -1)
 					conf_item->v.temp_unit = temp_unit;
 				else
@@ -663,11 +644,10 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
 		{
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				const int edns_mode = get_edns_mode_val(val.u.s);
-				free(val.u.s);
 				if(edns_mode != -1)
 					conf_item->v.edns_mode = edns_mode;
 				else
@@ -679,9 +659,9 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
-			const toml_datum_t val = toml_int_in(toml, key);
-			if(val.ok && val.u.i >= PRIVACY_SHOW_ALL && val.u.i <= PRIVACY_MAXIMUM)
-				conf_item->v.i = val.u.i;
+			const toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_INT64 && val.u.int64 >= PRIVACY_SHOW_ALL && val.u.int64 <= PRIVACY_MAXIMUM)
+				conf_item->v.i = val.u.int64;
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid (not an integer or outside allowed bounds)", conf_item->k);
 			break;
@@ -689,8 +669,8 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN_ADDR:
 		{
 			struct in_addr addr4 = { 0 };
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				if(strlen(val.u.s) == 0)
 				{
@@ -701,7 +681,6 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
 				else
 					log_warn("Config %s is invalid (not of type IPv4 address)", conf_item->k);
-				free(val.u.s);
 			}
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid (not a valid string of type IPv4 address)", conf_item->k);
@@ -710,8 +689,8 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		case CONF_STRUCT_IN6_ADDR:
 		{
 			struct in6_addr addr6 = { 0 };
-			toml_datum_t val = toml_string_in(toml, key);
-			if(val.ok)
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
 			{
 				if(strlen(val.u.s) == 0)
 				{
@@ -722,7 +701,6 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 					memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
 				else
 					log_warn("Config %s is invalid (not of type IPv6 address)", conf_item->k);
-				free(val.u.s);
 			}
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is invalid (not a valid string of type IPv6 address)", conf_item->k);
@@ -730,19 +708,18 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 		}
 		case CONF_JSON_STRING_ARRAY:
 		{
-			const toml_array_t *array = toml_array_in(toml, key);
-			if(array != NULL)
+			const toml_datum_t array = toml_table_find(toml, key);
+			if(array.type == TOML_ARRAY && array.u.arr.size > -1)
 			{
 				// Free previously allocated JSON array if element exists
 				cJSON_Delete(conf_item->v.json);
 				conf_item->v.json = cJSON_CreateArray();
 
-				const unsigned int nelem = toml_array_nelem(array);
-				for(unsigned int i = 0; i < nelem; i++)
+				for(unsigned int i = 0; i < (unsigned int)array.u.arr.size; i++)
 				{
 					// Get string from TOML
-					toml_datum_t d = toml_string_at(array, i);
-					if(!d.ok)
+					const toml_datum_t d = array.u.arr.elem[i];
+					if(d.type != TOML_STRING)
 					{
 						log_warn("Config %s is an invalid array (found at index %u)", conf_item->k, i);
 						break;
@@ -754,16 +731,22 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_table_t *t
 						cJSON *item = cJSON_CreateString(d.u.s);
 						cJSON_AddItemToArray(conf_item->v.json, item);
 					}
-					free(d.u.s);
 				}
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid array", conf_item->k);
 			break;
 		}
 		case CONF_PASSWORD:
 		{
 			// This is ignored, it is only a pseudo-element with no real content
+			break;
+		}
+
+		default:
+		{
+			log_debug(DEBUG_CONFIG, "readTOMLvalue(%p, %p, %p) called with invalid type (%d), skipping",
+			          (void*)conf_item, (void*)key, (void*)&toml, conf_item->t);
 			break;
 		}
 	}

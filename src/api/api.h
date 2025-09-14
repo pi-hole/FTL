@@ -10,8 +10,6 @@
 #ifndef ROUTES_H
 #define ROUTES_H
 
-// struct mg_connection
-#include "webserver/civetweb/civetweb.h"
 // type cJSON
 #include "webserver/cJSON/cJSON.h"
 #include "webserver/http-common.h"
@@ -133,7 +131,7 @@ int api_teleporter(struct ftl_conn *api);
 int api_action_gravity(struct ftl_conn *api);
 int api_action_restartDNS(struct ftl_conn *api);
 int api_action_flush_logs(struct ftl_conn *api);
-int api_action_flush_arp(struct ftl_conn *api);
+int api_action_flush_network(struct ftl_conn *api);
 
 // Search methods
 int api_search(struct ftl_conn *api);

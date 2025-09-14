@@ -25,6 +25,8 @@ src/dnsmasq/dhcp6.c
 		    my_syslog(MS_DHCP | LOG_WARNING,
 			      _("unknown interface %s in bridge-interface"),
 			      bridge->iface);
+src/dnsmasq/dhcp6.c
+	      my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
 src/dnsmasq/dhcp.c
 		my_syslog(MS_DHCP | LOG_WARNING,
 			  _("unknown interface %s in bridge-interface"),
@@ -37,6 +39,8 @@ src/dnsmasq/dhcp.c
 src/dnsmasq/dhcp.c
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
 		      daemon->dhcp_buff, daemon->dhcp_buff2, daemon->addrbuff);
+src/dnsmasq/dhcp.c
+	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP relay address %s appears on more than one interface"), daemon->addrbuff);
 src/dnsmasq/dhcp-common.c
 	  my_syslog(MS_DHCP | LOG_WARNING, _("Ignoring duplicate dhcp-option %d"), tmp->opt); 
 src/dnsmasq/dhcp-common.c
@@ -83,7 +87,9 @@ src/dnsmasq/dnsmasq.c
 src/dnsmasq/dnssec.c
       my_syslog(LOG_WARNING, "limit exceeded: %s", message ? message : _("per-query crypto work"));
 src/dnsmasq/dnssec.c
-	  my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+	      my_syslog(LOG_WARNING, _("Insecure DS reply received for %s, check domain configuration and upstream DNS server DNSSEC support"), name);
+src/dnsmasq/dnssec.c
+	      my_syslog(LOG_WARNING, _("Negative DS reply without NS record received for %s, assuming non-DNSSEC domain-specific server."), name);
 src/dnsmasq/forward.c
 	  my_syslog(LOG_WARNING, _("discarding DNS reply: subnet option mismatch"));
 src/dnsmasq/forward.c
@@ -140,8 +146,10 @@ src/dnsmasq/network.c
 		    _("ignoring nameserver %s - cannot make/bind socket: %s"),
 		    daemon->namebuff, strerror(errno));
 src/dnsmasq/rfc2131.c
-      my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"),
-		via, daemon->addrbuff);
+	  my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"),
+		    via, daemon->addrbuff);
+src/dnsmasq/rfc2131.c
+	      my_syslog(MS_DHCP | LOG_WARNING, _("leasequery from %s not permitted"), daemon->workspacename);
 src/dnsmasq/rfc2131.c
 	  my_syslog(MS_DHCP | LOG_WARNING, _("disabling DHCP static address %s for %s"), 
 		    daemon->addrbuff, daemon->dhcp_buff);

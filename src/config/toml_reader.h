@@ -11,11 +11,11 @@
 #define TOML_READER_H
 
 #include "config/config.h"
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
-                 toml_table_t *toml, const bool verbose, bool *restart,
-                 const unsigned int version);
+                 toml_datum_t toml, const bool verbose, bool *restart,
+                 const unsigned int version, const bool teleporter);
 bool getLogFilePathTOML(void);
 
 #endif //TOML_READER_H

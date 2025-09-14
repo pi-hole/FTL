@@ -333,7 +333,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			unsigned int val = 0;
 			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
 			{
-				conf_item->v.ui = val;
+				conf_item->v.u16 = val;
 				item->valid = true;
 			}
 			else
@@ -354,21 +354,6 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 				item->error = (char *)"is not a long integer";
-				item->valid = false;
-			}
-			break;
-		}
-		case CONF_ULONG:
-		{
-			unsigned long val = 0;
-			if(sscanf(envvar, "%lu", &val) == 1)
-			{
-				conf_item->v.ul = val;
-				item->valid = true;
-			}
-			else
-			{
-				item->error = (char *)"is not an unsigned long integer";
 				item->valid = false;
 			}
 			break;

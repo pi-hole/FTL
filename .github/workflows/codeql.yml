@@ -58,7 +58,7 @@ jobs:
         # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
 
     - name: Install dependencies
       run: |
@@ -85,7 +85,7 @@ jobs:
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@192325c86100d080feab897ff886c34abd4c83a3 #v3.30.3
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
@@ -108,14 +108,14 @@ jobs:
         ./build.sh
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@192325c86100d080feab897ff886c34abd4c83a3 #v3.30.3
       with:
         category: "/language:${{matrix.language}}"
         upload: failure-only # upload only in case of failure, otherwise upload later after filtering
         output: codeql-results
     
     - name: Filter SARIF
-      uses: advanced-security/filter-sarif@v1
+      uses: advanced-security/filter-sarif@f3b8118a9349d88f7b1c0c488476411145b6270d #v1.0.1
       with:
         # filter out third-party dependencies
         patterns: |
@@ -123,7 +123,7 @@ jobs:
           -src/webserver/civetweb/*
           -src/webserver/cJSON/*
           -src/tre-regex/*
-          -src/config/tomlc99/*
+          -src/config/tomlc17/*
           -src/database/shell.c
           -src/database/sqlite3.c
           -src/database/sqlite3.h
@@ -134,13 +134,13 @@ jobs:
         output: codeql-results/cpp.sarif
 
     - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 #v3.30.3
       with:
         sarif_file: codeql-results/cpp.sarif
 
     - name: Upload CodeQL results as an artifact
       if: success() || failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 #v4.6.2
       with:
         name: codeql-results
         path: codeql-results

@@ -359,9 +359,9 @@ static int _add_message(const enum message_type type,
 		return -1;
 	}
 
-	sqlite3 *db;
+	sqlite3 *db = dbopen(false, false);
 	// Open database connection
-	if((db = dbopen(false, false)) == NULL)
+	if(db == NULL)
 		// Reason for failure is logged in dbopen()
 		return -1;
 
@@ -380,8 +380,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind type DELETE: %s",
 			type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -390,8 +388,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind message DELETE: %s",
 			type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -423,8 +419,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind type: %s",
 		        type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -433,8 +427,6 @@ static int _add_message(const enum message_type type,
 	{
 		log_err("add_message(type=%u, message=%s) - Failed to bind message: %s",
 		        type, message, sqlite3_errstr(rc));
-		sqlite3_reset(stmt);
-		sqlite3_finalize(stmt);
 		goto end_of_add_message;
 	}
 
@@ -489,15 +481,19 @@ static int _add_message(const enum message_type type,
 		goto end_of_add_message;
 	}
 
-	// Final database handling
-	sqlite3_clear_bindings(stmt);
-	sqlite3_reset(stmt);
-	sqlite3_finalize(stmt);
-
-	// Get row ID of the newly added message
-	rowid = sqlite3_last_insert_rowid(db);
-
 end_of_add_message: // Close database connection
+
+	// Final database handling
+	if(stmt != NULL)
+	{
+		sqlite3_clear_bindings(stmt);
+		sqlite3_reset(stmt);
+		sqlite3_finalize(stmt);
+
+		// Get row ID of the newly added message
+		rowid = sqlite3_last_insert_rowid(db);
+	}
+
 	dbclose(&db);
 
 	return rowid;
@@ -727,14 +723,14 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
 {
-	if(snprintf(plain, sizeof_plain, "WARNING in dnsmasq core: %s", message) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "dnsmasq: %s", message) > sizeof_plain)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
 	if(sizeof_html < 1 || html == NULL)
 		return;
 
-	if(snprintf(html, sizeof_html, "Warning in <code>dnsmasq</code> core:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message) > sizeof_html)
+	if(snprintf(html, sizeof_html, "<code>dnsmasq</code> warning:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", message) > sizeof_html)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold HTML message, warning truncated");
 }
 
@@ -1147,7 +1143,7 @@ bool format_messages(cJSON *array)
 			{
 				const char *ip = (const char*)sqlite3_column_text(stmt, 3);
 				const char *name = (const char*)sqlite3_column_text(stmt, 4);
-				const int pos = sqlite3_column_int(stmt, 6);
+				const int pos = sqlite3_column_int(stmt, 5);
 
 				format_hostname_message(plain, sizeof(plain), html, sizeof(html),
 				                        ip, name, pos);

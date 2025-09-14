@@ -62,7 +62,6 @@ static struct {
 	{ "OpenDNS (ECS, DNSSEC)", { "208.67.222.222", "208.67.220.220" }, {"2620:119:35::35", "2620:119:53::53"} },
 	{ "Level3", { "4.2.2.1", "4.2.2.2" }, { NULL, NULL } },
 	{ "Comodo", { "8.26.56.26", "8.20.247.20" }, { NULL, NULL} },
-	{ "DNS.WATCH (DNSSEC)", { "84.200.69.80", "84.200.70.40" }, { "2001:1608:10:25:0:0:1c04:b12f", "2001:1608:10:25:0:0:9249:d69b" } },
 	{ "Quad9 (filtered, DNSSEC)", {"9.9.9.9", "149.112.112.112" }, { "2620:fe::fe", "2620:fe::9" } },
 	{ "Quad9 (unfiltered, no DNSSEC)", { "9.9.9.10", "149.112.112.10" }, { "2620:fe::10", "2620:fe::fe:10" } },
 	{ "Quad9 (filtered, ECS, DNSSEC)", { "9.9.9.11", "149.112.112.11" }, { "2620:fe::11", "2620:fe::fe:11" } },
@@ -108,8 +107,6 @@ cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 			return cJSON_CreateNumber(val->u16);
 		case CONF_LONG:
 			return cJSON_CreateNumber(val->l);
-		case CONF_ULONG:
-			return cJSON_CreateNumber(val->ul);
 		case CONF_DOUBLE:
 			return cJSON_CreateNumber(val->d);
 		case CONF_STRING:
@@ -232,8 +229,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
 				return "not of type unsigned integer (16bit)";
 			// Set item
-			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			conf_item->v.u16 = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
 			break;
 		}
 		case CONF_LONG:
@@ -246,18 +243,6 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.l = elem->valuedouble;
 			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
-			break;
-		}
-		case CONF_ULONG:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < 0 || elem->valuedouble > (double)ULONG_MAX)
-				return "not of type unsigned long";
-			// Set item
-			conf_item->v.ul = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %lu", conf_item->k, conf_item->v.ul);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -733,7 +718,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, not via the API",
@@ -755,7 +740,7 @@ static int api_config_patch(struct ftl_conn *api)
 			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
 			if(hint == NULL)
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return send_json_error(api, 500,
 				                       "internal_error",
 				                       "Failed to allocate memory for hint",
@@ -764,7 +749,7 @@ static int api_config_patch(struct ftl_conn *api)
 			strcpy(hint, new_item->k);
 			strcat(hint, ": ");
 			strcat(hint, response);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config item is invalid",
@@ -779,7 +764,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_ENV_VAR && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
@@ -804,7 +789,7 @@ static int api_config_patch(struct ftl_conn *api)
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
 		{
-			free_config(&newconf);
+			free_config(&newconf, false);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Config item validation failed",
@@ -847,7 +832,7 @@ static int api_config_patch(struct ftl_conn *api)
 			}
 			else
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Invalid configuration",
@@ -862,7 +847,7 @@ static int api_config_patch(struct ftl_conn *api)
 		set_debug_flags(&config);
 
 		// Store changed configuration to disk
-		writeFTLtoml(true);
+		writeFTLtoml(true, NULL);
 
 		// Rewrite HOSTS file if required
 		if(rewrite_hosts)
@@ -871,7 +856,7 @@ static int api_config_patch(struct ftl_conn *api)
 	else
 	{
 		// Nothing changed, merely release copied config memory
-		free_config(&newconf);
+		free_config(&newconf, false);
 		log_info("No config changes detected");
 	}
 
@@ -947,7 +932,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(new_item->f & FLAG_ENV_VAR)
 		{
 			char *key = strdup(new_item->k);
-			free_config(&newconf);
+			free_config(&newconf, false);
 			free_config_path(requested_path);
 			return send_json_error_free(api, 400,
 			                            "bad_request",
@@ -1007,7 +992,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
-				free_config(&newconf);
+				free_config(&newconf, false);
 				free_config_path(requested_path);
 				return send_json_error(api, 400,
 				                       "bad_request",
@@ -1033,7 +1018,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 404 if config element not found
 	if(!found)
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		cJSON *json = JSON_NEW_OBJECT();
 		JSON_SEND_OBJECT_CODE(json, 404);
 	}
@@ -1041,7 +1026,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Error 400 if unique item already present
 	if(message != NULL)
 	{
-		free_config(&newconf);
+		free_config(&newconf, false);
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,
@@ -1076,7 +1061,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	set_debug_flags(&config);
 
 	// Store changed configuration to disk
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 
 	// Rewrite HOSTS file if required
 	if(rewrite_hosts)

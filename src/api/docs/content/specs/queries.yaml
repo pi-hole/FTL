@@ -12,7 +12,7 @@ components:
           Query parameters may be used to limit the number of results.
 
           By default, this API callback returns the most recent 100 queries.
-          This can be changed using the parameter `n`.
+          This can be changed using the parameter `length`.
 
           This callback allows for fine-grained filtering by various parameters.
           All query parameters are all optional and can be combined in any way:
@@ -25,7 +25,7 @@ components:
 
           By default, the returned queries always start at the most recent query.
           This can be changed by supplying the parameter `cursor`.
-          Each result of this API callback contains a `cursor` pointing the beginning of the next `n` queries chunk.
+          Each result of this API callback contains a `cursor` pointing the beginning of the next `length` queries chunk.
           This provides a very fast and lightweight server-side pagination implementation.
 
           If wildcards are supported for a parameter, you may specify `*` at any position in the parameter to match any number of characters.
@@ -114,9 +114,7 @@ components:
             description: Load queries from on-disk database rather than from in-memory
             required: false
             schema:
-              enum:
-                - true
-                - false
+              type: boolean
               default: false
         responses:
           '200':

@@ -1,14 +1,3 @@
-From ed07ef026f1ba4ad26b8740e6280263f808aeb44 Mon Sep 17 00:00:00 2001
-From: DL6ER <dl6er@dl6er.de>
-Date: Mon, 3 Mar 2025 17:03:19 +0100
-Subject: [PATCH] Increase niceness of all civetweb threads as DNS operation is
- more important than the API and dashboard
-
-Signed-off-by: DL6ER <dl6er@dl6er.de>
----
- src/webserver/civetweb/civetweb.c | 4 ++++
- 1 file changed, 4 insertions(+)
-
 diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
 index da254bb4..b1e5b9a6 100644
 --- a/src/webserver/civetweb/civetweb.c
@@ -31,6 +20,3 @@ index da254bb4..b1e5b9a6 100644
  }
  #else /* !defined(NO_THREAD_NAME) */
  static void
--- 
-2.43.0
-

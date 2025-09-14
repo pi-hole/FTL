@@ -1,15 +1,14 @@
 version: 2
 updates:
 - package-ecosystem: github-actions
-  directory: "/"
+  directories: 
+    - "/"
   schedule:
     interval: weekly
     day: saturday
     time: "10:00"
   open-pull-requests-limit: 10
   target-branch: development
-  reviewers:
-    - "pi-hole/ftl-maintainers"
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"
@@ -25,8 +24,6 @@ updates:
     time: "10:00"
   open-pull-requests-limit: 10
   target-branch: development
-  reviewers:
-    - "pi-hole/ftl-maintainers"
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"

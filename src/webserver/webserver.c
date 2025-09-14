@@ -38,6 +38,7 @@ static char *prefix_webhome = NULL;
 static char *api_uri = NULL;
 static char *admin_api_uri = NULL;
 static char *login_uri = NULL;
+static char *webheaders = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
@@ -160,8 +161,14 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
+			if(strcmp(uri, prefix_webhome) == 0)
+			{
+				log_debug(DEBUG_API, "Not redirecting %s (matches webhome)",
+					  prefix_webhome);
+				return 0;
+			}
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
 			          prefix_webhome);
 			mg_send_http_redirect(conn, prefix_webhome, 308);
@@ -283,6 +290,50 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 
 	// Log the message
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
+}
+
+/**
+ * @brief Redirects an HTTP request to a specified URL with a given status code.
+ *
+ * This function formats a URL string using a format specifier and redirects
+ * the HTTP connection to the specified URL with the provided HTTP status code.
+ *
+ * @param conn Pointer to the `mg_connection` structure representing the HTTP connection.
+ *             Must not be NULL.
+ * @param code HTTP status code to use for the redirection (e.g., 301, 302).
+ * @param format Format string for the URL to redirect to. Must not be NULL.
+ *               Supports standard printf-style formatting.
+ * @param ... Additional arguments for the format string.
+ *
+ * @return The HTTP status code used for the redirection on success, or 0 on failure.
+ */
+int __attribute__((format(printf, 3, 4), nonnull(1,3)))
+ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...)
+{
+	// Determine the size of the formatted string
+	va_list args;
+	va_start(args, format);
+	int size = vsnprintf(NULL, 0, format, args);
+	va_end(args);
+
+	char *buffer = calloc(size + 1, sizeof(char));
+	if (buffer == NULL) {
+		log_err("Memory allocation failed for redirect format!");
+		return 0;
+	}
+
+	// Format the string
+	va_start(args, format);
+	vsnprintf(buffer, size + 1, format, args);
+	va_end(args);
+	// Ensure null termination
+	buffer[size] = '\0';
+
+	log_debug(DEBUG_API, "Redirecting to %s", buffer);
+	mg_send_http_redirect(conn, buffer, code);
+	free(buffer);
+
+	return code;
 }
 
 #define MAXPORTS 8
@@ -527,7 +578,7 @@ void http_init(void)
 	}
 
 	// Construct additional headers
-	char *webheaders = strdup("");
+	webheaders = strdup("");
 	if (webheaders == NULL) {
 		log_err("Failed to allocate memory for webheaders!");
 		return;
@@ -545,11 +596,14 @@ void http_init(void)
 		const char *h = cJSON_GetStringValue(header);
 
 		// Allocate memory for the new header
-		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
-		if (webheaders == NULL) {
-			log_err("Failed to allocate memory for webheaders!");
+		char *new_webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (new_webheaders == NULL) {
+			log_err("Failed to (re)allocate memory for webheaders!");
+			free(webheaders);
+			webheaders = NULL;
 			return;
 		}
+		webheaders = new_webheaders;
 		strcat(webheaders, h);
 		strcat(webheaders, "\r\n");
 	}
@@ -666,14 +720,17 @@ void http_init(void)
 		return;
 	}
 
-	// Get server ports
-	get_server_ports();
-
 	// Register API handler, use "/api" even when a prefix is defined as the
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+
+	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
+	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
+	{
+		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
+	}
 
 	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
@@ -681,7 +738,7 @@ void http_init(void)
 		// Replace trailing slash with end-of-string marker for matcher
 		char *prefix_webhome_matcher = strdup(prefix_webhome);
 		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
-	
+
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          prefix_webhome, config.webserver.paths.webhome.v.s);
 		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
@@ -697,7 +754,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
-	allocate_lua(login_uri, admin_api_uri);
+	allocate_lua(login_uri, admin_api_uri, prefix_webhome);
 
 	// Restore sessions from database
 	init_api();
@@ -813,8 +870,11 @@ void http_terminate(void)
 	// Free admin_api_uri path
 	if(admin_api_uri != NULL)
 		free(admin_api_uri);
-	
+
 	// Free login_uri path
 	if(login_uri != NULL)
 		free(login_uri);
+
+	if(webheaders != NULL)
+		free(webheaders);
 }
