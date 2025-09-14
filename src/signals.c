@@ -42,10 +42,11 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-client",
 	"ntp-server4",
 	"ntp-server6",
+	"webserver",
 };
 
 // Private prototypes
- static void terminate(void);
+static void terminate(void);
 
 // Return the (null-terminated) name of the calling thread
 // The name is stored in the buffer as well as returned for convenience

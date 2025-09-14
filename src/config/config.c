@@ -1045,8 +1045,8 @@ void initConfig(struct config *conf)
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
 	conf->webserver.headers.k = "webserver.headers";
-	conf->webserver.headers.h = "Additional HTTP headers added to the web server responses.\n The headers are added to all responses, including those for the API.\n Note about the default additional headers:\n - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name resolution on links that the user may choose to follow. We disable DNS prefetching here.\n - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js styling some elements directly, and index.html containing some inlined Javascript code.\n - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the site attempting to do so.\n - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This header is usually enabled by default in browsers, and is not recommended as it can hurt the security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).\n - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the MIME types advertised in the  Content-Type headers should not be changed and be followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a way to say that the webmasters knew what they were doing. Site security testers usually expect this header to be set.\n - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for same-site origins, but cross-origin requests will send no referrer information.\n The latter four headers are set as expected by https://securityheaders.io";
-	conf->webserver.headers.a = cJSON_CreateStringReference("array of HTTP headers");
+	conf->webserver.headers.h = "Additional HTTP headers added to the web server responses.\n\n The headers are added to all responses, including those for the API.\n Note about the default additional headers:\n - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name resolution on links that the user may choose to follow. We disable DNS prefetching here.\n - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js styling some elements directly, and index.html containing some inlined Javascript code.\n - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the site attempting to do so.\n - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This header is usually enabled by default in browsers, and is not recommended as it can hurt the security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).\n - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the MIME types advertised in the  Content-Type headers should not be changed and be followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a way to say that the webmasters knew what they were doing. Site security testers usually expect this header to be set.\n - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for same-site origins, but cross-origin requests will send no referrer information.\n The latter four headers are set as expected by https://securityheaders.io";
+	conf->webserver.headers.a = cJSON_CreateStringReference("An array of HTTP headers");
 	conf->webserver.headers.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.headers.f = FLAG_RESTART_FTL;
 	conf->webserver.headers.d.json = cJSON_CreateArray();
@@ -1059,28 +1059,33 @@ void initConfig(struct config *conf)
 	conf->webserver.headers.c = validate_stub; // Only type-based checking
 
 	conf->webserver.serve_all.k = "webserver.serve_all";
-	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory? If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
+	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory?\n\n If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
 	conf->webserver.serve_all.t = CONF_BOOL;
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
 
-	// sub-struct session
+	conf->webserver.tls.validity.k = "webserver.tls.validity";
+	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for.\n\n Defaults to 47 days. A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate. If you set the validity range to 0 days and still try to generate a certificate, Pi-hole will set a fixed validity range of roughly 30 years for the certificate.";
+	conf->webserver.tls.validity.t = CONF_UINT;
+	conf->webserver.tls.validity.d.ui = 47; // 47 days
+	conf->webserver.tls.validity.c = validate_ui_min_7_or_0;
+
+	// sub-struct webserver.session
 	conf->webserver.session.timeout.k = "webserver.session.timeout";
-	conf->webserver.session.timeout.h = "Session timeout in seconds. If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
+	conf->webserver.session.timeout.h = "Session timeout in seconds.\n\n If a session is inactive for more than this time, it will be terminated. Sessions are continuously refreshed by the web interface, preventing sessions from timing out while the web interface is open.\n\n This option may also be used to make logins persistent for long times, e.g. 86400 seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that the total number of concurrent sessions is limited so setting this value too high may result in users being rejected and unable to log in if there are already too many sessions active.";
 	conf->webserver.session.timeout.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->webserver.session.timeout.t = CONF_UINT;
 	conf->webserver.session.timeout.d.ui = 1800u;
 	conf->webserver.session.timeout.c = validate_stub; // Only type-based checking
 
 	conf->webserver.session.restore.k = "webserver.session.restore";
-	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database? This is useful if you want to keep your sessions after a restart of the web interface.";
-	conf->webserver.session.restore.a = cJSON_CreateStringReference("true or false");
+	conf->webserver.session.restore.h = "Should Pi-hole backup and restore sessions from the database?\n\n This is useful if you want to keep your sessions after a restart of the web interface.";
 	conf->webserver.session.restore.t = CONF_BOOL;
 	conf->webserver.session.restore.d.b = true;
 	conf->webserver.session.restore.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
-	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file. All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n\n The *.pem file can be created using `cp server.crt server.pem && cat server.key >> server.pem` if you have these files instead";
+	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file.\n\n All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n\n The *.pem file can be created using `cp server.crt server.pem && cat server.key >> server.pem` if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("A valid TLS certificate file (*.pem)");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;

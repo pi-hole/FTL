@@ -416,12 +416,17 @@ void parse_args(int argc, char *argv[])
 			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
+		// Read config
+		readFTLconf(&config, false);
+
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
+
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
-		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+
+		exit(generate_certificate(argv[2], rsa, domain, config.webserver.tls.validity.v.ui) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Parse X.509 certificate
