@@ -23,6 +23,8 @@
 #include "files.h"
 // git_branch()
 #include "version.h"
+// sanitize_dns_hosts()
+#include "config/validator.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
@@ -107,6 +109,13 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);
+		
+		// Sanitize dns.hosts entries before writing them to TOML
+		if(conf_item == &config.dns.hosts)
+		{
+			sanitize_dns_hosts(&conf_item->v);
+		}
+		
 		writeTOMLvalue(fp, level-1, conf_item->t, &conf_item->v);
 
 		// Compare with default value and add a comment on difference
