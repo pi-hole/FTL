@@ -459,6 +459,7 @@ components:
           csrf: null
           validity: 300
           message: null
+        took: 0.003
     login_okay:
       summary: Login successful
       value:
@@ -469,6 +470,7 @@ components:
           csrf: "Ux87YTIiMOf/GKCefVIOMw="
           validity: 300
           message: correct password
+        took: 0.003
     no_login_required:
       summary: No login required for this client
       value:
@@ -479,6 +481,7 @@ components:
           csrf: null
           validity: -1
           message: no auth for local user
+        took: 0.003
     login_required:
       summary: Login required, 2FA disabled
       value:
@@ -489,6 +492,7 @@ components:
           csrf: null
           validity: -1
           message: password incorrect
+        took: 0.003
     login_required_2fa:
       summary: Login required, 2FA enabled
       value:
@@ -499,6 +503,7 @@ components:
           csrf: null
           validity: -1
           message: password incorrect
+        took: 0.003
     login_failed:
       summary: Login failed
       value:
@@ -509,6 +514,7 @@ components:
           csrf: null
           validity: -1
           message: no SID provided
+        took: 0.003
     errors:
       no_payload:
         summary: Bad request (no valid JSON payload)
@@ -517,6 +523,7 @@ components:
             key: "bad_request"
             message: "No valid JSON payload found"
             hint: null
+          took: 0.003
       no_password:
         summary: Bad request (no password)
         value:
@@ -524,6 +531,7 @@ components:
             key: "bad_request"
             message: "No password found in JSON payload"
             hint: null
+          took: 0.003
       password_inval:
         summary: Bad request (password is not a string)
         value:
@@ -531,6 +539,7 @@ components:
             key: "bad_request"
             message: "Field password has to be of type 'string'"
             hint: null
+          took: 0.003
       totp_missing:
         summary: Bad request (2FA token missing)
         value:
@@ -538,6 +547,7 @@ components:
             key: "bad_request"
             message: "No 2FA token found in JSON payload"
             hint: null
+          took: 0.003
       missing_session_id:
         summary: Bad request (missing session ID)
         value:
@@ -545,6 +555,7 @@ components:
             key: "bad_request"
             message: "Missing or invalid session ID"
             hint: null
+          took: 0.003
       session_id_oob:
         summary: Bad request (session ID out of bounds)
         value:
@@ -552,6 +563,7 @@ components:
             key: "bad_request"
             message: "Session ID out of bounds"
             hint: null
+          took: 0.003
       session_not_in_use:
         summary: Bad request (session not in use)
         value:
@@ -559,6 +571,7 @@ components:
             key: "bad_request"
             message: "Session ID not in use"
             hint: null
+          took: 0.003
       totp_invalid:
         summary: 2FA token invalid
         value:
@@ -566,6 +579,7 @@ components:
             key: "unauthorized"
             message: "Invalid 2FA token"
             hint: null
+          took: 0.003
       totp_reused:
         summary: 2FA token reused
         value:
@@ -573,6 +587,7 @@ components:
             key: "unauthorized"
             message: "Reused 2FA token"
             hint: "wait for new token"
+          took: 0.003
       rate_limit:
         summary: Rate limit exceeded
         value:
@@ -580,6 +595,7 @@ components:
             key: "rate_limiting"
             message: "Rate-limiting login attempts"
             hint: null
+          took: 0.003
       no_seats:
         summary: No free API seats available
         value:
@@ -587,6 +603,7 @@ components:
             key: "api_seats_exceeded"
             message: "API seats exceeded"
             hint: "increase webserver.api.max_sessions"
+          took: 0.003
   parameters:
     id:
       in: path

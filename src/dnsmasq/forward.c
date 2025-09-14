@@ -18,7 +18,7 @@
 #include "dnsmasq_interface.h"
 
 static struct frec *get_new_frec(time_t now, struct server *serv, int force);
-static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int flags, int flagmask);
+static struct frec *lookup_frec(time_t now, char *target, int class, int rrtype, int id, int flags, int flagmask);
 #ifdef HAVE_DNSSEC
 static int tcp_key_recurse(time_t now, int status, struct dns_header *header, size_t n, 
 			   int class, char *name, char *keyname, struct server *server, 
@@ -200,7 +200,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       old_reply = 1;
       fwd_flags = forward->flags;
     }
-  else if (gotname && (forward = lookup_frec(daemon->namebuff, (int)rrclass, (int)rrtype, -1, fwd_flags,
+  else if (gotname && (forward = lookup_frec(now, daemon->namebuff, (int)rrclass, (int)rrtype, -1, fwd_flags,
 					     FREC_CHECKING_DISABLED | FREC_AD_QUESTION | FREC_DO_QUESTION |
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
@@ -792,6 +792,16 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
   if (!is_sign && !option_bool(OPT_DNSSEC_PROXY))
      header->hb4 &= ~HB4_AD;
 
+  /* Complain loudly if the upstream server is non-recursive. */
+  if (!(header->hb4 & HB4_RA) && rcode == NOERROR &&
+      server && !(server->flags & SERV_WARNED_RECURSIVE))
+    {
+      (void)prettyprint_addr(&server->addr, daemon->namebuff);
+      my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
+      if (!option_bool(OPT_LOG))
+	server->flags |= SERV_WARNED_RECURSIVE;
+    }  
+
   header->hb4 |= HB4_RA; /* recursion if available */
 
   if (OPCODE(header) != QUERY)
@@ -807,16 +817,6 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       return resize_packet(header, n, pheader, plen);
     }
   
-  /* Complain loudly if the upstream server is non-recursive. */
-  if (!(header->hb4 & HB4_RA) && rcode == NOERROR &&
-      server && !(server->flags & SERV_WARNED_RECURSIVE))
-    {
-      (void)prettyprint_addr(&server->addr, daemon->namebuff);
-      my_syslog(LOG_WARNING, _("nameserver %s refused to do a recursive query"), daemon->namebuff);
-      if (!option_bool(OPT_LOG))
-	server->flags |= SERV_WARNED_RECURSIVE;
-    }  
-
   if (header->hb3 & HB3_TC)
     log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
   else if (!bogusanswer || (header->hb4 & HB4_CD))
@@ -1024,7 +1024,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	  unsigned int flags = STAT_ISEQUAL(status, STAT_NEED_KEY) ? FREC_DNSKEY_QUERY : FREC_DS_QUERY;
 	  struct frec *old;
 	  
-	  if ((old = lookup_frec(daemon->keyname, forward->class, -1, -1, flags, flags)))
+	  if ((old = lookup_frec(now, daemon->keyname, forward->class, -1, -1, flags, flags)))
 	    {
 	      /* This is tricky; it detects loops in the dependency
 		 graph for DNSSEC validation, say validating A requires DS B
@@ -1068,7 +1068,7 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 	     	      
 	      /* Make sure we don't expire and free the orig frec during the
 		 allocation of a new one: third arg of get_new_frec() does that. */
-	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, NULL, NULL)) != -1 &&
+	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, STAT_ISEQUAL(status, STAT_NEED_DS), NULL, NULL)) != -1 &&
 		  (server = daemon->serverarray[serverind]) &&
 		  (nn = dnssec_generate_query(header, ((unsigned char *) header) + daemon->edns_pktsz,
 					      daemon->keyname, forward->class, get_id(),
@@ -1214,7 +1214,7 @@ void reply_query(int fd, time_t now)
   GETSHORT(rrtype, p); 
   GETSHORT(class, p);
 
-  if (!(forward = lookup_frec(daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
+  if (!(forward = lookup_frec(now, daemon->namebuff, class, rrtype, ntohs(header->id), FREC_ANSWER, 0)))
     return;
 
   filter_servers(forward->sentto->arrayposn, F_SERVER, &first, &last);
@@ -2303,7 +2303,7 @@ int tcp_from_udp(time_t now, int status, struct dns_header *header, ssize_t *ple
   first = start = server->arrayposn;
   last = first + 1;
   
-  if (!STAT_ISEQUAL(status, STAT_OK) && (start = dnssec_server(server, name, &first, &last)) == -1)
+  if (!STAT_ISEQUAL(status, STAT_OK) && (start = dnssec_server(server, name, STAT_ISEQUAL(status, STAT_NEED_DS), &first, &last)) == -1)
     new_status = STAT_ABANDONED;
   else
     {
@@ -2413,7 +2413,7 @@ static int tcp_key_recurse(time_t now, int status, struct dns_header *header, si
       m = dnssec_generate_query(new_header, ((unsigned char *) new_header) + 65536, keyname, class, 0,
 				STAT_ISEQUAL(new_status, STAT_NEED_KEY) ? T_DNSKEY : T_DS);
       
-      if ((start = dnssec_server(server, keyname, &first, &last)) == -1)
+      if ((start = dnssec_server(server, keyname, STAT_ISEQUAL(new_status, STAT_NEED_DS), &first, &last)) == -1)
 	{
 	  new_status = STAT_ABANDONED;
 	  break;
@@ -3248,7 +3248,7 @@ static void free_frec(struct frec *f)
 /* Impose an absolute
    limit of 4*TIMEOUT before we wipe things (for random sockets).
    If force is set, always return a result, even if we have
-   to allocate above the limit, and don'y free any records.
+   to allocate above the limit, and don't free any records.
    This is set when allocating for DNSSEC to avoid cutting off
    the branch we are sitting on. */
 static struct frec *get_new_frec(time_t now, struct server *master, int force)
@@ -3270,36 +3270,40 @@ static struct frec *get_new_frec(time_t now, struct server *master, int force)
 	  /* Don't free DNSSEC sub-queries here, as we may end up with
 	     dangling references to them. They'll go when their "real" query 
 	     is freed. */
-	  if (!f->dependent && !force)
+	  if (!f->dependent)
 #endif
-	    {
-	      if (difftime(now, f->time) >= 4*TIMEOUT)
-		{
-		  daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
-		  free_frec(f);
-		  target = f;
-		}
-	      else if (!oldest || difftime(f->time, oldest->time) <= 0)
-		oldest = f;
-	    }
+	    if (!force)
+	      {
+		if (difftime(now, f->time) >= 4*TIMEOUT)
+		  {
+		    daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
+		    free_frec(f);
+		    target = f;
+		  }
+		else if (!oldest || difftime(f->time, oldest->time) <= 0)
+		  oldest = f;
+	      }
 	}
       
       if (f->sentto && ((int)difftime(now, f->time)) < TIMEOUT && server_samegroup(f->sentto, master))
 	count++;
     }
-
-  if (!force && count >= daemon->ftabsize)
-    {
-      query_full(now, master->domain);
-      return NULL;
-    }
   
-  if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
-    { 
-      /* can't find empty one, use oldest if there is one and it's older than timeout */
-      daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
-      free_frec(oldest);
-      target = oldest;
+  if (!force)
+    {
+      if (count >= daemon->ftabsize)
+	{
+	  query_full(now, master->domain);
+	  return NULL;
+	}
+      
+      if (!target && oldest && ((int)difftime(now, oldest->time)) >= TIMEOUT)
+	{ 
+	  /* can't find empty one, use oldest if there is one and it's older than timeout */
+	  daemon->metrics[METRIC_DNS_UNANSWERED_QUERY]++;
+	  free_frec(oldest);
+	  target = oldest;
+	}      
     }
   
   if (!target && (target = (struct frec *)whine_malloc(sizeof(struct frec))))
@@ -3334,7 +3338,7 @@ static void query_full(time_t now, char *domain)
     }
 }
 
-static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int flags, int flagmask)
+static struct frec *lookup_frec(time_t now, char *target, int class, int rrtype, int id, int flags, int flagmask)
 {
   struct frec *f;
   struct dns_header *header;
@@ -3384,7 +3388,14 @@ static struct frec *lookup_frec(char *target, int class, int rrtype, int id, int
 	    
 	    continue;
 	  }
-		
+
+	/* frecs older than this will get garbage-collected in
+	   get_new_frec(), so don't return them here, so we have
+	   consistent behaviour from an idle dnsmasq which
+	   is not calling get_new_frec() often. */
+	if (difftime(now, f->time) >= 4*TIMEOUT)
+	  return NULL;
+	
 	return f;
       }
   

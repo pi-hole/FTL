@@ -1,14 +1,3 @@
-From 0bee9e9f7942c5b73a715eaeadf5ab2d09a8c74d Mon Sep 17 00:00:00 2001
-From: DL6ER <dl6er@dl6er.de>
-Date: Sat, 22 Feb 2025 18:33:25 +0100
-Subject: [PATCH] Expose bound-to addresses from CivetWeb to the frontend
-
-Signed-off-by: DL6ER <dl6er@dl6er.de>
----
- src/webserver/civetweb/civetweb.c | 1 +
- src/webserver/civetweb/civetweb.h | 6 ++++++
- 2 files changed, 7 insertions(+)
-
 diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
 index fa908e54..66fcab01 100644
 --- a/src/webserver/civetweb/civetweb.c
@@ -45,6 +34,3 @@ index eee958b4..6dcfa457 100644
  };
  
  /* Legacy name */
--- 
-2.43.0
-

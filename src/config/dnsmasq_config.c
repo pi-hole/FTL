@@ -28,8 +28,11 @@
 #include <unistd.h>
 // wait
 #include <sys/wait.h>
+// get_gateway_name()
+#include "tools/netlink.h"
 
 #define HEADER_WIDTH 80
+
 
 static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 {
@@ -362,7 +365,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("localise-queries\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
-	
+
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
@@ -445,10 +448,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("\n", pihole_conf);
 	}
 
-	const char *interface = conf->dns.interface.v.s;
-	// Use eth0 as fallback interface if the interface is missing
-	if(strlen(interface) == 0)
-		interface = "eth0";
+	// Check if an explicit interface is configured
+	char interface[MAXIFACESTRLEN];
+	strncpy(interface, conf->dns.interface.v.s, sizeof(interface) - 1);
+	interface[sizeof(interface) - 1] = '\0';
+
+	// If not, get the name of the current gateway (we need to free this
+	// memory later on)
+	if(strlen(interface) < 1)
+		get_gateway_name(interface);
 
 	switch(conf->dns.listeningMode.v.listeningMode)
 	{
@@ -473,6 +481,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		case LISTEN_NONE:
 			fputs("# No interface configuration applied, make sure to cover this yourself\n", pihole_conf);
 			break;
+		case LISTEN_MAX:
+		default:
+			log_err("Unknown listening mode %d, unable to update dnsmasq configuration", conf->dns.listeningMode.v.listeningMode);
 	}
 	fputs("\n", pihole_conf);
 
@@ -554,7 +565,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
-		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+		fputs("# Never forward queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
 		fputs("local=//\n\n", pihole_conf);
@@ -604,7 +615,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	fputs("# NXDOMAIN responses for queries on this domain. The actual response\n", pihole_conf);
 	fputs("# is handled by FTL at runtime\n", pihole_conf);
 	fputs("local=/pi.hole/\n", pihole_conf);
-	fputs("host-record=pi.hole,0.0.0.0\n", pihole_conf);
+	fputs("host-record=pi.hole,0.0.0.0,::\n", pihole_conf);
 
 	if(conf->dhcp.active.v.b)
 	{
