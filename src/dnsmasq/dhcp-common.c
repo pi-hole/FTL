@@ -701,7 +701,9 @@ const struct opttab_t {
   { "user-class", 77, 0 },
   { "rapid-commit", 80, 0 },
   { "FQDN", 81, OT_INTERNAL },
-  { "agent-id", 82, OT_INTERNAL },
+  { "agent-info", 82, OT_INTERNAL },
+  { "last-transaction", 91, 4 | OT_TIME },
+  { "associated-ip", 92, OT_ADDR_LIST },
   { "client-arch", 93, 2 | OT_DEC },
   { "client-interface-id", 94, 0 },
   { "client-machine-id", 97, 0 },
@@ -1065,10 +1067,12 @@ void log_relay(int family, struct dhcp_relay *relay)
     {
       if (broadcast)
 	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s via %s"), daemon->addrbuff, relay->interface);
+      else if (relay->split_mode)
+	my_syslog(MS_DHCP | LOG_INFO, _("DHCP split-relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
       else
 	my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s via %s"), daemon->addrbuff, daemon->namebuff, relay->interface);
     }
-  else
+  else 
     my_syslog(MS_DHCP | LOG_INFO, _("DHCP relay from %s to %s"), daemon->addrbuff, daemon->namebuff);
 }
    

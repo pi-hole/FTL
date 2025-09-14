@@ -16,8 +16,15 @@
 #endif
 
 #include "enums.h"
+#include <stdbool.h>
+// ssize_t
+#include <unistd.h>
 
 bool generate_certificate(const char* certfile, bool rsa, const char *domain);
 enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key);
+
+bool init_entropy(void);
+void destroy_entropy(void);
+ssize_t drbg_random(unsigned char *output, size_t len);
 
 #endif // X509_H

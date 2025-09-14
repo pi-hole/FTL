@@ -62,7 +62,9 @@ components:
             content:
               application/json:
                 schema:
-                  $ref: 'common.yaml#/components/errors/unauthorized'
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
     restartdns:
       post:
         summary: Restart pihole-FTL
@@ -119,8 +121,10 @@ components:
         tags:
           - Actions
         operationId: "action_flusharp"
+        deprecated: true
         description: |
-          Flushes the network table. This includes emptying the ARP table and removing both all known devices and their associated addresses.
+          Deprecated! Use '/action/flush/network' instead.
+          Flushes the network table. This includes removing both all known devices and their associated addresses.
         responses:
           '200':
             description: OK
@@ -145,6 +149,39 @@ components:
                 schema:
                   allOf:
                     - $ref: 'action.yaml#/components/errors/forbidden'
+    flush_network:
+      post:
+        summary: Flush the network table
+        tags:
+          - Actions
+        operationId: "action_flushnetwork"
+        description: |
+          Flushes the network table. This includes removing both all known devices and their associated addresses.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/schemas/success'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   errors:
     forbidden:

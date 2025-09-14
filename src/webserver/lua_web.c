@@ -18,41 +18,17 @@
 #include "config/config.h"
 // log_web()
 #include "log.h"
-
 // directory_exists()
 #include "files.h"
+// ftl_http_redirect()
+#include "webserver.h"
 
-static char *login_uri = NULL, *admin_api_uri = NULL;
-void allocate_lua(void)
+static char *login_uri = NULL, *admin_api_uri = NULL, *prefix_webhome = NULL;
+void allocate_lua(char *login_uri_in, char *admin_api_uri_in, char *prefix_webhome_in)
 {
-	// Build login URI string (webhome + login)
-	// Append "login" to webhome string
-	const size_t login_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	login_uri = calloc(login_uri_len + 6, sizeof(char));
-	memcpy(login_uri, config.webserver.paths.webhome.v.s, login_uri_len);
-	strcpy(login_uri + login_uri_len, "login");
-	login_uri[login_uri_len + 5u] = '\0';
-	log_debug(DEBUG_API, "Login URI: %s", login_uri);
-
-	// Build "wrong" API URI string (webhome + api)
-	// Append "api" to webhome string
-	const size_t admin_api_uri_len = strlen(config.webserver.paths.webhome.v.s);
-	admin_api_uri = calloc(admin_api_uri_len + 4, sizeof(char));
-	memcpy(admin_api_uri, config.webserver.paths.webhome.v.s, admin_api_uri_len);
-	strcpy(admin_api_uri + admin_api_uri_len, "api");
-	admin_api_uri[admin_api_uri_len + 3u] = '\0';
-	log_debug(DEBUG_API, "Admin API URI: %s", admin_api_uri);
-}
-
-void free_lua(void)
-{
-	// Free login_uri
-	if(login_uri != NULL)
-		free(login_uri);
-
-	// Free admin_api_uri
-	if(admin_api_uri != NULL)
-		free(admin_api_uri);
+	login_uri = login_uri_in;
+	admin_api_uri = admin_api_uri_in;
+	prefix_webhome = prefix_webhome_in;
 }
 
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags)
@@ -64,11 +40,33 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 {
 	// Fall back to CivetWeb's default handler if login URI is not available
 	// (should never happen)
-	if(login_uri == NULL || admin_api_uri == NULL)
+	if(login_uri == NULL || admin_api_uri == NULL || prefix_webhome == NULL)
 		return 0;
 
 	/* Handler may access the request info using mg_get_request_info */
 	const struct mg_request_info *req_info = mg_get_request_info(conn);
+
+	// Do not redirect for ACME challenges
+	log_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", req_info->local_uri_raw);
+	const char acme_challenge[] = "/.well-known/acme-challenge/";
+	const bool is_acme = strncmp(req_info->local_uri_raw, acme_challenge, strlen(acme_challenge)) == 0;
+	if(is_acme)
+	{
+		// ACME challenge - no authentication required
+		return 0;
+	}
+
+	// Check if we are allowed to serve this directory by checking the
+	// configuration setting webserver.serve_all and the requested URI to
+	// start with something else than config.webserver.paths.webhome. If so,
+	// send error 404
+	if(!config.webserver.serve_all.v.b &&
+	   strncmp(req_info->local_uri_raw, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
+	{
+		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", req_info->local_uri_raw);
+		mg_send_http_error(conn, 404, "Not Found");
+		return 404;
+	}
 
 	// Build minimal api struct to check authentication
 	struct ftl_conn api = { 0 };
@@ -76,7 +74,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	api.request = req_info;
 	api.now = double_time();
 
-	// Check if the request is for the API under /admin/api
+	// Check if the request is for the API under <webhome>api
 	// (it is posted at /api)
 	if(strncmp(req_info->local_uri_raw, admin_api_uri, strlen(admin_api_uri)) == 0)
 	{
@@ -100,11 +98,19 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	// Check if the request is for the login page
 	const bool login = (strcmp(req_info->local_uri_raw, login_uri) == 0);
 
+	// Check if the request is for something in the webhome directory
+	const bool in_webhome = (strncmp(req_info->local_uri_raw,
+	                                 config.webserver.paths.webhome.v.s,
+	                                 strlen(config.webserver.paths.webhome.v.s)) == 0);
+	log_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	          req_info->local_uri_raw, login, in_webhome, no_dot);
+
 	// Check if the request is for a LUA page (every XYZ.lp has already been
-	// rewritten at this point to XYZ)
-	if(!no_dot)
+	// rewritten at this point to XYZ), we also don't enforce authentication
+	// for pages outside the webhome directory
+	if(!no_dot || !in_webhome)
 	{
-		// Not a LUA page - fall back to CivetWeb's default handler
+		// Fall back to CivetWeb's default handler
 		return 0;
 	}
 
@@ -113,26 +119,28 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated
-		// Check if the user is authenticated
 		if(!authorized)
 		{
 			// User is not authenticated, redirect to login page
-			log_web("Authentication required, redirecting to %slogin",
-			        config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %slogin\r\n\r\n",
-			          config.webserver.paths.webhome.v.s);
+			log_web("Authentication required, redirecting to %s%slogin",
+			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%slogin",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}
 	else
 	{
 		// This is the login page - check if the user is already authenticated
-		// Check if the user is authenticated
 		if(authorized)
 		{
-			// User is already authenticated, redirect to index page
-			log_web("User is already authenticated, redirecting to %s", config.webserver.paths.webhome.v.s);
-			mg_printf(conn, "HTTP/1.1 302 Found\r\nLocation: %s\r\n\r\n", config.webserver.paths.webhome.v.s);
+			// User is already authenticated, redirecting to index page
+			log_web("User is already authenticated, redirecting to %s%s",
+			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			ftl_http_redirect(conn, 302, "%s%s",
+			                  config.webserver.paths.prefix.v.s,
+			                  config.webserver.paths.webhome.v.s);
 			return 302;
 		}
 	}

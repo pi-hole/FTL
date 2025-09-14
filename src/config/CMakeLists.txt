@@ -41,4 +41,4 @@ add_library(config OBJECT ${sources})
 
 target_compile_options(config PRIVATE ${EXTRAWARN})
 target_include_directories(config PRIVATE ${PROJECT_SOURCE_DIR}/src)
-add_subdirectory(tomlc99)
+add_subdirectory(tomlc17)

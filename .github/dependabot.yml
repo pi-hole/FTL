@@ -1,6 +1,22 @@
 version: 2
 updates:
 - package-ecosystem: github-actions
+  directories: 
+    - "/"
+  schedule:
+    interval: weekly
+    day: saturday
+    time: "10:00"
+  open-pull-requests-limit: 10
+  target-branch: development
+  pull-request-branch-name:
+      # Separate sections of the branch name with a hyphen
+      separator: "-"
+  groups:
+    github_action-dependencies:
+      patterns:
+        - "*"
+- package-ecosystem: npm
   directory: "/"
   schedule:
     interval: weekly
@@ -8,12 +24,10 @@ updates:
     time: "10:00"
   open-pull-requests-limit: 10
   target-branch: development
-  reviewers:
-    - "pi-hole/ftl-maintainers"
   pull-request-branch-name:
       # Separate sections of the branch name with a hyphen
       separator: "-"
   groups:
-    github_action-dependencies:
+    npm-dependencies:
       patterns:
         - "*"

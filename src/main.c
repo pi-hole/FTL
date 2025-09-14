@@ -29,6 +29,8 @@
 #include "database/query-table.h"
 // verify_FTL()
 #include "files.h"
+// init_entropy()
+#include "webserver/x509.h"
 
 char *username;
 bool startup = true;
@@ -47,7 +49,7 @@ int main (int argc, char *argv[])
 	username = getUserName();
 
 	// Obtain log file location
-	getLogFilePath();
+	getLogFilePath(true);
 
 	// Parse arguments
 	// We run this also for no direct arguments
@@ -61,6 +63,9 @@ int main (int argc, char *argv[])
 	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
+
+	// Initialize entropy and random number generator
+	init_entropy();
 
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
@@ -93,7 +98,7 @@ int main (int argc, char *argv[])
 
 	// Write PID early on so systemd cannot be fooled during DELAY_STARTUP
 	// times. The PID in this file will later be overwritten after forking
-	savepid();
+	savePID();
 
 	// Delay startup (if requested)
 	// Do this before reading the database to make this option not only
@@ -109,7 +114,7 @@ int main (int argc, char *argv[])
 		check_capabilities();
 
 	// Initialize pseudo-random number generator
-	srand(time(NULL));
+	srand(time(NULL) + getpid());
 
 	// Start the resolver
 	startup = false;
@@ -144,12 +149,9 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database (if database is used)
-	if(config.database.maxDBdays.v.ui > 0)
-	{
-		export_queries_to_disk(true);
-		log_info("Finished final database update");
-	}
+	// Save new queries to database
+	export_queries_to_disk(true);
+	log_info("Finished final database update");
 
 	cleanup(exit_code);
 

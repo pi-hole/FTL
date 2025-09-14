@@ -34,9 +34,79 @@
 // Server context handle
 static struct mg_context *ctx = NULL;
 static char *error_pages = NULL;
+static char *prefix_webhome = NULL;
+static char *api_uri = NULL;
+static char *admin_api_uri = NULL;
+static char *login_uri = NULL;
+static char *webheaders = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
+
+/**
+ * @brief Constructs various web paths used by the webserver.
+ *
+ * @return true if all paths are successfully constructed and allocated, false otherwise.
+ */
+static bool build_webpaths(void)
+{
+	// Construct error_pages path
+	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
+	log_debug(DEBUG_API, "Error pages path: %s", error_pages);
+	if(error_pages == NULL)
+	{
+		log_err("Failed to allocate memory for error_pages path!");
+		return false;
+	}
+
+	// Construct prefix_webhome path
+	prefix_webhome = append_to_path(config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+	log_debug(DEBUG_API, "Prefix webhome path: %s", prefix_webhome);
+	if(prefix_webhome == NULL)
+	{
+		log_err("Failed to allocate memory for prefix_webhome path!");
+		return false;
+	}
+
+	// Construct api_url path
+	api_uri = append_to_path(config.webserver.paths.prefix.v.s, "/api");
+	log_debug(DEBUG_API, "API URI path: %s", api_uri);
+	if(api_uri == NULL)
+	{
+		log_err("Failed to allocate memory for api_uri path!");
+		return false;
+	}
+
+	// Construct admin_api_uri path
+	admin_api_uri = append_to_path(prefix_webhome, "api");
+	log_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
+	if(admin_api_uri == NULL)
+	{
+		log_err("Failed to allocate memory for admin_api_uri path!");
+		return false;
+	}
+
+	// Construct login_uri path
+	login_uri = append_to_path(config.webserver.paths.webhome.v.s, "login");
+	log_debug(DEBUG_API, "Login URI path: %s", login_uri);
+	if(login_uri == NULL)
+	{
+		log_err("Failed to allocate memory for login_uri path!");
+		return false;
+	}
+
+	return true;
+}
+
+char * __attribute__((pure)) get_prefix_webhome(void)
+{
+	return prefix_webhome;
+}
+
+char * __attribute__((pure)) get_api_uri(void)
+{
+	return api_uri;
+}
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
 {
@@ -91,16 +161,23 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
+			if(strcmp(uri, prefix_webhome) == 0)
+			{
+				log_debug(DEBUG_API, "Not redirecting %s (matches webhome)",
+					  prefix_webhome);
+				return 0;
+			}
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
-			          config.webserver.paths.webhome.v.s);
-			mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+			          prefix_webhome);
+			mg_send_http_redirect(conn, prefix_webhome, 308);
 			return 1;
 		}
 	}
 
 	// else: Not redirecting
+	log_debug(DEBUG_API, "Not redirecting %s", uri);
 	return 0;
 }
 
@@ -113,11 +190,11 @@ static int redirect_admin_handler(struct mg_connection *conn, void *input)
 		const char *uri = request->local_uri_raw;
 
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          uri, config.webserver.paths.webhome.v.s);
+		          uri, prefix_webhome);
 	}
 
-	// 308 Permanent Redirect from /admin -> /admin/
-	mg_send_http_redirect(conn, config.webserver.paths.webhome.v.s, 308);
+	// 308 Permanent Redirect from [prefix]<webhome without trailing slash> -> [prefix]<webhome>
+	mg_send_http_redirect(conn, prefix_webhome, 308);
 	return 1;
 }
 
@@ -127,6 +204,20 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	const char *uri = request->local_uri_raw;
 	const size_t uri_len = strlen(uri);
+
+	// Check if we are allowed to serve this directory by checking the
+	// configuration setting webserver.serve_all and the requested URI to
+	// start with something else than config.webserver.paths.webhome. If so,
+	// send error 404
+	if(!config.webserver.serve_all.v.b &&
+	   strncmp(uri, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
+	{
+		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
+		mg_send_http_error(conn, 404, "Not Found");
+		return 404;
+	}
+
+	// Get query string
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
@@ -142,7 +233,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 	// Copy everything from before the ".lp" to the new URI to effectively
 	// remove it
-	strncpy(new_uri, uri, uri_len - 3);
+	strncat(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
 	if(query_len > 0)
@@ -201,14 +292,60 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
+/**
+ * @brief Redirects an HTTP request to a specified URL with a given status code.
+ *
+ * This function formats a URL string using a format specifier and redirects
+ * the HTTP connection to the specified URL with the provided HTTP status code.
+ *
+ * @param conn Pointer to the `mg_connection` structure representing the HTTP connection.
+ *             Must not be NULL.
+ * @param code HTTP status code to use for the redirection (e.g., 301, 302).
+ * @param format Format string for the URL to redirect to. Must not be NULL.
+ *               Supports standard printf-style formatting.
+ * @param ... Additional arguments for the format string.
+ *
+ * @return The HTTP status code used for the redirection on success, or 0 on failure.
+ */
+int __attribute__((format(printf, 3, 4), nonnull(1,3)))
+ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...)
+{
+	// Determine the size of the formatted string
+	va_list args;
+	va_start(args, format);
+	int size = vsnprintf(NULL, 0, format, args);
+	va_end(args);
+
+	char *buffer = calloc(size + 1, sizeof(char));
+	if (buffer == NULL) {
+		log_err("Memory allocation failed for redirect format!");
+		return 0;
+	}
+
+	// Format the string
+	va_start(args, format);
+	vsnprintf(buffer, size + 1, format, args);
+	va_end(args);
+	// Ensure null termination
+	buffer[size] = '\0';
+
+	log_debug(DEBUG_API, "Redirecting to %s", buffer);
+	mg_send_http_redirect(conn, buffer, code);
+	free(buffer);
+
+	return code;
+}
+
 #define MAXPORTS 8
 static struct serverports
 {
 	bool is_secure :1;
 	bool is_redirect :1;
 	bool is_optional :1;
-	unsigned char protocol; // 1 = IPv4, 2 = IPv4+IPv6, 3 = IPv6
-	in_port_t port;
+	bool is_bound :1;
+	char addr[INET6_ADDRSTRLEN + 2]; // +2 for square brackets around IPv6 address
+	int port;
+	int protocol; // 1 = IPv4, 3 = IPv6
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
 /**
@@ -222,12 +359,12 @@ static in_port_t https_port = 0;
  * @note If no ports are configured, a warning is logged and the function returns.
  *
  * @param void This function does not take any parameters.
- * @return void This function does not return any value.
+ * @return bool Returns whether the server ports were successfully retrieved
  */
-static void get_server_ports(void)
+static bool get_server_ports(void)
 {
 	if(ctx == NULL)
-		return;
+		return false;
 
 	// Loop over all listening ports
 	struct mg_server_port mgports[MAXPORTS] = { 0 };
@@ -237,7 +374,7 @@ static void get_server_ports(void)
 	if(ports < 1)
 	{
 		log_warn("No web server ports configured!");
-		return;
+		return false;
 	}
 
 	// Loop over all ports
@@ -252,7 +389,23 @@ static void get_server_ports(void)
 		server_ports[i].is_secure = mgports[i].is_ssl;
 		server_ports[i].is_redirect = mgports[i].is_redirect;
 		server_ports[i].is_optional = mgports[i].is_optional;
+		server_ports[i].is_bound = mgports[i].is_bound;
+		// 1 = IPv4, 3 = IPv6 (can also be a combo-socker serving both),
+		// the documentation in civetweb.h is wrong
 		server_ports[i].protocol = mgports[i].protocol;
+
+		// Convert listening address to string
+		if(server_ports[i].protocol == 1)
+			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, server_ports[i].addr, INET_ADDRSTRLEN);
+		else if(server_ports[i].protocol == 3)
+		{
+			char tmp[INET6_ADDRSTRLEN] = { 0 };
+			inet_ntop(AF_INET6, &mgports[i].addr.sa6.sin6_addr, tmp, INET6_ADDRSTRLEN);
+			// Enclose IPv6 address in square brackets
+			snprintf(server_ports[i].addr, sizeof(server_ports[i].addr), "[%s]", tmp);
+		}
+		else
+			log_warn("Unsupported protocol for port %d", mgports[i].port);
 
 		// Store (first) HTTPS port if not already set
 		if(mgports[i].is_ssl && https_port == 0)
@@ -261,13 +414,18 @@ static void get_server_ports(void)
 		// Print port information
 		if(i == 0)
 			log_info("Web server ports:");
-		log_info("  - %d (HTTP%s, IPv%s%s%s)",
-		         mgports[i].port, mgports[i].is_ssl ? "S" : "",
-		         mgports[i].protocol == 1 ? "4" : (mgports[i].protocol == 3 ? "6" : "4+6"),
-		         mgports[i].is_redirect ? ", redirecting" : "",
-		         mgports[i].is_optional ? ", optional" : "");
+		log_info("  - %s:%d (HTTP%s, IPv%s%s%s, %s)",
+		         server_ports[i].addr,
+		         server_ports[i].port,
+		         server_ports[i].is_secure ? "S" : "",
+		         server_ports[i].protocol == 1 ? "4" : "6",
+		         server_ports[i].is_redirect ? ", redirecting" : "",
+		         server_ports[i].is_optional ? ", optional" : "",
+		         server_ports[i].is_bound ? "OK" : "NOT bound");
 
 	}
+
+	return true;
 }
 
 in_port_t __attribute__((pure)) get_https_port(void)
@@ -275,21 +433,13 @@ in_port_t __attribute__((pure)) get_https_port(void)
 	return https_port;
 }
 
+#define MAX_URL_LEN 255
 unsigned short get_api_string(char **buf, const bool domain)
 {
 	// Initialize buffer to empty string
 	size_t len = 0;
 	// First byte has the length of the first string
 	**buf = 0;
-	const char *domain_str = domain ? config.webserver.domain.v.s : "localhost";
-	size_t api_str_size = strlen(domain_str) + 20;
-
-	// Check if the string is too long for the TXT record
-	if(api_str_size > 255)
-	{
-		log_err("API URL too long for TXT record!");
-		return 0;
-	}
 
 	// TXT record format:
 	//
@@ -311,20 +461,31 @@ unsigned short get_api_string(char **buf, const bool domain)
 			continue;
 
 		// Reallocate additional memory for every port
-		if((*buf = realloc(*buf, (i+1)*api_str_size)) == NULL)
+		const size_t bufsz = (i + 1) * MAX_URL_LEN;
+		if((*buf = realloc(*buf, bufsz)) == NULL)
 		{
 			log_err("Failed to reallocate API URL buffer!");
 			return 0;
 		}
-		const size_t bufsz = (i+1)*api_str_size;
+
+		// Use appropriate domain
+		const char *addr = domain ? config.webserver.domain.v.s : server_ports[i].addr;
+
+		// If we bound to the wildcard address, substitute it with
+		// 127.0.0.1
+		if(strcmp(addr, "0.0.0.0") == 0)
+			addr = "127.0.0.1";
+		else if(strcasecmp(addr, "[::]") == 0)
+			addr = "[::1]";
 
 		// Append API URL to buffer
 		// We add this at buffer + 1 because the first byte is the
 		// length of the string, which we don't know yet
-		char *api_str = calloc(api_str_size, sizeof(char));
-		const ssize_t this_len = snprintf(api_str, bufsz - len - 1, "http%s://%s:%d/api/",
+		char *api_str = calloc(MAX_URL_LEN, sizeof(char));
+		const ssize_t this_len = snprintf(api_str, MAX_URL_LEN, "http%s://%s:%d%s/api/",
 		                                  server_ports[i].is_secure ? "s" : "",
-		                                  domain_str, server_ports[i].port);
+		                                  addr, server_ports[i].port,
+		                                  config.webserver.paths.prefix.v.s);
 		// Check if snprintf() failed
 		if(this_len < 0)
 		{
@@ -377,27 +538,22 @@ void http_init(void)
 		return;
 	}
 
-	char num_threads[3] = { 0 };
-	// Calculate number of threads for the web server
-	// any positive number = number of threads (limited to at most MAX_WEBTHREADS)
-	// 0 = the number of online processors (at least 1, no more than 16)
-	// For the automatic option, we use the number of available (= online)
-	// cores which may be less than the total number of cores in the system,
-	// e.g., if a virtualization environment is used and fewer cores are
-	// assigned to the VM than are available on the host.
-	sprintf(num_threads, "%d", get_nprocs() > 8 ? 16 : 2*get_nprocs());
+	// Get maximum number of threads for webserver
+	char num_threads[16] = { 0 };
+	unsigned int threads = config.webserver.threads.v.ui;
+	if(threads == 0)
+	{
+		// For compatibility with older versions, set the number of
+		// threads to the default value (50) if it was 0. Before Pi-hole
+		// FTL v6.0.4, the number of threads was computed in dependence
+		// of the number of CPUs available. This is no longer the case.
+		threads = 50;
+	}
 
-	if(config.webserver.threads.v.ui > 0)
-	{
-		const unsigned int threads = LIMIT_MIN_MAX(config.webserver.threads.v.ui, 1, MAX_WEBTHREADS);
-		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
-	else // Automatic thread calculation
-	{
-		const int nprocs = get_nprocs();
-		const unsigned int threads = LIMIT_MIN_MAX(nprocs - 1, 1, 16);
-		snprintf(num_threads, sizeof(num_threads), "%u", threads);
-	}
+	snprintf(num_threads, sizeof(num_threads), "%u", threads);
+
+	// Ensure null termination for safety
+	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
@@ -415,36 +571,44 @@ void http_init(void)
 		return;
 	}
 
-	// Construct error_pages path
-	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
-	if(error_pages == NULL)
+	if(!build_webpaths())
 	{
-		log_err("Failed to allocate memory for error_pages path!");
+		log_err("Failed to build web paths, web interface will not be available!");
 		return;
 	}
 
+	// Construct additional headers
+	webheaders = strdup("");
+	if (webheaders == NULL) {
+		log_err("Failed to allocate memory for webheaders!");
+		return;
+	}
+	cJSON *header;
+	cJSON_ArrayForEach(header, config.webserver.headers.v.json)
+	{
+		if(!cJSON_IsString(header))
+		{
+			log_err("Invalid header in webserver.headers!");
+			continue;
+		}
+
+		// Get header value
+		const char *h = cJSON_GetStringValue(header);
+
+		// Allocate memory for the new header
+		char *new_webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (new_webheaders == NULL) {
+			log_err("Failed to (re)allocate memory for webheaders!");
+			free(webheaders);
+			webheaders = NULL;
+			return;
+		}
+		webheaders = new_webheaders;
+		strcat(webheaders, h);
+		strcat(webheaders, "\r\n");
+	}
+
 	// Prepare options for HTTP server (NULL-terminated list)
-	// Note about the additional headers:
-	// - "Content-Security-Policy: [...]"
-	//   'unsafe-inline' is both required by Chart.js styling some elements directly, and
-	//   index.html containing some inlined Javascript code.
-	// - "X-Frame-Options: DENY"
-	//   The page can not be displayed in a frame, regardless of the site attempting to do
-	//   so.
-	// - "X-Xss-Protection: 0"
-	//   Disables XSS filtering in browsers that support it. This header is usually
-	//   enabled by default in browsers, and is not recommended as it can hurt the
-	//   security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection)
-	// - "X-Content-Type-Options: nosniff"
-	//   Marker used by the server to indicate that the MIME types advertised in the
-	//   Content-Type headers should not be changed and be followed. This allows to
-	//   opt-out of MIME type sniffing, or, in other words, it is a way to say that the
-	//   webmasters knew what they were doing. Site security testers usually expect this
-	//   header to be set.
-	// - "Referrer-Policy: strict-origin-when-cross-origin"
-	//   A referrer will be sent for same-site origins, but cross-origin requests will
-	//   send no referrer information.
-	// The latter four headers are set as expected by https://securityheaders.io
 	const char *options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
@@ -453,12 +617,10 @@ void http_init(void)
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
 		"authentication_domain", config.webserver.domain.v.s,
-		"additional_header", "Content-Security-Policy: default-src 'self' 'unsafe-inline';\r\n"
-		                     "X-Frame-Options: DENY\r\n"
-		                     "X-XSS-Protection: 0\r\n"
-		                     "X-Content-Type-Options: nosniff\r\n"
-		                     "Referrer-Policy: strict-origin-when-cross-origin",
+		"additional_header", webheaders,
 		"index_files", "index.html,index.htm,index.lp",
+		"enable_keep_alive", "yes",
+		"keep_alive_timeout_ms", "5000",
 		NULL, NULL,
 		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
 		NULL
@@ -550,7 +712,7 @@ void http_init(void)
 	init.configuration_options = options;
 
 	/* Start the server */
-	if((ctx = mg_start2(&init, &error)) == NULL)
+	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
 		log_err("Start of webserver failed!. Web interface will not be available!");
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
@@ -558,27 +720,31 @@ void http_init(void)
 		return;
 	}
 
-	// Get server ports
-	get_server_ports();
-
-	// Register API handler
+	// Register API handler, use "/api" even when a prefix is defined as the
+	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	// Register / -> /admin/ redirect handler
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
-	// Register /admin -> /admin/ redirect handler
-	if(strlen(config.webserver.paths.webhome.v.s) > 1)
+	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
+	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
 	{
-		// Construct webhome_matcher path
-		char *webhome_matcher = NULL;
-		webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
-		webhome_matcher[strlen(webhome_matcher)-1] = '$';
+		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
+	}
+
+	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
+	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
+	{
+		// Replace trailing slash with end-of-string marker for matcher
+		char *prefix_webhome_matcher = strdup(prefix_webhome);
+		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
+
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          webhome_matcher, config.webserver.paths.webhome.v.s);
-		// String is internally duplicated during request configuration
-		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
-		free(webhome_matcher);
+		          prefix_webhome, config.webserver.paths.webhome.v.s);
+		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
+		// prefix_webhome_matcher is internally duplicated during
+		// request configuration so it can be freed here
+		free(prefix_webhome_matcher);
 	}
 
 	// Register **.lp -> ** redirect handler
@@ -588,7 +754,7 @@ void http_init(void)
 	mg_set_request_handler(ctx, "**", request_handler, NULL);
 
 	// Prepare prerequisites for Lua
-	allocate_lua();
+	allocate_lua(login_uri, admin_api_uri, prefix_webhome);
 
 	// Restore sessions from database
 	init_api();
@@ -686,16 +852,29 @@ void http_terminate(void)
 	/* Un-initialize the library */
 	mg_exit_library();
 
-	// Free Lua-related resources
-	free_lua();
-
 	// Remove CLI password
 	remove_cli_password();
 
 	// Free error_pages path
 	if(error_pages != NULL)
-	{
 		free(error_pages);
-		error_pages = NULL;
-	}
+
+	// Free webhome_matcher path
+	if(prefix_webhome != NULL)
+		free(prefix_webhome);
+
+	// Free api_uri path
+	if(api_uri != NULL)
+		free(api_uri);
+
+	// Free admin_api_uri path
+	if(admin_api_uri != NULL)
+		free(admin_api_uri);
+
+	// Free login_uri path
+	if(login_uri != NULL)
+		free(login_uri);
+
+	if(webheaders != NULL)
+		free(webheaders);
 }

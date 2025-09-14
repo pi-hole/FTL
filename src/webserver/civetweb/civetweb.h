@@ -23,6 +23,8 @@
 #ifndef CIVETWEB_HEADER_INCLUDED
 #define CIVETWEB_HEADER_INCLUDED
 
+#include <netinet/in.h> /* Pi-hole extension */
+
 #define CIVETWEB_VERSION "1.17"
 #define CIVETWEB_VERSION_MAJOR (1)
 #define CIVETWEB_VERSION_MINOR (17)
@@ -718,9 +720,13 @@ struct mg_server_port {
 	int is_ssl;      /* https port: 0 = no, 1 = yes */
 	int is_redirect; /* redirect all requests: 0 = no, 1 = yes */
 	int is_optional; /* optional: 0 = no, 1 = yes */
-	int _reserved2;
+	int is_bound;    /* bound: 0 = no, 1 = yes, relevant for optional ports */
 	int _reserved3;
 	int _reserved4;
+   union {
+     struct sockaddr_in sa4; /* Pi-hole extension */
+     struct sockaddr_in6 sa6; /* Pi-hole extension */
+   } addr;
 };
 
 /* Legacy name */
@@ -1228,7 +1234,7 @@ struct mg_form_data_handler {
 	 *   filename: Name of a file to upload, at the client computer.
 	 *             Only set for input fields of type "file", otherwise NULL.
 	 *   path: Output parameter: File name (incl. path) to store the file
-	 *         at the server computer. Only used if FORM_FIELD_STORAGE_STORE
+	 *         at the server computer. Only used if MG_FORM_FIELD_STORAGE_STORE
 	 *         is returned by this callback. Existing files will be
 	 *         overwritten.
 	 *   pathlen: Length of the buffer for path.
@@ -1236,7 +1242,7 @@ struct mg_form_data_handler {
 	 *
 	 * Return value:
 	 *   The callback must return the intended storage for this field
-	 *   (See FORM_FIELD_STORAGE_*).
+	 *   (See MG_FORM_FIELD_STORAGE_*).
 	 */
 	int (*field_found)(const char *key,
 	                   const char *filename,
@@ -1244,7 +1250,7 @@ struct mg_form_data_handler {
 	                   size_t pathlen,
 	                   void *user_data);
 
-	/* If the "field_found" callback returned FORM_FIELD_STORAGE_GET,
+	/* If the "field_found" callback returned MG_FORM_FIELD_STORAGE_GET,
 	 * this callback will receive the field data.
 	 *
 	 * Parameters:
@@ -1261,7 +1267,7 @@ struct mg_form_data_handler {
 	                 size_t valuelen,
 	                 void *user_data);
 
-	/* If the "field_found" callback returned FORM_FIELD_STORAGE_STORE,
+	/* If the "field_found" callback returned MG_FORM_FIELD_STORAGE_STORE,
 	 * the data will be stored into a file. If the file has been written
 	 * successfully, this callback will be called. This callback will
 	 * not be called for only partially uploaded files. The

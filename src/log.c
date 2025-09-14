@@ -385,13 +385,12 @@ void FTL_log_helper(const unsigned int n, ...)
 	va_start(args, n);
 	for(unsigned int i = 0; i < n; i++)
 	{
-		const char *argin = va_arg(args, char*);
+		char *argin = va_arg(args, char*);
 		if(argin == NULL)
 			arg[i] = NULL;
 		else
-			arg[i] = strdup(argin);
+			arg[i] = argin;
 	}
-	va_end(args);
 
 	// Select appropriate logging format
 	switch (n)
@@ -410,11 +409,7 @@ void FTL_log_helper(const unsigned int n, ...)
 			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
 			break;
 	}
-
-	// Free allocated memory
-	for(unsigned int i = 0; i < n; i++)
-		if(arg[i] != NULL)
-			free(arg[i]);
+	va_end(args);
 	free(arg);
 }
 
@@ -498,10 +493,10 @@ void log_counter_info(void)
 
 void log_FTL_version(const bool crashreport)
 {
-	log_info("FTL branch: %s", GIT_BRANCH);
+	log_info("FTL branch: %s", git_branch());
 	log_info("FTL version: %s", get_FTL_version());
-	log_info("FTL commit: %s", GIT_HASH);
-	log_info("FTL date: %s", GIT_DATE);
+	log_info("FTL commit: %s", git_hash());
+	log_info("FTL date: %s", git_date());
 	if(crashreport)
 	{
 		char *username_now = getUserName();
@@ -510,7 +505,7 @@ void log_FTL_version(const bool crashreport)
 	}
 	else
 		log_info("FTL user: %s", username);
-	log_info("Compiled for %s using %s", FTL_ARCH, FTL_CC);
+	log_info("Compiled for %s using %s", ftl_arch(), ftl_cc());
 }
 
 static char *FTLversion = NULL;
@@ -519,21 +514,21 @@ const char __attribute__ ((malloc)) *get_FTL_version(void)
 	// Obtain FTL version if not already determined
 	if(FTLversion == NULL)
 	{
-		if(strlen(GIT_TAG) > 1 )
+		if(strlen(git_tag()) > 1 )
 		{
-			if (strlen(GIT_VERSION) > 1)
+			if (strlen(git_version()) > 1)
 			{
 				// Copy version string if this is a tagged release
-				FTLversion = strdup(GIT_VERSION);
+				FTLversion = strdup(git_version());
 			}
 
 		}
-		else if(strlen(GIT_HASH) > 0)
+		else if(strlen(git_hash()) > 0)
 		{
 			// Build special version string when there is a hash
 			FTLversion = calloc(13, sizeof(char));
 			// Build version by appending 7 characters of the hash to "vDev-"
-			snprintf(FTLversion, 13, "vDev-%.7s", GIT_HASH);
+			snprintf(FTLversion, 13, "vDev-%.7s", git_hash());
 		}
 		else
 		{
@@ -588,6 +583,11 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 
 	while (src < src_buf + src_sz)
 	{
+		// Check if we have enough space before writing
+		// Worst case: we need 4 chars for "\x00" + null terminator
+		if (dst >= dst_str + dst_sz - 5)
+			break;
+
 		if (isprint(*src))
 		{
 			// The printable characters are:
@@ -597,17 +597,15 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			// r s t u v w x y z { | } ~
 			*dst++ = *src++;
 		}
-		else if (*src == '\\')
-		{
-			// Backslash isn't included above but isn't harmful
-			*dst++ = '\\';
-			*dst++ = *src++;
-		}
 		else
 		{
-			// Handle other characters more specifically
+			// Handle special characters
 			switch(*src)
 			{
+				case '\\':
+					*dst++ = '\\';
+					*dst++ = '\\';
+					break;
 				case '\n':
 					*dst++ = '\\';
 					*dst++ = 'n';
@@ -625,18 +623,12 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%X", *(unsigned char*)src);
+					sprintf(dst, "0x%02X", (unsigned char)*src);
 					dst += 4;
+					break;
 			}
-
-			// Advance reading counter by one character
 			src++;
 		}
-
-		// next iteration requires up to 5 chars in dst buffer, for ex.
-		// "0x04" + terminating zero (see below)
-		if (dst > (dst_str + dst_sz - 5))
-			break;
 	}
 
 	// Zero-terminate buffer

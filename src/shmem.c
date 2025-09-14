@@ -40,21 +40,21 @@
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
-#define SHARED_LOCK_NAME "FTL-lock"
-#define SHARED_STRINGS_NAME "FTL-strings"
-#define SHARED_COUNTERS_NAME "FTL-counters"
-#define SHARED_DOMAINS_NAME "FTL-domains"
-#define SHARED_CLIENTS_NAME "FTL-clients"
-#define SHARED_QUERIES_NAME "FTL-queries"
-#define SHARED_UPSTREAMS_NAME "FTL-upstreams"
-#define SHARED_OVERTIME_NAME "FTL-overTime"
-#define SHARED_SETTINGS_NAME "FTL-settings"
-#define SHARED_DNS_CACHE "FTL-dns-cache"
-#define SHARED_PER_CLIENT_REGEX "FTL-per-client-regex"
-#define SHARED_CLIENTS_LOOKUP_NAME "FTL-clients-lookup"
-#define SHARED_DOMAINS_LOOKUP_NAME "FTL-domains-lookup"
-#define SHARED_DNS_CACHE_LOOKUP_NAME "FTL-dns-cache-lookup"
-#define SHARED_RECYCLER_NAME "FTL-recycler"
+#define SHARED_LOCK_NAME "lock"
+#define SHARED_STRINGS_NAME "strings"
+#define SHARED_COUNTERS_NAME "counters"
+#define SHARED_DOMAINS_NAME "domains"
+#define SHARED_CLIENTS_NAME "clients"
+#define SHARED_QUERIES_NAME "queries"
+#define SHARED_UPSTREAMS_NAME "upstreams"
+#define SHARED_OVERTIME_NAME "overTime"
+#define SHARED_SETTINGS_NAME "settings"
+#define SHARED_DNS_CACHE "dns-cache"
+#define SHARED_PER_CLIENT_REGEX "per-client-regex"
+#define SHARED_CLIENTS_LOOKUP_NAME "clients-lookup"
+#define SHARED_DOMAINS_LOOKUP_NAME "domains-lookup"
+#define SHARED_DNS_CACHE_LOOKUP_NAME "dns-cache-lookup"
+#define SHARED_RECYCLER_NAME "recycler"
 
 // Allocation step for FTL-strings bucket. This is somewhat special as we use
 // this as a general-purpose storage which should always be large enough. If,
@@ -65,7 +65,7 @@
 
 // Global counters struct
 countersStruct *counters = NULL;
-#define SHARED_FIFO_LOG_NAME "/FTL-fifo-log"
+#define SHARED_FIFO_LOG_NAME "fifo-log"
 
 /// The pointer in shared memory to the shared string buffer
 static SharedMemory shm_lock = { 0 };
@@ -628,12 +628,22 @@ void destroy_shmem(void)
 
 /// Create shared memory
 ///
-/// \param name the name of the shared memory
+/// \param suffix the suffix of the shared memory's name
 /// \param sharedMemory the shared memory object to fill
 /// \param size the size to allocate
 /// No return value as the function will exit on failure
-static bool create_shm(const char *name, SharedMemory *sharedMemory, const size_t size)
+static bool create_shm(const char *suffix, SharedMemory *sharedMemory, const size_t size)
 {
+	// Generate an individual shm name for this process by using the PID
+	const size_t namelen = strlen(suffix) + 24;
+	char *name = calloc(namelen, sizeof(char));
+	if(name == NULL)
+	{
+		log_err("create_shm(): Failed to allocate memory for shared memory name");
+		exit(EXIT_FAILURE);
+	}
+	snprintf(name, namelen, "/FTL-%d-%s", getpid(), suffix);
+
 	char df[64] = { 0 };
 	const unsigned int percentage = get_dev_shm_usage(df);
 	if(config.debug.shmem.v.b || (config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui))
@@ -901,6 +911,9 @@ static void delete_shm(SharedMemory *sharedMemory)
 	if(shm_unlink(sharedMemory->name) != 0)
 		log_warn("delete_shm(): shm_unlink(%s) failed: %s",
 		         sharedMemory->name, strerror(errno));
+
+	// Free the shared memory name
+	free(sharedMemory->name);
 }
 
 // Euclidean algorithm to return greatest common divisor of the numbers

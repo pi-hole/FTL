@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#define __USE_GNU
 #include <poll.h>
 #include <sys/socket.h>
 #include <fcntl.h>
@@ -662,11 +663,19 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		ssize_t val = 0;
 
 		struct timespec now = { 0 };
+		struct timespec ts_timeout = { 0 };
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		if(end.tv_sec >= now.tv_sec)
 		{
 			// Calculate the remaining time
-			val = (end.tv_sec - now.tv_sec) * 1000 + (int)((end.tv_nsec - now.tv_nsec) / 1000000);
+			ts_timeout.tv_sec = end.tv_sec - now.tv_sec;
+			ts_timeout.tv_nsec = end.tv_nsec - now.tv_nsec;
+			if (ts_timeout.tv_nsec < 0)
+			{
+				ts_timeout.tv_nsec += 1000000000;
+				ts_timeout.tv_sec--;
+			}
+			val = ts_timeout.tv_sec * 1000 + (int)(ts_timeout.tv_nsec / 1000000);
 			if (val <= 0) // Timeout
 				return responses;
 		}
@@ -674,7 +683,7 @@ static ssize_t recv_adv(int fd, const struct sockaddr_in6 *tgt, const char *ifna
 		// Wait for reply (retries on EINTR)
 		struct pollfd pollfd = { .fd = fd, .events = POLLIN, .revents = 0 };
 		do {
-			val = poll(&pollfd, 1, val);
+			val = ppoll(&pollfd, 1, &ts_timeout, NULL);
 		} while (val == -1 && errno == EINTR);
 
 		// Check for errors, logging happens in the calling function
@@ -757,6 +766,11 @@ static int do_discoverv6(const int fd, const char *ifname, const unsigned int ti
 	// travel through up to 255 routers.
 	set_hop_limit(fd, 255);
 	setsockopt(fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &(int){ 1 }, sizeof(int));
+
+	// Set timeout on socket
+	struct timeval tv = { .tv_sec = timeout, .tv_usec = 0 };
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
 	// Resolves target's IPv6 address
 	const char *hostname = "ff02::2"; // All routers multicast address

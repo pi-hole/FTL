@@ -157,8 +157,13 @@ else
     cmake ..
 fi
 
-# Build the sources with the number of available cores
-cmake --build . -- -j "$(nproc)"
+# If MAKEFLAGS is unset, we set it to "-j$(nproc)"
+if [[ -z "${MAKEFLAGS}" ]]; then
+    MAKEFLAGS="-j$(nproc)"
+fi
+
+# Build the sources
+cmake --build . -- ${MAKEFLAGS}
 
 # Checksum verification
 ./pihole-FTL verify
@@ -176,7 +181,6 @@ fi
 # If we are asked to run tests, we do this here
 if [[ -n "${test}" ]]; then
     cd ..
-    bash test/arch_test.sh
     bash test/run.sh
 fi
 

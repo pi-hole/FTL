@@ -23,6 +23,8 @@
 #include "datastructure.h"
 #include "api/api.h"
 #include "scripts/scripts.h"
+// get_prefix_webhome(), get_api_uri()
+#include "webserver/webserver.h"
 
 // prototype for luaopen_pihole()
 #include "lualib.h"
@@ -122,14 +124,24 @@ static void get_abspath(char abs_filename[1024], char rel_filename[1024], const 
 		strncpy(abs_filename, config.webserver.paths.webroot.v.s, abs_filename_len);
 		abs_filename_len -= strlen(config.webserver.paths.webroot.v.s);
 	}
+
+	// Add prefix to rel_filename if applicable
+	if(rel_filename != NULL && config.webserver.paths.prefix.v.s[0] != '\0')
+	{
+		strncpy(rel_filename, config.webserver.paths.prefix.v.s, rel_filename_len);
+		rel_filename_len -= strlen(config.webserver.paths.prefix.v.s);
+	}
+
+	// Add webhome to abs_filename and rel_filename if applicable
 	if(config.webserver.paths.webhome.v.s != NULL)
 	{
 		strncat(abs_filename, config.webserver.paths.webhome.v.s, abs_filename_len);
 		abs_filename_len -= strlen(config.webserver.paths.webhome.v.s);
 
+		// Add webhome to rel_filename
 		if(rel_filename != NULL)
 		{
-			strncpy(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
+			strncat(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
 			rel_filename_len -= strlen(config.webserver.paths.webhome.v.s);
 		}
 	}
@@ -171,6 +183,10 @@ static int pihole_fileversion(lua_State *L) {
 		return 1; // number of results
 	}
 
+	// Cast to long long to avoid warnings on 32-bit systems
+	log_debug(DEBUG_API, "File \"%s\" -> \"%s\" last modified at %lld",
+	          abspath, relpath, (long long)filestat.st_mtime);
+
 	// Return filename + modification time
 	lua_pushfstring(L, "%s?v=%d", relpath, filestat.st_mtime);
 	return 1; // number of results
@@ -205,7 +221,7 @@ static int pihole_webtheme(lua_State *L) {
 // pihole.webhome()
 static int pihole_webhome(lua_State *L) {
 	// Get name of currently set webhome
-	lua_pushstring(L, config.webserver.paths.webhome.v.s);
+	lua_pushstring(L, get_prefix_webhome());
 	return 1; // number of results
 }
 
@@ -240,6 +256,42 @@ static int pihole_needLogin(lua_State *L) {
 	return 1; // number of results
 }
 
+// pihole.api_url()
+static int pihole_api_url(lua_State *L) {
+	// Return API URL
+	lua_pushstring(L, get_api_uri());
+
+	return 1; // number of results
+}
+
+// pihole.format_path()
+static int pihole_format_path(lua_State *L) {
+	// Get current page (first argument to LUA function)
+	const char *page = luaL_checkstring(L, 1);
+
+	// Strip leading webhome from page (if it exists)
+	if (config.webserver.paths.webhome.v.s != NULL)
+	{
+		const size_t webhome_len = strlen(config.webserver.paths.webhome.v.s);
+		if (strncmp(page, config.webserver.paths.webhome.v.s, webhome_len) == 0)
+			page += webhome_len;
+	}
+
+	// Convert all / to -
+	for (char *p = (char *)page; *p != '\0'; p++)
+		if (*p == '/')
+			*p = '-';
+
+	// Substitute "index" for empty string (dashboard landing page)
+	if (page[0] == '\0')
+		page = "index";
+
+	// Return the formatted page string
+	lua_pushstring(L, page);
+
+	return 1; // number of results
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -249,6 +301,8 @@ static const luaL_Reg piholelib[] = {
 	{"include", pihole_include},
 	{"boxedlayout", pihole_boxedlayout},
 	{"needLogin", pihole_needLogin},
+	{"api_url", pihole_api_url},
+	{"format_path", pihole_format_path},
 	{NULL, NULL}
 };
 

@@ -55,8 +55,8 @@ components:
                   - $ref: 'clients.yaml#/components/schemas/clients/put'
                   - $ref: 'common.yaml#/components/schemas/took'
         responses:
-          '201':
-            description: Created item
+          '200':
+            description: Created or Updated Item
             content:
               application/json:
                 schema:
@@ -220,6 +220,7 @@ components:
           *Note:* There will be no content on success.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:
@@ -230,6 +231,8 @@ components:
                     item:
                       type: string
                       description: client IP / MAC / hostname / interface
+                  required:
+                    - item
                 example:
                   - "item": "192.168.2.5"
                   - "item": "::1"
@@ -462,6 +465,7 @@ components:
               key: "uri_error"
               message: "Invalid request: Specify item in URI"
               hint: null
+            took: 0.003
       bad_request:
         no_payload:
           summary: No JSON payload found
@@ -470,6 +474,7 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
       database_error:
         duplicate:
           summary: Database error
@@ -478,6 +483,7 @@ components:
               key: "database_error"
               message: "Could not add to gravity database"
               hint: "UNIQUE constraint failed: clientlist.client"
+            took: 0.003
   parameters:
     client:
       in: path

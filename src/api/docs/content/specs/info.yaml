@@ -461,6 +461,10 @@ components:
                   type: integer
                   description: Number of available processors
                   example: 8
+                "%cpu":
+                  type: number
+                  description: Total CPU usage in percent (may be higher than 100% on multi-core systems and negative if the value cannot be computed)
+                  example: 0.0
                 load:
                   type: object
                   description: 1, 5, and 15 minute load averages
@@ -532,7 +536,7 @@ components:
                       value: 40.0
                       max: null
                       crit: null
-                      path: "temp1"
+                      sensor: "temp1"
                 - name: "nct6793"
                   path: "hwmon2"
                   source: "devices/platform/nct6775.656"
@@ -541,12 +545,12 @@ components:
                       value: 59.5
                       max: null
                       crit: null
-                      path: "temp1"
+                      sensor: "temp1"
                     - name: CPUTIN
                       value: 40.0
                       max: null
                       crit: null
-                      path: "temp2"
+                      sensor: "temp2"
                 - name: "k10temp"
                   path: "hwmon3"
                   source: "devices/pci0000:00/0000:00:18.3"
@@ -555,12 +559,12 @@ components:
                       value: 58.875
                       max: 70.0
                       crit: null
-                      path: "temp1"
+                      sensor: "temp1"
                     - name: "Tctl"
                       value: 58.875
                       max: null
                       crit: null
-                      path: "temp2"
+                      sensor: "temp2"
                 - name: "coretemp"
                   path: "hwmon4"
                   source: "devices/platform/coretemp.0"
@@ -569,17 +573,17 @@ components:
                       value: 48.0
                       max: 100.0
                       crit: 100.0
-                      path: "temp1"
+                      sensor: "temp1"
                     - name: "Core 0"
                       value: 48.0
                       max: 100.0
                       crit: 100.0
-                      path: "temp2"
+                      sensor: "temp2"
                     - name: "Core 1"
                       value: 47.0
                       max: 100.0
                       crit: 100.0
-                      path: "temp3"
+                      sensor: "temp3"
             cpu_temp:
               type: number
               description: CPU temperature (best guess, may be *null* if no sensor can be reliably identified, please report if you encounter this)
@@ -890,6 +894,22 @@ components:
                 tcp_connections:
                   type: integer
                   description: Number of dedicated TCP workers
+                  example: 0
+                dhcp_leasequery:
+                  type: integer
+                  description: Number of DHCP lease queries
+                  example: 0
+                dhcp_lease_unassigned:
+                  type: integer
+                  description: Number of DHCP lease unassigned
+                  example: 0
+                dhcp_lease_actve:
+                  type: integer
+                  description: Number of DHCP lease active
+                  example: 0
+                dhcp_lease_unknown:
+                  type: integer
+                  description: Number of DHCP lease unknown
                   example: 0
                 dnssec_max_crypto_use:
                   type: integer
@@ -1273,6 +1293,7 @@ components:
               key: "uri_error"
               message: "Specify ID of message to delete in path"
               hint: "/api/info/messages"
+            tooK: 0.003
         bad_request:
           summary: ID of message to delete is invalid
           value:
@@ -1280,6 +1301,7 @@ components:
               key: "bad_request"
               message: "Invalid ID in path"
               hint: "/api/info/messages/486741168746857468758478"
+            tooK: 0.003
     metrics:
       summary: Server metrics
       value:
@@ -1346,6 +1368,7 @@ components:
               pruned_4: 0
               allocated_6: 0
               pruned_6: 0
+        took: 0.003
 
   parameters:
     logs:

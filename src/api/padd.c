@@ -22,8 +22,6 @@
 #include "config/config.h"
 // uname()
 #include <sys/utsname.h>
-// nlroutes(), nladdrs(), nllinks()
-#include "tools/netlink.h"
 // struct proc_mem, getProcessMemory()
 #include "procps.h"
 // getcpu_percentage()
@@ -288,6 +286,7 @@ int api_padd(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(jconfig, "dns_num_upstreams", cJSON_GetArraySize(config.dns.upstreams.v.json));
 	JSON_ADD_BOOL_TO_OBJECT(jconfig, "dns_dnssec", config.dns.dnssec.v.b);
 	JSON_ADD_BOOL_TO_OBJECT(jconfig, "dns_revServer_active", cJSON_GetArraySize(config.dns.revServers.v.json) > 0);
+	JSON_ADD_NUMBER_TO_OBJECT(jconfig, "privacy_level", config.misc.privacylevel.v.privacy_level);
 	JSON_ADD_ITEM_TO_OBJECT(json, "config", jconfig);
 
 	// subset of info/ftl
@@ -296,7 +295,7 @@ int api_padd(struct ftl_conn *api)
 	parse_proc_meminfo(&mem);
 	getProcessMemory(&pmem, mem.total);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "%mem", pmem.VmRSS_percent);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "%cpu", get_cpu_percentage());
+	JSON_ADD_NUMBER_TO_OBJECT(json, "%cpu", get_ftl_cpu_percentage());
 	JSON_ADD_NUMBER_TO_OBJECT(json, "pid", getpid());
 
 	// info/sensors -> CPU temp sensor

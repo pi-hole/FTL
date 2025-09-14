@@ -40,7 +40,7 @@ servers:
 
 tags:
   - name: "Authentication"
-    description: Methods used to authentaticate with the API
+    description: Methods used to authenticate with the API
   - name: "Metrics"
     description: Methods used to get usage data from your Pi-hole
   - name: "DNS control"
@@ -263,6 +263,9 @@ paths:
 
   /action/flush/arp:
     $ref: 'action.yaml#/components/paths/flush_arp'
+
+  /action/flush/network:
+    $ref: 'action.yaml#/components/paths/flush_network'
 
   /dhcp/leases:
     $ref: 'dhcp.yaml#/components/paths/leases'

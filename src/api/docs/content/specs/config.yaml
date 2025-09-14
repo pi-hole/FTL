@@ -232,6 +232,8 @@ components:
                     type: string
                 port:
                   type: integer
+                localise:
+                  type: boolean
                 cache:
                   type: object
                   properties:
@@ -260,6 +262,8 @@ components:
                     mozillaCanary:
                       type: boolean
                     iCloudPrivateRelay:
+                      type: boolean
+                    designatedResolver:
                       type: boolean
                 reply:
                   type: object
@@ -409,6 +413,12 @@ components:
                   type: string
                 threads:
                   type: integer
+                headers:
+                  type: array
+                  items:
+                    type: string
+                serve_all:
+                  type: boolean
                 session:
                   type: object
                   properties:
@@ -427,6 +437,8 @@ components:
                     webroot:
                       type: string
                     webhome:
+                      type: string
+                    prefix:
                       type: string
                 interface:
                   type: object
@@ -491,8 +503,6 @@ components:
                 gravity_tmp:
                   type: string
                 macvendor:
-                  type: string
-                setupVars:
                   type: string
                 pcap:
                   type: string
@@ -668,6 +678,7 @@ components:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
             port: 53
+            localise: true
             cache:
               size: 10000
               optimizer: 3600
@@ -681,6 +692,7 @@ components:
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
+              designatedResolver: true
             reply:
               host:
                 force4: false
@@ -744,6 +756,14 @@ components:
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
+            headers:
+              - "X-DNS-Prefetch-Control: off"
+              - "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+              - "X-Frame-Options: DENY"
+              - "X-XSS-Protection: 0"
+              - "X-Content-Type-Options: nosniff"
+              - "Referrer-Policy: strict-origin-when-cross-origin"
+            serve_all: false
             session:
               timeout: 300
               restore: true
@@ -752,6 +772,7 @@ components:
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
+              prefix: ""
             interface:
               boxed: true
               theme: "default-darker"
@@ -779,7 +800,6 @@ components:
             gravity: "/etc/pihole/gravity.db"
             gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"
-            setupVars: "/etc/pihole/setupVars.conf"
             pcap: ""
             log:
               ftl: "/var/log/pihole/FTL.log"
@@ -829,6 +849,7 @@ components:
             ntp: false
             netlink: false
             all: false
+          took: 0.003
     config_one:
       summary: One option
       value:
@@ -873,6 +894,7 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+            took: 0.003
         item_already_present:
           summary: Item to be added exists already
           value:
@@ -880,6 +902,7 @@ components:
               key: "bad_request"
               message: "Item already present"
               hint: "Uniqueness of items is enforced"
+            took: 0.003
   parameters:
     detailed:
       name: detailed

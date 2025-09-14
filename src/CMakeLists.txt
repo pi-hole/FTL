@@ -31,16 +31,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_OMIT_SHARED_CACHE: This option builds SQLite without support for shared cache mode. The sqlite3_enable_shared_cache() is omitted along with a fair amount of logic within the B-Tree subsystem associated with shared cache management. This compile-time option is recommended most applications as it results in improved performance and reduced library footprint.
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
-# SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption.
-# SQLITE_TEMP_STORE=2: Store temporary tables in memory for reduced IO and higher performance (can be overwritten by the user at runtime).
+# SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption. It is needed for the .recover SQLite3 command.
+# SQLITE_TEMP_STORE=1: This option sets the default value for the temp_store pragma to 1. This means that temporary tables and indices are always stored on disk. This is the default setting.
 # SQLITE_DEFAULT_CACHE_SIZE=-16384: Allow up to 16 MiB of cache to be used by SQLite3 (default is 2000 kiB)
 # SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
 # SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
-# HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
+# HAVE_MALLOC_H + HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
 # HAVE_FDATASYNC: This option causes SQLite to try to use the fdatasync() system call to sync the database file to disk when committing a transaction. Syncing using fdatasync() is faster than syncing using fsync() as fdatasync() does not wait for the file metadata to be written to disk.
-# SQLITE_DEFAULT_WORKER_THREADS=4: This option sets the default number of worker threads to use when doing parallel sorting and indexing. The default is 0 which means to use a single thread. The default for SQLITE_MAX_WORKER_THREADS is 8.
+# SQLITE_DEFAULT_WORKER_THREADS=0: This option sets the default number of worker threads to use when doing parallel sorting and indexing. The default is 0 which means to use a single thread. Do not increase this value as it, ironically, can cause performance degradation and definitely increases total memory usage.
 # SQLITE_MAX_PREPARE_RETRY=200: This option sets the maximum number of automatic re-preparation attempts that can occur after encountering a schema change. This can be caused by running ANALYZE which is done periodically by FTL.
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=2 -DSQLITE_DEFAULT_CACHE_SIZE=16384 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=4 -DSQLITE_MAX_PREPARE_RETRY=200")
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=1 -DSQLITE_DEFAULT_CACHE_SIZE=16384 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_H -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=0 -DSQLITE_MAX_PREPARE_RETRY=200")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -213,7 +213,7 @@ endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
-set(CMAKE_C_FLAGS "-std=c99 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
+set(CMAKE_C_FLAGS "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
@@ -264,15 +264,17 @@ set(sources
         timers.h
         vector.c
         vector.h
+        version.c
         version.h
         )
 
-set_source_files_properties(version.h PROPERTIES GENERATED TRUE)
-
+# version.c is generated by gen_version.cmake
 add_custom_target(
         gen_version ALL
         COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_version.cmake
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/version.c
+        COMMENT "Generating version.c using gen_version.cmake")
 
 add_library(core OBJECT ${sources})
 target_compile_options(core PRIVATE ${EXTRAWARN})
@@ -296,7 +298,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:ftl_lua>
         $<TARGET_OBJECTS:tre-regex>
         $<TARGET_OBJECTS:syscalls>
-        $<TARGET_OBJECTS:tomlc99>
+        $<TARGET_OBJECTS:tomlc17>
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>

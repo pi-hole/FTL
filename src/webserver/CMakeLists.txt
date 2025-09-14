@@ -21,7 +21,6 @@ set(sources
         )
 
 add_library(webserver OBJECT ${sources})
-add_dependencies(webserver gen_version)
 target_compile_options(webserver PRIVATE ${EXTRAWARN})
 target_include_directories(webserver PRIVATE ${PROJECT_SOURCE_DIR}/src)
 

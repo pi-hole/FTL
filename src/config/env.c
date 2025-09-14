@@ -23,14 +23,16 @@
 #include <limits.h>
 // openFTLtoml()
 #include "config/toml_helper.h"
+// escape_json()
+#include "webserver/http-common.h"
 struct env_item
 {
-	bool used;
-	bool valid;
+	bool used :1;
+	bool valid :1;
+	bool error_allocated :1;
 	char *key;
 	char *value;
-	const char *error;
-	const char *allowed;
+	char *error;
 	struct env_item *next;
 };
 
@@ -55,14 +57,21 @@ void getEnvVars(void)
 			// Split key and value using strtok_r
 			char *saveptr = NULL;
 			char *key = strtok_r(env_copy, "=", &saveptr);
-			char *value = strtok_r(NULL, "=", &saveptr);
 
 			// Log warning if value is missing
-			if(value == NULL)
+			char *value;
+			if(strlen(*env) <= strlen(key) + 1)
 			{
 				log_warn("Environment variable %s has no value, substituting with empty string", key);
 				value = (char*)"";
 			}
+			else
+			{
+				// The entire string *after* the key + 1 (for
+				// the '=') is the value
+				value = *env + strlen(key) + 1;
+			}
+			log_debug(DEBUG_CONFIG, "ENV \"%s\" = \"%s\"", key, value);
 
 			// Add to list
 			struct env_item *new_item = calloc(1, sizeof(struct env_item));
@@ -70,7 +79,6 @@ void getEnvVars(void)
 			new_item->key = strdup(key);
 			new_item->value = strdup(value);
 			new_item->error = NULL;
-			new_item->allowed = NULL;
 			new_item->next = env_list;
 			env_list = new_item;
 
@@ -113,15 +121,15 @@ void printFTLenv(void)
 				log_info("   %s %s is used", cli_tick(), item->key);
 			else
 			{
-				if(item->error != NULL && item->allowed == NULL)
-					log_err("  %s %s is invalid (%s)",
-					        cli_cross(), item->key, item->error);
-				else if(item->error != NULL && item->allowed != NULL)
-					log_err("  %s %s is invalid (%s, allowed options are: %s)",
-					        cli_cross(), item->key, item->error, item->allowed);
+				if(item->error != NULL)
+					log_err("  %s %s %s, using default instead",
+						cli_cross(), item->key, item->error);
 				else
-					log_err("  %s %s is invalid",
+					log_err("  %s %s is invalid, using default instead",
 					        cli_cross(), item->key);
+
+				if(item->error_allocated)
+					free(item->error);
 			}
 
 			continue;
@@ -140,11 +148,13 @@ void printFTLenv(void)
 
 static struct env_item *__attribute__((pure)) getFTLenv(const char *key)
 {
+	// "Normalize" the environment variable to conventional names by using a case insensitive comparison,
+	// See: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap08.html
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
 	{
 		// Check if this is the requested key
-		if(strcmp(item->key, key) == 0)
+		if(strcasecmp(item->key, key) == 0)
 			return item;
 	}
 
@@ -163,6 +173,35 @@ void freeEnvVars(void)
 		free(env_list);
 		env_list = next;
 	}
+}
+
+/**
+ * @brief Marks an environment item as invalid and logs a warning message.
+ *
+ * @param envvar The value of the environment variable.
+ * @param conf_item A pointer to the configuration item structure.
+ * @param item A pointer to the environment item structure to be marked as invalid.
+ */
+static void invalid_enum_item(const char *envvar, struct conf_item *conf_item, struct env_item *item)
+{
+	item->valid = false;
+
+	cJSON *allowed_items = cJSON_CreateArray();
+	cJSON *it = NULL;
+	cJSON_ArrayForEach(it, conf_item->a)
+	{
+		cJSON *sub_item = cJSON_GetObjectItem(it, "item");
+		cJSON_AddItemToArray(allowed_items, cJSON_Duplicate(sub_item, true));
+	}
+	char *allowed_values = cJSON_PrintUnformatted(allowed_items);
+	char *escaped_value = escape_json(envvar);
+
+	// Calculate the size of the error message
+	asprintf(&item->error, "= %s is invalid, allowed options are: %s",
+	         escaped_value, allowed_values);
+
+	free(escaped_value);
+	free(allowed_values);
 }
 
 bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, struct config *newconf, cJSON *forced_vars, bool *reset)
@@ -235,8 +274,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type bool";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not a boolean";
 				item->valid = false;
 			}
 			break;
@@ -255,8 +293,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type bool";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not a boolean";
 				item->valid = false;
 			}
 			break;
@@ -271,8 +308,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type integer";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not an integer";
 				item->valid = false;
 			}
 			break;
@@ -287,8 +323,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type unsigned integer";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not an unsigned integer";
 				item->valid = false;
 			}
 			break;
@@ -298,13 +333,12 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			unsigned int val = 0;
 			if(sscanf(envvar, "%u", &val) == 1 && val <= UINT16_MAX)
 			{
-				conf_item->v.ui = val;
+				conf_item->v.u16 = val;
 				item->valid = true;
 			}
 			else
 			{
-				item->error = "not of type unsigned integer (16 bit";
-				log_warn("ENV %s is %s)", conf_item->e, item->error);
+				item->error = (char *)"is not an unsigned integer (16 bit)";
 				item->valid = false;
 			}
 			break;
@@ -319,24 +353,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type long";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
-				item->valid = false;
-			}
-			break;
-		}
-		case CONF_ULONG:
-		{
-			unsigned long val = 0;
-			if(sscanf(envvar, "%lu", &val) == 1)
-			{
-				conf_item->v.ul = val;
-				item->valid = true;
-			}
-			else
-			{
-				item->error = "not of type unsigned long";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not a long integer";
 				item->valid = false;
 			}
 			break;
@@ -351,8 +368,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type double";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not a double";
 				item->valid = false;
 			}
 			break;
@@ -377,11 +393,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -396,11 +408,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -415,11 +423,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -434,11 +438,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -453,11 +453,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -472,11 +468,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -491,11 +483,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -510,11 +498,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			else
 			{
 
-				item->error = "not an allowed option";
-				item->allowed = conf_item->h;
-				log_warn("ENV %s is %s, allowed options are: %s",
-				         conf_item->e, item->error, item->allowed);
-				item->valid = false;
+				invalid_enum_item(envvar, conf_item, item);
 			}
 			break;
 		}
@@ -528,8 +512,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type integer or outside allowed bounds";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not an integer or outside allowed bounds";
 				item->valid = false;
 			}
 			break;
@@ -549,8 +532,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type IPv4 address";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not an IPv4 address";
 				item->valid = false;
 			}
 			break;
@@ -570,8 +552,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			else
 			{
-				item->error = "not of type IPv6 address";
-				log_warn("ENV %s is %s", conf_item->e, item->error);
+				item->error = (char *)"is not an IPv6 address";
 				item->valid = false;
 			}
 			break;
@@ -584,8 +565,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			cJSON_Delete(conf_item->v.json);
 			conf_item->v.json = cJSON_CreateArray();
 			// Parse envvar array and generate a JSON array (env var
-			// arrays are ;-delimited)
-			const char delim[] =";";
+			// arrays are ; or \n-delimited)
+			const char delim[] =";\n";
 			const char *elem = strtok(envvar_copy, delim);
 			while(elem != NULL)
 			{
@@ -608,7 +589,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 		{
 			if(!set_and_check_password(conf_item, envvar))
 			{
-				log_warn("ENV %s is invalid", conf_item->e);
+				item->error = (char *)"is not a valid password";
 				item->valid = false;
 				break;
 			}
@@ -616,6 +597,20 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			break;
 		}
 	}
+
+	// Validate enum value if it is valid and validation function is defined
+	char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(conf_item->c != NULL && !conf_item->c(&conf_item->v, conf_item->k, errbuf))
+	{
+		log_debug(DEBUG_CONFIG, "Config item validation failed for %s: %s", conf_item->k, errbuf);
+		item->error = strdup(errbuf);
+		item->error_allocated = true;
+		item->valid = false;
+		return false;
+	}
+
+
+	log_debug(DEBUG_CONFIG, "Env var %s passed validation successfully", conf_item->k);
 
 	return true;
 }
@@ -626,8 +621,9 @@ cJSON *read_forced_vars(const unsigned int version)
 	cJSON *env_vars = cJSON_CreateArray();
 
 	// Try to open default config file. Use fallback if not found
-	FILE *fp;
-	if((fp = openFTLtoml("r", version)) == NULL)
+	bool locked = false;
+	FILE *fp = openFTLtoml("r", version, &locked);
+	if(fp == NULL)
 	{
 		// Return empty cJSON array
 		return env_vars;
@@ -665,7 +661,7 @@ cJSON *read_forced_vars(const unsigned int version)
 	}
 
 	// Close file and release exclusive lock
-	closeFTLtoml(fp);
+	closeFTLtoml(fp, locked);
 
 	// Return cJSON array
 	return env_vars;

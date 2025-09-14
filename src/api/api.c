@@ -101,7 +101,8 @@ static struct {
 	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
-	{ "/api/action/flush/arp",                  "",                           api_action_flush_arp,                  { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/action/flush/arp",                  "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/action/flush/network",              "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };

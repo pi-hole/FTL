@@ -39,6 +39,10 @@
 #include <locale.h>
 // freeEnvVars()
 #include "config/env.h"
+// parse_proc_stat()
+#include "procps.h"
+// destroy_entropy()
+#include "webserver/x509.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -61,6 +65,9 @@ void go_daemon(void)
 	if (process_id > 0)
 	{
 		printf("FTL started!\n");
+		// Free config to silence meaningless (but still loud) memcheck
+		// warnings about lost memory concerning the parsed config
+		free_config(&config, true);
 		// Return success in exit status
 		exit(EXIT_SUCCESS);
 	}
@@ -104,17 +111,27 @@ void go_daemon(void)
 		exit(EXIT_SUCCESS);
 	}
 
-	savepid();
+	savePID();
 
 	// Closing stdin, stdout and stderr is handled by dnsmasq
 }
 
-void savepid(void)
+/**
+ * @brief Save the current process ID (PID) to a file.
+ *
+ * This function retrieves the PID of the current process and writes it to a
+ * specified file. If the file cannot be opened for writing, an error is logged.
+ * Otherwise, the PID is written to the file and the file is closed. The PID is
+ * also logged for informational purposes.
+ *
+ * @return void
+ */
+void savePID(void)
 {
-	FILE *f;
 	// Get PID of the current process
 	const pid_t pid = getpid();
 	// Open file for writing
+	FILE *f = NULL;
 	if((f = fopen(config.files.pid.v.s, "w+")) == NULL)
 	{
 		// Log error
@@ -129,20 +146,39 @@ void savepid(void)
 	log_info("PID of FTL process: %i", (int)pid);
 }
 
-static void removepid(void)
+/**
+ * @brief Empties the PID file
+ *
+ * This function opens the PID file in write mode, which effectively
+ * empties its contents. If the file cannot be opened, a warning is logged.
+ *
+ * @note This function does not remove the PID file, it only empties it.
+ */
+static void removePID(void)
 {
-	// Note that this function is not really removing the PID file but
-	// rather emptying it
-	FILE *f;
-	// Open file for writing (emptying it)
+	FILE *f = NULL;
+	// Open file for writing to overwrite/empty it
 	if((f = fopen(config.files.pid.v.s, "w")) == NULL)
 	{
 		log_warn("Unable to empty PID file: %s", strerror(errno));
 		return;
 	}
 	fclose(f);
+
+	log_info("PID file emptied");
 }
 
+/**
+ * @brief Retrieves the username of the effective user ID of the calling process.
+ *
+ * This function uses the `geteuid()` function to get the effective user ID (EUID) of the calling process
+ * and then searches the user database for an entry with a matching UID using the `getpwuid()` function.
+ * If a matching entry is found, the username is returned. If no matching entry is found, the UID is
+ * returned as a string. If an error occurs during the lookup, a warning is logged.
+ *
+ * @return A dynamically allocated string containing the username or UID. The caller is responsible for
+ * freeing the allocated memory. Returns NULL if memory allocation fails.
+ */
 char *getUserName(void)
 {
 	char *name;
@@ -196,7 +232,11 @@ const char *hostname(void)
 		if(uname(&buf) == 0)
 		{
 			strncpy(nodename, buf.nodename, HOSTNAMESIZE);
-			strncpy(dname, buf.domainname, HOSTNAMESIZE);
+
+			// Only set domain name if node name is not empty: the
+			// kernel replies with '(none)' in this case.
+			if(!(buf.domainname[0] == '(' && strncmp(buf.domainname, "(none)", 6) == 0))
+				strncpy(dname, buf.domainname, HOSTNAMESIZE);
 		}
 		nodename[HOSTNAMESIZE - 1] = '\0';
 		dname[HOSTNAMESIZE - 1] = '\0';
@@ -376,7 +416,7 @@ void cleanup(const int ret)
 	}
 
 	// Remove PID file
-	removepid();
+	removePID();
 
 	// Free regex filter memory
 	free_regex();
@@ -390,14 +430,20 @@ void cleanup(const int ret)
 	// Close memory database
 	close_memory_database();
 
-	// Remove shared memory objects
-	// Important: This invalidated all objects such as
-	//            counters-> ... etc.
-	// This should be the last action when c
-	destroy_shmem();
+	// De-initialize the random number generator and entropy collector
+	destroy_entropy();
 
 	// Free environment variables
 	freeEnvVars();
+
+	// Free config
+	free_config(&config, true);
+
+	// Remove shared memory objects
+	// Important: This invalidated all objects such as
+	//            counters-> ... etc.
+	// This should be the last action when cleaning up
+	destroy_shmem();
 
 	char buffer[42] = { 0 };
 	format_time(buffer, 0, timer_elapsed_msec(EXIT_TIMER));
@@ -407,8 +453,8 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
-static float last_clock = 0.0f;
-static float cpu_usage = 0.0f;
+static float ftl_cpu_usage = 0.0f;
+static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)
 {
 	// Get the current resource usage
@@ -425,18 +471,41 @@ void calc_cpu_usage(const unsigned int interval)
 	// kernel mode by this process since the total time since the last call
 	// to this function. 100% means one core is fully used, 200% means two
 	// cores are fully used, etc.
-	const float this_clock = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+	const float ftl_cpu_time = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
 
 	// Calculate the CPU usage in this interval
-	cpu_usage = 100.0 * (this_clock - last_clock) / interval;
+	static float last_ftl_cpu_time = 0.0f;
+	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval;
 
 	// Store the current time for the next call to this function
-	last_clock = this_clock;
+	last_ftl_cpu_time = ftl_cpu_time;
+
+	// Calculate the total CPU usage
+	unsigned long total_total, total_idle;
+	if(!parse_proc_stat(&total_total, &total_idle))
+	{
+		total_cpu_usage = -1.0f;
+		return;
+	}
+
+	// Calculate the CPU usage since the last call to this function
+	static unsigned long last_total_total = 0, last_total_idle = 0;
+	if(total_total - last_total_total > 0)
+		total_cpu_usage = 100.0 * (total_total - last_total_total - (total_idle - last_total_idle)) / (total_total - last_total_total);
+
+	// Store the current time for the next call to this function
+	last_total_idle = total_idle;
+	last_total_total = total_total;
 }
 
-float __attribute__((pure)) get_cpu_percentage(void)
+float __attribute__((pure)) get_ftl_cpu_percentage(void)
 {
-	return cpu_usage;
+	return ftl_cpu_usage;
+}
+
+float __attribute__((pure)) get_total_cpu_percentage(void)
+{
+	return total_cpu_usage;
 }
 
 ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags)

@@ -1,21 +1,14 @@
 <p align="center">
-  <a href="https://pi-hole.net">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://pi-hole.github.io/graphics/Vortex/Vortex_Vertical_wordmark_darkmode.png">
-      <source media="(prefers-color-scheme: light)" srcset="https://pi-hole.github.io/graphics/Vortex/Vortex_Vertical_wordmark_lightmode.png">
-      <img src="https://pi-hole.github.io/graphics/Vortex/Vortex_Vertical_wordmark_lightmode.png" width="80" alt="Pi-hole website">
-    </picture>
+  <a href="https://pi-hole.net/">
+    <img src="https://raw.githubusercontent.com/pi-hole/graphics/refs/heads/master/Vortex/vortex_with_text.svg" alt="Pi-hole logo" width="80" height="128">
   </a>
-  <br/>
-  <b>Network-wide ad blocking via your own Linux hardware</b><br/><br/>
-  <a href="https://pi-hole.net">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://pi-hole.github.io/graphics/FTLDNS/FTLDNS_darkmode.png">
-      <source media="(prefers-color-scheme: light)" srcset="https://pi-hole.github.io/graphics/FTLDNS/FTLDNS.png">
-      <img src="https://pi-hole.github.io/graphics/FTLDNS/FTLDNS.png" alt="FTLDNS">
-    </picture>
+  <br>
+  <strong>Network-wide ad blocking via your own Linux hardware</strong>
+  <br>
+  <br>
+  <a href="https://pi-hole.net/">
+    <img src="https://raw.githubusercontent.com/pi-hole/graphics/refs/heads/master/FTLDNS/FTLDNS.svg" alt="FTLDNS logo" width="500" height="128">
   </a>
-  <br/>
 </p>
 
 FTLDNS (`pihole-FTL`) provides an interactive API and also generates statistics for Pi-hole[®](https://pi-hole.net/trademark-rules-and-brand-guidelines/)'s Web interface.
@@ -36,4 +29,4 @@ FTLDNS (`pihole-FTL`) is automatically installed when installing Pi-hole.
 
 ### IMPORTANT
 
->FTLDNS will *disable* any existing installations of `dnsmasq`.  This is because FTLDNS *is* `dnsmasq` + Pi-hole's code, so both cannot run simultaneously.
+>FTLDNS will *disable* any existing installations of `dnsmasq`. This is because FTLDNS *is* `dnsmasq` + Pi-hole's code, so both cannot run simultaneously.

@@ -276,133 +276,214 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		total_read += read;
 		lineno++;
 
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
 		// Remove trailing newline
 		if(line[read-1] == '\n')
 			line[--read] = '\0';
 
-		// Remove trailing dot (convert FQDN to domain)
-		if(line[read-1] == '.')
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
+		// Remove trailing carriage return
+		if(line[read-1] == '\r')
 			line[--read] = '\0';
 
-		// Validate line
-		if(line[0] != (antigravity ? '@' : '|') &&           // <- Not an ABP-style match
-		   valid_domain(line, read, true))
-		{
-			// Exact match found
-			if(checkOnly)
-			{
-				// Increment counter
-				exact_domains++;
-				continue;
-			}
+		// Skip empty lines
+		if(read < 1)
+			continue;
 
-			// else: Append domain to database using prepared statement
-			// Append domain to database using prepared statement
-			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
-			{
-				printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
-				       over, cross, outfile);
-				fclose(fpin);
-				sqlite3_close(db);
-				return EXIT_FAILURE;
-			}
-			if(sqlite3_step(stmt) != SQLITE_DONE)
-			{
-				printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
-				fclose(fpin);
-				sqlite3_close(db);
-				return EXIT_FAILURE;
-			}
-			sqlite3_reset(stmt);
-			// Increment counter
-			exact_domains++;
+		// Remove trailing whitespace
+		while(read > 0 && isspace(line[read-1]))
+			line[--read] = '\0';
+
+		// Skip empty lines
+		if(read < 1)
+			continue;
+
+		// Skip lines having any of the following characters:
+		// ! = ABP-style comment
+		// # = bach-style comment
+		// ; = PHP-style comment
+		// [ = ABP header lines
+		if(line[0] == '!' || line[0] == '#' || line[0] == ';' || line[0] == '[')
+			continue;
+
+		// Remove lines containing ABP extended CSS selectors ("##",
+		// "#$#", "#@#", "#?#") and Adguard JavaScript (#%#)
+		char *hash = strchr(line, '#');
+		if(hash != NULL && line < hash && (hash[1] == '#' || hash[1] == '$' || hash[1] == '@' || hash[1] == '?' || hash[1] == '%'))
+			continue;
+
+		// Remove comments (text starting with "#", include possible spaces before the hash sign)
+		const size_t comment_start = strcspn(line, "#");
+		if (comment_start < (size_t)read)
+		{
+			line[comment_start] = '\0';
+			read = comment_start;
 		}
-		else if(line[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
-		        valid_abp_domain(line, read, antigravity))      // <- Valid ABP domain
-		{
-			// ABP-style match (see comments above)
-			if(checkOnly)
-			{
-				// Increment counter
-				abp_domains++;
-				continue;
-			}
 
-			// else: Append pattern to database using prepared statement
-			if(sqlite3_bind_text(stmt, 1, line, -1, SQLITE_STATIC) != SQLITE_OK)
-			{
-				printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
-				       over, cross, outfile);
-				fclose(fpin);
-				sqlite3_close(db);
-				return EXIT_FAILURE;
-			}
-			if(sqlite3_step(stmt) != SQLITE_DONE)
-			{
-				printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
-				fclose(fpin);
-				sqlite3_close(db);
-				return EXIT_FAILURE;
-			}
-			sqlite3_reset(stmt);
-			abp_domains++;
-		}
-		else
-		{
-			// No match - This is an invalid domain or a false positive
+		// Skip empty lines
+		if(read < 1)
+			continue;
 
-			// Ignore false positives - they don't count as invalid domains
-			if(!is_false_positive(line))
+		// Split by whitespace and tabs and look over the tokens
+		char *token = strtok(line, " \t");
+		while(token != NULL)
+		{
+			// Skip empty tokens
+			if(token[0] == '\0')
+				goto next_domain;
+
+			// Skip IP addresses
+			// IPv4 addresses
+			struct in_addr buffer = { 0 };
+			if (inet_pton(AF_INET, token, &buffer) == 1)
+				goto next_domain;
+
+			// IPv6 addresses
+			struct in6_addr buffer6 = { 0 };
+			if (inet_pton(AF_INET6, token, &buffer6) == 1)
+				goto next_domain;
+
+			// Remove trailing dot (convert FQDN to domain)
+			size_t token_len = strlen(token);
+			if(token[token_len - 1] == '.')
+				token[--token_len] = '\0';
+
+			// Skip empty tokens
+			if(token[0] == '\0')
+				goto next_domain;
+
+			// Convert all characters to lowercase
+			for(size_t i = 0; i < token_len; i++)
+				token[i] = tolower(token[i]);
+
+			// Validate line
+			if(line[0] != (antigravity ? '@' : '|') &&  // <- Not an ABP-style match
+			   valid_domain(token, token_len, true))
 			{
+				// Exact match found
 				if(checkOnly)
 				{
 					// Increment counter
-					invalid_domains++;
-					printf("%s  %s Invalid domain on line %zu: ", over, cross, lineno);
-					print_escaped(line, read);
-					puts("");
-					continue;
+					exact_domains++;
+					goto next_domain;
 				}
-				// Add the domain to invalid_domains_list only
-				// if the list contains < MAX_INVALID_DOMAINS
-				if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+
+				// else: Append domain to database using prepared statement
+				// Append domain to database using prepared statement
+				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
 				{
-					// Check if we have this domain already
-					bool found = false;
-					for(unsigned int i = 0; i < invalid_domains_list_len; i++)
-					{
-						// Do not compare against unset entries
-						if(invalid_domains_list[i] == NULL || invalid_domains_list_lengths[i] == -1)
-							break;
-
-						// Compare against the current domain
-						if(memcmp(invalid_domains_list[i], line, min(read, invalid_domains_list_lengths[i])) == 0)
-						{
-							found = true;
-							break;
-						}
-					}
-
-					// If not found, add it to the list
-					if(!found)
-					{
-						invalid_domains_list[invalid_domains_list_len] = calloc(read + 1, sizeof(char));
-						if(invalid_domains_list[invalid_domains_list_len] == NULL)
-						{
-							printf("%s  %s Unable to allocate memory for invalid domains list\n", over, cross);
-							fclose(fpin);
-							sqlite3_close(db);
-							return EXIT_FAILURE;
-						}
-						memcpy(invalid_domains_list[invalid_domains_list_len], line, read);
-						invalid_domains_list[invalid_domains_list_len][read] = '\0';
-						invalid_domains_list_lengths[invalid_domains_list_len] = read;
-						invalid_domains_list_len++;
-					}
-
+					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
+					over, cross, outfile);
+					fclose(fpin);
+					sqlite3_close(db);
+					return EXIT_FAILURE;
 				}
-				invalid_domains++;
+				if(sqlite3_step(stmt) != SQLITE_DONE)
+				{
+					printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
+					fclose(fpin);
+					sqlite3_close(db);
+					return EXIT_FAILURE;
+				}
+				sqlite3_reset(stmt);
+				// Increment counter
+				exact_domains++;
 			}
+			else if(token[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
+			        valid_abp_domain(token, token_len, antigravity)) // <- Valid ABP domain
+			{
+				// ABP-style match (see comments above)
+				if(checkOnly)
+				{
+					// Increment counter
+					abp_domains++;
+					goto next_domain;
+				}
+
+				// else: Append pattern to database using prepared statement
+				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
+				{
+					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
+					over, cross, outfile);
+					fclose(fpin);
+					sqlite3_close(db);
+					return EXIT_FAILURE;
+				}
+				if(sqlite3_step(stmt) != SQLITE_DONE)
+				{
+					printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
+					fclose(fpin);
+					sqlite3_close(db);
+					return EXIT_FAILURE;
+				}
+				sqlite3_reset(stmt);
+				abp_domains++;
+			}
+			else
+			{
+				// No match - This is an invalid domain or a false positive
+
+				// Ignore false positives - they don't count as invalid domains
+				if(!is_false_positive(token))
+				{
+					if(checkOnly)
+					{
+						// Increment counter
+						invalid_domains++;
+						printf("%s  %s Invalid domain on line %zu: ", over, cross, lineno);
+						print_escaped(token, token_len);
+						puts("");
+						goto next_domain;
+					}
+					// Add the domain to invalid_domains_list only
+					// if the list contains < MAX_INVALID_DOMAINS
+					if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+					{
+						// Check if we have this domain already
+						bool found = false;
+						for(unsigned int i = 0; i < invalid_domains_list_len; i++)
+						{
+							// Do not compare against unset entries
+							if(invalid_domains_list[i] == NULL || invalid_domains_list_lengths[i] == -1)
+								break;
+
+							// Compare against the current domain
+							if(memcmp(invalid_domains_list[i], token, min((ssize_t)token_len, invalid_domains_list_lengths[i])) == 0)
+							{
+								found = true;
+								break;
+							}
+						}
+
+						// If not found, add it to the list
+						if(!found)
+						{
+							invalid_domains_list[invalid_domains_list_len] = calloc(token_len + 1, sizeof(char));
+							if(invalid_domains_list[invalid_domains_list_len] == NULL)
+							{
+								printf("%s  %s Unable to allocate memory for invalid domains list\n", over, cross);
+								fclose(fpin);
+								sqlite3_close(db);
+								return EXIT_FAILURE;
+							}
+							memcpy(invalid_domains_list[invalid_domains_list_len], token, token_len);
+							invalid_domains_list[invalid_domains_list_len][token_len] = '\0';
+							invalid_domains_list_lengths[invalid_domains_list_len] = token_len;
+							invalid_domains_list_len++;
+						}
+
+					}
+					invalid_domains++;
+				}
+			}
+next_domain:
+			token = strtok(NULL, " \t");
 		}
 
 		// Print progress if the file is large enough every 100 lines
@@ -452,7 +533,15 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	}
 
 	// Update number of domains and update timestamp on this list
-	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, abp_entries = ?, date_updated = cast(strftime('%s', 'now') as int) WHERE id = ?;";
+	// The `date_updated` column is updated conditionally using a `CASE`
+	// expression. If the `status` column of the row is `1` (= list has been
+	// updated), the `date_updated` column is set to the current timestamp.
+	// This is achieved by using the `strftime` function to get the current
+	// time in seconds since the Unix epoch and casting it to an integer. If
+	// the `status` is not `1` (we used a cached list either because there
+	// are no changes or the download failed), the `date_updated` column
+	// retains its existing value.
+	sql = "UPDATE adlist SET number = ?, invalid_domains = ?, abp_entries = ?, date_updated = CASE WHEN status = 1 THEN cast(strftime('%s', 'now') as int) ELSE date_updated END WHERE id = ?;";
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to update adlist properties in database file %s\n",

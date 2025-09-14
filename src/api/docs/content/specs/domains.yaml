@@ -79,8 +79,8 @@ components:
                   - $ref: 'domains.yaml#/components/schemas/domains/put'
                   - $ref: 'common.yaml#/components/schemas/took'
         responses:
-          '201':
-            description: Created domain
+          '200':
+            description: Created or Updated domain
             content:
               application/json:
                 schema:
@@ -229,6 +229,7 @@ components:
           *Note:* There will be no content on success.
         requestBody:
           description: Callback payload
+          required: true
           content:
             application/json:
               schema:
@@ -254,6 +255,10 @@ components:
                         - "exact"
                         - "regex"
                       example: "exact"
+                  required:
+                    - item
+                    - type
+                    - kind
         responses:
           '204':
             description: Items deleted
@@ -480,6 +485,7 @@ components:
               key: "uri_error"
               message: "Invalid request: Specify list to modify more precisely"
               hint: null
+            took: 0.003
         item_missing:
           summary: Domain to be modified is missing
           value:
@@ -487,6 +493,7 @@ components:
               key: "uri_error"
               message: "Invalid request: Specify item in URI"
               hint: null
+            took: 0.003
       bad_request:
         no_payload:
           summary: No JSON payload found
@@ -495,6 +502,7 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
       database_error:
         duplicate:
           summary: Database error
@@ -503,6 +511,7 @@ components:
               key: "database_error"
               message: "Could not add to gravity database"
               hint: "UNIQUE constraint failed: domainlist.domain, domainlist.type"
+            took: 0.003
       regex_error:
         invalid_regex:
           summary: Invalid regex rejected
@@ -511,6 +520,7 @@ components:
               key: "regex_error"
               message: "Regex validation failed"
               hint: "Missing ']'"
+            took: 0.003
 
   parameters:
     type:

@@ -586,88 +586,129 @@ bool import_queries_from_disk(void)
 // seconds. This is to give queries some time to complete before they are
 // exported to disk. When final is true, we export all queries (nothing is going
 // to be added to the in-memory database anymore).
-bool export_queries_to_disk(bool final)
+bool export_queries_to_disk(const bool final)
 {
+	int rc = 0;
 	bool okay = false;
+	unsigned int insertions = 0;
 	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
 
 	// Only try to export to database if it is known to not be broken
 	if(FTLDBerror())
-		return false;
-
-	const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
-
-	log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
-	          last_disk_db_idx, last_mem_db_idx, time);
+	return false;
 
 	// Start database timer
 	timer_start(DATABASE_WRITE_TIMER);
 
 	// Start transaction
 	sqlite3 *memdb = get_memdb();
+	sqlite3_stmt *stmt = NULL;
 	SQL_bool(memdb, "BEGIN TRANSACTION");
 
-	// Prepare SQLite3 statement
-	sqlite3_stmt *stmt = NULL;
-	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
-		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Bind index
-	if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
+	// Only store queries if database.maxDBdays > 0
+	if(config.database.maxDBdays.v.ui > 0)
 	{
-		log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
-		return false;
+		const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
+
+		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lu (max is %lu) and timestamp < %f",
+		          last_disk_db_idx, last_mem_db_idx, time);
+
+		// Prepare SQLite3 statement
+		log_debug(DEBUG_DATABASE, "Accessing in-memory database");
+		if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK)
+		{
+			log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind index
+		if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
+		{
+			log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Bind upper time limit
+		// This prevents queries from the last 30 seconds from being stored
+		// immediately on-disk to give them some time to complete before finally
+		// exported. We do not limit anything when storing during termination.
+		if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
+		{
+			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Perform step
+		if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+			okay = true;
+		else
+		{
+			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
+			log_info("    SQL query was: \"%s\"", querystr);
+			log_info("    with parameters: id = %lu, timestamp = %f", last_disk_db_idx, time);
+		}
+
+		// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
+		insertions = sqlite3_changes(memdb);
+
+		// Finalize statement
+		sqlite3_finalize(stmt);
+
+
+		// Update last_disk_db_idx
+		// Prepare SQLite3 statement
+		rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
+			return false;
+		}
+
+		// Perform step
+		if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+			last_disk_db_idx = sqlite3_column_int64(stmt, 0);
+		else
+			log_err("Failed to get MAX(id) from query_storage: %s",
+			        sqlite3_errstr(rc));
+
+		// Finalize statement
+		sqlite3_finalize(stmt);
+
+		/*
+		 * If there are any insertions, we:
+		 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
+		 * 2. Update the total queries counter in the `disk.counters` table.
+		 * 3. Update the blocked queries counter in the `disk.counters` table.
+		 *
+		 * Note that new_total does not need to match the total number of
+		 * insertions here as storing queries to the database happens
+		 * time-delayed. In the end, the total number of queries will be
+		 * correct (after final synchronization during FTL shutdown).
+		 */
+		if(insertions > 0)
+		{
+			if((rc = dbquery(memdb, "INSERT OR REPLACE INTO disk.ftl (id, value) VALUES ( %i, %f );", DB_LASTTIMESTAMP, new_last_timestamp)) != SQLITE_OK)
+				log_err("export_queries_to_disk(): Cannot update timestamp: %s", sqlite3_errstr(rc));
+
+			if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_total, DB_TOTALQUERIES)) != SQLITE_OK)
+				log_err("export_queries_to_disk(): Cannot update total queries counter: %s", sqlite3_errstr(rc));
+			else
+				// Success
+				new_total = 0;
+
+			if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_blocked, DB_BLOCKEDQUERIES)) != SQLITE_OK)
+				log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
+			else
+				// Success
+				new_blocked = 0;
+		}
+
+		// Update number of queries in the disk database
+		disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
+
+		// All temp queries were stored to disk, update the IDs
+		last_disk_db_idx += insertions;
 	}
-
-	// Bind upper time limit
-	// This prevents queries from the last 30 seconds from being stored
-	// immediately on-disk to give them some time to complete before finally
-	// exported. We do not limit anything when storing during termination.
-	if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
-		okay = true;
-	else
-	{
-		log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
-		log_info("    SQL query was: \"%s\"", querystr);
-		log_info("    with parameters: id = %lu, timestamp = %f", last_disk_db_idx, time);
-	}
-
-	// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
-	const unsigned int insertions = sqlite3_changes(memdb);
-
-	// Finalize statement
-	sqlite3_finalize(stmt);
-
-	// Update last_disk_db_idx
-	// Prepare SQLite3 statement
-	log_debug(DEBUG_DATABASE, "Accessing in-memory database");
-	rc = sqlite3_prepare_v2(memdb, "SELECT MAX(id) FROM disk.query_storage;", -1, &stmt, NULL);
-	if(rc != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_ROW)
-		last_disk_db_idx = sqlite3_column_int64(stmt, 0);
-	else
-		log_err("Failed to get MAX(id) from query_storage: %s",
-		        sqlite3_errstr(rc));
-
-	// Finalize statement
-	sqlite3_finalize(stmt);
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
 	const char *subtable_names[] = {
@@ -694,35 +735,6 @@ bool export_queries_to_disk(bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
-	/*
-	 * If there are any insertions, we:
-	 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
-	 * 2. Update the total queries counter in the `disk.counters` table.
-	 * 3. Update the blocked queries counter in the `disk.counters` table.
-	 *
-	 * Note that new_total does not need to match the total number of
-	 * insertions here as storing queries to the database happens
-	 * time-delayed. In the end, the total number of queries will be
-	 * correct (after final synchronization during FTL shutdown).
-	 */
-	if(insertions > 0)
-	{
-		if((rc = dbquery(memdb, "INSERT OR REPLACE INTO disk.ftl (id, value) VALUES ( %i, %f );", DB_LASTTIMESTAMP, new_last_timestamp)) != SQLITE_OK)
-			log_err("export_queries_to_disk(): Cannot update timestamp: %s", sqlite3_errstr(rc));
-
-		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_total, DB_TOTALQUERIES)) != SQLITE_OK)
-			log_err("export_queries_to_disk(): Cannot update total queries counter: %s", sqlite3_errstr(rc));
-		else
-			// Success
-			new_total = 0;
-
-		if((rc = dbquery(memdb, "UPDATE disk.counters SET value = value + %u WHERE id = %i;", new_blocked, DB_BLOCKEDQUERIES)) != SQLITE_OK)
-			log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
-		else
-			// Success
-			new_blocked = 0;
-	}
-
 	// End transaction
 	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
 	{
@@ -730,14 +742,8 @@ bool export_queries_to_disk(bool final)
 		return false;
 	}
 
-	// Update number of queries in the disk database
-	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-
-	// All temp queries were stored to disk, update the IDs
-	last_disk_db_idx += insertions;
-
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lu)",
-	          insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
+		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
 
 	return okay;
 }
@@ -1230,7 +1236,7 @@ void DB_read_queries(void)
 		if(type < 100)
 		{
 			// Mapped query type
-			if(type >= TYPE_A && type < TYPE_MAX)
+			if(type >= TYPE_NONE && type < TYPE_MAX)
 				query->type = type;
 			else
 			{

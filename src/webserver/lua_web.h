@@ -13,8 +13,7 @@
 // definition of struct mg_connection
 #include "http-common.h"
 
-void allocate_lua(void);
-void free_lua(void);
+void allocate_lua(char *login_uri_in, char *admin_api_uri_in, char *prefix_webhome);
 void init_lua(const struct mg_connection *conn, void *L, unsigned context_flags);
 int request_handler(struct mg_connection *conn, void *cbdata);
 

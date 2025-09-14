@@ -63,6 +63,10 @@ int send_http_code(struct ftl_conn *api, const char *mime_type,
 	                           mime_type,
 	                           strlen(msg));
 
+	// Codes 1xx, 204 and 304 are not allowed to have a body
+	if(code < 200 || code == 204 || code == 304)
+		return 0;
+
 	return mg_write(api->conn, msg, strlen(msg));
 }
 
@@ -88,18 +92,33 @@ int send_json_error_free(struct ftl_conn *api, const int code,
                          const char *key, const char* message,
                          char *hint, const bool free_hint, const bool log)
 {
+	// Codes 1xx, 204, and 304 are not allowed to have a body
+	// Log to the logfile instead
+	if(code < 200 || code == 204 || code == 304)
+	{
+		if(hint != NULL)
+			log_warn("API: %s (key: %s, hint: %s)", message, key, hint);
+		else
+			log_warn("API: %s (key: %s)", message, key);
+
+		return send_http_code(api, NULL, code, "");
+	}
+
 	if(log)
 	{
 		if(hint != NULL)
-			log_warn("API: %s (%s)", message, hint);
+			log_warn("API: %s (key: %s, hint: %s)", message, key, hint);
 		else
-			log_warn("API: %s", message);
+			log_warn("API: %s (key: %s)", message, key);
 	}
 
 	cJSON *error = JSON_NEW_OBJECT();
 	JSON_REF_STR_IN_OBJECT(error, "key", key);
 	JSON_REF_STR_IN_OBJECT(error, "message", message);
-	JSON_COPY_STR_TO_OBJECT(error, "hint", hint);
+	if(hint != NULL)
+		JSON_COPY_STR_TO_OBJECT(error, "hint", hint);
+	else
+		JSON_ADD_NULL_TO_OBJECT(error, "hint");
 	if(free_hint && hint != NULL)
 		free(hint);
 

@@ -45,14 +45,23 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 			return false;
 		}
 
-		// Check if it's in the form "IP HOSTNAME"
+		// Check if it's in the form "IP[ \t]HOSTNAME"
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
-		char *ip = strsep(&tmp, " ");
+		
+		// Strip leading spaces/tabs
+		while(isspace((unsigned char)*tmp))
+			tmp++;
+		
+		char *ip = strsep(&tmp, " \t");
+
+		// Skip any extra whitespace/tabs after the IP
+		while(tmp && isspace((unsigned char)*tmp))
+			tmp++;
 
 		if(!ip || !*ip)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not an IP address (\"%s\")",
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: found no first element (\"%s\")",
 			         key, i, item->valuestring);
 			free(str);
 			return false;
@@ -74,8 +83,23 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// hostnames to come after the IP address
 		unsigned int hosts = 0;
 		char *host = NULL;
-		while((host = strsep(&tmp, " ")) != NULL)
+		while((host = strsep(&tmp, " \t")) != NULL)
 		{
+			// Skip extra whitespace/tabs
+			while(isspace((unsigned char)*host))
+				host++;
+
+			// Skip this entry if it's empty after trimming
+			// the whitespaces/tabs (due to multiple consecutive spaces)
+			if(strlen(host) == 0)
+				continue;
+
+			// If this hostname is actually the start of a comment
+			// (first letter is '#'), skip parsing the rest of the
+			// entire line
+			if(host[0] == '#')
+				break;
+
 			if(!valid_domain(host, strlen(host), false))
 			{
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
@@ -253,6 +277,21 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 	}
 
 	return true;
+}
+
+// Validate a file path that needs to have both a slash at the beginning and at
+// the end
+bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if the path starts and ends with a slash
+	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: file path does not start and end with a slash (\"%s\")", key, val->s);
+		return false;
+	}
+
+	// Check if the path contains only valid characters
+	return validate_filepath(val, key, err);
 }
 
 // Validate file path (empty allowed)
@@ -504,4 +543,125 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 
 	// Return success
 	return true;
+}
+
+// Sanitize the dns.hosts array
+// This function normalizes whitespace formatting in the dns.hosts entries
+// to ensure consistent formatting when saving to pihole.toml
+void sanitize_dns_hosts(union conf_value *val)
+{
+	if(!cJSON_IsArray(val->json))
+		return;
+
+	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
+	{
+		// Get array item
+		cJSON *item = cJSON_GetArrayItem(val->json, i);
+
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+			continue;
+
+		// Parse and sanitize the entry
+		char *str = strdup(item->valuestring);
+		char *tmp = str;
+		
+		// Strip leading spaces/tabs
+		while(isspace((unsigned char)*tmp))
+			tmp++;
+		
+		// If the string is empty or starts with a comment, skip it
+		if(strlen(tmp) == 0 || tmp[0] == '#')
+		{
+			free(str);
+			continue;
+		}
+		
+		char *ip = strsep(&tmp, " \t");
+
+		// Skip any extra whitespace/tabs after the IP
+		while(tmp && isspace((unsigned char)*tmp))
+			tmp++;
+
+		// If no IP found or IP is empty, skip this entry
+		if(!ip || !*ip)
+		{
+			free(str);
+			continue;
+		}
+
+		// Build the sanitized string (allocate based on original string size)
+		const size_t original_len = strlen(item->valuestring);
+		char *sanitized = calloc(original_len + 1, sizeof(char));
+		if(sanitized == NULL)
+		{
+			free(str);
+			continue;
+		}
+		strcpy(sanitized, ip);
+		size_t current_len = strlen(ip);
+		
+		// Process hostnames
+		char *host = NULL;
+		while(tmp && (host = strsep(&tmp, " \t")) != NULL)
+		{
+			// Skip extra whitespace/tabs
+			while(isspace((unsigned char)*host))
+				host++;
+
+			// Skip empty entries
+			if(strlen(host) == 0)
+				continue;
+
+			// If this hostname starts with a comment, add it and the rest to the sanitized string, then stop processing
+			if(host[0] == '#')
+			{
+				// Add the comment part with single space separator
+				if(current_len < original_len)
+				{
+					sanitized[current_len++] = ' ';
+				}
+				size_t host_len = strlen(host);
+				if(current_len + host_len <= original_len)
+				{
+					strcpy(sanitized + current_len, host);
+					current_len += host_len;
+				}
+				
+				// Add any remaining content after this comment token
+				if(tmp && strlen(tmp) > 0)
+				{
+					size_t tmp_len = strlen(tmp);
+					if(current_len < original_len)
+					{
+						sanitized[current_len++] = ' ';
+					}
+					if(current_len + tmp_len <= original_len)
+					{
+						strcpy(sanitized + current_len, tmp);
+						current_len += tmp_len;
+					}
+				}
+				break;
+			}
+
+			// Add hostname to sanitized string with single space separator
+			if(current_len < original_len)
+			{
+				sanitized[current_len++] = ' ';
+			}
+			size_t host_len = strlen(host);
+			if(current_len + host_len <= original_len)
+			{
+				strcpy(sanitized + current_len, host);
+				current_len += host_len;
+			}
+		}
+
+		// Update the JSON item with the sanitized string
+		cJSON_SetValuestring(item, sanitized);
+
+		free(sanitized);
+		free(str);
+	}
 }

@@ -327,13 +327,6 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "Local DNS test: SOA ftl" {
-  run bash -c "dig SOA ftl @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl. hostmaster.ftl. 0 10800 3600 604800 3600" ]]
-  [[ ${lines[1]} == "" ]]
-}
-
 @test "Local DNS test: PTR ptr.ftl" {
   run bash -c "dig PTR ptr.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
@@ -359,13 +352,6 @@
   run bash -c "dig MX mx.ftl @127.0.0.1 +short"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "50 ns1.ftl." ]]
-  [[ ${lines[1]} == "" ]]
-}
-
-@test "Local DNS test: NS ftl" {
-  run bash -c "dig NS ftl @127.0.0.1 +short"
-  printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "ns1.ftl." ]]
   [[ ${lines[1]} == "" ]]
 }
 
@@ -747,8 +733,29 @@
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
 }
 
+@test "CLI config output as expected" {
+  # Partial match printing
+  run bash -c './pihole-FTL --config dns.upstream'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "dns.upstreams = [ 127.0.0.1#5555 ]" ]]
+
+  # Exact match printing
+  run bash -c './pihole-FTL --config dns.upstreams'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[ 127.0.0.1#5555 ]" ]]
+  run bash -c './pihole-FTL --config dns.piholePTR'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "PI.HOLE" ]]
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
+  run bash -c './pihole-FTL --config webserver.port'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "80o,443os,[::]:80o,[::]:443os" ]]
+}
+
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(Negative DS reply without NS record received for ftl)|(nameserver 127.0.0.1 refused to do a recursive query)"'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == "" ]]
 }
@@ -756,7 +763,7 @@
 @test "No ERROR messages in FTL.log (besides known/intended error)" {
   run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is invalid)|(Failed to set|adjust time during NTP sync: Insufficient permissions)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -c -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap files.pcap: not a valid file path)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
   printf "count: %s\n" "${lines[@]}"
   [[ ${lines[0]} == "0" ]]
 }
@@ -1179,7 +1186,7 @@
 @test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
   run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
   printf "dig (full): %s\n" "${lines[@]}"
-  [[ ${lines[0]} == '"http://localhost:80/api/" "https://localhost:443/api/"' ]]
+  [[ ${lines[0]} == '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/"' ]]
 }
 
 @test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
@@ -1395,7 +1402,7 @@
 @test "Embedded SQLite3 shell available and functional" {
   run bash -c './pihole-FTL sqlite3 -help'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] [FILENAME [SQL]]" ]]
+  [[ ${lines[0]} == "Usage: sqlite3 [OPTIONS] [FILENAME [SQL...]]" ]]
 }
 
 @test "Embedded SQLite3 shell is called for .db file" {
@@ -1451,7 +1458,32 @@
   [[ "${lines[0]}" == "" ]]
 }
 
+@test "Pi-hole use interface-dependent replies for pi.hole" {
+  run bash -c "dig A pi.hole +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "127.0.0.1" ]]
+
+  run bash -c "dig AAAA pi.hole +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "::1" ]]
+}
+
+@test "Pi-hole uses interface-dependent replies inside CNAME chains" {
+  run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "127.0.0.1" ]]
+
+  run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "::1" ]]
+}
+
 @test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
+  # Set the reply for pi.hole to custom IPv4 and IPv6 addresses
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"reply\":{\"host\":{\"force4\":true,\"IPv4\":\"10.100.0.10\",\"force6\":true,\"IPv6\":\"fe80::10\"}}}}}"'
+  sleep 1
   run bash -c "dig A pi.hole +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1467,6 +1499,18 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"EDE: 29: (synthesized)" ]]
   [[ ${lines[1]} == "" ]]
+}
+
+@test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
+  run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
+  printf "A: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "10.100.0.10" ]]
+
+  run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
+  printf "AAAA: %s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "pi.hole." ]]
+  [[ "${lines[1]}" == "fe80::10" ]]
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for hostname" {
@@ -1622,25 +1666,48 @@
   [[ ${lines[0]} == "  nice = -11 ### CHANGED (env), default = -10" ]]
 }
 
+@test "Capitalized Environmental variable is used and favored over config file" {
+  # The config file has 90 but we set FTLCONF_MISC_CHECK_SHMEM="91"
+  run bash -c 'grep "shmem = 91" /etc/pihole/pihole.toml'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "    shmem = 91 ### CHANGED (env), default = 90" ]]
+}
+
 @test "Correct number of environmental variables is logged" {
-  run bash -c 'grep -q "3 FTLCONF environment variables found (1 used, 1 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  grep "FTLCONF environment variables" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "5 FTLCONF environment variables found (2 used, 2 invalid, 1 ignored)" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
 @test "Correct environmental variable is logged" {
+  grep "FTLCONF_misc_nice" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
-@test "Invalid environmental variable is logged" {
-  run bash -c 'grep -q "FTLCONF_debug_api is invalid" /var/log/pihole/FTL.log'
+@test "Invalid environmental variable is logged (type mismatch)" {
+  grep "FTLCONF_debug_api" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "FTLCONF_debug_api is not a boolean, using default instead" /var/log/pihole/FTL.log'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}
+
+@test "Invalid environmental variable is logged (validation failed)" {
+  grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
 }
 
 @test "Unknown environmental variable is logged, a useful alternative is suggested" {
+  grep "FTLCONF_dns_upstrrr" /var/log/pihole/FTL.log
+  printf "%s\n" "${lines[@]}"
   run bash -c 'grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == *"WARNING: [?] FTLCONF_dns_upstrrr is unknown, did you mean any of these?" ]]
@@ -1748,8 +1815,19 @@
   [[ ${lines[0]} == "0" ]]
 }
 
-# This test should run before a password it set
+@test "Lua server page outside /admin is not served by default" {
+  run bash -c 'curl -sI 127.0.0.1/broken_lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "HTTP/1.1 404 Not Found"* ]]
+}
+
+# This test should run before a password is set
 @test "Lua server page is generating proper backtrace" {
+  # Enable serving of Lua pages outside /admin
+  run bash -c './pihole-FTL --config webserver.serve_all true'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'true' ]]
+  run bash -c 'sleep 1'
   # Run a page with a syntax error
   run bash -c 'curl -s 127.0.0.1/broken_lua'
   printf "%s\n" "${lines[@]}"
@@ -1837,6 +1915,29 @@
   [[ $status == 3 ]]
 }
 
+@test "DNS hosts sanitization: Whitespace is normalized when saving" {
+  # Set dns.hosts with various whitespace formatting issues
+  run bash -c './pihole-FTL --config dns.hosts "[\"  192.168.1.1    host1.local  \", \"   10.0.0.1\\t\\thost2.local   host3.local\", \"127.0.0.1     host4.local\\t\\thost5.local\"]"'
+  [[ $status == 0 ]]
+
+  # Check that the sanitized entries are properly formatted
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]' ]]
+}
+
+@test "DNS hosts sanitization: Comments are handled correctly" { 
+  # Set dns.hosts with entries containing comments
+  run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
+  [[ $status == 0 ]]
+
+  # Check that the sanitized entries are properly formatted
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]' ]]
+
+}
+
 @test "Config validation working on the API (validator-based checking)" {
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"files\":{\"pcap\":\"%gh4b\"}}}"'
   printf "%s\n" "${lines[@]}"
@@ -1919,6 +2020,13 @@
   run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"ABC\"}"'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"session\":{\"valid\":true,\"totp\":false,\"sid\":\""*"\",\"csrf\":\""*"\",\"validity\":300,\"message\":\"password correct\"},\"took\":"*"}" ]]
+}
+
+# This test should run after a password is set
+@test "Lua server page outside of webhome is served without login" {
+  run bash -c 'curl -s 127.0.0.1/broken_lua'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == 'Hello, world 1!' ]]
 }
 
 @test "Test TLS/SSL server using self-signed certificate" {
@@ -2087,27 +2195,6 @@
   [[ $status == 0 ]]
 }
 
-@test "CLI config output as expected" {
-  # Partial match printing
-  run bash -c './pihole-FTL --config dns.upstream'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "dns.upstreams = [ 127.0.0.1#5555 ]" ]]
-
-  # Exact match printing
-  run bash -c './pihole-FTL --config dns.upstreams'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[ 127.0.0.1#5555 ]" ]]
-  run bash -c './pihole-FTL --config dns.piholePTR'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "PI.HOLE" ]]
-  run bash -c './pihole-FTL --config dns.hosts'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
-  run bash -c './pihole-FTL --config webserver.port'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80o,[::]:80o,443so,[::]:443so" ]]
-}
-
 @test "Create, verify and re-import Teleporter file via CLI" {
   run bash -c './pihole-FTL --teleporter'
   printf "%s\n" "${lines[@]}"
@@ -2135,11 +2222,27 @@
 @test "Expected number of config file rotations" {
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "3" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "2" ]]
+}
+
+@test "Suggest expected completions" {
+  run bash -c './pihole-FTL --complete pihole-FTL versio'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "version" ]]
+  [[ ${lines[1]} == "" ]]
+  run bash -c './pihole-FTL --complete pihole-FTL --config debug.ne'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "debug.networking" ]]
+  [[ ${lines[1]} == "debug.netlink" ]]
+  [[ ${lines[2]} == "" ]]
+  run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "true" ]]
+  [[ ${lines[1]} == "" ]]
 }

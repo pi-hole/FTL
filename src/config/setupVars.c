@@ -13,6 +13,8 @@
 #include "config/config.h"
 #include "config/setupVars.h"
 #include "datastructure.h"
+// file_exists()
+#include "files.h"
 
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
@@ -37,10 +39,25 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		return;
 	}
 
+	// If the lease time is a raw value (no unit), we assume it is in hours
+	// as this was the standard convention in the past
+	char *new = strdup(setupVarsValue);
+	if(strcmp(key, "DHCP_LEASETIME") == 0 && strchr(new, 'h') == NULL)
+	{
+		int leaseTimeInHours = atoi(new);
+		free(new);
+		if((new = calloc(10, sizeof(char))) == NULL)
+		{
+			log_warn("get_conf_string_from_setupVars(%s) failed: Could not allocate memory for new", key);
+			return;
+		}
+		snprintf(new, 10, "%dh", leaseTimeInHours);
+	}
+
 	// Free previously allocated memory (if applicable)
 	if(conf_item->t == CONF_STRING_ALLOCATED)
 		free(conf_item->v.s);
-	conf_item->v.s = strdup(setupVarsValue);
+	conf_item->v.s = new;
 	conf_item->t = CONF_STRING_ALLOCATED;
 	conf_item->f |= FLAG_CONF_IMPORTED;
 
@@ -175,8 +192,13 @@ static void get_revServer_from_setupVars(void)
 	char *domain_str = read_setupVarsconf("REV_SERVER_DOMAIN");
 	if(domain_str != NULL)
 	{
-		domain = strdup(domain_str);
-		trim_whitespace(domain);
+		if(strlen(domain_str) == 0)
+			log_info("setupVars.conf:REV_SERVER_DOMAIN -> Empty string, ignoring");
+		else
+		{
+			domain = strdup(domain_str);
+			trim_whitespace(domain);
+		}
 	}
 	else
 		log_info("setupVars.conf:REV_SERVER_DOMAIN -> Not set");
@@ -185,16 +207,19 @@ static void get_revServer_from_setupVars(void)
 	clearSetupVarsArray();
 
 	// Only add the entry if all values are present and active
-	if(cidr != NULL && target != NULL && domain != NULL)
+	if(cidr != NULL && target != NULL)
 	{
 		// Build comma-separated string of all values
 		// 9 = 3 commas, "true/false", and null terminator
-		char *old = calloc(strlen(cidr) + strlen(target) + strlen(domain) + 9, sizeof(char));
+		char *old = calloc(strlen(cidr) + strlen(target) + (domain != NULL ? strlen(domain) : 0) + 9, sizeof(char));
 		if(old != NULL)
 		{
 			// Add to new config
 			// active is always true as we only add active entries
-			sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			if(domain != NULL && strlen(domain) > 0)
+				sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
+			else
+				sprintf(old, "%s,%s,%s", active ? "true" : "false", cidr, target);
 			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
 
 			// Parameter present in setupVars.conf
@@ -263,7 +288,9 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 				p++;
 			}
 
-			// Add ^ and $ to the string
+			// Add ^ and $ to the string, but only add ^ if the
+			// string does not start with *. In the latter case, we
+			// only add $ to the string (and remove the *).
 			char *regex2 = calloc(strlen(regex) + 3, sizeof(char));
 			if(regex2 == NULL)
 			{
@@ -271,7 +298,16 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 				free(regex);
 				continue;
 			}
-			sprintf(regex2, "^%s$", regex);
+			if(regex[0] != '*')
+			{
+				// Add ^ and $ to the string
+				sprintf(regex2, "^%s$", regex);
+			}
+			else
+			{
+				// Skip the * and add $ to the string
+				sprintf(regex2, "%s$", regex + 1);
+			}
 
 			// Free memory
 			free(regex);
@@ -280,7 +316,7 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 			cJSON *item = cJSON_CreateString(regex2);
 			cJSON_AddItemToArray(conf_item->v.json, item);
 
-			log_info("setupVars.conf:%s -> Setting %s[%u] = %s\n",
+			log_info("setupVars.conf:%s -> Setting %s[%u] = %s",
 			         key, conf_item->k, i, item->valuestring);
 
 			// Free memory
@@ -514,7 +550,15 @@ static void get_conf_listeningMode_from_setupVars(void)
 
 void importsetupVarsConf(void)
 {
-	log_info("Migrating config from %s", config.files.setupVars.v.s);
+	// Check if the file exists. If not, there is nothing to do and we
+	// return early
+	if(!file_exists(SETUPVARS_CONF))
+	{
+		log_info("setupVars.conf does not exist, skipping migration");
+		return;
+	}
+
+	log_info("Migrating config from "SETUPVARS_CONF);
 
 	// Try to obtain password hash from setupVars.conf
 	get_conf_string_from_setupVars("WEBPASSWORD", &config.webserver.api.pwhash);
@@ -549,7 +593,7 @@ void importsetupVarsConf(void)
 	// Try to get bool properties (the first two are intentionally set from the same key)
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expandHosts);
-	get_conf_bool_from_setupVars("DNS_bogusPriv", &config.dns.bogusPriv);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogusPriv);
 	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
 	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
 	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.hostRecord);
@@ -581,7 +625,7 @@ void importsetupVarsConf(void)
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
 	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
 
-	get_conf_bool_from_setupVars("queryLogging", &config.dns.queryLogging);
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
 
 	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
 
@@ -590,10 +634,10 @@ void importsetupVarsConf(void)
 
 	// Move the setupVars.conf file to the migration directory
 	const char *setupVars_target = MIGRATION_TARGET_V6"/setupVars.conf";
-	if(rename(config.files.setupVars.v.s, setupVars_target) != 0)
-		log_warn("Could not move %s to %s", config.files.setupVars.v.s, setupVars_target);
+	if(rename(SETUPVARS_CONF, setupVars_target) != 0)
+		log_warn("Could not move "SETUPVARS_CONF" to %s", setupVars_target);
 	else
-		log_info("Moved %s to %s", config.files.setupVars.v.s, setupVars_target);
+		log_info("Moved "SETUPVARS_CONF" to %s", setupVars_target);
 
 	log_info("setupVars.conf migration complete");
 }
@@ -647,7 +691,7 @@ size_t linebuffersize = 0;
 char *read_setupVarsconf(const char *key)
 {
 	FILE *setupVarsfp;
-	if((setupVarsfp = fopen(config.files.setupVars.v.s, "r")) == NULL)
+	if((setupVarsfp = fopen(SETUPVARS_CONF, "r")) == NULL)
 	{
 		log_debug(DEBUG_CONFIG, "Reading setupVars.conf failed: %s", strerror(errno));
 		return NULL;

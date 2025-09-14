@@ -401,7 +401,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 			const int code = delete_session(user_id) ? 204 : 404;
 
 			// Send empty reply with appropriate HTTP status code
-			send_http_code(api, "application/json; charset=utf-8", code, "");
+			send_http_code(api, NULL, code, "");
 			return code;
 		}
 		else
@@ -435,11 +435,9 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 static void generateSID(char *sid)
 {
 	uint8_t raw_sid[SID_SIZE];
-	if(getrandom(raw_sid, sizeof(raw_sid), 0) < 0)
-	{
-		log_err("getrandom() failed in generateSID()");
+	if(!get_secure_randomness(raw_sid, sizeof(raw_sid)))
 		return;
-	}
+
 	base64_encode_raw(NETTLE_SIGN sid, SID_BITSIZE/8, raw_sid);
 	sid[SID_SIZE-1] = '\0';
 }

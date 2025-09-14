@@ -32,7 +32,7 @@
 #include "datastructure.h"
 // uname()
 #include <sys/utsname.h>
-// get_cpu_percentage()
+// get_ftl_cpu_percentage()
 #include "daemon.h"
 // getProcessMemory()
 #include "procps.h"
@@ -220,6 +220,8 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	cJSON *cpu = JSON_NEW_OBJECT();
 	// Number of available processors
 	JSON_ADD_NUMBER_TO_OBJECT(cpu, "nprocs", nprocs);
+	// Averaged total CPU usage in percent
+	JSON_ADD_NUMBER_TO_OBJECT(cpu, "%cpu", get_total_cpu_percentage());
 
 	// 1, 5, and 15 minute load averages (we need to convert them)
 	cJSON *raw = JSON_NEW_ARRAY();
@@ -615,7 +617,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	parse_proc_meminfo(&mem);
 	getProcessMemory(&pmem, mem.total);
 	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
-	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_cpu_percentage());
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_ftl_cpu_percentage());
 
 	JSON_ADD_BOOL_TO_OBJECT(ftl, "allow_destructive", config.webserver.api.allow_destructive.v.b);
 
@@ -778,7 +780,12 @@ int get_version_obj(struct ftl_conn *api, cJSON *version)
 	// Loop over KEY=VALUE parts in the versions file
 	while((read = getline(&line, &len, fp)) != -1)
 	{
-		if (parse_line(line, &key, &value))
+		// Skip empty lines
+		if(read <= 1)
+			continue;
+
+		// Parse lines and skip those without values
+		if (!parse_line(line, &key, &value) || strlen(value) == 0)
 			continue;
 
 		if(strcmp(key, "CORE_BRANCH") == 0)
@@ -839,9 +846,9 @@ int get_version_obj(struct ftl_conn *api, cJSON *version)
 	fclose(fp);
 
 	// Add remaining properties to ftl object
-	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", GIT_BRANCH);
+	JSON_REF_STR_IN_OBJECT(ftl_local, "branch", git_branch());
 	JSON_REF_STR_IN_OBJECT(ftl_local, "version", get_FTL_version());
-	JSON_REF_STR_IN_OBJECT(ftl_local, "date", GIT_DATE);
+	JSON_REF_STR_IN_OBJECT(ftl_local, "date", git_date());
 
 	cJSON *core = JSON_NEW_OBJECT();
 	JSON_ADD_NULL_IF_NOT_EXISTS(core_local, "branch");
@@ -990,16 +997,9 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 		char *endptr = NULL;
 		long int idval = strtol(token, &endptr, 10);
 		if(errno != 0 || endptr == token || *endptr != '\0' || idval < 0)
-		{
-			// Send error reply
-			free(id);
-			return send_json_error(api, 400, // 400 Bad Request
-			                       "uri_error",
-			                       "Invalid ID in path",
-			                       api->action_path);
-		}
-
-		cJSON_AddNumberToObject(ids, "id", idval);
+			log_warn("API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
+		else
+			cJSON_AddNumberToArray(ids, idval);
 
 		// Get next token
 		token = strtok_r(NULL, ",", &saveptr);
@@ -1011,7 +1011,7 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 
 	// Free memory
 	free(id);
-	cJSON_free(ids);
+	cJSON_Delete(ids);
 
 	// Send empty reply with codes:
 	// - 204 No Content (if any items were deleted)

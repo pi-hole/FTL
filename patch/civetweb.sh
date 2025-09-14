@@ -20,4 +20,10 @@ patch -p1 < patch/civetweb/0001-Register-CSRF-token-in-conn-request_info.patch
 echo "Applying patch 0001-Log-debug-messages-to-webserver.log-when-debug.webse.patch"
 patch -p1 < patch/civetweb/0001-Log-debug-messages-to-webserver.log-when-debug.webse.patch
 
+echo "Applying patch 0001-Expose-bound-to-addresses-from-CivetWeb-to-the-front.patch"
+patch -p1 < patch/civetweb/0001-Expose-bound-to-addresses-from-CivetWeb-to-the-front.patch
+
+echo "Applying patch 0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch"
+patch -p1 < patch/civetweb/0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch
+
 echo "ALL PATCHES APPLIED OKAY"

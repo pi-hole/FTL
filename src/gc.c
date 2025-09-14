@@ -102,6 +102,22 @@ static void recycle(void)
 			cache_used[query->cacheID] = true;
 	}
 
+	// Scan cache records for CNAME domain pointers that prevent domains
+	// from being recyclable
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		const DNSCacheData *cache = getDNSCache(cacheID, true);
+		if(cache == NULL)
+			continue;
+
+		// Mark domains as used when this is a CNAME-related cache
+		// record
+		if(cache->blocking_status == QUERY_GRAVITY_CNAME ||
+		   cache->blocking_status == QUERY_REGEX_CNAME ||
+		   cache->blocking_status == QUERY_DENYLIST_CNAME)
+		   domain_used[cache->CNAME_domainID] = true;
+	}
+
 	// Recycle clients
 	unsigned int clients_recycled = 0;
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
@@ -252,6 +268,22 @@ static void recycle(void)
 	}
 }
 
+/**
+ * @brief Computes the maximum overtime slot to send.
+ *
+ * This function calculates the maximum overtime slot based on the
+ * configuration settings for the webserver API's maximum history value.
+ * The calculation involves converting the maximum history value from
+ * hours to seconds, dividing by the overtime interval, and adjusting
+ * the result to get the correct slot number.
+ *
+ * @return The maximum overtime slot as an unsigned integer.
+ */
+unsigned int __attribute__((pure)) get_max_overtime_slot(void)
+{
+	return min(config.webserver.api.maxHistory.v.ui, MAXLOGAGE * 3600) / OVERTIME_INTERVAL;
+}
+
 // Subtract rate-limitation count from individual client counters
 // As long as client->rate_limit is still larger than the allowed
 // maximum count, the rate-limitation will just continue
@@ -378,16 +410,23 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->timestamp > mintime)
 			break;
 
+		// Check if this query is blocked
+		const bool blocked = is_blocked(query->status);
+
 		// Adjust client counter (total and overTime)
 		const int timeidx = getOverTimeID(query->timestamp);
 		clientsData *client = getClient(query->clientID, true);
 		if(client != NULL)
-			change_clientcount(client, -1, 0, timeidx, -1);
+			change_clientcount(client, -1, blocked ? -1 : 0, timeidx, -1);
 
 		// Adjust domain counter (no overTime information)
 		domainsData *domain = getDomain(query->domainID, true);
 		if(domain != NULL)
+		{
 			domain->count--;
+			if(blocked)
+				domain->blockedcount--;
+		}
 
 		// Adjust upstream counter (no overTime information)
 		if(query->upstreamID > -1)
@@ -396,46 +435,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			if(upstream != NULL)
 				// Adjust upstream counter
 				upstream->count--;
-		}
-
-		// Change other counters according to status of this query
-		switch(query->status)
-		{
-			case QUERY_UNKNOWN:
-				// Unknown (?)
-				break;
-			case QUERY_FORWARDED: // (fall through)
-			case QUERY_RETRIED: // (fall through)
-			case QUERY_RETRIED_DNSSEC:
-				// Forwarded to an upstream DNS server
-				break;
-			case QUERY_CACHE:
-			case QUERY_CACHE_STALE:
-				// Answered from local cache _or_ local config
-				break;
-			case QUERY_GRAVITY: // Blocked by Pi-hole's blocking lists (fall through)
-			case QUERY_DENYLIST: // Exact blocked (fall through)
-			case QUERY_REGEX: // Regex blocked (fall through)
-			case QUERY_EXTERNAL_BLOCKED_IP: // Blocked by upstream provider (fall through)
-			case QUERY_EXTERNAL_BLOCKED_NXRA: // Blocked by upstream provider (fall through)
-			case QUERY_EXTERNAL_BLOCKED_NULL: // Blocked by upstream provider (fall through)
-			case QUERY_EXTERNAL_BLOCKED_EDE15: // Blocked by upstream provider (fall through)
-			case QUERY_GRAVITY_CNAME: // Gravity domain in CNAME chain (fall through)
-			case QUERY_REGEX_CNAME: // Regex denied domain in CNAME chain (fall through)
-			case QUERY_DENYLIST_CNAME: // Exactly denied domain in CNAME chain (fall through)
-			case QUERY_DBBUSY: // Blocked because gravity database was busy
-			case QUERY_SPECIAL_DOMAIN: // Blocked by special domain handling
-				overTime[timeidx].blocked--;
-				if(domain != NULL)
-					domain->blockedcount--;
-				if(client != NULL)
-					change_clientcount(client, 0, -1, -1, 0);
-				break;
-			case QUERY_IN_PROGRESS: // fall through
-			case QUERY_STATUS_MAX: // fall through
-			default:
-				// Don't have to do anything here
-				break;
 		}
 
 		// Update reply counters

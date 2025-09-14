@@ -14,8 +14,6 @@
 #include "log.h"
 // get_blocking_mode_str()
 #include "datastructure.h"
-// flock(), LOCK_SH
-#include <sys/file.h>
 // struct config
 #include "config/config.h"
 // JSON array functions
@@ -30,8 +28,11 @@
 #include <unistd.h>
 // wait
 #include <sys/wait.h>
+// get_gateway_name()
+#include "tools/netlink.h"
 
 #define HEADER_WIDTH 80
+
 
 static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 {
@@ -116,10 +117,20 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
 			// errors are fatal and we break out of the loop
-			if(err != EINTR)
+			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
 				break;
+			}
+
+			// Check if the child exited too quickly for waitpid to
+			// catch it. We cannot get the return code in this case
+			// and have to check the pipe content instead
+			if(errno == ECHILD)
+			{
+				log_debug(DEBUG_CONFIG, "dnsmasq test exited too quickly for waitpid");
+				code = strstr(errbuf, "syntax check OK") != NULL ? EXIT_SUCCESS : EXIT_FAILURE;
+				goto check_return;
 			}
 		}
 
@@ -136,11 +147,12 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			        WCOREDUMP(status) ? "(core dumped)" : "");
 		}
 
+check_return:
 		// Check if the error message contains a line number. If so, we
 		// can append the offending line to the error message
 		if(code != EXIT_SUCCESS)
 		{
-			int lineno = get_lineno_from_string(errbuf);
+			const int lineno = get_lineno_from_string(errbuf);
 			if(lineno > 0)
 			{
 				const size_t errbuf_size = strlen(errbuf);
@@ -235,7 +247,7 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
-bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -287,9 +299,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		}
 
 		// Check if the DHCP range is valid (start needs to be smaller than end)
-		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) >= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) > ntohl(conf->dhcp.end.v.in_addr.s_addr))
 		{
-			strncpy(errbuf, "DHCP range start address is larger than or equal to the end address", ERRBUF_SIZE);
+			strncpy(errbuf, "DHCP range start address is larger than the end address", ERRBUF_SIZE);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
@@ -314,12 +326,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	// Lock file, may block if the file is currently opened
-	if(flock(fileno(pihole_conf), LOCK_EX) != 0)
-	{
-		log_err("Cannot open "DNSMASQ_TEMP_CONF" in exclusive mode: %s", strerror(errno));
-		fclose(pihole_conf);
-		return false;
-	}
+	const bool locked = lock_file(pihole_conf, DNSMASQ_TEMP_CONF);
 
 	write_config_header(pihole_conf, "Dnsmasq config for Pi-hole's FTLDNS");
 	fputs("hostsdir="DNSMASQ_HOSTSDIR"\n", pihole_conf);
@@ -347,14 +354,17 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fprintf(pihole_conf, "cache-size=%u\n", conf->dns.cache.size.v.ui);
 	fputs("\n", pihole_conf);
 
-	fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
-	fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
-	fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
-	fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
-	fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
-	fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
-	fputs("localise-queries\n", pihole_conf);
-	fputs("\n", pihole_conf);
+	if(conf->dns.localise.v.b)
+	{
+		fputs("# Return answers to DNS queries from /etc/hosts and interface-name and\n", pihole_conf);
+		fputs("# dynamic-host which depend on the interface over which the query was\n", pihole_conf);
+		fputs("# received. If a name has more than one address associated with it, and\n", pihole_conf);
+		fputs("# at least one of those addresses is on the same subnet as the interface\n", pihole_conf);
+		fputs("# to which the query was sent, then return only the address(es) on that\n", pihole_conf);
+		fputs("# subnet and return all the available addresses otherwise.\n", pihole_conf);
+		fputs("localise-queries\n", pihole_conf);
+		fputs("\n", pihole_conf);
+	}
 
 	if(conf->dns.queryLogging.v.b)
 	{
@@ -438,10 +448,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("\n", pihole_conf);
 	}
 
-	const char *interface = conf->dns.interface.v.s;
-	// Use eth0 as fallback interface if the interface is missing
-	if(strlen(interface) == 0)
-		interface = "eth0";
+	// Check if an explicit interface is configured
+	char interface[MAXIFACESTRLEN];
+	strncpy(interface, conf->dns.interface.v.s, sizeof(interface) - 1);
+	interface[sizeof(interface) - 1] = '\0';
+
+	// If not, get the name of the current gateway (we need to free this
+	// memory later on)
+	if(strlen(interface) < 1)
+		get_gateway_name(interface);
 
 	switch(conf->dns.listeningMode.v.listeningMode)
 	{
@@ -466,11 +481,16 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		case LISTEN_NONE:
 			fputs("# No interface configuration applied, make sure to cover this yourself\n", pihole_conf);
 			break;
+		case LISTEN_MAX:
+		default:
+			log_err("Unknown listening mode %d, unable to update dnsmasq configuration", conf->dns.listeningMode.v.listeningMode);
 	}
 	fputs("\n", pihole_conf);
 
 	// Add upstream DNS servers for reverse lookups
 	bool domain_revServer = false;
+	bool domain_homearpa = false;
+	bool domain_internal = false;
 	const unsigned int revServers = cJSON_GetArraySize(conf->dns.revServers.v.json);
 	for(unsigned int i = 0; i < revServers; i++)
 	{
@@ -500,9 +520,9 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			continue;
 		}
 
-		if(active == NULL || cidr == NULL || target == NULL || domain == NULL)
+		if(active == NULL || cidr == NULL || target == NULL)
 		{
-			log_err("Skipped invalid dns.revServers[%u]: %s", i, revServer->valuestring);
+			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", i, revServer->valuestring);
 			free(copy);
 			continue;
 		}
@@ -513,7 +533,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 		// If we have a reverse domain, we forward all queries to this domain to
 		// the same destination
-		if(strlen(domain) > 0)
+		if(domain != NULL && strlen(domain) > 0)
 		{
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
@@ -521,6 +541,14 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			if(strlen(config.dns.domain.v.s) > 0 &&
 			   strcasecmp(domain, config.dns.domain.v.s) == 0)
 				domain_revServer = true;
+
+			// Flag if configured a server for queries for home.arpa domains
+			if(strcmp(domain, "home.arpa") == 0)
+				domain_homearpa = true;
+			
+			// Flag if configured a server for queries for .internal domains
+			if(strcmp(domain, "internal") == 0)
+				domain_internal = true;
 		}
 
 		// Forward unqualified names to the target only when the "never forward
@@ -537,10 +565,26 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	// that non-FQDNs queries should never be sent to any upstream servers
 	if(conf->dns.domainNeeded.v.b)
 	{
-		fputs("# Never forward A or AAAA queries for plain names, without\n",pihole_conf);
+		fputs("# Never forward queries for plain names, without\n",pihole_conf);
 		fputs("# dots or domain parts, to upstream nameservers. If the name\n", pihole_conf);
 		fputs("# is not known from /etc/hosts or DHCP, NXDOMAIN is returned\n", pihole_conf);
 		fputs("local=//\n\n", pihole_conf);
+	}
+
+	// Ensure that home.arpa domains (RFC 8375) are not sent upstream, unless configured by
+	// user as local domain, with server setting applied above
+	if (!domain_homearpa)
+	{
+		fputs("# Do not forward home.arpa domains to upstream servers\n",pihole_conf);
+		fputs("local=/home.arpa/\n\n",pihole_conf);
+	}
+
+	// Ensure that .internal domains (Internet-Draft draft-davies-internal-tld-03) are not
+	// sent upstream, unless configured by user as local domain, with server setting applied above
+	if (!domain_internal)
+	{
+		fputs("# Do not forward .internal domains to upstream servers\n",pihole_conf);
+		fputs("local=/internal/\n\n",pihole_conf);
 	}
 
 	// Add domain to DNS server. It will also be used for DHCP if the DHCP
@@ -550,7 +594,7 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
 		if(!domain_revServer)
 		{
-			fputs("# This DNS domain in purely local. FTL may answer queries from\n", pihole_conf);
+			fputs("# This DNS domain is purely local. FTL may answer queries from\n", pihole_conf);
 			fputs("# /etc/hosts or DHCP but should never forward queries on that\n", pihole_conf);
 			fputs("# domain to any upstream servers\n", pihole_conf);
 			fprintf(pihole_conf, "domain=%s\n", conf->dns.domain.v.s);
@@ -563,6 +607,15 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 			fprintf(pihole_conf, "domain=%s\n\n", conf->dns.domain.v.s);
 		}
 	}
+
+	// The domain "pi.hole" is purely local, never forward it to upstream servers
+	fputs("# Local domain for Pi-hole\n", pihole_conf);
+	fputs("# This domain is purely local and should never be forwarded to any\n", pihole_conf);
+	fputs("# upstream servers. We add a false A-record to this domain to prevent\n", pihole_conf);
+	fputs("# NXDOMAIN responses for queries on this domain. The actual response\n", pihole_conf);
+	fputs("# is handled by FTL at runtime\n", pihole_conf);
+	fputs("local=/pi.hole/\n", pihole_conf);
+	fputs("host-record=pi.hole,0.0.0.0,::\n", pihole_conf);
 
 	if(conf->dhcp.active.v.b)
 	{
@@ -671,13 +724,17 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	}
 
 	fputs("# RFC 6761: Caching DNS servers SHOULD recognize\n", pihole_conf);
-	fputs("#     test, localhost, invalid\n", pihole_conf);
+	fputs("#     test, & invalid\n", pihole_conf);
 	fputs("# names as special and SHOULD NOT attempt to look up NS records for them, or\n", pihole_conf);
 	fputs("# otherwise query authoritative DNS servers in an attempt to resolve these\n", pihole_conf);
 	fputs("# names.\n", pihole_conf);
 	fputs("server=/test/\n", pihole_conf);
-	fputs("server=/localhost/\n", pihole_conf);
 	fputs("server=/invalid/\n", pihole_conf);
+	fputs("#     localhost\n", pihole_conf);
+	fputs("# Instead, caching DNS servers SHOULD, for all such address queries, generate\n", pihole_conf);
+	fputs("# an immediate positive response giving the IP loopback address\n", pihole_conf);
+	fputs("address=/localhost/127.0.0.1\n", pihole_conf);
+	fputs("address=/localhost/::1\n", pihole_conf);
 	fputs("\n", pihole_conf);
 	fputs("# The same RFC requests something similar for\n", pihole_conf);
 	fputs("#     10.in-addr.arpa.      21.172.in-addr.arpa.  27.172.in-addr.arpa.\n", pihole_conf);
@@ -699,10 +756,11 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 
 	if(directory_exists("/etc/dnsmasq.d") && conf->misc.etc_dnsmasq_d.v.b)
 	{
-		// Load additional user scripts from /etc/dnsmasq.d if the
+		// Load additional user configs from /etc/dnsmasq.d if the
 		// directory exists (it may not, e.g., in a container)
-		fputs("# Load additional user scripts\n", pihole_conf);
-		fputs("conf-dir=/etc/dnsmasq.d\n", pihole_conf);
+		// Load only files ending in .conf
+		fputs("# Load additional user configs\n", pihole_conf);
+		fputs("conf-dir=/etc/dnsmasq.d,*.conf\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 
@@ -757,12 +815,8 @@ bool __attribute__((const)) write_dnsmasq_config(struct config *conf, bool test_
 	fflush(pihole_conf);
 
 	// Unlock file
-	if(flock(fileno(pihole_conf), LOCK_UN) != 0)
-	{
-		log_err("Cannot release lock on dnsmasq config file: %s", strerror(errno));
-		fclose(pihole_conf);
-		return false;
-	}
+	if(locked)
+		unlock_file(pihole_conf, DNSMASQ_TEMP_CONF);
 
 	// Close file
 	if(fclose(pihole_conf) != 0)
@@ -841,6 +895,12 @@ bool read_legacy_dhcp_static_config(void)
 		return false;
 	}
 
+	// Clear out config.dhcp.hosts array if it exists
+	if(config.dhcp.hosts.v.json != NULL)
+		cJSON_Delete(config.dhcp.hosts.v.json);
+	config.dhcp.hosts.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;
@@ -898,6 +958,12 @@ bool read_legacy_cnames_config(void)
 		return false;
 	}
 
+	// Clear out config.dns.cnameRecords array if it exists
+	if(config.dns.cnameRecords.v.json != NULL)
+		cJSON_Delete(config.dns.cnameRecords.v.json);
+	config.dns.cnameRecords.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;
@@ -955,6 +1021,12 @@ bool read_legacy_custom_hosts_config(void)
 		return false;
 	}
 
+	// Clear out config.dns.hosts array if it exists
+	if(config.dns.hosts.v.json != NULL)
+		cJSON_Delete(config.dns.hosts.v.json);
+	config.dns.hosts.v.json = cJSON_CreateArray();
+
+	// Read file line by line
 	char *linebuffer = NULL;
 	size_t size = 0u;
 	errno = 0;
@@ -1026,12 +1098,7 @@ bool write_custom_list(void)
 	}
 
 	// Lock file, may block if the file is currently opened
-	if(flock(fileno(custom_list), LOCK_EX) != 0)
-	{
-		log_err("Cannot open "DNSMASQ_CUSTOM_LIST_LEGACY".tmp in exclusive mode: %s", strerror(errno));
-		fclose(custom_list);
-		return false;
-	}
+	const bool locked = lock_file(custom_list, DNSMASQ_CUSTOM_LIST_LEGACY".tmp");
 
 	write_config_header(custom_list, "Custom DNS entries (HOSTS file)");
 	fputc('\n', custom_list);
@@ -1056,12 +1123,8 @@ bool write_custom_list(void)
 		fputs("\n# There are currently no entries in this file\n", custom_list);
 
 	// Unlock file
-	if(flock(fileno(custom_list), LOCK_UN) != 0)
-	{
-		log_err("Cannot release lock on custom.list: %s", strerror(errno));
-		fclose(custom_list);
-		return false;
-	}
+	if(locked)
+		unlock_file(custom_list, DNSMASQ_CUSTOM_LIST_LEGACY".tmp");
 
 	// Close file
 	if(fclose(custom_list) != 0)

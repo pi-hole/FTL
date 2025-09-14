@@ -14,7 +14,7 @@
 // union conf_value
 #include "config.h"
 // type toml_table_t
-#include "tomlc99/toml.h"
+#include "tomlc17/tomlc17.h"
 
 #define FTLCONF_PREFIX "FTLCONF_"
 

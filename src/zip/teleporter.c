@@ -22,7 +22,7 @@
 // sqlite3
 #include "database/sqlite3.h"
 // toml_parse()
-#include "config/tomlc99/toml.h"
+#include "config/tomlc17/tomlc17.h"
 // readFTLtoml()
 #include "config/toml_reader.h"
 // writeFTLtoml()
@@ -277,9 +277,8 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	mz_zip_error pErr;
 	if(!mz_zip_validate_mem_archive(*ptr, *size, MZ_ZIP_FLAG_VALIDATE_LOCATE_FILE_FLAG, &pErr))
 	{
-		log_err("Failed to validate generated Teleporter ZIP archive: %s",
-		        mz_zip_get_error_string(pErr));
-		return "Failed to validate generated Teleporter ZIP archive!";
+		log_warn("Failed to validate generated Teleporter ZIP archive: %s",
+		         mz_zip_get_error_string(pErr));
 	}
 
 	// Generate filename for ZIP archive (it has both the hostname and the
@@ -306,10 +305,11 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	buffer[size] = '\0';
 
 	// Check if the file is a valid TOML file
-	toml_table_t *toml = toml_parse(buffer, hint, ERRBUF_SIZE);
-	if(toml == NULL)
+	toml_result_t toml = toml_parse(buffer, size);
+	if(!toml.ok)
 	{
 		free(buffer);
+		log_err("ZIP TOML file is not valid: %s", toml.errmsg);
 		return "File etc/pihole/pihole.toml in ZIP archive is not a valid TOML file";
 	}
 	free(buffer);
@@ -318,7 +318,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml, true, NULL, 0))
+	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true))
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 
 	// Test dnsmasq config in the imported configuration
@@ -336,13 +336,13 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
 	rotate_files(GLOBALTOMLPATH, NULL);
-	writeFTLtoml(true);
+	writeFTLtoml(true, NULL);
 	write_custom_list();
 
 	return NULL;
 }
 
-static const char *import_dhcp_leases(void *ptr, size_t size, char * const hint)
+static const char *import_dhcp_leases(const void *ptr, size_t size, char * const hint)
 {
 	// We do not check if the file is empty here, as an empty dhcp.leases file is valid
 

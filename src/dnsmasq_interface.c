@@ -706,7 +706,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		check_pihole_PTR((char*)name);
 
 	// Convert domain to lower case
-	char *domainString = strdup(name);
+	char domainString[MAXDOMAINLEN];
+	strncpy(domainString, name, sizeof(domainString));
+	domainString[sizeof(domainString) - 1] = '\0';
 	strtolower(domainString);
 
 	// Get client IP address
@@ -741,10 +743,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check if user wants to skip queries coming from localhost
 	if(config.dns.ignoreLocalhost.v.b &&
 	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
-	{
-		free(domainString);
 		return false;
-	}
 
 	// Lock shared memory
 	lock_shm();
@@ -758,8 +757,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(client == NULL)
 	{
 		// Encountered memory error, skip query
-		// Free allocated memory
-		free(domainString);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -793,9 +790,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// Block this query
 		force_next_DNS_reply = REPLY_REFUSED;
 		blockingreason = "Rate-limiting";
-
-		// Free allocated memory
-		free(domainString);
 
 		// Do not further process this query, Pi-hole has never seen it
 		unlock_shm();
@@ -838,7 +832,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
-		free(domainString);
 		unlock_shm();
 		return false;
 	}
@@ -852,8 +845,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	{
 		// Encountered memory error, skip query
 		log_err("No memory available, skipping query analysis");
-		// Free allocated memory
-		free(domainString);
 		// Release thread lock
 		unlock_shm();
 		return false;
@@ -988,9 +979,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// (skipped for internally generated ones, e.g., DNSSEC)
 	if(!internal_query && querytype != TYPE_NONE)
 		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
-
-	// Free allocated memory
-	free(domainString);
 
 	// Store query in database
 	query->flags.database.changed = true;
@@ -1228,6 +1216,8 @@ static void check_pihole_PTR(char *domain)
 
 		// If we reached this point, we have a match between the address the client
 		struct ptr_record *pihole_ptr = calloc(1, sizeof(struct ptr_record));
+		// It is okay to use allocate heap memory here as this branch of
+		// the code is only ever called once per interface on demand
 		pihole_ptr->name = strdup(domain);
 		if(family == AF_INET)
 		{
@@ -1284,9 +1274,12 @@ static bool check_domain_blocked(const char *domain,
 		return true;
 	}
 
+	// Generate ABP patterns for domain
+	cJSON *abp_patterns = gen_abp_patterns(domain);
+
 	// Check domain against antigravity
 	int list_id = -1;
-	const enum db_result antigravity = in_gravity(domain, client, true, &list_id);
+	const enum db_result antigravity = in_gravity(domain, abp_patterns, client, true, &list_id);
 	if(antigravity == FOUND)
 	{
 		log_debug(DEBUG_QUERIES, "Allowing query due to antigravity match (list ID %i)", list_id);
@@ -1304,11 +1297,15 @@ static bool check_domain_blocked(const char *domain,
 		// than explicitly allowed domains.
 		query->flags.allowed = true;
 
+		// Free allocated memory
+		if(abp_patterns != NULL)
+			cJSON_Delete(abp_patterns);
+
 		return false;
 	}
 
 	// Check domains against gravity domains
-	const enum db_result gravity = in_gravity(domain, client, false, &list_id);
+	const enum db_result gravity = in_gravity(domain, abp_patterns, client, false, &list_id);
 	if(gravity == FOUND)
 	{
 		// Set new status
@@ -1321,9 +1318,16 @@ static bool check_domain_blocked(const char *domain,
 		// see remarks above for the list_id values
 		dns_cache->list_id = -1 * (list_id + 2);
 
+		// Free allocated memory
+		if(abp_patterns != NULL)
+			cJSON_Delete(abp_patterns);
+
 		// We block this domain
 		return true;
 	}
+
+	if(abp_patterns != NULL)
+		cJSON_Delete(abp_patterns);
 
 	// Check if one of the database lookups returned that the database is
 	// currently busy
@@ -1433,6 +1437,33 @@ static bool special_domain(const queriesData *query, const char *domain)
 		return true;
 	}
 
+	// RFC 9462: Designated Resolver Domain
+	// The domain "_dns.resolver.arpa" is reserved for use by DNS resolvers
+	// that are designated by the network administrator to provide special
+	// services to the network, e.g., DoH, DoQ, or DoT.
+	//
+	// Example (Google's 8.8.8.8):
+	// ;; QUESTION SECTION:
+	// ;_dns.resolver.arpa.            IN      SVCB
+	//
+	// ;; ANSWER SECTION:
+	// _dns.resolver.arpa.     86400   IN      SVCB    1 dns.google. alpn="dot"
+	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
+	//
+	// RFC 9462, Section 4 says:
+	// 
+	// If the recursive resolver that receives this query has no Designated
+	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
+	// zone, to provide a consistent and accurate signal to clients that it
+	// does not have a Designated Resolver.
+	if(config.dns.specialDomains.designatedResolver.v.b &&
+	   strlen(domain) > 13 && strcasecmp(&domain[strlen(domain) - 13], "resolver.arpa") == 0)
+	{
+		blockingreason = "Designated Resolver domain";
+		force_next_DNS_reply = REPLY_NODATA;
+		return true;
+	}
+
 	return false;
 }
 
@@ -1462,11 +1493,14 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		return false;
 	}
 
-	// If this cache record can expire, check if it is still valid
-	if(dns_cache->expires > 0 && dns_cache->expires < time(NULL))
+	// If this cache record can expire, check if it is still valid and/or if
+	// caching is generally disabled
+	if((dns_cache->expires > 0 && dns_cache->expires < time(NULL)) ||
+	    config.dns.cache.upstreamBlockedTTL.v.ui == 0)
 	{
-		// This cache record is expired, we have to re-check
-		log_debug(DEBUG_QUERIES, "DNS cache record expired");
+		// This cache record is expired or caching is disabled, we have
+		// to re-check if this domain is blocked
+		log_debug(DEBUG_QUERIES, "DNS cache record expired or caching disabled");
 		dns_cache->blocking_status = QUERY_UNKNOWN;
 		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;
@@ -1507,7 +1541,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_DENYLIST);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_DENYLIST_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1524,7 +1560,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
-				query_blocked(query, domain, client, QUERY_GRAVITY);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_GRAVITY_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1543,7 +1581,9 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
 				last_regex_idx = dns_cache->list_id;
-				query_blocked(query, domain, client, QUERY_REGEX);
+				query_blocked(query, domain, client, blocking_status);
+				if(blocking_status == QUERY_REGEX_CNAME)
+					query->CNAME_domainID = dns_cache->CNAME_domainID;
 				return true;
 			}
 			break;
@@ -1649,18 +1689,20 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Make a local copy of the domain string. The string memory may get
 	// reorganized in the following. We cannot expect domainstr to remain
 	// valid for all time.
-	domainstr = strdup(domainstr);
-	const char *blockedDomain = domainstr;
+	char domain_lower[MAXDOMAINLEN];
+	strncpy(domain_lower, domainstr, sizeof(domain_lower) - 1);
+	domain_lower[sizeof(domain_lower) - 1] = '\0';
+	const char *blockedDomain = domain_lower;
 
 	// Check exact whitelist for match
-	query->flags.allowed = in_allowlist(domainstr, dns_cache, client) == FOUND;
+	query->flags.allowed = in_allowlist(domain_lower, dns_cache, client) == FOUND;
 
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
-		query->flags.allowed = in_regex(domainstr, dns_cache, client->id, REGEX_ALLOW);
+		query->flags.allowed = in_regex(domain_lower, dns_cache, client->id, REGEX_ALLOW);
 
 	// Check if this is a special domain
-	if(!query->flags.allowed && special_domain(query, domainstr))
+	if(!query->flags.allowed && special_domain(query, domain_lower))
 	{
 		// Set DNS cache properties
 		dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
@@ -1671,8 +1713,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 
 		// Debug output
-		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domainstr, blockingreason);
-		free(domainstr);
+		log_debug(DEBUG_QUERIES, "Special domain: %s is %s", domain_lower, blockingreason);
 
 		return true;
 	}
@@ -1680,15 +1721,15 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
 	bool db_okay = true;
-	bool blockDomain = check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay);
+	bool blockDomain = check_domain_blocked(domain_lower, client, query, dns_cache, &new_status, &db_okay);
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
 	if(config.dns.blockESNI.v.b &&
 	   !query->flags.allowed && blockDomain == NOT_FOUND &&
-	   strlen(domainstr) > 6 && strncasecmp(domainstr, "_esni.", 6u) == 0)
+	   strlen(domain_lower) > 6 && strncasecmp(domain_lower, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay);
+		blockDomain = check_domain_blocked(domain_lower + 6u, client, query, dns_cache, &new_status, &db_okay);
 
 		// Update DNS cache status
 		cacheStatus = dns_cache->blocking_status;
@@ -1697,7 +1738,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		{
 			// Truncate "_esni." from queried domain if the parenting domain was
 			// the reason for blocking this query
-			blockedDomain = domainstr + 6u;
+			blockedDomain = domain_lower + 6u;
 			// Force next DNS reply to be NXDOMAIN for _esni.* queries
 			force_next_DNS_reply = REPLY_NXDOMAIN;
 
@@ -1718,7 +1759,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		if(config.debug.queries.v.b)
 		{
 			log_debug(DEBUG_QUERIES, "Blocking %s as %s is %s (domainlist ID: %i)",
-			          domainstr, blockedDomain, blockingreason, dns_cache->list_id);
+			          domain_lower, blockedDomain, blockingreason, dns_cache->list_id);
 			if(force_next_DNS_reply != 0)
 				log_debug(DEBUG_QUERIES, "Forcing next reply to %s", get_query_reply_str(force_next_DNS_reply));
 		}
@@ -1734,17 +1775,60 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 		// client is guaranteed to be non-NULL above
 		log_debug(DEBUG_QUERIES, "DNS cache: %s/%s/%s is %s (domainlist ID: %i)",
 		          get_query_type_str(query->type, NULL, NULL), getstr(client->ippos),
-		          domainstr, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
+		          domain_lower, query->flags.allowed ? "allowed" : "not blocked", dns_cache->list_id);
 	}
 
-	free(domainstr);
 	return blockDomain;
+}
+
+/**
+ * @brief Updates the cache record for the "pi.hole" domain with the current interface addresses.
+ *
+ * This function searches the DNS cache for entries corresponding to the "pi.hole" domain,
+ * for both IPv4 and IPv6 address families. For each matching cache entry found, it updates
+ * the stored address with the address from the next available network interface. It also
+ * sets flags indicating the presence of IPv4 and/or IPv6 addresses in the interface structure.
+ */
+static void update_pihole_cache_record(void)
+{
+	struct crec *lookup = NULL;
+	while ((lookup = cache_find_by_name(lookup, (char*)"pi.hole", 0, F_IPV4 | F_IPV6)))
+	{
+		// We have a cache entry for "pi.hole", so we can use it
+		log_debug(DEBUG_NETWORKING, "Found cache entry for pi.hole: %p", lookup);
+		if(lookup->flags & F_IPV4)
+		{
+			if(config.dns.reply.host.force4.v.b)
+				memcpy(&lookup->addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(lookup->addr.addr4));
+			else
+				memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(lookup->addr.addr4));
+			log_debug(DEBUG_NETWORKING, "Updating IPv4 address in cache");
+		}
+		if(lookup->flags & F_IPV6)
+		{
+			if(config.dns.reply.host.force6.v.b)
+				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
+			else
+				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(lookup->addr.addr6));
+			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
+		}
+	}
 }
 
 bool FTL_CNAME(const char *dst, const char *src, const int id)
 {
 	const double now = double_time();
 	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
+
+	if((src != NULL && strcasecmp(src, "pi.hole") == 0) ||
+	   (dst != NULL && strcasecmp(dst, "pi.hole") == 0))
+	{
+		// If "pi.hole" occurs in the CNAME chain we need to make sure
+		// the "pi.hole" cache record is up-to-date with the current
+		// interface addresses for interface-dependent replies
+		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is part of the CNAME chain");
+		update_pihole_cache_record();
+	}
 
 	// Does the user want to skip deep CNAME inspection?
 	if(!config.dns.CNAMEdeepInspect.v.b)
@@ -1791,7 +1875,10 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 
 	// child_domain = Intermediate domain in CNAME path
 	// This is the domain which was queried later in this chain
-	char *child_domain = strdup(dst);
+	char child_domain[MAXDOMAINLEN];
+	strncpy(child_domain, dst, sizeof(child_domain) - 1);
+	child_domain[sizeof(child_domain) - 1] = '\0';
+
 	// Convert to lowercase for matching
 	strtolower(child_domain);
 	const int child_domainID = findDomainID(child_domain, false);
@@ -1821,7 +1908,6 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		if(parent_domain == NULL)
 		{
 			// Memory error, return
-			free(child_domain);
 			unlock_shm();
 			return false;
 		}
@@ -1833,6 +1919,12 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		// Store domain that was the reason for blocking the entire chain
 		query->CNAME_domainID = child_domainID;
 
+		// Store CNAME domain ID in DNS cache
+		const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+		DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
+		if(parent_cache != NULL)
+			parent_cache->CNAME_domainID = child_domainID;
+
 		// Change blocking reason into CNAME-caused blocking
 		if(query->status == QUERY_GRAVITY)
 		{
@@ -1840,12 +1932,10 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		}
 		else if(query->status == QUERY_REGEX)
 		{
-			// Get parent and child DNS cache entries
-			const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
+			// Get child DNS cache entries
 			const int child_cacheID = findCacheID(child_domainID, clientID, query->type, false);
 
-			// Get cache pointers
-			DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
+			// Get child's cache pointer
 			const DNSCacheData *child_cache = child_cacheID < 0 ? NULL : getDNSCache(child_cacheID, true);
 
 			// Propagate ID of responsible regex up from the child to the parent
@@ -1870,7 +1960,6 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	query->flags.database.changed = true;
 
 	// Return result
-	free(child_domain);
 	unlock_shm();
 	return block;
 }
@@ -1916,7 +2005,9 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	}
 
 	// Convert upstreamIP to lower case
-	char *upstreamIP = strdup(dest);
+	char upstreamIP[INET6_ADDRSTRLEN];
+	strncpy(upstreamIP, dest, INET6_ADDRSTRLEN);
+	upstreamIP[INET6_ADDRSTRLEN - 1] = '\0';
 	strtolower(upstreamIP);
 
 	// Debug logging
@@ -1929,7 +2020,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	{
 		// This may happen e.g. if the original query was a PTR query or "pi.hole"
 		// as we ignore them altogether
-		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -1938,7 +2028,17 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	queriesData *query = getQuery(queryID, true);
 	if(query == NULL)
 	{
-		free(upstreamIP);
+		unlock_shm();
+		return;
+	}
+
+	// Check if this query is already marked as complete
+	// This can happen when multiple upstream servers respond to the same
+	// query or when the query has already been replied to from stale cache
+	// data (cache-optimizer) and this is the followup to refresh the cache
+	// record with possibly changed data
+	if(query->flags.complete)
+	{
 		unlock_shm();
 		return;
 	}
@@ -1963,7 +2063,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	//   (this is a special case further described below)
 	if(query->flags.complete && query->status != QUERY_CACHE)
 	{
-		free(upstreamIP);
 		unlock_shm();
 		return;
 	}
@@ -2010,9 +2109,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// from above as otherwise this check will always
 	// be negative
 	query_set_status(query, QUERY_FORWARDED);
-
-	// Release allocated memory
-	free(upstreamIP);
 
 	// Mark query for updating in the database
 	query->flags.database.changed = true;
@@ -3175,7 +3271,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(daemonmode)
 		go_daemon();
 	else
-		savepid();
+		savePID();
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
@@ -3321,6 +3417,7 @@ static char *get_ptrname(const struct in_addr *addr)
 	switch (config.dns.piholePTR.v.ptr_type)
 	{
 		default:
+		case PTR_MAX:
 		case PTR_NONE:
 		case PTR_PIHOLE:
 			ptrname = (char*)"pi.hole";
@@ -3412,7 +3509,9 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 	}
 
 	// Convert upstream to lower case
-	char *upstreamIP = strdup(dest);
+	char upstreamIP[INET6_ADDRSTRLEN];
+	strncpy(upstreamIP, dest, INET6_ADDRSTRLEN);
+	upstreamIP[INET6_ADDRSTRLEN - 1] = '\0';
 	strtolower(upstreamIP);
 
 	// Get upstream ID
@@ -3463,8 +3562,7 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 		}
 	}
 
-	// Clean up and unlock shared memory
-	free(upstreamIP);
+	// Unlock shared memory
 	unlock_shm();
 	return;
 }
@@ -3595,7 +3693,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 #ifdef HAVE_DHCP6
 	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
 	{
-		lease = lease6_find_by_addr(&addr.addr6, 128, 0);
+		lease = lease6_find_by_plain_addr(&addr.addr6);
 	}
 #endif
 	else
@@ -3801,17 +3899,31 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
-void FTL_connection_error(const char *reason, const union mysockaddr *addr, const int errnum)
+void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)
 {
+	// Backup errno
+	const int errnum = errno;
+
 	// Get the error message
 	const char *error = strerror(errnum);
 
 	// Set log priority
 	int priority = LOG_ERR;
 
+	// Additional information (if available)
+	const char *extra = "";
+	if(where == 1)
+		extra = " while connecting to upstream";
+	else if(where == 2)
+		extra = " while sending data upstream";
+	else if(where == 3)
+		extra = " while receiving payload length from upstream";
+	else if(where == 4)
+		extra = " while receiving payload data from upstream";
+
 	// If this is a TCP connection error and errno == 0, this isn't a
 	// connection error but the remote side closed the connection
-	if(errnum == 0 && strstr(reason, "TCP(read_write)") != NULL)
+	if(errnum == 0 && strcmp(reason, "TCP connection failed") == 0)
 	{
 		error = "Connection prematurely closed by remote server";
 		priority = LOG_INFO;
@@ -3826,7 +3938,7 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 	// Get query ID, may be negative if this is a TCP query
 	const int id = daemon->log_display_id > 0 ? daemon->log_display_id : -daemon->log_display_id;
 	// Log to FTL.log
-	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)", ip, port, id, reason, error);
+	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)%s", ip, port, id, reason, error, extra);
 
 	// Log to pihole.log
 	my_syslog(priority, "%s: %s", reason, error);
@@ -3837,11 +3949,14 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 	static time_t last = 0;
 	if(time(NULL) - last > 5)
 	{
+		// Update last time
 		last = time(NULL);
+
+		// Build server string
 		char *server = NULL;
 		if(ip[0] != '\0')
 		{
-			const size_t len = strlen(ip) + 6;
+			const size_t len = strlen(ip) + 7;
 			server = calloc(len, sizeof(char));
 			if(server != NULL)
 			{
@@ -3849,10 +3964,34 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 				server[len - 1] = '\0';
 			}
 		}
-		log_connection_error(server, reason, error);
+
+		// Extend reason with extra information (if available)
+		char *reason_extended = (char *)reason;
+		bool allocated = false;
+		if(extra[0] != '\0')
+		{
+			const size_t len = strlen(reason) + strlen(extra) + 3;
+			reason_extended = calloc(len, sizeof(char));
+			if(reason_extended != NULL)
+			{
+				snprintf(reason_extended, len, "%s%s", reason, extra);
+				reason_extended[len - 1] = '\0';
+				allocated = true;
+			}
+		}
+
+		// Log connection error
+		log_connection_error(server, reason_extended, error);
+
+		// Free allocated memory
 		if(server != NULL)
 			free(server);
+		if(allocated)
+			free(reason_extended);
 	}
+
+	// Restore errno for dnsmaq logging routines
+	errno = errnum;
 }
 
 /**

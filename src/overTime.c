@@ -85,12 +85,12 @@ void initOverTime(void)
 		localtime_r(&newest, &tm_n);
 		strftime(first, 20, "%Y-%m-%d %H:%M:%S", &tm_o);
 		strftime(last, 20, "%Y-%m-%d %H:%M:%S", &tm_n);
-		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %i slots from %s (%lu) to %s (%lu)",
+		log_debug(DEBUG_OVERTIME, "initOverTime(): Initializing %u slots from %s (%lu) to %s (%lu)",
 		          OVERTIME_SLOTS, first, (unsigned long)oldest, last, (unsigned long)newest);
 	}
 
 	// Iterate over overTime
-	for(int i = 0; i < OVERTIME_SLOTS; i++)
+	for(unsigned int i = 0; i < OVERTIME_SLOTS; i++)
 	{
 		time_t this_slot_ts = oldest + OVERTIME_INTERVAL * i;
 		// Initialize overTime slot
@@ -117,14 +117,14 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 		// Return first timestamp in case negative timestamp was determined
 		return 0;
 	}
-	else if(id == OVERTIME_SLOTS)
+	else if((unsigned int)id == OVERTIME_SLOTS)
 	{
 		// Possible race-collision (moving of the timeslots is just about to
 		// happen), silently add to the last bin because this is the correct
 		// thing to do
 		return OVERTIME_SLOTS-1;
 	}
-	else if(id > OVERTIME_SLOTS)
+	else if((unsigned int)id > OVERTIME_SLOTS)
 	{
 		// This is definitely wrong. We warn about this (but only once)
 		if(!warned_about_hwclock)
@@ -175,7 +175,8 @@ void moveOverTimeMemory(const time_t mintime)
 	          (unsigned long)oldestOverTimeIS, (unsigned long)oldestOverTimeSHOULD, moveOverTime);
 
 	// Check if the move over amount is valid. This prevents errors if the
-	// function is called before GC is necessary.
+	// function is called before GC is necessary. Also return if there is
+	// nothing to move (moveOverTime == 0).
 	if(!(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS))
 		return;
 

@@ -1,0 +1,36 @@
+diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb.c
+index fa908e54..66fcab01 100644
+--- a/src/webserver/civetweb/civetweb.c
++++ b/src/webserver/civetweb/civetweb.c
+@@ -3339,6 +3339,7 @@ mg_get_server_ports(const struct mg_context *ctx,
+ 		ports[cnt].is_redirect = ctx->listening_sockets[i].ssl_redir;
+ 		ports[cnt].is_optional = ctx->listening_sockets[i].is_optional;
+ 		ports[cnt].is_bound = ctx->listening_sockets[i].sock != INVALID_SOCKET;
++		memcpy(&ports[cnt].addr, &ctx->listening_sockets[i].lsa, sizeof(ports[cnt].addr));
+ 
+ 		if (ctx->listening_sockets[i].lsa.sa.sa_family == AF_INET) {
+ 			/* IPv4 */
+diff --git a/src/webserver/civetweb/civetweb.h b/src/webserver/civetweb/civetweb.h
+index eee958b4..6dcfa457 100644
+--- a/src/webserver/civetweb/civetweb.h
++++ b/src/webserver/civetweb/civetweb.h
+@@ -23,6 +23,8 @@
+ #ifndef CIVETWEB_HEADER_INCLUDED
+ #define CIVETWEB_HEADER_INCLUDED
+ 
++#include <netinet/in.h> /* Pi-hole extension */
++
+ #define CIVETWEB_VERSION "1.17"
+ #define CIVETWEB_VERSION_MAJOR (1)
+ #define CIVETWEB_VERSION_MINOR (17)
+@@ -721,6 +723,10 @@ struct mg_server_port {
+ 	int is_bound;    /* bound: 0 = no, 1 = yes, relevant for optional ports */
+ 	int _reserved3;
+ 	int _reserved4;
++   union {
++     struct sockaddr_in sa4; /* Pi-hole extension */
++     struct sockaddr_in6 sa6; /* Pi-hole extension */
++   } addr;
+ };
+ 
+ /* Legacy name */

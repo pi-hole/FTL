@@ -14,7 +14,7 @@
 extern pthread_t threads[THREADS_MAX];
 
 void go_daemon(void);
-void savepid(void);
+void savePID(void);
 char *getUserName(void);
 const char *hostname(void);
 const char *domainname(void);
@@ -23,7 +23,8 @@ bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
 void set_nice(void);
 void calc_cpu_usage(const unsigned int interval);
-float get_cpu_percentage(void) __attribute__((pure));
+float get_ftl_cpu_percentage(void) __attribute__((pure));
+float get_total_cpu_percentage(void) __attribute__((pure));
 bool ipv6_enabled(void);
 void init_locale(void);
 
