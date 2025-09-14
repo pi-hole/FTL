@@ -30,6 +30,8 @@
 #include "database/message-table.h"
 // create_cli_password()
 #include "config/password.h"
+// thread_names
+#include "signals.h"
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -649,7 +651,7 @@ void http_init(void)
 		// Try to generate certificate if not present
 		if(!file_readable(config.webserver.tls.cert.v.s))
 		{
-			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s))
+			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s, config.webserver.tls.validity.v.ui))
 			{
 				log_info("Created SSL/TLS certificate for %s at %s",
 				         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
@@ -877,4 +879,59 @@ void http_terminate(void)
 
 	if(webheaders != NULL)
 		free(webheaders);
+}
+
+static void restart_http(void)
+{
+	// Stop the server
+	http_terminate();
+
+	// Reinitialize the webserver
+	http_init();
+}
+
+void *webserver_thread(void *val)
+{
+	(void)val;
+	// Set thread name
+	prctl(PR_SET_NAME, thread_names[WEBSERVER], 0, 0, 0);
+
+	// Initial delay until we check the certificate for the first time
+	thread_sleepms(WEBSERVER, 2000);
+
+	while(!killed)
+	{
+		// Check if the certificate is about to expire soon
+		const enum cert_check status = cert_currently_valid(config.webserver.tls.cert.v.s, 2);
+
+		if(status == CERT_EXPIRES_SOON &&
+		   config.webserver.tls.validity.v.ui > 0)
+		{
+			if(is_pihole_certificate(config.webserver.tls.cert.v.s))
+			{
+				log_info("TLS certificate at %s is about to expire soon, generating new one",
+				         config.webserver.tls.cert.v.s);
+				generate_certificate(config.webserver.tls.cert.v.s, false,
+				             config.webserver.domain.v.s,
+				             config.webserver.tls.validity.v.ui);
+
+				log_info("Restarting HTTP server");
+				restart_http();
+
+				log_info("Done. The new certificate is valid for %u days",
+				         config.webserver.tls.validity.v.ui);
+			}
+			else
+			{
+				log_err("TLS certificate at %s is about to expire soon, but it is not a Pi-hole certificate. Please renew it manually!",
+				        config.webserver.tls.cert.v.s);
+			}
+		}
+
+		// Idle for 1 day (24 hours)
+		thread_sleepms(WEBSERVER, 86400000);
+	}
+
+	log_info("Terminating webserver thread");
+	return NULL;
 }

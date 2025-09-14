@@ -12,6 +12,10 @@
 #include "log.h"
 #include "x509.h"
 
+#ifndef HAVE_MBEDTLS
+#define HAVE_MBEDTLS
+#endif
+
 #ifdef HAVE_MBEDTLS
 # include <mbedtls/rsa.h>
 # include <mbedtls/x509.h>
@@ -24,6 +28,7 @@
 
 #define RSA_KEY_SIZE 4096
 #define BUFFER_SIZE 16000
+#define PIHOLE_ISSUER "CN=pi.hole,O=Pi-hole,C=DE"
 
 static bool read_id_file(const char *filename, char *buffer, size_t buffer_size)
 {
@@ -260,7 +265,7 @@ static bool write_to_file(const char *filename, const char *type, const char *su
 	return true;
 }
 
-bool generate_certificate(const char* certfile, bool rsa, const char *domain)
+bool generate_certificate(const char* certfile, bool rsa, const char *domain, const unsigned int validity_days)
 {
 	int ret;
 	mbedtls_x509write_cert ca_cert, server_cert;
@@ -339,7 +344,9 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	char not_before[16] = { 0 };
 	char not_after[16] = { 0 };
 	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
-	tm->tm_year += 30; // 30 years from now
+	tm->tm_mday += validity_days > 0 ? validity_days : 30*365; // If no validity is specified, use 30 years
+	tm->tm_isdst = -1; // Not set, let mktime() determine it
+	mktime(tm); // normalize time
 	// Check for leap year, and adjust the date accordingly
 	const bool isLeapYear = tm->tm_year % 4 == 0 && (tm->tm_year % 100 != 0 || tm->tm_year % 400 == 0);
 	tm->tm_mday = tm->tm_mon == 1 && tm->tm_mday == 29 && !isLeapYear ? 28 : tm->tm_mday;
@@ -355,8 +362,8 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_set_subject_key_identifier(&ca_cert);
 	mbedtls_x509write_crt_set_issuer_key(&ca_cert, &ca_key);
 	mbedtls_x509write_crt_set_authority_key_identifier(&ca_cert);
-	mbedtls_x509write_crt_set_issuer_name(&ca_cert, "CN=pi.hole,O=Pi-hole,C=DE");
-	mbedtls_x509write_crt_set_subject_name(&ca_cert, "CN=pi.hole,O=Pi-hole,C=DE");
+	mbedtls_x509write_crt_set_issuer_name(&ca_cert, PIHOLE_ISSUER);
+	mbedtls_x509write_crt_set_subject_name(&ca_cert, PIHOLE_ISSUER);
 	mbedtls_x509write_crt_set_validity(&ca_cert, not_before, not_after);
 	mbedtls_x509write_crt_set_basic_constraints(&ca_cert, 1, -1);
 
@@ -378,7 +385,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain)
 	mbedtls_x509write_crt_set_issuer_key(&server_cert, &ca_key);
 	mbedtls_x509write_crt_set_authority_key_identifier(&server_cert);
 	// subject name set below
-	mbedtls_x509write_crt_set_issuer_name(&server_cert, "CN=pi.hole,O=Pi-hole,C=DE");
+	mbedtls_x509write_crt_set_issuer_name(&server_cert, PIHOLE_ISSUER);
 	mbedtls_x509write_crt_set_validity(&server_cert, not_before, not_after);
 	mbedtls_x509write_crt_set_basic_constraints(&server_cert, 0, -1);
 
@@ -469,12 +476,87 @@ static bool check_wildcard_domain(const char *domain, char *san, const size_t sa
 	return strncasecmp(wild_domain, san + 1, san_len - 1) == 0;
 }
 
+static bool search_domain(mbedtls_x509_crt *crt, mbedtls_x509_sequence *sans, const char *domain)
+{
+	bool found = false;
+	// Loop over all SANs
+	while(sans != NULL)
+	{
+		// Parse the SAN
+		mbedtls_x509_subject_alternative_name san = { 0 };
+		const int ret = mbedtls_x509_parse_subject_alt_name(&sans->buf, &san);
+
+		// Check if SAN is used (otherwise ret < 0, e.g.,
+		// MBEDTLS_ERR_X509_FEATURE_UNAVAILABLE) and if it is a
+		// DNS name, skip otherwise
+		if(ret < 0 || san.type != MBEDTLS_X509_SAN_DNS_NAME)
+			goto next_san;
+
+		// Check if the SAN matches the domain
+		// Attention: The SAN is not NUL-terminated, so we need to
+		//            use the length field
+		if(strncasecmp(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len) == 0)
+		{
+			found = true;
+			// Free resources
+			mbedtls_x509_free_subject_alt_name(&san);
+			break;
+		}
+
+		// Also check if the SAN is a wildcard domain and if the domain
+		// matches the wildcard
+		if(check_wildcard_domain(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len))
+		{
+			found = true;
+			// Free resources
+			mbedtls_x509_free_subject_alt_name(&san);
+			break;
+		}
+next_san:
+		// Free resources
+		mbedtls_x509_free_subject_alt_name(&san);
+
+		// Go to next SAN
+		sans = sans->next;
+	}
+
+	if(found)
+		return true;
+
+	// Also check against the common name (CN) field
+	char subject[MBEDTLS_X509_MAX_DN_NAME_SIZE];
+	const size_t subject_len = mbedtls_x509_dn_gets(subject, sizeof(subject), &(crt->subject));
+	if(subject_len > 0)
+	{
+		// Check subjects prefixed with "CN="
+		if(subject_len > 3 && strncasecmp(subject, "CN=", 3) == 0)
+		{
+			// Check subject + 3 to skip the prefix
+			if(strncasecmp(domain, subject + 3, subject_len - 3) == 0)
+				found = true;
+			// Also check if the subject is a wildcard domain
+			else if(check_wildcard_domain(domain, subject + 3, subject_len - 3))
+				found = true;
+		}
+		// Check subject == "<domain>"
+		else if(strcasecmp(domain, subject) == 0)
+			found = true;
+		// Also check if the subject is a wildcard domain and if the domain
+		// matches the wildcard
+		else if(check_wildcard_domain(domain, subject, subject_len))
+			found = true;
+	}
+
+	return found;
+}
+
+
 // This function reads a X.509 certificate from a file and prints a
 // human-readable representation of the certificate to stdout. If a domain is
 // specified, we only check if this domain is present in the certificate.
 // Otherwise, we print verbose human-readable information about the certificate
 // and about the private key (if requested).
-enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
+enum cert_check read_certificate(const char *certfile, const char *domain, const bool private_key)
 {
 	if(certfile == NULL && domain == NULL)
 	{
@@ -514,80 +596,10 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 
 	// Parse mbedtls_x509_parse_subject_alt_names()
 	mbedtls_x509_sequence *sans = &crt.subject_alt_names;
-	bool found = false;
+
+	// When a domain is specified, possibly return early
 	if(domain != NULL)
-	{
-		// Loop over all SANs
-		while(sans != NULL)
-		{
-			// Parse the SAN
-			mbedtls_x509_subject_alternative_name san = { 0 };
-			const int ret = mbedtls_x509_parse_subject_alt_name(&sans->buf, &san);
-
-			// Check if SAN is used (otherwise ret < 0, e.g.,
-			// MBEDTLS_ERR_X509_FEATURE_UNAVAILABLE) and if it is a
-			// DNS name, skip otherwise
-			if(ret < 0 || san.type != MBEDTLS_X509_SAN_DNS_NAME)
-				goto next_san;
-
-			// Check if the SAN matches the domain
-			// Attention: The SAN is not NUL-terminated, so we need to
-			//            use the length field
-			if(strncasecmp(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len) == 0)
-			{
-				found = true;
-				// Free resources
-				mbedtls_x509_free_subject_alt_name(&san);
-				break;
-			}
-
-			// Also check if the SAN is a wildcard domain and if the domain
-			// matches the wildcard
-			if(check_wildcard_domain(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len))
-			{
-				found = true;
-				// Free resources
-				mbedtls_x509_free_subject_alt_name(&san);
-				break;
-			}
-next_san:
-			// Free resources
-			mbedtls_x509_free_subject_alt_name(&san);
-
-			// Go to next SAN
-			sans = sans->next;
-		}
-
-		// Also check against the common name (CN) field
-		char subject[MBEDTLS_X509_MAX_DN_NAME_SIZE];
-		const size_t subject_len = mbedtls_x509_dn_gets(subject, sizeof(subject), &crt.subject);
-		if(subject_len > 0)
-		{
-			// Check subjects prefixed with "CN="
-			if(subject_len > 3 && strncasecmp(subject, "CN=", 3) == 0)
-			{
-				// Check subject + 3 to skip the prefix
-				if(strncasecmp(domain, subject + 3, subject_len - 3) == 0)
-					found = true;
-				// Also check if the subject is a wildcard domain
-				else if(check_wildcard_domain(domain, subject + 3, subject_len - 3))
-					found = true;
-			}
-			// Check subject == "<domain>"
-			else if(strcasecmp(domain, subject) == 0)
-				found = true;
-			// Also check if the subject is a wildcard domain and if the domain
-			// matches the wildcard
-			else if(check_wildcard_domain(domain, subject, subject_len))
-				found = true;
-		}
-
-
-		// Free resources
-		mbedtls_x509_crt_free(&crt);
-		mbedtls_pk_free(&key);
-		return found ? CERT_DOMAIN_MATCH : CERT_DOMAIN_MISMATCH;
-	}
+		return search_domain(&crt, sans, domain) ? CERT_DOMAIN_MATCH : CERT_DOMAIN_MISMATCH;
 
 	// else: Print verbose information about the certificate
 	char certinfo[BUFFER_SIZE] = { 0 };
@@ -726,6 +738,95 @@ end:
 	mbedtls_pk_free(&key);
 
 	return CERT_OKAY;
+}
+
+/**
+ * @brief Checks if the certificate at the given file path is currently valid and will remain valid for at least the specified number of days.
+ *
+ * This function loads an X.509 certificate from the specified file, verifies that it is readable and parsable,
+ * and checks its validity period. It ensures that the certificate is already valid (not before date is in the past)
+ * and that it will not expire within the next `valid_for_at_least_days` days.
+ *
+ * @param certfile Path to the certificate file to check. If NULL, the function returns CERT_FILE_NOT_FOUND.
+ * @param valid_for_at_least_days The minimum number of days the certificate should remain valid from now.
+ *
+ * @return enum cert_check
+ *         - CERT_OKAY: Certificate is valid and will remain valid for at least the specified number of days.
+ *         - CERT_FILE_NOT_FOUND: Certificate file is not specified, does not exist, or is not readable.
+ *         - CERT_CANNOT_PARSE_CERT: Certificate file could not be parsed.
+ *         - CERT_NOT_YET_VALID: Certificate is not yet valid (valid_from is in the future).
+ *         - CERT_EXPIRES_SOON: Certificate will expire within the specified number of days.
+ */
+enum cert_check cert_currently_valid(const char *certfile, const time_t valid_for_at_least_days)
+{
+	// If no file was specified, we do not want to recreate it
+	if(certfile == NULL)
+		return CERT_FILE_NOT_FOUND;
+
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt_init(&crt);
+
+	// Check if the file exists and is readable
+	if(access(certfile, R_OK) != 0)
+	{
+		log_err("Could not read certificate file: %s", strerror(errno));
+		return CERT_FILE_NOT_FOUND;
+	}
+
+	int rc = mbedtls_x509_crt_parse_file(&crt, certfile);
+	if (rc != 0)
+	{
+		log_err("Cannot parse certificate: Error code %d", rc);
+		return CERT_CANNOT_PARSE_CERT;
+	}
+
+	// Compare validity of certificate
+	// - crt.valid_from needs to be in the past
+	// - crt.valid_to should be further away than at least two days
+	mbedtls_x509_time until = { 0 };
+	mbedtls_x509_time_gmtime(mbedtls_time(NULL) + valid_for_at_least_days * (24 * 3600), &until);
+	const bool is_valid_to = mbedtls_x509_time_cmp(&(crt.valid_to), &until) > 0;
+	const bool is_valid_from = mbedtls_x509_time_is_past(&(crt.valid_from));
+
+	// Free resources
+	mbedtls_x509_crt_free(&crt);
+
+	// Return result
+	if(!is_valid_from)
+		return CERT_NOT_YET_VALID;
+	if(!is_valid_to)
+		return CERT_EXPIRES_SOON;
+	return CERT_OKAY;
+}
+
+bool is_pihole_certificate(const char *certfile)
+{
+	// Check if the file exists and is readable
+	if(access(certfile, R_OK) != 0)
+	{
+		log_err("Could not read certificate file: %s", strerror(errno));
+		return false;
+	}
+
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt_init(&crt);
+
+	int rc = mbedtls_x509_crt_parse_file(&crt, certfile);
+	if (rc != 0)
+	{
+		log_err("Cannot parse certificate: Error code %d", rc);
+		return false;
+	}
+	// Check if the issuer is "pi.hole"
+	const bool is_pihole_issuer = strncasecmp((char*)crt.issuer.val.p, "pi.hole", crt.issuer.val.len) == 0;
+	// Check if the subject is "pi.hole"
+	const bool is_pihole_subject = strncasecmp((char*)crt.subject.val.p, "pi.hole", crt.subject.val.len) == 0;
+
+
+	// Free resources
+	mbedtls_x509_crt_free(&crt);
+
+	return is_pihole_issuer && is_pihole_subject;
 }
 
 #else

@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-55-g023f9f61-dirty) on branch xmr/csp
+# Pi-hole configuration file (v6.2.3-158-g0476f281-dirty) on branch new/renew_tls_cert
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-07-18 09:03:36 UTC
+# Last updated on 2025-08-10 06:08:44 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -901,6 +901,7 @@
   threads = 50
 
   # Additional HTTP headers added to the web server responses.
+  #
   # The headers are added to all responses, including those for the API.
   # Note about the default additional headers:
   # - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name
@@ -925,7 +926,7 @@
   # The latter four headers are set as expected by https://securityheaders.io
   #
   # Allowed values are:
-  #     array of HTTP headers
+  #     An array of HTTP headers
   headers = [
     "X-DNS-Prefetch-Control: off",
     "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;",
@@ -935,8 +936,9 @@
     "Referrer-Policy: strict-origin-when-cross-origin"
   ]
 
-  # Should the web server serve all files in webserver.paths.webroot directory? If
-  # disabled, only files within the path defined through webserver.paths.webhome and
+  # Should the web server serve all files in webserver.paths.webroot directory?
+  #
+  # If disabled, only files within the path defined through webserver.paths.webhome and
   # /api will be served.
   #
   # Allowed values are:
@@ -944,9 +946,11 @@
   serve_all = false
 
   [webserver.session]
-    # Session timeout in seconds. If a session is inactive for more than this time, it will
-    # be terminated. Sessions are continuously refreshed by the web interface, preventing
-    # sessions from timing out while the web interface is open.
+    # Session timeout in seconds.
+    #
+    # If a session is inactive for more than this time, it will be terminated. Sessions
+    # are continuously refreshed by the web interface, preventing sessions from timing out
+    # while the web interface is open.
     #
     # This option may also be used to make logins persistent for long times, e.g. 86400
     # seconds (24 hours), 604800 seconds (7 days) or 2592000 seconds (30 days). Note that
@@ -958,19 +962,23 @@
     #     A positive integer value in seconds
     timeout = 300 ### CHANGED, default = 1800
 
-    # Should Pi-hole backup and restore sessions from the database? This is useful if you
-    # want to keep your sessions after a restart of the web interface.
+    # Should Pi-hole backup and restore sessions from the database?
+    #
+    # This is useful if you want to keep your sessions after a restart of the web
+    # interface.
     #
     # Allowed values are:
     #     true or false
     restore = true
 
   [webserver.tls]
-    # Path to the TLS (SSL) certificate file. All directories along the path must be
-    # readable and accessible by the user running FTL (typically 'pihole'). This option is
-    # only required when at least one of webserver.port is TLS. The file must be in PEM
-    # format, and it must have both, private key and certificate (the *.pem file created
-    # must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).
+    # Path to the TLS (SSL) certificate file.
+    #
+    # All directories along the path must be readable and accessible by the user running
+    # FTL (typically 'pihole'). This option is only required when at least one of
+    # webserver.port is TLS. The file must be in PEM format, and it must have both,
+    # private key and certificate (the *.pem file created must contain a 'CERTIFICATE'
+    # section as well as a 'RSA PRIVATE KEY' section).
     #
     # The *.pem file can be created using `cp server.crt server.pem && cat server.key >>
     # server.pem` if you have these files instead
@@ -978,6 +986,21 @@
     # Allowed values are:
     #     A valid TLS certificate file (*.pem)
     cert = "/etc/pihole/test.pem" ### CHANGED, default = "/etc/pihole/tls.pem"
+
+    # Number of days the automatically generated self-signed TLS/SSL certificate will be
+    # valid for.
+    #
+    # Defaults to 47 days. A minimum of 7 days is enforced.
+    # Some devices may enforce shorter validity ranges. Note that defining a lower
+    # validity range may require you to accept the self-signed certificate more often in
+    # your browser.
+    # Pi-hole will regenerate certificates it created itself two days prior to expiration.
+    # If you are using your own certificate, you need to regenerate it yourself. In this
+    # case, it is advised to set the validity range to 0 days, so that Pi-hole does not
+    # try to regenerate your certificate. If you set the validity range to 0 days and
+    # still try to generate a certificate, Pi-hole will set a fixed validity range of
+    # roughly 30 years for the certificate.
+    validity = 47
 
   [webserver.paths]
     # Server root on the host
@@ -1593,7 +1616,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 156 total entries out of which 103 entries are default
+# 157 total entries out of which 104 entries are default
 # --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
