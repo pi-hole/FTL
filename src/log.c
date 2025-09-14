@@ -385,13 +385,12 @@ void FTL_log_helper(const unsigned int n, ...)
 	va_start(args, n);
 	for(unsigned int i = 0; i < n; i++)
 	{
-		const char *argin = va_arg(args, char*);
+		char *argin = va_arg(args, char*);
 		if(argin == NULL)
 			arg[i] = NULL;
 		else
-			arg[i] = strdup(argin);
+			arg[i] = argin;
 	}
-	va_end(args);
 
 	// Select appropriate logging format
 	switch (n)
@@ -410,11 +409,7 @@ void FTL_log_helper(const unsigned int n, ...)
 			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
 			break;
 	}
-
-	// Free allocated memory
-	for(unsigned int i = 0; i < n; i++)
-		if(arg[i] != NULL)
-			free(arg[i]);
+	va_end(args);
 	free(arg);
 }
 

@@ -94,10 +94,11 @@ void *DB_thread(void *val)
 	time_t lastAnalyze = before - before % DATABASE_ANALYZE_INTERVAL;
 	time_t lastMACVendor = before - before % DATABASE_MACVENDOR_INTERVAL;
 
-	// Add some randomness (up to ome hour) to these timestamps to avoid
+	// Add some randomness (up to one hour) to these timestamps to avoid
 	// them running at the same time. This is not a security feature, so
-	// using rand() is fine.
-	lastAnalyze += rand() % 3600;
+	// using rand() is fine. Database analyze is not to be run soon after
+	// startup, so we add another hour to the lastAnalyze timestamp.
+	lastAnalyze += 3600 + rand() % 3600;
 	lastMACVendor += rand() % 3600;
 
 	// This thread runs until shutdown of the process. We keep this thread

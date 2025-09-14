@@ -478,7 +478,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 {
 	// Resolve server address
 	int eai;
-	struct addrinfo *saddr;
+	struct addrinfo *saddr = NULL;
 	// Resolve server address, port 123 is used for NTP
 	if((eai = getaddrinfo(server, "123", NULL, &saddr)) != 0)
 	{
@@ -494,6 +494,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		}
 		errbuf[sizeof(errbuf) - 1] = '\0';
 		log_ntp_message(true, false, errbuf);
+		freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -502,6 +503,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	if(ntp == NULL)
 	{
 		log_err("Cannot allocate memory for NTP client");
+		freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -542,6 +544,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 
 	// Free allocated memory
 	freeaddrinfo(saddr);
+	saddr = NULL;
 
 	// Compute average and standard deviation
 	unsigned int valid = 0;
