@@ -175,7 +175,7 @@ jobs:
           path: '${{ matrix.bin_name }}*'
       -
         name: Generate artifact attestation
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be #v2.4.0
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a #v3.0.0
         # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
         # available (e.g., PR originating from a fork)
         if: env.DO_DEPLOY == 'true' && env.ACTIONS_ID_TOKEN_REQUEST_URL != ''
@@ -265,7 +265,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 #v2.3.2
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 #v2.3.3
         with:
           files: |
             ftl_builds/*
