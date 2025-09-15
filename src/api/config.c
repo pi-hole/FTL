@@ -1136,6 +1136,11 @@ int api_config_properties(struct ftl_conn *api)
 			reason = "env_var";
 			description = "Set via environment variable";
 		}
+		else if(config.misc.readOnly.v.b)
+		{
+			reason = "read_only";
+			description = "Config is in read-only mode";
+		}
 		else if(conf_item->f & FLAG_READ_ONLY)
 		{
 			reason = "read_only";

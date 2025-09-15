@@ -1852,7 +1852,7 @@
   [[ ${lines[24]} == "" ]]
 }
 
-# This test should run before a password it set
+# This test should run before a password is set
 @test "Lua server page is generating proper backtrace" {
   # Enable serving of Lua pages outside /admin
   run bash -c './pihole-FTL --config webserver.serve_all true'
