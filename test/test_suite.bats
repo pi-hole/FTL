@@ -1924,6 +1924,7 @@
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]' ]]
+  run sleep 1
 }
 
 @test "DNS hosts sanitization: Comments are handled correctly" { 
@@ -1935,7 +1936,7 @@
   run bash -c './pihole-FTL --config dns.hosts'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]' ]]
-
+  run sleep 1
 }
 
 @test "Config validation working on the API (validator-based checking)" {
@@ -2228,7 +2229,7 @@
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "2" ]]
+  [[ ${lines[0]} == "3" ]]
 }
 
 @test "Suggest expected completions" {
