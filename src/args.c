@@ -72,6 +72,8 @@
 #include "capabilities.h"
 // get_gateway_name()
 #include "tools/netlink.h"
+// wait_for_string_in_file()
+#include "config/inotify.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -676,6 +678,24 @@ void parse_args(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 		else
 			exit(EXIT_FAILURE);
+	}
+
+	// Check file for given string
+	// pihole-FTL wait-for-string <file> <string> <timeout>
+	// Example: pihole-FTL wait-for-string /var/log/pihole/FTL.log "DNS service is running" 30
+	// This will check /var/log/pih
+	if(argc == 5 && strcmp(argv[1], "wait-for-string") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const int timeout = atoi(argv[4]);
+		if(timeout < 0)
+		{
+			fprintf(stderr, "Error: Timeout must be a non-negative integer.\n");
+			exit(EXIT_FAILURE);
+		}
+		exit(wait_for_string_in_file(argv[2], argv[3], (unsigned int)timeout) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name
