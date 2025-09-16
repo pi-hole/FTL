@@ -681,10 +681,10 @@ void parse_args(int argc, char *argv[])
 	}
 
 	// Check file for given string
-	// pihole-FTL wait-for-string <file> <string> <timeout>
-	// Example: pihole-FTL wait-for-string /var/log/pihole/FTL.log "DNS service is running" 30
-	// This will check /var/log/pih
-	if(argc == 5 && strcmp(argv[1], "wait-for-string") == 0)
+	// pihole-FTL wait-for <string> <file> <timeout> [<initial_filesize>]
+	// Example: pihole-FTL wait-for "DNS service is running" /var/log/pihole/FTL.log 30
+	// This will check /var/log/pihole/FTL.log for the string "DNS service is running"
+	if((argc == 5 || argc == 6) && strcmp(argv[1], "wait-for") == 0)
 	{
 		// Enable stdout printing
 		cli_mode = true;
@@ -695,7 +695,13 @@ void parse_args(int argc, char *argv[])
 			fprintf(stderr, "Error: Timeout must be a non-negative integer.\n");
 			exit(EXIT_FAILURE);
 		}
-		exit(wait_for_string_in_file(argv[2], argv[3], (unsigned int)timeout) ? EXIT_SUCCESS : EXIT_FAILURE);
+		const long initial_filesize = (argc == 6) ? (long)atol(argv[5]) : 0;
+		if(initial_filesize < 0)
+		{
+			fprintf(stderr, "Error: Optional initial file size must be a non-negative integer if specified.\n");
+			exit(EXIT_FAILURE);
+		}
+		exit(wait_for_string_in_file(argv[3], argv[2], (unsigned int)timeout, initial_filesize) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name

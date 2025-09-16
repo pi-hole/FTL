@@ -168,117 +168,71 @@ bool check_inotify_event(void)
  * @param string The string to search for within the file.
  * @param timeout The maximum time to wait (in seconds) for the string to appear
  * in the file.
+ * @param initial_filesize The initial size of the file to start reading from.
+ * If set to 0, the function will start reading from the end of the file.
  * @return true if the string is found within the timeout period, false otherwise.
  */
-bool wait_for_string_in_file(const char *filename, const char *string, unsigned int timeout)
+bool wait_for_string_in_file(const char *filename, const char *string, unsigned int timeout, long initial_filesize)
 {
 	// Open the file for reading
 	FILE *file = fopen(filename, "r");
 	if(file == NULL)
 	{
 		// Return false if file cannot be opened
-		printf("Cannot open file %s: %s\n", filename, strerror(errno));
+		log_err("Cannot open file %s: %s", filename, strerror(errno));
 		return false;
 	}
 
-	// Seek to the end of the file to determine its size
-	if(fseek(file, 0, SEEK_END) != 0)
+	// Get current file size if initial_filesize is 0
+	if (initial_filesize == 0)
 	{
-		// Return false if seek fails
-		fclose(file);
-		printf("Cannot seek in file %s: %s\n", filename, strerror(errno));
-		return false;
-	}
-	// Get the current file size
-	const long initial_filesize = ftell(file);
-
-	// Scan backwards for the last X lines in the file
-	// Maximum number of lines to scan backwards
-	#define MAX_LINES 100
-	// Size of buffer chunk for reading
-	#define CHUNK_SIZE 4096
-	long pos = initial_filesize;
-	int lines_found = 0;
-	size_t len = CHUNK_SIZE;
-	char *line = calloc(len, sizeof(char));
-	long scan_start = initial_filesize;
-
-	// Loop until X lines found or start of file reached
-	while(pos > 0 && lines_found < MAX_LINES)
-	{
-		// Determine how much to read (either CHUNK_SIZE or remaining bytes)
-		size_t to_read = (pos >= CHUNK_SIZE) ? CHUNK_SIZE : pos;
-		// Move position backwards
-		pos -= to_read;
-		// Seek to new position
-		fseek(file, pos, SEEK_SET);
-		// Read chunk into buffer
-		size_t read = fread(line, 1, to_read, file);
-		// Scan line backwards for newlines
-		for(int i = read - 1; i >= 0; i--)
+		log_debug(DEBUG_INOTIFY, "Determining filesize at invocation time");
+		if(fseek(file, initial_filesize, SEEK_SET) != 0)
 		{
-			if(line[i] == '\n')
-			{
-				// Newline found, increment line counter
-				lines_found++;
-				if(lines_found == MAX_LINES)
-				{
-					// Found enough lines, set scan_start position
-					scan_start = pos + i + 1;
-					break;
-				}
-			}
+			// Return false if seek fails
+			fclose(file);
+			log_err("Cannot seek in file %s: %s", filename, strerror(errno));
+			return false;
 		}
+		// Get the current file size
+		initial_filesize = ftell(file);
 	}
-
-	// Start reading from the scan_start position
-	fseek(file, scan_start, SEEK_SET);
-	// Check if line contains target string
-	bool found = false;
-	while(getline(&line, &len, file) != -1)
-	{
-		if(strstr(line, string) != NULL)
-		{
-			found = true;
-			break;
-		}
-	}
-	if(found)
-	{
-		// String found during initial scan
-		free(line);
-		fclose(file);
-		printf("Found string \"%s\" in file %s\n", string, filename);
-		return true;
-	}
-
+	log_debug(DEBUG_INOTIFY, "Starting to read file %s from byte offset %ld", filename, initial_filesize);
+	
 	// Use inotify to wait for new lines appended to the file
 	// Create inotify instance (non-blocking)
 	const int fd = inotify_init1(IN_NONBLOCK);
 	if(fd == -1)
 	{
-		printf("Cannot create inotify instance: %s\n", strerror(errno));
-		free(line);
+		log_err("Cannot create inotify instance: %s", strerror(errno));
 		fclose(file);
 		return false;
 	}
 
 	// Add watch for file modifications
-	const int wd = inotify_add_watch(fd, filename, IN_MODIFY);
+	const int wd = inotify_add_watch(fd, filename, IN_CLOSE_WRITE | IN_MODIFY);
 	if(wd == -1)
 	{
 		printf("Cannot add inotify watch for %s: %s\n", filename, strerror(errno));
 		close(fd);
-		free(line);
 		fclose(file);
 		return false;
 	}
 
-	// Counter for wait iterations
-	unsigned int waited = 0;
-
 	// Loop until timeout reached (25ms * 40 = 1s) or string found
-	while(waited < timeout * 40)
+	size_t len = 0;
+	char *line = NULL;
+	bool found = false;
+	long scan_start = initial_filesize;
+
+	// Initialize time tracking
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+
+	// Loop until we found the string or timeout reached
+	while(!found && time_diff(ts, now) < timeout)
 	{
 		// Set up select() for waiting on inotify events with a timeout.
 		// These need to be reset before each call to select()
@@ -290,13 +244,13 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		// Wait for inotify event or timeout
 		const int retval = select(fd + 1, &rfds, NULL, NULL, &tv);
 
-		// Increment wait counter
-		waited++;
-
 		// Check if inotify event is available
 		if(retval < 1 || !FD_ISSET(fd, &rfds))
+		{
 			// No inotify event, just continue waiting
+			clock_gettime(CLOCK_REALTIME, &now);
 			continue;
+		}
 
 		// Inotify event available, read it
 		char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
@@ -306,15 +260,17 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		{
 			struct inotify_event event;
 			memcpy(&event, buf, sizeof(struct inotify_event));
-			if(event.wd != wd || !(event.mask & IN_MODIFY))
+			if(event.wd != wd || !(event.mask & (IN_MODIFY | IN_CLOSE_WRITE)))
 			{
 				// Not the event we are looking for, continue waiting
+				clock_gettime(CLOCK_REALTIME, &now);
 				continue;
 			}
 		}
 		else
 		{
 			// Read error, continue waiting
+			clock_gettime(CLOCK_REALTIME, &now);
 			continue;
 		}
 		// File was modified, get new filesize
@@ -330,6 +286,7 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 			while(getline(&line, &len, file) != -1)
 			{
 				// Check for target string
+				log_debug(DEBUG_INOTIFY, "Read new line: \"%s\"", line);
 				if(strstr(line, string) != NULL)
 				{
 					found = true;
@@ -340,19 +297,23 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 				break;
 			// Update scan_start position
 			scan_start = ftell(file);
+
+			// Update current time
+			clock_gettime(CLOCK_REALTIME, &now);
 		}
 	}
 
 	// Clean up
 	inotify_rm_watch(fd, wd);
 	close(fd);
-	free(line);
+	if(line != NULL)
+		free(line);
 	fclose(file);
 
 	if(found)
-		printf("Found string \"%s\" in file %s\n", string, filename);
+		log_info("Found string \"%s\" in file %s", string, filename);
 	else
-		printf("Did not find string \"%s\" in file %s within %u seconds\n", string, filename, timeout);
+		log_info("Did not find string \"%s\" in file %s within %u seconds", string, filename, timeout);
 
 	return found;
 }
