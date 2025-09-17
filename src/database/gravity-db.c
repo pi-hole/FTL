@@ -230,16 +230,16 @@ bool gravityDB_reopen(void)
 	return gravityDB_open();
 }
 
-static bool get_client_querystr(char *querystr, const size_t querystrsz, const char *table, const char *column, const char *groups)
+static bool build_client_querystr(char *querystr, const size_t querystrsz, const char *table, const char *column, const char *groups)
 {
 	// Build query string with group filtering
 	if(snprintf(querystr, querystrsz, "SELECT %s from %s WHERE domain = ? AND group_id IN (%s);", column, table, groups) < 1)
 	{
-		log_err("get_client_querystr(%s, %s) - snprintf() error: %s", table, groups, strerror(errno));
+		log_err("build_client_querystr(%s, %s) - snprintf() error: failed to build query string", table, groups);
 		return false;
 	}
 
-	log_debug(DEBUG_DATABASE, "get_client_querystr: %s", querystr);
+	log_debug(DEBUG_DATABASE, "build_client_querystr: %s", querystr);
 
 	return true;
 }
@@ -802,7 +802,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// returns true as soon as it sees the first row from the query inside
 	// of EXISTS().
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_allowlist statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_allowlist", "id", client_groups))
+	if(!build_client_querystr(querystr, querystrsz, "vw_allowlist", "id", client_groups))
 	{
 		free(querystr);
 		return false;
@@ -821,7 +821,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare gravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_gravity statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_gravity", "adlist_id", client_groups))
+	if(!build_client_querystr(querystr, querystrsz, "vw_gravity", "adlist_id", client_groups))
 	{
 		free(querystr);
 		return false;
@@ -839,7 +839,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare antigravity statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_antigravity statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_antigravity", "adlist_id", client_groups))
+	if(!build_client_querystr(querystr, querystrsz, "vw_antigravity", "adlist_id", client_groups))
 	{
 		free(querystr);
 		return false;
@@ -857,7 +857,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 
 	// Prepare denylist statement
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Preparing vw_denylist statement for client %s", clientip);
-	if(!get_client_querystr(querystr, querystrsz, "vw_denylist", "id", client_groups))
+	if(!build_client_querystr(querystr, querystrsz, "vw_denylist", "id", client_groups))
 	{
 		free(querystr);
 		return false;
