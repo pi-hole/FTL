@@ -699,7 +699,7 @@
   [[ ${lines[1]} == "" ]]
 }
 
-@test "./pihole-FTL.db schema is as expected" {
+@test "pihole-FTL.db schema is as expected" {
   run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db .dump'
   printf "%s\n" "${lines[@]}"
   [[ "${lines[@]}" == *"CREATE TABLE IF NOT EXISTS \"query_storage\" (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, type INTEGER NOT NULL, status INTEGER NOT NULL, domain INTEGER NOT NULL, client INTEGER NOT NULL, forward INTEGER, additional_info INTEGER, reply_type INTEGER, reply_time REAL, dnssec INTEGER, list_id INTEGER, ede INTEGER);"* ]]
@@ -1578,7 +1578,7 @@
   [[ $status == 0 ]]
 
   run bash -c 'grep "mode = \"IP" /etc/pihole/pihole.toml'
-  printf "grep output (before reload): %s\n" "${lines[@]}"
+  printf "grep output (after reload): %s\n" "${lines[@]}"
   [[ "${lines[0]}" == *'mode = "IP" ### CHANGED, default = "NULL"' ]]
 
   run bash -c "dig A denied.ftl +short @127.0.0.1"
