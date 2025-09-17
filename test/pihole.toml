@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-152-g6fef73ba-dirty) on branch new/dns_domainLocal
+# Pi-hole configuration file (v6.2.3-274-g68959ed0) on branch new/dns_domainLocal
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-08-09 18:31:58 UTC
+# Last updated on 2025-09-28 20:09:54 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -84,7 +84,7 @@
   #   - "HOSTNAMEFQDN"
   #       Serve the machine's hostname (see limitations above) as fully qualified domain
   #       by adding the local domain. If no local domain has been defined (config option
-  #       dns.domain), FTL tries to query the domain name from the kernel using
+  #       dns.domain.name), FTL tries to query the domain name from the kernel using
   #       getdomainname(2). If this fails, FTL appends ".no_fqdn_available" to the
   #       hostname.
   #   - "PI.HOLE"
@@ -137,51 +137,12 @@
   #     true or false
   domainNeeded = false
 
-  # If set, the domain configured by dns.domain is considered local and queries for this
-  # domain are never forwarded upstream unless a dns.revServer is configured for this
-  # domain.
-  #
-  # If unset, queries for this domain are forwarded upstream to (possibly public) server
-  # which is probably not what you want *unless* you have added extra configuration for
-  # this domain *or* your upstream servers are able to handle local domains (e.g.,
-  # router).
-  #
-  # Allowed values are:
-  #     true or false
-  domainLocal = true
-
   # If set, the domain is added to simple names (without a period) in /etc/hosts in the
   # same way as for DHCP-derived names
   #
   # Allowed values are:
   #     true or false
   expandHosts = false
-
-  # The DNS domain used by your Pi-hole.
-  #
-  # This DNS domain is purely local. FTL may answer queries from its local cache and
-  # configuration but *never* forwards any requests upstream *unless* you have
-  # configured a dns.revServer exactly for this domain. In the latter case, all queries
-  # for this domain are sent exclusively to this server (including reverse lookups).
-  #
-  # For DHCP, this has two effects; firstly it causes the DHCP server to return the
-  # domain to any hosts which request it, and secondly it sets the domain which it is
-  # legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so
-  # that an untrusted host on the LAN cannot advertise its name via DHCP as e.g.
-  # "google.com" and capture traffic not meant for it. If no domain suffix is specified,
-  # then any DHCP hostname with a domain part (ie with a period) will be disallowed and
-  # logged. If a domain is specified, then hostnames with a domain part are allowed,
-  # provided the domain part matches the suffix. In addition, when a suffix is set then
-  # hostnames without a domain part have the suffix added as an optional domain part.
-  # For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is
-  # "laptop". The IP address for that machine is available both as "laptop" and
-  # "laptop.mylab.com".
-  #
-  # You can disable setting a domain by setting this option to an empty string.
-  #
-  # Allowed values are:
-  #     Any valid domain
-  domain = "lan"
 
   # Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are
   # not found in /etc/hosts or the DHCP leases file be answered with "no such domain"
@@ -312,6 +273,46 @@
   #     - "<domain>": Domain used for the reverse server feature (e.g., "fritz.box")
   #     Example: "fritz.box"
   revServers = []
+
+  [dns.domain]
+    # The DNS domain used by your Pi-hole.
+    #
+    # This DNS domain is purely local. FTL may answer queries from its local cache and
+    # configuration but *never* forwards any requests upstream *unless* you have
+    # configured a dns.revServer exactly for this domain. In the latter case, all queries
+    # for this domain are sent exclusively to this server (including reverse lookups).
+    #
+    # For DHCP, this has two effects; firstly it causes the DHCP server to return the
+    # domain to any hosts which request it, and secondly it sets the domain which it is
+    # legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so
+    # that an untrusted host on the LAN cannot advertise its name via DHCP as e.g.
+    # "google.com" and capture traffic not meant for it. If no domain suffix is specified,
+    # then any DHCP hostname with a domain part (ie with a period) will be disallowed and
+    # logged. If a domain is specified, then hostnames with a domain part are allowed,
+    # provided the domain part matches the suffix. In addition, when a suffix is set then
+    # hostnames without a domain part have the suffix added as an optional domain part.
+    # For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is
+    # "laptop". The IP address for that machine is available both as "laptop" and
+    # "laptop.mylab.com".
+    #
+    # You can disable setting a domain by setting this option to an empty string.
+    #
+    # Allowed values are:
+    #     Any valid domain
+    name = "lan"
+
+    # If set, the domain configured by dns.domain.name is considered local and queries for
+    # this domain are never forwarded upstream unless a dns.revServer is configured for
+    # this domain.
+    #
+    # If unset, queries for this domain are forwarded upstream to (possibly public) server
+    # which is probably not what you want *unless* you have added extra configuration for
+    # this domain *or* your upstream servers are able to handle local domains (e.g.,
+    # router).
+    #
+    # Allowed values are:
+    #     true or false
+    local = true
 
   [dns.cache]
     # Cache size of the DNS server. Note that expiring cache entries naturally make room
@@ -1647,8 +1648,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 157 total entries out of which 100 entries are default
-# --> 57 entries are modified
+# 159 total entries out of which 106 entries are default
+# --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem
