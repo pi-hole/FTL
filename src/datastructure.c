@@ -1005,7 +1005,7 @@ const char * __attribute__ ((pure)) get_blocked_statuslist(void)
 		{
 			int written = snprintf(blocked_list + pos, sizeof(blocked_list) - pos,
 			                      "%s%d", first++ < 1 ? "" : ",", status);
-			if(written > 0)
+			if(written > 0 && (size_t)written < sizeof(blocked_list) - pos)
 				pos += written;
 		}
 
@@ -1031,7 +1031,7 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 		{
 			int written = snprintf(cached_list + pos, sizeof(cached_list) - pos,
 			                      "%s%d", first++ < 1 ? "" : ",", status);
-			if(written > 0)
+			if(written > 0 && (size_t)written < sizeof(cached_list) - pos)
 				pos += written;
 		}
 
@@ -1057,7 +1057,7 @@ const char * __attribute__ ((pure)) get_permitted_statuslist(void)
 		{
 			int written = snprintf(permitted_list + pos, sizeof(permitted_list) - pos,
 			                      "%s%d", first++ < 1 ? "" : ",", status);
-			if(written > 0)
+			if(written > 0 && (size_t)written < sizeof(permitted_list) - pos)
 				pos += written;
 		}
 
