@@ -258,7 +258,7 @@ bool init_memory_database(void)
 		                        SQLITE_PREPARE_PERSISTENT, &subtables_to_disk_stmts[i], NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(queries_to_disk) - SQL error step: %s", sqlite3_errstr(rc));
+			log_err("init_memory_database(queries_to_disk) - SQL error prepare: %s", sqlite3_errstr(rc));
 			return false;
 		}
 	}
@@ -719,7 +719,7 @@ bool export_queries_to_disk(const bool final)
 	};
 
 	// Export linking tables
-	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
+	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
 	{
 		if((rc = sqlite3_step(subtables_to_disk_stmts[i])) != SQLITE_DONE)
 			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
