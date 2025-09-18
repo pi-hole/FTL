@@ -875,6 +875,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
 
+	// Users may specify ?restart=false to avoid a restart of dnsmasq
+	// even if the changed config item would require it
+	bool restart = true;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "restart", &restart);
+	}
+
 	char **requested_path = gen_config_path(api->item, '/');
 	const unsigned int min_level = config_path_depth(requested_path);
 
@@ -1042,7 +1050,8 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(write_dnsmasq_config(&newconf, true, errbuf))
 		{
 			api->ftl.restart_reason = "dnsmasq config changed";
-			api->ftl.restart = true;
+			// Only restart if the user didn't request otherwise
+			api->ftl.restart = restart;
 		}
 		else
 		{
