@@ -159,10 +159,9 @@ bool check_inotify_event(void)
  * @brief Waits for a specific string to appear in a file, scanning the last N
  * lines and monitoring for new content.
  *
- * This function searches for a given string in the last MAX_LINES lines of the
- * specified file. If the string is not found, it uses inotify to monitor the
- * file for modifications and checks any new lines appended to the file for the
- * target string, waiting up to the specified timeout.
+ * This function uses inotify to monitor the file for modifications and checks
+ * any new lines appended to the file for the target string, waiting up to the
+ * specified timeout.
  *
  * @param filename The path to the file to be monitored.
  * @param string The string to search for within the file.
