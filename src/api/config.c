@@ -688,6 +688,13 @@ static int api_config_patch(struct ftl_conn *api)
 		                       "The config is currently in read-only mode",
 		                       NULL);
 	}
+	// Users may specify ?restart=false to avoid a restart of dnsmasq
+	// even if the changed config item would require it
+	bool restart = true;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "restart", &restart);
+	}
 
 	// Read all known config items
 	bool config_changed = false;
@@ -828,7 +835,7 @@ static int api_config_patch(struct ftl_conn *api)
 			if(write_dnsmasq_config(&newconf, true, errbuf))
 			{
 				api->ftl.restart_reason = "dnsmasq config changed";
-				api->ftl.restart = true;
+				api->ftl.restart = restart;
 			}
 			else
 			{

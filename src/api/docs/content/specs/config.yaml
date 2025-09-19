@@ -38,6 +38,8 @@ components:
         operationId: "patch_config"
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/restart'
         requestBody:
           description: Callback payload
           content:
