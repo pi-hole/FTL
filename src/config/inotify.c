@@ -186,7 +186,7 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 	if (initial_filesize == 0)
 	{
 		log_debug(DEBUG_INOTIFY, "Determining filesize at invocation time");
-		if(fseek(file, initial_filesize, SEEK_SET) != 0)
+		if(fseek(file, 0, SEEK_END) != 0)
 		{
 			// Return false if seek fails
 			fclose(file);
@@ -212,7 +212,7 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 	const int wd = inotify_add_watch(fd, filename, IN_CLOSE_WRITE | IN_MODIFY);
 	if(wd == -1)
 	{
-		printf("Cannot add inotify watch for %s: %s\n", filename, strerror(errno));
+		log_err("Cannot add inotify watch for %s: %s", filename, strerror(errno));
 		close(fd);
 		fclose(file);
 		return false;
