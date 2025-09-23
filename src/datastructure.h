@@ -36,7 +36,7 @@ typedef struct {
 	int ede;
 	double response;
 	double timestamp;
-	int64_t db;
+	sqlite3_int64 db;
 	// Adjacent bit field members in the struct flags may be packed to share
 	// and straddle the individual bytes. It is useful to pack the memory as
 	// tightly as possible as there may be dozens of thousands of these

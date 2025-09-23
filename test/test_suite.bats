@@ -2305,3 +2305,9 @@
   [[ ${lines[0]} == "true" ]]
   [[ ${lines[1]} == "" ]]
 }
+
+@test "Query with ID 0 has been saved to the database" {
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT COUNT(*) FROM queries WHERE id=0;"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
