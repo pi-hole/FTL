@@ -16,5 +16,6 @@
 
 void watch_config(bool watch);
 bool check_inotify_event(void);
+bool wait_for_string_in_file(const char *filename, const char *string, unsigned int timeout, long initial_filesize);
 
 #endif //CONFIG_INOTIFY_H
