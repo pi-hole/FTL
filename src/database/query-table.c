@@ -1475,7 +1475,7 @@ bool queries_to_database(void)
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
 	// expect replies to still arrive after 30 seconds - they are anyway
-	// useless as the client will have already timed out tis particular
+	// useless as the client will have already timed out this particular
 	// query and retried or failed
 	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
 	unsigned int last_query;
