@@ -1478,8 +1478,8 @@ bool queries_to_database(void)
 	// useless as the client will have already timed out this particular
 	// query and retried or failed
 	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
-	unsigned int last_query;
-	for(last_query = counters->queries - 1; last_query > 0; last_query--)
+	unsigned int last_query = counters->queries - 1;
+	while(last_query > 0)
 	{
 		queriesData *query = getQuery(last_query, true);
 		if(query == NULL)
@@ -1493,6 +1493,7 @@ bool queries_to_database(void)
 			last_query++;
 			break;
 		}
+		last_query--;
 	}
 
 	log_debug(DEBUG_DATABASE, "Storing queries from ID %u to %u in in-memory-database", last_query, counters->queries - 1);
