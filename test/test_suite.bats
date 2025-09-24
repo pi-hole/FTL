@@ -2306,6 +2306,12 @@
   [[ ${lines[1]} == "" ]]
 }
 
+@test "Query with ID 0 has been saved to the database" {
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT COUNT(*) FROM queries WHERE id=0;"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed tests
@@ -2316,4 +2322,6 @@
 
   # Wait until pihole-FTL has terminated
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
 }
