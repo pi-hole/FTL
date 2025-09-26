@@ -2311,3 +2311,32 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
 }
+
+@test "Webserver options are logged as expected" {
+  run bash -c 'grep -F "Webserver option 0/12: document_root=/var/www/html" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 1/12: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 2/12: listening_ports=80o,443os,[::]:80o,[::]:443os" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 3/12: decode_url=yes" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 4/12: enable_directory_listing=no" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 5/12: num_threads=50" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 6/12: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 7/12: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; img-src '"'self'"' data:;\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 8/12: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 9/12: enable_keep_alive=yes" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 10/12: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 11/12: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 12/12: (null)=(null) (END OF OPTIONS)" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+}

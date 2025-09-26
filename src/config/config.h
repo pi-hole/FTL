@@ -249,6 +249,7 @@ struct config {
 		struct conf_item threads;
 		struct conf_item headers;
 		struct conf_item serve_all;
+		struct conf_item advancedOpts;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
