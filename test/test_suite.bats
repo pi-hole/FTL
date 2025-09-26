@@ -2337,6 +2337,6 @@
   [[ $status == 0 ]]
   run bash -c 'grep -F "Webserver option 11/12: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
   [[ $status == 0 ]]
-  run bash -c 'grep -F "Webserver option 12/12: (null)=(null) (END OF OPTIONS)" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 12/12: <END OF OPTIONS>" /var/log/pihole/FTL.log'
   [[ $status == 0 ]]
 }

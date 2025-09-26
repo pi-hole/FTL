@@ -584,8 +584,9 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	while (src < src_buf + src_sz)
 	{
 		// Check if we have enough space before writing
-		// Worst case: we need 4 chars for "\x00" + null terminator
-		if (dst >= dst_str + dst_sz - 4)
+		// Worst case: we need 4 chars for "0x00" + null terminator for
+		// one byte of input
+		if (dst > dst_str + dst_sz - 5)
 			break;
 
 		if (isprint(*src))

@@ -548,13 +548,23 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 		char *escaped_value = escape_string(static_options[i * 2 + 1]);
 		if(debug)
 		{
-			log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s%s",
-			          i, idx, escaped_key, escaped_value, i == idx ? " (END OF OPTIONS)" : "");
+			if(i == idx)
+			{
+				log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s",
+			          i, idx, escaped_key, escaped_value);
 		}
 		else
 		{
-			log_err("Webserver option %zu/%zu: %s=%s%s",
-			        i, idx, escaped_key, escaped_value, i == idx ? " (END OF OPTIONS)" : "");
+			if(i == idx)
+			{
+				log_err("Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_err("Webserver option %zu/%zu: %s=%s",
+			        i, idx, escaped_key, escaped_value);
 		}
 		if(escaped_key != NULL)
 			free(escaped_key);
@@ -669,7 +679,7 @@ void http_init(void)
 		return;
 	}
 	size_t idx = 0;
-	while(idx < ArraySize(static_options) / 2 - 2)
+	while(idx < (ArraySize(static_options) / 2 - 3)) // -3 for the 6 NULL slots above
 	{
 		conf_opts[idx * 2] = strdup(static_options[idx * 2]);
 		conf_opts[idx * 2 + 1] = strdup(static_options[idx * 2 + 1]);
