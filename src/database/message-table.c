@@ -17,8 +17,6 @@
 #include "gravity-db.h"
 // cli_mode
 #include "args.h"
-// cleanup()
-#include "daemon.h"
 // main_pid()
 #include "signals.h"
 // struct config
