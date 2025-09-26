@@ -3341,6 +3341,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		exit(EXIT_FAILURE);
 	}
 
+	// Start webserver thread
+	if(pthread_create( &threads[WEBSERVER], &attr, webserver_thread, NULL ) != 0)
+	{
+		log_crit("Unable to create webserver thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")
 	if(getuid() == 0)

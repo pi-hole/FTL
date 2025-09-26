@@ -255,6 +255,7 @@ struct config {
 		} session;
 		struct {
 			struct conf_item cert;
+			struct conf_item validity;
 		} tls;
 		struct {
 			struct conf_item webroot;

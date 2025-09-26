@@ -72,6 +72,8 @@
 #include "capabilities.h"
 // get_gateway_name()
 #include "tools/netlink.h"
+// wait_for_string_in_file()
+#include "config/inotify.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -416,12 +418,17 @@ void parse_args(int argc, char *argv[])
 			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
+		// Read config
+		readFTLconf(&config, false);
+
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
+
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
-		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+
+		exit(generate_certificate(argv[2], rsa, domain, config.webserver.tls.validity.v.ui) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Parse X.509 certificate
@@ -671,6 +678,30 @@ void parse_args(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 		else
 			exit(EXIT_FAILURE);
+	}
+
+	// Check file for given string
+	// pihole-FTL wait-for <string> <file> <timeout> [<initial_filesize>]
+	// Example: pihole-FTL wait-for "DNS service is running" /var/log/pihole/FTL.log 30
+	// This will check /var/log/pihole/FTL.log for the string "DNS service is running"
+	if((argc == 5 || argc == 6) && strcmp(argv[1], "wait-for") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const int timeout = atoi(argv[4]);
+		if(timeout < 0)
+		{
+			fprintf(stderr, "Error: Timeout must be a non-negative integer.\n");
+			exit(EXIT_FAILURE);
+		}
+		const long initial_filesize = (argc == 6) ? (long)atol(argv[5]) : 0;
+		if(initial_filesize < 0)
+		{
+			fprintf(stderr, "Error: Optional initial file size must be a non-negative integer if specified.\n");
+			exit(EXIT_FAILURE);
+		}
+		exit(wait_for_string_in_file(argv[3], argv[2], (unsigned int)timeout, initial_filesize) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// start from 1, as argv[0] is the executable name

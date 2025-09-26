@@ -28,7 +28,7 @@ static sqlite3 *_memdb = NULL;
 static bool store_in_database = false;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
-static unsigned long last_mem_db_idx = 0;
+static sqlite3_int64 last_mem_db_idx = -1;
 static unsigned int mem_db_num = 0, disk_db_num = 0;
 static sqlite3_stmt *query_stmt = NULL;
 static sqlite3_stmt *domain_stmt = NULL;
@@ -55,12 +55,12 @@ static sqlite3_stmt **stmts[] = { &query_stmt,
 static void load_queries_from_disk(void);
 
 // Return the maximum ID of the in-memory database
-unsigned long __attribute__((pure)) get_max_db_idx(void)
+sqlite3_int64 __attribute__((pure)) get_max_db_idx(void)
 {
 	return last_mem_db_idx;
 }
 
-void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num)
+void db_counts(sqlite3_int64 *last_idx, sqlite3_int64 *mem_num, sqlite3_int64 *disk_num)
 {
 	*last_idx = last_mem_db_idx;
 	*mem_num = mem_db_num;
@@ -233,8 +233,12 @@ bool init_memory_database(void)
 		return false;
 	}
 
+	// The IFNULL() is needed to handle the case when there are no queries
+	// in the on-disk database yet. In this case, we want to copy all
+	// queries from the in-memory database (including the query with ID 0)
+	// to the on-disk database.
 	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
-	                                      "WHERE id > (SELECT MAX(id) FROM disk.query_storage) "\
+	                                      "WHERE id > IFNULL((SELECT MAX(id) FROM disk.query_storage), -1) "\
 	                                        "AND timestamp < ?",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -648,7 +652,7 @@ bool export_queries_to_disk(const bool final)
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (last_mem_db_idx = %lu)",
+		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (last_mem_db_idx = %lld)",
 		          time, last_mem_db_idx);
 
 		// Bind upper time limit
@@ -1395,8 +1399,6 @@ void DB_read_queries(void)
 
 void init_disk_db_idx(void)
 {
-	// Query the database to get the maximum database ID is important to avoid
-	// starting counting from zero (would result in a UNIQUE constraint violation)
 	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
 
 	// If the disk database is broken, we cannot import queries from it,
@@ -1404,18 +1406,30 @@ void init_disk_db_idx(void)
 	// assume any index
 	if(FTLDBerror())
 	{
-		last_mem_db_idx = 0;
+		last_mem_db_idx = -1;
 		return;
 	}
 
-	// Prepare SQLite3 statement
-	sqlite3_stmt *stmt = NULL;
+	// Get memory database pointer
 	sqlite3 *memdb = get_memdb();
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
 
+	// Prepare SQLite3 statement on first call
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	
 	// Perform step
 	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
-		last_mem_db_idx = sqlite3_column_int64(stmt, 0);
+	{
+		// We need to check that the returned value is not NULL (happens
+		// when there are no rows in the table). If it is NULL, we set
+		// last_mem_db_idx to -1 so that the next query will be stored
+		// with index 0. If it is not NULL, we set last_mem_db_idx to
+		// the returned value.
+		if(sqlite3_column_type(stmt, 0) == SQLITE_INTEGER)
+			last_mem_db_idx = sqlite3_column_int64(stmt, 0);
+		else
+			last_mem_db_idx = -1;
+	}
 	else
 		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
 		        sqlite3_errstr(rc));
@@ -1423,7 +1437,7 @@ void init_disk_db_idx(void)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	log_debug(DEBUG_DATABASE, "Last long-term idx is %lu", last_mem_db_idx);
+	log_debug(DEBUG_DATABASE, "Last long-term idx is %lld", last_mem_db_idx);
 }
 
 bool queries_to_database(void)
@@ -1454,15 +1468,35 @@ bool queries_to_database(void)
 		return true;
 	}
 
-	// Loop over recent queries and store new or changed ones in the
-	// in-memory database
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
 	// expect replies to still arrive after 30 seconds - they are anyway
-	// useless as the client will have already timed out tis particular
+	// useless as the client will have already timed out this particular
 	// query and retried or failed
 	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
-	for(unsigned int queryID = counters->queries - 1; queryID > 0; queryID--)
+	unsigned int last_query = counters->queries - 1;
+	while(last_query > 0)
+	{
+		queriesData *query = getQuery(last_query, true);
+		if(query == NULL)
+		{
+			log_err("Memory error in queries_to_database() when trying to access query %u", last_query);
+			return false;
+		}
+		if(query->timestamp < limit_timestamp)
+		{
+			// We found the first query older than our limit
+			last_query++;
+			break;
+		}
+		last_query--;
+	}
+
+	log_debug(DEBUG_DATABASE, "Storing queries from ID %u to %u in in-memory-database", last_query, counters->queries - 1);
+
+	// Loop over recent queries and store new or changed ones in the
+	// in-memory database
+	for(unsigned int queryID = last_query; queryID < counters->queries; queryID++)
 	{
 		// Get query pointer
 		queriesData *query = getQuery(queryID, true);
@@ -1472,10 +1506,6 @@ bool queries_to_database(void)
 			log_err("Memory error in queries_to_database() when trying to access query %u", queryID);
 			break;
 		}
-
-		// Skip too old queries (see note above the loop)
-		if(query->timestamp < limit_timestamp)
-			break;
 
 		// Skip queries which have not changed since the last iteration
 		if(!query->flags.database.changed)
@@ -1492,6 +1522,9 @@ bool queries_to_database(void)
 			// We create a new query
 			idx = last_mem_db_idx + 1;
 		}
+
+		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld (old idx %lld)",
+		          queryID, idx, query->db);
 
 		// ID
 		sqlite3_bind_int64(query_stmt, 1, idx);
@@ -1684,7 +1717,7 @@ bool queries_to_database(void)
 		{
 			// Store database index for this query (in case we need to
 			// update it later on)
-			query->db = (int64_t)++last_mem_db_idx;
+			query->db = ++last_mem_db_idx;
 
 			// Total counter information (delta computation)
 			new_total++;

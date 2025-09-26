@@ -18,6 +18,7 @@
 
 void timer_start(const enum timers i);
 double timer_elapsed_msec(const enum timers i);
+double time_diff(struct timespec start, struct timespec end) __attribute__((const));
 void sleepms(const int milliseconds);
 void set_blockingmode_timer(double delay, bool blocked);
 void get_blockingmode_timer(double *delay, bool *target_status);
