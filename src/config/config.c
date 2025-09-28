@@ -1068,6 +1068,14 @@ void initConfig(struct config *conf)
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
 
+	conf->webserver.advancedOpts.k = "webserver.advancedOpts";
+	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). See the CivetWeb documentation for a list of supported options. The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". Be aware that this is an advanced option and that setting options here may break the web server if invalid or conflicting with other settings applied based on other settings in this file. The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last values is used when a config option is specified multiple times). Use with caution.\n\n Example: [ \"ssl_protocol_version=4\", \"ssl_cipher_list=AES128:!MD5\" ]";
+	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of valid CivetWeb options");
+	conf->webserver.advancedOpts.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL;
+	conf->webserver.advancedOpts.d.json = cJSON_CreateArray();
+	conf->webserver.advancedOpts.c = validate_stub; // Only type-based checking
+
 	conf->webserver.tls.validity.k = "webserver.tls.validity";
 	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for.\n\n Defaults to 47 days. A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate. If you set the validity range to 0 days and still try to generate a certificate, Pi-hole will set a fixed validity range of roughly 30 years for the certificate.";
 	conf->webserver.tls.validity.t = CONF_UINT;
