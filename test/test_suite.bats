@@ -2340,3 +2340,17 @@
   run bash -c 'grep -F "Webserver option 12/12: <END OF OPTIONS>" /var/log/pihole/FTL.log'
   [[ $status == 0 ]]
 }
+
+@test "FTL terminates with message" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  # Kill pihole-FTL after having completed tests
+  # This will also shut down the debugger
+  run bash -c 'kill "$(pidof pihole-FTL)"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
+  # Wait until pihole-FTL has terminated
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+}

@@ -28,18 +28,28 @@ static sqlite3 *_memdb = NULL;
 static bool store_in_database = false;
 static double new_last_timestamp = 0;
 static unsigned int new_total = 0, new_blocked = 0;
-static sqlite3_int64 last_mem_db_idx = -1, last_disk_db_idx = -1;
+static sqlite3_int64 last_mem_db_idx = -1;
 static unsigned int mem_db_num = 0, disk_db_num = 0;
 static sqlite3_stmt *query_stmt = NULL;
 static sqlite3_stmt *domain_stmt = NULL;
 static sqlite3_stmt *client_stmt = NULL;
 static sqlite3_stmt *forward_stmt = NULL;
 static sqlite3_stmt *addinfo_stmt = NULL;
+static sqlite3_stmt *queries_to_disk_stmt = NULL;
+#define SUBTABLE_STMTS 5
+static sqlite3_stmt *subtables_to_disk_stmts[SUBTABLE_STMTS] = { NULL };
+// Array of all prepared statements
 static sqlite3_stmt **stmts[] = { &query_stmt,
                                   &domain_stmt,
                                   &client_stmt,
                                   &forward_stmt,
-                                  &addinfo_stmt };
+                                  &addinfo_stmt,
+                                  &queries_to_disk_stmt,
+                                  &subtables_to_disk_stmts[0],
+                                  &subtables_to_disk_stmts[1],
+                                  &subtables_to_disk_stmts[2],
+                                  &subtables_to_disk_stmts[3],
+                                  &subtables_to_disk_stmts[4] };
 
 // Private prototypes
 static void load_queries_from_disk(void);
@@ -222,6 +232,41 @@ bool init_memory_database(void)
 		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
 		return false;
 	}
+
+	// The IFNULL() is needed to handle the case when there are no queries
+	// in the on-disk database yet. In this case, we want to copy all
+	// queries from the in-memory database (including the query with ID 0)
+	// to the on-disk database.
+	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
+	                                      "WHERE id > IFNULL((SELECT MAX(id) FROM disk.query_storage), -1) "\
+	                                        "AND timestamp < ?",
+	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
+	if( rc != SQLITE_OK )
+	{
+		log_err("init_memory_database(queries_to_disk) - SQL error step: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	const char *subtable_sql[SUBTABLE_STMTS] = {
+		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
+		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
+		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
+		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
+		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
+	};
+
+	// Export linking tables
+	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
+	{
+		rc = sqlite3_prepare_v3(_memdb, subtable_sql[i], -1,
+		                        SQLITE_PREPARE_PERSISTENT, &subtables_to_disk_stmts[i], NULL);
+		if( rc != SQLITE_OK )
+		{
+			log_err("init_memory_database(queries_to_disk) - SQL error prepare: %s", sqlite3_errstr(rc));
+			return false;
+		}
+	}
+
 
 	// Attach disk database
 	if(attached)
@@ -580,52 +625,6 @@ bool import_queries_from_disk(void)
 	return okay;
 }
 
-// Query the database to get the maximum database ID is important to avoid
-// starting counting from zero (would result in a UNIQUE constraint violation)
-static void update_last_disk_db_idx(void)
-{
-	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
-
-	// If the disk database is broken, we cannot import queries from it,
-	// however, as we will also never export any queries, we can safely
-	// assume any index
-	if(FTLDBerror())
-	{
-		last_disk_db_idx = -1;
-		last_mem_db_idx = -1;
-		return;
-	}
-
-	// Get memory database pointer
-	sqlite3 *memdb = get_memdb();
-
-	// Prepare SQLite3 statement on first call
-	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	
-	// Perform step
-	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
-	{
-		// We need to check that the returned value is not NULL (happens
-		// when there are no rows in the table). If it is NULL, we set
-		// last_disk_db_idx to -1 so that the next query will be stored
-		// with index 0. If it is not NULL, we set last_disk_db_idx to
-		// the returned value.
-		if(sqlite3_column_type(stmt, 0) == SQLITE_INTEGER)
-			last_disk_db_idx = sqlite3_column_int64(stmt, 0);
-		else
-			last_disk_db_idx = -1;
-	}
-	else
-		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
-		        sqlite3_errstr(rc));
-
-	// Finalize statement
-	sqlite3_finalize(stmt);
-
-	log_debug(DEBUG_DATABASE, "Last long-term idx is %lld", last_disk_db_idx);
-}
-
 // Export in-memory queries to disk - either due to periodic dumping (final =
 // false) or because of a shutdown (final = true)
 // When final is false, we only export queries that are older than REPLY_TIMEOUT
@@ -648,61 +647,38 @@ bool export_queries_to_disk(const bool final)
 
 	// Start transaction
 	sqlite3 *memdb = get_memdb();
-	sqlite3_stmt *stmt = NULL;
 	SQL_bool(memdb, "BEGIN TRANSACTION");
 
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		const char *querystr = "INSERT INTO disk.query_storage SELECT * FROM query_storage WHERE id > ? AND timestamp < ?";
-
-		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE id > %lld (max is %lld) and timestamp < %f",
-		          last_disk_db_idx, last_mem_db_idx, time);
-
-		// Prepare SQLite3 statement
-		log_debug(DEBUG_DATABASE, "Accessing in-memory database");
-		if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-			return false;
-		}
-
-		// Bind index
-		if((rc = sqlite3_bind_int64(stmt, 1, last_disk_db_idx)) != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): Failed to bind id: %s", sqlite3_errstr(rc));
-			return false;
-		}
+		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (last_mem_db_idx = %lld)",
+		          time, last_mem_db_idx);
 
 		// Bind upper time limit
 		// This prevents queries from the last 30 seconds from being stored
 		// immediately on-disk to give them some time to complete before finally
 		// exported. We do not limit anything when storing during termination.
-		if((rc = sqlite3_bind_double(stmt, 2, time)) != SQLITE_OK)
+		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 			return false;
 		}
 
 		// Perform step
-		if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+		if((rc = sqlite3_step(queries_to_disk_stmt)) == SQLITE_DONE)
 			okay = true;
 		else
 		{
 			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
-			log_info("    SQL query was: \"%s\"", querystr);
-			log_info("    with parameters: id = %lld, timestamp = %f", last_disk_db_idx, time);
+			log_info("    with timestamp = %f", time);
 		}
 
 		// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
 		insertions = sqlite3_changes(memdb);
 
 		// Finalize statement
-		sqlite3_finalize(stmt);
-
-
-		// Update last_disk_db_idx
-		update_last_disk_db_idx();
+		sqlite3_reset(queries_to_disk_stmt);
 
 		/*
 		 * If there are any insertions, we:
@@ -735,45 +711,32 @@ bool export_queries_to_disk(const bool final)
 
 		// Update number of queries in the disk database
 		disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-
-		// All temp queries were stored to disk, update the IDs
-		last_disk_db_idx += insertions;
 	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
-	const char *subtable_names[] = {
+	const char *subtable_names[SUBTABLE_STMTS] = {
 		"domain_by_id",
 		"client_by_id",
 		"forward_by_id",
 		"addinfo_by_id",
 		"sqlite_sequence"
 	};
-	const char *subtable_sql[] = {
-		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
-		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
-		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
-		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
-		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
-	};
 
 	// Export linking tables
-	for(unsigned int i = 0; i < ArraySize(subtable_sql); i++)
+	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
 	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
+		if((rc = sqlite3_step(subtables_to_disk_stmts[i])) != SQLITE_DONE)
 			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
-			        subtable_sql[i], sqlite3_errstr(rc));
+			        subtable_names[i], sqlite3_errstr(rc));
+		sqlite3_reset(subtables_to_disk_stmts[i]);
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
 	// End transaction
-	if((rc = sqlite3_exec(memdb, "END TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
+	SQL_bool(memdb, "END TRANSACTION");
 
-	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms, last SQLite ID %lld)",
-		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER), last_disk_db_idx);
+	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
+		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
 
 	return okay;
 }
@@ -1436,12 +1399,45 @@ void DB_read_queries(void)
 
 void init_disk_db_idx(void)
 {
-	// Initialize last index used in the disk database
-	update_last_disk_db_idx();
+	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
 
-	// Update indices so that the next call to DB_save_queries() skips the
-	// queries that we just imported from the database
-	last_mem_db_idx = last_disk_db_idx;
+	// If the disk database is broken, we cannot import queries from it,
+	// however, as we will also never export any queries, we can safely
+	// assume any index
+	if(FTLDBerror())
+	{
+		last_mem_db_idx = -1;
+		return;
+	}
+
+	// Get memory database pointer
+	sqlite3 *memdb = get_memdb();
+
+	// Prepare SQLite3 statement on first call
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	
+	// Perform step
+	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
+	{
+		// We need to check that the returned value is not NULL (happens
+		// when there are no rows in the table). If it is NULL, we set
+		// last_mem_db_idx to -1 so that the next query will be stored
+		// with index 0. If it is not NULL, we set last_mem_db_idx to
+		// the returned value.
+		if(sqlite3_column_type(stmt, 0) == SQLITE_INTEGER)
+			last_mem_db_idx = sqlite3_column_int64(stmt, 0);
+		else
+			last_mem_db_idx = -1;
+	}
+	else
+		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
+		        sqlite3_errstr(rc));
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	log_debug(DEBUG_DATABASE, "Last long-term idx is %lld", last_mem_db_idx);
 }
 
 bool queries_to_database(void)

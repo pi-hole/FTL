@@ -103,6 +103,7 @@ enum conf_type {
 #define FLAG_ENV_VAR               (1 << 4)
 #define FLAG_CONF_IMPORTED         (1 << 5)
 #define FLAG_READ_ONLY             (1 << 6)
+#define FLAG_FTL_LOG               (1 << 7)
 
 struct conf_item {
 	const char *k;        // item Key
