@@ -790,7 +790,6 @@ void http_init(void)
 		// above)
 		conf_opts[idx * 2] = key;
 		conf_opts[idx * 2 + 1] = value;
-		log_info("Using advanced webserver option %zu: \"%s\"=\"%s\"", idx, key, value);
 		idx++;
 	}
 
@@ -816,7 +815,7 @@ void http_init(void)
 	/* Start the server */
 	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
-		log_err("Start of webserver failed!. Web interface will not be available!");
+		log_err("Start of webserver failed! Web interface will not be available!");
 		print_webserver_opts(false, idx, (const char **)conf_opts);
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
