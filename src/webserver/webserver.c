@@ -33,6 +33,8 @@
 // thread_names
 #include "signals.h"
 
+#include <mbedtls/ssl_ciphersuites.h>
+
 // Server context handle
 static struct mg_context *ctx = NULL;
 static char *error_pages = NULL;
@@ -1000,6 +1002,32 @@ static void restart_http(void)
 
 	// Reinitialize the webserver
 	http_init();
+}
+
+/**
+ * @brief Prints all supported TLS cipher suites by mbedTLS.
+ *
+ * This function retrieves the list of all available TLS cipher suites
+ * supported by the mbedTLS library and prints their names, cipher IDs,
+ * and key lengths to the standard output.
+ *
+ * The output format for each cipher suite is:
+ *   - <suite_name> (Cipher ID: <suite_id>, Key length: <bitlen> bits)
+ *
+ * No parameters are required and no value is returned.
+ */
+void get_all_supported_ciphersuites(void)
+{
+	const int *all = mbedtls_ssl_list_ciphersuites();
+	printf("Supported TLS cipher suites:\n");
+	for (size_t i = 0; all[i] != 0; ++i)
+	{
+		// Get cipher suite details
+		const mbedtls_ssl_ciphersuite_t *suite_info = mbedtls_ssl_ciphersuite_from_id(all[i]);
+		const char *suite_name = mbedtls_ssl_ciphersuite_get_name(suite_info);
+		const size_t bitlen = mbedtls_ssl_ciphersuite_get_cipher_key_bitlen(suite_info);
+		printf("- %s (Cipher ID: %d, Key length: %zu bits)\n", suite_name, all[i], bitlen);
+	}
 }
 
 void *webserver_thread(void *val)

@@ -74,6 +74,8 @@
 #include "tools/netlink.h"
 // wait_for_string_in_file()
 #include "config/inotify.h"
+// get_all_supported_ciphersuites()
+#include "webserver/webserver.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -704,6 +706,14 @@ void parse_args(int argc, char *argv[])
 		exit(wait_for_string_in_file(argv[3], argv[2], (unsigned int)timeout, initial_filesize) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+	if(argc == 2 && strcmp(argv[1], "--tls-ciphers") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		get_all_supported_ciphersuites();
+		exit(EXIT_SUCCESS);
+	}
+
 	// start from 1, as argv[0] is the executable name
 	for(int i = 1; i < argc; i++)
 	{
@@ -1254,6 +1264,7 @@ void parse_args(int argc, char *argv[])
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
 			printf("\t%s--default-gateway%s   Get default network interface's name\n", green, normal);
+			printf("\t%s--tls-ciphers%s       List all supported TLS cipher suites\n", green, normal);
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
@@ -1357,8 +1368,8 @@ void suggest_complete(const int argc, char *argv[])
 			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr",
 			"--read-x509", "--read-x509-key", "regex-test",
 			"sha256sum", "sqlite3", "sqlite3_rsync", "tag",
-			"--teleporter", "test", "--totp",
-			"-v", "-vv", "--v", "version", "verify"
+			"--teleporter", "test", "--totp", "--tls-ciphers",
+			"-v", "-vv", "--v", "version", "verify",
 		};
 
 		// Provide matching suggestions

@@ -33,7 +33,7 @@ typedef struct {
 
 
 /* public api */
-int mbed_sslctx_init(SSL_CTX *ctx, const char *crt);
+int mbed_sslctx_init(SSL_CTX *ctx, const char *crt, const char *cipherlist);
 void mbed_sslctx_uninit(SSL_CTX *ctx);
 void mbed_ssl_close(mbedtls_ssl_context *ssl);
 int mbed_ssl_accept(mbedtls_ssl_context **ssl,
@@ -43,6 +43,9 @@ int mbed_ssl_accept(mbedtls_ssl_context **ssl,
 int mbed_ssl_read(mbedtls_ssl_context *ssl, unsigned char *buf, int len);
 int mbed_ssl_write(mbedtls_ssl_context *ssl, const unsigned char *buf, int len);
 
+/* Set the ciphersuites to be used by mbedtls using a comma-separated string */
+int mbed_sslctx_set_ciphersuites(mbedtls_ssl_config *conf, const char *cipher_list);
+
 static void mbed_debug(void *context,
                        int level,
                        const char *file,
@@ -50,9 +53,69 @@ static void mbed_debug(void *context,
                        const char *str);
 static int mbed_ssl_handshake(mbedtls_ssl_context *ssl);
 
+/**
+ * @brief Sets the list of allowed ciphersuites for an mbedTLS SSL configuration.
+ *
+ * Parses a comma-separated list of ciphersuite names, converts them to their
+ * corresponding mbedTLS ciphersuite IDs, and configures the SSL context to use
+ * only those ciphersuites.
+ *
+ * @param conf Pointer to the mbedTLS SSL configuration structure.
+ * @param cipher_list Comma-separated string of ciphersuite names.
+ * @return 0 on success,
+ *         -1 if conf or cipher_list is NULL,
+ *         -2 if no valid ciphersuites are found in the list.
+ *
+ * @note The ciphersuite ID array is static and must remain valid after the function returns,
+ *       as mbedtls_ssl_conf_ciphersuites() does not copy the array.
+ */
+int mbed_sslctx_set_ciphersuites(mbedtls_ssl_config *conf, const char *cipher_list) {
+	if (conf == NULL || cipher_list == NULL) {
+		return -1;
+	}
+
+	// The array for ciphersuite IDs need to be static, because it must
+	// remain valid after this function returns as
+	// mbedtls_ssl_conf_ciphersuites() does not copy the array, but only
+	// stores the pointer.
+	static int ciphersuites[64] = { 0 };
+	size_t count = 0;
+
+	char buf[1024];
+	strncpy(buf, cipher_list, sizeof(buf) - 1);
+	buf[sizeof(buf) - 1] = '\0';
+
+	char *token = strtok(buf, ",");
+	while (token && count < 63) {
+		// Remove leading/trailing whitespace
+		while (*token == ' ' || *token == '\t') token++;
+		char *end = token + strlen(token) - 1;
+		while (end > token && (*end == ' ' || *end == '\t')) {
+			*end = '\0';
+			end--;
+		}
+		const mbedtls_ssl_ciphersuite_t *ciphersuite = mbedtls_ssl_ciphersuite_from_string(token);
+		if (ciphersuite != NULL) {
+			const int id = mbedtls_ssl_ciphersuite_get_id(ciphersuite);
+			DEBUG_TRACE("Adding ciphersuite '%s' (ID %d)", token, id);
+			ciphersuites[count++] = id;
+		}
+		token = strtok(NULL, ",");
+	}
+	ciphersuites[count] = 0;
+
+	if (count == 0) {
+		DEBUG_TRACE("No valid ciphersuites found");
+		return -2; // No valid ciphersuites found
+	}
+
+	// Set the ciphersuites
+	mbedtls_ssl_conf_ciphersuites(conf, ciphersuites);
+	return 0;
+}
 
 int
-mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
+mbed_sslctx_init(SSL_CTX *ctx, const char *crt, const char *cipherlist)
 {
 	mbedtls_ssl_config *conf;
 	int rc;
@@ -157,6 +220,15 @@ mbed_sslctx_init(SSL_CTX *ctx, const char *crt)
 	if (rc != 0) {
 		DEBUG_TRACE("TLS cannot set certificate and private key (%i)", rc);
 		return -1;
+	}
+
+	/* Set ciphersuites if specified via environment variable (example usage) */
+	if (cipherlist != NULL) {
+		int cipher_rc = mbed_sslctx_set_ciphersuites(conf, cipherlist);
+		if (cipher_rc != 0) {
+			DEBUG_TRACE("Failed to set ciphersuites (%i)", cipher_rc);
+			return -1;
+		}
 	}
 	return 0;
 }
