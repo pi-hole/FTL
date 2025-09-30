@@ -142,7 +142,6 @@ struct config {
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
-		struct conf_item domain;
 		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
@@ -153,6 +152,10 @@ struct config {
 		struct conf_item port;
 		struct conf_item localise;
 		struct conf_item revServers;
+		struct {
+			struct conf_item name;
+			struct conf_item local;
+		} domain;
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;

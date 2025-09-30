@@ -217,7 +217,12 @@ components:
                 expandHosts:
                   type: boolean
                 domain:
-                  type: string
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    local:
+                      type: boolean
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -677,7 +682,9 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
-            domain: "lan"
+            domain:
+              name: "lan"
+              local: true
             bogusPriv: true
             dnssec: true
             interface: "eth0"
