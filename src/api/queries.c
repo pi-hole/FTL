@@ -521,13 +521,13 @@ int api_queries(struct ftl_conn *api)
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{
 						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
-						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search", &where);
+						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
 					}
 					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
 					{
 						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
 						// We search both client IP and name
-						add_querystr_string(api, querystr, "c.ip LIKE :client_search OR c.name LIKE", ":client_search", &where);
+						add_querystr_string(api, querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
 					}
 					else
 						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
