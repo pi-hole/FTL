@@ -92,7 +92,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
  * This function is called by SQLite when the database is locked and cannot be accessed
  * immediately. It implements an exponential backoff strategy using predefined delay and
  * total wait time arrays. The function waits for a specified delay (in milliseconds)
- * before retrying, up to a maximum timeout specified by the caller.
+ * before retrying, up to DATABASE_BUSY_TIMEOUT.
  *
  * @param ptr Pointer to an unsigned int specifying the maximum allowed wait time (in ms).
  * @param count The number of times the busy handler has been invoked for the same operation.
