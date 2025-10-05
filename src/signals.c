@@ -453,21 +453,24 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 static time_t last_term_warning = 0;
 void check_if_want_terminate(void)
 {
+	if(!want_terminate)
+		// We are not asked to terminate
+		return;
+
 	// Return early if we are not allowed to terminate
-	if(want_terminate && !gravity_running)
+	if(gravity_running)
 	{
-		// Only log once every 30 seconds
-		if(time(NULL) - last_term_warning > 30)
+		// Only log once every 30 seconds or if any debugging is enabled
+		if(time(NULL) - last_term_warning > 30 || debug_flags[DEBUG_ANY])
 		{
-			log_info("Terminating as gravity is not running anymore...");
+			log_info("Not terminating as gravity is still running...");
 			last_term_warning = time(NULL);
 		}
 		return;
 	}
 
-	// Terminate if we are allowed to
-	if(want_terminate)
-		terminate();
+	// Terminate if gravity is not running
+	terminate();
 }
 
 // Terminates the DNS service by signaling or marking it as failed
