@@ -682,14 +682,22 @@ void FTL_reload_all_domainlists(void)
 	gravityDB_reopen();
 
 	// Get size of gravity, number of domains, groups, clients, and lists
-	counters->database.gravity = gravityDB_count(GRAVITY_TABLE);
-	counters->database.groups = gravityDB_count(GROUPS_TABLE);
-	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
-	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
-	counters->database.domains.allowed.exact = gravityDB_count(EXACT_WHITELIST_TABLE);
-	counters->database.domains.denied.exact = gravityDB_count(EXACT_BLACKLIST_TABLE);
-	counters->database.domains.allowed.regex = gravityDB_count(REGEX_ALLOW_TABLE);
-	counters->database.domains.denied.regex = gravityDB_count(REGEX_DENY_TABLE);
+	counters->database.gravity = gravityDB_count(GRAVITY_TABLE, false);
+	counters->database.groups = gravityDB_count(GROUPS_TABLE, false);
+	counters->database.clients = gravityDB_count(CLIENTS_TABLE, false);
+	counters->database.lists = gravityDB_count(ADLISTS_TABLE, false);
+
+	counters->database.domains.allowed.exact.total = gravityDB_count(EXACT_ALLOW_TABLE, true);
+	counters->database.domains.allowed.exact.enabled = gravityDB_count(EXACT_ALLOW_TABLE, false);
+
+	counters->database.domains.denied.exact.enabled = gravityDB_count(EXACT_DENY_TABLE, false);
+	counters->database.domains.denied.exact.total = gravityDB_count(EXACT_DENY_TABLE, true);
+
+	counters->database.domains.allowed.regex.enabled = gravityDB_count(REGEX_ALLOW_TABLE, false);
+	counters->database.domains.allowed.regex.total = gravityDB_count(REGEX_ALLOW_TABLE, true);
+
+	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
+	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_reopen()

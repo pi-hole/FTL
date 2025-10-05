@@ -931,9 +931,9 @@ bool gravityDB_getTable(const unsigned char list)
 	// when domains are included in more than one group
 	if(list == GRAVITY_TABLE)
 		querystr = "SELECT DISTINCT domain FROM vw_gravity";
-	else if(list == EXACT_BLACKLIST_TABLE)
+	else if(list == EXACT_DENY_TABLE)
 		querystr = "SELECT domain, id FROM vw_blacklist GROUP BY id";
-	else if(list == EXACT_WHITELIST_TABLE)
+	else if(list == EXACT_ALLOW_TABLE)
 		querystr = "SELECT domain, id FROM vw_whitelist GROUP BY id";
 	else if(list == REGEX_DENY_TABLE)
 		querystr = "SELECT domain, id FROM vw_regex_blacklist GROUP BY id";
@@ -1004,7 +1004,7 @@ void gravityDB_finalizeTable(void)
 
 // Get number of domains in a specified table of the gravity database We return
 // the constant DB_FAILED and log to FTL.log if we encounter any error
-int gravityDB_count(const enum gravity_tables list)
+int gravityDB_count(const enum gravity_tables list, const bool total)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -1022,17 +1022,21 @@ int gravityDB_count(const enum gravity_tables list)
 			// very low-end devices such as the Raspierry Pi Zero
 			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
 			break;
-		case EXACT_BLACKLIST_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_blacklist";
+		case EXACT_DENY_TABLE:
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 1"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 1 AND enabled = 1";
 			break;
-		case EXACT_WHITELIST_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_whitelist";
+		case EXACT_ALLOW_TABLE:
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 0"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 0 AND enabled = 1";
 			break;
 		case REGEX_DENY_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_blacklist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 3"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 3 AND enabled = 1";
 			break;
 		case REGEX_ALLOW_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_whitelist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 2"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 2 AND enabled = 1";
 			break;
 		case CLIENTS_TABLE:
 			querystr = "SELECT COUNT(1) FROM client";
