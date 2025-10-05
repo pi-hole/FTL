@@ -690,14 +690,14 @@ void FTL_reload_all_domainlists(void)
 	counters->database.domains.allowed.exact.total = gravityDB_count(EXACT_ALLOW_TABLE, true);
 	counters->database.domains.allowed.exact.enabled = gravityDB_count(EXACT_ALLOW_TABLE, false);
 
-	counters->database.domains.denied.exact.enabled = gravityDB_count(EXACT_DENY_TABLE, false);
 	counters->database.domains.denied.exact.total = gravityDB_count(EXACT_DENY_TABLE, true);
+	counters->database.domains.denied.exact.enabled = gravityDB_count(EXACT_DENY_TABLE, false);
 
-	counters->database.domains.allowed.regex.enabled = gravityDB_count(REGEX_ALLOW_TABLE, false);
 	counters->database.domains.allowed.regex.total = gravityDB_count(REGEX_ALLOW_TABLE, true);
+	counters->database.domains.allowed.regex.enabled = gravityDB_count(REGEX_ALLOW_TABLE, false);
 
-	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
+	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_reopen()
