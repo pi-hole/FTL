@@ -48,7 +48,16 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// Check if it's in the form "IP[ \t]HOSTNAME"
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
+		
+		// Strip leading spaces/tabs
+		while(isspace((unsigned char)*tmp))
+			tmp++;
+		
 		char *ip = strsep(&tmp, " \t");
+
+		// Skip any extra whitespace/tabs after the IP
+		while(tmp && isspace((unsigned char)*tmp))
+			tmp++;
 
 		if(!ip || !*ip)
 		{
@@ -81,9 +90,9 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 				host++;
 
 			// Skip this entry if it's empty after trimming
-			// the whitespaces/tabs at the end of the line
+			// the whitespaces/tabs (due to multiple consecutive spaces)
 			if(strlen(host) == 0)
-				break;
+				continue;
 
 			// If this hostname is actually the start of a comment
 			// (first letter is '#'), skip parsing the rest of the
@@ -534,4 +543,136 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 
 	// Return success
 	return true;
+}
+
+bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 7 && val->ui != 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 7", key);
+		return false;
+	}
+
+	return true;
+}
+
+// Sanitize the dns.hosts array
+// This function normalizes whitespace formatting in the dns.hosts entries
+// to ensure consistent formatting when saving to pihole.toml
+void sanitize_dns_hosts(union conf_value *val)
+{
+	if(!cJSON_IsArray(val->json))
+		return;
+
+	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
+	{
+		// Get array item
+		cJSON *item = cJSON_GetArrayItem(val->json, i);
+
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+			continue;
+
+		// Parse and sanitize the entry
+		char *str = strdup(item->valuestring);
+		char *tmp = str;
+		
+		// Strip leading spaces/tabs
+		while(isspace((unsigned char)*tmp))
+			tmp++;
+		
+		// If the string is empty or starts with a comment, skip it
+		if(strlen(tmp) == 0 || tmp[0] == '#')
+		{
+			free(str);
+			continue;
+		}
+		
+		char *ip = strsep(&tmp, " \t");
+
+		// Skip any extra whitespace/tabs after the IP
+		while(tmp && isspace((unsigned char)*tmp))
+			tmp++;
+
+		// If no IP found or IP is empty, skip this entry
+		if(!ip || !*ip)
+		{
+			free(str);
+			continue;
+		}
+
+		// Build the sanitized string (allocate based on original string size)
+		const size_t original_len = strlen(item->valuestring);
+		char *sanitized = calloc(original_len + 1, sizeof(char));
+		if(sanitized == NULL)
+		{
+			free(str);
+			continue;
+		}
+		strcpy(sanitized, ip);
+		size_t current_len = strlen(ip);
+		
+		// Process hostnames
+		char *host = NULL;
+		while(tmp && (host = strsep(&tmp, " \t")) != NULL)
+		{
+			// Skip extra whitespace/tabs
+			while(isspace((unsigned char)*host))
+				host++;
+
+			// Skip empty entries
+			if(strlen(host) == 0)
+				continue;
+
+			// If this hostname starts with a comment, add it and the rest to the sanitized string, then stop processing
+			if(host[0] == '#')
+			{
+				// Add the comment part with single space separator
+				if(current_len < original_len)
+				{
+					sanitized[current_len++] = ' ';
+				}
+				size_t host_len = strlen(host);
+				if(current_len + host_len <= original_len)
+				{
+					strcpy(sanitized + current_len, host);
+					current_len += host_len;
+				}
+				
+				// Add any remaining content after this comment token
+				if(tmp && strlen(tmp) > 0)
+				{
+					size_t tmp_len = strlen(tmp);
+					if(current_len < original_len)
+					{
+						sanitized[current_len++] = ' ';
+					}
+					if(current_len + tmp_len <= original_len)
+					{
+						strcpy(sanitized + current_len, tmp);
+						current_len += tmp_len;
+					}
+				}
+				break;
+			}
+
+			// Add hostname to sanitized string with single space separator
+			if(current_len < original_len)
+			{
+				sanitized[current_len++] = ' ';
+			}
+			size_t host_len = strlen(host);
+			if(current_len + host_len <= original_len)
+			{
+				strcpy(sanitized + current_len, host);
+				current_len += host_len;
+			}
+		}
+
+		// Update the JSON item with the sanitized string
+		cJSON_SetValuestring(item, sanitized);
+
+		free(sanitized);
+		free(str);
+	}
 }

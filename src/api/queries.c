@@ -301,13 +301,13 @@ int api_queries(struct ftl_conn *api)
 	char search[2][512] = { { 0 }, { 0 } };
 
 	// We start with the most recent query at the beginning (until the cursor is changed)
-	unsigned long cursor, largest_db_index, mem_dbnum, disk_dbnum;
+	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
 	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
-	cursor = largest_db_index;
+	unsigned long cursor = (unsigned long)largest_db_index;
 
 	// We send 100 queries (unless the API is asked for a different limit)
 	int length = 100;
-	unsigned int start = 0;
+	unsigned int start = 0u;
 	bool cursor_set = false, where = false;
 	double timestamp_from = 0.0, timestamp_until = 0.0;
 
@@ -339,6 +339,14 @@ int api_queries(struct ftl_conn *api)
 		// Upstream filtering?
 		if(GET_STR("upstream", upstreamname, api->request->query_string) > 0)
 		{
+			// If there is a space in the upstream name, truncate
+			// the string to the first space. This is necessary as
+			// upstreams may contains a hostname in parentheses,
+			// after the IP address
+			char *space = strchr(upstreamname, ' ');
+			if(space != NULL)
+				*space = '\0';
+
 			if(strcmp(upstreamname, "blocklist") == 0)
 			{
 				// Pseudo-upstream for blocked queries
@@ -407,7 +415,7 @@ int api_queries(struct ftl_conn *api)
 			// Do not start at the most recent, but at an older
 			// query (so new queries do not show up suddenly in the
 			// log and shift pages)
-			if(unum <= largest_db_index && msg == NULL)
+			if(unum <= (unsigned long)largest_db_index && msg == NULL)
 			{
 				cursor = unum;
 				cursor_set = true;
@@ -513,13 +521,13 @@ int api_queries(struct ftl_conn *api)
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{
 						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
-						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search", &where);
+						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
 					}
 					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
 					{
 						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
 						// We search both client IP and name
-						add_querystr_string(api, querystr, "c.ip LIKE :client_search OR c.name LIKE", ":client_search", &where);
+						add_querystr_string(api, querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
 					}
 					else
 						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
@@ -1061,7 +1069,7 @@ int api_queries(struct ftl_conn *api)
 
 		added++;
 	}
-	log_debug(DEBUG_API, "Sending %u of %lu in memory and %lu on disk queries (counted %u, skipped %u)",
+	log_debug(DEBUG_API, "Sending %u of %lld in memory and %lld on disk queries (counted %u, skipped %u)",
 	          added, mem_dbnum, disk_dbnum, recordsCounted, regex_skipped);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
@@ -1078,7 +1086,7 @@ int api_queries(struct ftl_conn *api)
 		// Send cursor pointing to the firstID of the data obtained in
 		// this query. This ensures we get a static result by skipping
 		// any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lu (firstID)", get_max_db_idx());
+		log_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
 	}
 

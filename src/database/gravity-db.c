@@ -1038,7 +1038,7 @@ void gravityDB_finalizeTable(void)
 
 // Get number of domains in a specified table of the gravity database We return
 // the constant DB_FAILED and log to FTL.log if we encounter any error
-int gravityDB_count(const enum gravity_tables list)
+int gravityDB_count(const enum gravity_tables list, const bool total)
 {
 	if(!gravityDB_opened && !gravityDB_open())
 	{
@@ -1057,16 +1057,20 @@ int gravityDB_count(const enum gravity_tables list)
 			querystr = "SELECT value FROM info WHERE property = 'gravity_count';";
 			break;
 		case EXACT_DENY_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_denylist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 1"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 1 AND enabled = 1";
 			break;
 		case EXACT_ALLOW_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_allowlist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 0"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 0 AND enabled = 1";
 			break;
 		case REGEX_DENY_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_denylist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 3"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 3 AND enabled = 1";
 			break;
 		case REGEX_ALLOW_TABLE:
-			querystr = "SELECT COUNT(DISTINCT domain) FROM vw_regex_allowlist";
+			querystr = total ? "SELECT COUNT(*) FROM domainlist WHERE type = 2"
+			                 : "SELECT COUNT(*) FROM domainlist WHERE type = 2 AND enabled = 1";
 			break;
 		case CLIENTS_TABLE:
 			querystr = "SELECT COUNT(1) FROM client";
@@ -2132,14 +2136,17 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	if(!exact && item != NULL && item[0] != '\0')
 	{
 		// Build LIKE string (% + item + %)
-		like_name = calloc(strlen(item)+3, sizeof(char));
+		// 2 for '%' at start and end, 1 for null terminator
+		const size_t LIKE_PATTERN_EXTRA_CHARS = 3;
+		const size_t maxlen = 2*strlen(item) + LIKE_PATTERN_EXTRA_CHARS;
+		like_name = calloc(maxlen, sizeof(char));
 		if(like_name == NULL)
 		{
 			log_err("Failed to allocate memory for like_name");
 			*message = "Failed to allocate memory for like_name";
 			return false;
 		}
-		sprintf(like_name, "%%%s%%", item);
+		snprintf(like_name, maxlen, "%%%s%%", item);
 	}
 	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
@@ -2149,7 +2156,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE name = :item";
 			else
-				filter = " WHERE name LIKE :item";
+				filter = " WHERE name LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,name,enabled,date_added,date_modified,description AS comment FROM \"group\"%s;", filter);
 	}
@@ -2170,7 +2177,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter2 = " AND address = :item";
 			else
-				filter2 = " AND address LIKE :item";
+				filter2 = " AND address LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,type,address,enabled,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM adlist_by_group g WHERE g.adlist_id = a.id) AS group_ids,"
@@ -2184,7 +2191,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE ip = :item";
 			else
-				filter = " WHERE ip LIKE :item";
+				filter = " WHERE ip LIKE :item ESCAPE '\\'";
 		}
 		snprintf(querystr, buflen, "SELECT id,ip AS client,date_added,date_modified,comment,"
 		                                     "(SELECT GROUP_CONCAT(group_id) FROM client_by_group g WHERE g.client_id = c.id) AS group_ids "
@@ -2197,7 +2204,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " WHERE g.domain = :item";
 			else
-				filter = " WHERE g.domain LIKE :item";
+				filter = " WHERE g.domain LIKE :item ESCAPE '\\'";
 		}
 		const char *table = listtype == GRAVITY_GRAVITY ? "gravity" : "antigravity";
 		snprintf(querystr, buflen, "SELECT domain,a.id,a.address,a.enabled,a.date_added,a.date_modified,a.comment,a.date_updated,a.number,a.invalid_domains,a.status,a.abp_entries,a.type,"
@@ -2211,7 +2218,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 			if(exact)
 				filter = " AND domain = :item";
 			else
-				filter = " AND domain LIKE :item";
+				filter = " AND domain LIKE :item ESCAPE '\\'";
 		}
 
 		snprintf(querystr, buflen, "SELECT id,domain,type,enabled,date_added,date_modified,comment,"

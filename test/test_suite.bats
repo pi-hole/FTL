@@ -168,8 +168,14 @@
 }
 
 @test "Client 4: Client is recognized by MAC address" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.4 @127.0.0.1 +short"
-  run sleep 0.1
+
+  # Wait for lines we want to see in the log file
+  run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c "grep -c \"Found database hardware address 127.0.0.4 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -200,8 +206,14 @@
 }
 
 @test "Client 5: Client is recognized by MAC address" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.5 @127.0.0.1 +short"
-  run sleep 0.1
+
+  # Wait for lines we want to see in the log file
+  run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c "grep -c \"Found database hardware address 127.0.0.5 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -232,8 +244,14 @@
 }
 
 @test "Client 6: Client is recognized by interface name" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.6 @127.0.0.1 +short"
-  run sleep 0.1
+
+  # Wait for lines we want to see in the log file
+  run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c "grep -c \"Found database hardware address 127.0.0.6 -> 00:11:22:33:44:55\" /var/log/pihole/FTL.log"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "1" ]]
@@ -731,6 +749,27 @@
   run bash -c './pihole-FTL help'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "The Pi-hole FTL engine - "* ]]
+}
+
+@test "CLI config output as expected" {
+  # Partial match printing
+  run bash -c './pihole-FTL --config dns.upstream'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "dns.upstreams = [ 127.0.0.1#5555 ]" ]]
+
+  # Exact match printing
+  run bash -c './pihole-FTL --config dns.upstreams'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[ 127.0.0.1#5555 ]" ]]
+  run bash -c './pihole-FTL --config dns.piholePTR'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "PI.HOLE" ]]
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
+  run bash -c './pihole-FTL --config webserver.port'
+  printf "%s\n" "${lines[@]}"
+  [[ "${lines[0]}" == "80o,443os,[::]:80o,[::]:443os" ]]
 }
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
@@ -1461,8 +1500,14 @@
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
   # Set the reply for pi.hole to custom IPv4 and IPv6 addresses
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"reply\":{\"host\":{\"force4\":true,\"IPv4\":\"10.100.0.10\",\"force6\":true,\"IPv6\":\"fe80::10\"}}}}}"'
-  sleep 1
+
+  # Wait for change to be applied
+  run bash -c "./pihole-FTL wait-for 'INFO: Config file written to /etc/pihole/pihole.toml' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c "dig A pi.hole +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.10" ]]
@@ -1514,19 +1559,32 @@
   run bash -c 'grep "mode = \"NULL\"" /etc/pihole/pihole.toml'
   printf "grep output: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == '    mode = "NULL"' ]]
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
   printf "setting config: %s\n" "${lines[@]}"
-  run bash -c 'grep "mode = \"IP" /etc/pihole/pihole.toml'
-  printf "grep output (before reload): %s\n" "${lines[@]}"
-  [[ "${lines[0]}" == *'mode = "IP" ### CHANGED, default = "NULL"' ]]
+
+  # Wait for change to become effective
+  run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c "kill -HUP $(cat /run/pihole-FTL.pid)"
-  sleep 1
+
+  # Wait for change to become effective
+  run bash -c "./pihole-FTL wait-for 'INFO: Compiled 2 allow and 11 deny regex for 11 clients' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   run bash -c 'grep "mode = \"IP" /etc/pihole/pihole.toml'
   printf "grep output (after reload): %s\n" "${lines[@]}"
   [[ "${lines[0]}" == *'mode = "IP" ### CHANGED, default = "NULL"' ]]
+
   run bash -c "dig A denied.ftl +short @127.0.0.1"
   printf "A: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "10.100.0.11" ]]
+
   run bash -c "dig AAAA denied.ftl +short @127.0.0.1"
   printf "AAAA: %s\n" "${lines[@]}"
   [[ "${lines[0]}" == "fe80::11" ]]
@@ -1803,10 +1861,16 @@
 # This test should run before a password is set
 @test "Lua server page is generating proper backtrace" {
   # Enable serving of Lua pages outside /admin
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config webserver.serve_all true'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == 'true' ]]
-  run bash -c 'sleep 1'
+
+  # Wait for change to become effective
+  run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
   # Run a page with a syntax error
   run bash -c 'curl -s 127.0.0.1/broken_lua'
   printf "%s\n" "${lines[@]}"
@@ -1894,6 +1958,40 @@
   [[ $status == 3 ]]
 }
 
+@test "DNS hosts sanitization: Whitespace is normalized when saving" {
+  # Set dns.hosts with various whitespace formatting issues
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.hosts "[\"  192.168.1.1    host1.local  \", \"   10.0.0.1\\t\\thost2.local   host3.local\", \"127.0.0.1     host4.local\\t\\thost5.local\"]"'
+  [[ $status == 0 ]]
+
+  # Wait for change to become effective
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
+  # Check that the sanitized entries are properly formatted
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]' ]]
+}
+
+@test "DNS hosts sanitization: Comments are handled correctly" { 
+  # Set dns.hosts with entries containing comments
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
+  [[ $status == 0 ]]
+
+  # Wait for change to become effective
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
+  # Check that the sanitized entries are properly formatted
+  run bash -c './pihole-FTL --config dns.hosts'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]' ]]
+}
+
 @test "Config validation working on the API (validator-based checking)" {
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"files\":{\"pcap\":\"%gh4b\"}}}"'
   printf "%s\n" "${lines[@]}"
@@ -1925,7 +2023,9 @@
   printf "pwhash: %s\n" "${pwhash}"
 
   # Set app password hash
-  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config/webserver/api/app_pwhash -d  "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${0}}}}}"' "${pwhash}"
+  # Configure extra timeouts to avoid CI issues on very slow runners due to
+  # compute-intense hashing
+  run bash -c 'curl -s --connect-timeout 15 --max-time 20 -X PATCH http://127.0.0.1/api/config/webserver/api/app_pwhash -d  "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${0}}}}}"' "${pwhash}"
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "{\"config\":{\"webserver\":{\"api\":{\"app_pwhash\":${pwhash}}}},\"took\":"*"}" ]]
 
@@ -2151,27 +2251,6 @@
   [[ $status == 0 ]]
 }
 
-@test "CLI config output as expected" {
-  # Partial match printing
-  run bash -c './pihole-FTL --config dns.upstream'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "dns.upstreams = [ 127.0.0.1#5555 ]" ]]
-
-  # Exact match printing
-  run bash -c './pihole-FTL --config dns.upstreams'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[ 127.0.0.1#5555 ]" ]]
-  run bash -c './pihole-FTL --config dns.piholePTR'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "PI.HOLE" ]]
-  run bash -c './pihole-FTL --config dns.hosts'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]" ]]
-  run bash -c './pihole-FTL --config webserver.port'
-  printf "%s\n" "${lines[@]}"
-  [[ "${lines[0]}" == "80o,443os,[::]:80o,[::]:443os" ]]
-}
-
 @test "Create, verify and re-import Teleporter file via CLI" {
   run bash -c './pihole-FTL --teleporter'
   printf "%s\n" "${lines[@]}"
@@ -2197,6 +2276,9 @@
 }
 
 @test "Expected number of config file rotations" {
+  # 1. Setting force4 = true (and others)
+  # 2. Setting dns.blocking.mode = "IP"
+  # 3. PATCH /api/config/webserver/api/password
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "3" ]]
@@ -2205,7 +2287,7 @@
   [[ ${lines[0]} == "1" ]]
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "%s\n" "${lines[@]}"
-  [[ ${lines[0]} == "1" ]]
+  [[ ${lines[0]} == "3" ]]
 }
 
 @test "Suggest expected completions" {
@@ -2222,4 +2304,53 @@
   printf "%s\n" "${lines[@]}"
   [[ ${lines[0]} == "true" ]]
   [[ ${lines[1]} == "" ]]
+}
+
+@test "Query with ID 0 has been saved to the database" {
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT COUNT(*) FROM queries WHERE id=0;"'
+  printf "%s\n" "${lines[@]}"
+  [[ ${lines[0]} == "1" ]]
+}
+
+@test "Webserver options are logged as expected" {
+  run bash -c 'grep -F "Webserver option 0/12: document_root=/var/www/html" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 1/12: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 2/12: listening_ports=80o,443os,[::]:80o,[::]:443os" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 3/12: decode_url=yes" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 4/12: enable_directory_listing=no" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 5/12: num_threads=50" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 6/12: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 7/12: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; img-src '"'self'"' data:;\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 8/12: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 9/12: enable_keep_alive=yes" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 10/12: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 11/12: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+  run bash -c 'grep -F "Webserver option 12/12: <END OF OPTIONS>" /var/log/pihole/FTL.log'
+  [[ $status == 0 ]]
+}
+
+@test "FTL terminates with message" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  # Kill pihole-FTL after having completed tests
+  # This will also shut down the debugger
+  run bash -c 'kill "$(pidof pihole-FTL)"'
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
+
+  # Wait until pihole-FTL has terminated
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  printf "%s\n" "${lines[@]}"
+  [[ $status == 0 ]]
 }

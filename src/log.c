@@ -584,8 +584,9 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	while (src < src_buf + src_sz)
 	{
 		// Check if we have enough space before writing
-		// Worst case: we need 4 chars for "\x00" + null terminator
-		if (dst >= dst_str + dst_sz - 5)
+		// Worst case: we need 4 chars for "0x00" + null terminator for
+		// one byte of input
+		if (dst > dst_str + dst_sz - 5)
 			break;
 
 		if (isprint(*src))
@@ -635,6 +636,32 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+/**
+ * @brief Escapes a given input string into a C-style escaped string literal.
+ *
+ * This function takes an input string and returns a newly allocated string
+ * where all characters are escaped as necessary to form a valid C string literal.
+ * The returned string must be freed by the caller.
+ *
+ * @param input The input string to escape. May be NULL.
+ * @return A pointer to the newly allocated escaped string, or NULL if input is NULL
+ *         or memory allocation fails.
+ *
+ * @note The returned string is allocated with calloc and must be freed by the caller.
+ * @note Uses binbuf_to_escaped_C_literal to perform the actual escaping.
+ */
+char * __attribute__ ((malloc)) escape_string(const char *input)
+{
+	if(input == NULL)
+		return NULL;
+	const size_t inlen = strlen(input);
+	// Worst case: every character is escaped as "0x00" + zero-terminator
+	const size_t bufsiz = 4 * inlen + 1;
+	char *buffer = calloc(bufsiz, sizeof(char));
+	binbuf_to_escaped_C_literal(input, inlen, buffer, bufsiz);
+	return buffer;
 }
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)
