@@ -409,42 +409,53 @@ void cleanup(const int ret)
 	if(resolver_ready)
 	{
 		// Terminate threads
+		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
 		terminate_threads();
 
 		// Close database connection
 		lock_shm();
+		log_debug(DEBUG_ANY, "Terminating: Closing gravity database");
 		gravityDB_close();
 		unlock_shm();
 	}
 
 	// Remove PID file
+	log_debug(DEBUG_ANY, "Terminating: Removing PID file");
 	removePID();
 
 	// Free regex filter memory
+	log_debug(DEBUG_ANY, "Terminating: Freeing regex filter memory");
 	free_regex();
 
 	// Terminate API
+	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
 
 	// Terminate HTTP server (if running)
+	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
 	http_terminate();
 
 	// Close memory database
+	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
 	close_memory_database();
 
 	// De-initialize the random number generator and entropy collector
+	log_debug(DEBUG_ANY, "Terminating: Freeing entropy collector");
 	destroy_entropy();
 
 	// Free environment variables
+	log_debug(DEBUG_ANY, "Terminating: Freeing environment variables");
 	freeEnvVars();
 
 	// Free config
+	log_debug(DEBUG_ANY, "Terminating: Freeing configuration");
 	free_config(&config, true);
 
 	// Remove shared memory objects
 	// Important: This invalidated all objects such as
 	//            counters-> ... etc.
 	// This should be the last action when cleaning up
+	log_debug(DEBUG_ANY, "Terminating: Removing shared memory");
 	destroy_shmem();
 
 	char buffer[42] = { 0 };
@@ -453,6 +464,10 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+
+	// Finally, free log config memory
+	if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
+		free(config.files.log.ftl.v.s);
 }
 
 static float ftl_cpu_usage = 0.0f;

@@ -40,7 +40,6 @@ static char *prefix_webhome = NULL;
 static char *api_uri = NULL;
 static char *admin_api_uri = NULL;
 static char *login_uri = NULL;
-static char *webheaders = NULL;
 
 // Private prototypes
 static char *append_to_path(char *path, const char *append);
@@ -531,6 +530,49 @@ unsigned short get_api_string(char **buf, const bool domain)
 	return (unsigned short)len;
 }
 
+/**
+ * @brief Prints webserver options with optional debug logging.
+ *
+ * Iterates over the provided array of static webserver options, escapes both keys and values,
+ * and logs each option. If debug is enabled, logs with debug level; otherwise, logs as an error.
+ *
+ * @param debug           If true, use debug logging; otherwise, use error logging.
+ * @param idx             The number of option pairs in the static_options array.
+ * @param static_options  Array of key-value string pairs (size: idx * 2).
+ */
+static void print_webserver_opts(const bool debug, const size_t idx, const char **static_options)
+{
+	for(size_t i = 0; i <= idx; i++)
+	{
+		char *escaped_key = escape_string(static_options[i * 2]);
+		char *escaped_value = escape_string(static_options[i * 2 + 1]);
+		if(debug)
+		{
+			if(i == idx)
+			{
+				log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s",
+			          i, idx, escaped_key, escaped_value);
+		}
+		else
+		{
+			if(i == idx)
+			{
+				log_err("Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_err("Webserver option %zu/%zu: %s=%s",
+			        i, idx, escaped_key, escaped_value);
+		}
+		if(escaped_key != NULL)
+			free(escaped_key);
+		if(escaped_value != NULL)
+			free(escaped_value);
+	}
+}
+
 void http_init(void)
 {
 	// Don't start web server if port is not set
@@ -580,7 +622,7 @@ void http_init(void)
 	}
 
 	// Construct additional headers
-	webheaders = strdup("");
+	char *webheaders = strdup("");
 	if (webheaders == NULL) {
 		log_err("Failed to allocate memory for webheaders!");
 		return;
@@ -602,7 +644,6 @@ void http_init(void)
 		if (new_webheaders == NULL) {
 			log_err("Failed to (re)allocate memory for webheaders!");
 			free(webheaders);
-			webheaders = NULL;
 			return;
 		}
 		webheaders = new_webheaders;
@@ -611,7 +652,7 @@ void http_init(void)
 	}
 
 	// Prepare options for HTTP server (NULL-terminated list)
-	const char *options[] = {
+	const char *static_options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
 		"listening_ports", config.webserver.port.v.s,
@@ -623,15 +664,27 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
-		NULL, NULL,
-		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
-		NULL
+		NULL, NULL, // Optional slots for TLS configuration
+		NULL, NULL, // Optional slots for access control list (ACL)
+		NULL, NULL  // Termination of the array
 	};
-
-	// Get index of next free option
-	// Note: The first options are always present, so start at the counting
-	// from the end of the array.
-	unsigned int next_option = ArraySize(options) - 6;
+	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json);
+	// We allocate two additional slots for ACL and TLS configuration
+	// which are added later if configured
+	// The last NULL is for the NULL-termination of the array
+	char **conf_opts = calloc(opt_size * 2 + 1, sizeof(char*));
+	if (conf_opts == NULL) {
+		log_err("Failed to allocate memory (%zu slots) for advanced webserver options!", opt_size * 2 + 1);
+		free(webheaders);
+		return;
+	}
+	size_t idx = 0;
+	while(idx < (ArraySize(static_options) / 2 - 3)) // -3 for the 6 NULL slots above
+	{
+		conf_opts[idx * 2] = strdup(static_options[idx * 2]);
+		conf_opts[idx * 2 + 1] = strdup(static_options[idx * 2 + 1]);
+		idx++;
+	}
 
 #ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
@@ -671,8 +724,9 @@ void http_init(void)
 			{
 				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
 			}
-			options[++next_option] = "ssl_certificate";
-			options[++next_option] = config.webserver.tls.cert.v.s;
+			conf_opts[idx * 2] = strdup("ssl_certificate");
+			conf_opts[idx * 2 + 1] = strdup(config.webserver.tls.cert.v.s);
+			idx++;
 
 			log_info("Using SSL/TLS certificate file %s",
 			         config.webserver.tls.cert.v.s);
@@ -687,11 +741,56 @@ void http_init(void)
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
-		options[++next_option] = "access_control_list";
+		conf_opts[idx * 2] = strdup("access_control_list");
 		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
 		//       the original string is freed (config changes) after mg_start()
 		//       returns below.
-		options[++next_option] = config.webserver.acl.v.s;
+		conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
+		idx++;
+	}
+
+	cJSON *option = NULL;
+	cJSON_ArrayForEach(option, config.webserver.advancedOpts.v.json)
+	{
+		if(!cJSON_IsString(option))
+		{
+			log_err("Invalid option in webserver.advancedOpts!");
+			continue;
+		}
+
+		// Get option value
+		const char *opt = cJSON_GetStringValue(option);
+
+		// Split option into key and value at the first '='
+		char *equal_sign = strchr(opt, '=');
+		if(equal_sign == NULL)
+		{
+			log_err("Invalid option in webserver.advancedOpts: %s (missing '=')", opt);
+			continue;
+		}
+
+		// Allocate memory for key and value
+		size_t key_len = (size_t)(equal_sign - opt);
+		char *key = calloc(key_len + 1, sizeof(char));
+		if (key == NULL) {
+			log_err("Failed to allocate memory for advanced webserver option key!");
+			continue;
+		}
+		strncpy(key, opt, key_len);
+		key[key_len] = '\0';
+
+		char *value = strdup(equal_sign + 1);
+		if (value == NULL) {
+			log_err("Failed to allocate memory for advanced webserver option value!");
+			free(key);
+			continue;
+		}
+
+		// Store key and value in options array (already allocated
+		// above)
+		conf_opts[idx * 2] = key;
+		conf_opts[idx * 2 + 1] = value;
+		idx++;
 	}
 
 	// Configure logging handlers
@@ -711,16 +810,32 @@ void http_init(void)
 	struct mg_init_data init = { 0 };
 	init.callbacks = &callbacks;
 	init.user_data = NULL;
-	init.configuration_options = options;
+	init.configuration_options = (const char**)conf_opts;
 
 	/* Start the server */
 	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
-		log_err("Start of webserver failed!. Web interface will not be available!");
+		log_err("Start of webserver failed! Web interface will not be available!");
+		print_webserver_opts(false, idx, (const char **)conf_opts);
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
+
+	// Success: Print used options only if in debug mode
+	if(config.debug.webserver.v.b)
+		print_webserver_opts(true, idx, (const char **)conf_opts);
+
+	// All configuration options have been copied by CivetWeb, so we
+	// can free them here
+	for(size_t i = 0; i < idx * 2; i++)
+	{
+		if(conf_opts[i] != NULL)
+			free(conf_opts[i]);
+	}
+	free(conf_opts);
+	free(webheaders);
+	webheaders = NULL;
 
 	// Register API handler, use "/api" even when a prefix is defined as the
 	// prefix should be stripped away by the reverse proxy
@@ -876,9 +991,6 @@ void http_terminate(void)
 	// Free login_uri path
 	if(login_uri != NULL)
 		free(login_uri);
-
-	if(webheaders != NULL)
-		free(webheaders);
 }
 
 static void restart_http(void)

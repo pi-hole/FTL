@@ -528,10 +528,14 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			const toml_datum_t val = toml_table_find(toml, key);
 			if(val.type == TOML_STRING)
 			{
-				if(conf_item->t == CONF_STRING_ALLOCATED)
-					free(conf_item->v.s);
-				conf_item->v.s = strdup(val.u.s); // allocated string
-				conf_item->t = CONF_STRING_ALLOCATED;
+				// Only use new value if it is different
+				if(conf_item->v.s && strcmp(conf_item->v.s, val.u.s) != 0)
+				{
+					if(conf_item->t == CONF_STRING_ALLOCATED)
+						free(conf_item->v.s);
+					conf_item->v.s = strdup(val.u.s); // allocated string
+					conf_item->t = CONF_STRING_ALLOCATED;
+				}
 			}
 			else
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);

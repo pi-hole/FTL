@@ -375,6 +375,10 @@ void free_config(struct config *conf, const bool terminating)
 				// Nothing to do
 				break;
 			case CONF_STRING_ALLOCATED:
+				// Do not free log file path if we are
+				// terminating or nothing can be logged anymore
+				if(terminating && conf_item->f & FLAG_FTL_LOG)
+					continue;
 				free(conf_item->v.s);
 				conf_item->v.s = NULL;
 				conf_item->t = CONF_STRING; // not allocated anymore
@@ -451,7 +455,7 @@ void initConfig(struct config *conf)
 		{
 			{ get_ptr_type_str(PTR_NONE), "Pi-hole will not respond automatically on PTR requests to local interface addresses. Ensure pi.hole and/or hostname records exist elsewhere." },
 			{ get_ptr_type_str(PTR_HOSTNAME), "Serve the machine's hostname. The hostname is queried from the kernel through uname(2)->nodename. If the machine has multiple network interfaces, it can also have multiple nodenames. In this case, it is unspecified and up to the kernel which one will be returned. On Linux, the returned string is what has been set using sethostname(2) which is typically what has been set in /etc/hostname." },
-			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's hostname (see limitations above) as fully qualified domain by adding the local domain. If no local domain has been defined (config option dns.domain), FTL tries to query the domain name from the kernel using getdomainname(2). If this fails, FTL appends \".no_fqdn_available\" to the hostname." },
+			{ get_ptr_type_str(PTR_HOSTNAMEFQDN), "Serve the machine's hostname (see limitations above) as fully qualified domain by adding the local domain. If no local domain has been defined (config option dns.domain.name), FTL tries to query the domain name from the kernel using getdomainname(2). If this fails, FTL appends \".no_fqdn_available\" to the hostname." },
 			{ get_ptr_type_str(PTR_PIHOLE), "Respond with \"pi.hole\"." }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.piholePTR.a, piholePTR);
@@ -504,14 +508,6 @@ void initConfig(struct config *conf)
 	conf->dns.expandHosts.f = FLAG_RESTART_FTL;
 	conf->dns.expandHosts.d.b = false;
 	conf->dns.expandHosts.c = validate_stub; // Only type-based checking
-
-	conf->dns.domain.k = "dns.domain";
-	conf->dns.domain.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
-	conf->dns.domain.a = cJSON_CreateStringReference("Any valid domain");
-	conf->dns.domain.t = CONF_STRING;
-	conf->dns.domain.f = FLAG_RESTART_FTL;
-	conf->dns.domain.d.s = (char*)"lan";
-	conf->dns.domain.c = validate_dns_domain;
 
 	conf->dns.bogusPriv.k = "dns.bogusPriv";
 	conf->dns.bogusPriv.h = "Should all reverse lookups for private IP ranges (i.e., 192.168.x.y, etc) which are not found in /etc/hosts or the DHCP leases file be answered with \"no such domain\" rather than being forwarded upstream?";
@@ -598,6 +594,22 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.d.json = cJSON_CreateArray();
 	conf->dns.revServers.c = validate_dns_revServers;
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
+
+	// sub-struct dns.cache
+	conf->dns.domain.name.k = "dns.domain.name";
+	conf->dns.domain.name.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
+	conf->dns.domain.name.a = cJSON_CreateStringReference("Any valid domain");
+	conf->dns.domain.name.t = CONF_STRING;
+	conf->dns.domain.name.f = FLAG_RESTART_FTL;
+	conf->dns.domain.name.d.s = (char*)"lan";
+	conf->dns.domain.name.c = validate_dns_domain;
+
+	conf->dns.domain.local.k = "dns.domain.local";
+	conf->dns.domain.local.h = "If set, the domain configured by dns.domain.name is considered local and queries for this domain are never forwarded upstream unless a dns.revServer is configured for this domain.\n\n If unset, queries for this domain are forwarded upstream to (possibly public) server which is probably not what you want *unless* you have added extra configuration for this domain *or* your upstream servers are able to handle local domains (e.g., router).";
+	conf->dns.domain.local.t = CONF_BOOL;
+	conf->dns.domain.local.f = FLAG_RESTART_FTL;
+	conf->dns.domain.local.d.b = true;
+	conf->dns.domain.local.c = validate_stub; // Only type-based checking
 
 	// sub-struct dns.cache
 	conf->dns.cache.size.k = "dns.cache.size";
@@ -1063,6 +1075,14 @@ void initConfig(struct config *conf)
 	conf->webserver.serve_all.t = CONF_BOOL;
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
+
+	conf->webserver.advancedOpts.k = "webserver.advancedOpts";
+	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). See the CivetWeb documentation for a list of supported options. The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". Be aware that this is an advanced option and that setting options here may break the web server if invalid or conflicting with other settings applied based on other settings in this file. The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last values is used when a config option is specified multiple times). Use with caution.\n\n Example: [ \"ssl_protocol_version=4\", \"ssl_cipher_list=AES128:!MD5\" ]";
+	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of valid CivetWeb options");
+	conf->webserver.advancedOpts.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL;
+	conf->webserver.advancedOpts.d.json = cJSON_CreateArray();
+	conf->webserver.advancedOpts.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.validity.k = "webserver.tls.validity";
 	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for.\n\n Defaults to 47 days. A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate. If you set the validity range to 0 days and still try to generate a certificate, Pi-hole will set a fixed validity range of roughly 30 years for the certificate.";
@@ -1883,6 +1903,7 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 	config.files.log.ftl.c = validate_filepath;
+	config.files.log.ftl.f = FLAG_FTL_LOG;
 
 	// Check if the config file contains a different path
 	if(try_read && !getLogFilePathTOML())

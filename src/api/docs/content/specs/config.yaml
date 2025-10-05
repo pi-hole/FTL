@@ -38,6 +38,8 @@ components:
         operationId: "patch_config"
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/restart'
         requestBody:
           description: Callback payload
           content:
@@ -107,6 +109,7 @@ components:
         parameters:
           - $ref: 'config.yaml#/components/parameters/element'
           - $ref: 'config.yaml#/components/parameters/value'
+          - $ref: 'config.yaml#/components/parameters/restart'
         responses:
           '201':
             description: Item created
@@ -141,6 +144,7 @@ components:
         parameters:
           - $ref: 'config.yaml#/components/parameters/element'
           - $ref: 'config.yaml#/components/parameters/value'
+          - $ref: 'config.yaml#/components/parameters/restart'
         responses:
           '204':
             description: Item deleted
@@ -213,7 +217,12 @@ components:
                 expandHosts:
                   type: boolean
                 domain:
-                  type: string
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    local:
+                      type: boolean
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -419,6 +428,10 @@ components:
                     type: string
                 serve_all:
                   type: boolean
+                advancedOpts:
+                  type: array
+                  items:
+                    type: string
                 session:
                   type: object
                   properties:
@@ -669,7 +682,9 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
-            domain: "lan"
+            domain:
+              name: "lan"
+              local: true
             bogusPriv: true
             dnssec: true
             interface: "eth0"
@@ -766,6 +781,8 @@ components:
               - "X-Content-Type-Options: nosniff"
               - "Referrer-Policy: strict-origin-when-cross-origin"
             serve_all: false
+            advancedOpts:
+              - "ssl_protocol_version=4"
             session:
               timeout: 300
               restore: true
@@ -932,3 +949,12 @@ components:
       required: true
       description: config value
       example: "8.8.8.8"
+    restart:
+      name: restart
+      in: query
+      description: Restart FTL after a change would require this. This option can be used if you want to avoid a restart, e.g., when adding multiple items independently instead of all together at once. Note that you will have to restart FTL manually later to apply the changes.
+      required: false
+      schema:
+        type: boolean
+        default: true
+        example: true

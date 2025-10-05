@@ -94,6 +94,42 @@ static bool migrate_dns_revServer(toml_datum_t toml, struct config *newconf)
 	return restart;
 }
 
+// Migrate dns.domain -> dns.domain.name
+static bool migrate_dns_domain(toml_datum_t toml, struct config *newconf)
+{
+	bool restart = false;
+	toml_datum_t dns = toml_table_find(toml, "dns");
+	if(dns.type != TOML_UNKNOWN)
+	{
+		toml_datum_t domain = toml_table_find(dns, "domain");
+		if(domain.type == TOML_STRING && strlen(domain.u.s) > 0)
+		{
+			// Migrate to new config
+			log_debug(DEBUG_CONFIG, "Config setting dns.domain MIGRATED to dns.domain.name: %s", domain.u.s);
+			if(newconf->dns.domain.name.t == CONF_STRING_ALLOCATED && newconf->dns.domain.name.v.s != NULL)
+				free(newconf->dns.domain.name.v.s);
+			newconf->dns.domain.name.v.s = strdup(domain.u.s);
+			newconf->dns.domain.name.t = CONF_STRING_ALLOCATED;
+			restart = true;
+		}
+		else
+		{
+			// Perfectly fine - it just means this old option does
+			// not exist and, hence, does not need to be migrated
+			log_debug(DEBUG_CONFIG, "dns.domain does not exist - nothing to migrate");
+		}
+	}
+	else
+	{
+		// This is actually a problem as the old config file
+		// should always contain a "dns" section
+		log_warn("dns config tab does not exist - config file corrupt or incomplete");
+	}
+
+	return restart;
+}
+
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
 static bool migrate_config(toml_datum_t toml, struct config *newconf)
@@ -102,6 +138,8 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 
 	// Migrate dns.revServer -> dns.revServers[0]
 	restart |= migrate_dns_revServer(toml, newconf);
+	// Migrate dns.domain -> dns.domain.name
+	restart |= migrate_dns_domain(toml, newconf);
 
 	return restart;
 }
