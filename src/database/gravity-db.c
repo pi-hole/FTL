@@ -2728,7 +2728,7 @@ bool gravity_updated(void)
 		return false;
 	}
 
-	// Set busy timeout to 1 second to access the database in a
+	// Set busy timeout to access the database in a
 	// multi-threaded environment and other threads may be writing to the
 	// database (e.g. Teleporter restoring a backup)
 	rc = sqlite3_busy_handler(gravity_db, sqliteBusyCallback, NULL);

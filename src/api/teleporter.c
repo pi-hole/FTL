@@ -471,7 +471,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 		return false;
 	}
 
-	// Set busy timeout to 1 second to access the database in a
+	// Set busy timeout to access the database in a
 	// multi-threaded environment
 	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
 		log_warn("import_json_table(%s): Unable to set busy handler: %s", file->filename, sqlite3_errmsg(db));
