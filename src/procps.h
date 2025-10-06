@@ -47,8 +47,9 @@ struct proc_meminfo {
 };
 
 bool getProcessMemory(struct proc_mem *mem, const unsigned long total_memory);
+double parse_proc_self_stat(void);
 bool parse_proc_meminfo(struct proc_meminfo *mem);
-bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum);
+double parse_proc_stat(void);
 pid_t search_proc(const char *name);
 
 #endif // PROCPS_H
