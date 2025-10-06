@@ -346,7 +346,7 @@ static int check_space(const char *file, unsigned int LastUsage)
 	return perc;
 }
 
-static int getloadavg_proc(double * loadavg)
+static int getloadavg_proc(double loadavg[3])
 {
 	FILE *f = fopen("/proc/loadavg", "r");
 	if(f == NULL)
