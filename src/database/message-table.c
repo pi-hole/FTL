@@ -389,7 +389,8 @@ static int _add_message(const enum message_type type,
 		goto end_of_add_message;
 	}
 
-	// Execute and finalize
+	// Execute and finalize (we accept both SQLITE_OK = removed and
+	// SQLITE_DONE = nothing to remove)
 	if((rc = sqlite3_step(stmt)) != SQLITE_OK && rc != SQLITE_DONE)
 	{
 		log_err("add_message(type=%u, message=%s) - SQL error step DELETE: %s",

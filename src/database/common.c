@@ -30,9 +30,12 @@
 #include "signals.h"
 // create_session_table()
 #include "database/session-table.h"
+// assert()
+#include <assert.h>
 
 bool DBdeleteoldqueries = false;
 static bool DBerror = false;
+static int dbopen_cnt = 0; // Number of times the database has been opened
 
 bool __attribute__ ((pure)) FTLDBerror(void)
 {
@@ -65,7 +68,7 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 		return;
 
 	if(config.debug.database.v.b)
-		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, file, line);
+		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, short_path(file), line);
 
 	// Only try to close an existing database connection
 	int rc = SQLITE_OK;
@@ -78,6 +81,69 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 
 	// Always set database pointer to NULL, even when closing failed
 	if(db) *db = NULL;
+
+	// Decrement the number of open database connections
+	dbopen_cnt--;
+}
+
+/**
+ * @brief Callback function for handling SQLite database busy events.
+ *
+ * This function is called by SQLite when the database is locked and cannot be accessed
+ * immediately. It implements an exponential backoff strategy using predefined delay and
+ * total wait time arrays. The function waits for a specified delay (in milliseconds)
+ * before retrying, up to DATABASE_BUSY_TIMEOUT.
+ *
+ * @param ptr Pointer to an unsigned int specifying the maximum allowed wait time (in ms).
+ * @param count The number of times the busy handler has been invoked for the same operation.
+ * @return int Returns 1 to indicate that SQLite should retry the operation after the delay,
+ *             or 0 to indicate that the operation should fail because the timeout has been exceeded.
+ *
+ * The function logs a warning if the total wait time exceeds the allowed timeout, and
+ * logs debug information for each wait period.
+ */
+int sqliteBusyCallback(void *ptr, int count)
+{
+	static const uint8_t delays[] = { 1, 2, 5, 10, 15, 20, 25, 25,  25,  50,  50, 100 };
+	static const uint8_t totals[] = { 0, 1, 3,  8, 18, 33, 53, 78, 103, 128, 178, 228 };
+	# define NDELAY ArraySize(delays)
+
+	int delay, prior;
+
+	assert(count >= 0);
+	if(count < (int)NDELAY)
+	{
+		// Use the predefined delays and totals
+		delay = delays[count];
+		prior = totals[count];
+	}
+	else
+	{
+		// Use the last predefined delay and total
+		delay = delays[NDELAY - 1];
+		prior = totals[NDELAY - 1] + delay*(count - (NDELAY - 1));
+	}
+
+	if(prior + delay > DATABASE_BUSY_TIMEOUT)
+	{
+		delay = DATABASE_BUSY_TIMEOUT - prior;
+		if(delay <= 0)
+		{
+			// If the total time waited so far plus the next delay exceeds
+			// the maximum allowed time, return 0 to indicate that the
+			// database is busy beyond the allowed time and that we will not
+			// wait any longer.
+			log_debug(DEBUG_DATABASE, "Database busy for %d ms > %d ms, not waiting any longer",
+			         prior + delay, DATABASE_BUSY_TIMEOUT);
+			return 0;
+		}
+	}
+	log_debug(DEBUG_DATABASE, "Database busy - waiting %d ms (dbopen: %d)", delay, dbopen_cnt);
+	usleep(delay * 1000); // Convert ms to us
+
+	// Return 1 to indicate that we will wait for the database to become
+	// available again
+	return 1;
 }
 
 sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const int line, const char *file)
@@ -87,7 +153,8 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		return NULL;
 
 	// Try to open database
-	log_debug(DEBUG_DATABASE, "Opening FTL database in %s() (%s:%i)", func, file, line);
+	log_debug(DEBUG_DATABASE, "Opening FTL database in %s() (node %s%s) (%s:%i)",
+	          func, readonly ? "RO" : "RW", create ? ",C" : "", short_path(file), line);
 
 	int flags = readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE;
 	if(create && !readonly)
@@ -112,15 +179,18 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 	}
 
 	// Explicitly set busy handler to value defined in FTL.h
-	rc = sqlite3_busy_timeout(db, DATABASE_BUSY_TIMEOUT);
+	rc = sqlite3_busy_handler(db, sqliteBusyCallback, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("Error while trying to set busy timeout (%d ms) on database: %s",
-		        DATABASE_BUSY_TIMEOUT, sqlite3_errstr(rc));
+		log_err("Error while trying to set busy timeout on database: %s",
+		        sqlite3_errstr(rc));
 		dbclose(&db);
 		checkFTLDBrc(rc);
 		return NULL;
 	}
+
+	// Increment the number of open database connections
+	dbopen_cnt++;
 
 	return db;
 }

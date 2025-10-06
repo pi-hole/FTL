@@ -62,6 +62,7 @@ static bool analyze_database(sqlite3 *db)
 	// stores the collected information in internal tables of the database
 	// where the query optimizer can access the information and use it to
 	// help make better query planning choices.
+	log_debug(DEBUG_DATABASE, "Optimizing database %s", config.files.database.v.s);
 
 	// Measure time
 	struct timespec start, end;
@@ -89,17 +90,12 @@ void *DB_thread(void *val)
 	time_t before = time(NULL);
 	time_t lastDBsave = before - before%config.database.DBinterval.v.ui;
 
-	// Other timestamps, made independent from the exact time FTL was
-	// started
-	time_t lastAnalyze = before - before % DATABASE_ANALYZE_INTERVAL;
-	time_t lastMACVendor = before - before % DATABASE_MACVENDOR_INTERVAL;
-
-	// Add some randomness (up to one hour) to these timestamps to avoid
-	// them running at the same time. This is not a security feature, so
-	// using rand() is fine. Database analyze is not to be run soon after
-	// startup, so we add another hour to the lastAnalyze timestamp.
-	lastAnalyze += 3600 + rand() % 3600;
-	lastMACVendor += rand() % 3600;
+	// Add some randomness (between one and two hours) to these timestamps
+	// to avoid them running at the same time and immediately after FTL was
+	// (re)started. We really only want them to run in the background when
+	// FTL is running for a while.
+	time_t lastAnalyze = before + 3600 + (rand() % 3600);
+	time_t lastMACVendor = before + 3600 + (rand() % 3600);
 
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
