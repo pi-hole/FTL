@@ -481,6 +481,18 @@ components:
                       items:
                         type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+            ftl:
+              type: object
+              description: FTL process info
+              properties:
+                "%mem":
+                  type: number
+                  description: Percentage of total RAM memory used by FTL
+                  example: 0.1
+                "%cpu":
+                  type: number
+                  description: Percentage of total CPU used by FTL
+                  example: 1.2
 
     sensors:
       type: object

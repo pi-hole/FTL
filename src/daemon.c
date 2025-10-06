@@ -511,6 +511,9 @@ void calc_cpu_usage(const unsigned int interval)
 	// Store the current time for the next call to this function
 	last_total_idle = total_idle;
 	last_total_total = total_total;
+
+	log_debug(DEBUG_EXTRA, "CPU usage in the last %u seconds: FTL %.4f%%, total %.4f%%",
+	          interval, ftl_cpu_usage, total_cpu_usage);
 }
 
 float __attribute__((pure)) get_ftl_cpu_percentage(void)

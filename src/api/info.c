@@ -242,6 +242,13 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	JSON_ADD_ITEM_TO_OBJECT(cpu, "load", load);
 	JSON_ADD_ITEM_TO_OBJECT(system, "cpu", cpu);
 
+	cJSON *ftl = JSON_NEW_OBJECT();
+	struct proc_mem pmem = { 0 };
+	getProcessMemory(&pmem, mem.total);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_ftl_cpu_percentage());
+	JSON_ADD_ITEM_TO_OBJECT(system, "ftl", ftl);
+
 	// All okay
 	return 0;
 }
