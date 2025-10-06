@@ -551,6 +551,8 @@ components:
                   type: boolean
                 readOnly:
                   type: boolean
+                normalizeCPU:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -834,6 +836,7 @@ components:
             dnsmasq_lines: [ ]
             extraLogging: false
             readOnly: false
+            normalizeCPU: false
             check:
               load: true
               shmem: 90

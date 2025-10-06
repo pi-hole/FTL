@@ -320,6 +320,7 @@ double parse_proc_stat(void)
 
 	// Read the file until we find the first line starting with "cpu "
 	char line[256];
+	bool found = false;
 	while(fgets(line, sizeof(line), statfile))
 	{
 		if(strncmp(line, "cpu ", 4) == 0)
@@ -331,12 +332,12 @@ double parse_proc_stat(void)
 				fclose(statfile);
 				return -1.0;
 			}
-
+			found = true;
 			break;
 		}
 	}
 
-	if (feof(statfile)) {
+	if(!found) {
 		log_warn("No CPU line found in /proc/stat");
 		fclose(statfile);
 		return -1.0;
@@ -370,13 +371,12 @@ double parse_proc_self_stat(void)
 
 	// Read utime and stime
 	unsigned long utime = 0, stime = 0;
-	if(fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
-	          &utime, &stime) != 2)
-	{
-		fclose(file);
-		return -1.0;
-	}
+	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &utime, &stime) == 2;
 	fclose(file);
+
+	// If we could not parse the file, return -1.0
+	if(!parsed)
+		return -1.0;
 
 	// Convert clock ticks to seconds
 	const long ticks = sysconf(_SC_CLK_TCK);

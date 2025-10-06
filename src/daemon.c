@@ -472,30 +472,27 @@ static float ftl_cpu_usage = 0.0f;
 static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)
 {
+	// Get number of cores if we are normalizing CPU usage below
+	const unsigned int norm_factor = config.misc.normalizeCPU.v.b ? get_nprocs_conf() : 1;
+
 	// Get the current FTL CPU time
 	const double ftl_cpu_time = parse_proc_self_stat();
 
 	// Calculate the CPU usage in this interval
 	static double last_ftl_cpu_time = 0.0f;
-	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval;
-
-	log_info("FTL CPU time since last call: %.2f seconds", ftl_cpu_time - last_ftl_cpu_time);
-
-	// Store the current time for the next call to this function
+	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval / norm_factor;
 	last_ftl_cpu_time = ftl_cpu_time;
 
 	// Calculate the total CPU usage
-	static double last_cpu_time = 0.0f;
 	const double cpu_time = parse_proc_stat();
-
+	
 	// Calculate the CPU usage since the last call to this function
-	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval;
-
-	log_info("Total CPU time since last call: %.2f seconds", cpu_time - last_cpu_time);
+	static double last_cpu_time = 0.0f;
+	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval / norm_factor;
 	last_cpu_time = cpu_time;
 
-	log_debug(DEBUG_EXTRA, "CPU usage in the last %u seconds: FTL %.4f%%, total %.4f%%",
-	          interval, ftl_cpu_usage, total_cpu_usage);
+	log_debug(DEBUG_EXTRA, "CPU usage in the last %u seconds: FTL %.4f%%, total %.4f%% (normalized by factor %ux)",
+	          interval, ftl_cpu_usage, total_cpu_usage, norm_factor);
 }
 
 float __attribute__((pure)) get_ftl_cpu_percentage(void)
