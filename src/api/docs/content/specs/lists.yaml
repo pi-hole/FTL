@@ -143,6 +143,8 @@ components:
           On success, a new resource is created at `/lists/{list}`.
 
           The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         requestBody:
           description: Callback payload
           content:
@@ -268,7 +270,6 @@ components:
       post:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/address_maybe_array'
-          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
