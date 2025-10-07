@@ -497,7 +497,10 @@ void calc_cpu_usage(const unsigned int interval)
 
 float __attribute__((pure)) get_ftl_cpu_percentage(void)
 {
-	return ftl_cpu_usage;
+	// Return the smaller of the two values to avoid showing a CPU usage
+	// higher than the total CPU usage. This can happen due to rounding
+	// errors and rare interval comparison differences.
+	return ftl_cpu_usage < total_cpu_usage ? ftl_cpu_usage : total_cpu_usage;
 }
 
 float __attribute__((pure)) get_total_cpu_percentage(void)
