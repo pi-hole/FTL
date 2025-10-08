@@ -1416,6 +1416,12 @@ void initConfig(struct config *conf)
 	conf->misc.readOnly.d.b = false;
 	conf->misc.readOnly.c = validate_stub; // Only type-based checking
 
+	conf->misc.normalizeCPU.k = "misc.normalizeCPU";
+	conf->misc.normalizeCPU.h = "Should FTL normalize reported CPU usage?\n\n On multi-core systems, a high workload can lead to CPU usage numbers exceeding 100% (e.g., 200% on a quad-core system if two out of four cores are fully utilized). This may look alarming at first glance even though the system is not actually overloaded. Enabling this setting will divide the CPU usage by the number of cores, leading to more intuitive numbers (e.g., 50% for the same load on a quad-core system).\n Note that this setting only affects how CPU usage is *reported*, it does not change the actual CPU usage.";
+	conf->misc.normalizeCPU.t = CONF_BOOL;
+	conf->misc.normalizeCPU.d.b = true;
+	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
+
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n\n This check can be disabled with this setting.";

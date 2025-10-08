@@ -274,24 +274,18 @@ bool parse_proc_meminfo(struct proc_meminfo *mem)
 
 
 /**
- * @brief Parses the /proc/stat file to extract CPU statistics.
+ * @brief Parses the /proc/stat file to extract total CPU usage statistics.
  *
- * This function reads the /proc/stat file to gather CPU usage statistics,
- * including user, system, idle, iowait, irq, softirq, steal, guest, and guest_nice times.
- * It calculates the total CPU time and idle time, and stores these values in the provided
- * pointers.
- *
- * @param total_sum Pointer to store the total CPU time.
- * @param idle_sum Pointer to store the idle CPU time.
- * @return true if the parsing is successful, false otherwise.
+ * @return The total CPU time (in seconds) spent in user, nice, and system modes,
+ *         or -1.0 if an error occurs (e.g., file cannot be opened or parsed).
  */
-bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum)
+double parse_proc_stat(void)
 {
 	FILE *statfile = fopen("/proc/stat", "r");
 	if(statfile == NULL)
-		return false;
+		return -1.0;
 
-	unsigned long user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice;
+	unsigned long user, nice, system;
 	/*
 	    user   (1) Time spent in user mode. (includes guest and guest_nice time)
 
@@ -326,45 +320,70 @@ bool parse_proc_stat(unsigned long *total_sum, unsigned long *idle_sum)
 
 	// Read the file until we find the first line starting with "cpu "
 	char line[256];
+	bool found = false;
 	while(fgets(line, sizeof(line), statfile))
 	{
 		if(strncmp(line, "cpu ", 4) == 0)
 		{
-			if(sscanf(line, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
-			       &user, &nice, &system, &idle,
-			       &iowait, &irq, &softirq, &steal,
-			       &guest, &guest_nice) != 10)
+			if(sscanf(line, "cpu %lu %lu %lu",
+			       &user, &nice, &system) != 3)
 			{
 				log_debug(DEBUG_ANY, "Failed to parse CPU line in /proc/stat");
 				fclose(statfile);
-				return false;
+				return -1.0;
 			}
-
+			found = true;
 			break;
 		}
 	}
 
-	if (feof(statfile)) {
+	if(!found) {
 		log_warn("No CPU line found in /proc/stat");
 		fclose(statfile);
-		return false;
+		return -1.0;
 	}
 
 	fclose(statfile);
 
-	// Guest time is already accounted in usertime
-	user -= guest;
-	nice -= guest_nice;
+	const long ticks = sysconf(_SC_CLK_TCK);
+	return (user + nice + system) / (double)ticks;
+}
 
-	// Fields existing on kernels >= 2.6
-	// (and RHEL's patched kernel 2.4...)
-	const unsigned long long int sys_all = system + irq + softirq;
-	const unsigned long long int virtual = guest + guest_nice;
-	const unsigned long long int busy_sum = user + nice + sys_all + steal + virtual;
-	*idle_sum = idle + iowait;
-	*total_sum = busy_sum + *idle_sum;
+/**
+ * @brief Parses the /proc/self/stat file to retrieve the used CPU time for the
+ * current process.
+ *
+ * This function opens the /proc/self/stat file, skips the first 13 fields, and
+ * reads the user mode (utime) and kernel mode (stime) CPU times. It then
+ * converts the sum of these times from clock ticks to seconds using the
+ * system's clock tick rate.
+ *
+ * @return The total CPU time (user + system) in seconds for the current
+ *         process, or -1.0 if an error occurs (e.g., file cannot be opened,
+ *         parsing fails, or invalid clock tick rate).
+ */
+double parse_proc_self_stat(void)
+{
+	// Open /proc/self/stat
+	FILE *file = fopen("/proc/self/stat", "r");
+	if(file == NULL)
+		return -1.0;
 
-	return true;
+	// Read utime and stime
+	unsigned long utime = 0, stime = 0;
+	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &utime, &stime) == 2;
+	fclose(file);
+
+	// If we could not parse the file, return -1.0
+	if(!parsed)
+		return -1.0;
+
+	// Convert clock ticks to seconds
+	const long ticks = sysconf(_SC_CLK_TCK);
+	if(ticks <= 0)
+		return -1.0;
+
+	return (utime + stime) / (double)ticks;
 }
 
 /**
