@@ -192,8 +192,8 @@ enum gravity_list_type {
 
 enum gravity_tables {
 	GRAVITY_TABLE,
-	EXACT_BLACKLIST_TABLE,
-	EXACT_WHITELIST_TABLE,
+	EXACT_DENY_TABLE,
+	EXACT_ALLOW_TABLE,
 	REGEX_DENY_TABLE,
 	REGEX_ALLOW_TABLE,
 	CLIENTS_TABLE,
@@ -216,7 +216,8 @@ enum refresh_hostnames {
 	REFRESH_ALL,
 	REFRESH_IPV4_ONLY,
 	REFRESH_UNKNOWN,
-	REFRESH_NONE
+	REFRESH_NONE,
+	REFRESH_MAX
 } __attribute__ ((packed));
 
 enum api_auth_status {
@@ -234,7 +235,8 @@ enum busy_reply {
 	BUSY_BLOCK,
 	BUSY_ALLOW,
 	BUSY_REFUSE,
-	BUSY_DROP
+	BUSY_DROP,
+	BUSY_MAX
 } __attribute__ ((packed));
 
 enum thread_types {
@@ -245,6 +247,7 @@ enum thread_types {
 	NTP_CLIENT,
 	NTP_SERVER4,
 	NTP_SERVER6,
+	WEBSERVER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
@@ -279,7 +282,8 @@ enum ptr_type {
 	PTR_PIHOLE,
 	PTR_HOSTNAME,
 	PTR_HOSTNAMEFQDN,
-	PTR_NONE
+	PTR_NONE,
+	PTR_MAX
 } __attribute__ ((packed));
 
 enum addinfo_type {
@@ -292,7 +296,8 @@ enum listening_mode {
 	LISTEN_ALL,
 	LISTEN_SINGLE,
 	LISTEN_BIND,
-	LISTEN_NONE
+	LISTEN_NONE,
+	LISTEN_MAX
 } __attribute__ ((packed));
 
 enum fifo_logs {
@@ -305,13 +310,15 @@ enum fifo_logs {
 enum temp_unit {
 	TEMP_UNIT_C = 0,
 	TEMP_UNIT_F,
-	TEMP_UNIT_K
+	TEMP_UNIT_K,
+	TEMP_UNIT_MAX
 } __attribute__ ((packed));
 
 enum edns_mode {
 	EDNS_MODE_NONE = 0,
 	EDNS_MODE_CODE,
 	EDNS_MODE_TEXT,
+	EDNS_MODE_MAX
 } __attribute__ ((packed));
 
 enum adlist_type {
@@ -325,7 +332,9 @@ enum cert_check {
 	CERT_CANNOT_PARSE_KEY,
 	CERT_DOMAIN_MISMATCH,
 	CERT_DOMAIN_MATCH,
-	CERT_OKAY
+	CERT_NOT_YET_VALID,
+	CERT_EXPIRES_SOON,
+	CERT_OKAY,
 } __attribute__ ((packed));
 
 enum http_method {

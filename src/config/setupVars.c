@@ -588,7 +588,7 @@ void importsetupVarsConf(void)
 	get_conf_upstream_servers_from_setupVars(&config.dns.upstreams);
 
 	// Try to get Pi-hole domain
-	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dns.domain);
+	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dns.domain.name);
 
 	// Try to get bool properties (the first two are intentionally set from the same key)
 	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);

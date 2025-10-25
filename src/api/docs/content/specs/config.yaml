@@ -38,6 +38,8 @@ components:
         operationId: "patch_config"
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
+        parameters:
+          - $ref: 'config.yaml#/components/parameters/restart'
         requestBody:
           description: Callback payload
           content:
@@ -107,6 +109,7 @@ components:
         parameters:
           - $ref: 'config.yaml#/components/parameters/element'
           - $ref: 'config.yaml#/components/parameters/value'
+          - $ref: 'config.yaml#/components/parameters/restart'
         responses:
           '201':
             description: Item created
@@ -141,6 +144,7 @@ components:
         parameters:
           - $ref: 'config.yaml#/components/parameters/element'
           - $ref: 'config.yaml#/components/parameters/value'
+          - $ref: 'config.yaml#/components/parameters/restart'
         responses:
           '204':
             description: Item deleted
@@ -213,7 +217,12 @@ components:
                 expandHosts:
                   type: boolean
                 domain:
-                  type: string
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    local:
+                      type: boolean
                 bogusPriv:
                   type: boolean
                 dnssec:
@@ -232,6 +241,8 @@ components:
                     type: string
                 port:
                   type: integer
+                localise:
+                  type: boolean
                 cache:
                   type: object
                   properties:
@@ -417,6 +428,10 @@ components:
                     type: string
                 serve_all:
                   type: boolean
+                advancedOpts:
+                  type: array
+                  items:
+                    type: string
                 session:
                   type: object
                   properties:
@@ -429,6 +444,8 @@ components:
                   properties:
                     cert:
                       type: string
+                    validity:
+                      type: integer
                 paths:
                   type: object
                   properties:
@@ -533,6 +550,8 @@ components:
                 extraLogging:
                   type: boolean
                 readOnly:
+                  type: boolean
+                normalizeCPU:
                   type: boolean
                 check:
                   type: object
@@ -665,7 +684,9 @@ components:
               - "192.168.2.123 mymusicbox"
             domainNeeded: true
             expandHosts: true
-            domain: "lan"
+            domain:
+              name: "lan"
+              local: true
             bogusPriv: true
             dnssec: true
             interface: "eth0"
@@ -676,6 +697,7 @@ components:
               - "*.example.com,default.example.com"
               - "hourly.yetanother.com,yetanother.com,3600"
             port: 53
+            localise: true
             cache:
               size: 10000
               optimizer: 3600
@@ -755,17 +777,20 @@ components:
             threads: 0
             headers:
               - "X-DNS-Prefetch-Control: off"
-              - "Content-Security-Policy: default-src 'self' 'unsafe-inline';"
+              - "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
               - "X-Frame-Options: DENY"
               - "X-XSS-Protection: 0"
               - "X-Content-Type-Options: nosniff"
               - "Referrer-Policy: strict-origin-when-cross-origin"
             serve_all: false
+            advancedOpts:
+              - "ssl_protocol_version=4"
             session:
               timeout: 300
               restore: true
             tls:
               cert: "/etc/pihole/tls.pem"
+              validity: 47
             paths:
               webroot: "/var/www/html"
               webhome: "/admin/"
@@ -811,6 +836,7 @@ components:
             dnsmasq_lines: [ ]
             extraLogging: false
             readOnly: false
+            normalizeCPU: false
             check:
               load: true
               shmem: 90
@@ -846,6 +872,7 @@ components:
             ntp: false
             netlink: false
             all: false
+          took: 0.003
     config_one:
       summary: One option
       value:
@@ -890,6 +917,7 @@ components:
               key: "bad_request"
               message: "Invalid path depth"
               hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+            took: 0.003
         item_already_present:
           summary: Item to be added exists already
           value:
@@ -897,6 +925,7 @@ components:
               key: "bad_request"
               message: "Item already present"
               hint: "Uniqueness of items is enforced"
+            took: 0.003
   parameters:
     detailed:
       name: detailed
@@ -923,3 +952,12 @@ components:
       required: true
       description: config value
       example: "8.8.8.8"
+    restart:
+      name: restart
+      in: query
+      description: Restart FTL after a change would require this. This option can be used if you want to avoid a restart, e.g., when adding multiple items independently instead of all together at once. Note that you will have to restart FTL manually later to apply the changes.
+      required: false
+      schema:
+        type: boolean
+        default: true
+        example: true

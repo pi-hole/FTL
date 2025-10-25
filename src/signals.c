@@ -42,6 +42,7 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-client",
 	"ntp-server4",
 	"ntp-server6",
+	"webserver",
  };
 
 // Return the (null-terminated) name of the calling thread
@@ -554,6 +555,12 @@ int sigtest(void)
 	sleepms(30000);
 
 	// Exit successfully
+	return EXIT_SUCCESS;
+}
+
+int sigrtmin(void)
+{
+	printf("%d\n", SIGRTMIN);
 	return EXIT_SUCCESS;
 }
 

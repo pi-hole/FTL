@@ -385,13 +385,12 @@ void FTL_log_helper(const unsigned int n, ...)
 	va_start(args, n);
 	for(unsigned int i = 0; i < n; i++)
 	{
-		const char *argin = va_arg(args, char*);
+		char *argin = va_arg(args, char*);
 		if(argin == NULL)
 			arg[i] = NULL;
 		else
-			arg[i] = strdup(argin);
+			arg[i] = argin;
 	}
-	va_end(args);
 
 	// Select appropriate logging format
 	switch (n)
@@ -410,11 +409,7 @@ void FTL_log_helper(const unsigned int n, ...)
 			log_debug(DEBUG_HELPER, "ERROR: Unsupported number of arguments passed to FTL_log_helper(): %u", n);
 			break;
 	}
-
-	// Free allocated memory
-	for(unsigned int i = 0; i < n; i++)
-		if(arg[i] != NULL)
-			free(arg[i]);
+	va_end(args);
 	free(arg);
 }
 
@@ -588,6 +583,12 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 
 	while (src < src_buf + src_sz)
 	{
+		// Check if we have enough space before writing
+		// Worst case: we need 4 chars for "0x00" + null terminator for
+		// one byte of input
+		if (dst > dst_str + dst_sz - 5)
+			break;
+
 		if (isprint(*src))
 		{
 			// The printable characters are:
@@ -597,17 +598,15 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			// r s t u v w x y z { | } ~
 			*dst++ = *src++;
 		}
-		else if (*src == '\\')
-		{
-			// Backslash isn't included above but isn't harmful
-			*dst++ = '\\';
-			*dst++ = *src++;
-		}
 		else
 		{
-			// Handle other characters more specifically
+			// Handle special characters
 			switch(*src)
 			{
+				case '\\':
+					*dst++ = '\\';
+					*dst++ = '\\';
+					break;
 				case '\n':
 					*dst++ = '\\';
 					*dst++ = 'n';
@@ -625,24 +624,44 @@ int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 					*dst++ = '0';
 					break;
 				default:
-					sprintf(dst, "0x%X", *(unsigned char*)src);
+					sprintf(dst, "0x%02X", (unsigned char)*src);
 					dst += 4;
+					break;
 			}
-
-			// Advance reading counter by one character
 			src++;
 		}
-
-		// next iteration requires up to 5 chars in dst buffer, for ex.
-		// "0x04" + terminating zero (see below)
-		if (dst > (dst_str + dst_sz - 5))
-			break;
 	}
 
 	// Zero-terminate buffer
 	*dst = '\0';
 
 	return src - src_buf;
+}
+
+/**
+ * @brief Escapes a given input string into a C-style escaped string literal.
+ *
+ * This function takes an input string and returns a newly allocated string
+ * where all characters are escaped as necessary to form a valid C string literal.
+ * The returned string must be freed by the caller.
+ *
+ * @param input The input string to escape. May be NULL.
+ * @return A pointer to the newly allocated escaped string, or NULL if input is NULL
+ *         or memory allocation fails.
+ *
+ * @note The returned string is allocated with calloc and must be freed by the caller.
+ * @note Uses binbuf_to_escaped_C_literal to perform the actual escaping.
+ */
+char * __attribute__ ((malloc)) escape_string(const char *input)
+{
+	if(input == NULL)
+		return NULL;
+	const size_t inlen = strlen(input);
+	// Worst case: every character is escaped as "0x00" + zero-terminator
+	const size_t bufsiz = 4 * inlen + 1;
+	char *buffer = calloc(bufsiz, sizeof(char));
+	binbuf_to_escaped_C_literal(input, inlen, buffer, bufsiz);
+	return buffer;
 }
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)

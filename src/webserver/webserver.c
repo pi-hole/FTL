@@ -30,6 +30,10 @@
 #include "database/message-table.h"
 // create_cli_password()
 #include "config/password.h"
+// thread_names
+#include "signals.h"
+
+#include <mbedtls/ssl_ciphersuites.h>
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -160,8 +164,14 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	if(host != NULL && strncmp(host, config.webserver.domain.v.s, host_len) == 0)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
-		if(strcmp(uri, "/") == 0)
+		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
+			if(strcmp(uri, prefix_webhome) == 0)
+			{
+				log_debug(DEBUG_API, "Not redirecting %s (matches webhome)",
+					  prefix_webhome);
+				return 0;
+			}
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
 			          prefix_webhome);
 			mg_send_http_redirect(conn, prefix_webhome, 308);
@@ -522,6 +532,49 @@ unsigned short get_api_string(char **buf, const bool domain)
 	return (unsigned short)len;
 }
 
+/**
+ * @brief Prints webserver options with optional debug logging.
+ *
+ * Iterates over the provided array of static webserver options, escapes both keys and values,
+ * and logs each option. If debug is enabled, logs with debug level; otherwise, logs as an error.
+ *
+ * @param debug           If true, use debug logging; otherwise, use error logging.
+ * @param idx             The number of option pairs in the static_options array.
+ * @param static_options  Array of key-value string pairs (size: idx * 2).
+ */
+static void print_webserver_opts(const bool debug, const size_t idx, const char **static_options)
+{
+	for(size_t i = 0; i <= idx; i++)
+	{
+		char *escaped_key = escape_string(static_options[i * 2]);
+		char *escaped_value = escape_string(static_options[i * 2 + 1]);
+		if(debug)
+		{
+			if(i == idx)
+			{
+				log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s",
+			          i, idx, escaped_key, escaped_value);
+		}
+		else
+		{
+			if(i == idx)
+			{
+				log_err("Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				break;
+			}
+			log_err("Webserver option %zu/%zu: %s=%s",
+			        i, idx, escaped_key, escaped_value);
+		}
+		if(escaped_key != NULL)
+			free(escaped_key);
+		if(escaped_value != NULL)
+			free(escaped_value);
+	}
+}
+
 void http_init(void)
 {
 	// Don't start web server if port is not set
@@ -589,17 +642,19 @@ void http_init(void)
 		const char *h = cJSON_GetStringValue(header);
 
 		// Allocate memory for the new header
-		webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
-		if (webheaders == NULL) {
-			log_err("Failed to allocate memory for webheaders!");
+		char *new_webheaders = realloc(webheaders, strlen(webheaders) + strlen(h) + 3);
+		if (new_webheaders == NULL) {
+			log_err("Failed to (re)allocate memory for webheaders!");
+			free(webheaders);
 			return;
 		}
+		webheaders = new_webheaders;
 		strcat(webheaders, h);
 		strcat(webheaders, "\r\n");
 	}
 
 	// Prepare options for HTTP server (NULL-terminated list)
-	const char *options[] = {
+	const char *static_options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
 		"listening_ports", config.webserver.port.v.s,
@@ -611,15 +666,27 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
-		NULL, NULL,
-		NULL, NULL, // Leave slots for access control list (ACL) and TLS configuration at the end
-		NULL
+		NULL, NULL, // Optional slots for TLS configuration
+		NULL, NULL, // Optional slots for access control list (ACL)
+		NULL, NULL  // Termination of the array
 	};
-
-	// Get index of next free option
-	// Note: The first options are always present, so start at the counting
-	// from the end of the array.
-	unsigned int next_option = ArraySize(options) - 6;
+	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json);
+	// We allocate two additional slots for ACL and TLS configuration
+	// which are added later if configured
+	// The last NULL is for the NULL-termination of the array
+	char **conf_opts = calloc(opt_size * 2 + 1, sizeof(char*));
+	if (conf_opts == NULL) {
+		log_err("Failed to allocate memory (%zu slots) for advanced webserver options!", opt_size * 2 + 1);
+		free(webheaders);
+		return;
+	}
+	size_t idx = 0;
+	while(idx < (ArraySize(static_options) / 2 - 3)) // -3 for the 6 NULL slots above
+	{
+		conf_opts[idx * 2] = strdup(static_options[idx * 2]);
+		conf_opts[idx * 2 + 1] = strdup(static_options[idx * 2 + 1]);
+		idx++;
+	}
 
 #ifdef HAVE_MBEDTLS
 	// Add TLS options if configured
@@ -639,7 +706,7 @@ void http_init(void)
 		// Try to generate certificate if not present
 		if(!file_readable(config.webserver.tls.cert.v.s))
 		{
-			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s))
+			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s, config.webserver.tls.validity.v.ui))
 			{
 				log_info("Created SSL/TLS certificate for %s at %s",
 				         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
@@ -659,8 +726,9 @@ void http_init(void)
 			{
 				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
 			}
-			options[++next_option] = "ssl_certificate";
-			options[++next_option] = config.webserver.tls.cert.v.s;
+			conf_opts[idx * 2] = strdup("ssl_certificate");
+			conf_opts[idx * 2 + 1] = strdup(config.webserver.tls.cert.v.s);
+			idx++;
 
 			log_info("Using SSL/TLS certificate file %s",
 			         config.webserver.tls.cert.v.s);
@@ -675,11 +743,56 @@ void http_init(void)
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
-		options[++next_option] = "access_control_list";
+		conf_opts[idx * 2] = strdup("access_control_list");
 		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
 		//       the original string is freed (config changes) after mg_start()
 		//       returns below.
-		options[++next_option] = config.webserver.acl.v.s;
+		conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
+		idx++;
+	}
+
+	cJSON *option = NULL;
+	cJSON_ArrayForEach(option, config.webserver.advancedOpts.v.json)
+	{
+		if(!cJSON_IsString(option))
+		{
+			log_err("Invalid option in webserver.advancedOpts!");
+			continue;
+		}
+
+		// Get option value
+		const char *opt = cJSON_GetStringValue(option);
+
+		// Split option into key and value at the first '='
+		char *equal_sign = strchr(opt, '=');
+		if(equal_sign == NULL)
+		{
+			log_err("Invalid option in webserver.advancedOpts: %s (missing '=')", opt);
+			continue;
+		}
+
+		// Allocate memory for key and value
+		size_t key_len = (size_t)(equal_sign - opt);
+		char *key = calloc(key_len + 1, sizeof(char));
+		if (key == NULL) {
+			log_err("Failed to allocate memory for advanced webserver option key!");
+			continue;
+		}
+		strncpy(key, opt, key_len);
+		key[key_len] = '\0';
+
+		char *value = strdup(equal_sign + 1);
+		if (value == NULL) {
+			log_err("Failed to allocate memory for advanced webserver option value!");
+			free(key);
+			continue;
+		}
+
+		// Store key and value in options array (already allocated
+		// above)
+		conf_opts[idx * 2] = key;
+		conf_opts[idx * 2 + 1] = value;
+		idx++;
 	}
 
 	// Configure logging handlers
@@ -699,16 +812,32 @@ void http_init(void)
 	struct mg_init_data init = { 0 };
 	init.callbacks = &callbacks;
 	init.user_data = NULL;
-	init.configuration_options = options;
+	init.configuration_options = (const char**)conf_opts;
 
 	/* Start the server */
 	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
 	{
-		log_err("Start of webserver failed!. Web interface will not be available!");
+		log_err("Start of webserver failed! Web interface will not be available!");
+		print_webserver_opts(false, idx, (const char **)conf_opts);
 		log_err("       Error: %s (error code %u.%u)", error.text, error.code, error.code_sub);
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
+
+	// Success: Print used options only if in debug mode
+	if(config.debug.webserver.v.b)
+		print_webserver_opts(true, idx, (const char **)conf_opts);
+
+	// All configuration options have been copied by CivetWeb, so we
+	// can free them here
+	for(size_t i = 0; i < idx * 2; i++)
+	{
+		if(conf_opts[i] != NULL)
+			free(conf_opts[i]);
+	}
+	free(conf_opts);
+	free(webheaders);
+	webheaders = NULL;
 
 	// Register API handler, use "/api" even when a prefix is defined as the
 	// prefix should be stripped away by the reverse proxy
@@ -716,13 +845,19 @@ void http_init(void)
 
 	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
 
+	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
+	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
+	{
+		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
+	}
+
 	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
 		// Replace trailing slash with end-of-string marker for matcher
 		char *prefix_webhome_matcher = strdup(prefix_webhome);
 		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
-	
+
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          prefix_webhome, config.webserver.paths.webhome.v.s);
 		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
@@ -854,8 +989,89 @@ void http_terminate(void)
 	// Free admin_api_uri path
 	if(admin_api_uri != NULL)
 		free(admin_api_uri);
-	
+
 	// Free login_uri path
 	if(login_uri != NULL)
 		free(login_uri);
+}
+
+static void restart_http(void)
+{
+	// Stop the server
+	http_terminate();
+
+	// Reinitialize the webserver
+	http_init();
+}
+
+/**
+ * @brief Prints all supported TLS cipher suites by mbedTLS.
+ *
+ * This function retrieves the list of all available TLS cipher suites
+ * supported by the mbedTLS library and prints their names, cipher IDs,
+ * and key lengths to the standard output.
+ *
+ * The output format for each cipher suite is:
+ *   - <suite_name> (Cipher ID: <suite_id>, Key length: <bitlen> bits)
+ *
+ * No parameters are required and no value is returned.
+ */
+void get_all_supported_ciphersuites(void)
+{
+	const int *all = mbedtls_ssl_list_ciphersuites();
+	printf("Supported TLS cipher suites:\n");
+	for (size_t i = 0; all[i] != 0; ++i)
+	{
+		// Get cipher suite details
+		const mbedtls_ssl_ciphersuite_t *suite_info = mbedtls_ssl_ciphersuite_from_id(all[i]);
+		const char *suite_name = mbedtls_ssl_ciphersuite_get_name(suite_info);
+		const size_t bitlen = mbedtls_ssl_ciphersuite_get_cipher_key_bitlen(suite_info);
+		printf("- %s (Cipher ID: %d, Key length: %zu bits)\n", suite_name, all[i], bitlen);
+	}
+}
+
+void *webserver_thread(void *val)
+{
+	(void)val;
+	// Set thread name
+	prctl(PR_SET_NAME, thread_names[WEBSERVER], 0, 0, 0);
+
+	// Initial delay until we check the certificate for the first time
+	thread_sleepms(WEBSERVER, 2000);
+
+	while(!killed)
+	{
+		// Check if the certificate is about to expire soon
+		const enum cert_check status = cert_currently_valid(config.webserver.tls.cert.v.s, 2);
+
+		if(status == CERT_EXPIRES_SOON &&
+		   config.webserver.tls.validity.v.ui > 0)
+		{
+			if(is_pihole_certificate(config.webserver.tls.cert.v.s))
+			{
+				log_info("TLS certificate at %s is about to expire soon, generating new one",
+				         config.webserver.tls.cert.v.s);
+				generate_certificate(config.webserver.tls.cert.v.s, false,
+				             config.webserver.domain.v.s,
+				             config.webserver.tls.validity.v.ui);
+
+				log_info("Restarting HTTP server");
+				restart_http();
+
+				log_info("Done. The new certificate is valid for %u days",
+				         config.webserver.tls.validity.v.ui);
+			}
+			else
+			{
+				log_err("TLS certificate at %s is about to expire soon, but it is not a Pi-hole certificate. Please renew it manually!",
+				        config.webserver.tls.cert.v.s);
+			}
+		}
+
+		// Idle for 1 day (24 hours)
+		thread_sleepms(WEBSERVER, 86400000);
+	}
+
+	log_info("Terminating webserver thread");
+	return NULL;
 }

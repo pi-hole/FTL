@@ -22,8 +22,6 @@
 #include "config/config.h"
 // uname()
 #include <sys/utsname.h>
-// nlroutes(), nladdrs(), nllinks()
-#include "tools/netlink.h"
 // struct proc_mem, getProcessMemory()
 #include "procps.h"
 // getcpu_percentage()
@@ -283,7 +281,7 @@ int api_padd(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(jconfig, "dhcp_start", addJSONConfValue(config.dhcp.start.t, &config.dhcp.start.v));
 	JSON_ADD_ITEM_TO_OBJECT(jconfig, "dhcp_end", addJSONConfValue(config.dhcp.end.t, &config.dhcp.end.v));
 	JSON_ADD_BOOL_TO_OBJECT(jconfig, "dhcp_ipv6", config.dhcp.ipv6.v.b);
-	JSON_COPY_STR_TO_OBJECT(jconfig, "dns_domain", config.dns.domain.v.s);
+	JSON_COPY_STR_TO_OBJECT(jconfig, "dns_domain", config.dns.domain.name.v.s);
 	JSON_ADD_NUMBER_TO_OBJECT(jconfig, "dns_port", config.dns.port.v.u16);
 	JSON_ADD_NUMBER_TO_OBJECT(jconfig, "dns_num_upstreams", cJSON_GetArraySize(config.dns.upstreams.v.json));
 	JSON_ADD_BOOL_TO_OBJECT(jconfig, "dns_dnssec", config.dns.dnssec.v.b);

@@ -655,7 +655,28 @@ cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 
 		if(upstreams_only)
 		{
-			cJSON_AddStringToArray(jtop_upstreams, name);
+			// Build a string in the format <ip>#<port> (<name if available>)
+			if(port < 0)
+			{
+				// No port available, just use name
+				// This is the case for special upstreams like
+				// blocklist and cache
+				cJSON_AddStringToArray(jtop_upstreams, name);
+			}
+			else if(name == NULL || strlen(name) == 0)
+			{
+				// No name available, just use IP and port
+				char ip_port[INET6_ADDRSTRLEN + 6]; // Enough space for IPv6 address and port
+				snprintf(ip_port, sizeof(ip_port), "%s#%d", ip, port);
+				cJSON_AddStringToArray(jtop_upstreams, ip_port);
+			}
+			else
+			{
+				// Use IP, port and name
+				char ip_port_name[INET6_ADDRSTRLEN + 6 + 256]; // Enough space for IPv6 address, port and name
+				snprintf(ip_port_name, sizeof(ip_port_name), "%s#%d (%s)", ip, port, name);
+				cJSON_AddStringToArray(jtop_upstreams, ip_port_name);
+			}
 		}
 		else
 		{

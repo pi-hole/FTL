@@ -27,34 +27,39 @@
 #include "config/env.h"
 
 // Private prototypes
-static toml_table_t *parseTOML(const unsigned int version);
+static bool parseTOML(toml_result_t *toml, const unsigned int version);
 static void reportDebugFlags(void);
 
 // Migrate dns.revServer -> dns.revServers[0]
-static bool migrate_dns_revServer(toml_table_t *toml, struct config *newconf)
+static bool migrate_dns_revServer(toml_datum_t toml, struct config *newconf)
 {
 	bool restart = false;
-	toml_table_t *dns = toml_table_in(toml, "dns");
-	if(dns)
+	toml_datum_t dns = toml_table_find(toml, "dns");
+	if(dns.type != TOML_UNKNOWN)
 	{
-		toml_table_t *revServer = toml_table_in(dns, "revServer");
-		if(revServer)
+		toml_datum_t revServer = toml_table_find(dns, "revServer");
+		if(revServer.type != TOML_UNKNOWN)
 		{
 			// Read old config
-			toml_datum_t active = toml_bool_in(revServer, "active");
-			toml_datum_t cidr = toml_string_in(revServer, "cidr");
-			toml_datum_t target = toml_string_in(revServer, "target");
-			toml_datum_t domain = toml_string_in(revServer, "domain");
+			toml_datum_t active = toml_table_find(revServer, "active");
+			toml_datum_t cidr = toml_table_find(revServer, "cidr");
+			toml_datum_t target = toml_table_find(revServer, "target");
+			toml_datum_t domain = toml_table_find(revServer, "domain");
 
 			// Necessary condition: all values must exist and CIDR and target must not be empty
-			if(active.ok && cidr.ok && target.ok && domain.ok && strlen(cidr.u.s) > 0 && strlen(target.u.s))
+			if(active.type == TOML_BOOLEAN &&
+			   cidr.type == TOML_STRING &&
+			   target.type == TOML_STRING &&
+			   strlen(cidr.u.s) > 0 &&
+			   domain.type == TOML_STRING &&
+			   strlen(target.u.s) > 0)
 			{
 				// Build comma-separated string of all values
-				char *old = calloc((active.u.b ? 4 : 5) + strlen(cidr.u.s) + strlen(target.u.s) + strlen(domain.u.s) + 4, sizeof(char));
+				char *old = calloc((active.u.boolean ? 4 : 5) + strlen(cidr.u.s) + strlen(target.u.s) + strlen(domain.u.s) + 4, sizeof(char));
 				if(old)
 				{
 					// Add to new config
-					sprintf(old, "%s,%s,%s,%s", active.u.s ? "true" : "false", cidr.u.s, target.u.s, domain.u.s);
+					sprintf(old, "%s,%s,%s,%s", active.u.boolean ? "true" : "false", cidr.u.s, target.u.s, domain.u.s);
 					log_debug(DEBUG_CONFIG, "Config setting dns.revServer MIGRATED to dns.revServers[0]: %s", old);
 					cJSON_AddItemToArray(newconf->dns.revServers.v.json, cJSON_CreateString(old));
 					restart = true;
@@ -66,10 +71,10 @@ static bool migrate_dns_revServer(toml_table_t *toml, struct config *newconf)
 				// the user wants to know and restore it later
 				// manually after fixing whatever the problem is
 				log_warn("Config setting dns.revServer INVALID - ignoring: %s %s %s %s",
-				         active.ok ? active.u.s : "NULL",
-				         cidr.ok ? cidr.u.s : "NULL",
-				         target.ok ? target.u.s : "NULL",
-				         domain.ok ? domain.u.s : "NULL");
+				         active.type == TOML_BOOLEAN ? active.u.boolean ? "true" : "false" : "NULL",
+				         cidr.type == TOML_STRING ? cidr.u.s : "NULL",
+				         target.type == TOML_STRING ? target.u.s : "NULL",
+				         domain.type == TOML_STRING ? domain.u.s : "NULL");
 			}
 		}
 		else
@@ -89,30 +94,72 @@ static bool migrate_dns_revServer(toml_table_t *toml, struct config *newconf)
 	return restart;
 }
 
+// Migrate dns.domain -> dns.domain.name
+static bool migrate_dns_domain(toml_datum_t toml, struct config *newconf)
+{
+	bool restart = false;
+	toml_datum_t dns = toml_table_find(toml, "dns");
+	if(dns.type != TOML_UNKNOWN)
+	{
+		toml_datum_t domain = toml_table_find(dns, "domain");
+		if(domain.type == TOML_STRING && strlen(domain.u.s) > 0)
+		{
+			// Migrate to new config
+			log_debug(DEBUG_CONFIG, "Config setting dns.domain MIGRATED to dns.domain.name: %s", domain.u.s);
+			if(newconf->dns.domain.name.t == CONF_STRING_ALLOCATED && newconf->dns.domain.name.v.s != NULL)
+				free(newconf->dns.domain.name.v.s);
+			newconf->dns.domain.name.v.s = strdup(domain.u.s);
+			newconf->dns.domain.name.t = CONF_STRING_ALLOCATED;
+			restart = true;
+		}
+		else
+		{
+			// Perfectly fine - it just means this old option does
+			// not exist and, hence, does not need to be migrated
+			log_debug(DEBUG_CONFIG, "dns.domain does not exist - nothing to migrate");
+		}
+	}
+	else
+	{
+		// This is actually a problem as the old config file
+		// should always contain a "dns" section
+		log_warn("dns config tab does not exist - config file corrupt or incomplete");
+	}
+
+	return restart;
+}
+
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
-static bool migrate_config(toml_table_t *toml, struct config *newconf)
+static bool migrate_config(toml_datum_t toml, struct config *newconf)
 {
 	bool restart = false;
 
 	// Migrate dns.revServer -> dns.revServers[0]
 	restart |= migrate_dns_revServer(toml, newconf);
+	// Migrate dns.domain -> dns.domain.name
+	restart |= migrate_dns_domain(toml, newconf);
 
 	return restart;
 }
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
-                 toml_table_t *toml, const bool verbose, bool *restart,
-                 const unsigned int version)
+                 toml_datum_t toml, const bool verbose, bool *restart,
+                 const unsigned int version, const bool teleporter)
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
-	bool teleporter = (toml != NULL);
+	toml_result_t result = { 0 };
 	if(!teleporter)
 	{
-		toml = parseTOML(version);
-		if(!toml)
+		if(!parseTOML(&result, version))
+		{
+			log_err("Cannot parse TOML file: %s", result.errmsg);
 			return false;
+		}
+		// Get top table
+		toml = result.toptab;
 	}
 
 	// First, get an array of keys of config items that have been forced
@@ -124,8 +171,8 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	// First try to read env variable, if this fails, read TOML
 	if(teleporter || !readEnvValue(&newconf->debug.config, newconf, env_vars, NULL))
 	{
-		toml_table_t *conf_debug = toml_table_in(toml, "debug");
-		if(conf_debug)
+		toml_datum_t conf_debug = toml_table_find(toml, "debug");
+		if(conf_debug.type == TOML_TABLE)
 			readTOMLvalue(&newconf->debug.config, "config", conf_debug, newconf);
 	}
 	set_debug_flags(newconf);
@@ -171,12 +218,12 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 
 		// Parse tree of properties
 		bool item_available = true;
-		toml_table_t *table[MAX_CONFIG_PATH_DEPTH] = { 0 };
+		toml_datum_t table[MAX_CONFIG_PATH_DEPTH] = { 0 };
 		for(unsigned int j = 0; j < level-1; j++)
 		{
 			// Get table at this level
-			table[j] = toml_table_in(j > 0 ? table[j-1] : toml, new_conf_item->p[j]);
-			if(!table[j])
+			table[j] = toml_table_find(j > 0 ? table[j-1] : toml, new_conf_item->p[j]);
+			if(table[j].type == TOML_UNKNOWN)
 			{
 				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", new_conf_item->k);
 				item_available = false;
@@ -225,70 +272,77 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	printFTLenv();
 
 	// Free memory allocated by the TOML parser and return success
-	toml_free(toml);
+	if(!teleporter)
+		toml_free(result);
 	cJSON_Delete(env_vars);
 	return true;
 }
 
 // Parse TOML config file
-static toml_table_t *parseTOML(const unsigned int version)
+static bool parseTOML(toml_result_t *toml, const unsigned int version)
 {
 	// Try to open default config file. Use fallback if not found
 	bool locked = false;
 	FILE *fp = openFTLtoml("r", version, &locked);
 	if(fp == NULL)
-		return NULL;
+		return false;
 
 	// Parse lines in the config file
-	char errbuf[200];
-	toml_table_t *conf = toml_parse_file(fp, errbuf, sizeof(errbuf));
+	*toml = toml_parse_file(fp);
 
 	// Close file and release exclusive lock
 	closeFTLtoml(fp, locked);
 
 	// Check for errors
-	if(conf == NULL)
+	if(!toml->ok)
 	{
-		log_err("Cannot parse config file: %s", errbuf);
-		return NULL;
+		log_err("Cannot parse config file: %s", toml->errmsg);
+		return false;
 	}
 
 	log_debug(DEBUG_CONFIG, "TOML file parsing: OK");
-	return conf;
+	return true;
 }
 
 bool getLogFilePathTOML(void)
 {
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: log file path");
 
-	toml_table_t *conf = parseTOML(0);
-	if(!conf)
+	toml_result_t conf = { 0 };
+	
+	if(!parseTOML(&conf, 0))
 		return false;
 
-	toml_table_t *files = toml_table_in(conf, "files");
-	if(!files)
+	toml_datum_t files = toml_table_find(conf.toptab, "files");
+	if(files.type != TOML_TABLE)
 	{
-		log_debug(DEBUG_CONFIG, "files does not exist");
+		log_debug(DEBUG_CONFIG, "files DOES NOT EXIST or is not a table");
 		toml_free(conf);
 		return false;
 	}
 
-	toml_datum_t log = toml_string_in(files, "log");
-	if(!log.ok)
+	toml_datum_t log = toml_table_find(files, "log");
+	if(log.type != TOML_TABLE)
 	{
-		log_debug(DEBUG_CONFIG, "files.log DOES NOT EXIST");
+		log_debug(DEBUG_CONFIG, "files.log DOES NOT EXIST or is not a table");
+		toml_free(conf);
+		return false;
+	}
+
+	toml_datum_t ftl = toml_table_find(log, "ftl");
+	if(ftl.type != TOML_STRING)
+	{
+		log_debug(DEBUG_CONFIG, "files.log DOES NOT EXIST or is not a string");
 		toml_free(conf);
 		return false;
 	}
 
 	// Only replace string when it is different
-	if(strcmp(config.files.log.ftl.v.s,log.u.s) != 0)
+	if(strcmp(config.files.log.ftl.v.s,ftl.u.s) != 0)
 	{
 		config.files.log.ftl.t = CONF_STRING_ALLOCATED;
-		config.files.log.ftl.v.s = log.u.s; // Allocated string
+		config.files.log.ftl.v.s = strdup(ftl.u.s); // Allocated string
 	}
-	else
-		free(log.u.s);
 
 	toml_free(conf);
 	return true;

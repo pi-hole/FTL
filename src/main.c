@@ -49,7 +49,7 @@ int main (int argc, char *argv[])
 	username = getUserName();
 
 	// Obtain log file location
-	getLogFilePath();
+	getLogFilePath(true);
 
 	// Parse arguments
 	// We run this also for no direct arguments
@@ -114,7 +114,7 @@ int main (int argc, char *argv[])
 		check_capabilities();
 
 	// Initialize pseudo-random number generator
-	srand(time(NULL));
+	srand(time(NULL) + getpid());
 
 	// Start the resolver
 	startup = false;

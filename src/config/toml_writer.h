@@ -10,6 +10,6 @@
 #ifndef TOML_WRITER_H
 #define TOML_WRITER_H
 
-bool writeFTLtoml(const bool verbose);
+bool writeFTLtoml(const bool verbose, FILE *fp);
 
 #endif //TOML_WRITER_H

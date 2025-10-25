@@ -75,7 +75,7 @@ int get_gateway(struct ftl_conn *api, cJSON * json, const bool detailed)
 			cJSON_ArrayForEach(iface, interfaces)
 			{
 				const char *ifname = cJSON_GetStringValue(cJSON_GetObjectItem(iface, "name"));
-				if(ifname != NULL && strcmp(ifname, iface_name) == 0)
+				if(ifname != NULL && iface_name != NULL && strcmp(ifname, iface_name) == 0)
 				{
 					cJSON *addr = NULL;
 					cJSON *addrs = cJSON_GetObjectItem(iface, "addresses");
@@ -186,7 +186,7 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	{
 		networkTable_readDevicesFinalize(device_stmt);
 		dbclose(&db);
-	
+
 		// Add SQL message (may be NULL = not available)
 		return send_json_error(api, 500,
 		                       "database_error",

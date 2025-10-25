@@ -75,7 +75,6 @@ enum conf_type {
 	CONF_UINT,
 	CONF_UINT16,
 	CONF_LONG,
-	CONF_ULONG,
 	CONF_DOUBLE,
 	CONF_STRING,
 	CONF_PASSWORD,
@@ -104,6 +103,7 @@ enum conf_type {
 #define FLAG_ENV_VAR               (1 << 4)
 #define FLAG_CONF_IMPORTED         (1 << 5)
 #define FLAG_READ_ONLY             (1 << 6)
+#define FLAG_FTL_LOG               (1 << 7)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -142,7 +142,6 @@ struct config {
 		struct conf_item hosts;
 		struct conf_item domainNeeded;
 		struct conf_item expandHosts;
-		struct conf_item domain;
 		struct conf_item bogusPriv;
 		struct conf_item dnssec;
 		struct conf_item interface;
@@ -151,7 +150,12 @@ struct config {
 		struct conf_item queryLogging;
 		struct conf_item cnameRecords;
 		struct conf_item port;
+		struct conf_item localise;
 		struct conf_item revServers;
+		struct {
+			struct conf_item name;
+			struct conf_item local;
+		} domain;
 		struct {
 			struct conf_item size;
 			struct conf_item optimizer;
@@ -249,12 +253,14 @@ struct config {
 		struct conf_item threads;
 		struct conf_item headers;
 		struct conf_item serve_all;
+		struct conf_item advancedOpts;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
 		} session;
 		struct {
 			struct conf_item cert;
+			struct conf_item validity;
 		} tls;
 		struct {
 			struct conf_item webroot;
@@ -310,6 +316,7 @@ struct config {
 		struct conf_item dnsmasq_lines;
 		struct conf_item extraLogging;
 		struct conf_item readOnly;
+		struct conf_item normalizeCPU;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;
@@ -361,16 +368,17 @@ extern struct config config;
 #define DEBUG_ELEMENTS (sizeof(config.debug)/sizeof(struct conf_item))
 
 // Defined in config.c
+void initConfig(struct config *conf);
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
 bool migrate_config_v6(void);
 bool readFTLconf(struct config *conf, const bool rewrite);
-bool getLogFilePath(void);
+bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);
-void free_config(struct config *conf);
+void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
@@ -379,6 +387,7 @@ const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const))
 void replace_config(struct config *newconf);
 void reread_config(void);
 bool create_migration_target_v6(void);
+bool create_default_config(const char *filename);
 
 // Defined in toml_reader.c
 bool readDebugSettings(void);

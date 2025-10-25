@@ -44,6 +44,20 @@ static struct timespec diff(struct timespec start, struct timespec end)
 	return diff;
 }
 
+
+/**
+ * @brief Calculates the difference in seconds between two timespec values.
+ *
+ * @param start The starting timespec value.
+ * @param end   The ending timespec value.
+ * @return The time difference in seconds as a double.
+ */
+double __attribute__((const)) time_diff(struct timespec start, struct timespec end)
+{
+	struct timespec td = diff(start, end);
+	return td.tv_sec + td.tv_nsec * 1e-9;
+}
+
 double timer_elapsed_msec(const enum timers i)
 {
 	if(i >= NUMTIMERS)

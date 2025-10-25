@@ -285,8 +285,8 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 #define log_resolve_info(host, port, tcp) { log_info("Tried to resolve PTR \"%s\" on 127.0.0.1#%u (%s)", host, port, tcp ? "TCP" : "UDP"); }
 
 // Perform a name lookup by sending a packet to ourselves
-static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
-                                                    const char *host, const char *ipaddr, bool *truncated)
+static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
+                           char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
 {
 	uint8_t buf[4096] = { 0 }; // buffer for DNS query
 	uint8_t *qname = NULL, *reader = NULL;
@@ -424,7 +424,7 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 
 	// Start reading answers
 	uint16_t stop = 0;
-	char *name = NULL;
+	bool have_name = false;
 	for(uint16_t i = 0; i < min(ntohs(dns->ans_count), ArraySize(answers)); i++)
 	{
 		answers[i].name = nameFromDNS(reader, buf, &stop);
@@ -450,14 +450,16 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 			continue;
 		}
 
-		name = (char *)answers[i].rdata;
+		strncpy(hostn, (const char*)answers[i].rdata, MAXDOMAINLEN - 1);
 		log_debug(DEBUG_RESOLVER, "Answer %u is PTR \"%s\" => \"%s\"",
 		          i, answers[i].name, answers[i].rdata);
 
 		// We break out of the loop if this is a valid hostname
-		if(strlen(name) > 0 && valid_hostname(name, ipaddr))
+		if(strlen(hostn) > 0 && valid_hostname(hostn, ipaddr))
 		{
 			free(answers[i].name);
+			free(answers[i].rdata);
+			have_name = true;
 			break;
 		}
 		else
@@ -465,21 +467,11 @@ static char *__attribute__((malloc)) ngethostbyname(const int sock, const bool t
 			// Discard this answer: free memory and set name to NULL
 			free(answers[i].name);
 			free(answers[i].rdata);
-			name = NULL;
+			hostn[0] = '\0';
 		}
 	}
 
-	if(name != NULL)
-	{
-		// We have a valid hostname, return it
-		// This is allocated memory
-		return name;
-	}
-	else
-	{
-		// No valid hostname found, return empty string
-		return strdup("");
-	}
+	return have_name;
 }
 
 // Convert hostname from network to host representation
@@ -608,22 +600,16 @@ static void __attribute__((nonnull(1,3))) nameToDNS(unsigned char *dns, const si
 	*dns++ = '\0';
 }
 
-char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
-                                              const char *addr, const bool force, bool *truncated)
+bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
+                     char hostn[MAXDOMAINLEN], const char *addr, const bool force, bool *truncated)
 {
-	// Get host name
-	char *hostn = NULL;
-
 	// Check if we want to resolve host names
 	if(!force && !resolve_this_name(addr))
 	{
-		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
-
 		// Return an empty host name
-		hostn = strdup("");
-		if(hostn == NULL)
-			log_err("Unable to allocate memory for empty host name");
-		return hostn;
+		log_debug(DEBUG_RESOLVER, "Configured to not resolve host name for %s", addr);
+		hostn[0] = '\0';
+		return true;
 	}
 
 	log_debug(DEBUG_RESOLVER, "Trying to resolve %s", addr);
@@ -632,22 +618,18 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 	// if so, return "hidden" as hostname
 	if(strcmp(addr, "0.0.0.0") == 0)
 	{
-		hostn = strdup("hidden");
-		if(hostn == NULL)
-			log_err("Unable to allocate memory for hidden host name");
+		strncpy(hostn, "hidden", MAXDOMAINLEN);
 		log_debug(DEBUG_RESOLVER, "---> \"%s\" (privacy settings)", hostn);
-		return hostn;
+		return true;
 	}
 
 	// Check if this is the internal client
-	// if so, return "hidden" as hostname
+	// if so, return "pi.hole" as hostname
 	if(strcmp(addr, "::") == 0)
 	{
-		hostn = strdup("pi.hole");
-		if(hostn == NULL)
-			log_err("Unable to allocate memory for internal host name");
+		strncpy(hostn, "pi.hole", MAXDOMAINLEN);
 		log_debug(DEBUG_RESOLVER, "---> \"%s\" (special)", hostn);
-		return hostn;
+		return true;
 	}
 
 	// Test if we want to resolve an IPv6 address
@@ -657,7 +639,12 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 
 	// Convert address into binary form
 	struct sockaddr_storage ss = { 0 };
-	char *inaddr = NULL;
+	// This needs to hold the name to be resolved:
+	// - Needs extra space for ".ip6.arpa" suffix
+	// - The 1.2.3.4... string is 63 + terminating \0 = 64 bytes long
+	// - This is anyway long enough to keep the much shorter IPv4 variant of
+	//   this (like 78.56.34.12.in-addr.arpa)
+	char inaddr[64 + 10] = { 0 };
 	if(IPv6)
 	{
 		// Get binary form of IPv6 address
@@ -665,16 +652,9 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in6 *)&ss)->sin6_addr)))
 		{
 			log_warn("Invalid IPv6 address when trying to resolve hostname: %s", addr);
-			return strdup("");
-		}
-
-		// Need extra space for ".ip6.arpa" suffix
-		// The 1.2.3.4... string is 63 + terminating \0 = 64 bytes long
-		inaddr = calloc(64 + 10, sizeof(char));
-		if(inaddr == NULL)
-		{
-			log_err("Unable to allocate memory for reverse lookup");
-			return NULL;
+			// Return empty hostname
+			hostn[0] = '\0';
+			return true;
 		}
 
 		// Convert IPv6 address to reverse lookup format
@@ -707,7 +687,7 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 		}
 
 		// Add suffix
-		strcat(inaddr, ".ip6.arpa");
+		strncat(inaddr, ".ip6.arpa", sizeof(inaddr) - strlen(inaddr) - 1);
 	}
 	else
 	{
@@ -716,23 +696,13 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 		if(!inet_pton(ss.ss_family, addr, &(((struct sockaddr_in *)&ss)->sin_addr)))
 		{
 			log_warn("Invalid IPv4 address when trying to resolve hostname: %s", addr);
-			hostn = strdup("");
-			if(hostn == NULL)
-				log_err("Unable to allocate memory for empty host name");
-			return hostn;
-		}
-
-		// Need extra space for ".in-addr.arpa" suffix
-		inaddr = calloc(INET_ADDRSTRLEN + 14, sizeof(char));
-		if(inaddr == NULL)
-		{
-			log_err("Unable to allocate memory for reverse lookup");
-			return NULL;
+			hostn[0] = '\0';
+			return true;
 		}
 
 		// Convert IPv4 address to reverse lookup format
 		// 12.34.56.78 -> 78.56.34.12.in-addr.arpa
-		snprintf(inaddr, INET_ADDRSTRLEN + 14, "%d.%d.%d.%d.in-addr.arpa",
+		snprintf(inaddr, sizeof(inaddr), "%d.%d.%d.%d.in-addr.arpa",
 		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[3],
 		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[2],
 		        (int)((uint8_t *)&(((struct sockaddr_in *)&ss)->sin_addr))[1],
@@ -742,13 +712,7 @@ char *__attribute__((malloc)) resolveHostname(const int sock, const bool tcp, st
 	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
 	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
 	// nameserver we configured in /etc/resolv.conf
-	hostn = ngethostbyname(sock, tcp, dest, inaddr, addr, truncated);
-
-	// Free allocated memory
-	free(inaddr);
-
-	// Return obtained host name
-	return hostn;
+	return ngethostbyname(sock, tcp, dest, hostn, inaddr, addr, truncated);
 }
 
 // Resolve upstream destination host names
@@ -758,34 +722,19 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
 	lock_shm();
-	char *ipaddr = strdup(getstr(ippos));
-	char *oldname = strdup(getstr(oldnamepos));
+	char ipaddr[INET6_ADDRSTRLEN];
+	strncpy(ipaddr, getstr(ippos), sizeof(ipaddr));
+	ipaddr[sizeof(ipaddr) - 1] = '\0';
+	char oldname[MAXDOMAINLEN];
+	strncpy(oldname, getstr(oldnamepos), sizeof(oldname));
+	oldname[sizeof(oldname) - 1] = '\0';
 	unlock_shm();
-
-	if(ipaddr == NULL || oldname == NULL)
-	{
-		log_err("Unable to allocate memory for IP address or host name");
-
-		// Free allocated memory
-		if(ipaddr != NULL)
-			free(ipaddr);
-		if(oldname != NULL)
-			free(oldname);
-
-		// Return old namepos
-		*success = false;
-		return oldnamepos;
-	}
 
 	// Test if we want to resolve host names, otherwise all calls to resolveHostname()
 	// and getNameFromIP() can be skipped as they will all return empty names (= no records)
 	if(!resolve_this_name(ipaddr))
 	{
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (configured to not resolve host name)");
-
-		// Free allocated memory
-		free(ipaddr);
-		free(oldname);
 
 		// Return fixed position of empty string
 		return 0;
@@ -794,8 +743,9 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	bool truncated = false;
-	char *newname = resolveHostname(udp_sock, false, dest, ipaddr, false, &truncated);
-	if(newname == NULL && truncated)
+	char newname[MAXDOMAINLEN] = { 0 };
+	bool resolved = resolveHostname(udp_sock, false, dest, newname, ipaddr, false, &truncated);
+	if(!resolved && truncated)
 	{
 		// Retry with TCP if UDP failed due to truncation (RFC 7766)
 		const int tcp_sock = create_socket(true, dest);
@@ -803,51 +753,29 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 		{
 			// Only attempt to resolve the hostname if we have a
 			// valid socket
-			newname = resolveHostname(tcp_sock, true, dest, ipaddr, false, NULL);
+			resolved = resolveHostname(tcp_sock, true, dest, newname, ipaddr, false, NULL);
 			close(tcp_sock);
 		}
 		else
 			log_warn("Unable to create TCP socket for DNS resolution");
 	}
 
-	if(newname == NULL)
-	{
-		// We could not resolve the hostname, so we keep the old one
-		// and mark the entry as not new
-		log_debug(DEBUG_RESOLVER, " ---> \"%s\" (failed to resolve via TCP, too)", oldname);
-
-		// Free allocated memory
-		*success = false;
-		free(ipaddr);
-		free(oldname);
-		return oldnamepos;
-	}
-
 	// If no hostname was found, try to obtain hostname from the network table
 	// This may be disabled due to a user setting
-	if(strlen(newname) == 0 && config.resolver.networkNames.v.b)
+	if(!resolved && config.resolver.networkNames.v.b)
 	{
-		free(newname);
-		newname = getNameFromIP(NULL, ipaddr);
-		if(newname != NULL)
+		if(getNameFromIP(NULL, newname, ipaddr))
 			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (provided by database)", newname);
 	}
 
 	// Only store new newname if it is valid and differs from oldname
 	// We do not need to check for oldname == NULL as names are
 	// always initialized with an empty string at position 0
-	if(newname != NULL && strcmp(oldname, newname) != 0)
+	if(newname[0] != '\0' && strcmp(oldname, newname) != 0)
 	{
 		lock_shm();
 		const size_t newnamepos = addstr(newname);
 		unlock_shm();
-
-		// Free allocated memory
-		// newname has already been checked against NULL
-		// so we can safely free it
-		free(newname);
-		free(ipaddr);
-		free(oldname);
 		return newnamepos;
 	}
 	else
@@ -855,11 +783,6 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 		// Debugging output
 		log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
 	}
-
-	if(newname != NULL)
-		free(newname);
-	free(ipaddr);
-	free(oldname);
 
 	// Not changed, return old namepos
 	return oldnamepos;

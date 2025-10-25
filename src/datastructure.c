@@ -682,14 +682,22 @@ void FTL_reload_all_domainlists(void)
 	gravityDB_reopen();
 
 	// Get size of gravity, number of domains, groups, clients, and lists
-	counters->database.gravity = gravityDB_count(GRAVITY_TABLE);
-	counters->database.groups = gravityDB_count(GROUPS_TABLE);
-	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
-	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
-	counters->database.domains.allowed.exact = gravityDB_count(EXACT_WHITELIST_TABLE);
-	counters->database.domains.denied.exact = gravityDB_count(EXACT_BLACKLIST_TABLE);
-	counters->database.domains.allowed.regex = gravityDB_count(REGEX_ALLOW_TABLE);
-	counters->database.domains.denied.regex = gravityDB_count(REGEX_DENY_TABLE);
+	counters->database.gravity = gravityDB_count(GRAVITY_TABLE, false);
+	counters->database.groups = gravityDB_count(GROUPS_TABLE, false);
+	counters->database.clients = gravityDB_count(CLIENTS_TABLE, false);
+	counters->database.lists = gravityDB_count(ADLISTS_TABLE, false);
+
+	counters->database.domains.allowed.exact.total = gravityDB_count(EXACT_ALLOW_TABLE, true);
+	counters->database.domains.allowed.exact.enabled = gravityDB_count(EXACT_ALLOW_TABLE, false);
+
+	counters->database.domains.denied.exact.total = gravityDB_count(EXACT_DENY_TABLE, true);
+	counters->database.domains.denied.exact.enabled = gravityDB_count(EXACT_DENY_TABLE, false);
+
+	counters->database.domains.allowed.regex.total = gravityDB_count(REGEX_ALLOW_TABLE, true);
+	counters->database.domains.allowed.regex.enabled = gravityDB_count(REGEX_ALLOW_TABLE, false);
+
+	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
+	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_reopen()
@@ -882,6 +890,7 @@ const char * __attribute__ ((const)) get_refresh_hostnames_str(const enum refres
 			return "UNKNOWN";
 		case REFRESH_NONE:
 			return "NONE";
+		case REFRESH_MAX:
 		default:
 			return "N/A";
 	}
@@ -1313,8 +1322,10 @@ const char * __attribute__ ((const)) get_ptr_type_str(const enum ptr_type pihole
 			return "HOSTNAMEFQDN";
 		case PTR_NONE:
 			return "NONE";
+		case PTR_MAX:
+		default:
+			return NULL;
 	}
-	return NULL;
 }
 
 int __attribute__ ((pure)) get_ptr_type_val(const char *piholePTR)
@@ -1345,8 +1356,10 @@ const char * __attribute__ ((const)) get_busy_reply_str(const enum busy_reply re
 			return "REFUSE";
 		case BUSY_DROP:
 			return "DROP";
+		case BUSY_MAX:
+		default:
+			return NULL;
 	}
-	return NULL;
 }
 
 int __attribute__ ((pure)) get_busy_reply_val(const char *replyWhenBusy)
@@ -1378,8 +1391,10 @@ const char * __attribute__ ((const)) get_listeningMode_str(const enum listening_
 			return "BIND";
 		case LISTEN_NONE:
 			return "NONE";
+		case LISTEN_MAX:
+		default:
+			return NULL;
 	}
-	return NULL;
 }
 
 int __attribute__ ((pure)) get_listeningMode_val(const char *listeningMode)
@@ -1409,8 +1424,10 @@ const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp
 			return "F";
 		case TEMP_UNIT_K:
 			return "K";
+		case TEMP_UNIT_MAX:
+		default:
+			return NULL;
 	}
-	return NULL;
 }
 
 int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit)
@@ -1436,8 +1453,10 @@ const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns
 			return "CODE";
 		case EDNS_MODE_TEXT:
 			return "TEXT";
+		case EDNS_MODE_MAX:
+		default:
+			return NULL;
 	}
-	return NULL;
 }
 
 int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode)

@@ -3,11 +3,11 @@ components:
   paths:
     list:
       summary: Modify list
-      parameters:
-        - $ref: 'lists.yaml#/components/parameters/list'
-        - $ref: 'lists.yaml#/components/parameters/listtype'
       get:
         summary: Get lists
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype_optional'
         tags:
           - "List management"
         operationId: "get_lists"
@@ -39,6 +39,9 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
       put:
         summary: Replace list
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         tags:
           - "List management"
         operationId: "replace_lists"
@@ -86,6 +89,9 @@ components:
                     - $ref: 'common.yaml#/components/schemas/took'
       delete:
         summary: Delete list
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/list'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         tags:
           - "List management"
         operationId: "delete_lists"
@@ -137,6 +143,8 @@ components:
           On success, a new resource is created at `/lists/{list}`.
 
           The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         requestBody:
           description: Callback payload
           content:
@@ -262,7 +270,6 @@ components:
       post:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/address_maybe_array'
-          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'
@@ -439,6 +446,7 @@ components:
               key: "uri_error"
               message: "Invalid request: Specify item in URI"
               hint: null
+            took: 0.003
       bad_request:
         no_payload:
           summary: No JSON payload found
@@ -447,6 +455,7 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
       database_error:
         duplicate:
           summary: Database error
@@ -455,6 +464,7 @@ components:
               key: "database_error"
               message: "Could not add to gravity database"
               hint: "UNIQUE constraint failed: listlist.list"
+            took: 0.003
   parameters:
     list:
       in: path
@@ -465,6 +475,17 @@ components:
       description: Address of the list
       example: https://hosts-file.net/ad_servers.txt
     listtype:
+      in: query
+      name: type
+      schema:
+        type: string
+        enum:
+          - "allow"
+          - "block"
+      required: true
+      description: Type of list
+      example: block
+    listtype_optional:
       in: query
       name: type
       schema:

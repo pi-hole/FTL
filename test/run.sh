@@ -143,10 +143,6 @@ if [[ $RET != 0 ]]; then
   echo ""
 fi
 
-# Kill pihole-FTL after having completed tests
-# This will also shut down the debugger
-kill "$(pidof pihole-FTL)"
-
 # Restore umask
 umask "$OLDUMASK"
 

@@ -326,6 +326,8 @@ static void tftp_request(struct listener *listen, time_t now)
   transfer->start = now;
   transfer->backoff = 1;
   transfer->block = 1;
+  transfer->ackprev = 0;
+  transfer->block_hi = 0;
   transfer->blocksize = 512;
   transfer->windowsize = 1;
   
@@ -754,12 +756,26 @@ static void handle_tftp(time_t now, struct tftp_transfer *transfer, ssize_t len)
     {
       if (ntohs(mess->op) == OP_ACK)
 	{
-	  /* try and handle 16-bit blockno wrap-around */
-	  unsigned int block = (unsigned short)ntohs(mess->block);
-	  if (block < transfer->lastack)
-	    block |= transfer->block & 0xffff0000;
+	  /* Handle 16-bit block number wrap-around. */
+	  u16 new = ntohs(mess->block);
+	  u32 block;
+
+	  /* If the last ack received was in the top quarter of a 64k block
+	     and this one is in the bottom quarter, assume it has wrapped.
+	     
+	     Since this is UDP and an old packet can in theory wander in we may also
+	     need to drop back to a previous segment. Such an ACK is ignored below;
+	     here we're just getting the most likely 32 bit value from the
+	     16 bits that we have. */
+	  if (new <= 0x4000 && transfer->ackprev >= 0xc000)
+	    transfer->block_hi++;
+	  else if (new >= 0xc000 && transfer->ackprev <= 0x4000 && transfer->block_hi != 0)
+	    transfer->block_hi--;
+
+	  transfer->ackprev = new;
+	  block = (((u32)transfer->block_hi) << 16) + (u32)new;
 	  
-	  /* ignore duplicate ACKs and ACKs for blocks we've not yet sent. */
+	  /* Ignore duplicate ACKs and ACKs for blocks we've not yet sent. */
 	  if (block >= transfer->lastack &&
 	      block <= transfer->block) 
 	    {
@@ -936,13 +952,13 @@ static ssize_t get_block(char *packet, struct tftp_transfer *transfer)
       size_t size;
       
       if (!transfer->netascii)
-	transfer->offset = (transfer->block - 1) * transfer->blocksize;
+	transfer->offset = (off_t)(transfer->block - 1) * (off_t)transfer->blocksize;
       
       if (transfer->offset > transfer->file->size)
 	return 0; /* finished */
       
-      if ((size = transfer->file->size - transfer->offset) > transfer->blocksize)
-	size = transfer->blocksize;
+      if ((size = transfer->file->size - transfer->offset) > (size_t)transfer->blocksize)
+	size = (size_t)transfer->blocksize;
       
       mess->op = htons(OP_DATA);
       mess->block = htons((unsigned short)(transfer->block));

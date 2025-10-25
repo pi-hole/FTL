@@ -481,6 +481,18 @@ components:
                       items:
                         type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+            ftl:
+              type: object
+              description: FTL process info
+              properties:
+                "%mem":
+                  type: number
+                  description: Percentage of total RAM memory used by FTL
+                  example: 0.1
+                "%cpu":
+                  type: number
+                  description: Percentage of total CPU used by FTL
+                  example: 1.2
 
     sensors:
       type: object
@@ -714,24 +726,52 @@ components:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed domains
-                      example: 10
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed domains (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed domains (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied domains
-                      example: 3
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied domains (total)
+                          example: 4
+                        enabled:
+                          type: integer
+                          description: Number of denied domains (enabled)
+                          example: 2
                 regex:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed regex filters
-                      example: 4
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed regex filters (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed regex filters (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied regex filters
-                      example: 2
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied regex filters (total)
+                          example: 10
+                        enabled:
+                          type: integer
+                          description: Number of denied regex filters (enabled)
+                          example: 2
             privacy_level:
               type: integer
               description: Currently used privacy level
@@ -1265,6 +1305,7 @@ components:
               key: "uri_error"
               message: "Specify ID of message to delete in path"
               hint: "/api/info/messages"
+            tooK: 0.003
         bad_request:
           summary: ID of message to delete is invalid
           value:
@@ -1272,6 +1313,7 @@ components:
               key: "bad_request"
               message: "Invalid ID in path"
               hint: "/api/info/messages/486741168746857468758478"
+            tooK: 0.003
     metrics:
       summary: Server metrics
       value:
@@ -1338,6 +1380,7 @@ components:
               pruned_4: 0
               allocated_6: 0
               pruned_6: 0
+        took: 0.003
 
   parameters:
     logs:
