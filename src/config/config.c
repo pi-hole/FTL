@@ -897,7 +897,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.server.a = cJSON_CreateStringReference("A valid NTP upstream server");
 	conf->ntp.sync.server.t = CONF_STRING;
 	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
-	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.server.c = validate_dns_domain_or_ip;
 
 	conf->ntp.sync.interval.k = "ntp.sync.interval";
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";

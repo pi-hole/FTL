@@ -676,3 +676,26 @@ void sanitize_dns_hosts(union conf_value *val)
 		free(str);
 	}
 }
+
+// Validate a single domain or IP address
+bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's a valid domain
+	if(valid_domain(val->s, strlen(val->s), false))
+	{
+		return true;
+	}
+
+	// Check if IP is valid
+	struct in_addr addr;
+	struct in6_addr addr6;
+	int ip4 = 0, ip6 = 0;
+	if((ip4 = inet_pton(AF_INET, val->s, &addr) == 1) || (ip6 = inet_pton(AF_INET6, val->s, &addr6)) == 1)
+	{
+		return true;
+	}
+
+	// If neither, return an error
+	snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: neither a valid domain nor IP address", key);
+	return false;
+}
