@@ -1418,7 +1418,7 @@
   # By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the
   # FTL log file. These warnings can be useful to identify misconfigurations or problems
   # with the DNS server. However, some warnings may be harmless and can be ignored in
-  # certain setups. Enabling this setting will hide dnsmasq warnings.
+  # certain setups. Enabling this setting will hide all dnsmasq warnings.
   #
   # Allowed values are:
   #     true or false

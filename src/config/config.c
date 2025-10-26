@@ -1423,7 +1423,7 @@ void initConfig(struct config *conf)
 	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
 
 	conf->misc.hide_dnsmasq_warn.k = "misc.hide_dnsmasq_warn";
-	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide dnsmasq warnings.";
+	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide all dnsmasq warnings.";
 	conf->misc.hide_dnsmasq_warn.t = CONF_BOOL;
 	conf->misc.hide_dnsmasq_warn.d.b = false;
 	conf->misc.hide_dnsmasq_warn.c = validate_stub; // Only type-based checking
