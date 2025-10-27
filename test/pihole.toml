@@ -498,7 +498,7 @@
       # Custom IPv6 address for IP blocking mode
       #
       # Allowed values are:
-      #     Avalid IPv6 address or empty string ("")
+      #     A valid IPv6 address or empty string ("")
       IPv6 = "fe80::11" ### CHANGED, default = ""
 
   [dns.rateLimit]
