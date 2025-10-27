@@ -1042,7 +1042,10 @@ void *webserver_thread(void *val)
 	while(!killed)
 	{
 		// Check if the certificate is about to expire soon
-		const enum cert_check status = cert_currently_valid(config.webserver.tls.cert.v.s, 2);
+		// We check only if HTTPS is enabled (https_port > 0)
+		const enum cert_check status = https_port == 0 ?
+			CERT_NOT_IN_USE :
+			cert_currently_valid(config.webserver.tls.cert.v.s, 2);
 
 		if(status == CERT_EXPIRES_SOON &&
 		   config.webserver.tls.validity.v.ui > 0)

@@ -335,6 +335,7 @@ enum cert_check {
 	CERT_NOT_YET_VALID,
 	CERT_EXPIRES_SOON,
 	CERT_OKAY,
+	CERT_NOT_IN_USE
 } __attribute__ ((packed));
 
 enum http_method {

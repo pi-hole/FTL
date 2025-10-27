@@ -553,6 +553,8 @@ components:
                   type: boolean
                 normalizeCPU:
                   type: boolean
+                hide_dnsmasq_warn:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -837,6 +839,7 @@ components:
             extraLogging: false
             readOnly: false
             normalizeCPU: false
+            hide_dnsmasq_warn: false
             check:
               load: true
               shmem: 90

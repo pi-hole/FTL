@@ -269,25 +269,41 @@ static int pihole_format_path(lua_State *L) {
 	// Get current page (first argument to LUA function)
 	const char *page = luaL_checkstring(L, 1);
 
-	// Strip leading webhome from page (if it exists)
+	// Duplicate string to modify it
+	char *page_copy = strdup(page);
+	if (page_copy == NULL)
+	{
+		// Memory allocation error
+		lua_pushnil(L);
+		return 1; // number of results
+	}
+
+	// Strip leading webhome from page_copy (if it exists)
 	if (config.webserver.paths.webhome.v.s != NULL)
 	{
 		const size_t webhome_len = strlen(config.webserver.paths.webhome.v.s);
-		if (strncmp(page, config.webserver.paths.webhome.v.s, webhome_len) == 0)
-			page += webhome_len;
+		if (strncmp(page_copy, config.webserver.paths.webhome.v.s, webhome_len) == 0)
+			page_copy += webhome_len;
 	}
 
 	// Convert all / to -
-	for (char *p = (char *)page; *p != '\0'; p++)
+	for (char *p = (char *)page_copy; *p != '\0'; p++)
 		if (*p == '/')
 			*p = '-';
 
-	// Substitute "index" for empty string (dashboard landing page)
-	if (page[0] == '\0')
-		page = "index";
+	if (page_copy[0] == '\0')
+	{
+		// Substitute "index" for empty string (dashboard landing page)
+		lua_pushstring(L, "index");
+	}
+	else
+	{
+		// Return the formatted page string
+		lua_pushstring(L, page_copy);
+	}
 
-	// Return the formatted page string
-	lua_pushstring(L, page);
+	// Free allocated memory
+	free(page_copy);
 
 	return 1; // number of results
 }

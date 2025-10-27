@@ -317,6 +317,7 @@ struct config {
 		struct conf_item extraLogging;
 		struct conf_item readOnly;
 		struct conf_item normalizeCPU;
+		struct conf_item hide_dnsmasq_warn;
 		struct {
 			struct conf_item load;
 			struct conf_item shmem;
