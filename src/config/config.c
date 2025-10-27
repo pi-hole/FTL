@@ -1422,6 +1422,12 @@ void initConfig(struct config *conf)
 	conf->misc.normalizeCPU.d.b = true;
 	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
 
+	conf->misc.hide_dnsmasq_warn.k = "misc.hide_dnsmasq_warn";
+	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide all dnsmasq warnings.";
+	conf->misc.hide_dnsmasq_warn.t = CONF_BOOL;
+	conf->misc.hide_dnsmasq_warn.d.b = false;
+	conf->misc.hide_dnsmasq_warn.c = validate_stub; // Only type-based checking
+
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";
 	conf->misc.check.load.h = "Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you should run Pi-hole on a server that is otherwise extremely busy as queuing on the system can lead to unnecessary delays in DNS operation as the system becomes less and less usable as the system load increases because all resources are permanently in use. To account for this, FTL regularly checks the system load. To bring this to your attention, FTL warns about excessive load when the 15 minute system load average exceeds the number of cores.\n\n This check can be disabled with this setting.";

@@ -907,29 +907,15 @@ int api_info_version(struct ftl_conn *api)
 
 int api_info_messages_count(struct ftl_conn *api)
 {
-	// Filtering based on GET parameters?
-	bool filter_dnsmasq_warnings = false;
-	if(api->request->query_string != NULL)
-	{
-		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
-	}
-
 	// Send reply
 	cJSON *json = JSON_NEW_OBJECT();
-	cJSON_AddNumberToObject(json, "count", count_messages(filter_dnsmasq_warnings));
+	cJSON_AddNumberToObject(json, "count", count_messages());
 	JSON_SEND_OBJECT(json);
 	return 0;
 }
 
 static int api_info_messages_GET(struct ftl_conn *api)
 {
-	// Filtering based on GET parameters?
-	bool filter_dnsmasq_warnings = false;
-	if(api->request->query_string != NULL)
-	{
-		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
-	}
-
 	// Create messages array
 	cJSON *messages = cJSON_CreateArray();
 	if(!format_messages(messages))
@@ -943,7 +929,7 @@ static int api_info_messages_GET(struct ftl_conn *api)
 	}
 
 	// Filter messages if requested
-	if(filter_dnsmasq_warnings)
+	if(config.misc.hide_dnsmasq_warn.v.b)
 	{
 		// Create new array
 		cJSON *filtered = cJSON_CreateArray();

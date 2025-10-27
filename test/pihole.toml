@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-301-gfcee3894-dirty) on branch tweak/api_info_system_ftl
+# Pi-hole configuration file (v6.2.3-312-g9f1eb768-dirty) on branch (no branch, rebasing misc_dnsmasq_warn)
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-10-06 08:00:17 UTC
+# Last updated on 2025-10-23 17:03:51 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -1413,6 +1413,17 @@
   #     true or false
   normalizeCPU = true
 
+  # Should FTL hide warnings coming from dnsmasq?
+  #
+  # By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the
+  # FTL log file. These warnings can be useful to identify misconfigurations or problems
+  # with the DNS server. However, some warnings may be harmless and can be ignored in
+  # certain setups. Enabling this setting will hide all dnsmasq warnings.
+  #
+  # Allowed values are:
+  #     true or false
+  hide_dnsmasq_warn = false
+
   [misc.check]
     # Pi-hole is very lightweight on resources. Nevertheless, this does not mean that you
     # should run Pi-hole on a server that is otherwise extremely busy as queuing on the
@@ -1662,7 +1673,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 160 total entries out of which 107 entries are default
+# 161 total entries out of which 108 entries are default
 # --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
