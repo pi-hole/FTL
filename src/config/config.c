@@ -742,7 +742,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.blocking.v6.k = "dns.reply.blocking.IPv6";
 	conf->dns.reply.blocking.v6.h = "Custom IPv6 address for IP blocking mode";
-	conf->dns.reply.blocking.v6.a = cJSON_CreateStringReference("Avalid IPv6 address or empty string (\"\")");
+	conf->dns.reply.blocking.v6.a = cJSON_CreateStringReference("A valid IPv6 address or empty string (\"\")");
 	conf->dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
 	memset(&conf->dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->dns.reply.blocking.v6.c = validate_stub; // Only type-based checking
@@ -1184,7 +1184,7 @@ void initConfig(struct config *conf)
 
 	conf->webserver.api.password.k = "webserver.api.password";
 	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this property will compute the corresponding password hash to set webserver.api.pwhash";
-	conf->webserver.api.password.a = cJSON_CreateStringReference("Avalid Pi-hole password");
+	conf->webserver.api.password.a = cJSON_CreateStringReference("A valid Pi-hole password");
 	conf->webserver.api.password.t = CONF_PASSWORD;
 	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.password.d.s = (char*)"";
