@@ -279,6 +279,7 @@ static int pihole_format_path(lua_State *L) {
 	}
 
 	// Strip leading webhome from page_copy (if it exists)
+	char *page_copy_start = page_copy;
 	if (config.webserver.paths.webhome.v.s != NULL)
 	{
 		const size_t webhome_len = strlen(config.webserver.paths.webhome.v.s);
@@ -302,8 +303,8 @@ static int pihole_format_path(lua_State *L) {
 		lua_pushstring(L, page_copy);
 	}
 
-	// Free allocated memory
-	free(page_copy);
+	// Free originally allocated memory (page_copy may have been modified)
+	free(page_copy_start);
 
 	return 1; // number of results
 }
