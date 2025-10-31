@@ -494,7 +494,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		}
 		errbuf[sizeof(errbuf) - 1] = '\0';
 		log_ntp_message(true, false, errbuf);
-		freeaddrinfo(saddr);
+		if(saddr != NULL)
+			freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -503,7 +504,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	if(ntp == NULL)
 	{
 		log_err("Cannot allocate memory for NTP client");
-		freeaddrinfo(saddr);
+		if(saddr != NULL)
+			freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -520,7 +522,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		{
 			close(s);
 			free(ntp);
-			freeaddrinfo(saddr);
+			if(saddr != NULL)
+				freeaddrinfo(saddr);
 			return false;
 		}
 		// Get reply
@@ -543,7 +546,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		printf("\n");
 
 	// Free allocated memory
-	freeaddrinfo(saddr);
+	if(saddr != NULL)
+		freeaddrinfo(saddr);
 	saddr = NULL;
 
 	// Compute average and standard deviation
