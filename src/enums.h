@@ -156,6 +156,7 @@ enum debug_flag {
 	DEBUG_RESERVED,
 	DEBUG_NTP,
 	DEBUG_NETLINK,
+	DEBUG_DB_TIMING,
 	DEBUG_MAX
 } __attribute__ ((packed));
 

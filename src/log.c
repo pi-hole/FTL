@@ -224,6 +224,8 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_NTP";
 		case DEBUG_NETLINK:
 			return "DEBUG_NETLINK";
+		case DEBUG_DB_TIMING:
+			return "DEBUG_DB_TIMING";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
 		case DEBUG_NONE: // fall through
