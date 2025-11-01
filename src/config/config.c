@@ -418,12 +418,6 @@ void initConfig(struct config *conf)
 	conf->dns.CNAMEdeepInspect.d.b = true;
 	conf->dns.CNAMEdeepInspect.c = validate_stub; // Only type-based checking
 
-	conf->dns.blockESNI.k = "dns.blockESNI";
-	conf->dns.blockESNI.h = "Should _esni. subdomains be blocked by default? Encrypted Server Name Indication (ESNI) is certainly a good step into the right direction to enhance privacy on the web. It prevents on-path observers, including ISPs, coffee shop owners and firewalls, from intercepting the TLS Server Name Indication (SNI) extension by encrypting it. This prevents the SNI from being used to determine which websites users are visiting.\n\n ESNI will obviously cause issues for pixelserv-tls which will be unable to generate matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox are already enabling ESNI. According to the IETF draft (link above), we can easily restore pixelserv-tls's operation by replying NXDOMAIN to _esni. subdomains of blocked domains as this mimics a \"not configured for this domain\" behavior.";
-	conf->dns.blockESNI.t = CONF_BOOL;
-	conf->dns.blockESNI.d.b = true;
-	conf->dns.blockESNI.c = validate_stub; // Only type-based checking
-
 	conf->dns.EDNS0ECS.k = "dns.EDNS0ECS";
 	conf->dns.EDNS0ECS.h = "Should we overwrite the query source when client information is provided through EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even if they are hidden behind the NAT of a router. This feature has been requested and discussed on Discourse where further information how to use it can be found: https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940";
 	conf->dns.EDNS0ECS.t = CONF_BOOL;

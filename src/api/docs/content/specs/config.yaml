@@ -192,8 +192,6 @@ components:
                     type: string
                 CNAMEdeepInspect:
                   type: boolean
-                blockESNI:
-                  type: boolean
                 EDNS0ECS:
                   type: boolean
                 ignoreLocalhost:
@@ -674,7 +672,6 @@ components:
           dns:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             CNAMEdeepInspect: true
-            blockESNI: true
             EDNS0ECS: true
             ignoreLocalhost: false
             showDNSSEC: true

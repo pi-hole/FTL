@@ -131,7 +131,6 @@ struct config {
 	struct {
 		struct conf_item upstreams;
 		struct conf_item CNAMEdeepInspect;
-		struct conf_item blockESNI;
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
 		struct conf_item showDNSSEC;

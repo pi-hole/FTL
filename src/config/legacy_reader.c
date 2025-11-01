@@ -268,11 +268,6 @@ const char *readFTLlegacy(struct config *conf)
 	if(buffer != NULL && sscanf(buffer, "%u", &unum) == 1 && unum > 0 && unum <= 300)
 		conf->misc.delay_startup.v.ui = unum;
 
-	// BLOCK_ESNI
-	// defaults to: true
-	buffer = parseFTLconf(fp, "BLOCK_ESNI");
-	parseBool(buffer, &conf->dns.blockESNI.v.b);
-
 	// WEBROOT
 	conf->webserver.paths.webroot.v.s = getPath(fp, "WEBROOT", conf->webserver.paths.webroot.v.s);
 
