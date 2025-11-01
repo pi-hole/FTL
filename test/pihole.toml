@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.2.3-312-g9f1eb768-dirty) on branch (no branch, rebasing misc_dnsmasq_warn)
+# Pi-hole configuration file (v6.3.2-8-g58a618e2-dirty) on branch tweak/db_performance
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-10-23 17:03:51 UTC
+# Last updated on 2025-11-01 13:12:20 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -1667,14 +1667,20 @@
   #     true or false
   netlink = true ### CHANGED, default = false
 
+  # Print timing information from various parts of FTL
+  #
+  # Allowed values are:
+  #     true or false
+  timing = true ### CHANGED, default = false
+
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 161 total entries out of which 108 entries are default
-# --> 53 entries are modified
+# 162 total entries out of which 108 entries are default
+# --> 54 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

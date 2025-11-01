@@ -48,7 +48,7 @@
 #include "webserver/webserver.h"
 // type struct sqlite3_stmt_vec
 #include "vector.h"
-// query_to_database()
+// init_memory_database()
 #include "database/query-table.h"
 // reread_config()
 #include "config/config.h"

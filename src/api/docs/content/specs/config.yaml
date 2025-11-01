@@ -625,6 +625,8 @@ components:
                   type: boolean
                 netlink:
                   type: boolean
+                timing:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -874,6 +876,7 @@ components:
             reserved: false
             ntp: false
             netlink: false
+            timing: false
             all: false
           took: 0.003
     config_one:
