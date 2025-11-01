@@ -222,7 +222,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	bool forced_ip = false;
 	// Check first if we need to force our reply to something different than the
 	// default/configured blocking mode. For instance, we need to force NXDOMAIN
-	// for intercepted _esni.* queries or the Mozilla canary domain.
+	// for the Mozilla canary domain.
 	if(force_next_DNS_reply == REPLY_NXDOMAIN)
 	{
 		flags = F_NXDOMAIN;
@@ -1722,32 +1722,6 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	unsigned char new_status = QUERY_UNKNOWN;
 	bool db_okay = true;
 	bool blockDomain = check_domain_blocked(domain_lower, client, query, dns_cache, &new_status, &db_okay);
-
-	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
-	// (defaulting to true)
-	if(config.dns.blockESNI.v.b &&
-	   !query->flags.allowed && blockDomain == NOT_FOUND &&
-	   strlen(domain_lower) > 6 && strncasecmp(domain_lower, "_esni.", 6u) == 0)
-	{
-		blockDomain = check_domain_blocked(domain_lower + 6u, client, query, dns_cache, &new_status, &db_okay);
-
-		// Update DNS cache status
-		cacheStatus = dns_cache->blocking_status;
-
-		if(blockDomain)
-		{
-			// Truncate "_esni." from queried domain if the parenting domain was
-			// the reason for blocking this query
-			blockedDomain = domain_lower + 6u;
-			// Force next DNS reply to be NXDOMAIN for _esni.* queries
-			force_next_DNS_reply = REPLY_NXDOMAIN;
-
-			// Store this in the DNS cache only if the database is available at
-			// this point
-			if(db_okay)
-				dns_cache->force_reply = REPLY_NXDOMAIN;
-		}
-	}
 
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)

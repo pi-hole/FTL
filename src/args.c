@@ -341,7 +341,7 @@ void parse_args(int argc, char *argv[])
 		else
 		{
 			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
-			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
+			printf("Example: %s --config dns.EDNS0ECS true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
