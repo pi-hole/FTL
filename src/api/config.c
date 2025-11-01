@@ -22,7 +22,7 @@
 #include "config/toml_writer.h"
 // write_dnsmasq_config()
 #include "config/dnsmasq_config.h"
-// shm_lock()
+// lock_shm()
 #include "shmem.h"
 // hash_password()
 #include "config/password.h"

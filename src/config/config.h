@@ -358,7 +358,7 @@ struct config {
 		struct conf_item reserved;
 		struct conf_item ntp;
 		struct conf_item netlink;
-		struct conf_item db_timing;
+		struct conf_item timing;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

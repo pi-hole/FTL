@@ -89,16 +89,16 @@ extern const char *sqlite3ErrName(int rc);
 	}\
 }
 
-// Macro to time a database operation expression EXPR if debug.db_timing is
+// Macro to time a database operation expression EXPR if debug.timing is
 // enabled.
 #define TIMED_DB_OP(EXPR) do { \
-		if(!config.debug.db_timing.v.b) { EXPR; break; } \
+		if(!config.debug.timing.v.b) { EXPR; break; } \
 		struct timespec _timed_start, _timed_end; \
 		clock_gettime(CLOCK_MONOTONIC, &_timed_start); \
 		(EXPR); \
 		clock_gettime(CLOCK_MONOTONIC, &_timed_end); \
-		long _timed_elapsed = (_timed_end.tv_sec - _timed_start.tv_sec) * 1000 + (_timed_end.tv_nsec - _timed_start.tv_nsec) / 1000000; \
-		log_debug(DEBUG_DB_TIMING, "Database operation %s took %ld ms", str(EXPR), _timed_elapsed); \
+		long _timed_elapsed = (_timed_end.tv_sec - _timed_start.tv_sec) * 10000 + (_timed_end.tv_nsec - _timed_start.tv_nsec) / 100000; \
+		log_debug(DEBUG_TIMING, "Database operation %s took %.1f ms", str(EXPR), 0.1*_timed_elapsed); \
 	} while(0)
 
 #endif //DATABASE_COMMON_H

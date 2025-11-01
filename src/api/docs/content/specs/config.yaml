@@ -625,7 +625,7 @@ components:
                   type: boolean
                 netlink:
                   type: boolean
-                db_timing:
+                timing:
                   type: boolean
                 all:
                   type: boolean
@@ -876,7 +876,7 @@ components:
             reserved: false
             ntp: false
             netlink: false
-            db_timing: false
+            timing: false
             all: false
           took: 0.003
     config_one:
