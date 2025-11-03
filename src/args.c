@@ -332,6 +332,8 @@ void parse_args(int argc, char *argv[])
 		clear_debug_flags(); // No debug printing wanted
 		if(argc == 2)
 			exit(get_config_from_CLI(NULL, false));
+		else if(argc == 3 && strcmp(argv[2], "-q") == 0)
+			exit(get_config_from_CLI(NULL, true));
 		else if(argc == 3)
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
