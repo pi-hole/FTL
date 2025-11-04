@@ -46,7 +46,7 @@ components:
           - "List management"
         operationId: "replace_lists"
         description: |
-          Items may be updated by replacing them. `{list}` is required.
+          Items may be updated by replacing them. `{list}` and `{listtype}` are required.
 
           Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
@@ -96,6 +96,7 @@ components:
           - "List management"
         operationId: "delete_lists"
         description: |
+          `{list}` and `{listtype}` are required.
           *Note:* There will be no content on success.
         responses:
           '204':
