@@ -238,7 +238,7 @@ bool init_memory_database(void)
 	// queries from the in-memory database (including the query with ID 0)
 	// to the on-disk database.
 	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
-	                                      "WHERE id > IFNULL((SELECT MAX(id) FROM disk.query_storage), -1) "\
+	                                      "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
 	                                        "AND timestamp < ?",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -247,11 +247,15 @@ bool init_memory_database(void)
 		return false;
 	}
 
+	// Export linking tables to disk database
+	// We limit the export to new records to avoid the overhead of many
+	// IGNORE executions for records that are already present on disk. It
+	// follows the same logic as for the main query_storage table above.
 	const char *subtable_sql[SUBTABLE_STMTS] = {
-		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
-		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
-		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
-		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
+		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.domain_by_id)",
+		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.client_by_id)",
+		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.forward_by_id)",
+		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.addinfo_by_id)",
 		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
 	};
 
@@ -504,7 +508,7 @@ bool detach_database(sqlite3* db, const char **message, const char *alias)
 	return okay;
 }
 
-// Get number of queries either in the temp or in the on-diks database
+// Get number of queries either in the temp or in the on-disk database
 // This routine is used by the API routines.
 int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename)
 {
