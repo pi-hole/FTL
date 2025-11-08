@@ -135,9 +135,7 @@ void *DB_thread(void *val)
 
 			// Save data to database
 			DBOPEN_OR_AGAIN();
-			lock_shm();
 			TIMED_DB_OP(export_queries_to_disk(false));
-			unlock_shm();
 
 			// Intermediate cancellation-point
 			if(killed)

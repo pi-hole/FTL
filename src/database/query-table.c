@@ -640,7 +640,7 @@ bool export_queries_to_disk(const bool final)
 
 	// Only try to export to database if it is known to not be broken
 	if(FTLDBerror())
-	return false;
+		return false;
 
 	// Start database timer
 	timer_start(DATABASE_WRITE_TIMER);
