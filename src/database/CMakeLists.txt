@@ -22,8 +22,6 @@ set(sqlite3_sources
 add_library(sqlite3 OBJECT ${sqlite3_sources})
 # Define the function that will be called to initialize the sqlite3 shell
 target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_SHELL_INIT_PROC=pihole_sqlite3_initalize")
-# Define that we want to statically link the percentile extension into the sqlite3 library
-target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_STATIC_PERCENTILE=1")
 target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
 
 if (CMAKE_C_COMPILER_ID STREQUAL "Clang")

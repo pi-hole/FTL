@@ -14,7 +14,4 @@
 // Initialization point for SQLite3 extensions
 void pihole_sqlite3_initalize(void);
 
-// Defined in shell.c
-extern int sqlite3_percentile_init(sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi);
-
 #endif // SQLITE3_EXT_H
