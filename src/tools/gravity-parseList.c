@@ -272,6 +272,18 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	unsigned int exact_domains = 0, abp_domains = 0, invalid_domains = 0;
 	while((read = getline(&line, &len, fpin)) != -1)
 	{
+
+		// Handle UTF-8 BOM (Byte Order Mark) if present at start of file
+		if (read >= 3 &&
+			(unsigned char)line[0] == 0xEF &&
+			(unsigned char)line[1] == 0xBB &&
+			(unsigned char)line[2] == 0xBF)
+		{
+			// Shift line contents left by 3 bytes to remove BOM
+			memmove(line, line + 3, read - 3);
+			read -= 3;
+		}
+
 		// Update total read bytes
 		total_read += read;
 		lineno++;
