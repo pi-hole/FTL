@@ -994,8 +994,22 @@ components:
                   example: "pihole"
         queries:
           type: integer
-          description: Number of queries in long-term database
+          description: Number of queries in in-memory database
           example: 536956
+        earliest_timestamp:
+          type: number
+          description: Unix timestamp of the earliest query in the in-memory database
+          example: 1611742120.5
+          nullable: true
+        queries_disk:
+          type: integer
+          description: Number of queries in on-disk database
+          example: 1234567
+        earliest_timestamp_disk:
+          type: number
+          description: Unix timestamp of the earliest query in the on-disk database
+          example: 1608450520.3
+          nullable: true
         sqlite_version:
           type: string
           description: Version of embedded SQLite3 engine
