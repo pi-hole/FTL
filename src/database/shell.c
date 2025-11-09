@@ -2338,6 +2338,8 @@ SQLITE_EXTENSION_INIT1
 #include <assert.h>
 #include <string.h>
 #include <stdarg.h>
+// print_FTL_version()
+#include "../log.h"
 
 #ifndef SQLITE_AMALGAMATION
 /* typedef sqlite3_uint64 u64; */
@@ -33050,7 +33052,7 @@ static int vfstraceOut(const char *z, void *pArg){
 #endif
 
 #if SQLITE_SHELL_IS_UTF8
-int SQLITE_CDECL main(int argc, char **argv){
+int SQLITE_CDECL sqlite3_shell_main(int argc, char **argv){
 #else
 int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
   char **argv;
@@ -33657,6 +33659,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
     if( stdin_is_interactive ){
       char *zHome;
       char *zHistory;
+      print_FTL_version();
       sqlite3_fprintf(stdout,
             "SQLite version %s %.19s\n" /*extra-version-info*/
             "Enter \".help\" for usage hints.\n",
