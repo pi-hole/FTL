@@ -91,14 +91,28 @@ extern const char *sqlite3ErrName(int rc);
 
 // Macro to time a database operation expression EXPR if debug.timing is
 // enabled.
-#define TIMED_DB_OP(EXPR) do { \
-		if(!config.debug.timing.v.b) { EXPR; break; } \
+#define TIMED_DB_OP(EXPR) { \
+	if(!config.debug.timing.v.b) { EXPR; } \
+	else { \
 		struct timespec _timed_start, _timed_end; \
 		clock_gettime(CLOCK_MONOTONIC, &_timed_start); \
 		(EXPR); \
 		clock_gettime(CLOCK_MONOTONIC, &_timed_end); \
 		long _timed_elapsed = (_timed_end.tv_sec - _timed_start.tv_sec) * 10000 + (_timed_end.tv_nsec - _timed_start.tv_nsec) / 100000; \
 		log_debug(DEBUG_TIMING, "Database operation %s took %.1f ms", str(EXPR), 0.1*_timed_elapsed); \
-	} while(0)
+	}}
+
+// Macro to time a database operation expression EXPR that returns a value if
+// debug.timing is enabled.
+#define TIMED_DB_OP_RESULT(_result, EXPR) { \
+	if(!config.debug.timing.v.b) { _result = EXPR; } \
+	else { \
+		struct timespec _timed_start, _timed_end; \
+		clock_gettime(CLOCK_MONOTONIC, &_timed_start); \
+		 _result = (EXPR); \
+		clock_gettime(CLOCK_MONOTONIC, &_timed_end); \
+		long _timed_elapsed = (_timed_end.tv_sec - _timed_start.tv_sec) * 10000 + (_timed_end.tv_nsec - _timed_start.tv_nsec) / 100000; \
+		log_debug(DEBUG_TIMING, "Database operation %s took %.1f ms", str(EXPR), 0.1*_timed_elapsed); \
+	}}
 
 #endif //DATABASE_COMMON_H

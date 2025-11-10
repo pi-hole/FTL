@@ -1695,11 +1695,11 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	const char *blockedDomain = domain_lower;
 
 	// Check exact whitelist for match
-	query->flags.allowed = in_allowlist(domain_lower, dns_cache, client) == FOUND;
+	TIMED_DB_OP_RESULT(query->flags.allowed, in_allowlist(domain_lower, dns_cache, client) == FOUND);
 
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
-		query->flags.allowed = in_regex(domain_lower, dns_cache, client->id, REGEX_ALLOW);
+		TIMED_DB_OP_RESULT(query->flags.allowed, in_regex(domain_lower, dns_cache, client->id, REGEX_ALLOW));
 
 	// Check if this is a special domain
 	if(!query->flags.allowed && special_domain(query, domain_lower))
@@ -1721,7 +1721,8 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	// Check blacklist (exact + regex) and gravity for queried domain
 	unsigned char new_status = QUERY_UNKNOWN;
 	bool db_okay = true;
-	bool blockDomain = check_domain_blocked(domain_lower, client, query, dns_cache, &new_status, &db_okay);
+	bool blockDomain;
+	TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domain_lower, client, query, dns_cache, &new_status, &db_okay));
 
 	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
 	// (defaulting to true)
@@ -1729,7 +1730,7 @@ static bool FTL_check_blocking(const unsigned int queryID, const unsigned int do
 	   !query->flags.allowed && blockDomain == NOT_FOUND &&
 	   strlen(domain_lower) > 6 && strncasecmp(domain_lower, "_esni.", 6u) == 0)
 	{
-		blockDomain = check_domain_blocked(domain_lower + 6u, client, query, dns_cache, &new_status, &db_okay);
+		TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domain_lower + 6u, client, query, dns_cache, &new_status, &db_okay));
 
 		// Update DNS cache status
 		cacheStatus = dns_cache->blocking_status;
