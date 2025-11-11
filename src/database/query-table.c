@@ -516,7 +516,7 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, double *earl
 		db = get_memdb();
 
 	// Build query string based on whether we need the earliest timestamp too
-	const size_t buflen = 37 + strlen(tablename);
+	const size_t buflen = 38 + strlen(tablename);
 	char *querystr = calloc(buflen, sizeof(char));
 	if(earliest_timestamp != NULL)
 	{
