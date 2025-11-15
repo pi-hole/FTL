@@ -31,6 +31,13 @@ static const char *false_positives[] = {
 	"ip6-allhosts"
 };
 
+// Lookup table containing characters that are valid in domain names
+// Domain must not contain any character other than [a-zA-Z0-9.-_]
+static const unsigned char valid_domain_char[256] = {
+	['a' ... 'z'] = 1, ['A' ... 'Z'] = 1, ['0' ... '9'] = 1,
+	['-'] = 1, ['.'] = 1, ['_'] = 1,
+};
+
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
 // which would be printed too often as affect performance
@@ -47,19 +54,17 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	if(domain == NULL || len == 0 || len > 255)
 		return false;
 
-	// Loop over line and check for invalid characters
+	// Loop over line
 	int last_dot = -1;
 	for(unsigned int i = 0; i < len; i++)
 	{
-		// Domain must not contain any character other than [a-zA-Z0-9.-_]
-		if(domain[i] != '-' && domain[i] != '.' && domain[i] != '_' &&
-		   (domain[i] < 'a' || domain[i] > 'z') &&
-		   (domain[i] < 'A' || domain[i] > 'Z') &&
-		   (domain[i] < '0' || domain[i] > '9'))
+		// Check for invalid characters
+		unsigned char c = (unsigned char)domain[i];
+		if(!valid_domain_char[c])
 			return false;
 
 		// Individual label length check
-		if(domain[i] == '.')
+		if(c == '.')
 		{
 			// Label must be longer than 0 characters, i.e., two consecutive
 			// dots are not allowed
@@ -108,7 +113,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// First four characters must be "@@||"
-		if(line[0] != '@' || line[1] != '@' || line[2] != '|' || line[3] != '|')
+		if (memcmp(line, "@@||", 4) != 0)
 			return false;
 
 		// Last character must be "^"
@@ -270,18 +275,20 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	ssize_t invalid_domains_list_lengths[MAX_INVALID_DOMAINS] = { -1 };
 	unsigned int invalid_domains_list_len = 0;
 	unsigned int exact_domains = 0, abp_domains = 0, invalid_domains = 0;
+	bool first_line = true; // Flag to test UTF-8 Bom only on first line
 	while((read = getline(&line, &len, fpin)) != -1)
 	{
-
 		// Handle UTF-8 BOM (Byte Order Mark) if present at start of file
-		if (read >= 3 &&
-			(unsigned char)line[0] == 0xEF &&
-			(unsigned char)line[1] == 0xBB &&
-			(unsigned char)line[2] == 0xBF)
+		if (first_line)
 		{
-			// Shift line contents left by 3 bytes to remove BOM
-			memmove(line, line + 3, read - 3);
-			read -= 3;
+			// Clear first_line flag immediately after check
+			first_line = false;
+			if(read >= 3 && memcmp(line, "\xEF\xBB\xBF", 3) == 0)
+			{
+				// Shift line contents left by 3 bytes to remove BOM
+				memmove(line, line + 3, read - 3);
+				read -= 3;
+			}
 		}
 
 		// Update total read bytes
@@ -342,6 +349,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		if(read < 1)
 			continue;
 
+		// Flag lines containing colons (potential IPv6 addresses)
+		bool line_has_colon = (strchr(line, ':') != NULL);
+
 		// Split by whitespace and tabs and look over the tokens
 		char *token = strtok(line, " \t");
 		while(token != NULL)
@@ -352,14 +362,24 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Skip IP addresses
 			// IPv4 addresses
-			struct in_addr buffer = { 0 };
-			if (inet_pton(AF_INET, token, &buffer) == 1)
-				goto next_domain;
+			// Don't test any token not starting with a digit
+			if (token[0] <= '9' && token[0] >= '0')
+			{
+				// Potential IPv4 address
+				struct in_addr buffer = { 0 };
+				if (inet_pton(AF_INET, token, &buffer) == 1)
+					goto next_domain;
+			}
 
-			// IPv6 addresses
-			struct in6_addr buffer6 = { 0 };
-			if (inet_pton(AF_INET6, token, &buffer6) == 1)
-				goto next_domain;
+			// Ipv6 address
+			// Only test for IPv6 address if line contained a colon
+			// and it's in this token's first 5 characters
+			if (line_has_colon && memchr(token, ':', 5) != NULL)
+			{
+				struct in6_addr buffer6 = { 0 };
+				if (inet_pton(AF_INET6, token, &buffer6) == 1)
+					goto next_domain;
+			}
 
 			// Remove trailing dot (convert FQDN to domain)
 			size_t token_len = strlen(token);
