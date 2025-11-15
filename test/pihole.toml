@@ -22,23 +22,6 @@
   #     true or false
   CNAMEdeepInspect = true
 
-  # Should _esni. subdomains be blocked by default? Encrypted Server Name Indication
-  # (ESNI) is certainly a good step into the right direction to enhance privacy on the
-  # web. It prevents on-path observers, including ISPs, coffee shop owners and
-  # firewalls, from intercepting the TLS Server Name Indication (SNI) extension by
-  # encrypting it. This prevents the SNI from being used to determine which websites
-  # users are visiting.
-  #
-  # ESNI will obviously cause issues for pixelserv-tls which will be unable to generate
-  # matching certificates on-the-fly when it cannot read the SNI. Cloudflare and Firefox
-  # are already enabling ESNI. According to the IETF draft (link above), we can easily
-  # restore pixelserv-tls's operation by replying NXDOMAIN to _esni. subdomains of
-  # blocked domains as this mimics a "not configured for this domain" behavior.
-  #
-  # Allowed values are:
-  #     true or false
-  blockESNI = true
-
   # Should we overwrite the query source when client information is provided through
   # EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even
   # if they are hidden behind the NAT of a router. This feature has been requested and
@@ -1673,7 +1656,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 161 total entries out of which 108 entries are default
+# 160 total entries out of which 107 entries are default
 # --> 53 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
