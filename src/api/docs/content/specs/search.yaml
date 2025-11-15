@@ -162,7 +162,7 @@ components:
               properties:
                 partial:
                   type: boolean
-                  description: Whether partial matching was requested
+                  description: Whether partial matching was requested. Note that partial matching may not find complex regex entries.
                   example: false
                 N:
                   type: integer
