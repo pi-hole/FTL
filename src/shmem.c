@@ -134,6 +134,10 @@ typedef struct {
 		volatile pid_t pid;
 		volatile pid_t tid;
 	} owner;
+	struct {
+		struct timespec begin;
+		struct timespec end;
+	} time;
 } ShmLock;
 static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
@@ -391,6 +395,7 @@ void _lock_shm(const char *func, const int line, const char *file)
 
 	result = pthread_mutex_lock(&shmLock->lock.inner);
 
+	clock_gettime(CLOCK_MONOTONIC, &shmLock->time.begin);
 	log_debug(DEBUG_LOCKS, "Obtained SHM lock for %s() (%s:%i)", func, file, line);
 
 	if(result != 0)
@@ -432,6 +437,15 @@ void _unlock_shm(const char *func, const int line, const char * file)
 	result = pthread_mutex_unlock(&shmLock->lock.outer);
 	if(result != 0)
 		log_err("Failed to unlock outer SHM lock: %s", strerror(result));
+
+	clock_gettime(CLOCK_MONOTONIC, &shmLock->time.end);
+	if(config.debug.timing.v.b)
+	{
+		const double lock_time = (shmLock->time.end.tv_sec - shmLock->time.begin.tv_sec) / 1000.0 +
+		                         (shmLock->time.end.tv_nsec - shmLock->time.begin.tv_nsec) / 1e6;
+		log_debug(DEBUG_TIMING, "SHM lock held for %.3f ms in %s() (%s:%i)",
+		          lock_time, func, file, line);
+	}
 
 	log_debug(DEBUG_LOCKS, "Removed SHM lock in %s() (%s:%i)", func, file, line);
 }

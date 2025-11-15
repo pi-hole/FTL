@@ -1625,6 +1625,12 @@ void initConfig(struct config *conf)
 	conf->debug.netlink.d.b = false;
 	conf->debug.netlink.c = validate_stub; // Only type-based checking
 
+	conf->debug.timing.k = "debug.timing";
+	conf->debug.timing.h = "Print timing information from various parts of FTL";
+	conf->debug.timing.t = CONF_BOOL;
+	conf->debug.timing.d.b = false;
+	conf->debug.timing.c = validate_stub; // Only type-based checking
+
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;

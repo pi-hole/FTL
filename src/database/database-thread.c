@@ -135,9 +135,7 @@ void *DB_thread(void *val)
 
 			// Save data to database
 			DBOPEN_OR_AGAIN();
-			lock_shm();
-			export_queries_to_disk(false);
-			unlock_shm();
+			TIMED_DB_OP(export_queries_to_disk(false));
 
 			// Intermediate cancellation-point
 			if(killed)
@@ -146,8 +144,8 @@ void *DB_thread(void *val)
 			// Check if GC should be done on the database
 			if(DBdeleteoldqueries)
 			{
-				// No thread locks needed
-				delete_old_queries_in_DB(db);
+				/* No thread locks needed */
+				TIMED_DB_OP(delete_old_queries_in_DB(db));
 				DBdeleteoldqueries = false;
 			}
 
@@ -165,7 +163,7 @@ void *DB_thread(void *val)
 		if(now - lastAnalyze >= DATABASE_ANALYZE_INTERVAL)
 		{
 			DBOPEN_OR_AGAIN();
-			analyze_database(db);
+			TIMED_DB_OP(analyze_database(db));
 			lastAnalyze = now;
 			DBCLOSE_OR_BREAK();
 		}
@@ -179,7 +177,7 @@ void *DB_thread(void *val)
 		if(now  - lastMACVendor >= DATABASE_MACVENDOR_INTERVAL)
 		{
 			DBOPEN_OR_AGAIN();
-			updateMACVendorRecords(db);
+			TIMED_DB_OP(updateMACVendorRecords(db));
 			lastMACVendor = now;
 			DBCLOSE_OR_BREAK();
 		}
@@ -192,7 +190,7 @@ void *DB_thread(void *val)
 		if(get_and_clear_event(PARSE_NEIGHBOR_CACHE))
 		{
 			DBOPEN_OR_AGAIN();
-			parse_neighbor_cache(db);
+			TIMED_DB_OP(parse_neighbor_cache(db));
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -204,7 +202,7 @@ void *DB_thread(void *val)
 		{
 			DBOPEN_OR_AGAIN();
 			lock_shm();
-			reimport_aliasclients(db);
+			TIMED_DB_OP(reimport_aliasclients(db));
 			unlock_shm();
 			DBCLOSE_OR_BREAK();
 		}
