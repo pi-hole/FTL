@@ -115,6 +115,13 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
     flush_arp:
       post:
         summary: Flush the network table
