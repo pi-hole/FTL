@@ -121,7 +121,15 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 
 int api_action_gravity(struct ftl_conn *api)
 {
-	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, "FORCE_COLOR");
+	// Only set FORCE_COLOR if the client explicitly requests it via "color=true" query parameter
+	// This prevents ANSI escape codes from being included in the output for API consumers that don't need them
+	bool color = false;
+	const char *query = api->request != NULL ? api->request->query_string : "";
+	if(query != NULL)
+		get_bool_var(query, "color", &color);
+
+	const char *extra_env = color ? "FORCE_COLOR" : NULL;
+	return run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
 }
 
 int api_action_restartDNS(struct ftl_conn *api)
