@@ -584,8 +584,9 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 	while (src < src_buf + src_sz)
 	{
 		// Check if we have enough space before writing
-		// Worst case: we need 4 chars for "\x00" + null terminator
-		if (dst >= dst_str + dst_sz - 5)
+		// Worst case: we need 4 chars for "0x00" + null terminator for
+		// one byte of input
+		if (dst > dst_str + dst_sz - 5)
 			break;
 
 		if (isprint(*src))
@@ -638,7 +639,26 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 }
 
 /**
- * @brief Escapes a binary string to be printable as a C string literal.
+ * @brief Escapes a given input string into a C-style escaped string literal.
+ *
+ * This function takes an input string and returns a newly allocated string
+ * where all characters are escaped as necessary to form a valid C string literal.
+ * The returned string must be freed by the caller.
+ *
+ * @param input The input string to escape. May be NULL.
+ * @return A pointer to the newly allocated escaped string, or NULL if input is NULL
+ *         or memory allocation fails.
+ *
+ * @note The returned string is allocated with calloc and must be freed by the caller.
+ * @note Uses binbuf_to_escaped_C_literal to perform the actual escaping.
+ */
+char * __attribute__ ((malloc)) escape_string(const char *input)
+{
+	return input == NULL ? NULL : escape_data(input, strlen(input));
+}
+
+/**
+ * @brief Escapes binary data to be printable as a C string literal.
  *
  * This function allocates a new string and converts the input buffer into an escaped
  * C string literal, suitable for safe printing or logging. Each character in the source
@@ -650,7 +670,7 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
  * @return Pointer to the newly allocated escaped string, or NULL on allocation or conversion failure.
  *         The returned string must be freed by the caller.
  */
-char * __attribute__((malloc)) escape_str(const char *src_buf, size_t src_sz)
+char * __attribute__((malloc)) escape_data(const char *src_buf, size_t src_sz)
 {
 	// Allocate memory for the escaped string
 	char *escaped_str = malloc(src_sz * 4 + 1); // Worst case: every char is escaped

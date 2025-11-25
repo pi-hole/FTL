@@ -46,7 +46,7 @@ components:
           - "List management"
         operationId: "replace_lists"
         description: |
-          Items may be updated by replacing them. `{list}` is required.
+          Items may be updated by replacing them. `{list}` and `{listtype}` are required.
 
           Ensure to send all the required parameters (such as `comment`) to ensure these properties are retained.
           The read-only fields `id` and `date_added` are preserved, `date_modified` is automatically updated on success.
@@ -96,6 +96,7 @@ components:
           - "List management"
         operationId: "delete_lists"
         description: |
+          `{list}` and `{listtype}` are required.
           *Note:* There will be no content on success.
         responses:
           '204':
@@ -143,6 +144,8 @@ components:
           On success, a new resource is created at `/lists/{list}`.
 
           The `database_error` with message `UNIQUE constraint failed` error indicates that this list already exists.
+        parameters:
+          - $ref: 'lists.yaml#/components/parameters/listtype'
         requestBody:
           description: Callback payload
           content:
@@ -268,7 +271,6 @@ components:
       post:
         allOf:
           - $ref: 'lists.yaml#/components/schemas/address_maybe_array'
-          - $ref: 'lists.yaml#/components/schemas/type'
           - $ref: 'lists.yaml#/components/schemas/comment'
           - $ref: 'lists.yaml#/components/schemas/groups'
           - $ref: 'lists.yaml#/components/schemas/enabled'

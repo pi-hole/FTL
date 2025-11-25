@@ -192,8 +192,8 @@ enum gravity_list_type {
 
 enum gravity_tables {
 	GRAVITY_TABLE,
-	EXACT_BLACKLIST_TABLE,
-	EXACT_WHITELIST_TABLE,
+	EXACT_DENY_TABLE,
+	EXACT_ALLOW_TABLE,
 	REGEX_DENY_TABLE,
 	REGEX_ALLOW_TABLE,
 	CLIENTS_TABLE,
@@ -247,6 +247,7 @@ enum thread_types {
 	NTP_CLIENT,
 	NTP_SERVER4,
 	NTP_SERVER6,
+	WEBSERVER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
@@ -331,7 +332,10 @@ enum cert_check {
 	CERT_CANNOT_PARSE_KEY,
 	CERT_DOMAIN_MISMATCH,
 	CERT_DOMAIN_MATCH,
-	CERT_OKAY
+	CERT_NOT_YET_VALID,
+	CERT_EXPIRES_SOON,
+	CERT_OKAY,
+	CERT_NOT_IN_USE
 } __attribute__ ((packed));
 
 enum http_method {

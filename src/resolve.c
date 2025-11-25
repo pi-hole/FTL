@@ -463,7 +463,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		}
 		else
 		{
-			char *escaped_name = escape_str((char*)answers[i].rdata, strlen((char*)answers[i].rdata));
+			char *escaped_name = escape_string((char*)answers[i].rdata);
 			log_warn("Resolved PTR \"%s\" on 127.0.0.1#%u (%s) with status %s (%i): answer %u (PTR \"%s\" => \"%s\") is invalid",
 			         host, config.dns.port.v.u16, tcp ? "TCP" : "UDP",
 			         getDNScode(dns->rcode), dns->rcode, i, answers[i].name, escaped_name);

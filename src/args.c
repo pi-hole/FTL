@@ -72,6 +72,10 @@
 #include "capabilities.h"
 // get_gateway_name()
 #include "tools/netlink.h"
+// wait_for_string_in_file()
+#include "config/inotify.h"
+// get_all_supported_ciphersuites()
+#include "webserver/webserver.h"
 
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
@@ -408,6 +412,7 @@ void parse_args(int argc, char *argv[])
 	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
+#ifdef HAVE_MBEDTLS
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
@@ -416,12 +421,21 @@ void parse_args(int argc, char *argv[])
 			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
+		// Read config
+		readFTLconf(&config, false);
+
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
+
 		const char *domain = argc > 3 ? argv[3] : "pi.hole";
 		const bool rsa = argc > 4 && strcasecmp(argv[4], "rsa") == 0;
-		exit(generate_certificate(argv[2], rsa, domain) ? EXIT_SUCCESS : EXIT_FAILURE);
+
+		exit(generate_certificate(argv[2], rsa, domain, config.webserver.tls.validity.v.ui) ? EXIT_SUCCESS : EXIT_FAILURE);
+#else
+		printf("Error: FTL was compiled without TLS support. Certificate generation is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
 	}
 
 	// Parse X.509 certificate
@@ -429,6 +443,7 @@ void parse_args(int argc, char *argv[])
 	  (strcmp(argv[1], "--read-x509") == 0 ||
 	   strcmp(argv[1], "--read-x509-key") == 0))
 	{
+#ifdef HAVE_MBEDTLS
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
@@ -471,6 +486,10 @@ void parse_args(int argc, char *argv[])
 			printf("Certificate does not match domain %s\n", argv[3]);
 			exit(EXIT_FAILURE);
 		}
+#else
+		printf("Error: FTL was compiled without TLS support. Certificate reading is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
 	}
 
 	// If the first argument is "gravity" (e.g., /usr/bin/pihole-FTL gravity),
@@ -671,6 +690,38 @@ void parse_args(int argc, char *argv[])
 			exit(EXIT_SUCCESS);
 		else
 			exit(EXIT_FAILURE);
+	}
+
+	// Check file for given string
+	// pihole-FTL wait-for <string> <file> <timeout> [<initial_filesize>]
+	// Example: pihole-FTL wait-for "DNS service is running" /var/log/pihole/FTL.log 30
+	// This will check /var/log/pihole/FTL.log for the string "DNS service is running"
+	if((argc == 5 || argc == 6) && strcmp(argv[1], "wait-for") == 0)
+	{
+		// Enable stdout printing
+		cli_mode = true;
+		log_ctrl(false, true);
+		const int timeout = atoi(argv[4]);
+		if(timeout < 0)
+		{
+			fprintf(stderr, "Error: Timeout must be a non-negative integer.\n");
+			exit(EXIT_FAILURE);
+		}
+		const long initial_filesize = (argc == 6) ? (long)atol(argv[5]) : 0;
+		if(initial_filesize < 0)
+		{
+			fprintf(stderr, "Error: Optional initial file size must be a non-negative integer if specified.\n");
+			exit(EXIT_FAILURE);
+		}
+		exit(wait_for_string_in_file(argv[3], argv[2], (unsigned int)timeout, initial_filesize) ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	if(argc == 2 && strcmp(argv[1], "--tls-ciphers") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		get_all_supported_ciphersuites();
+		exit(EXIT_SUCCESS);
 	}
 
 	// start from 1, as argv[0] is the executable name
@@ -1223,6 +1274,7 @@ void parse_args(int argc, char *argv[])
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
 			printf("\t%s--default-gateway%s   Get default network interface's name\n", green, normal);
+			printf("\t%s--tls-ciphers%s       List all supported TLS cipher suites\n", green, normal);
 			printf("\t%s--%s [OPTIONS]%s        Pass OPTIONS to internal dnsmasq resolver\n", green, cyan, normal);
 			printf("\t%s-h%s, %shelp%s            Display this help and exit\n\n", green, normal, green, normal);
 			exit(EXIT_SUCCESS);
@@ -1326,8 +1378,8 @@ void suggest_complete(const int argc, char *argv[])
 			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr",
 			"--read-x509", "--read-x509-key", "regex-test",
 			"sha256sum", "sqlite3", "sqlite3_rsync", "tag",
-			"--teleporter", "test", "--totp",
-			"-v", "-vv", "--v", "version", "verify"
+			"--teleporter", "test", "--totp", "--tls-ciphers",
+			"-v", "-vv", "--v", "version", "verify",
 		};
 
 		// Provide matching suggestions

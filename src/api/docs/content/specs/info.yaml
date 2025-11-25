@@ -481,6 +481,18 @@ components:
                       items:
                         type: number
                       example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+            ftl:
+              type: object
+              description: FTL process info
+              properties:
+                "%mem":
+                  type: number
+                  description: Percentage of total RAM memory used by FTL
+                  example: 0.1
+                "%cpu":
+                  type: number
+                  description: Percentage of total CPU used by FTL
+                  example: 1.2
 
     sensors:
       type: object
@@ -714,24 +726,52 @@ components:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed domains
-                      example: 10
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed domains (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed domains (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied domains
-                      example: 3
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied domains (total)
+                          example: 4
+                        enabled:
+                          type: integer
+                          description: Number of denied domains (enabled)
+                          example: 2
                 regex:
                   type: object
                   properties:
                     allowed:
-                      type: integer
-                      description: Number of allowed regex filters
-                      example: 4
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of allowed regex filters (total)
+                          example: 67906
+                        enabled:
+                          type: integer
+                          description: Number of allowed regex filters (enabled)
+                          example: 4
                     denied:
-                      type: integer
-                      description: Number of denied regex filters
-                      example: 2
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          description: Number of denied regex filters (total)
+                          example: 10
+                        enabled:
+                          type: integer
+                          description: Number of denied regex filters (enabled)
+                          example: 2
             privacy_level:
               type: integer
               description: Currently used privacy level
@@ -954,8 +994,20 @@ components:
                   example: "pihole"
         queries:
           type: integer
-          description: Number of queries in long-term database
+          description: Number of queries in in-memory database
           example: 536956
+        earliest_timestamp:
+          type: number
+          description: Unix timestamp of the earliest query in the in-memory database (Defaults to 0.0 if no queries are stored in memory)
+          example: 1611742120.5
+        queries_disk:
+          type: integer
+          description: Number of queries in on-disk database
+          example: 1234567
+        earliest_timestamp_disk:
+          type: number
+          description: Unix timestamp of the earliest query in the on-disk database (Defaults to 0.0 if no queries are stored on disk)
+          example: 1608450520.3
         sqlite_version:
           type: string
           description: Version of embedded SQLite3 engine

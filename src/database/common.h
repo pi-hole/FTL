@@ -36,6 +36,7 @@ bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int v
 /// Execute a formatted SQL query and get the return code
 int dbquery(sqlite3* db, const char *format, ...) __attribute__ ((format (printf, 2, 3)));;
 
+int sqliteBusyCallback(void *ptr, int count);
 #define dbopen(readonly, create) _dbopen(readonly, create, __FUNCTION__, __LINE__, __FILE__)
 sqlite3 *_dbopen(const bool readonly, const bool create, const char *func, const int line, const char *file) __attribute__((warn_unused_result));
 #define dbclose(db) _dbclose(db, __FUNCTION__, __LINE__, __FILE__)

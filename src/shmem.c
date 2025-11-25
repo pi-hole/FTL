@@ -1543,7 +1543,7 @@ void dump_strings(void)
 
 			// If the string is not printable, we escape it
 			if(!string_is_printable)
-				buffer = escape_str(sstr, len);
+				buffer = escape_data(sstr, len);
 
 			// Print string to file
 			fprintf(str_dumpfile, "%s %04zu: \"%s\" (%zu/%zu)\n", string_is_printable ? "    " : "NONP",

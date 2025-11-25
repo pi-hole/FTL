@@ -500,8 +500,8 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				continue;
 			// Check equality of paths up to the requested level (if any)
 			// Examples:
-			//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
-			//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
+			//  requested was /config/dns -> skip all entries that do not start in dns
+			//  requested was /config/dns/dhcp -> skip all entries that do not start in dhcp
 			//  etc.
 			if(!check_paths_equal(conf_item->p, requested_path, min_level - 1))
 				continue;
@@ -688,6 +688,13 @@ static int api_config_patch(struct ftl_conn *api)
 		                       "The config is currently in read-only mode",
 		                       NULL);
 	}
+	// Users may specify ?restart=false to avoid a restart of dnsmasq
+	// even if the changed config item would require it
+	bool restart = true;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "restart", &restart);
+	}
 
 	// Read all known config items
 	bool config_changed = false;
@@ -828,7 +835,7 @@ static int api_config_patch(struct ftl_conn *api)
 			if(write_dnsmasq_config(&newconf, true, errbuf))
 			{
 				api->ftl.restart_reason = "dnsmasq config changed";
-				api->ftl.restart = true;
+				api->ftl.restart = restart;
 			}
 			else
 			{
@@ -874,6 +881,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
+
+	// Users may specify ?restart=false to avoid a restart of dnsmasq
+	// even if the changed config item would require it
+	bool restart = true;
+	if(api->request->query_string != NULL)
+	{
+		get_bool_var(api->request->query_string, "restart", &restart);
+	}
 
 	char **requested_path = gen_config_path(api->item, '/');
 	const unsigned int min_level = config_path_depth(requested_path);
@@ -1042,7 +1057,8 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(write_dnsmasq_config(&newconf, true, errbuf))
 		{
 			api->ftl.restart_reason = "dnsmasq config changed";
-			api->ftl.restart = true;
+			// Only restart if the user didn't request otherwise
+			api->ftl.restart = restart;
 		}
 		else
 		{

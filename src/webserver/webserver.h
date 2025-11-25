@@ -23,6 +23,8 @@
 
 void http_init(void);
 void http_terminate(void);
+void *webserver_thread(void *val);
+void get_all_supported_ciphersuites(void);
 
 int ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...) __attribute__((format(printf, 3, 4), nonnull(1, 3)));
 in_port_t get_https_port(void) __attribute__((pure));

@@ -494,7 +494,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		}
 		errbuf[sizeof(errbuf) - 1] = '\0';
 		log_ntp_message(true, false, errbuf);
-		freeaddrinfo(saddr);
+		if(saddr != NULL)
+			freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -503,7 +504,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	if(ntp == NULL)
 	{
 		log_err("Cannot allocate memory for NTP client");
-		freeaddrinfo(saddr);
+		if(saddr != NULL)
+			freeaddrinfo(saddr);
 		return false;
 	}
 
@@ -520,7 +522,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		{
 			close(s);
 			free(ntp);
-			freeaddrinfo(saddr);
+			if(saddr != NULL)
+				freeaddrinfo(saddr);
 			return false;
 		}
 		// Get reply
@@ -543,7 +546,8 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 		printf("\n");
 
 	// Free allocated memory
-	freeaddrinfo(saddr);
+	if(saddr != NULL)
+		freeaddrinfo(saddr);
 	saddr = NULL;
 
 	// Compute average and standard deviation
@@ -764,9 +768,15 @@ bool ntp_start_sync_thread(pthread_attr_t *attr)
 	}
 	// Return early if a clock disciplining NTP client is detected
 	// Checks chrony, the ntp family (ntp, ntpsec and openntpd), and ntpd-rs
-	if(search_proc("chronyd") > 0 || search_proc("ntpd") > 0 || search_proc("ntp-daemon") > 0)
+	const int chronyd_found = search_proc("chronyd");
+	const int ntpd_found = search_proc("ntpd");
+	const int ntp_daemon_found = search_proc("ntp-daemon");
+	if(chronyd_found > 0 || ntpd_found > 0 || ntp_daemon_found > 0)
 	{
-		log_info("Clock disciplining NTP client detected, not starting embedded NTP client/server");
+		log_info("Clock disciplining NTP client detected ( %s%s%s), not starting embedded NTP client/server",
+		         chronyd_found > 0 ? "chronyd " : "",
+		         ntpd_found > 0 ? "ntpd " : "",
+		         ntp_daemon_found > 0 ? "ntp-daemon " : "");
 		return false;
 	}
 

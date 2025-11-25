@@ -545,6 +545,17 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	return true;
 }
 
+bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 7 && val->ui != 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 7", key);
+		return false;
+	}
+
+	return true;
+}
+
 // Sanitize the dns.hosts array
 // This function normalizes whitespace formatting in the dns.hosts entries
 // to ensure consistent formatting when saving to pihole.toml
@@ -664,4 +675,27 @@ void sanitize_dns_hosts(union conf_value *val)
 		free(sanitized);
 		free(str);
 	}
+}
+
+// Validate a single domain or IP address
+bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's a valid domain
+	if(valid_domain(val->s, strlen(val->s), false))
+	{
+		return true;
+	}
+
+	// Check if IP is valid
+	struct in_addr addr;
+	struct in6_addr addr6;
+	int ip4 = 0, ip6 = 0;
+	if((ip4 = inet_pton(AF_INET, val->s, &addr) == 1) || (ip6 = inet_pton(AF_INET6, val->s, &addr6)) == 1)
+	{
+		return true;
+	}
+
+	// If neither, return an error
+	snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: neither a valid domain nor IP address", key);
+	return false;
 }

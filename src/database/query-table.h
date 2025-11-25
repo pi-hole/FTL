@@ -105,15 +105,15 @@ const char *index_creation[] = {
 };
 #endif
 
-unsigned long get_max_db_idx(void) __attribute__((pure));
-void db_counts(unsigned long *last_idx, unsigned long *mem_num, unsigned long *disk_num);
+sqlite3_int64 get_max_db_idx(void) __attribute__((pure));
+void db_counts(sqlite3_int64 *last_idx, sqlite3_int64 *mem_num, sqlite3_int64 *disk_num);
 bool init_memory_database(void);
 sqlite3 *get_memdb(void) __attribute__((pure));
 void close_memory_database(void);
 bool import_queries_from_disk(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
-int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename);
+int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, double *earliest_timestamp);
 bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);

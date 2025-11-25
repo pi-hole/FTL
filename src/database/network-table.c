@@ -1201,7 +1201,7 @@ void parse_neighbor_cache(sqlite3 *db)
 	// Start transaction to speed up database queries, to avoid that the
 	// database is locked by other processes and to allow for a rollback in
 	// case of an error
-	if(dbquery(db, "BEGIN TRANSACTION"))
+	if(dbquery(db, "BEGIN TRANSACTION") != SQLITE_OK)
 	{
 		// dbquery() above already logs the reason for why the query failed
 		log_warn("Starting first transaction failed during ARP parsing");
@@ -1659,6 +1659,8 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 
 	log_debug(DEBUG_ARP, "getMACVendor(\"%s\")", hwaddr);
 
+	log_debug(DEBUG_ARP, "getMACVendor(\"%s\")", hwaddr);
+
 	struct stat st;
 	if(stat(config.files.macvendor.v.s, &st) != 0)
 	{
@@ -1745,6 +1747,8 @@ bool updateMACVendorRecords(sqlite3 *db)
 	// Return early if database is known to be broken
 	if(FTLDBerror())
 		return false;
+
+	log_debug(DEBUG_DATABASE, "Updating MAC vendor records");
 
 	struct stat st;
 	if(stat(config.files.macvendor.v.s, &st) != 0)

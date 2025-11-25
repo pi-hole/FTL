@@ -345,7 +345,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
-				char *buffer = escape_str((char*)&offer_packet->options[x], optlen);
+				char *buffer = escape_data((char*)&offer_packet->options[x], optlen);
 				printf("%s: \"%s\"\n", opttab[i].name, buffer);
 				if(buffer != NULL)
 					free(buffer);
@@ -433,7 +433,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				char *buffer = escape_str((char*)&offer_packet->options[x], optlen);
+				char *buffer = escape_data((char*)&offer_packet->options[x], optlen);
 				printf("wpad-server: \"%s\"\n", buffer);
 				free(buffer);
 			}
@@ -629,7 +629,7 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
-			char *buffer = escape_str(offer_packet.sname, len);
+			char *buffer = escape_data(offer_packet.sname, len);
 			printf("%s\n", buffer);
 			free(buffer);
 		}
@@ -640,7 +640,7 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
-			char *buffer = escape_str(offer_packet.file, len);
+			char *buffer = escape_data(offer_packet.file, len);
 			printf("%s\n", buffer);
 			free(buffer);
 		}

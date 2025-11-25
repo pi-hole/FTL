@@ -13,7 +13,7 @@
 #include "sqlite3.h"
 #include "webserver/cJSON/cJSON.h"
 
-int count_messages(const bool filter_dnsmasq_warnings);
+int count_messages(void);
 bool format_messages(cJSON *array);
 bool create_message_table(sqlite3 *db);
 bool delete_message(cJSON *ids, int *deleted);

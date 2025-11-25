@@ -32,10 +32,11 @@
 #include "lookup-table.h"
 
 // converts upper to lower case, and leaves other characters unchanged
+// Optimized version using pointer arithmetic for better performance
 void strtolower(char *str)
 {
-	int i = 0;
-	while(str[i]){ str[i] = tolower(str[i]); i++; }
+	for(; *str; ++str)
+		*str = tolower(*str);
 }
 
 /**
@@ -54,7 +55,7 @@ void strtolower(char *str)
  */
 static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 {
-	// Jenkins' One-at-a-Time hash
+	// Jenkins' One-at-a-Time hash (optimized version)
 	// (http://www.burtleburtle.net/bob/hash/doobs.html)
 	uint32_t hash = 0;
 	for(; *s; ++s)
@@ -64,6 +65,7 @@ static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 		hash ^= hash >> 6;
 	}
 
+	// Final mixing to ensure good distribution
 	hash += hash << 3;
 	hash ^= hash >> 11;
 	hash += hash << 15;
@@ -682,14 +684,22 @@ void FTL_reload_all_domainlists(void)
 	gravityDB_reopen();
 
 	// Get size of gravity, number of domains, groups, clients, and lists
-	counters->database.gravity = gravityDB_count(GRAVITY_TABLE);
-	counters->database.groups = gravityDB_count(GROUPS_TABLE);
-	counters->database.clients = gravityDB_count(CLIENTS_TABLE);
-	counters->database.lists = gravityDB_count(ADLISTS_TABLE);
-	counters->database.domains.allowed.exact = gravityDB_count(EXACT_WHITELIST_TABLE);
-	counters->database.domains.denied.exact = gravityDB_count(EXACT_BLACKLIST_TABLE);
-	counters->database.domains.allowed.regex = gravityDB_count(REGEX_ALLOW_TABLE);
-	counters->database.domains.denied.regex = gravityDB_count(REGEX_DENY_TABLE);
+	counters->database.gravity = gravityDB_count(GRAVITY_TABLE, false);
+	counters->database.groups = gravityDB_count(GROUPS_TABLE, false);
+	counters->database.clients = gravityDB_count(CLIENTS_TABLE, false);
+	counters->database.lists = gravityDB_count(ADLISTS_TABLE, false);
+
+	counters->database.domains.allowed.exact.total = gravityDB_count(EXACT_ALLOW_TABLE, true);
+	counters->database.domains.allowed.exact.enabled = gravityDB_count(EXACT_ALLOW_TABLE, false);
+
+	counters->database.domains.denied.exact.total = gravityDB_count(EXACT_DENY_TABLE, true);
+	counters->database.domains.denied.exact.enabled = gravityDB_count(EXACT_DENY_TABLE, false);
+
+	counters->database.domains.allowed.regex.total = gravityDB_count(REGEX_ALLOW_TABLE, true);
+	counters->database.domains.allowed.regex.enabled = gravityDB_count(REGEX_ALLOW_TABLE, false);
+
+	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
+	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 
 	// Read and compile possible regex filters
 	// only after having called gravityDB_reopen()
@@ -997,16 +1007,19 @@ const char * __attribute__ ((pure)) get_blocked_statuslist(void)
 	unsigned int first = 0;
 	// Open parenthesis
 	blocked_list[0] = '(';
+	size_t pos = 1;  // Track current position instead of calling strlen repeatedly
 	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
 		if(is_blocked(status))
-			snprintf(blocked_list + strlen(blocked_list),
-			         sizeof(blocked_list) - strlen(blocked_list),
-			         "%s%d", first++ < 1 ? "" : ",", status);
+		{
+			int written = snprintf(blocked_list + pos, sizeof(blocked_list) - pos,
+			                      "%s%d", first++ < 1 ? "" : ",", status);
+			if(written > 0 && (size_t)written < sizeof(blocked_list) - pos)
+				pos += written;
+		}
 
 	// Close parenthesis
-	const size_t len = strlen(blocked_list);
-	blocked_list[len] = ')';
-	blocked_list[len + 1] = '\0';
+	blocked_list[pos] = ')';
+	blocked_list[pos + 1] = '\0';
 	return blocked_list;
 }
 
@@ -1020,16 +1033,19 @@ const char * __attribute__ ((pure)) get_cached_statuslist(void)
 	unsigned int first = 0;
 	// Open parenthesis
 	cached_list[0] = '(';
+	size_t pos = 1;  // Track current position instead of calling strlen repeatedly
 	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
 		if(is_cached(status))
-			snprintf(cached_list + strlen(cached_list),
-			         sizeof(cached_list) - strlen(cached_list),
-			         "%s%d", first++ < 1 ? "" : ",", status);
+		{
+			int written = snprintf(cached_list + pos, sizeof(cached_list) - pos,
+			                      "%s%d", first++ < 1 ? "" : ",", status);
+			if(written > 0 && (size_t)written < sizeof(cached_list) - pos)
+				pos += written;
+		}
 
 	// Close parenthesis
-	const size_t len = strlen(cached_list);
-	cached_list[len] = ')';
-	cached_list[len + 1] = '\0';
+	cached_list[pos] = ')';
+	cached_list[pos + 1] = '\0';
 	return cached_list;
 }
 
@@ -1043,16 +1059,19 @@ const char * __attribute__ ((pure)) get_permitted_statuslist(void)
 	unsigned int first = 0;
 	// Open parenthesis
 	permitted_list[0] = '(';
+	size_t pos = 1;  // Track current position instead of calling strlen repeatedly
 	for(enum query_status status = 0; status < QUERY_STATUS_MAX; status++)
 		if(!is_blocked(status))
-			snprintf(permitted_list + strlen(permitted_list),
-			         sizeof(permitted_list) - strlen(permitted_list),
-			         "%s%d", first++ < 1 ? "" : ",", status);
+		{
+			int written = snprintf(permitted_list + pos, sizeof(permitted_list) - pos,
+			                      "%s%d", first++ < 1 ? "" : ",", status);
+			if(written > 0 && (size_t)written < sizeof(permitted_list) - pos)
+				pos += written;
+		}
 
 	// Close parenthesis
-	const size_t len = strlen(permitted_list);
-	permitted_list[len] = ')';
-	permitted_list[len + 1] = '\0';
+	permitted_list[pos] = ')';
+	permitted_list[pos + 1] = '\0';
 	return permitted_list;
 }
 
