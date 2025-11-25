@@ -598,6 +598,8 @@ bool import_queries_from_disk(void)
 	else
 		log_err("import_queries_from_disk(): Failed to import queries: %s",
 		        sqlite3_errstr(rc));
+	const int imported_queries = sqlite3_changes(memdb);
+	log_debug(DEBUG_DATABASE, "Imported %i rows from disk.query_storage", imported_queries);
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
@@ -617,14 +619,17 @@ bool import_queries_from_disk(void)
 		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
 		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
 	};
+	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
 
 	// Import linking tables
-	for(unsigned int i = 0; i < ArraySize(subtable_sql); i++)
+	int imported[ArraySize(subtable_names)] = { 0 };
+	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
 		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
 			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
 			        subtable_sql[i], sqlite3_errstr(rc));
-		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", sqlite3_changes(memdb), subtable_names[i]);
+		imported[i] = sqlite3_changes(memdb);
+		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", imported[i], subtable_names[i]);
 	}
 
 	// End transaction
@@ -634,11 +639,24 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// Lock shared memory
+	lock_shm();
+
+	// Update counters
+	counters->queries = imported_queries;
+	counters->domains = imported[0];
+	counters->clients = imported[1];
+	counters->upstreams = imported[2];
+	shm_ensure_size();
+
+	// Unlock shared memory
+	unlock_shm();
+
 	// Get number of queries on disk before detaching
 	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", NULL);
 	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", NULL);
 
-	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
+	log_info("Imported %u (%d) queries from the on-disk database (it has %u rows)", mem_db_num, imported_queries, disk_db_num);
 
 	return okay;
 }
@@ -1117,9 +1135,6 @@ void DB_read_queries(void)
 		return;
 	}
 
-	// Lock shared memory
-	lock_shm();
-
 	// Loop through returned database rows
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
@@ -1197,6 +1212,9 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
+		// Lock shared memory
+		lock_shm();
+
 		// Ensure we have enough shared memory available for new data
 		shm_ensure_size();
 
@@ -1228,6 +1246,7 @@ void DB_read_queries(void)
 			{
 				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
 				         reply_time, dbID, queryTimeStamp);
+				unlock_shm();
 				continue;
 			}
 		}
@@ -1254,6 +1273,7 @@ void DB_read_queries(void)
 				// Invalid query type
 				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
 				         type, dbID, queryTimeStamp);
+				unlock_shm();
 				continue;
 			}
 		}
@@ -1398,10 +1418,10 @@ void DB_read_queries(void)
 
 		if(counters->queries % 10000 == 0)
 			log_info("  %u queries parsed...", counters->queries);
-	}
 
-	// Release shared memory
-	unlock_shm();
+		// Unlock shared memory
+		unlock_shm();
+	}
 
 	if( rc != SQLITE_DONE )
 	{
@@ -1778,10 +1798,6 @@ static void load_queries_from_disk(void)
 
 	// Try to import queries from long-term database if available
 	import_queries_from_disk();
-	DB_read_queries();
-
-	// Log some information about the imported queries (if any)
-	log_counter_info();
 
 	store_in_database = true;
 }
