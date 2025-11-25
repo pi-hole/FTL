@@ -45,11 +45,11 @@ int api_dhcp_leases_GET(struct ftl_conn *api)
 
 		// Parse line
 		unsigned long expires = 0;
-		char hwaddr[18] = { 0 };
+		char hwaddr[48] = { 0 };
 		char ip[INET6_ADDRSTRLEN] = { 0 };
 		char name[65] = { 0 };
 		char clientid[765] = { 0 };
-		const int ret = sscanf(line, "%lu %17s %45s %64s %764s", &expires, hwaddr, ip, name, clientid);
+		const int ret = sscanf(line, "%lu %47s %45s %64s %764s", &expires, hwaddr, ip, name, clientid);
 
 		// Skip invalid lines
 		if(ret != 5)
