@@ -114,6 +114,7 @@ enum totp_status {
 	TOTP_INVALID,
 	TOTP_CORRECT,
 	TOTP_REUSED,
+	TOTP_RATE_LIMIT
 } __attribute__ ((packed));
 enum totp_status verifyTOTP(const uint32_t code);
 int generateTOTP(struct ftl_conn *api);

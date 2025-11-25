@@ -4,11 +4,13 @@ components:
     gravity:
       post:
         summary: Run gravity
+        parameters:
+          - $ref: 'action.yaml#/components/parameters/color'
         tags:
           - Actions
         operationId: "action_gravity"
         description: |
-          Update Pi-hole's adlists by running `pihole -g`. The output of the process is streamed with chunked encoding.
+          Update Pi-hole's adlists by running `pihole -g`. The output of the process is streamed with chunked encoding. Use the optional `color` query parameter to include ANSI color escape codes in the output.
         responses:
           '200':
             description: OK
@@ -182,6 +184,17 @@ components:
                   allOf:
                     - $ref: 'action.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
+
+  parameters:
+    color:
+      name: color
+      in: query
+      description: Include ANSI color escape codes in the streamed output. Defaults to false to prevent colored output for API consumers that don't need formatting.
+      schema:
+        type: boolean
+        default: false
+        example: true
+      required: false
 
   errors:
     forbidden:

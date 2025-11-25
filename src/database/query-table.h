@@ -113,7 +113,7 @@ void close_memory_database(void);
 bool import_queries_from_disk(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
-int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename);
+int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, double *earliest_timestamp);
 bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);

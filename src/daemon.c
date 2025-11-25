@@ -474,50 +474,35 @@ static float ftl_cpu_usage = 0.0f;
 static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)
 {
-	// Get the current resource usage
-	// RUSAGE_SELF means here "the calling process" which is the sum of all
-	// resources used by all threads in the process
-	struct rusage usage = { 0 };
-	if(getrusage(RUSAGE_SELF, &usage) != 0)
-	{
-		log_err("Unable to obtain CPU usage: %s (%i)", strerror(errno), errno);
-		return;
-	}
+	// Get number of cores if we are normalizing CPU usage below
+	const unsigned int norm_factor = config.misc.normalizeCPU.v.b ? get_nprocs_conf() : 1;
 
-	// Calculate the CPU usage: it is the total time spent in user mode and
-	// kernel mode by this process since the total time since the last call
-	// to this function. 100% means one core is fully used, 200% means two
-	// cores are fully used, etc.
-	const float ftl_cpu_time = usage.ru_utime.tv_sec + usage.ru_stime.tv_sec + 1e-6 * (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+	// Get the current FTL CPU time
+	const double ftl_cpu_time = parse_proc_self_stat();
 
 	// Calculate the CPU usage in this interval
-	static float last_ftl_cpu_time = 0.0f;
-	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval;
-
-	// Store the current time for the next call to this function
+	static double last_ftl_cpu_time = 0.0f;
+	ftl_cpu_usage = 100.0 * (ftl_cpu_time - last_ftl_cpu_time) / interval / norm_factor;
 	last_ftl_cpu_time = ftl_cpu_time;
 
 	// Calculate the total CPU usage
-	unsigned long total_total, total_idle;
-	if(!parse_proc_stat(&total_total, &total_idle))
-	{
-		total_cpu_usage = -1.0f;
-		return;
-	}
-
+	const double cpu_time = parse_proc_stat();
+	
 	// Calculate the CPU usage since the last call to this function
-	static unsigned long last_total_total = 0, last_total_idle = 0;
-	if(total_total - last_total_total > 0)
-		total_cpu_usage = 100.0 * (total_total - last_total_total - (total_idle - last_total_idle)) / (total_total - last_total_total);
+	static double last_cpu_time = 0.0f;
+	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval / norm_factor;
+	last_cpu_time = cpu_time;
 
-	// Store the current time for the next call to this function
-	last_total_idle = total_idle;
-	last_total_total = total_total;
+	log_debug(DEBUG_EXTRA, "CPU usage in the last %u seconds: FTL %.4f%%, total %.4f%% (normalized by factor %ux)",
+	          interval, ftl_cpu_usage, total_cpu_usage, norm_factor);
 }
 
 float __attribute__((pure)) get_ftl_cpu_percentage(void)
 {
-	return ftl_cpu_usage;
+	// Return the smaller of the two values to avoid showing a CPU usage
+	// higher than the total CPU usage. This can happen due to rounding
+	// errors and rare interval comparison differences.
+	return ftl_cpu_usage < total_cpu_usage ? ftl_cpu_usage : total_cpu_usage;
 }
 
 float __attribute__((pure)) get_total_cpu_percentage(void)

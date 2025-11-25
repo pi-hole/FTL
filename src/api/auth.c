@@ -559,6 +559,14 @@ int api_auth(struct ftl_conn *api)
 				                       "Reused 2FA token",
 				                       "wait for new token");
 			}
+			else if(totp == TOTP_RATE_LIMIT)
+			{
+				// 2FA validation requested too often
+				return send_json_error(api, 429,
+				                       "rate_limiting",
+				                       "Rate-limiting 2FA token requests, try again later",
+				                       NULL);
+			}
 			else if(totp != TOTP_CORRECT)
 			{
 				// 2FA token is invalid

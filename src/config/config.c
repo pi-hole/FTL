@@ -742,7 +742,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.blocking.v6.k = "dns.reply.blocking.IPv6";
 	conf->dns.reply.blocking.v6.h = "Custom IPv6 address for IP blocking mode";
-	conf->dns.reply.blocking.v6.a = cJSON_CreateStringReference("Avalid IPv6 address or empty string (\"\")");
+	conf->dns.reply.blocking.v6.a = cJSON_CreateStringReference("A valid IPv6 address or empty string (\"\")");
 	conf->dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
 	memset(&conf->dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->dns.reply.blocking.v6.c = validate_stub; // Only type-based checking
@@ -897,7 +897,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.server.a = cJSON_CreateStringReference("A valid NTP upstream server");
 	conf->ntp.sync.server.t = CONF_STRING;
 	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
-	conf->ntp.sync.server.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.server.c = validate_dns_domain_or_ip;
 
 	conf->ntp.sync.interval.k = "ntp.sync.interval";
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
@@ -1184,7 +1184,7 @@ void initConfig(struct config *conf)
 
 	conf->webserver.api.password.k = "webserver.api.password";
 	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this property will compute the corresponding password hash to set webserver.api.pwhash";
-	conf->webserver.api.password.a = cJSON_CreateStringReference("Avalid Pi-hole password");
+	conf->webserver.api.password.a = cJSON_CreateStringReference("A valid Pi-hole password");
 	conf->webserver.api.password.t = CONF_PASSWORD;
 	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.password.d.s = (char*)"";
@@ -1415,6 +1415,18 @@ void initConfig(struct config *conf)
 	conf->misc.readOnly.f = FLAG_READ_ONLY;
 	conf->misc.readOnly.d.b = false;
 	conf->misc.readOnly.c = validate_stub; // Only type-based checking
+
+	conf->misc.normalizeCPU.k = "misc.normalizeCPU";
+	conf->misc.normalizeCPU.h = "Should FTL normalize reported CPU usage?\n\n On multi-core systems, a high workload can lead to CPU usage numbers exceeding 100% (e.g., 200% on a quad-core system if two out of four cores are fully utilized). This may look alarming at first glance even though the system is not actually overloaded. Enabling this setting will divide the CPU usage by the number of cores, leading to more intuitive numbers (e.g., 50% for the same load on a quad-core system).\n Note that this setting only affects how CPU usage is *reported*, it does not change the actual CPU usage.";
+	conf->misc.normalizeCPU.t = CONF_BOOL;
+	conf->misc.normalizeCPU.d.b = true;
+	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
+
+	conf->misc.hide_dnsmasq_warn.k = "misc.hide_dnsmasq_warn";
+	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide all dnsmasq warnings.";
+	conf->misc.hide_dnsmasq_warn.t = CONF_BOOL;
+	conf->misc.hide_dnsmasq_warn.d.b = false;
+	conf->misc.hide_dnsmasq_warn.c = validate_stub; // Only type-based checking
 
 	// sub-struct misc.check
 	conf->misc.check.load.k = "misc.check.load";

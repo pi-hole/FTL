@@ -20,10 +20,10 @@ index 6280ebf6..a5e82f70 100644
  #else
  int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
    char **argv;
-@@ -33467,6 +33469,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
+@@ -33656,6 +33658,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
+     if( stdin_is_interactive ){
        char *zHome;
        char *zHistory;
-       int nHistory;
 +      print_FTL_version();
        sqlite3_fprintf(stdout,
              "SQLite version %s %.19s\n" /*extra-version-info*/

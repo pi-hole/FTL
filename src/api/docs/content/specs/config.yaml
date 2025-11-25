@@ -551,6 +551,10 @@ components:
                   type: boolean
                 readOnly:
                   type: boolean
+                normalizeCPU:
+                  type: boolean
+                hide_dnsmasq_warn:
+                  type: boolean
                 check:
                   type: object
                   properties:
@@ -834,6 +838,8 @@ components:
             dnsmasq_lines: [ ]
             extraLogging: false
             readOnly: false
+            normalizeCPU: false
+            hide_dnsmasq_warn: false
             check:
               load: true
               shmem: 90
@@ -913,7 +919,7 @@ components:
             error:
               key: "bad_request"
               message: "Invalid path depth"
-              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+              hint: "Use, e.g., DELETE /config/dns/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
             took: 0.003
         item_already_present:
           summary: Item to be added exists already
@@ -940,7 +946,7 @@ components:
         type: string
       required: true
       description: config element
-      example: "dnsmasq/upstreams"
+      example: "dns/upstreams"
     value:
       in: path
       name: value

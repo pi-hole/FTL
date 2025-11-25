@@ -156,7 +156,7 @@ sudo pihole-FTL --config dns.dnssec=true
 
             # Compose full key for CLI/env var examples
             full_key = ".".join(section_stack + [key])
-            env_var = "FTLCONF_" + "_".join(section_stack + [key])
+            env_var = "FTLCONF_" + full_key.replace(".", "_")
 
             # TOML example tab
             documentation.append(f'=== "TOML"')

@@ -146,9 +146,17 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(owner, "group", group);
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
-	// Add number of queries in on-disk database
-	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage");
+	// Add number of queries and earliest timestamp in in-memory database
+	double earliest_timestamp_mem = 0.0;
+	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", &earliest_timestamp_mem);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "queries", queries_in_database);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", earliest_timestamp_mem);
+
+	// Add number of queries and earliest timestamp in on-disk database
+	double earliest_timestamp_disk = 0.0;
+	const int queries_in_disk_database = get_number_of_queries_in_DB(NULL, "disk.query_storage", &earliest_timestamp_disk);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "queries_disk", queries_in_disk_database);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp_disk", earliest_timestamp_disk);
 
 	// Add SQLite library version
 	JSON_REF_STR_IN_OBJECT(json, "sqlite_version", get_sqlite3_version());
@@ -241,6 +249,13 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	JSON_ADD_ITEM_TO_OBJECT(load, "percent", percent);
 	JSON_ADD_ITEM_TO_OBJECT(cpu, "load", load);
 	JSON_ADD_ITEM_TO_OBJECT(system, "cpu", cpu);
+
+	cJSON *ftl = JSON_NEW_OBJECT();
+	struct proc_mem pmem = { 0 };
+	getProcessMemory(&pmem, mem.total);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%mem", pmem.VmRSS_percent);
+	JSON_ADD_NUMBER_TO_OBJECT(ftl, "%cpu", get_ftl_cpu_percentage());
+	JSON_ADD_ITEM_TO_OBJECT(system, "ftl", ftl);
 
 	// All okay
 	return 0;
@@ -900,29 +915,15 @@ int api_info_version(struct ftl_conn *api)
 
 int api_info_messages_count(struct ftl_conn *api)
 {
-	// Filtering based on GET parameters?
-	bool filter_dnsmasq_warnings = false;
-	if(api->request->query_string != NULL)
-	{
-		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
-	}
-
 	// Send reply
 	cJSON *json = JSON_NEW_OBJECT();
-	cJSON_AddNumberToObject(json, "count", count_messages(filter_dnsmasq_warnings));
+	cJSON_AddNumberToObject(json, "count", count_messages());
 	JSON_SEND_OBJECT(json);
 	return 0;
 }
 
 static int api_info_messages_GET(struct ftl_conn *api)
 {
-	// Filtering based on GET parameters?
-	bool filter_dnsmasq_warnings = false;
-	if(api->request->query_string != NULL)
-	{
-		get_bool_var(api->request->query_string, "filter_dnsmasq_warnings", &filter_dnsmasq_warnings);
-	}
-
 	// Create messages array
 	cJSON *messages = cJSON_CreateArray();
 	if(!format_messages(messages))
@@ -936,7 +937,7 @@ static int api_info_messages_GET(struct ftl_conn *api)
 	}
 
 	// Filter messages if requested
-	if(filter_dnsmasq_warnings)
+	if(config.misc.hide_dnsmasq_warn.v.b)
 	{
 		// Create new array
 		cJSON *filtered = cJSON_CreateArray();

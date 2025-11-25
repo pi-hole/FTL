@@ -32,6 +32,8 @@
 #include "regex_r.h"
 // file_readable()
 #include "files.h"
+// sqliteBusyCallback()
+#include "common.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -190,12 +192,6 @@ static bool gravityDB_open(void)
 		return false;
 	}
 
-	// Set SQLite3 busy timeout to a user-defined value (defaults to 1 second)
-	// to avoid immediate failures when the gravity database is still busy
-	// writing the changes to disk
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to %d", DATABASE_BUSY_TIMEOUT);
-	sqlite3_busy_timeout(gravity_db, DATABASE_BUSY_TIMEOUT);
-
 	// Prepare private vector of statements for this process (might be a TCP fork!)
 	if(allowlist_stmt == NULL)
 		allowlist_stmt = new_sqlite3_stmt_vec(counters->clients);
@@ -206,9 +202,9 @@ static bool gravityDB_open(void)
 	if(antigravity_stmt == NULL)
 		antigravity_stmt = new_sqlite3_stmt_vec(counters->clients);
 
-	// Explicitly set busy handler to zero milliseconds
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting busy timeout to zero");
-	rc = sqlite3_busy_timeout(gravity_db, 0);
+	// Explicitly set busy handler to zero milliseconds for gravity
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Unsetting busy handler");
+	rc = sqlite3_busy_handler(gravity_db, NULL, NULL);
 	if(rc != SQLITE_OK)
 		log_err("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
 
@@ -2773,11 +2769,16 @@ bool gravity_updated(void)
 		return false;
 	}
 
-	// Set busy timeout to 1 second to access the database in a
+	// Set busy timeout to access the database in a
 	// multi-threaded environment and other threads may be writing to the
 	// database (e.g. Teleporter restoring a backup)
-	if(sqlite3_busy_timeout(db, 1000) != SQLITE_OK)
-		log_warn("gravity_updated(): %s - Failed to set busy timeout", config.files.gravity.v.s);
+	rc = sqlite3_busy_handler(db, sqliteBusyCallback, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("gravity_updated(): %s - Cannot set busy handler: %s", config.files.gravity.v.s, sqlite3_errstr(rc));
+		gravityDB_close();
+		return false;
+	}
 
 	// Get *updated* timestamp from gravity database
 	const char *querystr = "SELECT value FROM info WHERE property = 'updated';";
