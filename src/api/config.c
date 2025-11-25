@@ -500,8 +500,8 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				continue;
 			// Check equality of paths up to the requested level (if any)
 			// Examples:
-			//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
-			//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
+			//  requested was /config/dns -> skip all entries that do not start in dns
+			//  requested was /config/dns/dhcp -> skip all entries that do not start in dhcp
 			//  etc.
 			if(!check_paths_equal(conf_item->p, requested_path, min_level - 1))
 				continue;

@@ -146,9 +146,17 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(owner, "group", group);
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
-	// Add number of queries in on-disk database
-	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage");
+	// Add number of queries and earliest timestamp in in-memory database
+	double earliest_timestamp_mem = 0.0;
+	const int queries_in_database = get_number_of_queries_in_DB(NULL, "query_storage", &earliest_timestamp_mem);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "queries", queries_in_database);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", earliest_timestamp_mem);
+
+	// Add number of queries and earliest timestamp in on-disk database
+	double earliest_timestamp_disk = 0.0;
+	const int queries_in_disk_database = get_number_of_queries_in_DB(NULL, "disk.query_storage", &earliest_timestamp_disk);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "queries_disk", queries_in_disk_database);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp_disk", earliest_timestamp_disk);
 
 	// Add SQLite library version
 	JSON_REF_STR_IN_OBJECT(json, "sqlite_version", get_sqlite3_version());
