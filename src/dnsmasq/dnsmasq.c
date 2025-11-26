@@ -2065,9 +2065,24 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   
   if (!option_bool(OPT_DEBUG))
     {
+      /* The code in edns0.c qthat decorates queries with the source MAC address depends
+	 on the code in arp.c, which populates a cache with the contents of the ARP table
+	 using netlink. Since the child process can't use netlink, we pre-populate
+	 the cache with the ARP table entry for our source here, including a negative entry
+	 if there is nothing for our address in the ARP table.
+	 
+	 When the edns0 code calls find_mac() in the child process, it will
+	 get the correct answer from the cache inherited from the parent
+	 without having to use netlink to consult the kernel ARP table.
+
+	 edns0_needs_mac() simply calls find_mac if any EDNS0 options
+	 which need a MAC address are enabled. */
+      
+      edns0_needs_mac(&tcp_addr, now);
+
       if (pipe(pipefd) == -1)
 	goto closeconandreturn; /* pipe failed */
-            
+
       if ((p = fork()) == -1)
 	{
 	  /* fork failed */
