@@ -117,6 +117,8 @@ components:
                     $ref: 'auth.yaml#/components/examples/errors/rate_limit'
                   no_seats:
                     $ref: 'auth.yaml#/components/examples/errors/no_seats'
+                  totp_rate_limit:
+                    $ref: 'auth.yaml#/components/examples/errors/totp_rate_limit'
       delete:
         summary: Delete session
         tags:
@@ -588,6 +590,14 @@ components:
             message: "Reused 2FA token"
             hint: "wait for new token"
           took: 0.003
+      totp_rate_limit:
+        summary: 2FA token requested too soon
+        value:
+          error:
+            key: "rate_limiting"
+            message: "Rate-limiting 2FA token requests, try again later"
+            hint: null
+          took: 0.001
       rate_limit:
         summary: Rate limit exceeded
         value:

@@ -195,16 +195,20 @@ static bool encode_uint8_t_array_to_base32(const uint8_t *in, const size_t in_le
 	return true;
 }
 
+static time_t last_attempt = 0;
 static uint32_t last_code = 0;
 enum totp_status verifyTOTP(const uint32_t incode)
 {
+	// Only one attempt per second is allowed
+	const time_t now = time(NULL);
+	if(now == last_attempt)
+		return TOTP_RATE_LIMIT;
+	last_attempt = now;
+
 	// Decode base32 secret
 	uint8_t decoded_secret[RFC6238_SECRET_LEN];
 	if(!decode_base32_to_uint8_array(config.webserver.api.totp_secret.v.s, decoded_secret, sizeof(decoded_secret)))
 		return false;
-
-	// Get current time
-	const time_t now = time(NULL);
 
 	// Verify code for the previous, the current and the next time step
 	for(int i = -1; i <= 1; i++)

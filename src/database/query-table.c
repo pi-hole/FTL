@@ -238,7 +238,7 @@ bool init_memory_database(void)
 	// queries from the in-memory database (including the query with ID 0)
 	// to the on-disk database.
 	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
-	                                      "WHERE id > IFNULL((SELECT MAX(id) FROM disk.query_storage), -1) "\
+	                                      "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
 	                                        "AND timestamp < ?",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
@@ -247,11 +247,15 @@ bool init_memory_database(void)
 		return false;
 	}
 
+	// Export linking tables to disk database
+	// We limit the export to new records to avoid the overhead of many
+	// IGNORE executions for records that are already present on disk. It
+	// follows the same logic as for the main query_storage table above.
 	const char *subtable_sql[SUBTABLE_STMTS] = {
-		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id",
-		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id",
-		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id",
-		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id",
+		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.domain_by_id)",
+		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.client_by_id)",
+		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.forward_by_id)",
+		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.addinfo_by_id)",
 		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
 	};
 
@@ -368,7 +372,7 @@ static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 	*memsize = page_count * page_size;
 
 	// Get number of queries in the memory table
-	if((*queries = get_number_of_queries_in_DB(db, "query_storage")) == DB_FAILED)
+	if((*queries = get_number_of_queries_in_DB(db, "query_storage", NULL)) == DB_FAILED)
 		return false;
 
 	return true;
@@ -504,23 +508,31 @@ bool detach_database(sqlite3* db, const char **message, const char *alias)
 	return okay;
 }
 
-// Get number of queries either in the temp or in the on-diks database
+// Get number of queries either in the temp or in the on-disk database
 // This routine is used by the API routines.
-int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename)
+int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, double *earliest_timestamp)
 {
 	int rc = 0, num = 0;
 	sqlite3_stmt *stmt = NULL;
-
-	// Count number of rows
-	const size_t buflen = 42 + strlen(tablename);
-	char *querystr = calloc(buflen, sizeof(char));
-	snprintf(querystr, buflen, "SELECT COUNT(*) FROM %s", tablename);
 
 	// The database pointer may be NULL, meaning we want the memdb
 	if(db == NULL)
 		db = get_memdb();
 
-	// PRAGMA page_size
+	// Build query string based on whether we need the earliest timestamp too
+	const size_t buflen = 38 + strlen(tablename);
+	char *querystr = calloc(buflen, sizeof(char));
+	if(earliest_timestamp != NULL)
+	{
+		// Get both count and earliest timestamp
+		snprintf(querystr, buflen, "SELECT COUNT(*), MIN(timestamp) FROM %s", tablename);
+	}
+	else
+	{
+		// Get only count
+		snprintf(querystr, buflen, "SELECT COUNT(*) FROM %s", tablename);
+	}
+
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -532,7 +544,13 @@ int get_number_of_queries_in_DB(sqlite3 *db, const char *tablename)
 	}
 	rc = sqlite3_step(stmt);
 	if( rc == SQLITE_ROW )
+	{
+		// Get count from first column
 		num = sqlite3_column_int(stmt, 0);
+		// Get timestamp from second column if requested
+		if(earliest_timestamp != NULL && sqlite3_column_type(stmt, 1) != SQLITE_NULL)
+			*earliest_timestamp = sqlite3_column_double(stmt, 1);
+	}
 	sqlite3_finalize(stmt);
 	free(querystr);
 
@@ -617,8 +635,8 @@ bool import_queries_from_disk(void)
 	}
 
 	// Get number of queries on disk before detaching
-	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage");
+	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", NULL);
+	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", NULL);
 
 	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
 
@@ -640,7 +658,7 @@ bool export_queries_to_disk(const bool final)
 
 	// Only try to export to database if it is known to not be broken
 	if(FTLDBerror())
-	return false;
+		return false;
 
 	// Start database timer
 	timer_start(DATABASE_WRITE_TIMER);
@@ -710,7 +728,7 @@ bool export_queries_to_disk(const bool final)
 		}
 
 		// Update number of queries in the disk database
-		disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage");
+		disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", NULL);
 	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
@@ -778,7 +796,7 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 		        mintime, sqlite3_errstr(rc));
 
 	// Update number of queries in in-memory database
-	const int new_num = get_number_of_queries_in_DB(NULL, "query_storage");
+	const int new_num = get_number_of_queries_in_DB(NULL, "query_storage", NULL);
 	log_debug(DEBUG_GC, "delete_old_queries_from_db(): Deleted %i (%u) queries, new number of queries in memory: %i",
 	          sqlite3_changes(db), (mem_db_num - new_num), new_num);
 	mem_db_num = new_num;
@@ -1738,7 +1756,7 @@ bool queries_to_database(void)
 	}
 
 	// Update number of queries in in-memory database
-	mem_db_num = get_number_of_queries_in_DB(NULL, "query_storage");
+	mem_db_num = get_number_of_queries_in_DB(NULL, "query_storage", NULL);
 
 	if(config.debug.database.v.b && updated + added > 0)
 	{

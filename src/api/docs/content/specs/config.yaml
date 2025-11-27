@@ -625,6 +625,8 @@ components:
                   type: boolean
                 netlink:
                   type: boolean
+                timing:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -874,6 +876,7 @@ components:
             reserved: false
             ntp: false
             netlink: false
+            timing: false
             all: false
           took: 0.003
     config_one:
@@ -919,7 +922,7 @@ components:
             error:
               key: "bad_request"
               message: "Invalid path depth"
-              hint: "Use, e.g., DELETE /config/dnsmasq/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
+              hint: "Use, e.g., DELETE /config/dns/upstreams/127.0.0.1 to remove \"127.0.0.1\" from config.dns.upstreams"
             took: 0.003
         item_already_present:
           summary: Item to be added exists already
@@ -946,7 +949,7 @@ components:
         type: string
       required: true
       description: config element
-      example: "dnsmasq/upstreams"
+      example: "dns/upstreams"
     value:
       in: path
       name: value
