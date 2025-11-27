@@ -30,6 +30,10 @@
 #include "files.h"
 // gravity_updated()
 #include "database/gravity-db.h"
+// parse_proc_meminfo()
+#include "procps.h"
+// sqlite3_mem_used()
+#include "sqlite3-ext.h"
 
 static bool delete_old_queries_in_DB(sqlite3 *db)
 {
@@ -77,6 +81,44 @@ static bool analyze_database(sqlite3 *db)
 	return true;
 }
 
+static void log_used_memory(void)
+{
+	struct proc_mem pmem = { 0 };
+	struct proc_meminfo mem = { 0 };
+	parse_proc_meminfo(&mem);
+	getProcessMemory(&pmem, mem.total);
+
+	char total_prefix[2] = { 0 };
+	double total_formatted = 0.0;
+	format_memory_size(total_prefix, (uint64_t)mem.total * 1024, &total_formatted);
+
+	char used_prefix[2] = { 0 };
+	double used_formatted = 0.0;
+	format_memory_size(used_prefix, (uint64_t)pmem.VmRSS * 1024, &used_formatted);
+
+	const int64_t sqlite3_memory = sqlite3_mem_used();
+	char sqlite3_mem_prefix[2] = { 0 };
+	double sqlite3_mem_formatted = 0.0;
+	format_memory_size(sqlite3_mem_prefix, sqlite3_memory, &sqlite3_mem_formatted);
+
+	const int64_t sqlite3_highwater = sqlite3_mem_used_highwater();
+	char sqlite3_mem_highwater_prefix[2] = { 0 };
+	double sqlite3_mem_highwater_formatted = 0.0;
+	format_memory_size(sqlite3_mem_highwater_prefix, sqlite3_highwater, &sqlite3_mem_highwater_formatted);
+
+	const int64_t sqlite3_largest_block = sqlite3_mem_used_largest_block();
+	char sqlite3_mem_largest_block_prefix[2] = { 0 };
+	double sqlite3_mem_largest_block_formatted = 0.0;
+	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_largest_block, &sqlite3_mem_largest_block_formatted);
+
+	log_info("Memory usage: %.2f %sB used of %.2f %sB total (%.1f%%)",
+	         used_formatted, used_prefix, total_formatted, total_prefix, pmem.VmRSS_percent);
+	log_info("  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB",
+	         sqlite3_mem_formatted, sqlite3_mem_prefix,
+	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
+	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix);
+}
+
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
 #define DBCLOSE_OR_BREAK() { dbclose(&db); BREAK_IF_KILLED(); }
 
@@ -97,6 +139,9 @@ void *DB_thread(void *val)
 	time_t lastAnalyze = before + 3600 + (rand() % 3600);
 	time_t lastMACVendor = before + 3600 + (rand() % 3600);
 
+	// Last memory log timestamp
+	time_t lastMemLog = 0;
+
 	// This thread runs until shutdown of the process. We keep this thread
 	// running when pihole-FTL.db is corrupted because reloading of privacy
 	// level, and the gravity database (initially and after gravity)
@@ -104,6 +149,13 @@ void *DB_thread(void *val)
 	while(!killed)
 	{
 		const time_t now = time(NULL);
+
+		// Log memory usage once per ten minutes
+		if(now - lastMemLog >= 600)
+		{
+			log_used_memory();
+			lastMemLog = now;
+		}
 
 		// If the database is busy, no moving is happening and queries are retained in
 		// here until the next try. This ensures we cannot loose queries.
@@ -148,7 +200,6 @@ void *DB_thread(void *val)
 				TIMED_DB_OP(delete_old_queries_in_DB(db));
 				DBdeleteoldqueries = false;
 			}
-
 			DBCLOSE_OR_BREAK();
 
 			// Parse neighbor cache (fill network table)

@@ -25,7 +25,7 @@
 #include <time.h>
 // errno
 #include <errno.h>
-// PRIi64
+// PRId64
 #include <inttypes.h>
 // config struct
 #include "config/config.h"

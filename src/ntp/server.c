@@ -34,8 +34,6 @@
 #include <sys/prctl.h>
 // config struct
 #include "config/config.h"
-// PRIi64
-#include <inttypes.h>
 // log_ntp_message()
 #include "database/message-table.h"
 // NTP_SERVER_IPV4,6

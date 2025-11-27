@@ -228,6 +228,101 @@ static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const st
 	return rc;
 }
 
+// The following logic implements lightweight memory allocation tracer for
+// SQLite3. It tracks the total amount of memory allocated by SQLite3 and makes
+// this information available via the sqlite3_mem_used() function. We do not use
+// the provided memory allocation tracing of SQLite3 as it does a lot more
+// bookkeeping which we do not need here and which significantly slows down
+// memory allocations.
+
+/* The original memory allocation routines */
+static sqlite3_mem_methods memtraceBase;
+static ssize_t sqlite3_mem = 0;
+static ssize_t sqlite3_mem_highwater = 0;
+static ssize_t sqlite3_mem_largest_block = 0;
+
+/* Methods that trace memory allocations */
+static void *memtraceMalloc(int n)
+{
+	// Allocate memory and track usage
+	const int m = memtraceBase.xRoundup(n);
+	sqlite3_mem += m;
+	if(sqlite3_mem > sqlite3_mem_highwater)
+		sqlite3_mem_highwater = sqlite3_mem;
+	if(m > sqlite3_mem_largest_block)
+		sqlite3_mem_largest_block = m;
+	return memtraceBase.xMalloc(m);
+}
+
+static void memtraceFree(void *p)
+{
+	// Handle free of NULL pointer as no-op
+	if(p == NULL)
+		return;
+
+	// Free memory and track usage
+	sqlite3_mem -= memtraceBase.xSize(p);
+	memtraceBase.xFree(p);
+}
+
+static void *memtraceRealloc(void *p, int n)
+{
+	// Handle realloc of NULL pointer as malloc
+	if(p == NULL)
+		return memtraceMalloc(n);
+
+	// Handle realloc to zero bytes as free
+	if(n == 0)
+	{
+		memtraceFree(p);
+		return 0;
+	}
+
+	// Reallocate memory and track usage
+	sqlite3_mem -= memtraceBase.xSize(p);
+	sqlite3_mem += memtraceBase.xRoundup(n);
+	return memtraceBase.xRealloc(p, n);
+}
+
+// xSize should return the allocated size of a memory allocation previously
+// obtained from xMalloc or xRealloc. The allocated size is always at least as
+// big as the requested size but may be larger.
+static int memtraceSize(void *p)
+{
+	return memtraceBase.xSize(p);
+}
+
+// The xRoundup method returns what would be the allocated size of a memory
+// allocation given a particular requested size.
+static int memtraceRoundup(int n)
+{
+	return memtraceBase.xRoundup(n);
+}
+
+// Initialize memory allocator
+static int memtraceInit(void *p)
+{
+	return memtraceBase.xInit(p);
+}
+
+// Shutdown memory allocator
+static void memtraceShutdown(void *p)
+{
+	memtraceBase.xShutdown(p);
+}
+
+/* The substitute memory allocator */
+static sqlite3_mem_methods ersatzMethods = {
+	memtraceMalloc,
+	memtraceFree,
+	memtraceRealloc,
+	memtraceSize,
+	memtraceRoundup,
+	memtraceInit,
+	memtraceShutdown,
+	0
+};
+
 /**
  * @brief Initializes the Pi-hole SQLite3 extensions and the SQLite3 engine.
  *
@@ -236,9 +331,45 @@ static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const st
  */
 void pihole_sqlite3_initalize(void)
 {
-	// Register Pi-hole provided SQLite3 extensions (see sqlite3-ext.c)
+	// Set up memory allocation tracing
+	int rc = sqlite3_config(SQLITE_CONFIG_GETMALLOC, &memtraceBase);
+	if (rc == SQLITE_OK)
+	{
+		// Set our memory allocation tracing methods
+		rc = sqlite3_config(SQLITE_CONFIG_MALLOC, &ersatzMethods);
+		if (rc != SQLITE_OK)
+			log_warn("Error while setting up SQLite3 memory allocation tracing: %s",
+			         sqlite3_errstr(rc));
+	}
+	else
+	{
+		// Most likely, the database is already initialized at this
+		// point
+		log_warn("Error while retrieving SQLite3 memory allocation methods: %s",
+		         sqlite3_errstr(rc));
+	}
+
+	// Register Pi-hole provided SQLite3 extensions
+	// This may also initialize the database engine. It is, nonetheless,
+	// safe to call sqlite3_initialize() again afterwards and actually
+	// recommended as auto-init may be removed in future SQLite3 versions.
 	sqlite3_auto_extension((void (*)(void))sqlite3_pihole_extensions_init);
 
 	// Initialize the SQLite3 engine
 	sqlite3_initialize();
+}
+
+int64_t __attribute__((pure)) sqlite3_mem_used(void)
+{
+	return sqlite3_mem;
+}
+
+int64_t __attribute__((pure)) sqlite3_mem_used_highwater(void)
+{
+	return sqlite3_mem_highwater;
+}
+
+int64_t __attribute__((pure)) sqlite3_mem_used_largest_block(void)
+{
+	return sqlite3_mem_largest_block;
 }
