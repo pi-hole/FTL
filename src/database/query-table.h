@@ -120,6 +120,7 @@ bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 void init_disk_db_idx(void);
 bool queries_to_database(void);
+bool get_memdb_size(size_t *memsize, int *queries);
 
 bool optimize_queries_table(sqlite3 *db);
 bool create_addinfo_table(sqlite3 *db);

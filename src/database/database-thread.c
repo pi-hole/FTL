@@ -129,11 +129,18 @@ static void log_used_memory(void)
 	double sqlite3_mem_largest_block_formatted = 0.0;
 	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_memory->largest_block, &sqlite3_mem_largest_block_formatted);
 
-	log_debug(DEBUG_TIMING, "  SQLite3 (in-memory): %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
+	size_t memsize = 0;
+	get_memdb_size(&memsize, NULL);
+	char memdb_size_prefix[2] = { 0 };
+	double memdb_size_formatted = 0.0;
+	format_memory_size(memdb_size_prefix, memsize, &memdb_size_formatted);
+
+	log_debug(DEBUG_TIMING, "  SQLite3 (in-memory): %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations, PRAGMA size: %.2f %sB",
 	         sqlite3_mem_formatted, sqlite3_mem_prefix,
 	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
 	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix,
-	         sqlite3_memory->current_allocations);
+	         sqlite3_memory->current_allocations,
+	         memdb_size_formatted, memdb_size_prefix);
 	log_debug(DEBUG_TIMING, "    Table sizes: "
 	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
 	          get_row_count("domain_by_id", true),
@@ -200,9 +207,7 @@ void *DB_thread(void *val)
 		// Do this once per second
 		if(now > before)
 		{
-			lock_shm();
 			queries_to_database();
-			unlock_shm();
 			before = now;
 
 			// Check if we need to reload gravity

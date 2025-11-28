@@ -337,9 +337,10 @@ sqlite3 *__attribute__((pure)) get_memdb(void)
 }
 
 // Get memory usage and size of in-memory tables
-static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
+bool get_memdb_size(size_t *memsize, int *queries)
 {
 	int rc;
+	sqlite3 *db = get_memdb();
 	sqlite3_stmt *stmt = NULL;
 	size_t page_count, page_size;
 
@@ -388,7 +389,7 @@ static bool get_memdb_size(sqlite3 *db, size_t *memsize, int *queries)
 	*memsize = page_count * page_size;
 
 	// Get number of queries in the memory table
-	if((*queries = get_number_of_queries_in_DB(db, "query_storage", NULL)) == DB_FAILED)
+	if(queries != NULL && (*queries = get_number_of_queries_in_DB(db, "query_storage", NULL)) == DB_FAILED)
 		return false;
 
 	return true;
@@ -402,8 +403,7 @@ static void log_in_memory_usage(void)
 
 	size_t memsize = 0;
 	int queries = 0;
-	sqlite3 *memdb = get_memdb();
-	if(get_memdb_size(memdb, &memsize, &queries))
+	if(get_memdb_size(&memsize, &queries))
 	{
 		char prefix[2] = { 0 };
 		double num = 0.0;
@@ -1502,6 +1502,11 @@ bool queries_to_database(void)
 		return true;
 	}
 
+	// Begin transaction
+	SQL_bool(get_memdb(), "BEGIN TRANSACTION");
+
+	lock_shm();
+
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
 	// expect replies to still arrive after 30 seconds - they are anyway
@@ -1515,6 +1520,7 @@ bool queries_to_database(void)
 		if(query == NULL)
 		{
 			log_err("Memory error in queries_to_database() when trying to access query %u", last_query);
+			unlock_shm();
 			return false;
 		}
 		if(query->timestamp < limit_timestamp)
@@ -1771,6 +1777,9 @@ bool queries_to_database(void)
 		query->flags.database.changed = false;
 	}
 
+	// Release shared memory before committing transaction
+	unlock_shm();
+
 	// Update number of queries in in-memory database
 	mem_db_num = get_number_of_queries_in_DB(NULL, "query_storage", NULL);
 
@@ -1779,6 +1788,9 @@ bool queries_to_database(void)
 		log_debug(DEBUG_DATABASE, "In-memory database: Added %u new, updated %u known queries", added, updated);
 		log_in_memory_usage();
 	}
+
+	// Commit transaction
+	SQL_bool(get_memdb(), "COMMIT");
 
 	return true;
 }
