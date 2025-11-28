@@ -420,7 +420,7 @@ void format_memory_size(char prefix[2], const uint64_t bytes, double * const for
 	unsigned int i;
 	*formatted = bytes;
 	// Determine exponent for human-readable display
-	const char prefixes[] = { '\0', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', '?' };
+	const char prefixes[] = { '\0', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', '?' };
 	for(i = 0; i < sizeof(prefixes)/sizeof(*prefixes) - 1; i++)
 	{
 		if(*formatted <= 1024.0)

@@ -96,27 +96,28 @@ static void log_used_memory(void)
 	double used_formatted = 0.0;
 	format_memory_size(used_prefix, (uint64_t)pmem.VmRSS * 1024, &used_formatted);
 
-	const int64_t sqlite3_memory = sqlite3_mem_used();
+	const struct sqlite3_memory_usage *sqlite3_memory = sqlite3_mem_used();
 	char sqlite3_mem_prefix[2] = { 0 };
 	double sqlite3_mem_formatted = 0.0;
-	format_memory_size(sqlite3_mem_prefix, sqlite3_memory, &sqlite3_mem_formatted);
+	format_memory_size(sqlite3_mem_prefix, sqlite3_memory->total, &sqlite3_mem_formatted);
 
-	const int64_t sqlite3_highwater = sqlite3_mem_used_highwater();
 	char sqlite3_mem_highwater_prefix[2] = { 0 };
 	double sqlite3_mem_highwater_formatted = 0.0;
-	format_memory_size(sqlite3_mem_highwater_prefix, sqlite3_highwater, &sqlite3_mem_highwater_formatted);
+	format_memory_size(sqlite3_mem_highwater_prefix, sqlite3_memory->highwater, &sqlite3_mem_highwater_formatted);
 
-	const int64_t sqlite3_largest_block = sqlite3_mem_used_largest_block();
 	char sqlite3_mem_largest_block_prefix[2] = { 0 };
 	double sqlite3_mem_largest_block_formatted = 0.0;
-	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_largest_block, &sqlite3_mem_largest_block_formatted);
+	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_memory->largest_block, &sqlite3_mem_largest_block_formatted);
 
 	log_info("Memory usage: %.2f %sB used of %.2f %sB total (%.1f%%)",
 	         used_formatted, used_prefix, total_formatted, total_prefix, pmem.VmRSS_percent);
-	log_info("  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB",
+	log_info("  Process: VmSize: %lu kB, VmRSS: %lu kB, VmPeak: %lu kB, VmHWM: %lu kB",
+	         pmem.VmSize, pmem.VmRSS, pmem.VmPeak, pmem.VmHWM);
+	log_info("  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
 	         sqlite3_mem_formatted, sqlite3_mem_prefix,
 	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
-	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix);
+	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix,
+	         sqlite3_memory->current_allocations);
 }
 
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }

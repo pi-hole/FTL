@@ -237,20 +237,19 @@ static int sqlite3_pihole_extensions_init(sqlite3 *db, char **pzErrMsg, const st
 
 /* The original memory allocation routines */
 static sqlite3_mem_methods memtraceBase;
-static ssize_t sqlite3_mem = 0;
-static ssize_t sqlite3_mem_highwater = 0;
-static ssize_t sqlite3_mem_largest_block = 0;
+struct sqlite3_memory_usage mem = { 0 };
 
 /* Methods that trace memory allocations */
 static void *memtraceMalloc(int n)
 {
 	// Allocate memory and track usage
 	const int m = memtraceBase.xRoundup(n);
-	sqlite3_mem += m;
-	if(sqlite3_mem > sqlite3_mem_highwater)
-		sqlite3_mem_highwater = sqlite3_mem;
-	if(m > sqlite3_mem_largest_block)
-		sqlite3_mem_largest_block = m;
+	mem.total += m;
+	if(mem.total > mem.highwater)
+		mem.highwater = mem.total;
+	if(m > mem.largest_block)
+		mem.largest_block = m;
+	mem.current_allocations++;
 	return memtraceBase.xMalloc(m);
 }
 
@@ -261,7 +260,10 @@ static void memtraceFree(void *p)
 		return;
 
 	// Free memory and track usage
-	sqlite3_mem -= memtraceBase.xSize(p);
+	mem.current_allocations--;
+	mem.total -= memtraceBase.xSize(p);
+	if(mem.total < 0)
+		mem.total = 0;
 	memtraceBase.xFree(p);
 }
 
@@ -279,8 +281,10 @@ static void *memtraceRealloc(void *p, int n)
 	}
 
 	// Reallocate memory and track usage
-	sqlite3_mem -= memtraceBase.xSize(p);
-	sqlite3_mem += memtraceBase.xRoundup(n);
+	mem.total -= memtraceBase.xSize(p);
+	if(mem.total < 0)
+		mem.total = 0;
+	mem.total += memtraceBase.xRoundup(n);
 	return memtraceBase.xRealloc(p, n);
 }
 
@@ -359,17 +363,8 @@ void pihole_sqlite3_initalize(void)
 	sqlite3_initialize();
 }
 
-int64_t __attribute__((pure)) sqlite3_mem_used(void)
+struct sqlite3_memory_usage * __attribute__((const)) sqlite3_mem_used(void)
 {
-	return sqlite3_mem;
+	return &mem;
 }
 
-int64_t __attribute__((pure)) sqlite3_mem_used_highwater(void)
-{
-	return sqlite3_mem_highwater;
-}
-
-int64_t __attribute__((pure)) sqlite3_mem_used_largest_block(void)
-{
-	return sqlite3_mem_largest_block;
-}
