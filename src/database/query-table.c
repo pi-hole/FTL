@@ -23,6 +23,8 @@
 #include "timers.h"
 // runGC()
 #include "gc.h"
+// file_exists()
+#include "files.h"
 
 static sqlite3 *_memdb = NULL;
 static bool store_in_database = false;
@@ -89,11 +91,15 @@ bool init_memory_database(void)
 	// Try to open in-memory database
 	// The :memory: database always has synchronous=OFF since the content of
 	// it is ephemeral and is not expected to survive a power outage.
-	rc = sqlite3_open_v2(":memory:", &_memdb, SQLITE_OPEN_READWRITE, NULL);
+	// If database.forceDisk is set, we do not want an in-memory database but, instead,
+	// use an additional on-disk database for query storage. This database is always
+	// recreated from scratch on FTL start and deleted on FTL stop.
+	const char *db_path = config.database.forceDisk.v.b ? config.files.tmp_db.v.s : ":memory:";
+	rc = sqlite3_open_v2(db_path, &_memdb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("init_memory_database(): Step error while trying to open database: %s",
-		        sqlite3_errstr(rc));
+		log_err("init_memory_database(): Error opening database: %s at %s",
+		        sqlite3_errstr(rc), db_path);
 		return false;
 	}
 
@@ -101,10 +107,20 @@ bool init_memory_database(void)
 	rc = sqlite3_busy_handler(_memdb, sqliteBusyCallback, NULL);
 	if( rc != SQLITE_OK )
 	{
-		log_err("init_memory_database(): Step error while trying to set busy timeout: %s",
+		log_err("init_memory_database(): Error setting busy timeout: %s",
 		        sqlite3_errstr(rc));
 		sqlite3_close(_memdb);
 		return false;
+	}
+
+	// Erase any existing on-disk temporary database if used. This process
+	// works even for a badly corrupted database file.
+	if(config.database.forceDisk.v.b)
+	{
+		log_warn("Using on-disk history database. This will reduce performance.");
+		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
+		sqlite3_exec(_memdb, "VACUUM", NULL, NULL, NULL);
+		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 0, 0);
 	}
 
 	// Create query_storage table in the database
@@ -152,7 +168,7 @@ bool init_memory_database(void)
 		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+			log_err("init_memory_database(): Error setting journal mode (WAL): %s",
 			        sqlite3_errstr(rc));
 			sqlite3_close(_memdb);
 			return false;
@@ -173,7 +189,7 @@ bool init_memory_database(void)
 		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=DELETE", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(): Step error while trying to set journal mode: %s",
+			log_err("init_memory_database(): Error setting journal mode (DELETE): %s",
 			        sqlite3_errstr(rc));
 			sqlite3_close(_memdb);
 			return false;

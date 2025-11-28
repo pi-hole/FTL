@@ -404,6 +404,8 @@ components:
                   type: integer
                 useWAL:
                   type: boolean
+                forceDisk:
+                  type: boolean
                 network:
                   type: object
                   properties:
@@ -512,6 +514,8 @@ components:
                 pid:
                   type: string
                 database:
+                  type: string
+                tmp_db:
                   type: string
                 gravity:
                   type: string
@@ -771,6 +775,7 @@ components:
             maxDBdays: 365
             DBinterval: 60
             useWAL: true
+            forceDisk: false
             network:
               parseARPcache: true
               expire: 365
@@ -823,6 +828,7 @@ components:
           files:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"
+            tmp_db: "/etc/pihole/pihole-tmp.db"
             gravity: "/etc/pihole/gravity.db"
             gravity_tmp: "/tmp"
             macvendor: "/etc/pihole/macvendor.db"

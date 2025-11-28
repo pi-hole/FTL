@@ -349,7 +349,8 @@ void db_init(void)
 	// Check if database exists, if not create empty database
 	if(!file_exists(config.files.database.v.s))
 	{
-		log_warn("No database file found, creating new (empty) database");
+		log_warn("No database file found, creating new (empty) database at %s",
+		         config.files.database.v.s);
 		if (!db_create())
 		{
 			log_err("Creation of database failed, database is not available");
@@ -360,14 +361,23 @@ void db_init(void)
 	// Explicitly set permissions to 0640
 	// 640 =            u+w       u+r       g+r
 	const mode_t mode = S_IWUSR | S_IRUSR | S_IRGRP;
-	chmod_file(config.files.database.v.s, mode);
+	if(file_exists(config.files.database.v.s))
+		chmod_file(config.files.database.v.s, mode);
 
 	// Open database
-	sqlite3 *db = dbopen(false, false);
+	sqlite3 *db = dbopen(false, true);
+
+	// Explicitly set permissions if file just created
+	if(file_exists(config.files.database.v.s))
+		chmod_file(config.files.database.v.s, mode);
 
 	// Return if database access failed
 	if(!db)
+	{
+		log_err("Database not available!");
+		DBerror = true;
 		return;
+	}
 
 	// Test FTL_db version and see if we need to upgrade the database file
 	int dbversion = db_get_int(db, DB_VERSION);

@@ -83,8 +83,21 @@ static bool analyze_database(sqlite3 *db)
 	return true;
 }
 
+/**
+ * log_used_memory
+ *
+ * Gather and log memory-usage statistics for the process, SQLite and on-disk
+ * database tables. This helper is intended for periodic debugging/monitoring
+ * output and does not change program state.
+ *
+ * @return void
+ * @see parse_proc_meminfo(), getProcessMemory(), format_memory_size(),
+ *      sqlite3_mem_used(), get_FTL_db_filesize(), get_row_count(), log_debug()
+ */
 static void log_used_memory(void)
 {
+	log_debug(DEBUG_TIMING, "Memory usage overview:");
+
 	struct proc_mem pmem = { 0 };
 	struct proc_meminfo mem = { 0 };
 	parse_proc_meminfo(&mem);
@@ -97,6 +110,11 @@ static void log_used_memory(void)
 	char used_prefix[2] = { 0 };
 	double used_formatted = 0.0;
 	format_memory_size(used_prefix, (uint64_t)pmem.VmRSS * 1024, &used_formatted);
+
+	log_debug(DEBUG_TIMING, "  System: %.2f %sB used of %.2f %sB total (%.1f%%)",
+	         used_formatted, used_prefix, total_formatted, total_prefix, pmem.VmRSS_percent);
+	log_debug(DEBUG_TIMING, "  Process: VmSize: %lu kB, VmRSS: %lu kB, VmPeak: %lu kB, VmHWM: %lu kB",
+	         pmem.VmSize, pmem.VmRSS, pmem.VmPeak, pmem.VmHWM);
 
 	const struct sqlite3_memory_usage *sqlite3_memory = sqlite3_mem_used();
 	char sqlite3_mem_prefix[2] = { 0 };
@@ -111,31 +129,26 @@ static void log_used_memory(void)
 	double sqlite3_mem_largest_block_formatted = 0.0;
 	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_memory->largest_block, &sqlite3_mem_largest_block_formatted);
 
-	log_debug(DEBUG_ANY, "Memory usage: %.2f %sB used of %.2f %sB total (%.1f%%)",
-	         used_formatted, used_prefix, total_formatted, total_prefix, pmem.VmRSS_percent);
-	log_debug(DEBUG_ANY, "  Process: VmSize: %lu kB, VmRSS: %lu kB, VmPeak: %lu kB, VmHWM: %lu kB",
-	         pmem.VmSize, pmem.VmRSS, pmem.VmPeak, pmem.VmHWM);
-	log_debug(DEBUG_ANY, "  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
+	log_debug(DEBUG_TIMING, "  SQLite3 (in-memory): %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
 	         sqlite3_mem_formatted, sqlite3_mem_prefix,
 	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
 	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix,
 	         sqlite3_memory->current_allocations);
-	// Log on-disk database file size
-	const long long db_size = get_FTL_db_filesize();
-	char db_size_prefix[2] = { 0 };
-	double db_size_formatted = 0.0;
-	format_memory_size(db_size_prefix, (uint64_t)db_size, &db_size_formatted);
-	log_debug(DEBUG_ANY, "On-disk database file size: %.2f %sB", db_size_formatted, db_size_prefix);
-
-	// Log row count of the most relevant database tables
-	log_debug(DEBUG_ANY, "In-memory table sizes: "
+	log_debug(DEBUG_TIMING, "    Table sizes: "
 	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
 	          get_row_count("domain_by_id", true),
 	          get_row_count("client_by_id", true),
 	          get_row_count("forward_by_id", true),
 	          get_row_count("addinfo_by_id", true),
 	          get_row_count("query_storage", true));
-	log_debug(DEBUG_ANY, "On-disk table sizes: "
+
+	// Log on-disk database file size
+	const long long db_size = get_FTL_db_filesize();
+	char db_size_prefix[2] = { 0 };
+	double db_size_formatted = 0.0;
+	format_memory_size(db_size_prefix, (uint64_t)db_size, &db_size_formatted);
+	log_debug(DEBUG_TIMING, "  SQLite3 (on-disk): %.2f %sB", db_size_formatted, db_size_prefix);
+	log_debug(DEBUG_TIMING, "    Table sizes: "
 	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
 	          get_row_count("domain_by_id", false),
 	          get_row_count("client_by_id", false),
@@ -176,7 +189,7 @@ void *DB_thread(void *val)
 		const time_t now = time(NULL);
 
 		// Log memory usage once per ten minutes
-		if(now - lastMemLog >= 600)
+		if(config.debug.timing.v.b && now - lastMemLog >= 600)
 		{
 			log_used_memory();
 			lastMemLog = now;

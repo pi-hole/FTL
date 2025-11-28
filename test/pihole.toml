@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.3.2-8-g58a618e2-dirty) on branch tweak/db_performance
+# Pi-hole configuration file (v6.3.3-48-gf1a41248-dirty) on branch tweak/track_sqlite_memory
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2025-11-01 13:12:20 UTC
+# Last updated on 2025-11-28 16:06:15 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -812,6 +812,19 @@
   #     true or false
   useWAL = true
 
+  # Should FTL force the use of disk storage for the history database? By default, FTL
+  # uses an in-memory database for much improved performance when browsing the history
+  # from the dashboard. However, on systems with very limited RAM and only occasional
+  # usage of the web interface, it may be useful to force the use of disk storage
+  # instead of holding everything in memory.
+  #
+  # Note that using disk storage *will* reduce performance, especially on systems with
+  # slow storage media (e.g., SD cards).
+  #
+  # Allowed values are:
+  #     true or false
+  forceDisk = false
+
   [database.network]
     # Should FTL analyze the local ARP cache? When disabled, client identification and the
     # network table will stop working reliably.
@@ -1252,6 +1265,13 @@
   #     Any FTL database
   database = "/etc/pihole/pihole-FTL.db"
 
+  # The location of FTL's short-term temporary database (only used when
+  # database.forceDisk is true)
+  #
+  # Allowed values are:
+  #     Any FTL database
+  tmp_db = "/etc/pihole/pihole-tmp.db"
+
   # The location of Pi-hole's gravity database
   #
   # Allowed values are:
@@ -1679,7 +1699,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 162 total entries out of which 108 entries are default
+# 164 total entries out of which 110 entries are default
 # --> 54 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

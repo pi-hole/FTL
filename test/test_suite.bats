@@ -2187,12 +2187,12 @@
   printf "Compression output:\n"
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[0]} == "Compressed test/pihole-FTL.db.sql (2.0KB) to test/pihole-FTL.db.sql.gz (689.0B), 66.0% size reduction" ]]
+  [[ ${lines[0]} == "Compressed test/pihole-FTL.db.sql (2.0kB) to test/pihole-FTL.db.sql.gz (689.0B), 66.0% size reduction" ]]
   printf "Uncompress (FTL) output:\n"
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql.gz test/pihole-FTL.db.sql.1'
   printf "%s\n" "${lines[@]}"
   [[ $status == 0 ]]
-  [[ ${lines[0]} == "Uncompressed test/pihole-FTL.db.sql.gz (677.0B) to test/pihole-FTL.db.sql.1 (2.0KB), 199.3% size increase" ]]
+  [[ ${lines[0]} == "Uncompressed test/pihole-FTL.db.sql.gz (677.0B) to test/pihole-FTL.db.sql.1 (2.0kB), 199.3% size increase" ]]
   printf "Uncompress (gzip) output:\n"
   run bash -c 'gzip -dkc test/pihole-FTL.db.sql.gz > test/pihole-FTL.db.sql.2'
   printf "%s\n" "${lines[@]}"

@@ -1008,6 +1008,13 @@ void initConfig(struct config *conf)
 	conf->database.useWAL.d.b = true;
 	conf->database.useWAL.c = validate_stub; // Only type-based checking
 
+	conf->database.forceDisk.k = "database.forceDisk";
+	conf->database.forceDisk.h = "Should FTL force the use of disk storage for the history database? By default, FTL uses an in-memory database for much improved performance when browsing the history from the dashboard. However, on systems with very limited RAM and only occasional usage of the web interface, it may be useful to force the use of disk storage instead of holding everything in memory.\n\n Note that using disk storage *will* reduce performance, especially on systems with slow storage media (e.g., SD cards).";
+	conf->database.forceDisk.t = CONF_BOOL;
+	conf->database.forceDisk.f = FLAG_RESTART_FTL;
+	conf->database.forceDisk.d.b = false;
+	conf->database.forceDisk.c = validate_stub; // Only type-based checking
+
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
 	conf->database.network.parseARPcache.h = "Should FTL analyze the local ARP cache? When disabled, client identification and the network table will stop working reliably.";
@@ -1296,8 +1303,17 @@ void initConfig(struct config *conf)
 	conf->files.database.h = "The location of FTL's long-term database";
 	conf->files.database.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.database.t = CONF_STRING;
+	conf->files.database.f = FLAG_RESTART_FTL;
 	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
 	conf->files.database.c = validate_filepath;
+
+	conf->files.tmp_db.k = "files.tmp_db";
+	conf->files.tmp_db.h = "The location of FTL's short-term temporary database (only used when database.forceDisk is true)";
+	conf->files.tmp_db.a = cJSON_CreateStringReference("Any FTL database");
+	conf->files.tmp_db.t = CONF_STRING;
+	conf->files.tmp_db.f = FLAG_RESTART_FTL;
+	conf->files.tmp_db.d.s = (char*)"/etc/pihole/pihole-tmp.db";
+	conf->files.tmp_db.c = validate_filepath;
 
 	conf->files.gravity.k = "files.gravity";
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
