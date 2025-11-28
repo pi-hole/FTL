@@ -12,8 +12,9 @@
 
 // logging routines
 #include "log.h"
-
 #include "sqlite3.h"
+// int64_t
+#include <inttypes.h>
 
 // Database table "ftl"
 enum ftl_table_props {
@@ -53,6 +54,7 @@ int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value);
 const char *get_sqlite3_version(void);
+int64_t get_row_count(const char *table_name, const bool memory);
 
 extern bool DBdeleteoldqueries;
 

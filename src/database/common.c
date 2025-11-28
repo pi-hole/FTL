@@ -1055,3 +1055,51 @@ const char *get_sqlite3_version(void)
 {
 	return sqlite3_libversion();
 }
+
+/**
+ * get_row_count - Get the row count of an in-memory SQLite table.
+ *
+ * Opens a transient SQLite connection (dbopen(false, false)), prepares and
+ * executes a "SELECT COUNT(*) FROM <table>;" query for the given table name,
+ * and returns the number of rows in that table.
+ * 
+ * @param table_name The name of the table to get the size of.
+ * @param memory If true, use the in-memory database; if false, use the on-disk database.
+ * @return The number of rows in the table, or -2 if the database could not be opened,
+ *         or -3 if the SQL statement could not be prepared (e.g. invalid table name).
+ */
+int64_t get_row_count(const char *table_name, const bool memory)
+{
+	sqlite3 *db = memory ? get_memdb() : dbopen(true, false);
+	if(!db)
+		return -2;
+
+	sqlite3_stmt *stmt = NULL;
+	const char * const sql = "SELECT COUNT(*) FROM %s;";
+	char * const query = sqlite3_mprintf(sql, table_name);
+	if(sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK)
+	{
+		log_err("Failed to prepare statement to get size of in-memory table %s: %s",
+		        table_name, sqlite3_errmsg(db));
+		sqlite3_free(query);
+		dbclose(&db);
+		return -3;
+	}
+	sqlite3_free(query);
+
+	int64_t size = -1;
+	if(sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		size = sqlite3_column_int64(stmt, 0);
+	}
+	else
+	{
+		log_err("Failed to step statement to get size of in-memory table %s: %s",
+		        table_name, sqlite3_errmsg(db));
+	}
+
+	sqlite3_finalize(stmt);
+	if(!memory)
+		dbclose(&db);
+	return size;
+}

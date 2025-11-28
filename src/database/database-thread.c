@@ -33,7 +33,9 @@
 // parse_proc_meminfo()
 #include "procps.h"
 // sqlite3_mem_used()
-#include "sqlite3-ext.h"
+#include "database/sqlite3-ext.h"
+// PRId64
+#include <inttypes.h>
 
 static bool delete_old_queries_in_DB(sqlite3 *db)
 {
@@ -109,15 +111,37 @@ static void log_used_memory(void)
 	double sqlite3_mem_largest_block_formatted = 0.0;
 	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_memory->largest_block, &sqlite3_mem_largest_block_formatted);
 
-	log_info("Memory usage: %.2f %sB used of %.2f %sB total (%.1f%%)",
+	log_debug(DEBUG_ANY, "Memory usage: %.2f %sB used of %.2f %sB total (%.1f%%)",
 	         used_formatted, used_prefix, total_formatted, total_prefix, pmem.VmRSS_percent);
-	log_info("  Process: VmSize: %lu kB, VmRSS: %lu kB, VmPeak: %lu kB, VmHWM: %lu kB",
+	log_debug(DEBUG_ANY, "  Process: VmSize: %lu kB, VmRSS: %lu kB, VmPeak: %lu kB, VmHWM: %lu kB",
 	         pmem.VmSize, pmem.VmRSS, pmem.VmPeak, pmem.VmHWM);
-	log_info("  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
+	log_debug(DEBUG_ANY, "  SQLite3: %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
 	         sqlite3_mem_formatted, sqlite3_mem_prefix,
 	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
 	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix,
 	         sqlite3_memory->current_allocations);
+	// Log on-disk database file size
+	const long long db_size = get_FTL_db_filesize();
+	char db_size_prefix[2] = { 0 };
+	double db_size_formatted = 0.0;
+	format_memory_size(db_size_prefix, (uint64_t)db_size, &db_size_formatted);
+	log_debug(DEBUG_ANY, "On-disk database file size: %.2f %sB", db_size_formatted, db_size_prefix);
+
+	// Log row count of the most relevant database tables
+	log_debug(DEBUG_ANY, "In-memory table sizes: "
+	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
+	          get_row_count("domain_by_id", true),
+	          get_row_count("client_by_id", true),
+	          get_row_count("forward_by_id", true),
+	          get_row_count("addinfo_by_id", true),
+	          get_row_count("query_storage", true));
+	log_debug(DEBUG_ANY, "On-disk table sizes: "
+	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
+	          get_row_count("domain_by_id", false),
+	          get_row_count("client_by_id", false),
+	          get_row_count("forward_by_id", false),
+	          get_row_count("addinfo_by_id", false),
+	          get_row_count("query_storage", false));
 }
 
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
