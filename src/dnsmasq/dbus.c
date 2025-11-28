@@ -530,8 +530,8 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
   union all_addr addr;
   time_t now = dnsmasq_time();
   unsigned char dhcp_chaddr[DHCP_CHADDR_MAX];
-
   DBusMessageIter iter, array_iter;
+
   if (!dbus_message_iter_init(message, &iter))
     return dbus_message_new_error(message, DBUS_ERROR_INVALID_ARGS,
 				  "Failed to initialize dbus message iter");
@@ -599,6 +599,10 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
 
   if (inet_pton(AF_INET, ipaddr, &addr.addr4))
     {
+      if (!daemon->dhcp)
+	return dbus_message_new_error(message, DBUS_ERROR_INVALID_ARGS,
+				      "DHCPv4 not configured");
+      
       if (ia_id != 0 || is_temporary)
 	return dbus_message_new_error(message, DBUS_ERROR_INVALID_ARGS,
 				      "ia_id and is_temporary must be zero for IPv4 lease");
@@ -609,16 +613,25 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
 #ifdef HAVE_DHCP6
   else if (inet_pton(AF_INET6, ipaddr, &addr.addr6))
     {
+      if (!daemon->doing_dhcp6)
+	return dbus_message_new_error(message, DBUS_ERROR_INVALID_ARGS,
+				      "DHCPv6 not configured");
+      
       if (!(lease = lease6_find_by_addr(&addr.addr6, 128, 0)))
 	lease = lease6_allocate(&addr.addr6,
 				is_temporary ? LEASE_TA : LEASE_NA);
-      lease_set_iaid(lease, ia_id);
+      if (lease)
+	lease_set_iaid(lease, ia_id);
     }
 #endif
   else
     return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 					 "Invalid IP address '%s'", ipaddr);
-   
+
+  if (!lease) 
+    return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+					 "unable to allocate lease for IP address '%s'", ipaddr);
+  
   hw_len = parse_hex((char*)hwaddr, dhcp_chaddr, DHCP_CHADDR_MAX, NULL, &hw_type);
   if (hw_len < 0)
     return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
