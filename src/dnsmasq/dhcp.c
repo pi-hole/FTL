@@ -696,7 +696,7 @@ struct dhcp_context *address_available(struct dhcp_context *context,
   struct dhcp_context *tmp;
 
   for (tmp = context; tmp; tmp = tmp->current)
-    if (taddr.s_addr == context->router.s_addr)
+    if (taddr.s_addr == tmp->router.s_addr)
       return NULL;
   
   for (tmp = context; tmp; tmp = tmp->current)
