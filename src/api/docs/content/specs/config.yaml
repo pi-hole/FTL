@@ -175,6 +175,34 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    props:
+      get:
+        summary: Get special properties of your Pi-hole configuration
+        tags:
+          - "Pi-hole Configuration"
+        operationId: "get_config_props"
+        description: |
+          This API hook returns a list of special properties in your Pi-hole configuration.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'config.yaml#/components/schemas/props'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  props:
+                    $ref: 'config.yaml#/components/examples/props'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:
     config:
@@ -667,6 +695,26 @@ components:
                 description: Array of IPv6 addresses (if any)
                 items:
                   type: string
+    props:
+      type: object
+      properties:
+        config:
+          type: object
+          properties:
+            read_only:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                    description: The name of the read-only property
+                  reason:
+                    type: string
+                    description: The reason why this property is read-only (machine-readable)
+                  description:
+                    type: string
+                    description: A human-readable description of the read-only reason
 
   examples:
     config:
@@ -914,6 +962,17 @@ components:
           - name: OpenDNS (ECS, DNSSEC)
             v4: ["208.67.222.222", "208.67.220.220"]
             v6: ["2620:119:35::35","2620:119:53::53"]
+    props:
+      summary: All read-only properties
+      value:
+        config:
+          read_only:
+            - key: "misc.readOnly"
+              reason: "read_only"
+              description: "Variable can only be set in pihole.toml, not via API"
+            - key: "webserver.api.pwhash"
+              reason: "env_var"
+              description: "Set via environment variable"
     errors:
       bad_request:
         invalid_path_depth:
