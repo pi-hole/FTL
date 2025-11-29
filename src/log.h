@@ -74,8 +74,8 @@ void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (prin
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned int n, ...);
 
-int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz, char *dst_str, size_t dst_sz);
 char *escape_string(const char *input) __attribute__ ((malloc));
+char *escape_data(const char *src_buf, size_t src_sz) __attribute__((malloc));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));
 
