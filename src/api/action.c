@@ -145,6 +145,30 @@ int api_action_restartDNS(struct ftl_conn *api)
 	return send_json_success(api);
 }
 
+// This function checks if a given PID is running inside a docker container
+static bool is_in_docker(const pid_t pid)
+{
+	char filename[sizeof("/proc/%u/cgroup") + sizeof(int)*3];
+	snprintf(filename, sizeof(filename), "/proc/%d/cgroup", pid);
+
+	FILE *f = fopen(filename, "r");
+	if(f == NULL)
+		return false;
+
+	char buffer[128];
+	while(fgets(buffer, sizeof(buffer), f) != NULL)
+	{
+		if(strstr(buffer, "/docker") != NULL)
+		{
+			fclose(f);
+			return true;
+		}
+	}
+	fclose(f);
+
+	return false;
+}
+
 int api_action_flush_logs(struct ftl_conn *api)
 {
 	if(!config.webserver.api.allow_destructive.v.b)
@@ -152,6 +176,14 @@ int api_action_flush_logs(struct ftl_conn *api)
 		                       "forbidden",
 		                       "Flushing the logs is not allowed",
 		                       "Check setting webserver.api.allow_destructive");
+
+	// Disable flush_logs endpoint inside containers because the operation needs
+	// FTL restart and this is not possible inside containers
+	if(is_in_docker(getpid()))
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Flushing the logs is not possible in containers",
+		                       "Not enough permissions inside docker containers");
 
 	log_info("Received API request to flush the logs");
 
