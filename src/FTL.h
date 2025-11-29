@@ -41,6 +41,7 @@
 // Interfaces
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <assert.h>
 
 // Define MIN and MAX macros, use them only when x and y are of the same type
 #define MAX(x,y) (((x) > (y)) ? (x) : (y))

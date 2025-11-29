@@ -748,25 +748,61 @@ static void *enlarge_shmem_struct(const char type)
 	{
 		case QUERIES:
 			sharedMemory = &shm_queries;
-			allocation_step = pagesize;
+			if(counters->queries > counters->queries_MAX)
+			{
+				// Allocating large chunk during initial enlargement
+				allocation_step = get_optimal_object_size(sizeof(queriesData), counters->queries - counters->queries_MAX);
+			}
+			else
+			{
+				// Default allocation step
+				allocation_step = pagesize;
+			}
 			sizeofobj = sizeof(queriesData);
 			size = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
-			allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
+			if(counters->clients > counters->clients_MAX)
+			{
+				// Allocating large chunk during initial enlargement
+				allocation_step = get_optimal_object_size(sizeof(clientsData), counters->clients - counters->clients_MAX);
+			}
+			else
+			{
+				// Default allocation step
+				allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
+			}
 			sizeofobj = sizeof(clientsData);
 			size = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
-			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
+			if(counters->domains > counters->domains_MAX)
+			{
+				// Allocating large chunk during initial enlargement
+				allocation_step = get_optimal_object_size(sizeof(domainsData), counters->domains - counters->domains_MAX);
+			}
+			else
+			{
+				// Default allocation step
+				allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
+			}
 			sizeofobj = sizeof(domainsData);
 			size = &counters->domains_MAX;
 			break;
 		case UPSTREAMS:
 			sharedMemory = &shm_upstreams;
-			allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
+			if(counters->upstreams > counters->upstreams_MAX)
+			{
+				// Allocating large chunk during initial enlargement
+				allocation_step = get_optimal_object_size(sizeof(upstreamsData), counters->upstreams - counters->upstreams_MAX);
+			}
+			else
+			{
+				// Default allocation step
+				allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
+			}
 			sizeofobj = sizeof(upstreamsData);
 			size = &counters->upstreams_MAX;
 			break;
@@ -818,7 +854,8 @@ static void *enlarge_shmem_struct(const char type)
 static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
 {
 	// Absolute target size
-	const size_t size = size1 * size2;
+	const size_t new_size = size1 * size2;
+	const size_t elem_before = size1 == 0 ? 0 : sharedMemory->size / size2;
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
@@ -827,13 +864,13 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// Log output
 	if(resize)
 	{
-		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
-		          sharedMemory->name, sharedMemory->size, size1, size2, size, df);
+		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from (%zu * %zu) = %zu to (%zu * %zu) == %zu (%s)",
+		          sharedMemory->name, elem_before, size2, sharedMemory->size, size1, size2, new_size, df);
 	}
 	else
 	{
-		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
-		          sharedMemory->name, sharedMemory->size, size1, size2, size);
+		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from (%zu * %zu) = %zu to (%zu * %zu) == %zu",
+		          sharedMemory->name, elem_before, size2, sharedMemory->size, size1, size2, new_size);
 	}
 
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
@@ -849,11 +886,11 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = ftlallocate(sharedMemory->fd, 0U, size);
+		const int ret = ftlallocate(sharedMemory->fd, 0U, new_size);
 		if(ret != 0)
 		{
 			log_crit("realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-			         sharedMemory->name, sharedMemory->fd, size, strerror(ret), ret);
+			         sharedMemory->name, sharedMemory->fd, new_size, strerror(ret), ret);
 			exit(EXIT_FAILURE);
 		}
 
@@ -862,31 +899,31 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		local_shm_counter++;
 	}
 
-	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
+	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, new_size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
 		log_crit("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
-		         sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, strerror(errno));
+		         sharedMemory->ptr, sharedMemory->size, new_size, sharedMemory->name, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
 	// Update how much memory FTL uses
 	// We add the difference between updated and previous size
-	used_shmem += (size - sharedMemory->size);
+	used_shmem += (new_size - sharedMemory->size);
 
 	if(sharedMemory->ptr == new_ptr)
 	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer not updated: %p (%zu %zu)",
-		          sharedMemory->ptr, sharedMemory->size, size);
+		          sharedMemory->ptr, sharedMemory->size, new_size);
 	}
 	else
 	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer updated: %p -> %p (%zu %zu)",
-		          sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+		          sharedMemory->ptr, new_ptr, sharedMemory->size, new_size);
 	}
 
 	sharedMemory->ptr = new_ptr;
-	sharedMemory->size = size;
+	sharedMemory->size = new_size;
 
 	return true;
 }
