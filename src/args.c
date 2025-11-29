@@ -707,8 +707,8 @@ void parse_args(int argc, char *argv[])
 			fprintf(stderr, "Error: Timeout must be a non-negative integer.\n");
 			exit(EXIT_FAILURE);
 		}
-		const long initial_filesize = (argc == 6) ? (long)atol(argv[5]) : 0;
-		if(initial_filesize < 0)
+		const long initial_filesize = (argc == 6) ? (long)atol(argv[5]) : -1;
+		if(argc == 5 && initial_filesize < 0)
 		{
 			fprintf(stderr, "Error: Optional initial file size must be a non-negative integer if specified.\n");
 			exit(EXIT_FAILURE);
