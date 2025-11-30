@@ -61,10 +61,10 @@ sqlite3_stmt_vec *parent_antigravity_stmt = NULL;
 sqlite3_stmt_vec *parent_denylist_stmt = NULL;
 
 // Private prototypes
-static bool gravityDB_open(void);
+// static bool gravityDB_open(void);
 
 // Table names corresponding to the enum defined in gravity-db.h
-static const char* tablename[] = { "vw_gravity", "vw_denylist", "vw_allowlist", "vw_regex_denylist", "vw_regex_allowlist" , "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
+static const char* tablename[] = { "vw_gravity", "vw_denylist", "vw_allowlist", "vw_regex_denylist", "vw_regex_allowlist" , "client", "group", "adlist", "custom_dns", "custom_dns_by_group", "denied_domains", "allowed_domains", "" };
 
 // Prototypes from functions in dnsmasq's source
 extern void rehash(int size);
@@ -151,7 +151,7 @@ static void gravity_check_ABP_format(void)
 }
 
 // Open gravity database
-static bool gravityDB_open(void)
+bool gravityDB_open(void)
 {
 	struct stat st;
 	if(stat(config.files.gravity.v.s, &st) != 0)
@@ -204,9 +204,52 @@ static bool gravityDB_open(void)
 
 	// Explicitly set busy handler to zero milliseconds for gravity
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Unsetting busy handler");
-	rc = sqlite3_busy_handler(gravity_db, NULL, NULL);
 	if(rc != SQLITE_OK)
 		log_err("gravityDB_open() - Cannot set busy handler: %s", sqlite3_errstr(rc));
+
+	// Create custom_dns table
+	rc = sqlite3_exec(gravity_db, "CREATE TABLE IF NOT EXISTS custom_dns "
+	                  "(id INTEGER PRIMARY KEY, domain TEXT NOT NULL, ip TEXT, type INTEGER, ttl INTEGER, comment TEXT);", NULL, NULL, &zErrMsg);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(CREATE TABLE custom_dns) - SQL error (%i): %s", rc, zErrMsg);
+		sqlite3_free(zErrMsg);
+		gravityDB_close();
+		return false;
+	}
+
+	// Create custom_dns_by_group table
+	rc = sqlite3_exec(gravity_db, "CREATE TABLE IF NOT EXISTS custom_dns_by_group "
+	                  "(custom_dns_id INTEGER, group_id INTEGER, PRIMARY KEY(custom_dns_id, group_id));", NULL, NULL, &zErrMsg);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(CREATE TABLE custom_dns_by_group) - SQL error (%i): %s", rc, zErrMsg);
+		sqlite3_free(zErrMsg);
+		gravityDB_close();
+		return false;
+	}
+
+	// Create trigger tr_custom_dns_add
+	rc = sqlite3_exec(gravity_db, "CREATE TRIGGER IF NOT EXISTS tr_custom_dns_add AFTER INSERT ON custom_dns "
+	                  "BEGIN INSERT INTO custom_dns_by_group (custom_dns_id, group_id) VALUES (NEW.id, 0); END;", NULL, NULL, &zErrMsg);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(CREATE TRIGGER tr_custom_dns_add) - SQL error (%i): %s", rc, zErrMsg);
+		sqlite3_free(zErrMsg);
+		gravityDB_close();
+		return false;
+	}
+
+	// Create trigger tr_custom_dns_delete
+	rc = sqlite3_exec(gravity_db, "CREATE TRIGGER IF NOT EXISTS tr_custom_dns_delete AFTER DELETE ON custom_dns "
+	                  "BEGIN DELETE FROM custom_dns_by_group WHERE custom_dns_id = OLD.id; END;", NULL, NULL, &zErrMsg);
+	if( rc != SQLITE_OK )
+	{
+		log_err("gravityDB_open(CREATE TRIGGER tr_custom_dns_delete) - SQL error (%i): %s", rc, zErrMsg);
+		sqlite3_free(zErrMsg);
+		gravityDB_close();
+		return false;
+	}
 
 	// Check (and remember in global variable) if there are any ABP-style
 	// entries in the database
@@ -224,6 +267,16 @@ bool gravityDB_reopen(void)
 
 	// Re-open gravity database
 	return gravityDB_open();
+}
+
+sqlite3 * __attribute__((pure)) gravityDB_get_handle(void)
+{
+	return gravity_db;
+}
+
+bool __attribute__((pure)) gravityDB_is_opened(void)
+{
+	return gravityDB_opened;
 }
 
 static bool build_client_querystr(char *querystr, const size_t querystrsz, const char *table, const char *column, const char *groups)
@@ -1076,6 +1129,12 @@ int gravityDB_count(const enum gravity_tables list, const bool total)
 			break;
 		case ADLISTS_TABLE:
 			querystr = "SELECT COUNT(1) FROM adlist WHERE enabled != 0";
+			break;
+		case CUSTOM_DNS_TABLE:
+			querystr = "SELECT COUNT(1) FROM custom_dns";
+			break;
+		case CUSTOM_DNS_BY_GROUP_TABLE:
+			querystr = "SELECT COUNT(1) FROM custom_dns_by_group";
 			break;
 		case UNKNOWN_TABLE:
 			log_err("List type %u unknown!", list);

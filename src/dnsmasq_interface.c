@@ -20,6 +20,7 @@
 #include "database/database-thread.h"
 #include "datastructure.h"
 #include "database/gravity-db.h"
+#include "database/custom-dns.h"
 #include "config/setupVars.h"
 #include "daemon.h"
 #include "timers.h"
@@ -231,6 +232,19 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Forced DNS reply to NXDOMAIN");
+	}
+	else if(force_next_DNS_reply == REPLY_CNAME)
+	{
+		flags |= F_CNAME;
+		// Clear IP flags to prevent adding default blocking IP (0.0.0.0)
+		// We handle IP resolution for CNAMEs manually in the F_CNAME block
+		flags &= ~(F_IPV4 | F_IPV6);
+		
+		// Reset DNS reply forcing
+		force_next_DNS_reply = REPLY_UNKNOWN;
+
+		// Debug logging
+		log_debug(DEBUG_QUERIES, "Forced DNS reply to CNAME");
 	}
 	else if(force_next_DNS_reply == REPLY_NODATA)
 	{
@@ -458,6 +472,44 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		                       &p, daemon->local_ttl, NULL,
 		                       T_CNAME, C_IN, (char*)"d", cname_target))
 			log_query(flags, name, NULL, (char*)blockingreason, 0);
+
+		// Try to resolve CNAME target to IP address (A record)
+		time_t now = time(NULL);
+		struct crec *crec = NULL;
+		if((crec = cache_find_by_name(NULL, cname_target, now, F_IPV4)) != NULL)
+		{
+			// Found A record for CNAME target
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				inet_ntop(AF_INET, &crec->addr.addr4, ip, ADDRSTRLEN);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\" (from cache)", cname_target, ip);
+			}
+
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL,
+			                       T_A, C_IN, (char*)"4", &crec->addr.addr4))
+				log_query(flags | F_IPV4, cname_target, &crec->addr, (char*)"CNAME target", 0);
+		}
+
+		// Try to resolve CNAME target to IP address (AAAA record)
+		if((crec = cache_find_by_name(NULL, cname_target, now, F_IPV6)) != NULL)
+		{
+			// Found AAAA record for CNAME target
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				inet_ntop(AF_INET6, &crec->addr.addr6, ip, ADDRSTRLEN);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\" (from cache)", cname_target, ip);
+			}
+
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL,
+			                       T_AAAA, C_IN, (char*)"6", &crec->addr.addr6))
+				log_query(flags | F_IPV6, cname_target, &crec->addr, (char*)"CNAME target", 0);
+		}
 	}
 
 	// Add A answer record if requested
@@ -978,7 +1030,48 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check if this should be blocked only for active queries
 	// (skipped for internally generated ones, e.g., DNSSEC)
 	if(!internal_query && querytype != TYPE_NONE)
-		blockDomain = FTL_check_blocking(queryID, domainID, clientID);
+	{
+		// Check for custom DNS records
+		char *targetIP = NULL;
+		int type = 0;
+		int ttl = 0;
+		if(find_custom_dns(domainString, client, &targetIP, &type, &ttl))
+		{
+			// Found custom DNS record
+			if(type == 2) // CNAME
+			{
+				force_next_DNS_reply = REPLY_CNAME;
+				if(cname_target)
+					free(cname_target);
+				cname_target = targetIP; // Will be used in _FTL_make_answer
+				// Note: We do not free targetIP here as it is assigned to cname_target
+				// We might need to handle TTL if we want to support it for CNAMEs
+			}
+			else
+			{
+				force_next_DNS_reply = REPLY_IP;
+				// Parse IP into next_iface.addr4/6
+				if(inet_pton(AF_INET, targetIP, &next_iface.addr4.addr4) == 1)
+				{
+					next_iface.haveIPv4 = true;
+					next_iface.haveIPv6 = false; // Ensure we don't send AAAA if not requested/available
+				}
+				else if(inet_pton(AF_INET6, targetIP, &next_iface.addr6.addr6) == 1)
+				{
+					next_iface.haveIPv6 = true;
+					next_iface.haveIPv4 = false;
+				}
+				free(targetIP);
+			}
+
+			blockingreason = "Custom DNS";
+			blockDomain = true;
+		}
+		else
+		{
+			blockDomain = FTL_check_blocking(queryID, domainID, clientID);
+		}
+	}
 
 	// Store query in database
 	query->flags.database.changed = true;

@@ -13,6 +13,7 @@ set(sources
         action.c
         api.h
         api.c
+        api_customdns.c
         auth.c
         auth.h
         config.c

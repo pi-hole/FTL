@@ -31,6 +31,8 @@ endif()
 set(database_sources
         common.c
         common.h
+        custom-dns.c
+        custom-dns.h
         database-thread.c
         database-thread.h
         gravity-db.c

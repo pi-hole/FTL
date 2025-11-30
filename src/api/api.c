@@ -51,6 +51,7 @@ static struct {
 	{ "/api/groups",                            "/{name}",                    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
 	{ "/api/groups",                            "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/groups:batchDelete",                "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },
+	{ "/api/customdns",                         "",                           api_customdns,                         { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/lists",                             "/{list}",                    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
 	{ "/api/lists",                             "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/lists:batchDelete",                 "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },

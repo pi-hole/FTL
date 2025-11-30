@@ -200,6 +200,8 @@ enum gravity_tables {
 	CLIENTS_TABLE,
 	GROUPS_TABLE,
 	ADLISTS_TABLE,
+	CUSTOM_DNS_TABLE,
+	CUSTOM_DNS_BY_GROUP_TABLE,
 	UNKNOWN_TABLE
 } __attribute__ ((packed));
 

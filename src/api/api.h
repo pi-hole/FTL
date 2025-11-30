@@ -99,6 +99,7 @@ int api_dns_blocking(struct ftl_conn *api);
 // List methods
 int api_list(struct ftl_conn *api);
 int api_group(struct ftl_conn *api);
+int api_customdns(struct ftl_conn *api);
 
 // Auth method
 void init_api(void);

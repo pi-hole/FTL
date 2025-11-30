@@ -40,6 +40,9 @@ typedef struct {
 } tablerow;
 
 bool gravityDB_reopen(void);
+bool gravityDB_open(void);
+bool __attribute__((pure)) gravityDB_is_opened(void);
+sqlite3 * __attribute__((pure)) gravityDB_get_handle(void);
 void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData *client);
 bool gravityDB_prepare_client_statements(clientsData *client);
