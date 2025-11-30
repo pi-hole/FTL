@@ -654,7 +654,7 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
 
 static DBusMessage *dbus_del_lease(DBusMessage* message)
 {
-  struct dhcp_lease *lease;
+  struct dhcp_lease *lease = NULL;
   DBusMessageIter iter;
   const char *ipaddr;
   DBusMessage *reply;
@@ -672,10 +672,10 @@ static DBusMessage *dbus_del_lease(DBusMessage* message)
    
   dbus_message_iter_get_basic(&iter, &ipaddr);
 
-  if (inet_pton(AF_INET, ipaddr, &addr.addr4))
+  if (inet_pton(AF_INET, ipaddr, &addr.addr4) && daemon->dhcp)
     lease = lease_find_by_addr(addr.addr4);
 #ifdef HAVE_DHCP6
-  else if (inet_pton(AF_INET6, ipaddr, &addr.addr6))
+  else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) && daemon->doing_dhcp6)
     lease = lease6_find_by_addr(&addr.addr6, 128, 0);
 #endif
   else
