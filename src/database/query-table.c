@@ -647,9 +647,6 @@ bool import_queries_from_disk(void)
 
 	// Update counters
 	counters->queries = imported_queries;
-	counters->domains = imported[0];
-	counters->clients = imported[1];
-	counters->upstreams = imported[2];
 	shm_ensure_size();
 
 	// Unlock shared memory
