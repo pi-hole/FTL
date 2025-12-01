@@ -54,6 +54,9 @@ static sqlite3_stmt **stmts[] = { &query_stmt,
 // Private prototypes
 static void load_queries_from_disk(void);
 
+// Set to non-zero integer if shared memory locking should be batched
+#define LOCK_BATCH_SZ 0
+
 // Return the maximum ID of the in-memory database
 sqlite3_int64 __attribute__((pure)) get_max_db_idx(void)
 {
@@ -1136,6 +1139,9 @@ void DB_read_queries(void)
 	}
 
 	// Loop through returned database rows
+#if LOCK_BATCH_SZ > 0
+	size_t imported_queries = 0;
+#endif
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
@@ -1212,9 +1218,16 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
+#if LOCK_BATCH_SZ > 0
+		// Lock shared memory every 100 imported queries
+		if(imported_queries % 100 == 0 && imported_queries > 0)
+			unlock_shm();
+		if(imported_queries++ % 100 == 0)
+			lock_shm();
+#else
 		// Lock shared memory
 		lock_shm();
-
+#endif
 		// Ensure we have enough shared memory available for new data
 		shm_ensure_size();
 
@@ -1246,7 +1259,9 @@ void DB_read_queries(void)
 			{
 				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
 				         reply_time, dbID, queryTimeStamp);
+#if LOCK_BATCH_SZ == 0
 				unlock_shm();
+#endif
 				continue;
 			}
 		}
@@ -1273,7 +1288,9 @@ void DB_read_queries(void)
 				// Invalid query type
 				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
 				         type, dbID, queryTimeStamp);
+#if LOCK_BATCH_SZ == 0
 				unlock_shm();
+#endif
 				continue;
 			}
 		}
@@ -1419,9 +1436,17 @@ void DB_read_queries(void)
 		if(counters->queries % 10000 == 0)
 			log_info("  %u queries parsed...", counters->queries);
 
+#if LOCK_BATCH_SZ == 0
 		// Unlock shared memory
 		unlock_shm();
+#endif
 	}
+
+#if LOCK_BATCH_SZ > 0
+	// Unlock shared memory
+	if(imported_queries > 0)
+		unlock_shm();
+#endif
 
 	if( rc != SQLITE_DONE )
 	{
