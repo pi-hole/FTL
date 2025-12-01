@@ -134,6 +134,7 @@ int main_dnsmasq (int argc, char **argv)
      This might be increased is EDNS packet size if greater than the minimum. */ 
   daemon->packet_buff_sz = daemon->edns_pktsz + MAXDNAME + RRFIXEDSZ;
   daemon->packet = safe_malloc(daemon->packet_buff_sz);
+  daemon->pipe_to_parent = -1;
   
   if (option_bool(OPT_EXTRALOG))
     daemon->addrbuff2 = safe_malloc(ADDRSTRLEN);
@@ -1088,8 +1089,6 @@ int main_dnsmasq (int argc, char **argv)
     check_servers(0);
   
   pid = getpid();
-
-  daemon->pipe_to_parent = -1;
 
 #ifdef HAVE_INOTIFY
   /* Using inotify, have to select a resolv file at startup */
