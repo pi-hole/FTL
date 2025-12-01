@@ -31,6 +31,23 @@ static const char *false_positives[] = {
 	"ip6-allhosts"
 };
 
+// Lookup table containing characters that are valid in domain names
+// Domain must not contain any character other than [a-zA-Z0-9.-_]
+static const unsigned char valid_domain_char[256] = {
+	['a' ... 'z'] = 1, ['A' ... 'Z'] = 1, ['0' ... '9'] = 1,
+	['-'] = 1, ['.'] = 1, ['_'] = 1,
+};
+
+// Fast test for string containing specified character in 
+// selected range from start of string
+static inline bool string_has_within(const char *s, const char character, const int maxlen)
+{
+    for (int i = 0; i < maxlen && s[i] != '\0'; ++i)
+        if (s[i] == character)
+            return true;
+    return false;
+}
+
 // Print progress for files larger than 10 MB
 // This is to avoid printing progress for small files
 // which would be printed too often as affect performance
@@ -47,19 +64,17 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	if(domain == NULL || len == 0 || len > 255)
 		return false;
 
-	// Loop over line and check for invalid characters
+	// Loop over line
 	int last_dot = -1;
 	for(unsigned int i = 0; i < len; i++)
 	{
-		// Domain must not contain any character other than [a-zA-Z0-9.-_]
-		if(domain[i] != '-' && domain[i] != '.' && domain[i] != '_' &&
-		   (domain[i] < 'a' || domain[i] > 'z') &&
-		   (domain[i] < 'A' || domain[i] > 'Z') &&
-		   (domain[i] < '0' || domain[i] > '9'))
+		// Check for invalid characters
+		unsigned char c = (unsigned char)domain[i];
+		if(!valid_domain_char[c])
 			return false;
 
 		// Individual label length check
-		if(domain[i] == '.')
+		if(c == '.')
 		{
 			// Label must be longer than 0 characters, i.e., two consecutive
 			// dots are not allowed
@@ -270,18 +285,23 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 	ssize_t invalid_domains_list_lengths[MAX_INVALID_DOMAINS] = { -1 };
 	unsigned int invalid_domains_list_len = 0;
 	unsigned int exact_domains = 0, abp_domains = 0, invalid_domains = 0;
+	bool first_line = true; // Flag to test UTF-8 Bom only on first line
 	while((read = getline(&line, &len, fpin)) != -1)
 	{
-
 		// Handle UTF-8 BOM (Byte Order Mark) if present at start of file
-		if (read >= 3 &&
-			(unsigned char)line[0] == 0xEF &&
-			(unsigned char)line[1] == 0xBB &&
-			(unsigned char)line[2] == 0xBF)
+		if (first_line)
 		{
-			// Shift line contents left by 3 bytes to remove BOM
-			memmove(line, line + 3, read - 3);
-			read -= 3;
+			// Clear first_line flag immediately after check
+			first_line = false;
+			if (read >= 3 &&
+				(unsigned char)line[0] == 0xEF &&
+				(unsigned char)line[1] == 0xBB &&
+				(unsigned char)line[2] == 0xBF)
+			{
+				// Shift line contents left by 3 bytes to remove BOM
+				memmove(line, line + 3, read - 3);
+				read -= 3;
+			}
 		}
 
 		// Update total read bytes
@@ -352,14 +372,24 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Skip IP addresses
 			// IPv4 addresses
-			struct in_addr buffer = { 0 };
-			if (inet_pton(AF_INET, token, &buffer) == 1)
-				goto next_domain;
+			// Don't test any token not starting with a digit
+			if (token[0] <= '9' && token[0] >= '0')
+			{
+				// Potential IPv4 address
+				struct in_addr buffer = { 0 };
+				if (inet_pton(AF_INET, token, &buffer) == 1)
+					goto next_domain;
+			}
 
-			// IPv6 addresses
-			struct in6_addr buffer6 = { 0 };
-			if (inet_pton(AF_INET6, token, &buffer6) == 1)
-				goto next_domain;
+			// Ipv6 address
+			// Only test for IPv6 address if line contains a colon
+			// within this token's first 5 characters
+			if (string_has_within(token, ':', 5))
+			{
+				struct in6_addr buffer6 = { 0 };
+				if (inet_pton(AF_INET6, token, &buffer6) == 1)
+					goto next_domain;
+			}
 
 			// Remove trailing dot (convert FQDN to domain)
 			size_t token_len = strlen(token);
