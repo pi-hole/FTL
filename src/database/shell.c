@@ -14946,6 +14946,7 @@ static char *intckMprintf(sqlite3_intck *p, const char *zFmt, ...){
     sqlite3_free(zRet);
     zRet = 0;
   }
+  va_end(ap);
   return zRet;
 }
 
@@ -29055,6 +29056,7 @@ static int do_meta_command(char *zLine, ShellState *p){
     }
     p->showHeader = savedShowHeader;
     p->shellFlgs = savedShellFlags;
+    rc = p->nErr>0;
   }else
 
   if( c=='e' && cli_strncmp(azArg[0], "echo", n)==0 ){
