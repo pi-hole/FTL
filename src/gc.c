@@ -61,6 +61,9 @@ static unsigned int GCinterval = 600;
 // seconds on really slow systems
 static unsigned int GCdelay = 60;
 
+// Global boolean indicating whether the asynchronous database import is done
+bool db_import_done = false;
+
 // Recycle old clients and domains in our internal data structure
 // This has the side-effect of recycling intermediate domains
 // seen during CNAME inspection, too, as they are never referenced
@@ -386,6 +389,13 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Update lastGCrun timer
 	if(lastGCrun != NULL)
 		*lastGCrun = now + GCdelay - (now + GCdelay)%GCinterval;
+
+	// Don't run GC when the async database import is not done yet
+	if(!db_import_done)
+	{
+		log_debug(DEBUG_GC, "Skipping GC as async database import is not done yet");
+		return;
+	}
 
 	// Lock FTL's data structure, since it is likely that it will be changed here
 	// Requests should not be processed/answered when data is about to change

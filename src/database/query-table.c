@@ -1432,6 +1432,7 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 
+	db_import_done = true;
 	log_info("Imported %u queries from the long-term database", counters->queries);
 }
 
