@@ -166,12 +166,6 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
-			if(strcmp(uri, prefix_webhome) == 0)
-			{
-				log_debug(DEBUG_API, "Not redirecting %s (matches webhome)",
-					  prefix_webhome);
-				return 0;
-			}
 			log_debug(DEBUG_API, "Redirecting / --308--> %s",
 			          prefix_webhome);
 			mg_send_http_redirect(conn, prefix_webhome, 308);
@@ -843,7 +837,14 @@ void http_init(void)
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
-	mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+	if(strcmp(prefix_webhome, "/") == 0)
+	{
+		log_debug(DEBUG_API, "Not redirecting root since webhome is '%s'",
+			  prefix_webhome);
+	} else {
+		// Redirect requests to / to the webhome path.
+		mg_set_request_handler(ctx, "/$", redirect_root_handler, NULL);
+	}
 
 	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
 	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)

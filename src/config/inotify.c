@@ -155,6 +155,41 @@ bool check_inotify_event(void)
 	return config_changed;
 }
 
+// Scan a FILE stream for a target substring appended since the last scan.
+static bool scan_file(FILE *file, const char *string, long *last_size, size_t *len, char **line)
+{
+	// File was modified, get new filesize
+	fseek(file, 0, SEEK_END);
+	const long newsize = ftell(file);
+
+	// If file has grown (or is larger than initial position), read new
+	// lines
+	if(newsize > *last_size)
+	{
+		// Seek to previous scan position
+		fseek(file, *last_size, SEEK_SET);
+		// Read new lines
+		bool found = false;
+		while(getline(line, len, file) != -1)
+		{
+			// Check for target string
+			log_debug(DEBUG_INOTIFY, "Read new line: \"%s\"", *line);
+			if(strstr(*line, string) != NULL)
+			{
+				found = true;
+				break;
+			}
+		}
+		if(found)
+			return true;
+
+		// Update last_size position
+		*last_size = ftell(file);
+	}
+
+	return false;
+}
+
 /**
  * @brief Waits for a specific string to appear in a file, scanning the last N
  * lines and monitoring for new content.
@@ -182,8 +217,8 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		return false;
 	}
 
-	// Get current file size if initial_filesize is 0
-	if (initial_filesize == 0)
+	// Get current file size if initial_filesize is < 0
+	if (initial_filesize < 0)
 	{
 		log_debug(DEBUG_INOTIFY, "Determining filesize at invocation time");
 		if(fseek(file, 0, SEEK_END) != 0)
@@ -197,6 +232,21 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		initial_filesize = ftell(file);
 	}
 	log_debug(DEBUG_INOTIFY, "Starting to read file %s from byte offset %ld", filename, initial_filesize);
+
+	// Perform initial read
+	size_t len = 0;
+	char *line = NULL;
+	bool found = false;
+	long scan_start = initial_filesize;
+	if(scan_file(file, string, &scan_start, &len, &line))
+	{
+		// String found in initial scan
+		log_info("Found string \"%s\" in file %s (initial scan)", string, filename);
+		if(line != NULL)
+			free(line);
+		fclose(file);
+		return true;
+	}
 	
 	// Use inotify to wait for new lines appended to the file
 	// Create inotify instance (non-blocking)
@@ -217,12 +267,6 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		fclose(file);
 		return false;
 	}
-
-	// Loop until timeout reached (25ms * 40 = 1s) or string found
-	size_t len = 0;
-	char *line = NULL;
-	bool found = false;
-	long scan_start = initial_filesize;
 
 	// Initialize time tracking
 	struct timespec ts;
@@ -272,34 +316,11 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 			clock_gettime(CLOCK_REALTIME, &now);
 			continue;
 		}
-		// File was modified, get new filesize
-		fseek(file, 0, SEEK_END);
-		const long newsize = ftell(file);
 
-		// If file has grown, read new lines
-		if(newsize > scan_start)
-		{
-			// Seek to previous scan position
-			fseek(file, scan_start, SEEK_SET);
-			// Read new lines
-			while(getline(&line, &len, file) != -1)
-			{
-				// Check for target string
-				log_debug(DEBUG_INOTIFY, "Read new line: \"%s\"", line);
-				if(strstr(line, string) != NULL)
-				{
-					found = true;
-					break;
-				}
-			}
-			if(found)
-				break;
-			// Update scan_start position
-			scan_start = ftell(file);
+		found = scan_file(file, string, &scan_start, &len, &line);
 
-			// Update current time
-			clock_gettime(CLOCK_REALTIME, &now);
-		}
+		// Update current time
+		clock_gettime(CLOCK_REALTIME, &now);
 	}
 
 	// Clean up
