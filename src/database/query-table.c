@@ -1136,9 +1136,7 @@ void DB_read_queries(void)
 	}
 
 	// Loop through returned database rows
-#if LOCK_BATCH_SZ > 0
 	size_t imported_queries = 0;
-#endif
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
@@ -1219,7 +1217,7 @@ void DB_read_queries(void)
 		// Lock shared memory every 100 imported queries
 		if(imported_queries % 100 == 0 && imported_queries > 0)
 			unlock_shm();
-		if(imported_queries++ % 100 == 0)
+		if(imported_queries % 100 == 0)
 			lock_shm();
 #else
 		// Lock shared memory
@@ -1430,8 +1428,8 @@ void DB_read_queries(void)
 				break;
 		}
 
-		if(counters->queries % 10000 == 0)
-			log_info("  %u queries parsed...", counters->queries);
+		if(++imported_queries % 10000 == 0)
+			log_info("  %zu queries parsed...", imported_queries);
 
 #if LOCK_BATCH_SZ == 0
 		// Unlock shared memory
