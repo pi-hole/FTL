@@ -134,6 +134,7 @@ int main_dnsmasq (int argc, char **argv)
      This might be increased is EDNS packet size if greater than the minimum. */ 
   daemon->packet_buff_sz = daemon->edns_pktsz + MAXDNAME + RRFIXEDSZ;
   daemon->packet = safe_malloc(daemon->packet_buff_sz);
+  daemon->pipe_to_parent = -1;
   
   if (option_bool(OPT_EXTRALOG))
     daemon->addrbuff2 = safe_malloc(ADDRSTRLEN);
@@ -1088,8 +1089,6 @@ int main_dnsmasq (int argc, char **argv)
     check_servers(0);
   
   pid = getpid();
-
-  daemon->pipe_to_parent = -1;
 
 #ifdef HAVE_INOTIFY
   /* Using inotify, have to select a resolv file at startup */
@@ -2065,9 +2064,24 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   
   if (!option_bool(OPT_DEBUG))
     {
+      /* The code in edns0.c qthat decorates queries with the source MAC address depends
+	 on the code in arp.c, which populates a cache with the contents of the ARP table
+	 using netlink. Since the child process can't use netlink, we pre-populate
+	 the cache with the ARP table entry for our source here, including a negative entry
+	 if there is nothing for our address in the ARP table.
+	 
+	 When the edns0 code calls find_mac() in the child process, it will
+	 get the correct answer from the cache inherited from the parent
+	 without having to use netlink to consult the kernel ARP table.
+
+	 edns0_needs_mac() simply calls find_mac if any EDNS0 options
+	 which need a MAC address are enabled. */
+      
+      edns0_needs_mac(&tcp_addr, now);
+
       if (pipe(pipefd) == -1)
 	goto closeconandreturn; /* pipe failed */
-            
+
       if ((p = fork()) == -1)
 	{
 	  /* fork failed */
