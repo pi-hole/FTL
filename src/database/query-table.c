@@ -644,19 +644,18 @@ bool import_queries_from_disk(void)
 
 	// Lock shared memory
 	lock_shm();
-
-	// Update counters
+	// Set query counter high enough so that the subsequent lock_shm() call
+	// enlarges the queries object 
 	counters->queries = imported_queries;
-	shm_ensure_size();
-
+	init_queries_shm_sz();
 	// Unlock shared memory
 	unlock_shm();
 
 	// Get number of queries on disk before detaching
 	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", NULL);
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", NULL);
+	mem_db_num = imported_queries;
 
-	log_info("Imported %u (%d) queries from the on-disk database (it has %u rows)", mem_db_num, imported_queries, disk_db_num);
+	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
 
 	return okay;
 }
@@ -1223,9 +1222,6 @@ void DB_read_queries(void)
 		// Lock shared memory
 		lock_shm();
 #endif
-		// Ensure we have enough shared memory available for new data
-		shm_ensure_size();
-
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
 		// Try to extract the upstream from the "forward" column if non-empty
@@ -1267,7 +1263,7 @@ void DB_read_queries(void)
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
 
 		// Set index for this query
-		const int queryIndex = counters->queries;
+		const int queryIndex = imported_queries++;
 
 		// Store this query in memory
 		queriesData *query = getQuery(queryIndex, false);
@@ -1330,9 +1326,6 @@ void DB_read_queries(void)
 		// Get domain pointer
 		domainsData *domain = getDomain(domainID, true);
 		domain->lastQuery = queryTimeStamp;
-
-		// Increase DNS queries counter
-		counters->queries++;
 
 		// Get additional information from the additional_info column if applicable
 		if(status == QUERY_GRAVITY_CNAME ||
@@ -1428,7 +1421,7 @@ void DB_read_queries(void)
 				break;
 		}
 
-		if(++imported_queries % 10000 == 0)
+		if(imported_queries % 10000 == 0)
 			log_info("  %zu queries parsed...", imported_queries);
 
 #if LOCK_BATCH_SZ == 0
@@ -1453,7 +1446,7 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 
 	db_import_done = true;
-	log_info("Imported %u queries from the long-term database", counters->queries);
+	log_info("Imported %zu queries from the long-term database", imported_queries);
 }
 
 void init_disk_db_idx(void)

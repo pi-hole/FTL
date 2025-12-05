@@ -160,19 +160,13 @@ void _lock_shm(const char* func, const int line, const char* file);
 // Return if the current mutex locked the SHM lock
 bool is_our_lock(void);
 
-// This ensures we have enough space available for more objects
-// The function should only be called from within _lock() and when reading
-// content from the database
-void shm_ensure_size(void);
-
 /// Unlock the lock. Only call this if there is an active lock.
 #define unlock_shm() _unlock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _unlock_shm(const char* func, const int line, const char* file);
 
-/// Block until a lock can be obtained
-
 bool init_shmem(void);
 void destroy_shmem(void);
+void init_queries_shm_sz(void);
 #define addstr(str) _addstr(str, __FUNCTION__, __LINE__, __FILE__)
 size_t _addstr(const char *str, const char *func, const int line, const char *file);
 #define getstr(pos) _getstr(pos, __FUNCTION__, __LINE__, __FILE__)
