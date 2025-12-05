@@ -1124,7 +1124,7 @@ struct ping_result {
 
 struct tftp_file {
   int refcount, fd;
-  off_t size;
+  off_t size, posn;
   dev_t dev;
   ino_t inode;
   char filename[];
@@ -1139,7 +1139,7 @@ struct tftp_transfer {
   union mysockaddr peer;
   union all_addr source;
   int if_index;
-  unsigned char opt_blocksize, opt_transize, opt_windowsize, opt_timeout, netascii, carrylf, backoff;
+  unsigned char opt_blocksize, opt_transize, opt_windowsize, opt_timeout, netascii, carrylf, lastcarrylf, backoff;
   struct tftp_file *file;
   struct tftp_transfer *next;
 };
@@ -1293,7 +1293,7 @@ extern struct daemon {
   struct serverfd *sfds;
   struct irec *interfaces;
   struct listener *listeners;
-  struct server *srv_save; /* Used for resend on DoD */
+  void *srv_save;      /* Used for resend on DoD and tftp prefetch */
   size_t packet_len;       /*      "        "        */
   int    fd_save;          /*      "        "        */
   pid_t *tcp_pids;
@@ -1937,6 +1937,7 @@ unsigned char *find_pseudoheader(struct dns_header *header, size_t plen,
 size_t add_pseudoheader(struct dns_header *header, size_t plen, unsigned char *limit, 
 			int optno, unsigned char *opt, size_t optlen, int set_do, int replace);
 size_t add_do_bit(struct dns_header *header, size_t plen, unsigned char *limit);
+void edns0_needs_mac(union mysockaddr *addr, time_t now);
 size_t add_edns0_config(struct dns_header *header, size_t plen, unsigned char *limit, 
 			union mysockaddr *source, time_t now, int *cacheable);
 int check_source(struct dns_header *header, size_t plen, unsigned char *pseudoheader, union mysockaddr *peer);
