@@ -22,4 +22,6 @@ unsigned int set_gc_interval(void);
 // Defined in src/dnsmasq_interface.c
 void set_dnsmasq_debug(const bool debug, const pid_t pid);
 
+extern bool db_import_done;
+
 #endif //GC_H

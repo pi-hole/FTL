@@ -879,7 +879,7 @@ int db_query_int_int(sqlite3 *db, const char* querystr, const int arg)
 
 int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg)
 {
-	log_debug(DEBUG_DATABASE, "db_query_int_str: \"%s\"", querystr);
+	log_debug(DEBUG_DATABASE, "db_query_int_str: \"%s\" with \"%s\"", querystr, arg);
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -968,6 +968,8 @@ double db_query_double(sqlite3 *db, const char* querystr)
 
 int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from, const double until)
 {
+	log_debug(DEBUG_DATABASE, "db_query_int_from_until: \"%s\" (from: %f, until: %f)", querystr, from, until);
+
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
@@ -1010,6 +1012,8 @@ int db_query_int_from_until(sqlite3 *db, const char* querystr, const double from
 
 int db_query_int_from_until_type(sqlite3 *db, const char* querystr, const double from, const double until, const int type)
 {
+	log_debug(DEBUG_DATABASE, "db_query_int_from_until_type: \"%s\" (from: %f, until: %f, type: %d)", querystr, from, until, type);
+
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){

@@ -142,14 +142,15 @@ typedef struct {
 static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
 
-static int pagesize;
+static unsigned int pagesize;
 static unsigned int local_shm_counter = 0;
 static pid_t shmem_pid = 0;
 static size_t used_shmem = 0u;
 static size_t get_optimal_object_size(const size_t objsize, const size_t minsize);
 
 // Private prototypes
-static void *enlarge_shmem_struct(const char type);
+static void *enlarge_shmem_struct(const char type, const size_t alloc_step);
+static void shm_ensure_size(void);
 
 // Calculate and format the memory usage of the shared memory segment used by
 // FTL
@@ -228,7 +229,7 @@ size_t _addstr(const char *input, const char *func, const int line, const char *
 	}
 	else if(len > (size_t)(pagesize-1))
 	{
-		log_warn("Shortening too long string (len %zu > pagesize %i)", len, pagesize);
+		log_warn("Shortening too long string (len %zu > pagesize %u)", len, pagesize);
 		len = pagesize;
 	}
 	else if(len > (size_t)(avail_mem-1))
@@ -737,7 +738,7 @@ static bool create_shm(const char *suffix, SharedMemory *sharedMemory, const siz
 	return sharedMemory;
 }
 
-static void *enlarge_shmem_struct(const char type)
+static void *enlarge_shmem_struct(const char type, const size_t alloc_step)
 {
 	SharedMemory *sharedMemory = NULL;
 	size_t sizeofobj, allocation_step;
@@ -748,55 +749,59 @@ static void *enlarge_shmem_struct(const char type)
 	{
 		case QUERIES:
 			sharedMemory = &shm_queries;
-			allocation_step = pagesize;
+			// When needing space for one more query, we allocate
+			// the size of the object * pagesize to reduce the
+			// number of reallocations forthcoming
+			allocation_step = alloc_step == 1u ? pagesize :
+				get_optimal_object_size(sizeof(queriesData), alloc_step);
 			sizeofobj = sizeof(queriesData);
 			size = &counters->queries_MAX;
 			break;
 		case CLIENTS:
 			sharedMemory = &shm_clients;
-			allocation_step = get_optimal_object_size(sizeof(clientsData), 1);
+			allocation_step = get_optimal_object_size(sizeof(clientsData), alloc_step);
 			sizeofobj = sizeof(clientsData);
 			size = &counters->clients_MAX;
 			break;
 		case DOMAINS:
 			sharedMemory = &shm_domains;
-			allocation_step = get_optimal_object_size(sizeof(domainsData), 1);
+			allocation_step = get_optimal_object_size(sizeof(domainsData), alloc_step);
 			sizeofobj = sizeof(domainsData);
 			size = &counters->domains_MAX;
 			break;
 		case UPSTREAMS:
 			sharedMemory = &shm_upstreams;
-			allocation_step = get_optimal_object_size(sizeof(upstreamsData), 1);
+			allocation_step = get_optimal_object_size(sizeof(upstreamsData), alloc_step);
 			sizeofobj = sizeof(upstreamsData);
 			size = &counters->upstreams_MAX;
 			break;
 		case DNS_CACHE:
 			sharedMemory = &shm_dns_cache;
-			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), 1);
+			allocation_step = get_optimal_object_size(sizeof(DNSCacheData), alloc_step);
 			sizeofobj = sizeof(DNSCacheData);
 			size = &counters->dns_cache_MAX;
 			break;
 		case STRINGS:
 			sharedMemory = &shm_strings;
 			allocation_step = STRINGS_ALLOC_STEP;
-			sizeofobj = 1;
+			sizeofobj = sizeof(char);
 			size = &counters->strings_MAX;
 			break;
 		case CLIENTS_LOOKUP:
 			sharedMemory = &shm_clients_lookup;
-			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), alloc_step);
 			sizeofobj = sizeof(struct lookup_table);
 			size = &counters->clients_lookup_MAX;
 			break;
 		case DOMAINS_LOOKUP:
 			sharedMemory = &shm_domains_lookup;
-			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), alloc_step);
 			sizeofobj = sizeof(struct lookup_table);
 			size = &counters->domains_lookup_MAX;
 			break;
 		case DNS_CACHE_LOOKUP:
 			sharedMemory = &shm_dns_cache_lookup;
-			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), 1);
+			allocation_step = get_optimal_object_size(sizeof(struct lookup_table), alloc_step);
 			sizeofobj = sizeof(struct lookup_table);
 			size = &counters->dns_cache_lookup_MAX;
 			break;
@@ -815,10 +820,19 @@ static void *enlarge_shmem_struct(const char type)
 	return sharedMemory->ptr;
 }
 
+/**
+ * Initialize or resize the shared-memory region used for storing queries.
+ */
+void init_queries_shm_sz(void)
+{
+	queries = enlarge_shmem_struct(QUERIES, counters->queries);
+}
+
 static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const size_t size2, const bool resize)
 {
 	// Absolute target size
-	const size_t size = size1 * size2;
+	const size_t new_size = size1 * size2;
+	const size_t elem_before = size1 == 0 ? 0 : sharedMemory->size / size2;
 
 	// Log that we are doing something here
 	char df[64] =  { 0 };
@@ -827,13 +841,13 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// Log output
 	if(resize)
 	{
-		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from %zu to (%zu * %zu) == %zu (%s)",
-		          sharedMemory->name, sharedMemory->size, size1, size2, size, df);
+		log_debug(DEBUG_SHMEM, "Resizing \"%s\" from (%zu * %zu) = %zu to (%zu * %zu) == %zu (%s)",
+		          sharedMemory->name, elem_before, size2, sharedMemory->size, size1, size2, new_size, df);
 	}
 	else
 	{
-		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from %zu to (%zu * %zu) == %zu",
-		          sharedMemory->name, sharedMemory->size, size1, size2, size);
+		log_debug(DEBUG_SHMEM, "Remapping \"%s\" from (%zu * %zu) = %zu to (%zu * %zu) == %zu",
+		          sharedMemory->name, elem_before, size2, sharedMemory->size, size1, size2, new_size);
 	}
 
 	if(config.misc.check.shmem.v.ui > 0 && percentage > config.misc.check.shmem.v.ui)
@@ -849,11 +863,11 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = ftlallocate(sharedMemory->fd, 0U, size);
+		const int ret = ftlallocate(sharedMemory->fd, 0U, new_size);
 		if(ret != 0)
 		{
 			log_crit("realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
-			         sharedMemory->name, sharedMemory->fd, size, strerror(ret), ret);
+			         sharedMemory->name, sharedMemory->fd, new_size, strerror(ret), ret);
 			exit(EXIT_FAILURE);
 		}
 
@@ -862,31 +876,31 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		local_shm_counter++;
 	}
 
-	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, size, MREMAP_MAYMOVE);
+	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, new_size, MREMAP_MAYMOVE);
 	if(new_ptr == MAP_FAILED)
 	{
 		log_crit("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
-		         sharedMemory->ptr, sharedMemory->size, size, sharedMemory->name, strerror(errno));
+		         sharedMemory->ptr, sharedMemory->size, new_size, sharedMemory->name, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
 	// Update how much memory FTL uses
 	// We add the difference between updated and previous size
-	used_shmem += (size - sharedMemory->size);
+	used_shmem += (new_size - sharedMemory->size);
 
 	if(sharedMemory->ptr == new_ptr)
 	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer not updated: %p (%zu %zu)",
-		          sharedMemory->ptr, sharedMemory->size, size);
+		          sharedMemory->ptr, sharedMemory->size, new_size);
 	}
 	else
 	{
 		log_debug(DEBUG_SHMEM, "SHMEM pointer updated: %p -> %p (%zu %zu)",
-		          sharedMemory->ptr, new_ptr, sharedMemory->size, size);
+		          sharedMemory->ptr, new_ptr, sharedMemory->size, new_size);
 	}
 
 	sharedMemory->ptr = new_ptr;
-	sharedMemory->size = size;
+	sharedMemory->size = new_size;
 
 	return true;
 }
@@ -931,11 +945,11 @@ static void delete_shm(SharedMemory *sharedMemory)
 }
 
 // Euclidean algorithm to return greatest common divisor of the numbers
-static size_t __attribute__((const)) gcd(size_t a, size_t b)
+static unsigned int __attribute__((const)) gcd(unsigned int a, unsigned int b)
 {
 	while(b != 0)
 	{
-		size_t temp = b;
+		unsigned int temp = b;
 		b = a % b;
 		a = temp;
 	}
@@ -952,7 +966,7 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	const size_t optsize = pagesize / gcd(pagesize, objsize);
 	if(optsize < minsize)
 	{
-		log_debug(DEBUG_SHMEM, "LCM(%i, %zu) == %zu < %zu",
+		log_debug(DEBUG_SHMEM, "LCM(%u, %zu) == %zu < %zu",
 		          pagesize, objsize,
 		          optsize*objsize,
 		          minsize*objsize);
@@ -975,7 +989,7 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 	else
 	{
-		log_debug(DEBUG_SHMEM, "LCM(%i, %zu) == %zu >= %zu",
+		log_debug(DEBUG_SHMEM, "LCM(%u, %zu) == %zu >= %zu",
 		          pagesize, objsize,
 		          optsize*objsize,
 		          minsize*objsize);
@@ -986,12 +1000,12 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 }
 
 // Enlarge shared memory to be able to hold at least one new record
-void shm_ensure_size(void)
+static void shm_ensure_size(void)
 {
 	if(counters->queries >= counters->queries_MAX-1)
 	{
 		// Have to reallocate shared memory
-		queries = enlarge_shmem_struct(QUERIES);
+		queries = enlarge_shmem_struct(QUERIES, 1);
 		if(queries == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1001,7 +1015,7 @@ void shm_ensure_size(void)
 	if(counters->upstreams >= counters->upstreams_MAX-1)
 	{
 		// Have to reallocate shared memory
-		upstreams = enlarge_shmem_struct(UPSTREAMS);
+		upstreams = enlarge_shmem_struct(UPSTREAMS, 1);
 		if(upstreams == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1011,7 +1025,7 @@ void shm_ensure_size(void)
 	if(counters->clients >= counters->clients_MAX-1)
 	{
 		// Have to reallocate shared memory
-		clients = enlarge_shmem_struct(CLIENTS);
+		clients = enlarge_shmem_struct(CLIENTS, 1);
 		if(clients == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1021,7 +1035,7 @@ void shm_ensure_size(void)
 	if(counters->domains >= counters->domains_MAX-1)
 	{
 		// Have to reallocate shared memory
-		domains = enlarge_shmem_struct(DOMAINS);
+		domains = enlarge_shmem_struct(DOMAINS, 1);
 		if(domains == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1031,7 +1045,7 @@ void shm_ensure_size(void)
 	if(counters->dns_cache_size >= counters->dns_cache_MAX-1)
 	{
 		// Have to reallocate shared memory
-		dns_cache = enlarge_shmem_struct(DNS_CACHE);
+		dns_cache = enlarge_shmem_struct(DNS_CACHE, 1);
 		if(dns_cache == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1041,7 +1055,7 @@ void shm_ensure_size(void)
 	if(shmSettings->next_str_pos + STRINGS_ALLOC_STEP >= shm_strings.size)
 	{
 		// Have to reallocate shared memory
-		if(enlarge_shmem_struct(STRINGS) == NULL)
+		if(enlarge_shmem_struct(STRINGS, 1) == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
@@ -1050,7 +1064,7 @@ void shm_ensure_size(void)
 	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
-		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP);
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
 		if(clients_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1060,7 +1074,7 @@ void shm_ensure_size(void)
 	if(counters->domains_lookup_size >= counters->domains_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
-		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP);
+		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP, 1);
 		if(domains_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
@@ -1070,7 +1084,7 @@ void shm_ensure_size(void)
 	if(counters->dns_cache_lookup_size >= counters->dns_cache_lookup_MAX-1)
 	{
 		// Have to reallocate shared memory
-		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP);
+		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP, 1);
 		if(dns_cache_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");

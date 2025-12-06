@@ -54,6 +54,9 @@ static sqlite3_stmt **stmts[] = { &query_stmt,
 // Private prototypes
 static void load_queries_from_disk(void);
 
+// Set to non-zero integer if shared memory locking should be batched
+#define LOCK_BATCH_SZ 0
+
 // Return the maximum ID of the in-memory database
 sqlite3_int64 __attribute__((pure)) get_max_db_idx(void)
 {
@@ -598,6 +601,8 @@ bool import_queries_from_disk(void)
 	else
 		log_err("import_queries_from_disk(): Failed to import queries: %s",
 		        sqlite3_errstr(rc));
+	const int imported_queries = sqlite3_changes(memdb);
+	log_debug(DEBUG_DATABASE, "Imported %i rows from disk.query_storage", imported_queries);
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
@@ -617,14 +622,17 @@ bool import_queries_from_disk(void)
 		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
 		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
 	};
+	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
 
 	// Import linking tables
-	for(unsigned int i = 0; i < ArraySize(subtable_sql); i++)
+	int imported[ArraySize(subtable_names)] = { 0 };
+	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
 		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
 			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
 			        subtable_sql[i], sqlite3_errstr(rc));
-		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", sqlite3_changes(memdb), subtable_names[i]);
+		imported[i] = sqlite3_changes(memdb);
+		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", imported[i], subtable_names[i]);
 	}
 
 	// End transaction
@@ -634,9 +642,18 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// Lock shared memory
+	lock_shm();
+	// Set query counter high enough so that the subsequent lock_shm() call
+	// enlarges the queries object 
+	counters->queries = imported_queries;
+	init_queries_shm_sz();
+	// Unlock shared memory
+	unlock_shm();
+
 	// Get number of queries on disk before detaching
 	disk_db_num = get_number_of_queries_in_DB(memdb, "disk.query_storage", NULL);
-	mem_db_num = get_number_of_queries_in_DB(memdb, "query_storage", NULL);
+	mem_db_num = imported_queries;
 
 	log_info("Imported %u queries from the on-disk database (it has %u rows)", mem_db_num, disk_db_num);
 
@@ -1117,10 +1134,8 @@ void DB_read_queries(void)
 		return;
 	}
 
-	// Lock shared memory
-	lock_shm();
-
 	// Loop through returned database rows
+	size_t imported_queries = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
@@ -1197,9 +1212,16 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
-		// Ensure we have enough shared memory available for new data
-		shm_ensure_size();
-
+#if LOCK_BATCH_SZ > 0
+		// Lock shared memory every 100 imported queries
+		if(imported_queries % 100 == 0 && imported_queries > 0)
+			unlock_shm();
+		if(imported_queries % 100 == 0)
+			lock_shm();
+#else
+		// Lock shared memory
+		lock_shm();
+#endif
 		const char *buffer = NULL;
 		int upstreamID = -1; // Default if not forwarded
 		// Try to extract the upstream from the "forward" column if non-empty
@@ -1228,6 +1250,9 @@ void DB_read_queries(void)
 			{
 				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
 				         reply_time, dbID, queryTimeStamp);
+#if LOCK_BATCH_SZ == 0
+				unlock_shm();
+#endif
 				continue;
 			}
 		}
@@ -1238,7 +1263,7 @@ void DB_read_queries(void)
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
 
 		// Set index for this query
-		const int queryIndex = counters->queries;
+		const int queryIndex = imported_queries++;
 
 		// Store this query in memory
 		queriesData *query = getQuery(queryIndex, false);
@@ -1254,6 +1279,9 @@ void DB_read_queries(void)
 				// Invalid query type
 				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
 				         type, dbID, queryTimeStamp);
+#if LOCK_BATCH_SZ == 0
+				unlock_shm();
+#endif
 				continue;
 			}
 		}
@@ -1298,9 +1326,6 @@ void DB_read_queries(void)
 		// Get domain pointer
 		domainsData *domain = getDomain(domainID, true);
 		domain->lastQuery = queryTimeStamp;
-
-		// Increase DNS queries counter
-		counters->queries++;
 
 		// Get additional information from the additional_info column if applicable
 		if(status == QUERY_GRAVITY_CNAME ||
@@ -1396,12 +1421,20 @@ void DB_read_queries(void)
 				break;
 		}
 
-		if(counters->queries % 10000 == 0)
-			log_info("  %u queries parsed...", counters->queries);
+		if(imported_queries % 10000 == 0)
+			log_info("  %zu queries parsed...", imported_queries);
+
+#if LOCK_BATCH_SZ == 0
+		// Unlock shared memory
+		unlock_shm();
+#endif
 	}
 
-	// Release shared memory
-	unlock_shm();
+#if LOCK_BATCH_SZ > 0
+	// Unlock shared memory
+	if(imported_queries > 0)
+		unlock_shm();
+#endif
 
 	if( rc != SQLITE_DONE )
 	{
@@ -1412,7 +1445,8 @@ void DB_read_queries(void)
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
 
-	log_info("Imported %u queries from the long-term database", counters->queries);
+	db_import_done = true;
+	log_info("Imported %zu queries from the long-term database", imported_queries);
 }
 
 void init_disk_db_idx(void)
@@ -1778,10 +1812,6 @@ static void load_queries_from_disk(void)
 
 	// Try to import queries from long-term database if available
 	import_queries_from_disk();
-	DB_read_queries();
-
-	// Log some information about the imported queries (if any)
-	log_counter_info();
 
 	store_in_database = true;
 }
