@@ -6,24 +6,10 @@ Subject: [PATCH] Add bundled script loading into luaL_openlibs to make them
 
 Signed-off-by: DL6ER <dl6er@dl6er.de>
 ---
- src/lua/ftl_lua.h                  |  2 --
  src/lua/linit.c                    |  6 ++++++
  src/lua/lua.c                      | 13 +------------
- 3 files changed, 7 insertions(+), 14 deletions(-)
+ 2 files changed, 7 insertions(+), 13 deletions(-)
 
-diff --git a/src/lua/ftl_lua.h b/src/lua/ftl_lua.h
-index d986498a..30bad1f9 100644
---- a/src/lua/ftl_lua.h
-+++ b/src/lua/ftl_lua.h
-@@ -21,8 +21,6 @@ int run_luac(const int argc, char **argv);
- int lua_main (int argc, char **argv);
- int luac_main (int argc, char **argv);
- 
--extern int dolibrary (lua_State *L, char *name);
--
- void print_embedded_scripts(void);
- void ftl_lua_init(lua_State *L);
- 
 diff --git a/src/lua/linit.c b/src/lua/linit.c
 index 9a5bcfdc..787865c0 100644
 --- a/src/lua/linit.c
@@ -39,10 +25,10 @@ index 9a5bcfdc..787865c0 100644
  /*
  ** If you embed Lua in your program and need to open the standard
  ** libraries, call luaL_openlibs in your program. If you need a
-@@ -64,5 +68,7 @@ LUALIB_API void luaL_openlibs (lua_State *L) {
-     luaL_requiref(L, lib->name, lib->func, 1);
-     lua_pop(L, 1);  /* remove lib */
+@@ -64,5 +68,7 @@ LUALIB_API void luaL_openselectedlibs (lua_State *L, int load, int preload) {
    }
+   lua_assert((mask >> 1) == LUA_UTF8LIBK);
+   lua_pop(L, 1);  /* remove PRELOAD table */
 +  // Load and enable libraries bundled with Pi-hole
 +  ftl_lua_init(L);
  }
