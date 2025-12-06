@@ -79,6 +79,7 @@ int get_version_obj(struct ftl_conn *api, cJSON *version);
 
 // Config methods
 int api_config(struct ftl_conn *api);
+int api_config_properties(struct ftl_conn *api);
 int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed);
 cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val);
 

@@ -228,6 +228,9 @@ paths:
   /config:
     $ref: 'config.yaml#/components/paths/config'
 
+  /config/_properties:
+    $ref: 'config.yaml#/components/paths/props'
+
   /config/{element}:
     $ref: 'config.yaml#/components/paths/config_elem'
 

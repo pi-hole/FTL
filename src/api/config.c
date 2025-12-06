@@ -1134,3 +1134,49 @@ int api_config(struct ftl_conn *api)
 
 	return 0;
 }
+
+int api_config_properties(struct ftl_conn *api)
+{
+	cJSON *read_only = JSON_NEW_ARRAY();
+
+	// Iterate over all known config elements
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		// Get pointer to memory location of this conf_item
+		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		const char *reason = NULL;
+		const char *description = NULL;
+		if(conf_item->f & FLAG_ENV_VAR)
+		{
+			reason = "env_var";
+			description = "Set via environment variable";
+		}
+		else if(config.misc.readOnly.v.b)
+		{
+			reason = "read_only";
+			description = "Config is in read-only mode";
+		}
+		else if(conf_item->f & FLAG_READ_ONLY)
+		{
+			reason = "read_only";
+			description = "Variable can only be set in pihole.toml, not via API";
+		}
+		else
+			continue;
+
+		cJSON *obj = JSON_NEW_OBJECT();
+		JSON_REF_STR_IN_OBJECT(obj, "key", conf_item->k);
+		JSON_REF_STR_IN_OBJECT(obj, "reason", reason);
+		JSON_REF_STR_IN_OBJECT(obj, "description", description);
+		JSON_ADD_ITEM_TO_ARRAY(read_only, obj);
+	}
+
+	// Build and return JSON response
+	cJSON *configj = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(configj, "read_only", read_only);
+	cJSON *json = JSON_NEW_OBJECT();
+	JSON_ADD_ITEM_TO_OBJECT(json, "config", configj);
+	JSON_SEND_OBJECT(json);
+	return 0;
+}
