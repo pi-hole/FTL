@@ -32,7 +32,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 #v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 #v6.0.1
       -
         name: "Calculate required variables"
         id: variables
@@ -100,7 +100,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 #v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 #v6.0.1
       # QEMU should come before Buildx
       -
         name: Set up QEMU
@@ -265,7 +265,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe #v2.4.2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b #v2.5.0
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
@@ -279,7 +279,7 @@ jobs:
       -
         name: Create Pull Request to pi-hole/docs
         if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'        
-        uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412 #v7.0.9
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 #v7.0.11
         with:
           token: ${{ secrets.PRALOR_PULL_REQUESTS }}
           commit-message: "docs: update pihole.toml documentation"
