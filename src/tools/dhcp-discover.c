@@ -345,14 +345,10 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
-				// We may need to escape this, buffer size: 4
-				// chars per control character plus room for
-				// possible "(empty)"
-				const size_t bufsiz = 4*optlen + 9;
-				char *buffer = calloc(bufsiz, sizeof(char));
-				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, bufsiz);
+				char *buffer = escape_data((char*)&offer_packet->options[x], optlen);
 				printf("%s: \"%s\"\n", opttab[i].name, buffer);
-				free(buffer);
+				if(buffer != NULL)
+					free(buffer);
 			}
 			else if(opttab[i].size & OT_TIME)
 			{
@@ -360,7 +356,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				memcpy(&time, &offer_packet->options[x], sizeof(time));
 				time = ntohl(time);
 				const char *optname = opttab[i].name;
-				// Some timers deserve a more user-friedly name
+				// Some timers deserve a more user-friendly name
 				if(opttype == 58)
 					optname = "renewal-time"; // "T1" in dnsmasq-notation
 				else if(opttype == 59)
@@ -437,9 +433,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 				// We may need to escape this, buffer size: 4
 				// chars per control character plus room for
 				// possible "(empty)"
-				size_t bufsiz = 4*optlen + 9;
-				char *buffer = calloc(bufsiz, sizeof(char));
-				binbuf_to_escaped_C_literal((char*)&offer_packet->options[x], optlen, buffer, bufsiz);
+				char *buffer = escape_data((char*)&offer_packet->options[x], optlen);
 				printf("wpad-server: \"%s\"\n", buffer);
 				free(buffer);
 			}
@@ -635,9 +629,7 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.sname[0] != 0)
 		{
 			size_t len = strlen(offer_packet.sname);
-			size_t bufsiz = 4*len + 9;
-			char *buffer = calloc(bufsiz, sizeof(char));
-			binbuf_to_escaped_C_literal(offer_packet.sname, len, buffer, bufsiz);
+			char *buffer = escape_data(offer_packet.sname, len);
 			printf("%s\n", buffer);
 			free(buffer);
 		}
@@ -648,9 +640,7 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 		if(offer_packet.file[0] != 0)
 		{
 			size_t len = strlen(offer_packet.file);
-			size_t bufsiz = 4*len + 9;
-			char *buffer = calloc(bufsiz, sizeof(char));
-			binbuf_to_escaped_C_literal(offer_packet.file, len, buffer, bufsiz);
+			char *buffer = escape_data(offer_packet.file, len);
 			printf("%s\n", buffer);
 			free(buffer);
 		}

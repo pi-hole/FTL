@@ -1557,15 +1557,7 @@ void dump_strings(void)
 
 			// If the string is not printable, we escape it
 			if(!string_is_printable)
-			{
-				buffer = calloc(len * 4 + 1, sizeof(char));
-				if(buffer == NULL)
-				{
-					log_err("Failed to allocate memory for string buffer");
-					break;
-				}
-				binbuf_to_escaped_C_literal(sstr, len, buffer, len * 4 + 1);
-			}
+				buffer = escape_data(sstr, len);
 
 			// Print string to file
 			fprintf(str_dumpfile, "%s %04zu: \"%s\" (%zu/%zu)\n", string_is_printable ? "    " : "NONP",
