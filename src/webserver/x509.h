@@ -10,11 +10,6 @@
 #ifndef X509_H
 #define X509_H
 
-#ifdef HAVE_MBEDTLS
-# include <mbedtls/entropy.h>
-# include <mbedtls/ctr_drbg.h>
-#endif
-
 #include "enums.h"
 #include <stdbool.h>
 // ssize_t
@@ -26,9 +21,5 @@ bool generate_certificate(const char *certfile, bool rsa, const char *domain, co
 enum cert_check read_certificate(const char *certfile, const char *domain, const bool private_key);
 enum cert_check cert_currently_valid(const char *certfile, const time_t valid_for_at_least_days);
 bool is_pihole_certificate(const char *certfile);
-
-bool init_entropy(void);
-void destroy_entropy(void);
-ssize_t drbg_random(unsigned char *output, size_t len);
 
 #endif // X509_H

@@ -64,9 +64,6 @@ int main (int argc, char *argv[])
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
-	// Initialize entropy and random number generator
-	init_entropy();
-
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();

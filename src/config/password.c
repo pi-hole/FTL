@@ -124,16 +124,8 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 		result = getrandom_fallback(buffer, length, 0);
 		if(result < 0 || result < (ssize_t)length)
 		{
-			log_debug(DEBUG_API, "Fallback failed, trying internal DRBG generator");
-			generator = "internal DRBG";
-			result = drbg_random(buffer, length);
-			if(result < 0)
-			{
-				// Warning will be printed by drbg_random()
-				return false;
-			}
-
-			log_debug(DEBUG_API, "Internal DRBG generator successfully used");
+			log_err("Unable to get secure randomness from fallback generator");
+			return false;
 		}
 		else
 			log_debug(DEBUG_API, "Fallback to /dev/urandom successful");

@@ -17,9 +17,11 @@
 #endif
 
 #ifdef HAVE_MBEDTLS
-# include <mbedtls/rsa.h>
-# include <mbedtls/x509.h>
+# ifndef MBEDTLS_MPI_INIT
+# define MBEDTLS_MPI_INIT { 0, 1, 0 }
+# endif
 # include <mbedtls/x509_crt.h>
+# include <mbedtls/pk.h>
 
 // We enforce at least mbedTLS v3.5.0 if we use it
 #if MBEDTLS_VERSION_NUMBER < 0x03050000
@@ -27,164 +29,45 @@
 #endif
 
 #define RSA_KEY_SIZE 4096
+#define EC_KEY_SIZE 384
 #define BUFFER_SIZE 16000
 #define PIHOLE_ISSUER "CN=pi.hole,O=Pi-hole,C=DE"
 
-static bool read_id_file(const char *filename, char *buffer, size_t buffer_size)
-{
-	FILE *f = fopen(filename, "r");
-	if(f == NULL)
-		return false;
-
-	if(fread(buffer, 1, buffer_size, f) != buffer_size)
-	{
-		fclose(f);
-		return false;
-	}
-
-	fclose(f);
-	return true;
-}
-
-static mbedtls_entropy_context entropy = { 0 };
-static mbedtls_ctr_drbg_context ctr_drbg = { 0 };
-/**
- * @brief Initializes the entropy and random number generator.
- *
- * This function initializes the entropy and random number generator using
- * mbedtls library functions. It ensures that the initialization is performed
- * only once. Calling this function multiple times has no adverse effect.
- *
- * @return true if the initialization is successful or has already been
- * performed, false if there is an error during initialization.
- */
-bool init_entropy(void)
-{
-	// Check if already initialized
-	static bool initialized = false;
-	if(initialized)
-		return true;
-
-	mbedtls_ctr_drbg_init(&ctr_drbg);
-	mbedtls_entropy_init(&entropy);
-
-	// Get machine-id (this may fail in containers)
-	// https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
-	char machine_id[128] = { 0 };
-	read_id_file("/etc/machine-id", machine_id, sizeof(machine_id));
-
-	// The boot_id random ID that is regenerated on each boot. As such it
-	// can be used to identify the local machine’s current boot. It’s
-	// universally available on any recent Linux kernel. It’s a good and
-	// safe choice if you need to identify a specific boot on a specific
-	// booted kernel.
-	// Read /proc/sys/kernel/random/boot_id and append it to machine_id
-	// The UUID is in format 8-4-4-4-12 and, hence, 36 characters long
-	char boot_id[37] = { 0 };
-	if(read_id_file("/proc/sys/kernel/random/boot_id", boot_id, sizeof(boot_id)))
-	{
-		boot_id[36] = '\0';
-		strncat(machine_id, boot_id, sizeof(machine_id) - strlen(machine_id) - 1);
-	}
-
-	// Initialize random number generator
-	int ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (unsigned char*)machine_id, strlen(machine_id));
-	if(ret != 0)
-	{
-		log_err("mbedtls_ctr_drbg_seed returned %d\n", ret);
-		return false;
-	}
-
-	initialized = true;
-	return true;
-}
-
-/**
- * @brief Frees the resources allocated for entropy and CTR-DRBG contexts.
- *
- * This function releases the memory and resources associated with the
- * entropy and CTR-DRBG contexts, ensuring that they are properly cleaned up.
- * It should be called when these contexts are no longer needed to avoid
- * memory leaks.
- */
-void destroy_entropy(void)
-{
-	mbedtls_entropy_free(&entropy);
-	mbedtls_ctr_drbg_free(&ctr_drbg);
-}
-
-/**
- * @brief Generates random bytes using the CTR_DRBG (Counter mode Deterministic
- * Random Byte Generator).
- *
- * @param output Pointer to the buffer where the generated random bytes will be
- * stored.
- * @param len The number of random bytes to generate.
- * @return The number of bytes generated on success, or -1 on failure.
- */
-ssize_t drbg_random(unsigned char *output, size_t len)
-{
-	init_entropy();
-	const int ret = mbedtls_ctr_drbg_random(&ctr_drbg, output, len);
-	if(ret != 0)
-	{
-		log_err("mbedtls_ctr_drbg_random returned %d\n", ret);
-		return -1;
-	}
-
-	// Return number of bytes generated
-	return len;
-}
-
-// Generate private RSA key
-static int generate_private_key_rsa(mbedtls_pk_context *key,
-                                    unsigned char key_buffer[])
+// Generate private RSA or EC key
+static int generate_private_key(mbedtls_pk_context *pk_key, const bool rsa,
+                                unsigned char key_buffer[])
 {
 	int ret;
-	if((ret = mbedtls_pk_setup(key, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA))) != 0)
+	psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+	const psa_status_t status = psa_crypto_init();
+	if(status != PSA_SUCCESS)
 	{
-		printf("ERROR: mbedtls_pk_setup returned %d\n", ret);
+		log_err("Failed to initialize PSA crypto, returned %d\n", (int)status);
+		return CERT_CANNOT_PARSE_CERT;
+	}
+	psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_EXPORT | PSA_KEY_USAGE_SIGN_HASH | PSA_KEY_USAGE_DECRYPT);
+	psa_set_key_type(&attributes, rsa ? PSA_KEY_TYPE_RSA_KEY_PAIR : PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
+	psa_set_key_bits(&attributes, rsa ? RSA_KEY_SIZE : EC_KEY_SIZE);
+
+	// Generate key
+	mbedtls_svc_key_id_t key = MBEDTLS_SVC_KEY_ID_INIT;
+	if((ret = psa_generate_key(&attributes, &key)) != PSA_SUCCESS) {
+		printf("ERROR: psa_generate_key failed: %d\n", ret);
 		return ret;
 	}
 
-	if((ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(*key), mbedtls_ctr_drbg_random,
-	                              &ctr_drbg, RSA_KEY_SIZE, 65537)) != 0)
-	{
-		printf("ERROR: mbedtls_rsa_gen_key returned %d\n", ret);
+	// Copy key to mbedtls_pk_context
+	if((ret = mbedtls_pk_copy_from_psa(key, pk_key)) != 0) {
+		printf("ERROR: mbedtls_pk_copy_from_psa returned %d\n", ret);
 		return ret;
 	}
+
+	// Destroy the key handle as we have copied the key
+	psa_reset_key_attributes(&attributes);
+	psa_destroy_key(key);
 
 	// Export key in PEM format
-	if ((ret = mbedtls_pk_write_key_pem(key, key_buffer, BUFFER_SIZE)) != 0) {
-		printf("ERROR: mbedtls_pk_write_key_pem returned %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-// Generate private EC key
-static int generate_private_key_ec(mbedtls_pk_context *key,
-                                   unsigned char key_buffer[])
-{
-	int ret;
-	// Setup key
-	if((ret = mbedtls_pk_setup(key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY))) != 0)
-	{
-		printf("ERROR: mbedtls_pk_setup returned %d\n", ret);
-		return ret;
-	}
-
-	// Generate key SECP384R1 key (NIST P-384)
-	if((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP384R1, mbedtls_pk_ec(*key),
-	                              mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
-	{
-		printf("ERROR: mbedtls_ecp_gen_key returned %d\n", ret);
-		return ret;
-	}
-
-	// Export key in PEM format
-	if ((ret = mbedtls_pk_write_key_pem(key, key_buffer, BUFFER_SIZE)) != 0) {
+	if ((ret = mbedtls_pk_write_key_pem(pk_key, key_buffer, BUFFER_SIZE)) != 0) {
 		printf("ERROR: mbedtls_pk_write_key_pem returned %d\n", ret);
 		return ret;
 	}
@@ -280,38 +163,18 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	mbedtls_x509write_crt_init(&server_cert);
 	mbedtls_pk_init(&ca_key);
 	mbedtls_pk_init(&server_key);
-	init_entropy();
 
 	// Generate key
-	if(rsa)
+	printf("Generating %s key...\n", rsa ? "RSA" : "EC");
+	if((ret = generate_private_key(&ca_key, rsa, ca_key_buffer)) != 0)
 	{
-		// Generate RSA key
-		printf("Generating RSA key...\n");
-		if((ret = generate_private_key_rsa(&ca_key, ca_key_buffer)) != 0)
-		{
-			printf("ERROR: generate_private_key returned %d\n", ret);
-			return false;
-		}
-		if((ret = generate_private_key_rsa(&server_key, key_buffer)) != 0)
-		{
-			printf("ERROR: generate_private_key returned %d\n", ret);
-			return false;
-		}
+		printf("ERROR: generate_private_key returned %d\n", ret);
+		return false;
 	}
-	else
+	if((ret = generate_private_key(&server_key, rsa, key_buffer)) != 0)
 	{
-		// Generate EC key
-		printf("Generating EC key...\n");
-		if((ret = generate_private_key_ec(&ca_key, ca_key_buffer)) != 0)
-		{
-			printf("ERROR: generate_private_key_ec returned %d\n", ret);
-			return false;
-		}
-		if((ret = generate_private_key_ec(&server_key, key_buffer)) != 0)
-		{
-			printf("ERROR: generate_private_key_ec returned %d\n", ret);
-			return false;
-		}
+		printf("ERROR: generate_private_key returned %d\n", ret);
+		return false;
 	}
 
 	// Create string with random digits for unique serial number
@@ -327,13 +190,11 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	// certificate would be rejected by the browser as it would have the same
 	// serial number as the previous one and uniques is violated.
 	unsigned char serial1[16] = { 0 }, serial2[16] = { 0 };
-	mbedtls_ctr_drbg_random(&ctr_drbg, serial1, sizeof(serial1));
 	for(unsigned int i = 0; i < sizeof(serial1) - 1; i++)
-		serial1[i] = '0' + (serial1[i] % 10);
+		serial1[i] = '0' + (rand() % 10);
 	serial1[sizeof(serial1) - 1] = '\0';
-	mbedtls_ctr_drbg_random(&ctr_drbg, serial2, sizeof(serial2));
 	for(unsigned int i = 0; i < sizeof(serial2) - 1; i++)
-		serial2[i] = '0' + (serial2[i] % 10);
+		serial2[i] = '0' + (rand() % 10);
 	serial2[sizeof(serial2) - 1] = '\0';
 
 	// Create validity period
@@ -368,8 +229,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	mbedtls_x509write_crt_set_basic_constraints(&ca_cert, 1, -1);
 
 	// Export CA in PEM format
-	if((ret = mbedtls_x509write_crt_pem(&ca_cert, ca_buffer, sizeof(ca_buffer),
-	                                    mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
+	if((ret = mbedtls_x509write_crt_pem(&ca_cert, ca_buffer, sizeof(ca_buffer))) != 0)
 	{
 		printf("ERROR: mbedtls_x509write_crt_pem (CA) returned %d\n", ret);
 		return false;
@@ -431,8 +291,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 		printf("mbedtls_x509write_crt_set_subject_alternative_name returned %d\n", ret);
 
 	// Export certificate in PEM format
-	if((ret = mbedtls_x509write_crt_pem(&server_cert, cert_buffer, sizeof(cert_buffer),
-	                                    mbedtls_ctr_drbg_random, &ctr_drbg)) != 0)
+	if((ret = mbedtls_x509write_crt_pem(&server_cert, cert_buffer, sizeof(cert_buffer))) != 0)
 	{
 		printf("ERROR: mbedtls_x509write_crt_pem returned %d\n", ret);
 		return false;
@@ -564,12 +423,6 @@ enum cert_check read_certificate(const char *certfile, const char *domain, const
 		return CERT_FILE_NOT_FOUND;
 	}
 
-	mbedtls_x509_crt crt;
-	mbedtls_pk_context key;
-	mbedtls_x509_crt_init(&crt);
-	mbedtls_pk_init(&key);
-	init_entropy();
-
 	log_info("Reading certificate from %s ...", certfile);
 
 	// Check if the file exists and is readable
@@ -579,14 +432,25 @@ enum cert_check read_certificate(const char *certfile, const char *domain, const
 		return CERT_FILE_NOT_FOUND;
 	}
 
+	const psa_status_t status = psa_crypto_init();
+	if(status != PSA_SUCCESS)
+	{
+		log_err("Failed to initialize PSA crypto, returned %d\n", (int)status);
+		return CERT_CANNOT_PARSE_CERT;
+	}
+
+	mbedtls_pk_context key;
+	mbedtls_pk_init(&key);
 	bool has_key = true;
-	int rc = mbedtls_pk_parse_keyfile(&key, certfile, NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
+	int rc = mbedtls_pk_parse_keyfile(&key, certfile, NULL);
 	if (rc != 0)
 	{
 		log_info("No key found");
 		has_key = false;
 	}
 
+	mbedtls_x509_crt crt;
+	mbedtls_x509_crt_init(&crt);
 	rc = mbedtls_x509_crt_parse_file(&crt, certfile);
 	if (rc != 0)
 	{
@@ -604,117 +468,68 @@ enum cert_check read_certificate(const char *certfile, const char *domain, const
 	// else: Print verbose information about the certificate
 	char certinfo[BUFFER_SIZE] = { 0 };
 	mbedtls_x509_crt_info(certinfo, BUFFER_SIZE, "  ", &crt);
-	puts("Certificate (X.509):\n");
+	puts("Certificate (X.509):");
 	puts(certinfo);
 
 	if(!private_key || !has_key)
 		goto end;
 
+	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+	mbedtls_pk_get_psa_attributes(&key, PSA_KEY_USAGE_DERIVE, &key_attributes);
+
 	puts("Private key:");
-	const char *keytype = mbedtls_pk_get_name(&key);
-	printf("  Type: %s\n", keytype);
-	mbedtls_pk_type_t pk_type = mbedtls_pk_get_type(&key);
-	if(pk_type == MBEDTLS_PK_RSA)
+	psa_key_type_t pk_type = psa_get_key_type(&key_attributes);
+	printf("  ID: %u\n", psa_get_key_id(&key_attributes));
+	const size_t key_bits = psa_get_key_bits(&key_attributes);
+	printf("  Keysize: %zu bits\n", key_bits);
+	printf("  Algorithm: %u\n", psa_get_key_algorithm(&key_attributes));
+	printf("  Lifetime: %u\n", psa_get_key_lifetime(&key_attributes));
+	if(PSA_KEY_TYPE_IS_RSA(pk_type))
 	{
-		mbedtls_rsa_context *rsa = mbedtls_pk_rsa(key);
-		printf("  RSA modulus: %zu bit\n", 8*mbedtls_rsa_get_len(rsa));
-		mbedtls_mpi E, N, P, Q, D;
-		mbedtls_mpi_init(&E); // E = public exponent (public)
-		mbedtls_mpi_init(&N); // N = P * Q (public)
-		mbedtls_mpi_init(&P); // P = prime factor 1 (private)
-		mbedtls_mpi_init(&Q); // Q = prime factor 2 (private)
-		mbedtls_mpi_init(&D); // D = private exponent (private)
-		mbedtls_mpi DP, DQ, QP;
-		mbedtls_mpi_init(&DP);
-		mbedtls_mpi_init(&DQ);
-		mbedtls_mpi_init(&QP);
-		if(mbedtls_rsa_export(rsa, &N, &P, &Q, &D, &E) != 0 ||
-		   mbedtls_rsa_export_crt(rsa, &DP, &DQ, &QP) != 0)
-		{
-			puts(" could not export RSA parameters\n");
-			return EXIT_FAILURE;
-		}
-		puts("  Core parameters:");
-		if(mbedtls_mpi_write_file("  Exponent:\n    E = 0x", &E, 16, NULL) != 0)
-		{
-			puts(" could not write MPI\n");
-			return EXIT_FAILURE;
-		}
-
-		if(mbedtls_mpi_write_file("  Modulus:\n    N = 0x", &N, 16, NULL) != 0)
-		{
-			puts(" could not write MPI\n");
-			return EXIT_FAILURE;
-		}
-
-		if(mbedtls_mpi_cmp_mpi(&P, &Q) >= 0)
-		{
-			if(mbedtls_mpi_write_file("  Prime factors:\n    P = 0x", &P, 16, NULL) != 0 ||
-			   mbedtls_mpi_write_file("    Q = 0x", &Q, 16, NULL) != 0)
-			{
-				puts(" could not write MPIs\n");
-				return EXIT_FAILURE;
-			}
-		}
-		else
-		{
-			if(mbedtls_mpi_write_file("  Prime factors:\n    Q = 0x", &Q, 16, NULL) != 0 ||
-			   mbedtls_mpi_write_file("\n    P = 0x", &P, 16, NULL) != 0)
-			{
-				puts(" could not write MPIs\n");
-				return EXIT_FAILURE;
-			}
-		}
-
-		if(mbedtls_mpi_write_file("  Private exponent:\n    D = 0x", &D, 16, NULL) != 0)
-		{
-			puts(" could not write MPI\n");
-			return EXIT_FAILURE;
-		}
-
-		mbedtls_mpi_free(&N);
-		mbedtls_mpi_free(&P);
-		mbedtls_mpi_free(&Q);
-		mbedtls_mpi_free(&D);
-		mbedtls_mpi_free(&E);
-
-		puts("  CRT parameters:");
-		if(mbedtls_mpi_write_file("  D mod (P-1):\n    DP = 0x", &DP, 16, NULL) != 0 ||
-		   mbedtls_mpi_write_file("  D mod (Q-1):\n    DQ = 0x", &DQ, 16, NULL) != 0 ||
-		   mbedtls_mpi_write_file("  Q^-1 mod P:\n    QP = 0x", &QP, 16, NULL) != 0)
-		{
-			puts(" could not write MPIs\n");
-			return EXIT_FAILURE;
-		}
-
-		mbedtls_mpi_free(&DP);
-		mbedtls_mpi_free(&DQ);
-		mbedtls_mpi_free(&QP);
-
+		printf("  Type: RSA (%s)\n\n", pk_type == PSA_KEY_TYPE_RSA_KEY_PAIR ? "key pair" : "public key only");
 	}
-	else if(pk_type == MBEDTLS_PK_ECKEY)
+	else if(PSA_KEY_TYPE_IS_ECC_KEY_PAIR(pk_type) || PSA_KEY_TYPE_IS_ECC_PUBLIC_KEY(pk_type))
 	{
-		mbedtls_ecp_keypair *ec = mbedtls_pk_ec(key);
-		mbedtls_ecp_curve_type ec_type = mbedtls_ecp_get_type(&ec->private_grp);
-		switch (ec_type)
+		printf("  Type: ECC (%s)\n", PSA_KEY_TYPE_IS_ECC_KEY_PAIR(pk_type) ? "key pair" : "public key only");
+		const psa_ecc_family_t ecc_family = PSA_KEY_TYPE_ECC_GET_FAMILY(pk_type);
+		switch(ecc_family)
 		{
-			case MBEDTLS_ECP_TYPE_NONE:
-				puts("  Curve type: Unknown");
+			case PSA_ECC_FAMILY_SECP_K1:
+				printf("  Curvetype: SEC Koblitz curve over prime fields (secp%zuk1)\n", key_bits);
 				break;
-			case MBEDTLS_ECP_TYPE_SHORT_WEIERSTRASS:
-				puts("  Curve type: Short Weierstrass (y^2 = x^3 + a x + b)");
+			case PSA_ECC_FAMILY_SECP_R1:
+				printf("  Curvetype: SEC random curve over prime fields (secp%zur1)\n", key_bits);
 				break;
-			case MBEDTLS_ECP_TYPE_MONTGOMERY:
-				puts("  Curve type: Montgomery (y^2 = x^3 + a x^2 + x)");
+			case PSA_ECC_FAMILY_SECP_R2:
+				printf("  Curve family: secp%zur2 is obsolete and not supported\n", key_bits);
+				break;
+			case PSA_ECC_FAMILY_SECT_K1:
+				printf("  Curvetype: SEC Koblitz curve over binary fields (sect%zuk1)\n", key_bits);
+				break;
+			case PSA_ECC_FAMILY_SECT_R1:
+				printf("  Curvetype: SEC random curve over binary fields (sect%zur1)\n", key_bits);
+				break;
+			case PSA_ECC_FAMILY_SECT_R2:
+				printf("  Curvetype: SEC additional random curve over binary fields (sect%zur2)\n", key_bits);
+				break;
+			case PSA_ECC_FAMILY_BRAINPOOL_P_R1:
+				printf("  Curvetype: Brainpool P random curve (brainpoolP%zur1)\n", key_bits);
+				break;
+			case PSA_ECC_FAMILY_MONTGOMERY:
+				printf("  Curvetype: Montgomery curve (Curve%s)\n", key_bits == 255 ? "25519" : key_bits == 448 ? "448" : "Unknown");
+				break;
+			case PSA_ECC_FAMILY_TWISTED_EDWARDS:
+				printf("  Curvetype: Twisted Edwards curve (Ed%s)\n", key_bits == 255 ? "25519" : key_bits == 448 ? "448" : "Unknown");
+				break;
+			default:
+				puts("  Curvetype: Unknown");
 				break;
 		}
-		const size_t bitlen = mbedtls_mpi_bitlen(&ec->private_d);
-		printf("  Bitlen:  %zu bit\n", bitlen);
-
-		mbedtls_mpi_write_file("  Private key:\n    D = 0x", &ec->private_d, 16, NULL);
-		mbedtls_mpi_write_file("  Public key:\n    X = 0x", &ec->MBEDTLS_PRIVATE(Q).MBEDTLS_PRIVATE(X), 16, NULL);
-		mbedtls_mpi_write_file("    Y = 0x", &ec->MBEDTLS_PRIVATE(Q).MBEDTLS_PRIVATE(Y), 16, NULL);
-		mbedtls_mpi_write_file("    Z = 0x", &ec->MBEDTLS_PRIVATE(Q).MBEDTLS_PRIVATE(Z), 16, NULL);
+		puts("");
+	}
+	else if(PSA_KEY_TYPE_IS_DH(pk_type))
+	{
+		printf("  Type: Diffie-Hellman (%s)\n\n", PSA_KEY_TYPE_IS_DH_KEY_PAIR(pk_type) ? "key pair" : "public key only");
 	}
 	else
 	{
@@ -835,22 +650,6 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 {
 	log_err("FTL was not compiled with mbedtls support");
 	return CERT_FILE_NOT_FOUND;
-}
-
-bool init_entropy(void)
-{
-	log_warn("FTL was not compiled with mbedtls support, fallback random number generator not available");
-	return false;
-}
-
-void destroy_entropy(void)
-{
-}
-
-ssize_t drbg_random(unsigned char *output, size_t len)
-{
-	log_warn("FTL was not compiled with mbedtls support, fallback random number generator not available");
-	return -1;
 }
 
 #endif

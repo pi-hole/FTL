@@ -437,10 +437,6 @@ void cleanup(const int ret)
 	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
 	close_memory_database();
 
-	// De-initialize the random number generator and entropy collector
-	log_debug(DEBUG_ANY, "Terminating: Freeing entropy collector");
-	destroy_entropy();
-
 	// Free environment variables
 	log_debug(DEBUG_ANY, "Terminating: Freeing environment variables");
 	freeEnvVars();
