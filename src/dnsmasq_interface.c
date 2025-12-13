@@ -467,17 +467,29 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
+		{
+			log_debug(DEBUG_QUERIES, "Using regex redirected A address");
 			memcpy(&addr, &redirect_addr4, sizeof(addr));
+		}
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
 		        forced_ip)
 		{
 			if(hostn && config.dns.reply.host.force4.v.b)
+			{
+				log_debug(DEBUG_QUERIES, "Using dns.reply.host.force4");
 				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
+			}
 			else if(!hostn && config.dns.reply.blocking.force4.v.b)
+			{
+				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force4");
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
+			}
 			else
+			{
+				log_debug(DEBUG_QUERIES, "Using next_iface A address");
 				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
+			}
 		}
 
 		// Debug logging
@@ -503,16 +515,28 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 		// Overwrite with IP address if requested
 		if(redirecting)
+		{
+			log_debug(DEBUG_QUERIES, "Using regex redirected AAAA address");
 			memcpy(&addr, &redirect_addr6, sizeof(addr));
+		}
 		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
 		        forced_ip)
 		{
 			if(hostn && config.dns.reply.host.force6.v.b)
+			{
+				log_debug(DEBUG_QUERIES, "Using dns.reply.host.force6");
 				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
+			}
 			else if(!hostn && config.dns.reply.blocking.force6.v.b)
+			{
+				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force6");
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
+			}
 			else
+			{
+				log_debug(DEBUG_QUERIES, "Using next_iface AAAA address");
 				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
+			}
 		}
 
 		// Debug logging
