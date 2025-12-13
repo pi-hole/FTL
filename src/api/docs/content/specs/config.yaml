@@ -252,6 +252,8 @@ components:
                       type: integer
                     upstreamBlockedTTL:
                       type: integer
+                    rrtype:
+                      type: string
                 revServers:
                   type: array
                   items:
@@ -706,6 +708,7 @@ components:
               size: 10000
               optimizer: 3600
               upstreamBlockedTTL: 86400
+              rrtype: "ANY"
             revServers:
               - "true,192.168.0.0/24,192.168.0.1,lan"
             blocking:

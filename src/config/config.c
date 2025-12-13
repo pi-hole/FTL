@@ -635,6 +635,14 @@ void initConfig(struct config *conf)
 	conf->dns.cache.upstreamBlockedTTL.d.ui = 86400;
 	conf->dns.cache.upstreamBlockedTTL.c = validate_stub; // Only type-based checking
 
+	conf->dns.cache.rrtype.k = "dns.cache.rrtype";
+	conf->dns.cache.rrtype.h = "This is dnsmasq's --cache-rr option, which allows you to define which DNS record types should be cached by PiHole. This option can take a comma-separated list of RR-types as input. The default value ANY caches all record types.";
+	conf->dns.cache.rrtype.a = cJSON_CreateStringReference("Valid DNS record types in the following form: <rrtype>[,<rrtype>...]");
+	conf->dns.cache.rrtype.t = CONF_STRING;
+	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
+	conf->dns.cache.rrtype.d.s = (char*)"ANY";
+	conf->dns.cache.rrtype.c = validate_stub; // Only type-based checking
+	
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";

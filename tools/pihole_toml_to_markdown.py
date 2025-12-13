@@ -29,10 +29,10 @@ This page documents the available options of `pihole-FTL`. They are typically ma
 
 Using the web interface, the API or the CLI is preferred as they can do error checking for you, trying to prevent any incompatible options which could prevent FTL from starting on a severely broken configuration.
 
-To edit with the command line, use the format `key.name=value`, e.g:
+To edit with the command line, use the format `--config key.name value`, e.g:
 
 ```text
-sudo pihole-FTL --config dns.dnssec=true
+sudo pihole-FTL --config dns.dnssec true
 ```
 
 !!! note "Environment Variables"
@@ -176,9 +176,9 @@ sudo pihole-FTL --config dns.dnssec=true
             if "\n" in value and value.strip().startswith("["):
                 # Flatten multi-line array to single line for CLI
                 array_str = "".join(value.split())
-                documentation.append(f"    sudo pihole-FTL --config {full_key}='{array_str}'")
+                documentation.append(f"    sudo pihole-FTL --config {full_key} '{array_str}'")
             else:
-                documentation.append(f"    sudo pihole-FTL --config {full_key}={value}")
+                documentation.append(f"    sudo pihole-FTL --config {full_key} {value}")
             documentation.append("    ```")
 
             # Environment variable example tab (for Docker Compose)

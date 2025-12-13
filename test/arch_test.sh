@@ -99,7 +99,7 @@ if [[ "${CI_ARCH}" == "linux/amd64" ]]; then
     check_machine "ELF64" "Advanced Micro Devices X86-64"
     check_static # Binary should not rely on any dynamic interpreter
     check_libs "" # No dependency on any shared library is intended
-    check_file "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped"
+    check_file "ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 else
     check_machine "ELF64" "Advanced Micro Devices X86-64"
     check_libs "[libgmp.so.10] [libidn2.so.0] [libc.musl-x86_64.so.1]"
@@ -111,7 +111,7 @@ elif [[ "${CI_ARCH}" == "linux/386" ]]; then
   check_machine "ELF32" "Intel 80386"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 32-bit LSB executable, Intel i386, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 32-bit LSB pie executable, Intel i386, version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "linux/arm/v5" ]]; then
 
@@ -131,7 +131,7 @@ elif [[ "${CI_ARCH}" == "linux/arm/v6" ]]; then
   # Alpine Builder
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 
   check_CPU_arch "v6KZ"
   # VFPv3 is backwards compatible with VFPv2
@@ -142,7 +142,7 @@ elif [[ "${CI_ARCH}" == "linux/arm/v7" ]]; then
   check_machine "ELF32" "ARM"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 
   check_CPU_arch "v7"
   check_FP_arch "VFPv3"
@@ -152,14 +152,14 @@ elif [[ "${CI_ARCH}" == "linux/arm64/v8" || "${CI_ARCH}" == "linux/arm64" ]]; th
   check_machine "ELF64" "AArch64"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 
 elif [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
 
   check_machine "ELF64" "RISC-V"
   check_static # Binary should not rely on any dynamic interpreter
   check_libs "" # No dependency on any shared library is intended
-  check_file "ELF 64-bit LSB executable, UCB RISC-V, RVC, double-float ABI, version 1 (SYSV), statically linked, with debug_info, not stripped"
+  check_file "ELF 64-bit LSB pie executable, UCB RISC-V, RVC, double-float ABI, version 1 (SYSV), static-pie linked, with debug_info, not stripped"
 
 else
 

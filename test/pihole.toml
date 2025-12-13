@@ -355,6 +355,14 @@
     #     blocked queries
     upstreamBlockedTTL = 86400
 
+    # This is dnsmasq's --cache-rr option, which allows you to define which DNS record
+    # types should be cached by PiHole. This option can take a comma-separated list of
+    # RR-types as input. The default value ANY caches all record types.
+    #
+    # Allowed values are:
+    #     Valid DNS record types in the following form: <rrtype>[,<rrtype>...]
+    rrtype = "ANY"
+
   [dns.blocking]
     # Should FTL block queries?
     #
@@ -1679,7 +1687,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 162 total entries out of which 108 entries are default
+# 163 total entries out of which 109 entries are default
 # --> 54 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

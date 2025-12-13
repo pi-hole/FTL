@@ -160,6 +160,7 @@ struct config {
 			struct conf_item size;
 			struct conf_item optimizer;
 			struct conf_item upstreamBlockedTTL;
+			struct conf_item rrtype;
 		} cache;
 		struct {
 			struct conf_item active;

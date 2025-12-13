@@ -775,9 +775,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("\n", pihole_conf);
 	}
 
-	// Add option for caching all DNS records
+	// Add option for which DNS records types to cache
 	fputs("# Cache all DNS records\n", pihole_conf);
-	fputs("cache-rr=ANY\n", pihole_conf);
+	fprintf(pihole_conf, "cache-rr=%s\n\n", conf->dns.cache.rrtype.v.s);
 	fputs("\n", pihole_conf);
 
 	// Add option for PCAP file recording
