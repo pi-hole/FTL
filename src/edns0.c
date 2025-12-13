@@ -222,7 +222,7 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 			//   8: |                           ADDRESS...                          /
 			//      +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-			union all_addr addr = {{ 0 }};
+			union all_addr addr = {};
 			const size_t addrlen = optlen - 4;
 			if(family == 1 && addrlen <= sizeof(addr.addr4.s_addr)) // IPv4
 				memcpy(&addr.addr4.s_addr, p, addrlen);

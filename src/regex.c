@@ -372,7 +372,7 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 {
 	int match_idx = -1;
 #ifdef USE_TRE_REGEX
-	regmatch_t match[1] = {{ 0 }}; // This also disables any sub-matching
+	regmatch_t match[1] = {}; // This also disables any sub-matching
 #endif
 
 	// Check if we need to recompile regex because they were changed in
