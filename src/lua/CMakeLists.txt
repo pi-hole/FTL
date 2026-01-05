@@ -80,7 +80,7 @@ endif()
 target_compile_definitions(lua PRIVATE LUA_USE_POSIX)
 
 # Set the default path that Lua uses to look for Lua libraries.
-target_compile_definitions(lua PRIVATE LUA_PATH_DEFAULT="/opt/pihole/libs/?.lua")
+target_compile_definitions(lua PRIVATE LUA_PATH_DEFAULT="${PIHOLE_INSTALL_SCRIPTDIR}/?.lua")
 
 if(LUA_DL STREQUAL "true")
     target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)

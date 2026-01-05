@@ -1,5 +1,7 @@
-# Generated binary
+# Generated binary and build artifacts
 pihole-FTL*
+# But allow template files
+!pihole-FTL*.in
 
 # Generated pihole.toml file
 pihole.toml

@@ -193,14 +193,17 @@ separate_arguments(EXTRAWARN)
 # -Wxor-used-as-pow
 
 # Do we want to compile a statically linked executable?
+# Support both CMake option and environment variable for compatibility
+option(BUILD_STATIC "Build statically linked executable" OFF)
+
+# Check environment variable for backward compatibility
 if(DEFINED ENV{STATIC})
     if($ENV{STATIC} STREQUAL "true")
-        set(STATIC true)
-    else()
-        set(STATIC false)
+        set(BUILD_STATIC ON CACHE BOOL "Build statically linked executable" FORCE)
     endif()
 endif()
-if(STATIC)
+
+if(BUILD_STATIC)
     message(STATUS "Compiling statically linked executable")
     SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
     SET(BUILD_SHARED_LIBS OFF)
@@ -305,7 +308,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>
         )
-if(STATIC)
+if(BUILD_STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
     target_link_libraries(pihole-FTL -static-libgcc -static)
@@ -319,14 +322,102 @@ set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
+# Find pkg-config for dependency checking (only needed for dynamic builds)
+if(NOT BUILD_STATIC)
+    find_package(PkgConfig REQUIRED)
+endif()
+
+# Collect all missing dependencies instead of failing immediately
+set(MISSING_DEPS "")
+
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
-find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
-find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
-find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
+if(BUILD_STATIC)
+    # For static builds, use find_library
+    find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
+    find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
+    find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
+
+    if(NOT LIBHOGWEED)
+        list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
+    endif()
+    if(NOT LIBGMP)
+        list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
+    endif()
+    if(NOT LIBNETTLE)
+        list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
+    endif()
+else()
+    # For dynamic builds, use pkg-config
+    pkg_check_modules(NETTLE nettle)
+    pkg_check_modules(HOGWEED hogweed)
+    pkg_check_modules(GMP gmp)
+
+    if(NOT NETTLE_FOUND)
+        list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
+    else()
+        set(LIBNETTLE ${NETTLE_LIBRARIES})
+        link_directories(${NETTLE_LIBRARY_DIRS})
+        include_directories(${NETTLE_INCLUDE_DIRS})
+    endif()
+
+    if(NOT HOGWEED_FOUND)
+        list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
+    else()
+        set(LIBHOGWEED ${HOGWEED_LIBRARIES})
+        link_directories(${HOGWEED_LIBRARY_DIRS})
+        include_directories(${HOGWEED_INCLUDE_DIRS})
+    endif()
+
+    if(NOT GMP_FOUND)
+        list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
+    else()
+        set(LIBGMP ${GMP_LIBRARIES})
+        link_directories(${GMP_LIBRARY_DIRS})
+        include_directories(${GMP_INCLUDE_DIRS})
+    endif()
+endif()
 
 # for IDN2 we need the idn2 library which in turn depends on the unistring library
-find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
-find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
+if(BUILD_STATIC)
+    # For static builds, use find_library
+    find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
+    find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
+
+    if(NOT LIBIDN2)
+        list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
+    endif()
+    if(NOT LIBUNISTRING)
+        list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
+    endif()
+else()
+    # For dynamic builds, use pkg-config
+    pkg_check_modules(IDN2 libidn2)
+
+    if(NOT IDN2_FOUND)
+        list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
+    else()
+        set(LIBIDN2 ${IDN2_LIBRARIES})
+        link_directories(${IDN2_LIBRARY_DIRS})
+        include_directories(${IDN2_INCLUDE_DIRS})
+    endif()
+
+    # libunistring doesn't always provide pkg-config, try both methods
+    pkg_check_modules(UNISTRING QUIET libunistring)
+    if(UNISTRING_FOUND)
+        set(LIBUNISTRING ${UNISTRING_LIBRARIES})
+        link_directories(${UNISTRING_LIBRARY_DIRS})
+        include_directories(${UNISTRING_INCLUDE_DIRS})
+        message(STATUS "Found libunistring via pkg-config")
+    else()
+        # Fallback to find_library if pkg-config not available
+        find_library(LIBUNISTRING NAMES unistring)
+        if(NOT LIBUNISTRING)
+            list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
+        else()
+            message(STATUS "Found libunistring: ${LIBUNISTRING}")
+        endif()
+    endif()
+endif()
 
 target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
 
@@ -347,6 +438,7 @@ add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
 add_subdirectory(ntp)
+add_subdirectory(scripts)
 
 find_library(LIBREADLINE NAMES libreadline${LIBRARY_SUFFIX} readline)
 find_library(LIBHISTORY NAMES libhistory${LIBRARY_SUFFIX} history)
@@ -360,26 +452,105 @@ else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
 
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
+# mbedTLS is REQUIRED for TLS support
+set(MBEDTLS_FOUND FALSE)
+
+if(BUILD_STATIC)
+    # For static builds, use find_library
+    find_library(LIBMBEDCRYPTO NAMES libmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
+    find_library(LIBMBEDX509 NAMES libmbedx509${LIBRARY_SUFFIX} mbedx509)
+    find_library(LIBMBEDTLS NAMES libmbedtls${LIBRARY_SUFFIX} mbedtls)
+
+    if(NOT LIBMBEDCRYPTO)
+        list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
+    endif()
+    if(NOT LIBMBEDX509)
+        list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
+    endif()
+    if(NOT LIBMBEDTLS)
+        list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
+    endif()
+
+    if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+        set(MBEDTLS_FOUND TRUE)
+    endif()
+else()
+    # For dynamic builds, try find_package first (MbedTLS >= 3.0 provides CMake config)
+    # However, skip CMake config in cross-compilation as the config files may contain
+    # absolute paths that don't work with the isolated sysroot
+    set(MBEDTLS_SKIP_CMAKE_CONFIG FALSE)
+    if(CMAKE_CROSSCOMPILING)
+        set(MBEDTLS_SKIP_CMAKE_CONFIG TRUE)
+        message(STATUS "Cross-compiling: using pkg-config for MbedTLS (CMake config may have absolute paths)")
+    endif()
+
+    if(NOT MBEDTLS_SKIP_CMAKE_CONFIG)
+        find_package(MbedTLS QUIET)
+
+        # Check if CMake targets are actually available
+        if(TARGET MbedTLS::mbedtls AND TARGET MbedTLS::mbedx509 AND TARGET MbedTLS::mbedcrypto)
+            # Use MbedTLS CMake targets (MbedTLS >= 3.0)
+            set(LIBMBEDTLS MbedTLS::mbedtls)
+            set(LIBMBEDX509 MbedTLS::mbedx509)
+            set(LIBMBEDCRYPTO MbedTLS::mbedcrypto)
+            set(MBEDTLS_FOUND TRUE)
+            message(STATUS "Found MbedTLS via CMake config")
+        endif()
+    endif()
+
+    # Fallback to pkg-config if CMake config was skipped or failed
+    if(NOT MBEDTLS_FOUND)
+        # pkg-config is sysroot-aware via PKG_CONFIG_SYSROOT_DIR
+        pkg_check_modules(MBEDTLS mbedtls)
+        pkg_check_modules(MBEDX509 mbedx509)
+        pkg_check_modules(MBEDCRYPTO mbedcrypto)
+
+        if(NOT MBEDTLS_FOUND)
+            list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
+        endif()
+        if(NOT MBEDX509_FOUND)
+            list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
+        endif()
+        if(NOT MBEDCRYPTO_FOUND)
+            list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
+        endif()
+
+        if(MBEDTLS_FOUND AND MBEDX509_FOUND AND MBEDCRYPTO_FOUND)
+            set(LIBMBEDTLS ${MBEDTLS_LIBRARIES})
+            set(LIBMBEDX509 ${MBEDX509_LIBRARIES})
+            set(LIBMBEDCRYPTO ${MBEDCRYPTO_LIBRARIES})
+
+            link_directories(${MBEDTLS_LIBRARY_DIRS} ${MBEDX509_LIBRARY_DIRS} ${MBEDCRYPTO_LIBRARY_DIRS})
+            include_directories(${MBEDTLS_INCLUDE_DIRS} ${MBEDX509_INCLUDE_DIRS} ${MBEDCRYPTO_INCLUDE_DIRS})
+            set(MBEDTLS_FOUND TRUE)
+            message(STATUS "Found MbedTLS via pkg-config")
+        endif()
+    endif()
 endif()
 
-find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
-find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
-find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
-if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
-    # Enable TLS support in civetweb if mbedTLS is available
-    message(STATUS "Building FTL with TLS support: YES")
-    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
-    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
-    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
-    # Link against the mbedTLS libraries, the order is important (!)
-    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
-else()
-    # Disable TLS support in civetweb if mbedTLS is not available
-    message(STATUS "Building FTL with TLS support: NO")
-    target_compile_definitions(civetweb PRIVATE NO_SSL)
+# Check if any required dependencies are missing
+if(MISSING_DEPS)
+    list(REMOVE_DUPLICATES MISSING_DEPS)
+    string(REPLACE ";" "\n  - " DEPS_LIST "${MISSING_DEPS}")
+    message(FATAL_ERROR
+        "\n============================================================\n"
+        "  Missing required dependencies:\n\n"
+        "  - ${DEPS_LIST}\n"
+        "\n"
+        "  Please install the development packages for these libraries.\n"
+        "  See INSTALLATION.md for details.\n"
+        "============================================================\n"
+    )
 endif()
+
+# Enable TLS support in civetweb (mbedTLS is always required now)
+message(STATUS "Building FTL with TLS support: YES (required)")
+target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
+target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
+target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
+
+# Link against the mbedTLS libraries, the order is important (!)
+target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
 
 # After finishing building the FTL binary, we append the sha256sum of the binary
 # in raw form to itself and print the checksum to the console

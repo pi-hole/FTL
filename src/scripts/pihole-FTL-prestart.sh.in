@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+
+# Pi-hole directories from CMake configuration
+PIHOLE_SCRIPTDIR="@PIHOLE_INSTALL_FULL_SCRIPTDIR@"
+PIHOLE_SYSCONFDIR="@PIHOLE_INSTALL_SYSCONFDIR@"
+PIHOLE_LOGDIR="@PIHOLE_INSTALL_FULL_LOGDIR@"
+PIHOLE_RUNDIR="@PIHOLE_INSTALL_FULL_RUNDIR@"
+
+# Source pihole-FTL-utils.sh for getFTLConfigValue()
+# shellcheck source=pihole-FTL-utils.sh.in
+. "${PIHOLE_SCRIPTDIR}/pihole-FTL-utils.sh"
+
+# Get file paths from FTL config (with fallbacks to configured defaults)
+FTL_PID_FILE="$(getFTLConfigValue files.pid)"
+FTL_LOG_FILE="$(getFTLConfigValue files.log.ftl)"
+PIHOLE_LOG_FILE="$(getFTLConfigValue files.log.dnsmasq)"
+WEBSERVER_LOG_FILE="$(getFTLConfigValue files.log.webserver)"
+FTL_PID_FILE="${FTL_PID_FILE:-${PIHOLE_RUNDIR}/pihole-FTL.pid}"
+FTL_LOG_FILE="${FTL_LOG_FILE:-${PIHOLE_LOGDIR}/FTL.log}"
+PIHOLE_LOG_FILE="${PIHOLE_LOG_FILE:-${PIHOLE_LOGDIR}/pihole.log}"
+WEBSERVER_LOG_FILE="${WEBSERVER_LOG_FILE:-${PIHOLE_LOGDIR}/webserver.log}"
+
+# Ensure that permissions are set so that pihole-FTL can edit all necessary files
+mkdir -p "${PIHOLE_LOGDIR}"
+chown -R pihole:pihole "${PIHOLE_SYSCONFDIR}" "${PIHOLE_LOGDIR}"
+
+# Allow all users read version file (and use pihole -v)
+touch "${PIHOLE_SYSCONFDIR}/versions"
+chmod 0644 "${PIHOLE_SYSCONFDIR}/versions"
+
+# Allow pihole to access subdirs in config/log dirs (sets execution bit on dirs)
+find "${PIHOLE_SYSCONFDIR}" "${PIHOLE_LOGDIR}" -type d -exec chmod 0755 {} +
+# Set all files (except TLS-related ones) to u+rw g+r
+find "${PIHOLE_SYSCONFDIR}" "${PIHOLE_LOGDIR}" -type f ! \( -name '*.pem' -o -name '*.crt' \) -exec chmod 0640 {} +
+# Set TLS-related files to a more restrictive u+rw *only* (they may contain private keys)
+find "${PIHOLE_SYSCONFDIR}" -type f \( -name '*.pem' -o -name '*.crt' \) -exec chmod 0600 {} +
+
+# Logrotate config file needs to be owned by root
+chown root:root "${PIHOLE_SYSCONFDIR}/logrotate"
+
+# Touch files to ensure they exist (create if non-existing, preserve if existing)
+[ -f "${FTL_PID_FILE}" ] || install -D -m 644 -o pihole -g pihole /dev/null "${FTL_PID_FILE}"
+[ -f "${FTL_LOG_FILE}" ] || install -m 640 -o pihole -g pihole /dev/null "${FTL_LOG_FILE}"
+[ -f "${PIHOLE_LOG_FILE}" ] || install -m 640 -o pihole -g pihole /dev/null "${PIHOLE_LOG_FILE}"
+[ -f "${WEBSERVER_LOG_FILE}" ] || install -m 640 -o pihole -g pihole /dev/null "${WEBSERVER_LOG_FILE}"
+[ -f "${PIHOLE_SYSCONFDIR}/dhcp.leases" ] || install -m 644 -o pihole -g pihole /dev/null "${PIHOLE_SYSCONFDIR}/dhcp.leases"

@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+
+# Pi-hole directories from CMake configuration
+PIHOLE_SCRIPTDIR="@PIHOLE_INSTALL_FULL_SCRIPTDIR@"
+PIHOLE_RUNDIR="@PIHOLE_INSTALL_FULL_RUNDIR@"
+
+# Source pihole-FTL-utils.sh for getFTLConfigValue()
+# shellcheck source=pihole-FTL-utils.sh.in
+. "${PIHOLE_SCRIPTDIR}/pihole-FTL-utils.sh"
+
+# Get file paths from FTL config
+FTL_PID_FILE="$(getFTLConfigValue files.pid)"
+FTL_PID_FILE="${FTL_PID_FILE:-${PIHOLE_RUNDIR}/pihole-FTL.pid}"
+
+# Cleanup
+rm -f "${PIHOLE_RUNDIR}/pihole/FTL.sock" /dev/shm/FTL-* "${FTL_PID_FILE}"

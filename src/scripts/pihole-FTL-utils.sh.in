@@ -1,0 +1,81 @@
+#!/usr/bin/env sh
+# Pi-hole FTL utility functions for systemd service scripts
+# This file is auto-generated from pihole-FTL-utils.sh.in by CMake
+
+# ANSI escape codes for formatted output
+if [ -t 1 ]; then
+    COL_NC='\e[0m' # No Color
+    COL_RED='\e[1;31m'
+    COL_GREEN='\e[1;32m'
+    TICK="[${COL_GREEN}✓${COL_NC}]"
+    CROSS="[${COL_RED}✗${COL_NC}]"
+else
+    COL_NC=''
+    COL_RED=''
+    COL_GREEN=''
+    TICK="[✓]"
+    CROSS="[✗]"
+fi
+
+#######################
+# Returns FTL's PID based on the content of the pihole-FTL.pid file
+#
+# Takes one argument: path to pihole-FTL.pid
+# Example: getFTLPID "/run/pihole-FTL.pid"
+#######################
+getFTLPID() {
+    local FTL_PID_FILE="${1}"
+    local FTL_PID
+
+    if [ -s "${FTL_PID_FILE}" ]; then
+        # -s: FILE exists and has a size greater than zero
+        FTL_PID="$(cat "${FTL_PID_FILE}")"
+        # Exploit prevention: unset the variable if there is malicious content
+        # Verify that the value read from the file is numeric
+        expr "${FTL_PID}" : "[^[:digit:]]" > /dev/null && unset FTL_PID
+    fi
+
+    # If FTL is not running, or the PID file contains malicious stuff, substitute
+    # negative PID to signal this
+    FTL_PID=${FTL_PID:=-1}
+    echo "${FTL_PID}"
+}
+
+#######################
+# Returns value from FTL's config file using pihole-FTL --config
+#
+# Takes one argument: key
+# Example: getFTLConfigValue dns.piholePTR
+#######################
+getFTLConfigValue() {
+    # Redirect stdin from /dev/null to avoid pihole-FTL assuming this is an
+    # interactive command returning colored output.
+    @CMAKE_INSTALL_FULL_BINDIR@/pihole-FTL --config -q "${1}" </dev/null
+}
+
+#######################
+# Sets value in FTL's config file using pihole-FTL --config
+#
+# Takes two arguments: key and value
+# Example: setFTLConfigValue dns.piholePTR PI.HOLE
+#
+# Note: for complex values such as dns.upstreams, wrap the value in single quotes:
+# setFTLConfigValue dns.upstreams '[ "8.8.8.8" , "8.8.4.4" ]'
+#######################
+setFTLConfigValue() {
+    local err
+    { @CMAKE_INSTALL_FULL_BINDIR@/pihole-FTL --config "${1}" "${2}" >/dev/null; err="$?"; } || true
+
+    case $err in
+    0) ;;
+    5)
+        # FTL returns 5 if the value was set by an environment variable and is therefore read-only
+        printf "  %s %s set by environment variable. Please unset it to use this function\n" "${CROSS}" "${1}"
+        exit 5
+        ;;
+    *)
+        printf "  %s Failed to set %s. Try with sudo power\n" "${CROSS}" "${1}"
+        exit 1
+        ;;
+    esac
+}
