@@ -1,0 +1,23 @@
+# PiholeFTLConfig.cmake
+# CMake configuration file for Pi-hole FTL
+# Provides installation paths for integrating FTL with other Pi-hole components
+
+@PACKAGE_INIT@
+
+# Installation paths
+set(PiholeFTL_BINARY "@PACKAGE_PIHOLE_FTL_BINARY@")
+set(PiholeFTL_SCRIPTS_DIR "@PACKAGE_PIHOLE_FTL_SCRIPTS_DIR@")
+set(PiholeFTL_SYSTEMD_UNIT_DIR "@PACKAGE_PIHOLE_FTL_SYSTEMD_UNIT_DIR@")
+
+# Version information
+set(PiholeFTL_VERSION "@PROJECT_VERSION@")
+set(PiholeFTL_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@")
+set(PiholeFTL_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
+set(PiholeFTL_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
+
+# Verify that all required paths exist (optional, for runtime checks)
+check_required_components(PiholeFTL)
+
+# Legacy variable names for backward compatibility (if needed by pi-hole core)
+set(PIHOLE_FTL_BINARY "${PiholeFTL_BINARY}")
+set(PIHOLE_FTL_SCRIPTS_DIR "${PiholeFTL_SCRIPTS_DIR}")

@@ -1,0 +1,15 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=@CMAKE_INSTALL_PREFIX@
+bindir=@CMAKE_INSTALL_FULL_BINDIR@
+libexecdir=@CMAKE_INSTALL_FULL_LIBEXECDIR@
+sysconfdir=@PIHOLE_INSTALL_SYSCONFDIR@
+localstatedir=@CMAKE_INSTALL_FULL_LOCALSTATEDIR@
+
+# Pi-hole FTL specific paths
+ftl_binary=${bindir}/pihole-FTL
+ftl_scripts_dir=@PIHOLE_INSTALL_FULL_SCRIPTDIR@
+ftl_systemd_unit_dir=@SYSTEMD_UNIT_DIR@
+
+Name: pihole-ftl
+Description: Pi-hole FTL (Faster Than Light) - Network-wide ad blocking DNS server
+Version: @PROJECT_VERSION@

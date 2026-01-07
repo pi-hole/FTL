@@ -80,8 +80,6 @@ message(STATUS "  Run:      ${PIHOLE_INSTALL_RUNDIR}")
 # Optional: Make systemd installation optional
 option(INSTALL_SYSTEMD "Install systemd service unit" ON)
 
-# TODO: Add CMake Config File or pkg-config
-
 # Generate version.c from git information
 # This is done at build time to ensure version info is always up-to-date
 add_custom_target(
@@ -95,3 +93,58 @@ add_custom_target(
 
 add_subdirectory(src)
 add_subdirectory(maint)
+
+# ============================================================================
+# CMake Config and pkg-config File Generation
+# ============================================================================
+include(CMakePackageConfigHelpers)
+
+# Prepare variables for config files
+# Note: SYSTEMD_UNIT_DIR is set in maint/systemd/CMakeLists.txt
+# We need to defer its evaluation or set a default here
+if(NOT DEFINED SYSTEMD_UNIT_DIR)
+        if(CMAKE_INSTALL_PREFIX MATCHES "^/opt/")
+                set(SYSTEMD_UNIT_DIR "${CMAKE_INSTALL_SYSCONFDIR}/systemd/system")
+        else()
+                set(SYSTEMD_UNIT_DIR "${CMAKE_INSTALL_PREFIX}/lib/systemd/system")
+        endif()
+endif()
+
+set(PIHOLE_FTL_BINARY "${CMAKE_INSTALL_BINDIR}/pihole-FTL")
+set(PIHOLE_FTL_SCRIPTS_DIR "${PIHOLE_INSTALL_SCRIPTDIR}")
+set(PIHOLE_FTL_SYSTEMD_UNIT_DIR "${SYSTEMD_UNIT_DIR}")
+
+# Generate CMake Config File
+configure_package_config_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/PiholeFTLConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/PiholeFTLConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/PiholeFTL
+        PATH_VARS PIHOLE_FTL_BINARY PIHOLE_FTL_SCRIPTS_DIR PIHOLE_FTL_SYSTEMD_UNIT_DIR
+)
+
+# Generate CMake Config Version File
+write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/PiholeFTLConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+)
+
+# Generate pkg-config File
+# Note: Uses CMAKE_INSTALL_FULL_* variables for absolute paths, required by pkg-config spec
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/pihole-ftl.pc.in ${CMAKE_CURRENT_BINARY_DIR}/pihole-ftl.pc @ONLY)
+
+# Install CMake Config Files
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/PiholeFTLConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/PiholeFTLConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/PiholeFTL
+        COMPONENT development
+)
+
+# Install pkg-config File
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pihole-ftl.pc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+        COMPONENT development
+)
+
+message(STATUS "Config files will be installed:")
+message(STATUS "  CMake:      ${CMAKE_INSTALL_LIBDIR}/cmake/PiholeFTL/")
+message(STATUS "  pkg-config: ${CMAKE_INSTALL_LIBDIR}/pkgconfig/pihole-ftl.pc")
