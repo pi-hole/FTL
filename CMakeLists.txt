@@ -14,7 +14,14 @@
 cmake_minimum_required(VERSION 3.21)
 set(CMAKE_C_STANDARD 17)
 
-project(PIHOLE_FTL C)
+# Determine project version from git tags by including gen_version.cmake
+# This avoids code duplication - the tag detection logic is centralized in gen_version.cmake
+set(GEN_VERSION_CONFIGURE_MODE TRUE)
+include(${CMAKE_SOURCE_DIR}/src/gen_version.cmake)
+
+project(PIHOLE_FTL VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH} LANGUAGES C)
+
+message(STATUS "Project version: ${PROJECT_VERSION} (from git tag: ${GIT_TAG})")
 
 set(DNSMASQ_VERSION pi-hole-v2.92rc1)
 
@@ -74,6 +81,15 @@ message(STATUS "  Run:      ${PIHOLE_INSTALL_RUNDIR}")
 option(INSTALL_SYSTEMD "Install systemd service unit" ON)
 
 # TODO: Add CMake Config File or pkg-config
+
+# Generate version.c from git information
+# This is done at build time to ensure version info is always up-to-date
+add_custom_target(
+        gen_version ALL
+        COMMAND ${CMAKE_COMMAND} -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -P ${CMAKE_SOURCE_DIR}/src/gen_version.cmake
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src
+        BYPRODUCTS ${CMAKE_SOURCE_DIR}/src/version.c
+        COMMENT "Generating version.c using gen_version.cmake")
 
 add_subdirectory(src)
 add_subdirectory(maint)
