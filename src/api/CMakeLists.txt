@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         2fa.c
         action.c
         api.h
@@ -31,7 +32,7 @@ set(sources
         teleporter.c
         theme.c
         theme.h
-        )
+)
 
 add_library(api OBJECT ${sources})
 target_compile_options(api PRIVATE ${EXTRAWARN})

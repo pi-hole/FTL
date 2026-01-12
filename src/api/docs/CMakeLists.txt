@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         hex/index_html.h
         hex/index_css.h
         hex/pi-hole_js.h
@@ -39,7 +40,7 @@ set(sources
         hex/specs/stats_yaml.h
         hex/specs/teleporter_yaml.h
         docs.c
-        )
+)
 
 # Create relevant directories for processed content
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex)
@@ -51,16 +52,19 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/external)
 find_program(RESOURCE_COMPILER xxd)
 file(GLOB_RECURSE COMPILED_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/content" "content/*")
 foreach(INPUT_FILE ${COMPILED_RESOURCES})
-    set(IN ${CMAKE_CURRENT_SOURCE_DIR}/content/${INPUT_FILE})
-    string(REPLACE "." "_" INPUT_FILE_MODIFIED ${INPUT_FILE})
-    string(REPLACE "/" "_" VARIABLE_NAME ${INPUT_FILE})
-    set(OUTPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/hex/${INPUT_FILE_MODIFIED}.h)
-    add_custom_command(
-        OUTPUT hex/${INPUT_FILE_MODIFIED}.h
-        COMMAND ${RESOURCE_COMPILER} -iC -n ${VARIABLE_NAME} - < ${IN} | sed "s/unsigned /static const unsigned /" > ${OUTPUT_FILE}
-        COMMENT "Compiling ${INPUT_FILE}"
-        VERBATIM)
-    list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
+        set(IN ${CMAKE_CURRENT_SOURCE_DIR}/content/${INPUT_FILE})
+        string(REPLACE "." "_" INPUT_FILE_MODIFIED ${INPUT_FILE})
+        string(REPLACE "/" "_" VARIABLE_NAME ${INPUT_FILE})
+        set(OUTPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/hex/${INPUT_FILE_MODIFIED}.h)
+        add_custom_command(
+                OUTPUT hex/${INPUT_FILE_MODIFIED}.h
+                COMMAND
+                        ${RESOURCE_COMPILER} -iC -n ${VARIABLE_NAME} - < ${IN} | sed
+                        "s/unsigned /static const unsigned /" > ${OUTPUT_FILE}
+                COMMENT "Compiling ${INPUT_FILE}"
+                VERBATIM
+        )
+        list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
 endforeach()
 
 add_library(api_docs OBJECT ${sources})

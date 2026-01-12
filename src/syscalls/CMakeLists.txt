@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         accept.c
         asprintf.c
         calloc.c
@@ -32,7 +33,7 @@ set(sources
         vsnprintf.c
         vsprintf.c
         write.c
-        )
+)
 
 add_library(syscalls OBJECT ${sources})
 target_compile_options(syscalls PRIVATE ${EXTRAWARN})

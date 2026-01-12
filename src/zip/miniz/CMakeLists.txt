@@ -8,10 +8,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
-        miniz.c
-        miniz.h
-)
+set(sources miniz.c miniz.h)
 
 add_library(miniz OBJECT ${sources})
 target_compile_options(miniz PRIVATE -Wno-padded -Wno-type-limits)

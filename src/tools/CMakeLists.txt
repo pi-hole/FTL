@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(tools_sources
+set(
+        tools_sources
         arp-scan.c
         arp-scan.h
         dhcp-discover.c
@@ -19,7 +20,7 @@ set(tools_sources
         netlink_consts.h
         netlink.c
         netlink.h
-        )
+)
 
 add_library(tools OBJECT ${tools_sources})
 target_compile_options(tools PRIVATE "${EXTRAWARN}")

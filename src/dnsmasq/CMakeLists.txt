@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         arp.c
         auth.c
         blockdata.c
@@ -59,14 +60,17 @@ set(sources
         tftp.c
         ubus.c
         util.c
-        )
+)
 
 add_library(dnsmasq OBJECT ${sources})
 target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\")
 target_compile_definitions(dnsmasq PRIVATE CONFFILE=\"/etc/pihole/dnsmasq.conf\")
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized -Wno-sign-compare)
-elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(dnsmasq PRIVATE -Wno-gnu-variable-sized-type-not-at-end -Wno-sign-compare -Wno-deprecated-non-prototype)
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized -Wno-sign-compare)
+elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(
+                dnsmasq
+                PRIVATE -Wno-gnu-variable-sized-type-not-at-end -Wno-sign-compare -Wno-deprecated-non-prototype
+        )
 endif()
 target_include_directories(dnsmasq PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

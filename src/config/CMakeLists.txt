@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         cli.c
         cli.h
         config.c
@@ -35,7 +36,7 @@ set(sources
         toml_helper.h
         validator.c
         validator.h
-        )
+)
 
 add_library(config OBJECT ${sources})
 

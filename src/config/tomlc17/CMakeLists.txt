@@ -8,10 +8,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
-        tomlc17.c
-        tomlc17.h
-        )
+set(sources tomlc17.c tomlc17.h)
 
 add_library(tomlc17 OBJECT ${sources})
 

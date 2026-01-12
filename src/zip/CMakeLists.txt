@@ -8,14 +8,15 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         gzip.c
         gzip.h
         tar.c
         tar.h
         teleporter.c
         teleporter.h
-        )
+)
 
 add_library(zip OBJECT ${sources})
 target_compile_options(zip PRIVATE)

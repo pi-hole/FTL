@@ -1,11 +1,9 @@
-set(ftl_sources
-        ftl_lua.c
-        ftl_lua.h
-)
+set(ftl_sources ftl_lua.c ftl_lua.h)
 
 add_library(ftl_lua OBJECT ${ftl_sources})
 
-set(sources
+set(
+        sources
         lapi.c
         lapi.h
         lauxlib.c
@@ -67,12 +65,12 @@ set(sources
         lvm.h
         lzio.c
         lzio.h
-        )
+)
 
 add_library(lua OBJECT ${sources})
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
-    target_compile_options(ftl_lua PRIVATE -Wno-unused-value ${EXTRAWARN})
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(lua PRIVATE -Wno-maybe-uninitialized -Wno-unused-variable -Wno-unused-value)
+        target_compile_options(ftl_lua PRIVATE -Wno-unused-value ${EXTRAWARN})
 endif()
 
 # LUA_USE_POSIX: ensures recommended POSIX functions are used instead of
@@ -83,7 +81,7 @@ target_compile_definitions(lua PRIVATE LUA_USE_POSIX)
 target_compile_definitions(lua PRIVATE LUA_PATH_DEFAULT="${PIHOLE_INSTALL_SCRIPTDIR}/?.lua")
 
 if(LUA_DL STREQUAL "true")
-    target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)
+        target_compile_definitions(lua PRIVATE LUA_USE_DLOPEN)
 endif()
 
 target_include_directories(lua PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/lua)

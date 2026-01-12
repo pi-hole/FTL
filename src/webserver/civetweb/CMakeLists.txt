@@ -8,14 +8,15 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         civetweb.c
         civetweb.h
         handle_form.inl
         md5.inl
         sha1.inl
         timer.inl
-        )
+)
 
 add_library(civetweb OBJECT ${sources})
 target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused-variable)
@@ -25,12 +26,10 @@ target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
 # TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
-target_compile_definitions(civetweb PRIVATE NO_CGI
-                                            NO_DLOPEN
-                                            NO_SSL_DL
-                                            USE_IPV6
-                                            USE_LUA
-                                            TIMER_RESOLUTION=1000)
+target_compile_definitions(
+        civetweb
+        PRIVATE NO_CGI NO_DLOPEN NO_SSL_DL USE_IPV6 USE_LUA TIMER_RESOLUTION=1000
+)
 
 include_directories(${PROJECT_SOURCE_DIR}/src/lua /usr/local/include)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)

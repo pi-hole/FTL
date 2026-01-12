@@ -8,10 +8,7 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
-        cJSON.c
-        cJSON.h
-        )
+set(sources cJSON.c cJSON.h)
 
 add_library(cJSON OBJECT ${sources})
 target_compile_options(cJSON PRIVATE)

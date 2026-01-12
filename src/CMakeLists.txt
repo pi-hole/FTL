@@ -9,17 +9,17 @@
 # Please see LICENSE file for your rights under this license.
 
 # Default to a release with debug info build
-if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
-    if (NOT CMAKE_BUILD_TYPE)
-        set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "" FORCE)
-    endif()
+if(NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
+        if(NOT CMAKE_BUILD_TYPE)
+                set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "" FORCE)
+        endif()
 endif()
 
 # Do not add run time path information
 # This ensures CMake does not add rpath information to the binary and
 # subsequently strip it from the binary during install causing the binary
 # validation to fail. RPATH is not needed for the FTL binary
-SET(CMAKE_SKIP_RPATH TRUE)
+set(CMAKE_SKIP_RPATH TRUE)
 
 # Put runtime output, i.e. pihole-FTL, in the root of the build dir
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
@@ -42,7 +42,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_MAX_PREPARE_RETRY=200: This option sets the maximum number of automatic re-preparation attempts that can occur after encountering a schema change. This can be caused by running ANALYZE which is done periodically by FTL.
 # SQLITE_ENABLE_CARRAY: Enable the carray virtual table module
 # SQLITE_ENABLE_PERCENTILE: Enable the percentile aggregate function
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=1 -DSQLITE_DEFAULT_CACHE_SIZE=16384 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_H -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=0 -DSQLITE_MAX_PREPARE_RETRY=200 -DSQLITE_ENABLE_CARRAY=1 -DSQLITE_ENABLE_PERCENTILE=1")
+set(
+        SQLITE_DEFINES
+        "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=1 -DSQLITE_DEFAULT_CACHE_SIZE=16384 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_H -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=0 -DSQLITE_MAX_PREPARE_RETRY=200 -DSQLITE_ENABLE_CARRAY=1 -DSQLITE_ENABLE_PERCENTILE=1"
+)
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -58,9 +61,12 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,now: Disable lazy binding
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
-    set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set(
+                HARDENING_FLAGS
+                "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common"
+        )
+        set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 endif()
 
 # -Wall: This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros. This also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
@@ -69,7 +75,9 @@ endif()
 set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 
 # Extra warning flags we apply only to the FTL part of the code (used not for foreign code such as dnsmasq and SQLite3)
-set(EXTRAWARN_GCC6 "-Werror \
+set(
+        EXTRAWARN_GCC6
+        "-Werror \
                     -Waddress \
                     -Wlogical-op \
                     -Wmissing-field-initializers \
@@ -107,22 +115,28 @@ set(EXTRAWARN_GCC6 "-Werror \
                     -Wdisabled-optimization \
                     -Wpointer-sign \
                     -Wstack-protector \
-                    -Woverlength-strings")
+                    -Woverlength-strings"
+)
 
 # Extra warnings flags available only in GCC 7 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 7 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 7)
-    set(EXTRAWARN_GCC7 "-Wformat-overflow=2 \
+        set(
+                EXTRAWARN_GCC7
+                "-Wformat-overflow=2 \
                         -Wformat-truncation=2 \
                         -Wstringop-overflow=4 \
                         -Walloc-zero \
-                        -Wint-in-bool-context")
+                        -Wint-in-bool-context"
+        )
 else()
-    set(EXTRAWARN_GCC7 "")
+        set(EXTRAWARN_GCC7 "")
 endif()
 
 # Extra warnings flags available only in GCC 8 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 8)
-    set(EXTRAWARN_GCC8 "-Wduplicated-cond \
+        set(
+                EXTRAWARN_GCC8
+                "-Wduplicated-cond \
                         -Wduplicated-branches \
                         -Wcast-align=strict \
                         -Wlogical-not-parentheses \
@@ -132,9 +146,10 @@ if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8 OR CMAKE_C_COMPILER_VERSION VERSION_
                         -Wsuggest-attribute=const \
                         -Wsuggest-attribute=malloc \
                         -Wsuggest-attribute=format \
-                        -Wsuggest-attribute=cold")
+                        -Wsuggest-attribute=cold"
+        )
 else()
-    set(EXTRAWARN_GCC8 "")
+        set(EXTRAWARN_GCC8 "")
 endif()
 
 # Extra warnings flags available only in GCC 9 and higher
@@ -149,28 +164,36 @@ endif()
 
 # Extra warnings flags available only in GCC 12 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 12 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 12)
-set(EXTRAWARN_GCC12 "-Wbidi-chars \
-                     -Warray-compare")
+        set(
+                EXTRAWARN_GCC12
+                "-Wbidi-chars \
+                     -Warray-compare"
+        )
 else()
-set(EXTRAWARN_GCC12 "")
+        set(EXTRAWARN_GCC12 "")
 endif()
 
 # Extra warnings flags available only in GCC 13 and higher
 if(CMAKE_C_COMPILER_VERSION VERSION_EQUAL 13 OR CMAKE_C_COMPILER_VERSION VERSION_GREATER 13)
-set(EXTRAWARN_GCC13 "-Wenum-int-mismatch")
+        set(EXTRAWARN_GCC13 "-Wenum-int-mismatch")
 else()
-set(EXTRAWARN_GCC13 "")
+        set(EXTRAWARN_GCC13 "")
 endif()
 
 # Set extrawarn flags if CC is GCC
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-   set(EXTRAWARN "${EXTRAWARN_GCC6} \
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set(
+                EXTRAWARN
+                "${EXTRAWARN_GCC6} \
                   ${EXTRAWARN_GCC7} \
                   ${EXTRAWARN_GCC8} \
                   ${EXTRAWARN_GCC12} \
-                  ${EXTRAWARN_GCC13}")
-elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    set(EXTRAWARN "
+                  ${EXTRAWARN_GCC13}"
+        )
+elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        set(
+                EXTRAWARN
+                "
                    -Werror \
                    -Wnewline-eof \
                    -Wno-dangling-else \
@@ -178,10 +201,11 @@ elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
                    -Wno-gnu-variable-sized-type-not-at-end \
                    -Wno-declaration-after-statement \
                    -Wno-reserved-identifier \
-                   -Wno-reserved-macro-identifier")
+                   -Wno-reserved-macro-identifier"
+        )
 else()
-    message(WARNING "Unknown compiler, not setting warnings flags")
-    set(EXTRAWARN "")
+        message(WARNING "Unknown compiler, not setting warnings flags")
+        set(EXTRAWARN "")
 endif()
 
 # Remove extra spaces from EXTRAWARN
@@ -198,34 +222,38 @@ option(BUILD_STATIC "Build statically linked executable" OFF)
 
 # Check environment variable for backward compatibility
 if(DEFINED ENV{STATIC})
-    if($ENV{STATIC} STREQUAL "true")
-        set(BUILD_STATIC ON CACHE BOOL "Build statically linked executable" FORCE)
-    endif()
+        if($ENV{STATIC} STREQUAL "true")
+                set(BUILD_STATIC ON CACHE BOOL "Build statically linked executable" FORCE)
+        endif()
 endif()
 
 if(BUILD_STATIC)
-    message(STATUS "Compiling statically linked executable")
-    SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-    SET(BUILD_SHARED_LIBS OFF)
+        message(STATUS "Compiling statically linked executable")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+        set(BUILD_SHARED_LIBS OFF)
 else()
-    message(STATUS "Compiling dynamically linked executable")
+        message(STATUS "Compiling dynamically linked executable")
 endif()
 # -pie -fPIE: (Dynamic) position independent executable
 
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
-set(CMAKE_C_FLAGS "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
+set(
+        CMAKE_C_FLAGS
+        "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}"
+)
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} -g3")
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
 
-set(sources
+set(
+        sources
         args.c
         args.h
         capabilities.c
@@ -271,7 +299,7 @@ set(sources
         vector.h
         version.c
         version.h
-        )
+)
 
 # version.c is generated by gen_version.cmake (see main CMakeLists.txt)
 
@@ -281,7 +309,8 @@ target_compile_definitions(core PRIVATE DNSMASQ_VERSION=\"${DNSMASQ_VERSION}\")
 target_include_directories(core PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_dependencies(core gen_version)
 
-add_executable(pihole-FTL
+add_executable(
+        pihole-FTL
         $<TARGET_OBJECTS:core>
         $<TARGET_OBJECTS:api>
         $<TARGET_OBJECTS:api_docs>
@@ -301,16 +330,16 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>
-        )
+)
 if(BUILD_STATIC)
-    set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
-    set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static)
-    set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
+        set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
+        target_link_libraries(pihole-FTL -static-libgcc -static)
+        set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
-    find_library(LIBMATH m)
-    target_link_libraries(pihole-FTL ${LIBMATH})
-    set(LIBRARY_SUFFIX "")
+        find_library(LIBMATH m)
+        target_link_libraries(pihole-FTL ${LIBMATH})
+        set(LIBRARY_SUFFIX "")
 endif()
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -318,7 +347,7 @@ find_package(Threads REQUIRED)
 
 # Find pkg-config for dependency checking (only needed for dynamic builds)
 if(NOT BUILD_STATIC)
-    find_package(PkgConfig REQUIRED)
+        find_package(PkgConfig REQUIRED)
 endif()
 
 # Collect all missing dependencies instead of failing immediately
@@ -326,98 +355,107 @@ set(MISSING_DEPS "")
 
 # for DNSSEC we need the nettle (+ hogweed) crypto and the gmp math libraries
 if(BUILD_STATIC)
-    # For static builds, use find_library
-    find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
-    find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
-    find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
+        # For static builds, use find_library
+        find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/local/lib64)
+        find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
+        find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 
-    if(NOT LIBHOGWEED)
-        list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
-    endif()
-    if(NOT LIBGMP)
-        list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
-    endif()
-    if(NOT LIBNETTLE)
-        list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
-    endif()
+        if(NOT LIBHOGWEED)
+                list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
+        endif()
+        if(NOT LIBGMP)
+                list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
+        endif()
+        if(NOT LIBNETTLE)
+                list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
+        endif()
 else()
-    # For dynamic builds, use pkg-config
-    pkg_check_modules(NETTLE nettle)
-    pkg_check_modules(HOGWEED hogweed)
-    pkg_check_modules(GMP gmp)
+        # For dynamic builds, use pkg-config
+        pkg_check_modules(NETTLE nettle)
+        pkg_check_modules(HOGWEED hogweed)
+        pkg_check_modules(GMP gmp)
 
-    if(NOT NETTLE_FOUND)
-        list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
-    else()
-        set(LIBNETTLE ${NETTLE_LIBRARIES})
-        link_directories(${NETTLE_LIBRARY_DIRS})
-        include_directories(${NETTLE_INCLUDE_DIRS})
-    endif()
+        if(NOT NETTLE_FOUND)
+                list(APPEND MISSING_DEPS "nettle - Nettle cryptographic library (DNSSEC)")
+        else()
+                set(LIBNETTLE ${NETTLE_LIBRARIES})
+                link_directories(${NETTLE_LIBRARY_DIRS})
+                include_directories(${NETTLE_INCLUDE_DIRS})
+        endif()
 
-    if(NOT HOGWEED_FOUND)
-        list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
-    else()
-        set(LIBHOGWEED ${HOGWEED_LIBRARIES})
-        link_directories(${HOGWEED_LIBRARY_DIRS})
-        include_directories(${HOGWEED_INCLUDE_DIRS})
-    endif()
+        if(NOT HOGWEED_FOUND)
+                list(APPEND MISSING_DEPS "hogweed - Nettle cryptographic library (DNSSEC)")
+        else()
+                set(LIBHOGWEED ${HOGWEED_LIBRARIES})
+                link_directories(${HOGWEED_LIBRARY_DIRS})
+                include_directories(${HOGWEED_INCLUDE_DIRS})
+        endif()
 
-    if(NOT GMP_FOUND)
-        list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
-    else()
-        set(LIBGMP ${GMP_LIBRARIES})
-        link_directories(${GMP_LIBRARY_DIRS})
-        include_directories(${GMP_INCLUDE_DIRS})
-    endif()
+        if(NOT GMP_FOUND)
+                list(APPEND MISSING_DEPS "gmp - GNU Multiple Precision arithmetic library (DNSSEC)")
+        else()
+                set(LIBGMP ${GMP_LIBRARIES})
+                link_directories(${GMP_LIBRARY_DIRS})
+                include_directories(${GMP_INCLUDE_DIRS})
+        endif()
 endif()
 
 # for IDN2 we need the idn2 library which in turn depends on the unistring library
 if(BUILD_STATIC)
-    # For static builds, use find_library
-    find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
-    find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
+        # For static builds, use find_library
+        find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
+        find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
 
-    if(NOT LIBIDN2)
-        list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
-    endif()
-    if(NOT LIBUNISTRING)
-        list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
-    endif()
-else()
-    # For dynamic builds, use pkg-config
-    pkg_check_modules(IDN2 libidn2)
-
-    if(NOT IDN2_FOUND)
-        list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
-    else()
-        set(LIBIDN2 ${IDN2_LIBRARIES})
-        link_directories(${IDN2_LIBRARY_DIRS})
-        include_directories(${IDN2_INCLUDE_DIRS})
-    endif()
-
-    # libunistring doesn't always provide pkg-config, try both methods
-    pkg_check_modules(UNISTRING QUIET libunistring)
-    if(UNISTRING_FOUND)
-        set(LIBUNISTRING ${UNISTRING_LIBRARIES})
-        link_directories(${UNISTRING_LIBRARY_DIRS})
-        include_directories(${UNISTRING_INCLUDE_DIRS})
-        message(STATUS "Found libunistring via pkg-config")
-    else()
-        # Fallback to find_library if pkg-config not available
-        find_library(LIBUNISTRING NAMES unistring)
-        if(NOT LIBUNISTRING)
-            list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
-        else()
-            message(STATUS "Found libunistring: ${LIBUNISTRING}")
+        if(NOT LIBIDN2)
+                list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
         endif()
-    endif()
+        if(NOT LIBUNISTRING)
+                list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
+        endif()
+else()
+        # For dynamic builds, use pkg-config
+        pkg_check_modules(IDN2 libidn2)
+
+        if(NOT IDN2_FOUND)
+                list(APPEND MISSING_DEPS "libidn2 - Internationalized Domain Names (IDN)")
+        else()
+                set(LIBIDN2 ${IDN2_LIBRARIES})
+                link_directories(${IDN2_LIBRARY_DIRS})
+                include_directories(${IDN2_INCLUDE_DIRS})
+        endif()
+
+        # libunistring doesn't always provide pkg-config, try both methods
+        pkg_check_modules(UNISTRING QUIET libunistring)
+        if(UNISTRING_FOUND)
+                set(LIBUNISTRING ${UNISTRING_LIBRARIES})
+                link_directories(${UNISTRING_LIBRARY_DIRS})
+                include_directories(${UNISTRING_INCLUDE_DIRS})
+                message(STATUS "Found libunistring via pkg-config")
+        else()
+                # Fallback to find_library if pkg-config not available
+                find_library(LIBUNISTRING NAMES unistring)
+                if(NOT LIBUNISTRING)
+                        list(APPEND MISSING_DEPS "libunistring - Unicode string library (required by libidn2)")
+                else()
+                        message(STATUS "Found libunistring: ${LIBUNISTRING}")
+                endif()
+        endif()
 endif()
 
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
+target_link_libraries(
+        pihole-FTL
+        rt
+        Threads::Threads
+        ${LIBHOGWEED}
+        ${LIBGMP}
+        ${LIBNETTLE}
+        ${LIBIDN2}
+        ${LIBUNISTRING}
+)
 
 if(LUA_DL STREQUAL "true")
-    find_library(LIBDL dl)
-    target_link_libraries(pihole-FTL ${LIBDL})
+        find_library(LIBDL dl)
+        target_link_libraries(pihole-FTL ${LIBDL})
 endif()
 
 add_subdirectory(api)
@@ -438,103 +476,103 @@ find_library(LIBREADLINE NAMES libreadline${LIBRARY_SUFFIX} readline)
 find_library(LIBHISTORY NAMES libhistory${LIBRARY_SUFFIX} history)
 find_library(LIBTERMCAP NAMES libtermcap${LIBRARY_SUFFIX} termcap)
 if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP)
-    message(STATUS "Building FTL with readline support: YES")
-    target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
-    target_compile_definitions(sqlite3 PRIVATE HAVE_READLINE)
-    target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
+        message(STATUS "Building FTL with readline support: YES")
+        target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+        target_compile_definitions(sqlite3 PRIVATE HAVE_READLINE)
+        target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
 else()
-    message(STATUS "Building FTL with readline support: NO")
+        message(STATUS "Building FTL with readline support: NO")
 endif()
 
 # mbedTLS is REQUIRED for TLS support
 set(MBEDTLS_FOUND FALSE)
 
 if(BUILD_STATIC)
-    # For static builds, use find_library
-    find_library(LIBMBEDCRYPTO NAMES libmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
-    find_library(LIBMBEDX509 NAMES libmbedx509${LIBRARY_SUFFIX} mbedx509)
-    find_library(LIBMBEDTLS NAMES libmbedtls${LIBRARY_SUFFIX} mbedtls)
+        # For static builds, use find_library
+        find_library(LIBMBEDCRYPTO NAMES libmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
+        find_library(LIBMBEDX509 NAMES libmbedx509${LIBRARY_SUFFIX} mbedx509)
+        find_library(LIBMBEDTLS NAMES libmbedtls${LIBRARY_SUFFIX} mbedtls)
 
-    if(NOT LIBMBEDCRYPTO)
-        list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
-    endif()
-    if(NOT LIBMBEDX509)
-        list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
-    endif()
-    if(NOT LIBMBEDTLS)
-        list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
-    endif()
+        if(NOT LIBMBEDCRYPTO)
+                list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
+        endif()
+        if(NOT LIBMBEDX509)
+                list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
+        endif()
+        if(NOT LIBMBEDTLS)
+                list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
+        endif()
 
-    if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
-        set(MBEDTLS_FOUND TRUE)
-    endif()
+        if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS)
+                set(MBEDTLS_FOUND TRUE)
+        endif()
 else()
-    # For dynamic builds, try find_package first (MbedTLS >= 3.0 provides CMake config)
-    # However, skip CMake config in cross-compilation as the config files may contain
-    # absolute paths that don't work with the isolated sysroot
-    set(MBEDTLS_SKIP_CMAKE_CONFIG FALSE)
-    if(CMAKE_CROSSCOMPILING)
-        set(MBEDTLS_SKIP_CMAKE_CONFIG TRUE)
-        message(STATUS "Cross-compiling: using pkg-config for MbedTLS (CMake config may have absolute paths)")
-    endif()
-
-    if(NOT MBEDTLS_SKIP_CMAKE_CONFIG)
-        find_package(MbedTLS QUIET)
-
-        # Check if CMake targets are actually available
-        if(TARGET MbedTLS::mbedtls AND TARGET MbedTLS::mbedx509 AND TARGET MbedTLS::mbedcrypto)
-            # Use MbedTLS CMake targets (MbedTLS >= 3.0)
-            set(LIBMBEDTLS MbedTLS::mbedtls)
-            set(LIBMBEDX509 MbedTLS::mbedx509)
-            set(LIBMBEDCRYPTO MbedTLS::mbedcrypto)
-            set(MBEDTLS_FOUND TRUE)
-            message(STATUS "Found MbedTLS via CMake config")
+        # For dynamic builds, try find_package first (MbedTLS >= 3.0 provides CMake config)
+        # However, skip CMake config in cross-compilation as the config files may contain
+        # absolute paths that don't work with the isolated sysroot
+        set(MBEDTLS_SKIP_CMAKE_CONFIG FALSE)
+        if(CMAKE_CROSSCOMPILING)
+                set(MBEDTLS_SKIP_CMAKE_CONFIG TRUE)
+                message(STATUS "Cross-compiling: using pkg-config for MbedTLS (CMake config may have absolute paths)")
         endif()
-    endif()
 
-    # Fallback to pkg-config if CMake config was skipped or failed
-    if(NOT MBEDTLS_FOUND)
-        # pkg-config is sysroot-aware via PKG_CONFIG_SYSROOT_DIR
-        pkg_check_modules(MBEDTLS mbedtls)
-        pkg_check_modules(MBEDX509 mbedx509)
-        pkg_check_modules(MBEDCRYPTO mbedcrypto)
+        if(NOT MBEDTLS_SKIP_CMAKE_CONFIG)
+                find_package(MbedTLS QUIET)
 
+                # Check if CMake targets are actually available
+                if(TARGET MbedTLS::mbedtls AND TARGET MbedTLS::mbedx509 AND TARGET MbedTLS::mbedcrypto)
+                        # Use MbedTLS CMake targets (MbedTLS >= 3.0)
+                        set(LIBMBEDTLS MbedTLS::mbedtls)
+                        set(LIBMBEDX509 MbedTLS::mbedx509)
+                        set(LIBMBEDCRYPTO MbedTLS::mbedcrypto)
+                        set(MBEDTLS_FOUND TRUE)
+                        message(STATUS "Found MbedTLS via CMake config")
+                endif()
+        endif()
+
+        # Fallback to pkg-config if CMake config was skipped or failed
         if(NOT MBEDTLS_FOUND)
-            list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
-        endif()
-        if(NOT MBEDX509_FOUND)
-            list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
-        endif()
-        if(NOT MBEDCRYPTO_FOUND)
-            list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
-        endif()
+                # pkg-config is sysroot-aware via PKG_CONFIG_SYSROOT_DIR
+                pkg_check_modules(MBEDTLS mbedtls)
+                pkg_check_modules(MBEDX509 mbedx509)
+                pkg_check_modules(MBEDCRYPTO mbedcrypto)
 
-        if(MBEDTLS_FOUND AND MBEDX509_FOUND AND MBEDCRYPTO_FOUND)
-            set(LIBMBEDTLS ${MBEDTLS_LIBRARIES})
-            set(LIBMBEDX509 ${MBEDX509_LIBRARIES})
-            set(LIBMBEDCRYPTO ${MBEDCRYPTO_LIBRARIES})
+                if(NOT MBEDTLS_FOUND)
+                        list(APPEND MISSING_DEPS "mbedtls - mbedTLS library (TLS)")
+                endif()
+                if(NOT MBEDX509_FOUND)
+                        list(APPEND MISSING_DEPS "mbedx509 - mbedTLS X.509 library (TLS)")
+                endif()
+                if(NOT MBEDCRYPTO_FOUND)
+                        list(APPEND MISSING_DEPS "mbedcrypto - mbedTLS crypto library (TLS)")
+                endif()
 
-            link_directories(${MBEDTLS_LIBRARY_DIRS} ${MBEDX509_LIBRARY_DIRS} ${MBEDCRYPTO_LIBRARY_DIRS})
-            include_directories(${MBEDTLS_INCLUDE_DIRS} ${MBEDX509_INCLUDE_DIRS} ${MBEDCRYPTO_INCLUDE_DIRS})
-            set(MBEDTLS_FOUND TRUE)
-            message(STATUS "Found MbedTLS via pkg-config")
+                if(MBEDTLS_FOUND AND MBEDX509_FOUND AND MBEDCRYPTO_FOUND)
+                        set(LIBMBEDTLS ${MBEDTLS_LIBRARIES})
+                        set(LIBMBEDX509 ${MBEDX509_LIBRARIES})
+                        set(LIBMBEDCRYPTO ${MBEDCRYPTO_LIBRARIES})
+
+                        link_directories(${MBEDTLS_LIBRARY_DIRS} ${MBEDX509_LIBRARY_DIRS} ${MBEDCRYPTO_LIBRARY_DIRS})
+                        include_directories(${MBEDTLS_INCLUDE_DIRS} ${MBEDX509_INCLUDE_DIRS} ${MBEDCRYPTO_INCLUDE_DIRS})
+                        set(MBEDTLS_FOUND TRUE)
+                        message(STATUS "Found MbedTLS via pkg-config")
+                endif()
         endif()
-    endif()
 endif()
 
 # Check if any required dependencies are missing
 if(MISSING_DEPS)
-    list(REMOVE_DUPLICATES MISSING_DEPS)
-    string(REPLACE ";" "\n  - " DEPS_LIST "${MISSING_DEPS}")
-    message(FATAL_ERROR
-        "\n============================================================\n"
-        "  Missing required dependencies:\n\n"
-        "  - ${DEPS_LIST}\n"
-        "\n"
-        "  Please install the development packages for these libraries.\n"
-        "  See INSTALLATION.md for details.\n"
-        "============================================================\n"
-    )
+        list(REMOVE_DUPLICATES MISSING_DEPS)
+        string(REPLACE ";" "\n  - " DEPS_LIST "${MISSING_DEPS}")
+        message(FATAL_ERROR
+                "\n============================================================\n"
+                "  Missing required dependencies:\n\n"
+                "  - ${DEPS_LIST}\n"
+                "\n"
+                "  Please install the development packages for these libraries.\n"
+                "  See INSTALLATION.md for details.\n"
+                "============================================================\n"
+        )
 endif()
 
 # Enable TLS support in civetweb (mbedTLS is always required now)
@@ -548,21 +586,28 @@ target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
 
 # After finishing building the FTL binary, we append the sha256sum of the binary
 # in raw form to itself and print the checksum to the console
-add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
+add_custom_command(
+        TARGET pihole-FTL
+        POST_BUILD
+        COMMENT "Appending sha256sum to pihole-FTL"
         COMMAND echo -n "SHA256 checksum of pihole-FTL: " && sha256sum $<TARGET_FILE:pihole-FTL> | cut -d ' ' -f 1
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:pihole-FTL> $<TARGET_FILE_DIR:pihole-FTL>/pihole-FTL.tmp
         COMMAND echo -n "sha256sum" >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND sha256sum $<TARGET_FILE:pihole-FTL>.tmp | cut -d ' ' -f 1 | xxd -r -p >> $<TARGET_FILE:pihole-FTL>.tmp
         COMMAND mv $<TARGET_FILE:pihole-FTL>.tmp $<TARGET_FILE:pihole-FTL>
-        )
+)
 
 ######### Installation target ############
 # Install the binary
 install(TARGETS pihole-FTL
-        RUNTIME DESTINATION bin
-        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        RUNTIME
+                DESTINATION bin
+                PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+)
 find_program(SETCAP setcap)
 # After installing the binary, we set the capabilities on the binary ...
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
+install(CODE
+                "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)"
+)
 # ... and verify the binary integrity
 install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

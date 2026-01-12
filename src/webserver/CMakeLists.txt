@@ -8,7 +8,8 @@
 # This file is copyright under the latest version of the EUPL.
 # Please see LICENSE file for your rights under this license.
 
-set(sources
+set(
+        sources
         http-common.c
         http-common.h
         json_macros.h
@@ -18,7 +19,7 @@ set(sources
         webserver.h
         x509.c
         x509.h
-        )
+)
 
 add_library(webserver OBJECT ${sources})
 target_compile_options(webserver PRIVATE ${EXTRAWARN})

@@ -2,5 +2,5 @@
 
 # Add systemd support conditionally
 if(INSTALL_SYSTEMD)
-    add_subdirectory(systemd)
+        add_subdirectory(systemd)
 endif()

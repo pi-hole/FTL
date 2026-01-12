@@ -12,23 +12,27 @@
 # to build. It is placed in its own target so that it does not include any other
 # headers in the build command and thus does not need to be rebuilt when headers
 # are modified.
-set(sqlite3_sources
-        shell.c
-        sqlite3.c
-        sqlite3.h
-        sqlite3_rsync.c
-        )
+set(sqlite3_sources shell.c sqlite3.c sqlite3.h sqlite3_rsync.c)
 
 add_library(sqlite3 OBJECT ${sqlite3_sources})
 # Define the function that will be called to initialize the sqlite3 shell
 target_compile_definitions(sqlite3 PRIVATE "-DSQLITE_SHELL_INIT_PROC=pihole_sqlite3_initalize")
-target_compile_options(sqlite3 PRIVATE -Wno-implicit-fallthrough -Wno-cast-function-type -Wno-sign-compare -Wno-implicit-function-declaration -Wno-int-conversion)
+target_compile_options(
+        sqlite3
+        PRIVATE
+                -Wno-implicit-fallthrough
+                -Wno-cast-function-type
+                -Wno-sign-compare
+                -Wno-implicit-function-declaration
+                -Wno-int-conversion
+)
 
-if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(sqlite3 PRIVATE "-Wno-null-pointer-subtraction")
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(sqlite3 PRIVATE "-Wno-null-pointer-subtraction")
 endif()
 
-set(database_sources
+set(
+        database_sources
         common.c
         common.h
         database-thread.c
@@ -48,7 +52,7 @@ set(database_sources
         sqlite3-ext.h
         aliasclients.c
         aliasclients.h
-        )
+)
 
 add_library(database OBJECT ${database_sources})
 target_compile_options(database PRIVATE "${EXTRAWARN}")
