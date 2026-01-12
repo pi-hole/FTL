@@ -12,11 +12,15 @@ configure_file(pihole-FTL-prestart.sh.in pihole-FTL-prestart.sh @ONLY)
 # Configure poststop script (cleanup)
 configure_file(pihole-FTL-poststop.sh.in pihole-FTL-poststop.sh @ONLY)
 
+# Configure gravity-init.sh with CMake paths
+configure_file(gravity-init.sh.in gravity-init.sh @ONLY)
+
 # Install all scripts
 install(PROGRAMS
                 ${CMAKE_CURRENT_BINARY_DIR}/pihole-FTL-utils.sh
                 ${CMAKE_CURRENT_BINARY_DIR}/pihole-FTL-prestart.sh
                 ${CMAKE_CURRENT_BINARY_DIR}/pihole-FTL-poststop.sh
+                ${CMAKE_CURRENT_BINARY_DIR}/gravity-init.sh
         DESTINATION ${PIHOLE_INSTALL_SCRIPTDIR}
         COMPONENT scripts
 )

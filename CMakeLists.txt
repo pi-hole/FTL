@@ -44,10 +44,12 @@ if(CMAKE_INSTALL_PREFIX MATCHES "^/opt/")
         set(PIHOLE_INSTALL_SCRIPTDIR "${CMAKE_INSTALL_LIBEXECDIR}" CACHE PATH "Script install directory")
         set(PIHOLE_INSTALL_LOGDIR "${CMAKE_INSTALL_LOCALSTATEDIR}/log/pihole" CACHE PATH "Log directory")
         set(PIHOLE_INSTALL_RUNDIR "${CMAKE_INSTALL_RUNSTATEDIR}" CACHE PATH "Runtime directory")
+        set(PIHOLE_INSTALL_DATADIR "/etc/pihole" CACHE PATH "Data directory")
 else()
         set(PIHOLE_INSTALL_SCRIPTDIR "${CMAKE_INSTALL_LIBEXECDIR}/pihole" CACHE PATH "Script install directory")
         set(PIHOLE_INSTALL_LOGDIR "${CMAKE_INSTALL_LOCALSTATEDIR}/log/pihole" CACHE PATH "Log directory")
         set(PIHOLE_INSTALL_RUNDIR "${CMAKE_INSTALL_RUNSTATEDIR}" CACHE PATH "Runtime directory")
+        set(PIHOLE_INSTALL_DATADIR "${CMAKE_INSTALL_DATADIR}/pihole" CACHE PATH "Data directory")
 endif()
 
 # XXX maybe a gap, maybe not. But we need it for dealing with several other packages variable state
@@ -69,6 +71,7 @@ set(PIHOLE_INSTALL_FULL_SCRIPTDIR "${CMAKE_INSTALL_PREFIX}/${PIHOLE_INSTALL_SCRI
 set(PIHOLE_INSTALL_FULL_LOGDIR "${PIHOLE_INSTALL_LOGDIR}") # Already absolute
 set(PIHOLE_INSTALL_FULL_RUNDIR "${PIHOLE_INSTALL_RUNDIR}") # Already absolute
 set(PIHOLE_INSTALL_FULL_LIBSTATEDIR "${PIHOLE_INSTALL_LIBSTATEDIR}") # Already absolute
+set(PIHOLE_INSTALL_FULL_DATADIR "${PIHOLE_INSTALL_DATADIR}") # Already absolute in /opt mode, relative in FHS mode
 
 message(STATUS "Installation paths (CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}):")
 message(STATUS "  Binaries: ${CMAKE_INSTALL_BINDIR} (${CMAKE_INSTALL_FULL_BINDIR})")

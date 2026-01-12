@@ -420,15 +420,18 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				// Append domain to database using prepared statement
 				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
 				{
-					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
-					over, cross, outfile);
+					printf("%s  %s Unable to bind domain '", over, cross);
+					print_escaped(token, token_len);
+					printf("' to SQL statement: %s\n", sqlite3_errmsg(db));
 					fclose(fpin);
 					sqlite3_close(db);
 					return EXIT_FAILURE;
 				}
 				if(sqlite3_step(stmt) != SQLITE_DONE)
 				{
-					printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
+					printf("%s  %s Unable to insert domain '", over, cross);
+					print_escaped(token, token_len);
+					printf("' into database file %s: %s\n", outfile, sqlite3_errmsg(db));
 					fclose(fpin);
 					sqlite3_close(db);
 					return EXIT_FAILURE;
@@ -451,15 +454,18 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				// else: Append pattern to database using prepared statement
 				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
 				{
-					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
-					over, cross, outfile);
+					printf("%s  %s Unable to bind domain '", over, cross);
+					print_escaped(token, token_len);
+					printf("' to SQL statement: %s\n", sqlite3_errmsg(db));
 					fclose(fpin);
 					sqlite3_close(db);
 					return EXIT_FAILURE;
 				}
 				if(sqlite3_step(stmt) != SQLITE_DONE)
 				{
-					printf("%s  %s Unable to insert domain into database file %s\n", over, cross, outfile);
+					printf("%s  %s Unable to insert domain '", over, cross);
+					print_escaped(token, token_len);
+					printf("' into database file %s: %s\n", outfile, sqlite3_errmsg(db));
 					fclose(fpin);
 					sqlite3_close(db);
 					return EXIT_FAILURE;

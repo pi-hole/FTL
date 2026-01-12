@@ -38,6 +38,8 @@
 #include "lua/ftl_lua.h"
 // gravity_parseList()
 #include "tools/gravity-parseList.h"
+// gravity_parseDomains()
+#include "tools/gravity-parseDomains.h"
 // run_dhcp_discover()
 #include "tools/dhcp-discover.h"
 // mg_version()
@@ -512,6 +514,14 @@ void parse_args(int argc, char *argv[])
 		{
 			// Parse the given list and write the result to the given file
 			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
+		}
+
+		// pihole-FTL gravity parseDomains <infile> <outfile> <type> [comment]
+		if((argc == 6 || argc == 7) && strcasecmp(argv[2], "parseDomains") == 0)
+		{
+			// Import domains into domainlist table with specified type
+			const char *comment = (argc == 7) ? argv[6] : "";
+			exit(gravity_parseDomains(argv[3], argv[4], argv[5], comment));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");

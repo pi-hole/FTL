@@ -1,0 +1,345 @@
+#!/bin/bash
+# Pi-hole: A black hole for Internet advertisements
+# (c) 2026 Pi-hole, LLC (https://pi-hole.net)
+# Network-wide ad blocking via your own hardware.
+#
+# Initialize gravity.db at compile-time or runtime
+# This script provides SPOT (Single Point of Truth) for gravity.db initialization
+#
+# Usage: gravity-init.sh [OPTIONS] [output-db]
+#
+# Options:
+#   --schema FILE         Path to gravity-schema.sql (default: @PIHOLE_INSTALL_DATADIR@/gravity-schema.sql)
+#   --blocklist FILE      Import adlist blocklist from FILE (can be repeated, adlist type=0)
+#   --allowlist FILE      Import adlist allowlist from FILE (can be repeated, adlist type=1)
+#   --block-domain FILE   Import manual block domains from FILE (can be repeated, domainlist type=1)
+#   --allow-domain FILE   Import manual allow domains from FILE (can be repeated, domainlist type=0)
+#   --database FILE       Output database path (takes precedence over positional argument)
+#
+# Priority for database location: --database > positional argument > default (@PIHOLE_INSTALL_SYSCONFDIR@/gravity.db)
+#
+# List types:
+#   blocklists: URL-based blocklists (hosts format), parsed into gravity table
+#   allowlists: URL-based allowlists (hosts format), parsed into antigravity table
+#   block-domains: Manual deny list (domain format), inserted into domainlist table
+#   allow-domains: Manual allow list (domain format), inserted into domainlist table
+#
+# Examples:
+#   # Use default location: /etc/pihole/gravity.db
+#   gravity-init.sh
+#
+#   # Specify custom location via positional argument
+#   gravity-init.sh /tmp/gravity.db
+#
+#   # With multiple blocklists and allowlists
+#   gravity-init.sh \
+#       --blocklist stevenblack.txt \
+#       --blocklist hagezi-multi.txt \
+#       --allowlist goodness-whitelist.txt \
+#       --database /etc/pihole/gravity.db
+
+set -e
+
+# Configured paths from CMake
+: ${PIHOLE_DATADIR:="@PIHOLE_INSTALL_DATADIR@"}
+: ${PIHOLE_SYSCONFDIR:="@PIHOLE_INSTALL_SYSCONFDIR@"}
+
+# Defaults
+# Note: Uses `: ${VAR:=default}` syntax to allow environment variable override (export required)
+# This is helpful for developer workflows and script stacking during development
+: ${SCHEMA_FILE:="${PIHOLE_DATADIR}/gravity-schema.sql"}
+DEFAULT_DB_FILE="${PIHOLE_SYSCONFDIR}/gravity.db"
+
+# Arrays for multiple adlists and domainlists
+# Can be specified multiple times on command line
+#
+# Pi-hole evaluation priority (highest to lowest):
+#   1. domainlist Exact Allow (type=0)    - ALLOW_DOMAINS
+#   2. domainlist Regex Allow (type=2)    - (not yet handled by this script)
+#   3. gravity / antigravity              - BLOCK_LISTS / ALLOW_LISTS
+#   4. domainlist Regex Deny (type=3)     - (not yet handled by this script)
+#   5. domainlist Exact Deny (type=1)     - BLOCK_DOMAINS
+BLOCK_LISTS=()   # adlist type=0 (URLs) → gravity table via parseList
+ALLOW_LISTS=()   # adlist type=1 (URLs) → antigravity table via parseList
+BLOCK_DOMAINS=() # domainlist type=1 (domains) → domainlist table via parseDomains
+ALLOW_DOMAINS=() # domainlist type=0 (domains) → domainlist table via parseDomains
+
+# Track database file source for priority resolution
+DB_FILE_FROM_FLAG=""
+
+# Parse long options to short options
+for arg in "$@"
+do
+    shift
+    case "${arg}" in
+        '--schema')        set -- "$@" '-s' ;;
+        '--blocklist')     set -- "$@" '-l' ;;  # adlist blocklist
+        '--allowlist')     set -- "$@" '-a' ;;  # adlist allowlist
+        '--block-domain')  set -- "$@" '-b' ;;  # domainlist deny
+        '--allow-domain')  set -- "$@" '-w' ;;  # domainlist allow
+        '--database')      set -- "$@" '-d' ;;
+        *)                 set -- "$@" "${arg}" ;;
+    esac
+done
+
+# Parse options with getopts
+# Multiple instances of l/a/b/w are supported via array accumulation
+while getopts "s:l:a:b:w:d:" opt
+do
+    case "$opt" in
+        's') SCHEMA_FILE="${OPTARG}" ;;
+        'l') BLOCK_LISTS+=("${OPTARG}") ;;
+        'a') ALLOW_LISTS+=("${OPTARG}") ;;
+        'b') BLOCK_DOMAINS+=("${OPTARG}") ;;
+        'w') ALLOW_DOMAINS+=("${OPTARG}") ;;
+        'd') DB_FILE_FROM_FLAG="${OPTARG}" ;;
+        *) exit 1 ;;
+    esac
+done
+shift $((OPTIND-1))
+
+# Apply priority: --database (-d) > positional argument > default
+if [ -n "${DB_FILE_FROM_FLAG}" ]; then
+    DB_FILE="${DB_FILE_FROM_FLAG}"
+elif [ -n "$1" ]; then
+    DB_FILE="$1"
+else
+    DB_FILE="${DEFAULT_DB_FILE}"
+fi
+
+# Validate arguments (should never trigger with default, but keep as sanity check)
+if [ -z "${DB_FILE}" ]; then
+    echo "ERROR: Database file path required" >&2
+    echo "Usage: $0 [OPTIONS] [output-db]" >&2
+    exit 1
+fi
+
+if [ -f "${DB_FILE}" ]; then
+    echo "WARNING: Database ${DB_FILE} already exists, skipping initialization" >&2
+    exit 0
+fi
+
+if [ ! -f "${SCHEMA_FILE}" ]; then
+    echo "ERROR: Schema file ${SCHEMA_FILE} not found" >&2
+    exit 1
+fi
+
+# Find pihole-FTL binary
+FTL_BIN="${FTL_BIN:-pihole-FTL}"
+if ! command -v "${FTL_BIN}" >/dev/null 2>&1; then
+    echo "ERROR: pihole-FTL not found in PATH" >&2
+    exit 1
+fi
+
+echo "Initializing gravity database: ${DB_FILE}"
+
+# Create parent directory if needed
+mkdir -p "$(dirname "${DB_FILE}")"
+
+# 1. Initialize schema (version 20)
+echo "Creating schema from ${SCHEMA_FILE}..."
+"${FTL_BIN}" sqlite3 -ni "${DB_FILE}" < "${SCHEMA_FILE}"
+
+TIMESTAMP="${SOURCE_DATE_EPOCH:-$(date +%s)}"
+echo "Setting updated timestamp: ${TIMESTAMP}"
+# 2. Process adlists (blocklists and allowlists)
+# XXX Technical debt: Identify lists by meaningful names instead of generic comments
+# XXX Technical debt: better use pihole-FTL command instead of direct SQL
+
+# Process blocklists (adlist type=0 → gravity table)
+for ADLIST_FILE in "${BLOCK_LISTS[@]}"; do
+    if [ ! -f "${ADLIST_FILE}" ]; then
+        echo "WARNING: Blocklist file not found: ${ADLIST_FILE}" >&2
+        continue
+    fi
+
+    echo "Processing blocklist: ${ADLIST_FILE}"
+
+    # Insert adlist entry to get auto-generated ID
+    # Use file:// URL scheme for local files at build time
+    # TODO: Metadata loss - the original source URL and descriptive name/comment of the
+    #       adlist are not available here. Only the local cached file path is known.
+    ADLIST_URL="file://$(realpath "${ADLIST_FILE}")"
+    # INSERT and SELECT last_insert_rowid() must be in same session
+    ADLIST_ID=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" <<EOF
+INSERT INTO adlist (address, enabled, date_added, date_modified, comment, type)
+VALUES ('${ADLIST_URL}', 1, ${TIMESTAMP}, ${TIMESTAMP},
+        'Blocklist from build-time initialization', 0);
+SELECT last_insert_rowid();
+EOF
+    )
+    echo "  Assigned adlist_id: ${ADLIST_ID}"
+
+    # Parse adlist with pihole-FTL (SPOT!)
+    echo "  Parsing domains with pihole-FTL gravity parseList..."
+    "${FTL_BIN}" gravity parseList "${ADLIST_FILE}" "${DB_FILE}" "${ADLIST_ID}"
+
+    # Update adlist metadata (status, number of domains, last updated)
+    DOMAIN_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM gravity WHERE adlist_id = ${ADLIST_ID};")
+    echo "  Added ${DOMAIN_COUNT} domains to gravity table"
+
+    "${FTL_BIN}" sqlite3 -ni "${DB_FILE}" <<EOF
+UPDATE adlist SET status = 1, number = ${DOMAIN_COUNT}, date_updated = ${TIMESTAMP}
+WHERE id = ${ADLIST_ID};
+EOF
+done
+
+# Process allowlists (adlist type=1 → antigravity table)
+for ADLIST_FILE in "${ALLOW_LISTS[@]}"; do
+    if [ ! -f "${ADLIST_FILE}" ]; then
+        echo "WARNING: Allowlist file not found: ${ADLIST_FILE}" >&2
+        continue
+    fi
+
+    echo "Processing allowlist: ${ADLIST_FILE}"
+
+    # Insert adlist entry with type=1 for allowlist/antigravity
+    # TODO: Same metadata loss as blocklists (see TODO above)
+    ADLIST_URL="file://$(realpath "${ADLIST_FILE}")"
+    # INSERT and SELECT last_insert_rowid() must be in same session
+    ADLIST_ID=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" <<EOF
+INSERT INTO adlist (address, enabled, date_added, date_modified, comment, type)
+VALUES ('${ADLIST_URL}', 1, ${TIMESTAMP}, ${TIMESTAMP},
+        'Allowlist from build-time initialization', 1);
+SELECT last_insert_rowid();
+EOF
+    )
+    echo "  Assigned adlist_id: ${ADLIST_ID}"
+
+    # Parse allowlist with pihole-FTL (SPOT!)
+    echo "  Parsing domains with pihole-FTL gravity parseList..."
+    "${FTL_BIN}" gravity parseList "${ADLIST_FILE}" "${DB_FILE}" "${ADLIST_ID}"
+
+    # Update adlist metadata
+    DOMAIN_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM antigravity WHERE adlist_id = ${ADLIST_ID};")
+    echo "  Added ${DOMAIN_COUNT} domains to antigravity table"
+
+    "${FTL_BIN}" sqlite3 -ni "${DB_FILE}" <<EOF
+UPDATE adlist SET status = 1, number = ${DOMAIN_COUNT}, date_updated = ${TIMESTAMP}
+WHERE id = ${ADLIST_ID};
+EOF
+done
+
+# Create index for performance (after all adlists are processed)
+if [ ${#BLOCK_LISTS[@]} -gt 0 ]; then
+    echo "Creating gravity index..."
+    "${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "CREATE INDEX IF NOT EXISTS idx_gravity ON gravity (domain, adlist_id);"
+fi
+
+# Update global gravity_count (total unique domains in gravity table)
+if [ ${#BLOCK_LISTS[@]} -gt 0 ]; then
+    TOTAL_GRAVITY_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM (SELECT DISTINCT domain FROM gravity);")
+    echo "Total unique domains in gravity: ${TOTAL_GRAVITY_COUNT}"
+
+    "${FTL_BIN}" sqlite3 -ni "${DB_FILE}" <<EOF
+INSERT OR REPLACE INTO info (property, value) VALUES ('gravity_count', '${TOTAL_GRAVITY_COUNT}');
+EOF
+fi
+
+# 3. Process domainlists (manual block/allow domains)
+# XXX better use pihole-FTL command instead of direct SQL
+
+# Process block domains (domainlist type=1)
+for DOMAIN_FILE in "${BLOCK_DOMAINS[@]}"; do
+    if [ ! -f "${DOMAIN_FILE}" ]; then
+        echo "WARNING: Block domain file not found: ${DOMAIN_FILE}" >&2
+        continue
+    fi
+
+    echo "Processing block domains: ${DOMAIN_FILE}"
+    "${FTL_BIN}" gravity parseDomains "${DOMAIN_FILE}" "${DB_FILE}" "blacklist" "From build-time initialization"
+
+    DOMAIN_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 1;")
+    echo "  Total domains in blacklist: ${DOMAIN_COUNT}"
+done
+
+# Process allow domains (domainlist type=0)
+for DOMAIN_FILE in "${ALLOW_DOMAINS[@]}"; do
+    if [ ! -f "${DOMAIN_FILE}" ]; then
+        echo "WARNING: Allow domain file not found: ${DOMAIN_FILE}" >&2
+        continue
+    fi
+
+    echo "Processing allow domains: ${DOMAIN_FILE}"
+    "${FTL_BIN}" gravity parseDomains "${DOMAIN_FILE}" "${DB_FILE}" "whitelist" "From build-time initialization"
+
+    DOMAIN_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 0;")
+    echo "  Total domains in whitelist: ${DOMAIN_COUNT}"
+done
+
+# 4. Set 'updated' timestamp (CRITICAL: FTL requires this!)
+# Without this, FTL fails with: "gravity_updated(): no more rows available"
+"${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+    "INSERT OR REPLACE INTO info (property, value) VALUES ('updated', '${TIMESTAMP}');"
+
+# 5. Optimize database
+if [ ${#BLOCK_LISTS[@]} -gt 0 ] || [ ${#ALLOW_LISTS[@]} -gt 0 ] || \
+   [ ${#BLOCK_DOMAINS[@]} -gt 0 ] || [ ${#ALLOW_DOMAINS[@]} -gt 0 ]; then
+    echo "Optimizing database..."
+    "${FTL_BIN}" sqlite3 -ni "${DB_FILE}" "PRAGMA analysis_limit=0; ANALYZE;"
+fi
+
+# 6. Validate database integrity
+echo "Validating database integrity..."
+"${FTL_BIN}" sqlite3 -ni "${DB_FILE}" "PRAGMA integrity_check;" || {
+    echo "ERROR: Database integrity check failed" >&2
+    exit 1
+}
+
+"${FTL_BIN}" sqlite3 -ni "${DB_FILE}" "PRAGMA foreign_key_check;" || {
+    echo "ERROR: Foreign key check failed" >&2
+    exit 1
+}
+
+echo "Successfully initialized gravity database at ${DB_FILE}"
+
+# 7. Show statistics summary
+if [ ${#BLOCK_LISTS[@]} -gt 0 ] || [ ${#ALLOW_LISTS[@]} -gt 0 ] || \
+   [ ${#BLOCK_DOMAINS[@]} -gt 0 ] || [ ${#ALLOW_DOMAINS[@]} -gt 0 ]; then
+    echo ""
+    echo "Database statistics:"
+
+    # Gravity domains (from info table for consistency with FTL)
+    GRAVITY_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT value FROM info WHERE property = 'gravity_count';")
+    echo "  - Gravity domains: ${GRAVITY_COUNT}"
+
+    # Antigravity domains (allowlist from adlists)
+    ANTIGRAVITY_COUNT=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(DISTINCT domain) FROM antigravity;")
+    echo "  - Antigravity domains: ${ANTIGRAVITY_COUNT}"
+
+    # Exact blocked domains (type=1, enabled)
+    EXACT_DENY=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 1 AND enabled = 1;")
+    echo "  - Exact denied domains: ${EXACT_DENY}"
+
+    # Regex blocked filters (type=3, enabled)
+    REGEX_DENY=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 3 AND enabled = 1;")
+    echo "  - Regex denied filters: ${REGEX_DENY}"
+
+    # Exact allowed domains (type=0, enabled)
+    EXACT_ALLOW=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 0 AND enabled = 1;")
+    echo "  - Exact allowed domains: ${EXACT_ALLOW}"
+
+    # Regex allowed filters (type=2, enabled)
+    REGEX_ALLOW=$("${FTL_BIN}" sqlite3 -ni "${DB_FILE}" \
+        "SELECT COUNT(*) FROM domainlist WHERE type = 2 AND enabled = 1;")
+    echo "  - Regex allowed filters: ${REGEX_ALLOW}"
+
+    echo ""
+    echo "Database is ready for use"
+else
+    echo "Database contains only schema (empty)"
+    echo "Run 'pihole -g' to populate with blocklists"
+fi
+
+exit 0

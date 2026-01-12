@@ -57,3 +57,7 @@ set(
 add_library(database OBJECT ${database_sources})
 target_compile_options(database PRIVATE "${EXTRAWARN}")
 target_include_directories(database PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+# Install gravity schema SQL file
+# This provides SPOT (Single Point of Truth) for gravity.db schema
+install(FILES gravity-schema.sql DESTINATION ${PIHOLE_INSTALL_DATADIR} COMPONENT runtime)

@@ -15,6 +15,8 @@ set(
         dhcp-discover.c
         dhcpv6-discover.c
         dhcp-discover.h
+        gravity-parseDomains.c
+        gravity-parseDomains.h
         gravity-parseList.c
         gravity-parseList.h
         netlink_consts.h
