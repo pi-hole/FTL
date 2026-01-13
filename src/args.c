@@ -219,12 +219,14 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 void parse_args(int argc, char *argv[])
 {
 	bool quiet = false;
-	// Regardless of any arguments, we always pass "-k" (nofork) to dnsmasq
-	argc_dnsmasq = 3;
+	// Regardless of any arguments, we always pass "-k" (nofork) and explicit config file to dnsmasq
+	const int argc_dnsmasq_default = 4;
+	argc_dnsmasq = argc_dnsmasq_default;
 	argv_dnsmasq = calloc(argc_dnsmasq, sizeof(char*));
 	argv_dnsmasq[0] = "";
 	argv_dnsmasq[1] = "-k";
-	argv_dnsmasq[2] = "";
+	argv_dnsmasq[2] = "--conf-file=/etc/pihole/dnsmasq.conf";
+	argv_dnsmasq[3] = "";
 
 	bool consume_for_dnsmasq = false;
 	// If the binary name is "dnsmasq" (e.g., symlink /usr/bin/dnsmasq -> /usr/bin/pihole-FTL),
@@ -844,22 +846,24 @@ void parse_args(int argc, char *argv[])
 		// dnsmasq
 		if(consume_for_dnsmasq)
 		{
-			if(argv_dnsmasq != NULL)
+			if((argv_dnsmasq != NULL))
 				free(argv_dnsmasq);
 
-			argc_dnsmasq = argc - i + 3;
+			argc_dnsmasq = argc - i + argc_dnsmasq_default;
 			argv_dnsmasq = calloc(argc_dnsmasq, sizeof(const char*));
 			argv_dnsmasq[0] = "";
+			argv_dnsmasq[2] = "--conf-file=/etc/pihole/dnsmasq.conf";
 
+			/* XXX this cannot become true except by patching the source */
 			if(debug_mode)
 			{
 				argv_dnsmasq[1] = "-d";
-				argv_dnsmasq[2] = "--log-debug";
+				argv_dnsmasq[3] = "--log-debug";
 			}
 			else
 			{
 				argv_dnsmasq[1] = "-k";
-				argv_dnsmasq[2] = "";
+				argv_dnsmasq[3] = "";
 			}
 
 			if(debug_mode)
@@ -867,9 +871,10 @@ void parse_args(int argc, char *argv[])
 				printf("dnsmasq options: [0]: %s\n", argv_dnsmasq[0]);
 				printf("dnsmasq options: [1]: %s\n", argv_dnsmasq[1]);
 				printf("dnsmasq options: [2]: %s\n", argv_dnsmasq[2]);
+				printf("dnsmasq options: [3]: %s\n", argv_dnsmasq[3]);
 			}
 
-			int j = 3;
+			int j = argc_dnsmasq_default;
 			while(i < argc)
 			{
 				argv_dnsmasq[j++] = strdup(argv[i++]);
