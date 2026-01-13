@@ -31,5 +31,5 @@ target_compile_definitions(
         PRIVATE NO_CGI NO_DLOPEN NO_SSL_DL USE_IPV6 USE_LUA TIMER_RESOLUTION=1000
 )
 
-include_directories(${PROJECT_SOURCE_DIR}/src/lua /usr/local/include)
+include_directories(${PROJECT_SOURCE_DIR}/src/lua)
 target_include_directories(civetweb PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -1977,6 +1977,8 @@ struct lua_websock_data {
 	struct mg_connection *conn[MAX_WORKER_THREADS];
 	pthread_mutex_t ws_mutex;
 };
+#else
+struct lua_websock_data;
 #endif
 
 
