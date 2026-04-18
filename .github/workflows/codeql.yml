@@ -67,10 +67,11 @@ jobs:
 
     - name: Install nettle
       run: |
-        curl -sSL https://ftl.pi-hole.net/libraries/nettle-${nettleversion}.tar.gz | tar -xz
+        curl -sSL https://ftl.pi-hole.net/libraries/nettle-${nettleversion}.tar.bz2 | tar -xz
         cd nettle-${nettleversion}
-        ./configure --enable-static --disable-shared --disable-openssl --disable-mini-gmp -disable-gcov --disable-documentation
-        sudo make -j $(nproc) install
+        cmake -S . -B build -DCMAKE_C_FLAGS="-fomit-frame-pointer"
+        cmake --build build -j $(nproc)
+        cmake --install build
 
     - name: Install mbedTLS
     # Build static mbedTLS with pthread support
