@@ -81,6 +81,7 @@ typedef struct {
 		bool found_group:1;
 		bool aliasclient:1;
 		bool rate_limited:1;
+		bool rate_limit_exempt:1;
 	} flags;
 	int count;
 	int blockedcount;
@@ -160,6 +161,8 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
+void reload_per_client_rate_limit_exemption(clientsData *client);
+void reload_all_per_client_rate_limit_exemption(void);
 
 const char *getDomainString(const queriesData *query);
 const char *getCNAMEDomainString(const queriesData *query);

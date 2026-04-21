@@ -192,6 +192,7 @@ struct config {
 		struct {
 			struct conf_item count;
 			struct conf_item interval;
+			struct conf_item exemptIPs;
 		} rateLimit;
 	} dns;
 

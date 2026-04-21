@@ -72,6 +72,78 @@ static uint32_t __attribute__ ((pure)) hashStr(const char *s)
 	return hash;
 }
 
+static bool client_matches_rate_limit_exempt_ip(const char *clientIP)
+{
+	if(clientIP == NULL || config.dns.rateLimit.exemptIPs.v.json == NULL)
+		return false;
+
+	struct in_addr client4;
+	struct in6_addr client6;
+	const sa_family_t family = inet_pton(AF_INET, clientIP, &client4) == 1 ? AF_INET :
+	                           inet_pton(AF_INET6, clientIP, &client6) == 1 ? AF_INET6 : AF_UNSPEC;
+	if(family == AF_UNSPEC)
+		return false;
+
+	cJSON *item = NULL;
+	cJSON_ArrayForEach(item, config.dns.rateLimit.exemptIPs.v.json)
+	{
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+			continue;
+
+		const char *raw = item->valuestring;
+		while(isspace((unsigned char)*raw))
+			raw++;
+
+		size_t len = strlen(raw);
+		while(len > 0 && isspace((unsigned char)raw[len-1]))
+			len--;
+
+		if(len == 0 || len > INET6_ADDRSTRLEN)
+			continue;
+
+		char exemptIP[INET6_ADDRSTRLEN + 1] = { 0 };
+		memcpy(exemptIP, raw, len);
+
+		if(family == AF_INET)
+		{
+			struct in_addr exempt4;
+			if(inet_pton(AF_INET, exemptIP, &exempt4) == 1 && memcmp(&client4, &exempt4, sizeof(exempt4)) == 0)
+				return true;
+		}
+		else
+		{
+			struct in6_addr exempt6;
+			if(inet_pton(AF_INET6, exemptIP, &exempt6) == 1 && memcmp(&client6, &exempt6, sizeof(exempt6)) == 0)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+void reload_per_client_rate_limit_exemption(clientsData *client)
+{
+	if(client == NULL || client->flags.aliasclient)
+		return;
+
+	client->flags.rate_limit_exempt = client_matches_rate_limit_exempt_ip(getstr(client->ippos));
+}
+
+void reload_all_per_client_rate_limit_exemption(void)
+{
+	if(counters == NULL)
+		return;
+
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		reload_per_client_rate_limit_exemption(client);
+	}
+}
+
 /**
  * @brief Computes a hash value for the cache IDs using a simple XOR operation.
  *
@@ -356,6 +428,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	client->ippos = addstr(clientIP);
+	reload_per_client_rate_limit_exemption(client);
 	// Store pre-computed hash for faster lookups later on
 	client->hash = hash;
 	// Initialize client hostname

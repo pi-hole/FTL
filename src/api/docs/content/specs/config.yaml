@@ -340,6 +340,11 @@ components:
                       type: integer
                     interval:
                       type: integer
+                    exemptIPs:
+                      type: array
+                      items:
+                        type: string
+                        x-format: ipv4|ipv6
             dhcp:
               type: object
               properties:
@@ -789,6 +794,9 @@ components:
             rateLimit:
               count: 0
               interval: 0
+              exemptIPs:
+                - "192.168.1.10"
+                - "fd00::10"
           dhcp:
             active: false
             start: "192.168.0.10"

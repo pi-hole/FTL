@@ -206,6 +206,60 @@ bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDA
 	return true;
 }
 
+// Validate arrays of IP addresses (IPv4 and/or IPv6)
+bool validate_ip_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
+	{
+		cJSON *item = cJSON_GetArrayItem(val->json, i);
+
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
+			return false;
+		}
+
+		const char *raw = item->valuestring;
+		while(isspace((unsigned char)*raw))
+			raw++;
+
+		size_t len = strlen(raw);
+		while(len > 0 && isspace((unsigned char)raw[len-1]))
+			len--;
+
+		if(len == 0)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: empty string", key, i);
+			return false;
+		}
+
+		if(len > INET6_ADDRSTRLEN)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: address too long (\"%s\")", key, i, item->valuestring);
+			return false;
+		}
+
+		char ip[INET6_ADDRSTRLEN + 1] = { 0 };
+		memcpy(ip, raw, len);
+
+		struct in_addr addr4;
+		struct in6_addr addr6;
+		if(inet_pton(AF_INET, ip, &addr4) != 1 && inet_pton(AF_INET6, ip, &addr6) != 1)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: neither a valid IPv4 nor IPv6 address (\"%s\")", key, i, item->valuestring);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 // Validate IPs in CIDR notation
 bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {

@@ -31,6 +31,7 @@
 #include "signals.h"
 // validation functions
 #include "config/validator.h"
+#include "datastructure.h"
 // getEnvVars()
 #include "config/env.h"
 // sha256sum()
@@ -769,6 +770,13 @@ void initConfig(struct config *conf)
 	conf->dns.rateLimit.interval.t = CONF_UINT;
 	conf->dns.rateLimit.interval.d.ui = 60;
 	conf->dns.rateLimit.interval.c = validate_stub; // Only type-based checking
+
+	conf->dns.rateLimit.exemptIPs.k = "dns.rateLimit.exemptIPs";
+	conf->dns.rateLimit.exemptIPs.h = "IP addresses that should bypass per-client DNS rate limiting. Matching is exact by IP address and applies only when rate limiting is enabled. This is intended for trusted clients that may generate short legitimate DNS bursts.\n\n Example: [ \"192.168.1.10\", \"fd00::10\" ]";
+	conf->dns.rateLimit.exemptIPs.a = cJSON_CreateStringReference("Array of valid IPv4 and/or IPv6 addresses");
+	conf->dns.rateLimit.exemptIPs.t = CONF_JSON_STRING_ARRAY;
+	conf->dns.rateLimit.exemptIPs.d.json = cJSON_CreateArray();
+	conf->dns.rateLimit.exemptIPs.c = validate_ip_array;
 
 	// sub-struct dhcp
 	conf->dhcp.active.k = "dhcp.active";
@@ -2033,6 +2041,7 @@ void replace_config(struct config *newconf)
 
 	// Replace old config struct by changed one atomically
 	memcpy(&config, newconf, sizeof(struct config));
+	reload_all_per_client_rate_limit_exemption();
 
 	// Free old backup struct
 	free_config(&old_conf, false);

@@ -794,9 +794,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Interface name is only available for regular queries, not for
 	// automatically generated DNSSEC queries
 	const char *interface = internal_query ? "-" : next_iface.name;
-
 	// Check rate-limit for this client
-	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
+	if(!internal_query && !client->flags.rate_limit_exempt && config.dns.rateLimit.count.v.ui > 0 &&
 	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
 		if(!client->flags.rate_limited)
