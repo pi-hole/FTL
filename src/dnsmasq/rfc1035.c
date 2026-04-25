@@ -1729,6 +1729,56 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	  }  
 	
 	cname_target = cache_get_cname_target(crecp);
+
+	/*********** Pi-hole modification ***********
+	   address= rules must take priority over cached CNAME chains. A CNAME
+	   cached via an AAAA query (where no IPv6 address= match exists) would
+	   otherwise cause subsequent A queries to bypass lookup_domain entirely.
+	   Check for a local address= match before following the chain. */
+	if (qtype == T_A || qtype == T_AAAA)
+	  {
+	    int addr_flags = (qtype == T_AAAA) ? F_IPV6 : F_IPV4;
+	    int first_addr, last_addr, addr_index;
+	    if (lookup_domain(name, addr_flags, &first_addr, &last_addr) &&
+		(is_local_answer(now, first_addr, name) & addr_flags))
+	      {
+		union all_addr local_addr;
+		ans = 1;
+		sec_data = 0;
+		auth = 0;
+		if (addr_flags & F_IPV4)
+		  {
+		    for (addr_index = first_addr; addr_index != last_addr; addr_index++)
+		      {
+			struct serv_addr4 *srv = (struct serv_addr4 *)daemon->serverarray[addr_index];
+			if (srv->flags & SERV_ALL_ZEROS)
+			  memset(&local_addr, 0, sizeof(local_addr));
+			else
+			  local_addr.addr4 = srv->addr;
+			log_query(F_FORWARD | F_CONFIG | F_IPV4, name, &local_addr, NULL, 0);
+			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
+						daemon->local_ttl, NULL, T_A, C_IN, "4", &local_addr))
+			  anscount++;
+		      }
+		  }
+		else
+		  {
+		    for (addr_index = first_addr; addr_index != last_addr; addr_index++)
+		      {
+			struct serv_addr6 *srv = (struct serv_addr6 *)daemon->serverarray[addr_index];
+			if (srv->flags & SERV_ALL_ZEROS)
+			  memset(&local_addr, 0, sizeof(local_addr));
+			else
+			  local_addr.addr6 = srv->addr;
+			log_query(F_FORWARD | F_CONFIG | F_IPV6, name, &local_addr, NULL, 0);
+			if (add_resource_record(header, limit, &trunc, nameoffset, &ansp,
+						daemon->local_ttl, NULL, T_AAAA, C_IN, "6", &local_addr))
+			  anscount++;
+		      }
+		  }
+		break;
+	      }
+	  }
 	
 	/* If the client asked for DNSSEC  don't use cached data. */
 	if ((crecp->flags & (F_HOSTS | F_DHCP | F_CONFIG)) ||
