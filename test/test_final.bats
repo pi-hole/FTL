@@ -43,7 +43,7 @@
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     [[ ${lines[0]} == "1" ]]
   else
-    [[ ${lines[0]} == "16" ]]
+    [[ ${lines[0]} == "17" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

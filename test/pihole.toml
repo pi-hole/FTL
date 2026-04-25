@@ -553,15 +553,18 @@
     #     A positive integer value in seconds
     interval = 0 ### CHANGED, default = 60
 
-    # IP addresses that should bypass per-client DNS rate limiting. Matching is exact by
-    # IP address and applies only when rate limiting is enabled. This is intended for
-    # trusted clients that may generate short legitimate DNS bursts.
+    # IP addresses that should bypass per-client DNS rate limiting. Matching is exact by IP
+    # address and applies only when rate limiting is enabled. This is intended for trusted
+    # clients that may generate short legitimate DNS bursts.
     #
     # Example: [ "192.168.1.10", "fd00::10" ]
     #
     # Allowed values are:
-    #     An array of valid IPv4 and/or IPv6 addresses
-    exemptIPs = ["192.168.1.10", "fd00::10"] ### CHANGED, default = []
+    #     Array of valid IPv4 and/or IPv6 addresses
+    exemptIPs = [
+      "192.168.1.10",
+      "fd00::10"
+    ] ### CHANGED, default = []
 
 [dhcp]
   # Is the embedded DHCP server enabled?
@@ -1747,8 +1750,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 166 total entries out of which 112 entries are default
-# --> 54 entries are modified
+# 167 total entries out of which 112 entries are default
+# --> 55 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem
