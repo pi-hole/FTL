@@ -1126,7 +1126,7 @@ void initConfig(struct config *conf)
 	conf->webserver.session.restore.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
-	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file.\n\n All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'RSA PRIVATE KEY' section).\n\n The *.pem file can be created using `cp server.crt server.pem && cat server.key >> server.pem` if you have these files instead";
+	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file.\n\n All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'PRIVATE KEY' section).\n\n The *.pem file can be created using `cp server.crt server.pem && cat server.key >> server.pem` if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("A valid TLS certificate file (*.pem)");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
