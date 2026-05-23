@@ -131,6 +131,29 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
+static void get_idstr(char *idstr, size_t size)
+{
+	const int pid = getpid(); // Get the process ID of the calling process
+	const int mpid = main_pid(); // Get the process ID of the main FTL process
+	const int tid = gettid(); // Get the thread ID of the calling process
+
+	// There are four cases we have to differentiate here:
+	if(pid == tid)
+		if(is_fork(mpid, pid))
+			// Fork of the main process
+			snprintf(idstr, size, "%i/F%i", pid, mpid);
+		else
+			// Main process
+			snprintf(idstr, size, "%iM", pid);
+	else
+		if(is_fork(mpid, pid))
+			// Thread of a fork of the main process
+			snprintf(idstr, size, "%i/F%i/T%i", pid, mpid, tid);
+		else
+			// Thread of the main process
+			snprintf(idstr, size, "%i/T%i", pid, tid);
+}
+
 static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
 	switch (priority)
@@ -254,27 +277,9 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
 	char idstr[42];
-	const int pid = getpid(); // Get the process ID of the calling process
-	const int mpid = main_pid(); // Get the process ID of the main FTL process
-	const int tid = gettid(); // Get the thread ID of the calling process
-
+	get_idstr(idstr, sizeof(idstr));
 	const char *prio = priostr(priority, flag);
 
-	// There are four cases we have to differentiate here:
-	if(pid == tid)
-		if(is_fork(mpid, pid))
-			// Fork of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/F%i", pid, mpid);
-		else
-			// Main process
-			snprintf(idstr, sizeof(idstr)-1, "%iM", pid);
-	else
-		if(is_fork(mpid, pid))
-			// Thread of a fork of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/F%i/T%i", pid, mpid, tid);
-		else
-			// Thread of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
 	if((!daemonmode || cli_mode) && print_stdout)
@@ -357,7 +362,8 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
-	const long pid = (long)getpid();
+	char idstr[42];
+	get_idstr(idstr, sizeof(idstr));
 
 	// Open web log file
 	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");
@@ -365,7 +371,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	// Write to web log file
 	if(weblog != NULL)
 	{
-		fprintf(weblog, "[%s %ld] ", timestring, pid);
+		fprintf(weblog, "%s [%s] ", timestring, idstr);
 		va_start(args, format);
 		vfprintf(weblog, format, args);
 		va_end(args);
