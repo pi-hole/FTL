@@ -715,19 +715,24 @@ int main_dnsmasq (int argc, char **argv)
   
    log_err = log_start(ent_pw, err_pipe[1]);
 
-   if (!option_bool(OPT_DEBUG)) 
-     {       
-       /* open  stdout etc to /dev/null */
-       int nullfd = open("/dev/null", O_RDWR);
-       if (nullfd != -1)
-	 {
-	   dup2(nullfd, STDOUT_FILENO);
-	   dup2(nullfd, STDERR_FILENO);
-	   dup2(nullfd, STDIN_FILENO);
-	   close(nullfd);
-	 }
-     }
+   /**** Pi-hole modification ****/
+   // We want to log to stdout/stderr, so we are preventing dnsmasq from replacing them with /dev/null
    
+   //if (!option_bool(OPT_DEBUG)) 
+   //  {       
+   //    /* open  stdout etc to /dev/null */
+   //    int nullfd = open("/dev/null", O_RDWR);
+   //    if (nullfd != -1)
+   //      {
+   //        dup2(nullfd, STDOUT_FILENO);
+   //        dup2(nullfd, STDERR_FILENO);
+   //        dup2(nullfd, STDIN_FILENO);
+   //        close(nullfd);
+   //      }
+   //  }
+
+   /******************************/
+
    /* if we are to run scripts, we need to fork a helper before dropping root. */
   daemon->helperfd = -1;
 #ifdef HAVE_SCRIPT 
