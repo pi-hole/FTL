@@ -30,6 +30,11 @@
 #include "gc.h"
 #include "webserver/cJSON/cJSON.h"
 
+#ifdef HAVE_SYSTEMD_JOURNAL
+// sd_journal_send()
+#include <systemd/sd-journal.h>
+#endif
+
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
 static const char *process = "";
@@ -435,6 +440,25 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 				);
 			logged = true;
 		}
+#ifdef HAVE_SYSTEMD_JOURNAL
+		if(log_journal)
+		{
+			char journal_buffer[8192];
+
+			va_start(args, format);
+			vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
+			va_end(args);
+
+			sd_journal_send(
+				"MESSAGE=%s", journal_buffer,
+				"PRIORITY=%i", priority,
+				"DEBUG_FLAG=%s", debugstr(flag),
+				"COMPONENT=FTL",
+				NULL
+			);
+			logged = true;
+		}
+#endif
 
 		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
 		{
@@ -516,6 +540,24 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 			json_buffer
 		);
 	}
+#ifdef HAVE_SYSTEMD_JOURNAL
+		if(log_journal)
+		{
+			char journal_buffer[8192];
+
+			va_start(args, format);
+			vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
+			va_end(args);
+
+			sd_journal_send(
+				"MESSAGE=%s", journal_buffer,
+				"PRIORITY=%i", priority,
+				"DEBUG_FLAG=%s", debugstr(flag),
+				"COMPONENT=webserver",
+				NULL
+			);
+		}
+#endif
 
 	// Open web log file
 	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");

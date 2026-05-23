@@ -13,7 +13,7 @@
 void parse_args(int argc, char *argv[]);
 
 extern bool daemonmode, cli_mode;
-extern bool log_json;
+extern bool log_json, log_journal;
 extern int argc_dnsmasq;
 extern const char ** argv_dnsmasq;
 

@@ -528,6 +528,19 @@ else()
     target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
+option(USE_SYSTEMD_JOURNAL "Build FTL with systemd journal support, if available" ON)
+
+find_library(LIBSYSTEMD NAMES libsystemd${LIBRARY_SUFFIX} systemd)
+check_include_file("systemd/sd-journal.h" HAVE_SD_JOURNAL_H)
+if(LIBSYSTEMD AND HAVE_SD_JOURNAL_H AND USE_SYSTEMD_JOURNAL)
+
+    message(STATUS "Building FTL with systemd journal support: YES")
+    target_compile_definitions(core PRIVATE HAVE_SYSTEMD_JOURNAL)
+    target_link_libraries(pihole-FTL ${LIBSYSTEMD})
+else()
+    message(STATUS "Building FTL with systemd journal support: NO")
+endif()
+
 # After finishing building the FTL binary, we append the sha256sum of the binary
 # in raw form to itself and print the checksum to the console
 add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to pihole-FTL"
