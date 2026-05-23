@@ -16,6 +16,8 @@
 #include "edns0.h"
 #include "metrics.h"
 
+#include <time.h>
+
 enum protocol { TCP, UDP, INTERNAL };
 
 void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line);
@@ -56,6 +58,6 @@ bool get_dnsmasq_debug(void) __attribute__ ((pure));
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
 
-extern void FTL_dnsmasq_log(const char *payload, const int priority, const int length);
+extern void FTL_dnsmasq_log(const char *payload, const int priority, const int length, const time_t now);
 
 #endif // DNSMASQ_INTERFACE_H

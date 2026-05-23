@@ -327,7 +327,8 @@ void my_syslog(int priority, const char *format, ...)
   va_start(ap, format);
   len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
   va_end(ap);
-  FTL_dnsmasq_log(buffer, priority, len > MAX_MESSAGE ? MAX_MESSAGE : len);
+  time(&time_now);
+  FTL_dnsmasq_log(buffer, priority, len > MAX_MESSAGE ? MAX_MESSAGE : len, time_now);
   /*******************************************************************************/
 
   if (echo_stderr) 
@@ -408,8 +409,10 @@ void my_syslog(int priority, const char *format, ...)
 	  for (tmp = entries; tmp->next; tmp = tmp->next);
 	  tmp->next = entry;
 	}
-      
-      time(&time_now);
+      /************** Pi-hole modification **************/
+      // get the current time earlier, so JSON logging and logfile use the same timestamp
+      //time(&time_now);
+      /**************************************************/
       p = entry->payload;
       if (!log_to_file)
 	p += sprintf(p, "<%d>", priority | log_fac);

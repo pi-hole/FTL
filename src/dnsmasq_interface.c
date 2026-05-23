@@ -4125,7 +4125,7 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const int length, const time_t now)
 {
 	// Lock SHM
 	lock_shm();
