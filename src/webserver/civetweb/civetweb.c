@@ -246,8 +246,7 @@ static void DEBUG_TRACE_FUNC(const char *func,
 #include "log.h"
 #include <sys/resource.h>
 #define DEBUG_TRACE(fmt, ...)                                                  \
-	if(debug_flags[DEBUG_WEBSERVER]) {\
-		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
+		log_web_debug(DEBUG_WEBSERVER, fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__);
 #endif /* DEBUG */
 #endif /* DEBUG_TRACE */
 
@@ -4249,12 +4248,12 @@ send_cors_header(struct mg_connection *conn)
 	    conn->dom_ctx->config[ACCESS_CONTROL_EXPOSE_HEADERS];
 	const char *cors_meth_cfg =
 	    conn->dom_ctx->config[ACCESS_CONTROL_ALLOW_METHODS];
-	const char *cors_repl_asterisk_with_orig_cfg = 
+	const char *cors_repl_asterisk_with_orig_cfg =
 		conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
-		
+
 	if (cors_orig_cfg && *cors_orig_cfg && origin_hdr && *origin_hdr && cors_repl_asterisk_with_orig_cfg && *cors_repl_asterisk_with_orig_cfg) {
 		int cors_repl_asterisk_with_orig = mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
-		
+
 		/* Cross-origin resource sharing (CORS), see
 		 * http://www.html5rocks.com/en/tutorials/cors/,
 		 * http://www.html5rocks.com/static/images/cors_server_flowchart.png
@@ -15158,7 +15157,7 @@ handle_request(struct mg_connection *conn)
 		}
 		return;
 	}
-	
+
 
 	/* 1.3. decode url (if config says so) */
 	if (should_decode_url(conn)) {
@@ -15244,9 +15243,9 @@ handle_request(struct mg_connection *conn)
 		const char *cors_acrm = get_header(ri->http_headers,
 		                                   ri->num_headers,
 		                                   "Access-Control-Request-Method");
-		const char *cors_repl_asterisk_with_orig_cfg = 
+		const char *cors_repl_asterisk_with_orig_cfg =
 			conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
-		
+
 		/* Todo: check if cors_origin is in cors_orig_cfg.
 		 * Or, let the client check this. */
 
@@ -15255,7 +15254,7 @@ handle_request(struct mg_connection *conn)
 		    && (cors_origin != NULL) && (cors_acrm != NULL)
 			&& (cors_repl_asterisk_with_orig_cfg != NULL) && (*cors_repl_asterisk_with_orig_cfg != 0)) {
 			int cors_repl_asterisk_with_orig = mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
-			
+
 			/* This is a valid CORS preflight, and the server is configured
 			 * to handle it automatically. */
 			const char *cors_acrh =

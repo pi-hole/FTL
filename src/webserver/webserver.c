@@ -294,7 +294,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	log_web("%s", message);
+	log_web(LOG_INFO, DEBUG_NONE, "%s", message);
 	return 1;
 }
 
@@ -323,7 +323,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	char *escaped = escape_string(message);
 	if(escaped != NULL)
 	{
-		log_web("ACCESS: %s", escaped);
+		log_web(LOG_INFO, DEBUG_NONE, "ACCESS: %s", escaped);
 		free(escaped);
 	}
 
@@ -351,7 +351,7 @@ void FTL_mbed_debug(void *user_param, int level, const char *file, int line, con
 		len--;
 
 	// Log the message
-	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
+	log_web_debug(DEBUG_TLS, "mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
 /**
@@ -661,7 +661,7 @@ void http_init(void)
 	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */
-	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	log_web(LOG_INFO, DEBUG_NONE, "Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
@@ -672,7 +672,7 @@ void http_init(void)
 
 	if(mg_init_library(features) == 0)
 	{
-		log_web("Initializing HTTP library failed!");
+		log_web(LOG_ERR, DEBUG_NONE, "Initializing HTTP library failed!");
 		return;
 	}
 

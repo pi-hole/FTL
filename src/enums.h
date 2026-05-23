@@ -159,7 +159,8 @@ enum debug_flag {
 	DEBUG_NETLINK,
 	DEBUG_TIMING,
 	DEBUG_PERFORMANCE,
-	DEBUG_MAX
+	DEBUG_MAX,
+	DEBUG_GENERIC // this is for getting a regular "DEBUG" string from priostr(); it is explicitly not selectable as a debug flag, only for carrying over the generic syslog level.
 } __attribute__ ((packed));
 
 enum events {

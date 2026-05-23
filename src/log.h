@@ -52,8 +52,8 @@ const char *get_FTL_version(void);
 void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible);
+const char *priostr(const int priority, const enum debug_flag flag)  __attribute__((const));
 const char *debugstr(const enum debug_flag flag) __attribute__((const));
-void log_web(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
 void dnsmasq_diagnosis_warning(char *message);
@@ -73,6 +73,11 @@ void _FTL_log(const int priority, const enum debug_flag flag, const char *format
 void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned int n, ...);
+
+#define log_web_debug(flag, format, ...) \
+	if(flag > -1 && flag < DEBUG_MAX && debug_flags[flag]) \
+		log_web(LOG_DEBUG, flag, format, ## __VA_ARGS__)
+void log_web(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 char *escape_string(const char *input) __attribute__ ((malloc));
 char *escape_data(const char *src_buf, size_t src_sz) __attribute__((malloc));

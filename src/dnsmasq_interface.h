@@ -56,6 +56,6 @@ bool get_dnsmasq_debug(void) __attribute__ ((pure));
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
 
-extern void FTL_dnsmasq_log(const char *payload, const int length);
+extern void FTL_dnsmasq_log(const char *payload, const int priority, const int length);
 
 #endif // DNSMASQ_INTERFACE_H

@@ -154,7 +154,7 @@ static void get_idstr(char *idstr, size_t size)
 			snprintf(idstr, size, "%i/T%i", pid, tid);
 }
 
-static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
+const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
 	switch (priority)
 	{
@@ -256,6 +256,8 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_PERFORMANCE";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
+		case DEBUG_GENERIC:
+			return "DEBUG";
 		case DEBUG_NONE: // fall through
 		default:
 			return "DEBUG_ANY";
@@ -344,18 +346,11 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	}
 }
 
-void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);
 	va_list args;
-
-	// Add line to FIFO buffer
-	char buffer[MAX_MSG_FIFO + 1u];
-	va_start(args, format);
-	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
-	va_end(args);
-	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
 	get_timestr(timestring, now, true, false);
@@ -364,6 +359,14 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	// pihole-FTL instance is logging into the same file
 	char idstr[42];
 	get_idstr(idstr, sizeof(idstr));
+	const char *prio = priostr(priority, flag);
+
+	// Add line to FIFO buffer
+	char buffer[MAX_MSG_FIFO + 1u];
+	va_start(args, format);
+	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+	va_end(args);
+	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Open web log file
 	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");
@@ -371,7 +374,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	// Write to web log file
 	if(weblog != NULL)
 	{
-		fprintf(weblog, "%s [%s] ", timestring, idstr);
+		fprintf(weblog, "%s [%s] %s: ", timestring, idstr, prio);
 		va_start(args, format);
 		vfprintf(weblog, format, args);
 		va_end(args);
