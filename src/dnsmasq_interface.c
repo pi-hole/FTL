@@ -4130,11 +4130,30 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 	// Lock SHM
 	lock_shm();
 
+	const char *prio = priostr(priority, DEBUG_GENERIC);
+
 	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, priostr(priority, DEBUG_GENERIC), length);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
 
 	// Unlock SHM
 	unlock_shm();
+
+	if(log_json && !daemonmode)
+	{
+		// Get and log PID of current process to avoid ambiguities when more than one
+		// pihole-FTL instance is logging to the same output
+		char idstr[42];
+		get_idstr(idstr, sizeof(idstr));
+
+		// JSON logging only for stdout
+		log_to_json(
+            		now,
+            		prio,
+            		"dnsmasq",
+            		idstr,
+            		payload
+        	);
+	}
 }
 
 static const char *check_dnsmasq_name(const char *name)

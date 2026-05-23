@@ -91,6 +91,7 @@ extern int sqlite3_rsync_main(int argc, char **argv);
 
 bool debug_mode = false;
 bool daemonmode = true, cli_mode = false;
+bool log_json = false;
 int argc_dnsmasq = 0;
 const char** argv_dnsmasq = NULL;
 
@@ -1144,6 +1145,12 @@ void parse_args(int argc, char *argv[])
 		if(strcmp(argv[i], "-q") == 0)
 		{
 			quiet = true;
+			ok = true;
+		}
+
+		if(strcmp(argv[i], "--log-json") == 0)
+		{
+			log_json = true;
 			ok = true;
 		}
 

@@ -28,6 +28,7 @@
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
+#include "webserver/cJSON/cJSON.h"
 
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
@@ -123,6 +124,92 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
+void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis)
+{
+	struct tm tm;
+	localtime_r(&timein, &tm);
+
+	int millisec = 0;
+
+	// Optional milliseconds
+	if(millis)
+	{
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+
+		// Only use ms if the timestamps match the same second
+		if(tv.tv_sec == timein)
+			millisec = tv.tv_usec / 1000;
+	}
+
+	// Timezone offset in seconds east of UTC
+	const long tz_offset = tm.tm_gmtoff;
+
+	// UTC special case
+	if(tz_offset == 0)
+	{
+		if(millis)
+		{
+			snprintf(timestring, TIMESTR_SIZE,
+					 "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+					 tm.tm_year + 1900,
+					 tm.tm_mon + 1,
+					 tm.tm_mday,
+					 tm.tm_hour,
+					 tm.tm_min,
+					 tm.tm_sec,
+					 millisec);
+		}
+		else
+		{
+			snprintf(timestring, TIMESTR_SIZE,
+					 "%04d-%02d-%02dT%02d:%02d:%02dZ",
+					 tm.tm_year + 1900,
+					 tm.tm_mon + 1,
+					 tm.tm_mday,
+					 tm.tm_hour,
+					 tm.tm_min,
+					 tm.tm_sec);
+		}
+	}
+	else
+	{
+		const int tz_hours = (int)(tz_offset / 3600);
+		const int tz_minutes = (int)((labs(tz_offset) % 3600) / 60);
+
+		if(millis)
+		{
+			snprintf(timestring, TIMESTR_SIZE,
+					 "%04d-%02d-%02dT%02d:%02d:%02d.%03d%+03d:%02d",
+					 tm.tm_year + 1900,
+					 tm.tm_mon + 1,
+					 tm.tm_mday,
+					 tm.tm_hour,
+					 tm.tm_min,
+					 tm.tm_sec,
+					 millisec,
+					 tz_hours,
+					 tz_minutes);
+		}
+		else
+		{
+			snprintf(timestring, TIMESTR_SIZE,
+					 "%04d-%02d-%02dT%02d:%02d:%02d%+03d:%02d",
+					 tm.tm_year + 1900,
+					 tm.tm_mon + 1,
+					 tm.tm_mday,
+					 tm.tm_hour,
+					 tm.tm_min,
+					 tm.tm_sec,
+					 tz_hours,
+					 tz_minutes);
+		}
+	}
+
+	// Ensure null termination
+	timestring[TIMESTR_SIZE - 1] = '\0';
+}
+
 // Return the current year
 unsigned int get_year(const time_t timein)
 {
@@ -131,7 +218,30 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static void get_idstr(char *idstr, size_t size)
+void log_to_json(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
+{
+	char timestring_iso8601[TIMESTR_SIZE];
+	get_timestr_iso8601(timestring_iso8601, now, true);
+
+	cJSON *root = cJSON_CreateObject();
+	if (!root) return;
+
+	cJSON_AddStringToObject(root, "timestamp", timestring_iso8601);
+	cJSON_AddStringToObject(root, "log_level", log_level);
+	cJSON_AddStringToObject(root, "service", "pihole-FTL");
+	cJSON_AddStringToObject(root, "component", component);
+	cJSON_AddStringToObject(root, "pid", pid);
+	cJSON_AddStringToObject(root, "message", msg);
+
+	char *out = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+
+	if (!out) return;
+	printf("%s\n", out);
+	free(out);
+}
+
+void get_idstr(char *idstr, size_t size)
 {
 	const int pid = getpid(); // Get the process ID of the calling process
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
@@ -267,6 +377,7 @@ const char *debugstr(const enum debug_flag flag)
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE];
+	const time_t now = time(NULL);
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -274,7 +385,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true, false);
+	get_timestr(timestring, now, true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -306,6 +417,25 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 		bool logged = false;
+
+		if(log_json && !daemonmode)
+		{
+			char json_buffer[8192];
+
+			va_start(args, format);
+			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
+			va_end(args);
+			// JSON logging only for stdout
+			log_to_json(
+					now,
+					prio,
+					"FTL",
+					idstr,
+					json_buffer
+				);
+			logged = true;
+		}
+
 		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
 		{
 			// Open log file
@@ -367,6 +497,25 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 	va_end(args);
 	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+
+
+	if(log_json && !daemonmode)
+	{
+		char json_buffer[8192];
+
+		va_start(args, format);
+		vsnprintf(json_buffer, sizeof(json_buffer), format, args);
+		va_end(args);
+
+		// JSON logging only for stdout
+		log_to_json(
+			now,
+			prio,
+			"webserver",
+			idstr,
+			json_buffer
+		);
+	}
 
 	// Open web log file
 	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");
