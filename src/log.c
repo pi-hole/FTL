@@ -31,6 +31,7 @@
 #include "webserver/cJSON/cJSON.h"
 
 #ifdef HAVE_SYSTEMD_JOURNAL
+#define SD_JOURNAL_SUPPRESS_LOCATION
 // sd_journal_send()
 #include <systemd/sd-journal.h>
 #endif
