@@ -4160,7 +4160,7 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length, 
             		payload
         	);
 	}
-#ifdef HAVE_SYSTEMD_JOURNAL
+#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
 	if(log_journal)
 	{
 		sd_journal_send(

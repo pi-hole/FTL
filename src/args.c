@@ -80,6 +80,10 @@
 // test
 #include <sys/mman.h>
 
+#ifdef DL_SYSTEMD_JOURNAL
+#include <dlfcn.h>
+#endif
+
 // defined in dnsmasq.c
 extern void print_dnsmasq_version(const char *yellow, const char *green, const char *bold, const char *normal);
 
@@ -219,6 +223,33 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 {
 	return strncasecmp(input, start, strlen(start)) == 0;
 }
+
+#ifdef DL_SYSTEMD_JOURNAL
+static void *systemd_handle = NULL;
+sd_journal_send_t sd_journal_send = NULL;
+
+// Intentionally never dlclose() libsystemd
+// We open it once and use it until late shutdown
+// OS cleanup at exit is sufficient.
+static bool init_systemd_journal(void)
+{
+	systemd_handle = dlopen("libsystemd.so.0", RTLD_NOW | RTLD_LOCAL);
+	if (!systemd_handle)
+		return false;
+
+	dlerror();
+	sd_journal_send = (sd_journal_send_t)dlsym(systemd_handle, "sd_journal_send");
+	const char *err = dlerror();
+	if (err != NULL) {
+		dlclose(systemd_handle);
+		systemd_handle = NULL;
+		sd_journal_send = NULL;
+		return false;
+	}
+
+	return true;
+}
+#endif
 
 void parse_args(int argc, char *argv[])
 {
@@ -1154,9 +1185,19 @@ void parse_args(int argc, char *argv[])
 			ok = true;
 		}
 
-		if(strcmp(argv[i], "--log-journal") == 0)
+		if(strcmp(argv[i], "--log-journal") == 0 && log_journal == false)
 		{
 #ifdef HAVE_SYSTEMD_JOURNAL
+			log_journal = true;
+			ok = true;
+#elif defined(DL_SYSTEMD_JOURNAL)
+
+			if(!init_systemd_journal())
+			{
+				printf("Error: Failed to load libsystemd. Logging to journal is not available.\n");
+				exit(EXIT_FAILURE);
+			}
+
 			log_journal = true;
 			ok = true;
 #else

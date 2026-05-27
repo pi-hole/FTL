@@ -441,7 +441,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 				);
 			logged = true;
 		}
-#ifdef HAVE_SYSTEMD_JOURNAL
+#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
 		if(log_journal)
 		{
 			char journal_buffer[8192];
@@ -541,7 +541,7 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 			json_buffer
 		);
 	}
-#ifdef HAVE_SYSTEMD_JOURNAL
+#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
 		if(log_journal)
 		{
 			char journal_buffer[8192];
