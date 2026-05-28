@@ -164,6 +164,7 @@ struct config {
 			struct conf_item optimizer;
 			struct conf_item upstreamBlockedTTL;
 			struct conf_item rrtype;
+			struct conf_item excludeAnswerCIDRs;
 		} cache;
 		struct {
 			struct conf_item active;

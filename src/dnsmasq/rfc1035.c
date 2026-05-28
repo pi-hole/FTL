@@ -16,6 +16,8 @@
 
 #include "dnsmasq.h"
 #include "dnsmasq_interface.h"
+#include "cache_exclude.h"
+#include "config/config.h"
 
 /* EXTR_NAME_EXTRACT -> extract name
    EXTR_NAME_COMPARE -> compare name, case insensitive
@@ -1014,6 +1016,13 @@ int extract_addresses(struct dns_header *header, size_t qlen, char *name, time_t
 		  if (!CHECK_LEN(header, p1, qlen, addrlen))
 		    return 2; /* bad packet */
 		  memcpy(&addr, p1, addrlen);
+		  if (((flags & F_IPV4) &&
+		       cache_exclude_address_matches_json(config.dns.cache.excludeAnswerCIDRs.v.json,
+		                                          AF_INET, &addr.addr4)) ||
+		      ((flags & F_IPV6) &&
+		       cache_exclude_address_matches_json(config.dns.cache.excludeAnswerCIDRs.v.json,
+		                                          AF_INET6, &addr.addr6)))
+		    no_cache_dnssec = 1;
 		  
 		  /* check for returned address in private space */
 		  if (check_rebind)

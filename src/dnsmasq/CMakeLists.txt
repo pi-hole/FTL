@@ -14,6 +14,8 @@ set(sources
         blockdata.c
         bpf.c
         cache.c
+        cache_exclude.c
+        cache_exclude.h
         config.h
         conntrack.c
         crypto.c

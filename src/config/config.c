@@ -642,7 +642,22 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
+	conf->dns.cache.excludeAnswerCIDRs.k = "dns.cache.excludeAnswerCIDRs";
+	conf->dns.cache.excludeAnswerCIDRs.h = "Array of CIDR ranges. If any A or AAAA record in an upstream DNS answer matches one of these ranges, FTL will return the answer to the client but will not commit this answer to its DNS cache.\n\nThis is useful when Pi-hole is upstreamed to a fake-IP resolver where cached fake-IP answers may outlive the resolver's own mapping state.";
+	conf->dns.cache.excludeAnswerCIDRs.a = cJSON_CreateStringReference("Array of IPv4 or IPv6 CIDR ranges");
+	conf->dns.cache.excludeAnswerCIDRs.t = CONF_JSON_STRING_ARRAY;
+	conf->dns.cache.excludeAnswerCIDRs.d.json = cJSON_CreateArray();
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("198.18.0.0/15"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("10.0.0.0/8"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("172.16.0.0/12"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("192.168.0.0/16"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("169.254.0.0/16"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("fc00::/7"));
+	cJSON_AddItemToArray(conf->dns.cache.excludeAnswerCIDRs.d.json, cJSON_CreateStringReference("fe80::/10"));
+	conf->dns.cache.excludeAnswerCIDRs.f = FLAG_RESTART_FTL;
+	conf->dns.cache.excludeAnswerCIDRs.c = validate_stub; // CIDRs are parsed when answers are evaluated
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
