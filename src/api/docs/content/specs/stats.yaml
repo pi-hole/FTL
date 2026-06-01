@@ -148,6 +148,7 @@ components:
         parameters:
           - $ref: 'stats.yaml#/components/parameters/top_items/blocked'
           - $ref: 'stats.yaml#/components/parameters/top_items/count'
+          - $ref: 'stats.yaml#/components/parameters/top_items/list'
         responses:
           '200':
             description: OK
@@ -799,3 +800,15 @@ components:
           type: integer
         required: false
         example: 10
+      list:
+        in: query
+        description: >
+          Filter results to domains that belong to a specific subscription list
+          (adlist). The value is the integer ID of the adlist as returned by
+          GET /api/lists. When omitted (or negative), results from all lists
+          are returned.
+        name: list
+        schema:
+          type: integer
+        required: false
+        example: 1

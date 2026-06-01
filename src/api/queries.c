@@ -88,8 +88,8 @@ int api_queries_suggestions(struct ftl_conn *api)
 	get_int_var(api->request->query_string, "count", &count);
 
 	// Get domains
-	cJSON *domain = get_top_domains(api, count, false, true);
-	cJSON *blocked = get_top_domains(api, count, true, true);
+	cJSON *domain = get_top_domains(api, count, false, true, -1);
+	cJSON *blocked = get_top_domains(api, count, true, true, -1);
 	// Add domains from both arrays, avoiding duplicates
 	cJSON *entry = NULL;
 	cJSON_ArrayForEach(entry, blocked)

@@ -1179,6 +1179,62 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 	return (rc == SQLITE_ROW) ? FOUND : NOT_FOUND;
 }
 
+// Check whether a given domain appears in the gravity table for a specific
+// adlist. Returns true when the domain is found, false otherwise (including
+// when the gravity database is not available).
+bool gravityDB_domain_in_adlist(const char *domain, const int adlist_id)
+{
+	// Open gravity database if not already open
+	if(!gravityDB_opened && !gravityDB_open())
+	{
+		log_warn("gravityDB_domain_in_adlist(\"%s\", %d): Gravity database not available",
+		         domain, adlist_id);
+		return false;
+	}
+
+	sqlite3_stmt *stmt = NULL;
+	const char *querystr = "SELECT EXISTS(SELECT 1 FROM gravity WHERE domain = ?1 AND adlist_id = ?2);";
+	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("gravityDB_domain_in_adlist(\"%s\", %d): Failed to prepare statement: %s",
+		        domain, adlist_id, sqlite3_errstr(rc));
+		return false;
+	}
+
+	// Bind domain
+	if((rc = sqlite3_bind_text(stmt, 1, domain, -1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+		log_err("gravityDB_domain_in_adlist(\"%s\", %d): Failed to bind domain: %s",
+		        domain, adlist_id, sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Bind adlist_id
+	if((rc = sqlite3_bind_int(stmt, 2, adlist_id)) != SQLITE_OK)
+	{
+		log_err("gravityDB_domain_in_adlist(\"%s\", %d): Failed to bind adlist_id: %s",
+		        domain, adlist_id, sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return false;
+	}
+
+	// Execute
+	rc = sqlite3_step(stmt);
+	bool found = false;
+	if(rc == SQLITE_ROW)
+		found = sqlite3_column_int(stmt, 0) != 0;
+	else if(rc != SQLITE_DONE)
+		log_err("gravityDB_domain_in_adlist(\"%s\", %d): Step failed: %s",
+		        domain, adlist_id, sqlite3_errstr(rc));
+
+	sqlite3_finalize(stmt);
+	log_debug(DEBUG_DATABASE, "gravityDB_domain_in_adlist(\"%s\", %d): %s",
+	          domain, adlist_id, found ? "found" : "not found");
+	return found;
+}
+
 void gravityDB_reload_groups(clientsData *client)
 {
 	// Rebuild client table statements (possibly from a different group set)

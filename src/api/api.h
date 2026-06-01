@@ -35,7 +35,8 @@ int api_stats_top_domains(struct ftl_conn *api);
 int api_stats_top_clients(struct ftl_conn *api);
 int api_stats_recentblocked(struct ftl_conn *api);
 cJSON *get_top_domains(struct ftl_conn *api, const int count,
-                       const bool blocked, const bool domains_only);
+                       const bool blocked, const bool domains_only,
+                       const int adlist_id);
 cJSON *get_top_clients(struct ftl_conn *api, const int count,
                        const bool blocked, const bool clients_only,
                        const bool names_only, const bool ip_if_no_name);

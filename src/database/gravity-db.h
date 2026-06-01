@@ -77,4 +77,6 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 
 time_t gravity_last_updated(void) __attribute__((pure));
 
+bool gravityDB_domain_in_adlist(const char *domain, const int adlist_id);
+
 #endif //GRAVITY_H

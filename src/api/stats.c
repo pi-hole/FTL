@@ -22,6 +22,8 @@
 #include "overTime.h"
 // enum REGEX
 #include "regex_r.h"
+// gravityDB_domain_in_adlist()
+#include "database/gravity-db.h"
 // sqrt()
 #include <math.h>
 
@@ -177,7 +179,8 @@ int api_stats_summary(struct ftl_conn *api)
 }
 
 cJSON *get_top_domains(struct ftl_conn *api, const int count,
-                       const bool blocked, const bool domains_only)
+                       const bool blocked, const bool domains_only,
+                       const int adlist_id)
 {
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
@@ -278,6 +281,14 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 			}
 		}
 
+		// When a specific adlist is requested, skip domains that don't
+		// belong to it. We check gravity.db here (outside SHM lock would
+		// be cleaner, but the lock is re-acquired above — safe to call
+		// gravityDB helpers while holding SHM lock as they use their own
+		// SQLite handle).
+		if(adlist_id >= 0 && !gravityDB_domain_in_adlist(domain, adlist_id))
+			skip_domain = true;
+
 		if(skip_domain || top_domains[i].count < 1)
 			continue;
 
@@ -333,7 +344,9 @@ int api_stats_top_domains(struct ftl_conn *api)
 {
 	bool blocked = false; // Can be overwritten by query string
 	int count = 10;
-	// /api/stats/top_domains?blocked=true
+	// adlist_id < 0 means "all lists" (default / no filter)
+	int adlist_id = -1;
+	// /api/stats/top_domains?blocked=true&count=N&list=<adlist_id>
 	if(api->request->query_string != NULL)
 	{
 		// Should blocked domains be shown?
@@ -342,9 +355,12 @@ int api_stats_top_domains(struct ftl_conn *api)
 		// Does the user request a non-default number of replies?
 		// Note: We do not accept zero query requests here
 		get_int_var(api->request->query_string, "count", &count);
+
+		// Optional filter: restrict results to a specific subscription list
+		get_int_var(api->request->query_string, "list", &adlist_id);
 	}
 
-	cJSON *json = get_top_domains(api, count, blocked, false);
+	cJSON *json = get_top_domains(api, count, blocked, false, adlist_id);
 	JSON_SEND_OBJECT(json);
 }
 

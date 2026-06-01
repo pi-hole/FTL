@@ -75,7 +75,7 @@ int api_padd(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(json, "active_clients", active_clients);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "gravity_size", num_gravity);
 
-	cJSON *top_domains = get_top_domains(api, 1, false, true);
+	cJSON *top_domains = get_top_domains(api, 1, false, true, -1);
 	if(cJSON_GetArraySize(top_domains) == 0)
 	{
 		JSON_ADD_NULL_TO_OBJECT(json, "top_domain");
@@ -87,7 +87,7 @@ int api_padd(struct ftl_conn *api)
 		JSON_COPY_STR_TO_OBJECT(json, "top_domain", domain);
 	}
 	cJSON_Delete(top_domains);
-	cJSON *top_blocked = get_top_domains(api, 1, true, true);
+	cJSON *top_blocked = get_top_domains(api, 1, true, true, -1);
 	if(cJSON_GetArraySize(top_blocked) == 0)
 	{
 		JSON_ADD_NULL_TO_OBJECT(json, "top_blocked");
