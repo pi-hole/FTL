@@ -57,9 +57,4 @@ void test_dnsmasq_options(int argc, const char *argv[]);
 #define COL_CYAN	"\x1b[96m" // bright foreground color
 #define CLI_OVER	"\r\x1b[K" // go back to beginning of line and erase to end of line
 
-#ifdef DL_SYSTEMD_JOURNAL
-typedef int (*sd_journal_send_t)(const char *format, ...);
-extern sd_journal_send_t sd_journal_send;
-#endif
-
 #endif //ARGS_H

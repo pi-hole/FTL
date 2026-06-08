@@ -28,13 +28,9 @@
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
+// journal_send_fields()
+#include "journal.h"
 #include "webserver/cJSON/cJSON.h"
-
-#ifdef HAVE_SYSTEMD_JOURNAL
-#define SD_JOURNAL_SUPPRESS_LOCATION
-// sd_journal_send()
-#include <systemd/sd-journal.h>
-#endif
 
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
@@ -441,7 +437,6 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 				);
 			logged = true;
 		}
-#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
 		if(log_journal)
 		{
 			char journal_buffer[8192];
@@ -450,16 +445,14 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 			vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
 			va_end(args);
 
-			sd_journal_send(
-				"MESSAGE=%s", journal_buffer,
-				"PRIORITY=%i", priority,
-				"DEBUG_FLAG=%s", debugstr(flag),
-				"COMPONENT=FTL",
-				NULL
-			);
+			journal_send_fields((struct journal_field[]){
+				J_FIELD_STR("MESSAGE", journal_buffer),
+				J_FIELD_INT("PRIORITY", priority),
+				J_FIELD_STR("DEBUG_FLAG", debugstr(flag)),
+				J_FIELD_STR("COMPONENT", "FTL"),
+			}, 4);
 			logged = true;
 		}
-#endif
 
 		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
 		{
@@ -541,24 +534,22 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 			json_buffer
 		);
 	}
-#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
-		if(log_journal)
-		{
-			char journal_buffer[8192];
 
-			va_start(args, format);
-			vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
-			va_end(args);
+	if(log_journal)
+	{
+		char journal_buffer[8192];
 
-			sd_journal_send(
-				"MESSAGE=%s", journal_buffer,
-				"PRIORITY=%i", priority,
-				"DEBUG_FLAG=%s", debugstr(flag),
-				"COMPONENT=webserver",
-				NULL
-			);
-		}
-#endif
+		va_start(args, format);
+		vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
+		va_end(args);
+
+		journal_send_fields((struct journal_field[]){
+			J_FIELD_STR("MESSAGE", journal_buffer),
+			J_FIELD_INT("PRIORITY", priority),
+			J_FIELD_STR("DEBUG_FLAG", debugstr(flag)),
+			J_FIELD_STR("COMPONENT", "webserver"),
+		}, 4);
+	}
 
 	// Open web log file
 	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");

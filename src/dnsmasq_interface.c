@@ -58,12 +58,8 @@
 #include "procps.h"
 // init_api_sessions()
 #include "api/api.h"
-
-#ifdef HAVE_SYSTEMD_JOURNAL
-#define SD_JOURNAL_SUPPRESS_LOCATION
-// sd_journal_send()
-#include <systemd/sd-journal.h>
-#endif
+// journal_send_fields()
+#include "journal.h"
 
 // Public prototypes (defined in this file, called from other translation units)
 void FTL_dump_cache_stats(void);
@@ -4160,17 +4156,14 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length, 
             		payload
         	);
 	}
-#if defined(HAVE_SYSTEMD_JOURNAL) || defined(DL_SYSTEMD_JOURNAL)
 	if(log_journal)
 	{
-		sd_journal_send(
-			"MESSAGE=%s", payload,
-			"PRIORITY=%i", priority,
-			"COMPONENT=dnsmasq",
-			NULL
-		);
+		journal_send_fields((struct journal_field[]){
+			J_FIELD_STR("MESSAGE", payload),
+			J_FIELD_INT("PRIORITY", priority),
+			J_FIELD_STR("COMPONENT", "dnsmasq"),
+		}, 3);
 	}
-#endif
 }
 
 static const char *check_dnsmasq_name(const char *name)

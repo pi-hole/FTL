@@ -40,6 +40,7 @@
 
 /****** Pi-hole modification ******/
 extern int is_shm_fd(const int fd);
+extern int is_journal_fd(const int fd);
 /**********************************/
 
 /* SURF random number generator */
@@ -881,7 +882,7 @@ void close_fds(long max_fd, int spare1, int spare2, int spare3)
 	    continue;
 	  
 	  /****** Pi-hole modification ******/
-	  if(is_shm_fd(fd))
+	  if(is_shm_fd(fd) || is_journal_fd(fd))
 	    continue;
 	  /**********************************/
 
