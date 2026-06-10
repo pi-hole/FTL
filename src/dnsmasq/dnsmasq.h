@@ -849,6 +849,7 @@ struct frec {
 #define OT_CSTRING      0x0800
 #define OT_DEC          0x0400 
 #define OT_TIME         0x0200
+#define OT_DHCP6_VENDOR 0x0100
 
 /* actions in the daemon->helper RPC */
 #define ACTION_DEL           1

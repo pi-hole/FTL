@@ -734,7 +734,7 @@ static const struct opttab_t opttab6[] = {
   { "status", 13, OT_INTERNAL },
   { "rapid-commit", 14, OT_INTERNAL },
   { "user-class", 15, OT_INTERNAL | OT_CSTRING },
-  { "vendor-class", 16, OT_INTERNAL | OT_CSTRING },
+  { "vendor-class", 16, OT_DHCP6_VENDOR },
   { "vendor-opts", 17, OT_INTERNAL },
   { "sip-server-domain", 21,  OT_RFC1035_NAME },
   { "sip-server", 22, OT_ADDR_LIST },
@@ -907,6 +907,37 @@ char *option_string(int prot, unsigned int opt, unsigned char *val, int opt_len,
 		    i += len + 2;
 		    if (i < opt_len && j < buf_len)
 		      buf[j++] = ',';
+		  }
+	      }
+	    else if ((ot[o].size & OT_DHCP6_VENDOR))
+	      {
+		unsigned int enterprise;
+		unsigned char *p = &val[0];
+
+		if (opt_len >= 4)
+		  {
+		    GETLONG(enterprise, p);
+		    snprintf(buf, buf_len, "%u", enterprise);
+		    j = strlen(buf);
+		    i = 4;
+		    while (i + 2 <= opt_len)
+		      {
+			int k, len;
+			p = &val[i];
+			GETSHORT(len, p);
+			if (i + 2 + len > opt_len)
+			  break;
+			if (j < buf_len - 1)
+			  buf[j++] = ',';
+			for (k = 0; k < len && j < buf_len - 1; k++)
+			  {
+			    char c = *p++;
+			    if (isprint((unsigned char)c))
+			      buf[j++] = c;
+			  }
+			buf[j] = 0;
+			i += len + 2;
+		      }
 		  }
 	      }
 #endif
