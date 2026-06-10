@@ -1908,6 +1908,51 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	      new->val = newp;
 	      new->len = p - newp;
 	    }
+	  else if (comma && (opt_len & OT_DHCP6_VENDOR))
+	    {
+	      /* First arg is Enterprise ID (4 bytes)
+		 subsequent are length fields (2 bytes each) + string */
+	      int i, commas = 1;
+	      unsigned char *p, *newp;
+
+	      for (i = 0; comma[i]; i++)
+		if (comma[i] == ',')
+		  commas++;
+
+	      newp = opt_malloc(strlen(comma)+(2*commas)+4);
+	      p = newp;
+	      arg = comma;
+	      comma = split(arg);
+
+	      if (arg && *arg)
+	      {
+	      unsigned int enterprise = atoi(arg);
+	      PUTLONG(enterprise, p);
+	      }
+	      else
+	      goto_err(_("missing enterprise ID in dhcp-option"));
+
+	      arg = comma;
+	      comma = split(arg);
+
+	      if (!arg || !*arg)
+	      goto_err(_("missing vendor class in dhcp-option"));
+
+	      while (arg && *arg)
+		{
+		  u16 len = strlen(arg);
+		  unhide_metas(arg);
+		  PUTSHORT(len, p);
+		  memcpy(p, arg, len);
+		  p += len;
+
+		  arg = comma;
+		  comma = split(arg);
+		}
+
+	      new->val = newp;
+	      new->len = p - newp;
+	    }
 	  else if (comma && (opt_len & OT_RFC1035_NAME))
 	    {
 	      unsigned char *p = NULL, *q, *newp, *end;
