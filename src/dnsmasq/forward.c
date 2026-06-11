@@ -185,7 +185,10 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
   int forwarded = 0;
   int ede = EDE_UNSET;
   unsigned short rrtype, rrclass;
-
+  unsigned short id = ntohs(header->id); /* Retrieve the id from the new query before we overwrite it. */
+  unsigned int casediff = 0;
+  unsigned int *bitvector = NULL;
+  
   gotname = extract_request(header, plen, daemon->namebuff, &rrtype, &rrclass);
   
   /* Check for retry on existing query.
@@ -205,10 +208,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
       struct frec_src *src;
-      unsigned int casediff = 0;
-      unsigned int *bitvector = NULL;
-      unsigned short id = ntohs(header->id); /* Retrieve the id from the new query before we overwrite it. */
-      
+          
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == id && 
 	    sockaddr_isequal(&src->source, udpaddr))
@@ -249,9 +249,11 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 		 and never resetting until the frec gets deleted by
 		 aging followed by the receipt of a different query. This
 		 is a bit of a DoS vuln. Avoid by explicitly deleting the
-		 frec once it expires. */
-	      if (difftime(now, forward->time) >= TIMEOUT)
-		free_frec(forward);
+		 frec once it expires. The deletion is done at the end of
+		 this function, unless we set forward to NULL here. */
+	      if (difftime(now, forward->time) < TIMEOUT)
+		forward = NULL;
+
 	      goto reply;
 	    }
 
@@ -322,7 +324,6 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->fd = udpfd;
 	  src->encode_bitmap = casediff;
 	  src->encode_bigmap = bitvector;
-	  
 	  src->udp_pkt_size = (unsigned short)replylimit;
 
 	  /* closely spaced identical queries cannot be a try and a retry, so
@@ -401,18 +402,15 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
       header->id = ntohs(forward->new_id);
-      forward->frec_src.encode_bitmap = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
+      forward->frec_src.encode_bitmap = casediff = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
       forward->frec_src.encode_bigmap = NULL;
-
-      if (!extract_name(header, plen, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+      
+      if (casediff != 0 && !extract_name(header, plen, NULL, (char *)&casediff, EXTR_NAME_FLIP, 1))
 	goto reply;
       
       /* Keep copy of query for retries and move to TCP */
       if (!(forward->stash = blockdata_alloc((char *)header, plen)))
-	{
-	  free_frec(forward);
-	  goto reply; /* no mem. return REFUSED */
-	}
+	goto reply; /* no mem. return REFUSED */
       
       forward->stash_len = plen;
       forward->frec_src.log_id = daemon->log_id;
@@ -609,13 +607,25 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   
   /* could not send on, prepare to return */ 
-  header->id = htons(forward->frec_src.orig_id);
-  free_frec(forward); /* cancel */
   ede = EDE_NETERR;
   
  reply:
   if (udpfd != -1)
     {
+      /* The query now in the buffer can have changed from what arrived during
+	 the preparation for forwarding in two respects.
+	 1) The header->id field may have changed.
+	 2) The case of letters in the query may have been changed.
+	 
+	 Restore both of these changes before using it to build an error return for the client.
+	 The original id is held in local variable id, and the difference in case
+	 is encoded in casediff and also bitvector if the difference spreads beyond the first
+	 32 characters.
+      */
+      header->id = htons(id);
+      if (casediff != 0)
+	extract_name(header, plen, NULL, (char *)(bitvector ? bitvector : &casediff), EXTR_NAME_FLIP, bitvector ? casediff : 1);
+	      
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, replylimit, first, last, ede)))
 	return;
       
@@ -646,6 +656,11 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   
   daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+
+  /* This has to be after last use of bitvector. */
+  if (forward)
+    free_frec(forward);
+  
   return;
 }
 
@@ -1350,7 +1365,8 @@ void reply_query(int fd, time_t now)
   server->query_latency = server->mma_latency/128;
   
   /* Flip the bits back in the query name. */
-    if (!extract_name(header, n, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+    if (forward->frec_src.encode_bitmap != 0 &&
+	!extract_name(header, n, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
     return;
       
 #ifdef HAVE_DNSSEC
