@@ -1287,7 +1287,13 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    daemon mode and verbose logging\n");
 			printf("\t%stest%s                Don't start pihole-FTL but instead\n", green, normal);
 			printf("\t                    process everything and quit immediately\n");
-			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n\n", green, normal, green, normal);
+			printf("\t%s-f%s, %sno-daemon%s       Don't go into daemon mode\n", green, normal, green, normal);
+			printf("\t%s--log-json%s          Write combined FTL, webserver and dnsmasq\n", green, normal);
+			printf("\t                    logs as structured JSON to stdout (requires\n");
+			printf("\t                    no-daemon / -f to be useful)\n");
+			printf("\t%s--log-journal%s       Write combined FTL, webserver and dnsmasq\n", green, normal);
+			printf("\t                    logs with structured journal fields to the\n");
+			printf("\t                    systemd-journald socket\n\n");
 
 			printf("%sConfig options:%s\n", yellow, normal);
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
@@ -1477,13 +1483,13 @@ void suggest_complete(const int argc, char *argv[])
 		// Root-level suggestion: "pihole-FTL ..."
 		const char *options[] = {
 			"arp-scan", "branch", "backtrace", "crash", "--config", "debug",
-		    "--default-gateway", "dhcp-discover", "dnsmasq-test", "-f",
-		    "--gen-x509", "gravity", "gzip", "help", "-h", "--help", "idn2",
-			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac", "lua",
-		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
-		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
-		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
-		    "--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
+			"--default-gateway", "dhcp-discover", "dnsmasq-test", "-f",
+			"--gen-x509", "gravity", "gzip", "help", "-h", "--help", "idn2",
+			"--list-dhcp4", "--list-dhcp6", "--log-json", "--log-journal",
+			"--lua", "--luac", "lua", "luac", "ntp", "no-daemon", "--perf",
+			"ptr", "--read-x509", "regex-test", "sha256sum", "sqlite3",
+			"sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
+			"--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
 		};
 
 		// Provide matching suggestions
