@@ -2848,7 +2848,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	break;
       }
       
-    case LOPT_CPE_ID: /* --add-dns-client */
+    case LOPT_CPE_ID: /* --add-cpe-id */
       if (arg)
 	daemon->dns_client_id = opt_string_alloc(arg);
       break;
