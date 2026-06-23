@@ -1477,7 +1477,7 @@ static struct serverfd *allocate_sfd(union mysockaddr *addr, char *intname, unsi
   
   /* when using random ports, servers which would otherwise use
      the INADDR_ANY/port0 socket have sfd set to NULL, this is 
-     anything without an explictly set source port. */
+     anything without an explicitly set source port. */
   if (!daemon->osport)
     {
       errno = 0;

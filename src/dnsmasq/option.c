@@ -1386,7 +1386,7 @@ static void dhcp_netid_list_free(struct dhcp_netid_list *netid)
       netid = netid->next;
       /* Note: don't use dhcp_netid_free() here, since that 
 	 frees a list linked on netid->next. Where a netid_list
-	 is used that's because the the ->next pointers in the
+	 is used that's because the ->next pointers in the
 	 netids are being used to temporarily construct 
 	 a list of valid tags. */
       free(tmplist->list->net);

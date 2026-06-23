@@ -1343,7 +1343,7 @@ void reply_query(int fd, time_t now)
      had replies from all to avoid filling the forwarding table when
      everything is broken */
 
-  /* decrement count of replies recieved if we sent to more than one server. */
+  /* decrement count of replies received if we sent to more than one server. */
   if (forward->forwardall && (--forward->forwardall > 1) && RCODE(header) == REFUSED)
     return;
 
@@ -2246,7 +2246,7 @@ static ssize_t tcp_talk(int first, int last, int start, struct dns_header *heade
 #if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
 	  /* TCP connections by default take ages to time out.
 	     Set shorter timeouts more appropriate for a DNS server.
-	     We set the recieve timeout as twice the send timeout; we
+	     We set the receive timeout as twice the send timeout; we
 	     want to fail quickly on a non-responsive server, but give it time to get an
 	     answer. */
 	  tv.tv_sec = TCP_TIMEOUT;

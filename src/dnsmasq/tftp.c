@@ -855,7 +855,7 @@ static char *next(char **p, char *end)
   return ret;
 }
 
-/* If we don't do anything, don't write the the input/ouptut
+/* If we don't do anything, don't write the input/output
    buffer. This allows us to pass in safe read-only strings constants. */
 static void sanitise(char *buf)
 {
