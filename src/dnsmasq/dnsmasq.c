@@ -1972,7 +1972,7 @@ static void check_dns_listeners(time_t now)
   /* Note that handling events here can create or destroy fds and
      render the result of the last poll() call invalid. Once
      we find an fd that needs service, do it, then return to go around the
-     poll() loop again. This avoid really, really, wierd bugs. */
+     poll() loop again. This avoid really, really, weird bugs. */
 
   if (!option_bool(OPT_DEBUG))
     for (i = 0; i < daemon->max_procs; i++)
