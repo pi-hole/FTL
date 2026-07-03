@@ -1274,19 +1274,14 @@ void warn_bound_listeners(void)
   int advice = 0;
 
   for (iface = daemon->interfaces; iface; iface = iface->next)
-    if (!iface->dns_auth)
+    if (!iface->dns_auth && !iface->warned &&
+	iface->addr.sa.sa_family == AF_INET && !private_net(iface->addr.in.sin_addr, 1))
       {
-	if (iface->addr.sa.sa_family == AF_INET)
-	  {
-	    if (!private_net(iface->addr.in.sin_addr, 1))
-	      {
-		inet_ntop(AF_INET, &iface->addr.in.sin_addr, daemon->addrbuff, ADDRSTRLEN);
-		iface->warned = advice = 1;
-		my_syslog(LOG_WARNING, 
-			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
-			  daemon->addrbuff, iface->name);
-	      }
-	  }
+	inet_ntop(AF_INET, &iface->addr.in.sin_addr, daemon->addrbuff, ADDRSTRLEN);
+	iface->warned = advice = 1;
+	my_syslog(LOG_WARNING, 
+		  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
+		  daemon->addrbuff, iface->name);
       }
   
   if (advice)
