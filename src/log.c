@@ -397,7 +397,8 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 
 
 	// Print to stdout before writing to file
-	if((!daemonmode || cli_mode) && print_stdout)
+	// Skip human-readable output when structured logging (JSON or journal) is active
+	if((!daemonmode || cli_mode) && print_stdout && !log_json && !log_journal)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
