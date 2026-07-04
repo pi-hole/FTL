@@ -126,87 +126,27 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
-void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis)
+static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t timein)
 {
 	struct tm tm;
-	localtime_r(&timein, &tm);
+	gmtime_r(&timein, &tm);
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
 
 	int millisec = 0;
+	if(tv.tv_sec == timein)
+		millisec = tv.tv_usec / 1000;
 
-	// Optional milliseconds
-	if(millis)
-	{
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-
-		// Only use ms if the timestamps match the same second
-		if(tv.tv_sec == timein)
-			millisec = tv.tv_usec / 1000;
-	}
-
-	// Timezone offset in seconds east of UTC
-	const long tz_offset = tm.tm_gmtoff;
-
-	// UTC special case
-	if(tz_offset == 0)
-	{
-		if(millis)
-		{
-			snprintf(timestring, TIMESTR_SIZE,
-					 "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
-					 tm.tm_year + 1900,
-					 tm.tm_mon + 1,
-					 tm.tm_mday,
-					 tm.tm_hour,
-					 tm.tm_min,
-					 tm.tm_sec,
-					 millisec);
-		}
-		else
-		{
-			snprintf(timestring, TIMESTR_SIZE,
-					 "%04d-%02d-%02dT%02d:%02d:%02dZ",
-					 tm.tm_year + 1900,
-					 tm.tm_mon + 1,
-					 tm.tm_mday,
-					 tm.tm_hour,
-					 tm.tm_min,
-					 tm.tm_sec);
-		}
-	}
-	else
-	{
-		const int tz_hours = (int)(tz_offset / 3600);
-		const int tz_minutes = (int)((labs(tz_offset) % 3600) / 60);
-
-		if(millis)
-		{
-			snprintf(timestring, TIMESTR_SIZE,
-					 "%04d-%02d-%02dT%02d:%02d:%02d.%03d%+03d:%02d",
-					 tm.tm_year + 1900,
-					 tm.tm_mon + 1,
-					 tm.tm_mday,
-					 tm.tm_hour,
-					 tm.tm_min,
-					 tm.tm_sec,
-					 millisec,
-					 tz_hours,
-					 tz_minutes);
-		}
-		else
-		{
-			snprintf(timestring, TIMESTR_SIZE,
-					 "%04d-%02d-%02dT%02d:%02d:%02d%+03d:%02d",
-					 tm.tm_year + 1900,
-					 tm.tm_mon + 1,
-					 tm.tm_mday,
-					 tm.tm_hour,
-					 tm.tm_min,
-					 tm.tm_sec,
-					 tz_hours,
-					 tz_minutes);
-		}
-	}
+	snprintf(timestring, TIMESTR_SIZE,
+	         "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+	         tm.tm_year + 1900,
+	         tm.tm_mon + 1,
+	         tm.tm_mday,
+	         tm.tm_hour,
+	         tm.tm_min,
+	         tm.tm_sec,
+	         millisec);
 
 	// Ensure null termination
 	timestring[TIMESTR_SIZE - 1] = '\0';
@@ -223,7 +163,7 @@ unsigned int get_year(const time_t timein)
 void log_to_json(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
 {
 	char timestring_iso8601[TIMESTR_SIZE];
-	get_timestr_iso8601(timestring_iso8601, now, true);
+	get_timestr_iso8601(timestring_iso8601, now);
 
 	cJSON *root = cJSON_CreateObject();
 	if (!root) return;
