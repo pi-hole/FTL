@@ -27,25 +27,26 @@ struct journal_field {
 		.value_len = strlen(val) \
 	}
 
-#define J_FIELD_INT(k, val) _jfield_int((k), (val))
+// Each expansion of J_FIELD_INT creates its own static __thread buffer
+// uniquely named via __COUNTER__. This avoids shared mutable state
+// between multiple J_FIELD_INT calls in the same compound literal
+// initializer, whose evaluation order is unspecified (C11 6.7.9p23).
+#define CONCAT2_(x, y) x ## y
+#define CONCAT_(x, y) CONCAT2_(x, y)
+#define J_FIELD_INT(k, val) J_FIELD_INT2_(k, val, __COUNTER__)
+#define J_FIELD_INT2_(k, val, ctr) \
+	({ \
+		static __thread char CONCAT_(_jf_buf_, ctr)[16]; \
+		int CONCAT_(_jf_n_, ctr) = snprintf(CONCAT_(_jf_buf_, ctr), sizeof(CONCAT_(_jf_buf_, ctr)), "%d", (val)); \
+		(struct journal_field){ \
+			.key = (k), \
+			.value = CONCAT_(_jf_buf_, ctr), \
+			.value_len = CONCAT_(_jf_n_, ctr) < 0 ? 0 : (size_t)CONCAT_(_jf_n_, ctr) \
+		}; \
+	})
 
 int journal_init(void);
 int journal_send_fields(const struct journal_field *fields, size_t n);
 int is_journal_fd(const int fd);
-
-static inline struct journal_field _jfield_int(const char *k, int val)
-{
-	enum { _JF_BUF = 16, _JF_POOL = 4 };
-	static __thread char buf[_JF_POOL][_JF_BUF];
-	static __thread unsigned idx;
-	unsigned i = idx;
-	idx = (idx + 1) % _JF_POOL;
-	int n = snprintf(buf[i], _JF_BUF, "%d", val);
-	return (struct journal_field){
-		.key = k,
-		.value = buf[i],
-		.value_len = n < 0 ? 0 : (size_t)n
-	};
-}
 
 #endif
