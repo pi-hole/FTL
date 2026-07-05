@@ -166,9 +166,9 @@ int main_dnsmasq (int argc, char **argv)
      ensure that we're not using those fds for real stuff. */
   for (i = 0; i < 3; i++)
     open("/dev/null", O_RDWR); 
-
+  
   /* Close any file descriptors we inherited apart from std{in|out|err} */
-  close_fds(max_fd, -1, -1, -1); 
+  close_fds(max_fd, -1, -1, -1);
   
 #ifndef HAVE_LINUX_NETWORK
 #  if !(defined(IP_RECVDSTADDR) && defined(IP_RECVIF) && defined(IP_SENDSRCADDR))
@@ -732,7 +732,7 @@ int main_dnsmasq (int argc, char **argv)
    //  }
 
    /******************************/
-
+   
    /* if we are to run scripts, we need to fork a helper before dropping root. */
   daemon->helperfd = -1;
 #ifdef HAVE_SCRIPT 
