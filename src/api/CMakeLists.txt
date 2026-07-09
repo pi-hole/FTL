@@ -20,6 +20,7 @@ set(sources
         dns.c
         network.c
         padd.c
+        prometheus.c
         history.c
         info.c
         list.c
