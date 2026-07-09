@@ -273,6 +273,34 @@ components:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
 
+    prometheus:
+      post:
+        summary: Create new Prometheus scrape token
+        tags:
+          - Authentication
+        operationId: "add_prometheus"
+        description: |
+          Create a new token for the Prometheus/OpenMetrics endpoint (`GET /api/metrics`). The generated token is shown only once and cannot be retrieved later - make sure to store it in a safe place.
+
+          FTL stores the SHA-256 hash of the new token in `webserver.api.prometheus.token` automatically, immediately replacing (and thereby invalidating) any previously configured token. The response returns the raw `token` (and its `hash`, for reference) exactly once. The scraper then authenticates by sending the raw token in an `Authorization: Bearer <token>` header. To disable the endpoint again, set `webserver.api.prometheus.token` back to an empty string (e.g. via `PATCH /api/config/webserver/api/prometheus/token`, the web interface, or by editing the configuration file). While no token is configured, `GET /api/metrics` returns HTTP 404.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'auth.yaml#/components/schemas/prometheus'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
   schemas:
     session:
       type: object
@@ -430,6 +458,22 @@ components:
           example:
             password: "7ua0rHPZixX6B3bTa5o4Dv08iyEIm/2q9qgLrF9MNVw="
             hash: "$BALLOON-SHA256$v=1$s=1024,t=32$4ERwJD4XucRP4PcDHNLiAg==$kSy0Eou8RUVtK2UTbc5MCpItV8YC3VRuoGhoENxSQ2I="
+
+    prometheus:
+      type: object
+      description: Prometheus scrape token
+      properties:
+        prometheus:
+          type: object
+          properties:
+            token:
+              type: string
+            hash:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+          example:
+            token: "7ua0rHPZixX6B3bTa5o4Dv08iyEIm/2q9qgLrF9MNVw="
+            hash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 
   errors:
     bad_request:

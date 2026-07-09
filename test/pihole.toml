@@ -1286,6 +1286,46 @@
       #       Kelvin
       unit = "C"
 
+    [webserver.api.prometheus]
+      # SHA-256 hash of the token required to scrape the Prometheus/OpenMetrics endpoint at
+      # /api/metrics.
+      #
+      # This endpoint is disabled and returns HTTP 404 while this value is empty (the
+      # default). Generate a token through the API (POST /api/auth/prometheus): FTL creates
+      # a random token, stores its hash here automatically (invalidating any previous token)
+      # and returns the raw token exactly once. The scraper must then send that raw token in
+      # an "Authorization: Bearer <token>" header. To disable the endpoint again, set this
+      # value back to an empty string. The token is intentionally separate from the
+      # login/session password so a long-running scraper does not consume login sessions,
+      # and it stays required even on installs without a UI password.
+      #
+      # Allowed values are:
+      #     A 64-character lowercase SHA-256 hex digest, or an empty string to disable the
+      #     endpoint
+      token = ""
+
+      # Should the Prometheus endpoint expose per-domain and per-client time series (top
+      # domains/clients as labelled metrics)?
+      #
+      # These series reveal browsing behaviour and the list of active clients, so they are
+      # disabled by default and only aggregate metrics are exported. When enabled, the
+      # misc.privacylevel setting and the webserver.api.excludeDomains/excludeClients
+      # filters are still honoured, and the number of series is capped by
+      # webserver.api.prometheus.topN.
+      #
+      # Allowed values are:
+      #     true or false
+      perEntityMetrics = false
+
+      # When webserver.api.prometheus.perEntityMetrics is enabled, up to how many top domains
+      # and top clients should be exported? This bounds the number of time series (and hence
+      # the label cardinality) the endpoint produces. Setting this to 0 disables the
+      # per-entity series entirely.
+      #
+      # Allowed values are:
+      #     A non-negative integer (0 - 1000)
+      topN = 100
+
 [files]
   # The location of FTL's long-term database
   #
@@ -1761,7 +1801,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 173 total entries out of which 117 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

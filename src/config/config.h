@@ -298,6 +298,11 @@ struct config {
 				struct conf_item limit;
 				struct conf_item unit;
 			} temp;
+			struct {
+				struct conf_item token;
+				struct conf_item perEntityMetrics;
+				struct conf_item topN;
+			} prometheus;
 		} api;
 	} webserver;
 

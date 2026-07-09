@@ -38,6 +38,7 @@ static struct {
 	{ "/api/auth/session",                      "/{id}",                      api_auth_session_delete,               { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },
 	{ "/api/auth/app",                          "",                           generateAppPw,                         { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/auth/totp",                         "",                           generateTOTP,                          { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
+	{ "/api/auth/prometheus",                   "",                           generatePrometheusToken,               { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/auth",                              "",                           api_auth,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET | HTTP_POST | HTTP_DELETE },
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/clients/_suggestions",              "",                           api_client_suggestions,                { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
@@ -106,6 +107,9 @@ static struct {
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/network",              "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
+	// The Prometheus endpoint does its own token authentication (see api_metrics)
+	// and takes no JSON body, so it is registered as require_auth = false with no payload parsing.
+	{ "/api/metrics",                           "",                           api_metrics,                           { API_FLAG_NONE, 0                          }, false, HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
 

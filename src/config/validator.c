@@ -16,6 +16,8 @@
 #include "regex_r.h"
 // parse_upstream_uri()
 #include "dotdoh/upstream_uri.h"
+// valid_sha256_hex()
+#include "config/password.h"
 
 // Stub validator for config types that need to dedicated validation as they can
 // be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
@@ -886,6 +888,45 @@ bool validate_array_no_newline(union conf_value *val, const char *key, char err[
 				return false;
 			}
 		}
+	}
+
+	return true;
+}
+
+bool validate_prometheus_token_hash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->s == NULL)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: null string", key);
+		return false;
+	}
+
+	// Empty string explicitly disables /api/metrics.
+	if(val->s[0] == '\0')
+		return true;
+
+	// Otherwise it must be a lowercase SHA-256 hex digest (as produced by
+	// sha256_hex()). The check is shared with the request-time fail-closed
+	// check in the Prometheus endpoint.
+	if(!valid_sha256_hex(val->s))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must be either empty or a 64-character lowercase SHA-256 hex digest",
+		         key);
+		return false;
+	}
+
+	return true;
+}
+
+bool validate_prometheus_topn(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui > PROMETHEUS_TOPN_MAX)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: cannot be larger than %u",
+		         key, PROMETHEUS_TOPN_MAX);
+		return false;
 	}
 
 	return true;

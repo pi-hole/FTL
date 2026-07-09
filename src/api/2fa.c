@@ -15,6 +15,8 @@
 #include "config/config.h"
 // generate_password()
 #include "config/password.h"
+// writeFTLtoml()
+#include "config/toml_writer.h"
 // lock_shm(), unlock_shm()
 #include "shmem.h"
 
@@ -429,6 +431,72 @@ int generateAppPw(struct ftl_conn *api)
 	// Send JSON response
 	cJSON *json = cJSON_CreateObject();
 	JSON_ADD_ITEM_TO_OBJECT(json, "app", tjson);
+	JSON_SEND_OBJECT(json);
+}
+
+int generatePrometheusToken(struct ftl_conn *api)
+{
+	// Generate a random 256 bit token for the Prometheus/OpenMetrics
+	// endpoint. We reuse generate_password() (without requesting the slow
+	// balloon hash) purely to obtain a base64-encoded, cryptographically
+	// secure random string.
+	char *token = NULL;
+	if(!generate_password(&token, NULL))
+	{
+		return send_json_error(api,
+		                       500,
+		                       "internal_error",
+		                       "Failed to generate Prometheus token",
+		                       "Check FTL.log for details");
+	}
+
+	// Compute the SHA-256 hash that is stored in
+	// webserver.api.prometheus.token. The raw token itself is never stored by
+	// FTL - it is returned to the caller here exactly once.
+	char *hash = sha256_hex(token);
+	if(hash == NULL)
+	{
+		free(token);
+		return send_json_error(api,
+		                       500,
+		                       "internal_error",
+		                       "Failed to hash Prometheus token",
+		                       "Check FTL.log for details");
+	}
+
+	// Create JSON object with the raw token (shown exactly once) and its hash
+	cJSON *tjson = cJSON_CreateObject();
+	JSON_COPY_STR_TO_OBJECT(tjson, "token", token);
+	JSON_COPY_STR_TO_OBJECT(tjson, "hash", hash);
+	free(token);
+	token = NULL;
+
+	// Store the hash in the configuration immediately, replacing (and thereby
+	// invalidating) any previously configured token. Ownership of 'hash' is
+	// transferred to the config item here. To disable the endpoint again, the
+	// operator sets webserver.api.prometheus.token back to an empty string.
+	//
+	// The swap-and-free is done under lock_shm() (the same lock used by
+	// replace_config()) because the config string is read concurrently by the
+	// /api/metrics handler on other webserver worker threads; a lock-free
+	// free()+reassign here would be a use-after-free.
+	lock_shm();
+	if(config.webserver.api.prometheus.token.t == CONF_STRING_ALLOCATED)
+		free(config.webserver.api.prometheus.token.v.s);
+	config.webserver.api.prometheus.token.v.s = hash;
+	config.webserver.api.prometheus.token.t = CONF_STRING_ALLOCATED;
+	hash = NULL;
+	unlock_shm();
+
+	// Persist to disk (outside the lock, mirroring the config PATCH path). If
+	// the config is read-only this is a no-op; the token still works until the
+	// next restart, so warn to make the non-persistence visible.
+	if(!writeFTLtoml(true, NULL))
+		log_warn("Prometheus token generated but could not be persisted to the config file");
+
+	// Send JSON response
+	cJSON *json = cJSON_CreateObject();
+	JSON_ADD_ITEM_TO_OBJECT(json, "prometheus", tjson);
 	JSON_SEND_OBJECT(json);
 }
 
