@@ -84,6 +84,9 @@ paths:
   /auth/app:
     $ref: 'auth.yaml#/components/paths/app'
 
+  /auth/prometheus:
+    $ref: 'auth.yaml#/components/paths/prometheus'
+
   /stats/summary:
     $ref: 'stats.yaml#/components/paths/summary'
 
@@ -215,6 +218,9 @@ paths:
 
   /info/metrics:
     $ref: 'info.yaml#/components/paths/metrics'
+
+  /metrics:
+    $ref: 'info.yaml#/components/paths/prometheus_metrics'
 
   /info/login:
     $ref: 'info.yaml#/components/paths/login'
