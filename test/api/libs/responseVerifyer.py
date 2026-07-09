@@ -100,6 +100,12 @@ class ResponseVerifyer():
 				jsonData = content[expected_mimetype]
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
+			elif 'text/plain' in content:
+				# Free-form text responses (e.g. the Prometheus/OpenMetrics
+				# exposition at /api/metrics). There is no schema to validate.
+				expected_mimetype = 'text/plain'
+				YAMLresponseSchema = None
+				YAMLresponseExamples = None
 		else:
 			# No response defined
 			return self.errors
@@ -203,6 +209,16 @@ class ResponseVerifyer():
 			r = FTLresponse.lower()
 			if not r.startswith("<!doctype html>") and not r.startswith("<html>"):
 				self.errors.append("FTL's response does not start with <!DOCTYPE html> or <html>")
+		elif expected_mimetype == "text/plain":
+			# Free-form text response (e.g. Prometheus exposition). Only make
+			# sure it is decodable text; there is no schema to check against.
+			if type(FTLresponse) is bytes:
+				try:
+					FTLresponse.decode("utf-8")
+				except UnicodeDecodeError:
+					self.errors.append("FTL's text/plain response is not valid UTF-8")
+			elif type(FTLresponse) is not str:
+				self.errors.append("FTL's response is neither bytes nor string")
 		else:
 			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
 
