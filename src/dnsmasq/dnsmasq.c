@@ -2216,6 +2216,8 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	 forever awaiting the result. To avoid this
 	 close the netlink socket in the child. */
       close(daemon->netlinkfd);
+#elif defined(HAVE_BSD_NETWORK)
+      close(daemon->routefd);
 #endif
 
       /* Close inherited listening sockets in the child process.
@@ -2366,6 +2368,8 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 
     // Pi-hole modification
     daemon->netlinkfd = -1;
+#elif defined(HAVE_BSD_NETWORK)
+	  close(daemon->routefd);
 #endif
 	  
 	  /* Close inherited listening sockets in the child process.
