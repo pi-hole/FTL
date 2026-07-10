@@ -306,6 +306,13 @@ static ssize_t read_arp(const int fd, struct thread_data *thread_data)
 		}
 		struct ethhdr *rcv_resp = (struct ethhdr *) buffer;
 		struct arp_header *arp_resp = (struct arp_header *) (buffer + ETH2_HEADER_LEN);
+		if ((size_t)ret < ETH2_HEADER_LEN + sizeof(struct arp_header))
+		{
+#ifdef DEBUG
+			printf("read_arp packet too short");
+#endif
+			continue;
+		}
 		if (ntohs(rcv_resp->h_proto) != PROTO_ARP)
 		{
 #ifdef DEBUG
