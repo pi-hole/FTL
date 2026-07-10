@@ -58,8 +58,8 @@
 #include "procps.h"
 // init_api_sessions()
 #include "api/api.h"
-// journal_send_fields()
-#include "journal.h"
+// journal_send()
+#include "journal/journal.h"
 
 // Public prototypes (defined in this file, called from other translation units)
 void FTL_dump_cache_stats(void);
@@ -4158,11 +4158,10 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length, 
 	}
 	if(log_journal)
 	{
-		journal_send_fields((struct journal_field[]){
-			J_FIELD_STR("MESSAGE", payload),
-			J_FIELD_INT("PRIORITY", priority),
-			J_FIELD_STR("COMPONENT", "dnsmasq"),
-		}, 3);
+		journal_send("MESSAGE=%s", payload,
+		             "PRIORITY=%d", priority,
+		             "COMPONENT=%s", "dnsmasq",
+		             NULL);
 	}
 }
 

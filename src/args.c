@@ -77,7 +77,7 @@
 // get_all_supported_ciphersuites()
 #include "webserver/webserver.h"
 // journal_init()
-#include "journal.h"
+#include "journal/journal.h"
 // mmap(), PROT_NONE, MAP_PRIVATE, MAP_ANONYMOUS — used for intentional crash
 // test
 #include <sys/mman.h>

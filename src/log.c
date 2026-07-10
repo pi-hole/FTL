@@ -28,8 +28,8 @@
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
-// journal_send_fields()
-#include "journal.h"
+// journal_send()
+#include "journal/journal.h"
 #include "webserver/cJSON/cJSON.h"
 
 static bool print_log = true, print_stdout = true;
@@ -386,12 +386,11 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 			vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
 			va_end(args);
 
-			journal_send_fields((struct journal_field[]){
-				J_FIELD_STR("MESSAGE", journal_buffer),
-				J_FIELD_INT("PRIORITY", priority),
-				J_FIELD_STR("DEBUG_FLAG", debugstr(flag)),
-				J_FIELD_STR("COMPONENT", "FTL"),
-			}, 4);
+			journal_send("MESSAGE=%s", journal_buffer,
+			             "PRIORITY=%d", priority,
+			             "DEBUG_FLAG=%s", debugstr(flag),
+			             "COMPONENT=%s", "FTL",
+			             NULL);
 			logged = true;
 		}
 
@@ -484,12 +483,11 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 		vsnprintf(journal_buffer, sizeof(journal_buffer), format, args);
 		va_end(args);
 
-		journal_send_fields((struct journal_field[]){
-			J_FIELD_STR("MESSAGE", journal_buffer),
-			J_FIELD_INT("PRIORITY", priority),
-			J_FIELD_STR("DEBUG_FLAG", debugstr(flag)),
-			J_FIELD_STR("COMPONENT", "webserver"),
-		}, 4);
+		journal_send("MESSAGE=%s", journal_buffer,
+		             "PRIORITY=%d", priority,
+		             "DEBUG_FLAG=%s", debugstr(flag),
+		             "COMPONENT=%s", "webserver",
+		             NULL);
 	}
 
 	// Open web log file
