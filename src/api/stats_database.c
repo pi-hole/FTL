@@ -247,11 +247,11 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for domains
-		count_total_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
+		count_total_str = "SELECT COUNT(*) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count total number of blocked queries for domains
-		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
+		count_blocked_str = "SELECT COUNT(*) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
 			            "AND " FILTER_STATUS_BLOCKED;
 	}
@@ -277,11 +277,11 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for clients
-		count_total_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
+		count_total_str = "SELECT COUNT(*) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count number of blocked queries for clients
-		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
+		count_blocked_str = "SELECT COUNT(*) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
 			            "AND " FILTER_STATUS_BLOCKED;
 	}
