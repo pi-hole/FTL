@@ -3659,73 +3659,57 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 static char *get_ptrname(const struct in_addr *addr)
 {
-	static char *ptrname = NULL;
-
-	// Return cached value if available
-	if(ptrname)
-		return ptrname;
-
-	// else: Determine name that should be replied to with on Pi-hole PTRs
+	// Determine the name Pi-hole should reply with to PTR queries for its own
+	// interface addresses.
+	//
+	// PTR_PIHOLE and PTR_HOSTNAME are independent of the queried address and
+	// return a stable string. PTR_HOSTNAMEFQDN, however, appends a domain
+	// suffix that may differ per address when conditional domains
+	// (domain=<domain>,<address range>) are configured. We must therefore not
+	// cache a single result across addresses: the caller stores the returned
+	// pointer in a persistent per-interface PTR record, so each address needs
+	// its own string. check_pihole_PTR() ensures we are called at most once
+	// per address, so the per-address allocation is bounded.
 	switch (config.dns.piholePTR.v.ptr_type)
 	{
 		default:
 		case PTR_MAX:
 		case PTR_NONE:
 		case PTR_PIHOLE:
-			ptrname = (char*)"pi.hole";
-			break;
+			return (char*)"pi.hole";
 
 		case PTR_HOSTNAME:
-			ptrname = (char*)hostname();
-			break;
+			return (char*)hostname();
 
 		case PTR_HOSTNAMEFQDN:
 		{
-			const char *suffix;
-			size_t ptrnamesize = 0;
 			// get_domain() will also check conditional domains configured like
 			// domain=<domain>[,<address range>[,local]]
-			if(addr)
-				suffix = get_domain(*addr);
-			else
-				suffix = daemon->domain_suffix;
+			const char *suffix = addr ? get_domain(*addr) : daemon->domain_suffix;
 
 			// If local suffix is not available, we try to obtain the domain from
 			// the kernel similar to how we do it for the hostname
 			if(!suffix)
 				suffix = (char*)domainname();
 
-			// If local suffix is not available, we substitute "no_fqdn_available"
-			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
-			// for further details on why this was chosen
+			// If local suffix is still not available, we substitute
+			// "no_fqdn_available", see the comment about PIHOLE_PTR=HOSTNAMEFQDN
+			// in the Pi-hole docs for further details on why this was chosen
 			if(!suffix || suffix[0] == '\0')
 				suffix = (char*)"no_fqdn_available";
 
-			// Get enough space for domain building
-			size_t needspace = strlen(hostname()) + strlen(suffix) + 2;
-			if(ptrnamesize < needspace)
-			{
-				ptrname = realloc(ptrname, needspace);
-				ptrnamesize = needspace;
-			}
-
-			if(ptrname)
-			{
-				// Build "<hostname>.<local suffix>" domain
-				strcpy(ptrname, hostname());
-				strcat(ptrname, ".");
-				strcat(ptrname, suffix);
-			}
-			else
-			{
+			// Build a fresh "<hostname>.<local suffix>" string for this address
+			char *ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
+			if(!ptrname)
 				// Fallback to "<hostname>" on memory error
-				ptrname = (char*)hostname();
-			}
-			break;
+				return (char*)hostname();
+
+			strcpy(ptrname, hostname());
+			strcat(ptrname, ".");
+			strcat(ptrname, suffix);
+			return ptrname;
 		}
 	}
-
-	return ptrname;
 }
 
 void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dnssec)
