@@ -737,17 +737,25 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_domains?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "domains" in data
         assert isinstance(data["domains"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_top_clients_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_clients?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "clients" in data
         assert isinstance(data["clients"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_upstreams_with_range(self, api_session):
         data = _j(api_session.get(
