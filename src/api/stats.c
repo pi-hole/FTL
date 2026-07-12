@@ -253,6 +253,13 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 		if(domain == NULL)
 			continue;
 
+		// Skip recycled domains
+		if(domain->domainpos == 0)
+		{
+			log_debug(DEBUG_API, "Skipping domain %u because it is recycled", domainID);
+			continue;
+		}
+
 		const char *domain_name = getstr(domain->domainpos);
 
 		// Hidden domain, probably due to privacy level. Skip this in the top lists
@@ -307,10 +314,6 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 
 	for(unsigned int i = 0; i < heap_size; i++)
 	{
-		// Skip e.g. recycled domains
-		if(top_domains[i].namepos == 0)
-			continue;
-
 		const char *domain = getstr(top_domains[i].namepos);
 
 		// Skip this client if there is a filter on it
