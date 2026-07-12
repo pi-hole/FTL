@@ -490,8 +490,10 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 		             NULL);
 	}
 
-	// Open web log file
-	FILE *weblog = fopen(config.files.log.webserver.v.s, "a");
+	// Open web log file (if a path is configured)
+	FILE *weblog = NULL;
+	if(config.files.log.webserver.v.s != NULL)
+		weblog = fopen(config.files.log.webserver.v.s, "a");
 
 	// Write to web log file
 	if(weblog != NULL)
@@ -503,7 +505,7 @@ void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const e
 		fputc('\n',weblog);
 		fclose(weblog);
 	}
-	else if(!daemonmode)
+	else if(config.files.log.webserver.v.s != NULL && !daemonmode)
 	{
 		printf("!!! WARNING: Writing to web log file failed!\n");
 		syslog(LOG_ERR, "Writing to web log file failed!");
