@@ -99,6 +99,19 @@ static void heap_sift_down(struct top_entries *heap, const unsigned int size, un
 	}
 }
 
+// Check whether a string matches any of the compiled exclude filters
+static bool matches_filter(const regex_t *regex, const unsigned int N_regex, const char *str)
+{
+	if(str == NULL)
+		return false;
+
+	for(unsigned int j = 0; j < N_regex; j++)
+		if(regexec(&regex[j], str, 0, NULL, 0) == 0)
+			return true;
+
+	return false;
+}
+
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
@@ -266,6 +279,12 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 		if(strcmp(domain_name, HIDDEN_DOMAIN) == 0)
 			continue;
 
+		// Skip domains the user does not want to see. We filter here,
+		// before the heap, so excluded domains cannot occupy heap capacity
+		// and evict genuine top entries (see issue #2946)
+		if(matches_filter(regex_domains, N_regex_domains, domain_name))
+			continue;
+
 		// Use either blocked or total count based on request string
 		const int entry_count = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
 
@@ -316,24 +335,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	{
 		const char *domain = getstr(top_domains[i].namepos);
 
-		// Skip this client if there is a filter on it
-		bool skip_domain = false;
-		if(N_regex_domains > 0)
-		{
-			// Iterate over all regex filters
-			for(unsigned int j = 0; j < N_regex_domains; j++)
-			{
-				// Check if the domain matches the regex
-				if(regexec(&regex_domains[j], domain, 0, NULL, 0) == 0)
-				{
-					// Domain matches
-					skip_domain = true;
-					break;
-				}
-			}
-		}
-
-		if(skip_domain || top_domains[i].count < 1)
+		if(top_domains[i].count < 1)
 			continue;
 
 		if(domains_only)
@@ -426,6 +428,13 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		return json;
 	}
 
+	// Get clients which the user doesn't want to see
+	regex_t *regex_clients = NULL;
+	unsigned int N_regex_clients = 0;
+	compile_filter_regex(api, "webserver.api.excludeClients",
+	                     config.webserver.api.excludeClients.v.json,
+	                     &regex_clients, &N_regex_clients);
+
 	// Lock shared memory
 	lock_shm();
 
@@ -475,6 +484,17 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 			continue;
 		}
 
+		// Skip clients the user does not want to see. We filter here,
+		// before the heap, so excluded clients cannot occupy heap capacity
+		// and evict genuine top entries (see issue #2946)
+		const char *client_name = getstr(client->namepos);
+		if(matches_filter(regex_clients, N_regex_clients, client_ip) ||
+		   matches_filter(regex_clients, N_regex_clients, client_name))
+		{
+			log_debug(DEBUG_API, "Skipping client %u because it matches a filter", clientID);
+			continue;
+		}
+
 		// Use either blocked or total count based on request string
 		const int entry_count = blocked ? client->blockedcount : client->count;
 
@@ -519,13 +539,6 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	if(heap_size > 1)
 		qsort(top_clients, heap_size, sizeof(*top_clients), cmpdesc_te);
 
-	// Get clients which the user doesn't want to see
-	regex_t *regex_clients = NULL;
-	unsigned int N_regex_clients = 0;
-	compile_filter_regex(api, "webserver.api.excludeClients",
-	                     config.webserver.api.excludeClients.v.json,
-	                     &regex_clients, &N_regex_clients);
-
 	int n = 0;
 	cJSON *jtop_clients = JSON_NEW_ARRAY();
 
@@ -537,33 +550,9 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		const char *client_ip = getstr(top_clients[i].ippos);
 		const char *client_name = getstr(top_clients[i].namepos);
 
-		// Skip this client if there is a filter on it
-		bool skip_client = false;
-		if(N_regex_clients > 0)
+		if(top_clients[i].count < 1)
 		{
-			// Iterate over all regex filters
-			for(unsigned int j = 0; j < N_regex_clients; j++)
-			{
-				// Check if the domain matches the regex
-				if(regexec(&regex_clients[j], client_ip, 0, NULL, 0) == 0)
-				{
-					// Client IP matches
-					skip_client = true;
-					break;
-				}
-				else if(client_name != NULL && regexec(&regex_clients[j], client_name, 0, NULL, 0) == 0)
-				{
-					// Client name matches
-					skip_client = true;
-					break;
-				}
-			}
-		}
-
-		if(skip_client || top_clients[i].count < 1)
-		{
-			log_debug(DEBUG_API, "Skipping client %s because it %s", client_ip,
-			          skip_client ? "matches a filter" : "has no queries");
+			log_debug(DEBUG_API, "Skipping client %s because it has no queries", client_ip);
 			continue;
 		}
 
