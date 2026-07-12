@@ -641,6 +641,27 @@ class TestStatsTopDomains:
         assert "gravity.ftl" not in names, \
             f"gravity.ftl should not be in permitted domains:\n{json.dumps(data, indent=2)}"
 
+    def test_top_domains_small_count_is_true_prefix(self, api_session):
+        # Regression for #2946: the bounded top-K heap selection must return
+        # the real top-K for small counts and must not drop legitimate
+        # domains. A small count reduces the heap capacity to count*4, so any
+        # entry that wrongly occupies a slot would evict a genuine domain and
+        # shorten the result below the requested count.
+        full = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=100", timeout=5),
+                  dump="top_domains_full")["domains"]
+        full_counts = [d["count"] for d in full]
+        assert len(full) > 4, \
+            f"test data must expose more than 4 domains to exercise heap eviction, got {len(full)}"
+        for n in (1, 2, 3, 4):
+            data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count={n}", timeout=5))
+            counts = [d["count"] for d in data["domains"]]
+            assert len(counts) == min(n, len(full)), \
+                f"count={n} returned {len(counts)} domains, expected {min(n, len(full))}"
+            assert counts == sorted(counts, reverse=True), \
+                f"count={n} not sorted descending: {counts}"
+            assert counts == full_counts[:n], \
+                f"count={n} is not the top-{n} prefix: {counts} vs {full_counts[:n]}"
+
 
 # ---------------------------------------------------------------------------
 # Stats: top clients
