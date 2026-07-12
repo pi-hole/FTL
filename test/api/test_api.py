@@ -19,19 +19,18 @@ FTL_URL = "http://127.0.0.1"
 # ---------------------------------------------------------------------------
 # Expected query counters
 # ---------------------------------------------------------------------------
-# The bats test suite queries mask.icloud.com via an allowlisted client, which
-# forwards the query upstream.  The mask.icloud.com -> mask.apple-dns.net CNAME
-# chain is served by the local (unsigned) PowerDNS authoritative server (see
-# test/pdns/setup.sh and recursor.conf) instead of being recursed to the public
-# internet.  This keeps the resolution hermetic and the query counts below
-# deterministic — previously they drifted by +2 whenever Apple toggled DNSSEC
-# signing on these zones, which made the suite flaky (see issue #2908 / PR
-# #2845).  If you add or remove queries in test_suite.bats, update these.
+# These counters must stay hermetic: every query the bats suite fires is served
+# by the local PowerDNS instance, including a locally-signed root zone (see
+# test/pdns/setup.sh and recursor.conf).  DNSSEC validation therefore never
+# recurses to the public ICANN root, whose DNSKEY set drifts with key-signing-key
+# rollovers - that used to change the number of root DNSKEY lookups and made the
+# DNSSEC-dependent counters below flaky.  If you add or remove queries in
+# test_suite.bats, update these.
 
-TOTAL       = 137
-FORWARDED   = 47
-DNSKEY      = 9
-TOP_DOMAIN  = "."
+TOTAL       = 131
+FORWARDED   = 41
+DNSKEY      = 4
+TOP_DOMAIN  = "localhost"
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +690,7 @@ class TestStatsQueryTypes:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
             "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
-            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 7,
+            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
         }, json.dumps(data, indent=2)
@@ -737,17 +736,25 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_domains?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "domains" in data
         assert isinstance(data["domains"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_top_clients_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_clients?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "clients" in data
         assert isinstance(data["clients"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_upstreams_with_range(self, api_session):
         data = _j(api_session.get(

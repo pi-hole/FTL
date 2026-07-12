@@ -652,8 +652,7 @@ void sanitize_dns_hosts(union conf_value *val)
 	// Walk the linked list directly: cJSON_GetArrayItem() is O(index) and
 	// cJSON_GetArraySize() in the loop condition re-walks the whole list
 	// every iteration, which made this loop O(n^2). item->next is O(1).
-	int i = 0;
-	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next, i++)
+	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next)
 	{
 
 		// Check if it's a string
