@@ -2304,7 +2304,20 @@ int dnssec_validate_reply(time_t now, struct dns_header *header, size_t plen, ch
 	  {
 	    if (rc_nsec & DNSSEC_FAIL_WORK)
 	      return STAT_ABANDONED;
-	    
+
+	    /* Empty DS reply with no NSEC/NSEC3 proof. This is what many
+	       public resolvers return for the reverse zones of RFC-1918
+	       private address space, which they serve as empty zones (RFC 6303),
+	       ie a bare NXDOMAIN/NODATA with no records to prove non-existence.
+	       Treat the answer to the DS query itself (j == 0) as insecure so
+	       the caller's bogus-priv/domain-specific-server heuristics can act
+	       on it. Without this, zone_status() below returns STAT_NEED_DS for
+	       the very name we're validating the DS for, and the resulting
+	       self-dependent DS query is detected as a loop and abandoned.
+	       CNAME targets (j > 0) are handled via prim_ok above. */
+	    if (qtype == T_DS && j == 0)
+	      return STAT_INSECURE;
+
 	    if ((rc_nsec & (DNSSEC_FAIL_NONSEC | DNSSEC_FAIL_NSEC3_ITERS)) &&
 		!STAT_ISEQUAL((rc = zone_status(name, qclass, keyname, now)), STAT_SECURE))
 	      {
