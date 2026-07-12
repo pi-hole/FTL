@@ -25,11 +25,15 @@ target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
 # TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
+# USE_X_DOM_SOCKET: allow the webserver to listen on a UNIX domain socket through the
+#                   "x<path>" syntax in webserver.port, e.g. to run behind a reverse
+#                   proxy without exposing any TCP port
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
                                             NO_SSL_DL
                                             USE_IPV6
                                             USE_LUA
+                                            USE_X_DOM_SOCKET
                                             TIMER_RESOLUTION=1000)
 
 include_directories(${PROJECT_SOURCE_DIR}/src/lua)
