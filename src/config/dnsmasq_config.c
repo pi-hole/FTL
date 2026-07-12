@@ -136,7 +136,7 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			// Check if the child exited too quickly for waitpid to
 			// catch it. We cannot get the return code in this case
 			// and have to check the pipe content instead
-			if(errno == ECHILD)
+			if(err == ECHILD)
 			{
 				log_debug(DEBUG_CONFIG, "dnsmasq test exited too quickly for waitpid");
 				code = strstr(errbuf, "syntax check OK") != NULL ? EXIT_SUCCESS : EXIT_FAILURE;
