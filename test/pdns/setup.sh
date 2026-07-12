@@ -158,6 +158,14 @@ pdnsutil zone secure dnssec
 #   trust-anchor=dnssec.,42206,8,2,6d2007e292483fa061db37011676d9592649d1600e5b2ece1326f792ebedd412
 pdnsutil zone export-ds dnssec. | head -n1 | awk '{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' > /etc/dnsmasq.d/02-trust-anchor.conf
 
+# Create a locally-signed root zone so DNSSEC validation never leaves the test
+# environment. FTL ships the real ICANN root trust anchors, so without a local
+# root dnsmasq would fetch the live root DNSKEY (whose key set drifts with ICANN
+# rollovers). Serving a signed root here and trusting its key keeps it hermetic.
+pdnsutil zone create . ns1.
+pdnsutil zone secure .
+pdnsutil zone export-ds . | head -n1 | awk '{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' >> /etc/dnsmasq.d/02-trust-anchor.conf
+
 # Create intentionally broken DNSSEC (BOGUS) zone
 # The only difference to above is that this zone is signed with a key that is
 # not in the trust chain
@@ -167,6 +175,13 @@ pdnsutil zone create bogus ns1.ftl
 pdnsutil rrset add bogus. a.bogus. A 192.168.5.1
 pdnsutil rrset add bogus. aaaa.bogus. AAAA fe80::5c01
 pdnsutil zone secure bogus
+# Install a *deliberately mismatched* trust anchor for the bogus zone (same
+# keytag/algorithm/digest-type as the real key, but a corrupted digest). This
+# makes bogus validation fail as BOGUS *locally* instead of dnsmasq walking up
+# to the real ICANN root to learn the zone has no secure delegation.
+pdnsutil zone export-ds bogus. | head -n1 | \
+  awk '{OFS=""; d=$7; d=substr(d, 1, length(d) - 8) "deadbeef"; print "trust-anchor=", $1, ",", $4, ",", $5, ",", $6, ",", d}' \
+  >> /etc/dnsmasq.d/02-trust-anchor.conf
 
 # Create reverse lookup zone
 pdnsutil zone create arpa ns1.ftl
