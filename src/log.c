@@ -359,8 +359,11 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	// pihole-FTL instance is logging into the same file
 	const long pid = (long)getpid();
 
-	// Open web log file
-	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
+	// Open web log file. A single dash ("-") means "write to stderr" instead
+	// of a file, mirroring files.log.dnsmasq.
+	const char *weblog_path = config.files.log.webserver.v.s;
+	const bool weblog_stderr = weblog_path != NULL && weblog_path[0] == '-' && weblog_path[1] == '\0';
+	FILE *weblog = weblog_stderr ? stderr : fopen(weblog_path, "a+");
 
 	// Write to web log file
 	if(weblog != NULL)
@@ -370,7 +373,8 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 		vfprintf(weblog, format, args);
 		va_end(args);
 		fputc('\n',weblog);
-		fclose(weblog);
+		if(!weblog_stderr)
+			fclose(weblog);
 	}
 	else if(!daemonmode)
 	{

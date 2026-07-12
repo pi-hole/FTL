@@ -1373,8 +1373,8 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.c = validate_filepath_dash;
 
 	conf->files.log.webserver.k = "files.log.webserver";
-	conf->files.log.webserver.h = "The log file used by the webserver";
-	conf->files.log.webserver.a = cJSON_CreateStringReference("Any writable file");
+	conf->files.log.webserver.h = "The log file used by the webserver.\n\n A single dash (\"-\") makes the webserver log to stderr instead of a file.";
+	conf->files.log.webserver.a = cJSON_CreateStringReference("Any writable file, or \"-\" for stderr");
 	conf->files.log.webserver.t = CONF_STRING;
 	conf->files.log.webserver.f = FLAG_RESTART_FTL;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";

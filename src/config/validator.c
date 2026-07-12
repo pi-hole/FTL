@@ -356,6 +356,10 @@ bool validate_filepath_dash(union conf_value *val, const char *key, char err[VAL
 // execution.
 bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
+	// Dash is allowed, this enables printing to stderr instead of a file
+	if(strlen(val->s) == 1 && val->s[0] == '-')
+		return true;
+
 	// Regular file-path validation first
 	if(!validate_filepath(val, key, err))
 		return false;
