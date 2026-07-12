@@ -23,6 +23,7 @@
 #include "registry.h"
 #include "tls_client.h"
 #include "framing.h"
+#include "edns_pad.h"
 // global config
 #include "config/config.h"
 // upstream list iteration
@@ -261,7 +262,11 @@ static void handle_udp(struct proxy_up *up)
 	if(!is_loopback_v4(&src))
 		return;
 
-	const ssize_t a = tls_exchange(up->conn, &up->uri, query, (size_t)n, answer, sizeof(answer));
+	// Pad the query to a block boundary (RFC 8467) before it is encrypted, so the
+	// ciphertext size no longer leaks the query. Only this encrypted leg is
+	// padded; the plaintext dnsmasq spoke to us over loopback is left untouched.
+	const size_t qlen = edns_pad_query(query, (size_t)n, sizeof(query));
+	const ssize_t a = tls_exchange(up->conn, &up->uri, query, qlen, answer, sizeof(answer));
 	if(a < 0)
 		return; // drop -> dnsmasq times out and fails over
 
@@ -323,7 +328,9 @@ static void handle_tcp(struct proxy_up *up)
 		if(!read_full(cfd, query, qlen, rdeadline))
 			break;
 
-		const ssize_t a = tls_exchange(up->conn, &up->uri, query, qlen, answer, sizeof(answer));
+		// Pad before encrypting (see handle_udp()); the loopback leg stays plain.
+		const size_t plen = edns_pad_query(query, qlen, sizeof(query));
+		const ssize_t a = tls_exchange(up->conn, &up->uri, query, plen, answer, sizeof(answer));
 		if(a < 0)
 			break; // drop: closing the connection makes dnsmasq retry/fail over
 

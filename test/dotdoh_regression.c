@@ -25,6 +25,7 @@
 #include "dotdoh/upstream_uri.c"
 #include "dotdoh/framing.c"
 #include "dotdoh/registry.c"
+#include "dotdoh/edns_pad.c"
 
 static int failures = 0;
 
@@ -255,6 +256,129 @@ static void test_registry(void)
 	if(occ >= 0) close(occ);
 }
 
+// "example.com" IN A: a 17-byte question section (13-byte QNAME + QTYPE + QCLASS).
+static const uint8_t QUESTION[] = {
+	0x07, 'e','x','a','m','p','l','e', 0x03, 'c','o','m', 0x00, // QNAME
+	0x00, 0x01, // QTYPE  A
+	0x00, 0x01, // QCLASS IN
+};
+
+// Write a 12-byte DNS header into buf with the given section counts.
+static void put_header(uint8_t *buf, uint16_t qd, uint16_t an, uint16_t ns, uint16_t ar)
+{
+	buf[0] = 0x12; buf[1] = 0x34;   // ID
+	buf[2] = 0x01; buf[3] = 0x00;   // flags: standard query, RD
+	buf[4] = (uint8_t)(qd >> 8); buf[5] = (uint8_t)qd;
+	buf[6] = (uint8_t)(an >> 8); buf[7] = (uint8_t)an;
+	buf[8] = (uint8_t)(ns >> 8); buf[9] = (uint8_t)ns;
+	buf[10] = (uint8_t)(ar >> 8); buf[11] = (uint8_t)ar;
+}
+
+// Assert every byte in buf[from..to) is zero (the padding octets).
+static void expect_zeros(const uint8_t *buf, size_t from, size_t to, const char *what)
+{
+	for(size_t i = from; i < to; i++)
+		if(buf[i] != 0)
+		{
+			EXPECT(false, "%s: buf[%zu]=0x%02x != 0", what, i, buf[i]);
+			return;
+		}
+}
+
+static void test_edns_pad(void)
+{
+	// 1) Query with no OPT record: a fresh OPT RR carrying the Padding option is
+	//    appended and ARCOUNT is bumped, rounding the message up to 128 octets.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 0);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		const size_t len = 12 + sizeof(QUESTION); // 29
+
+		const size_t out = edns_pad_query(buf, len, sizeof(buf));
+		EXPECT(out == 128, "no-OPT padded length %zu != 128", out);
+		EXPECT(out % 128 == 0, "no-OPT length not a multiple of 128");
+		EXPECT(buf[10] == 0x00 && buf[11] == 0x01, "no-OPT ARCOUNT not bumped to 1");
+		EXPECT(memcmp(buf + 12, QUESTION, sizeof(QUESTION)) == 0, "no-OPT question corrupted");
+		// OPT RR at offset 29
+		EXPECT(buf[29] == 0x00, "OPT name not root");
+		EXPECT(buf[30] == 0x00 && buf[31] == 0x29, "OPT type != 41");
+		EXPECT(buf[32] == 0x04 && buf[33] == 0xD0, "OPT UDP size != 1232");
+		EXPECT(buf[34] == 0 && buf[35] == 0 && buf[36] == 0 && buf[37] == 0, "OPT TTL not zero");
+		EXPECT(buf[38] == 0x00 && buf[39] == 0x58, "OPT RDLEN != 88");
+		// Padding option (code 12, length 84) + 84 zero octets
+		EXPECT(buf[40] == 0x00 && buf[41] == 0x0C, "padding option code != 12");
+		EXPECT(buf[42] == 0x00 && buf[43] == 0x54, "padding option length != 84");
+		expect_zeros(buf, 44, 128, "no-OPT padding octets");
+	}
+
+	// 2) Query that already has an OPT record (no options): the Padding option is
+	//    appended to its RDATA and ARCOUNT stays 1.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION); // 29
+		buf[p++] = 0x00;                       // root name
+		buf[p++] = 0x00; buf[p++] = 0x29;      // type OPT
+		buf[p++] = 0x10; buf[p++] = 0x00;      // UDP size 4096
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; // TTL
+		buf[p++] = 0x00; buf[p++] = 0x00;      // RDLEN 0
+		const size_t len = p; // 40
+
+		const size_t out = edns_pad_query(buf, len, sizeof(buf));
+		EXPECT(out == 128, "with-OPT padded length %zu != 128", out);
+		EXPECT(buf[10] == 0x00 && buf[11] == 0x01, "with-OPT ARCOUNT changed");
+		EXPECT(buf[32] == 0x10 && buf[33] == 0x00, "with-OPT existing UDP size clobbered");
+		EXPECT(buf[38] == 0x00 && buf[39] == 0x58, "with-OPT RDLEN not grown to 88");
+		EXPECT(buf[40] == 0x00 && buf[41] == 0x0C, "with-OPT padding option code != 12");
+		EXPECT(buf[42] == 0x00 && buf[43] == 0x54, "with-OPT padding option length != 84");
+		expect_zeros(buf, 44, 128, "with-OPT padding octets");
+	}
+
+	// 3) Idempotent: a query that already carries a Padding option is left as-is.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION);
+		buf[p++] = 0x00;                       // root name
+		buf[p++] = 0x00; buf[p++] = 0x29;      // type OPT
+		buf[p++] = 0x10; buf[p++] = 0x00;      // UDP size
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; // TTL
+		buf[p++] = 0x00; buf[p++] = 0x04;      // RDLEN 4
+		buf[p++] = 0x00; buf[p++] = 0x0C;      // Padding option code
+		buf[p++] = 0x00; buf[p++] = 0x00;      // Padding option length 0
+		const size_t len = p; // 44
+
+		const size_t out = edns_pad_query(buf, len, sizeof(buf));
+		EXPECT(out == len, "already-padded query changed (%zu != %zu)", out, len);
+	}
+
+	// 4) Fail-open: the padded message would not fit in the caller's buffer.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 0);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		const size_t len = 12 + sizeof(QUESTION); // 29, needs 128
+		const size_t out = edns_pad_query(buf, len, 100);
+		EXPECT(out == len, "oversized should fail open (%zu != %zu)", out, len);
+	}
+
+	// 5) Fail-open: truncated / malformed messages are returned unchanged.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		EXPECT(edns_pad_query(buf, 5, sizeof(buf)) == 5, "short-header should fail open");
+		put_header(buf, 1, 0, 0, 0); // claims a question that isn't present
+		EXPECT(edns_pad_query(buf, 12, sizeof(buf)) == 12, "missing question should fail open");
+	}
+}
+
 int main(void)
 {
 	test_plain();
@@ -265,6 +389,7 @@ int main(void)
 	test_doh_request();
 	test_doh_response();
 	test_registry();
+	test_edns_pad();
 
 	if(failures == 0)
 		printf("dotdoh_regression: all tests passed\n");

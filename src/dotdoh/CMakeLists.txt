@@ -13,6 +13,8 @@ set(dotdoh_sources
         upstream_uri.h
         framing.c
         framing.h
+        edns_pad.c
+        edns_pad.h
         registry.c
         registry.h
         tls_client.c

@@ -77,6 +77,9 @@ bash test/pdns/setup.sh
 SHIM_PATTERN="python3 test/dotdoh_shim.py"
 # Kill any stale instance first so its ports (8853/8443) are free.
 pkill -f "${SHIM_PATTERN}" 2>/dev/null || true
+# Record decrypted query lengths so dotdoh.bats can confirm FTL padded them.
+export SHIM_PAD_LOG="/tmp/dotdoh_pad.log"
+rm -f "${SHIM_PAD_LOG}"
 python3 test/dotdoh_shim.py &
 DOTDOH_SHIM_PID=$!
 # Stop the shim even if the script exits early (e.g. FTL fails to start below),

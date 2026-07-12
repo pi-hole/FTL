@@ -19,6 +19,11 @@ load 'bats_helper.bash'
 
 FTL_URL="http://127.0.0.1"
 
+# The shim (started by run.sh, or ensure_shim below) appends every decrypted
+# query length here; used to confirm FTL padded the encrypted query. Default so
+# a standalone bats run works too; run.sh exports the same path.
+export SHIM_PAD_LOG="${SHIM_PAD_LOG:-/tmp/dotdoh_pad.log}"
+
 # PATCH the given dns config object ($1) in one atomic request and block until
 # the self-restart it triggers has produced the readiness marker ($2) past the
 # pre-change log offset, using pihole-FTL wait-for as the rest of the suite does.
@@ -61,6 +66,21 @@ ensure_shim() {
   done
 }
 
+# Succeed if the shim recorded at least one query of the given transport whose
+# length is a positive multiple of 128 - i.e. FTL padded it (RFC 8467). An
+# unpadded query for the test name is well under 128 octets.
+assert_padded() {  # $1 = transport (dot|doh)
+  local t len
+  while read -r t len; do
+    if [ "$t" = "$1" ] && [ "$len" -ge 128 ] && [ $((len % 128)) -eq 0 ]; then
+      return 0
+    fi
+  done < "$SHIM_PAD_LOG"
+  echo "no padded $1 query (multiple of 128) in $SHIM_PAD_LOG:" >&2
+  cat "$SHIM_PAD_LOG" >&2 2>/dev/null || true
+  return 1
+}
+
 setup_file() {
   ensure_shim || return 1
   # The DoH upstream is armed last, so waiting for it means both listeners are up.
@@ -99,4 +119,18 @@ teardown_file() {
 @test "dotdoh-client: a query resolves through the DoH proxy path" {
   run bash -c "dig +short +tries=1 +time=5 @127.47.11.2 -p 5302 a.ftl"
   assert_output --partial "192.168.1.1"
+}
+
+@test "dotdoh-client: the DoT-forwarded query is padded (RFC 8467)" {
+  run bash -c "dig +short +tries=1 +time=5 @127.47.11.1 -p 5301 a.ftl"
+  assert_output --partial "192.168.1.1"
+  run assert_padded dot
+  assert_success
+}
+
+@test "dotdoh-client: the DoH-forwarded query is padded (RFC 8467)" {
+  run bash -c "dig +short +tries=1 +time=5 @127.47.11.2 -p 5302 a.ftl"
+  assert_output --partial "192.168.1.1"
+  run assert_padded doh
+  assert_success
 }

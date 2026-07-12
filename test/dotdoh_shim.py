@@ -32,6 +32,19 @@ BACKEND = ("127.0.0.1", 5555)
 CERT = os.environ.get("SHIM_CERT", "test/test.pem")
 DOT_ADDR = ("127.0.0.1", 8853)
 DOH_ADDR = ("127.0.0.1", 8443)
+# When set, append the on-the-wire length of every decrypted query here so the
+# padding E2E test can confirm FTL padded it. FTL pads encrypted queries to a
+# 128-octet boundary (RFC 8467), so a padded query arrives as a multiple of 128.
+PAD_LOG = os.environ.get("SHIM_PAD_LOG", "")
+_pad_lock = threading.Lock()
+
+
+def note_query(transport, query):
+    if not PAD_LOG:
+        return
+    with _pad_lock:
+        with open(PAD_LOG, "a") as fh:
+            fh.write("%s %d\n" % (transport, len(query)))
 
 
 def resolve(wire):
@@ -77,6 +90,7 @@ def dot_handle(ctx, raw):
             query = recvall(conn, qlen)
             if query is None:
                 break
+            note_query("dot", query)
             answer = resolve(query)
             conn.sendall(struct.pack("!H", len(answer)) + answer)
     except Exception:
@@ -126,6 +140,7 @@ def doh_handle(ctx, raw):
             body += chunk
         body = body[:content_len]
 
+        note_query("doh", body)
         answer = resolve(body)
         resp = (
             b"HTTP/1.1 200 OK\r\n"
