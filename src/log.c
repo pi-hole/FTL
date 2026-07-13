@@ -434,7 +434,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	}
 }
 
-void __attribute__ ((format (printf, 3, 4))) log_web(const int priority, const enum debug_flag flag, const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);

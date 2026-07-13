@@ -294,7 +294,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	log_web(LOG_INFO, DEBUG_NONE, "%s", message);
+	log_web(LOG_INFO, "%s", message);
 	return 1;
 }
 
@@ -323,7 +323,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	char *escaped = escape_string(message);
 	if(escaped != NULL)
 	{
-		log_web(LOG_INFO, DEBUG_NONE, "ACCESS: %s", escaped);
+		log_web(LOG_INFO, "ACCESS: %s", escaped);
 		free(escaped);
 	}
 
@@ -661,7 +661,7 @@ void http_init(void)
 	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */
-	log_web(LOG_INFO, DEBUG_NONE, "Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	log_web(LOG_INFO, "Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
@@ -672,7 +672,7 @@ void http_init(void)
 
 	if(mg_init_library(features) == 0)
 	{
-		log_web(LOG_ERR, DEBUG_NONE, "Initializing HTTP library failed!");
+		log_web(LOG_ERR, "Initializing HTTP library failed!");
 		return;
 	}
 

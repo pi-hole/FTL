@@ -76,10 +76,11 @@ void FTL_log_dnsmasq_fatal(const char *format, ...) __attribute__ ((format (prin
 void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned int n, ...);
 
+#define log_web(priority, format, ...) _log_web(priority, DEBUG_NONE, format, ## __VA_ARGS__)
 #define log_web_debug(flag, format, ...) \
 	if(flag > -1 && flag < DEBUG_MAX && debug_flags[flag]) \
-		log_web(LOG_DEBUG, flag, format, ## __VA_ARGS__)
-void log_web(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
+		_log_web(LOG_DEBUG, flag, format, ## __VA_ARGS__)
+void _log_web(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 char *escape_string(const char *input) __attribute__ ((malloc));
 char *escape_data(const char *src_buf, size_t src_sz) __attribute__((malloc));

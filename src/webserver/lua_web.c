@@ -138,8 +138,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			// Log at debug level only: this fires on every unauthenticated
 			// request and would otherwise let a flood of requests inflate
 			// the log file (and exhaust the disk).
-			log_web(LOG_INFO, DEBUG_NONE, "Authentication required, redirecting to %s%slogin",
-			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			log_web(LOG_INFO, "Authentication required, redirecting to %s%slogin",
+					config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			ftl_http_redirect(conn, 302, "%s%slogin",
 			                  config.webserver.paths.prefix.v.s,
 			                  config.webserver.paths.webhome.v.s);
@@ -152,8 +152,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		if(authorized)
 		{
 			// User is already authenticated, redirecting to index page
-			log_web(LOG_INFO, DEBUG_NONE, "User is already authenticated, redirecting to %s%s",
-			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			log_web(LOG_INFO, "User is already authenticated, redirecting to %s%s",
+					config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			ftl_http_redirect(conn, 302, "%s%s",
 			                  config.webserver.paths.prefix.v.s,
 			                  config.webserver.paths.webhome.v.s);
