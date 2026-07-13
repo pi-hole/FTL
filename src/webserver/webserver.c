@@ -889,7 +889,7 @@ void http_init(void)
 	init.configuration_options = (const char**)conf_opts;
 
 	/* Start the server */
-	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
+	if((ctx = mg_start2(&init, &error)) == NULL)
 	{
 		log_err("Start of webserver failed! Web interface will not be available!");
 		print_webserver_opts(false, idx, (const char **)conf_opts);
@@ -897,6 +897,15 @@ void http_init(void)
 		log_err("       Hint: Check the webserver log at %s", config.files.log.webserver.v.s);
 		return;
 	}
+
+	// Collect the list of bound ports (used for the API info and the
+	// *.api.ftl records). mg_get_server_ports() does not report UNIX domain
+	// sockets, so a socket-only configuration yields zero ports here. That
+	// must not abort startup: otherwise the request handlers below - most
+	// importantly the "/api" handler - are never registered and the entire
+	// REST API becomes unreachable (every request falls through to static
+	// file serving and returns 404).
+	get_server_ports();
 
 	// Success: Print used options only if in debug mode
 	if(config.debug.webserver.v.b)
