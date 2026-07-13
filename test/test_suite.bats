@@ -1195,38 +1195,43 @@ setup() {
   assert_line --index 0 "1"
 }
 
-@test "EDNS(0) ECS can overwrite client address (IPv4)" {
-  # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+@test "EDNS(0) MAC groups ECS addresses in network table" {
+  mac="02:00:00:00:00:01"
+  ipv4="192.168.47.97"
+  ipv6="fe80::b167:af1e:968b:dead"
 
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=192.168.47.97/32 @127.0.0.1'
-  assert_line --index 0 "127.0.0.1"
+  seed="INSERT INTO network (hwaddr, interface, firstSeen, lastQuery, numQueries) VALUES ('ip-${ipv4}', 'test', 0, 0, 0); INSERT INTO network_addresses (network_id, ip) SELECT id, '${ipv4}' FROM network WHERE hwaddr = 'ip-${ipv4}';"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${seed}"
   assert_success
 
-  # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
-  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/192.168.47.97#53 "
-}
-
-@test "EDNS(0) ECS can overwrite client address (IPv6)" {
-  # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128 @127.0.0.1'
+  run bash -c "dig localhost +short +subnet=${ipv4}/32 +ednsopt=65001:020000000001 @127.0.0.1"
   assert_line --index 0 "127.0.0.1"
   assert_success
-
-  # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/fe80::b167:af1e:968b:dead#53 "
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv4}#53 "
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "dig localhost +short +subnet=${ipv6}/128 +ednsopt=65001:020000000001 @127.0.0.1"
+  assert_line --index 0 "127.0.0.1"
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv6}#53 "
+
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+
+  query="SELECT lower(n.hwaddr) || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE a.ip IN ('${ipv4}', '${ipv6}') ORDER BY a.ip; SELECT 'mac_rows=' || count(*) FROM network WHERE lower(hwaddr) = '${mac}'; SELECT 'mock_rows=' || count(*) FROM network WHERE lower(hwaddr) IN ('ip-${ipv4}', 'ip-${ipv6}');"
+  expected="${mac}|${ipv4}"$'\n'"${mac}|${ipv6}"$'\n'"mac_rows=1"$'\n'"mock_rows=0"
+  for _ in $(seq 1 30); do
+    result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
+    [[ "${result}" == "${expected}" ]] && break
+    sleep 0.1
+  done
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}"
+  assert_output "${expected}"
 }
 
 @test "alias-client is imported and used for configured client" {
