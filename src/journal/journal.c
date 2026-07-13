@@ -20,11 +20,11 @@ static int send_impl(const char *format, va_list ap)
 	if (!format)
 		return -EINVAL;
 
-	struct iovec iov[MAX_IOV * 4];
-	char values[MAX_IOV][FIELD_BUF];
-	char text_fields[MAX_IOV][FIELD_BUF + MAX_KEY + 2];
-	char key_bufs[MAX_IOV][MAX_KEY + 1];
-	unsigned char le_bufs[MAX_IOV][8];
+	static _Thread_local struct iovec iov[MAX_IOV * 4];
+	static _Thread_local char values[MAX_IOV][FIELD_BUF];
+	static _Thread_local char text_fields[MAX_IOV][FIELD_BUF + MAX_KEY + 2];
+	static _Thread_local char key_bufs[MAX_IOV][MAX_KEY + 1];
+	static _Thread_local unsigned char le_bufs[MAX_IOV][8];
 	int n_iov = 0;
 	int n_fields = 0;
 
@@ -35,23 +35,35 @@ static int send_impl(const char *format, va_list ap)
 		if (!eq)
 			break;
 
+		const char *value_fmt = eq + 1;
+		int n_args = util_count_printf_conversions(value_fmt);
+
 		size_t key_len = (size_t)(eq - f);
 		if (key_len == 0 || key_len > MAX_KEY)
 		{
-			util_consume_va_args(ap, f);
+			/*
+			 * Consume variadic arguments as void* to skip past them. This works
+			 * because all GP register slots are pointer-sized on supported ABIs.
+			 *
+			 * On AARCH64, floating-point values are passed in separate FP
+			 * registers (v0-v7) tracked by va_list.__vr_offs. va_arg(ap, void*)
+			 * only advances the GP register offset (__gr_offs), so FP format
+			 * specifiers (%f, %e, %g, %a, %Lf) in field values are not consumed
+			 * and will cause subsequent arguments to be misread.
+			 */
+			for (int i = 0; i < n_args; i++)
+				(void)va_arg(ap, void *);
 			f = va_arg(ap, const char *);
 			continue;
 		}
 
 		if (encode_validate_key(f, key_len) < 0)
 		{
-			util_consume_va_args(ap, f);
+			for (int i = 0; i < n_args; i++)
+				(void)va_arg(ap, void *);
 			f = va_arg(ap, const char *);
 			continue;
 		}
-
-		const char *value_fmt = eq + 1;
-		int n_args = util_count_printf_conversions(value_fmt);
 
 		char *value_buf = values[n_fields];
 		int value_len;
@@ -65,7 +77,8 @@ static int send_impl(const char *format, va_list ap)
 
 			if (value_len < 0)
 			{
-				util_consume_va_args(ap, f);
+				for (int i = 0; i < n_args; i++)
+					(void)va_arg(ap, void *);
 				f = va_arg(ap, const char *);
 				continue;
 			}
@@ -92,7 +105,8 @@ static int send_impl(const char *format, va_list ap)
 								  key_bufs[n_fields], le_bufs[n_fields]);
 			if (r < 0)
 			{
-				util_consume_va_args(ap, f);
+				for (int i = 0; i < n_args; i++)
+					(void)va_arg(ap, void *);
 				f = va_arg(ap, const char *);
 				continue;
 			}
@@ -105,7 +119,8 @@ static int send_impl(const char *format, va_list ap)
 								  (size_t)value_len);
 			if (len < 0)
 			{
-				util_consume_va_args(ap, f);
+				for (int i = 0; i < n_args; i++)
+					(void)va_arg(ap, void *);
 				f = va_arg(ap, const char *);
 				continue;
 			}
@@ -116,7 +131,8 @@ static int send_impl(const char *format, va_list ap)
 
 		n_fields++;
 
-		util_consume_va_args(ap, value_fmt);
+		for (int i = 0; i < n_args; i++)
+			(void)va_arg(ap, void *);
 		f = va_arg(ap, const char *);
 	}
 

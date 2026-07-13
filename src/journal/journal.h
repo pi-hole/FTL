@@ -28,7 +28,9 @@ int journal_print(int priority, const char *format, ...) __attribute__((format(p
 /* Send structured journal fields as key=value pairs, NULL-terminated.
  * Field values may contain printf-style conversions. Invalid keys are silently
  * skipped. Trailing whitespace in values is trimmed. Values containing
- * NUL or newline bytes are sent as binary automatically. */
+ * NUL or newline bytes are sent as binary automatically.
+ * NOTE: Field values must not use floating-point format specifiers (%f, %e,
+ * %g, %a, %Lf) — these are not correctly consumed on AARCH64. */
 int journal_send(const char *format, ...) __attribute__((format(printf, 1, 0)))
 __attribute__((sentinel));
 
