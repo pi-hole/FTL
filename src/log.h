@@ -43,7 +43,7 @@ extern bool debug_flags[DEBUG_MAX];
 extern bool only_testing;
 
 void clear_debug_flags(void);
-void init_FTL_log(const char *name);
+void init_FTL_log(void);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], const off_t bytes, double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);

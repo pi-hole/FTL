@@ -31,7 +31,6 @@
 
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
-static const char *process = "";
 bool debug_flags[DEBUG_MAX] = { false };
 
 void clear_debug_flags(void)
@@ -46,7 +45,7 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-void init_FTL_log(const char *name)
+void init_FTL_log(void)
 {
 	// Open the log file in append/create mode
 	if(config.files.log.ftl.v.s != NULL)
@@ -65,15 +64,6 @@ void init_FTL_log(const char *name)
 		// Close log file
 		if(logfile != NULL)
 			fclose(logfile);
-	}
-
-	// Store process name (if available), strip path if found
-	if(name != NULL)
-	{
-		if(strrchr(name, '/') != NULL)
-			process = strrchr(name, '/')+1;
-		else
-			process = name;
 	}
 }
 
