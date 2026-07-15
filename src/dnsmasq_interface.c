@@ -4230,7 +4230,7 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
 	// Lock SHM
 	lock_shm();
@@ -4242,6 +4242,9 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 
 	// Unlock SHM
 	unlock_shm();
+
+	// Write to pihole.log via shared writer (FTL owns this file now)
+	FTL_write_dnsmasq_log(payload, func);
 }
 
 static const char *check_dnsmasq_name(const char *name)

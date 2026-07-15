@@ -28,10 +28,88 @@
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
+// open(), O_WRONLY, O_CREAT, O_APPEND, O_CLOEXEC
+#include <fcntl.h>
 
 static bool print_log = true, print_stdout = true;
-static bool ftl_log_available = true;
 bool debug_flags[DEBUG_MAX] = { false };
+
+// Per-file log state: fd, path, writer-preferenced lock, reopen flag
+struct log_fd {
+	int fd;
+	const char *path;
+	pthread_mutex_t lock;
+	volatile sig_atomic_t reopen_needed;
+};
+
+static struct log_fd ftl_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
+static struct log_fd webserver_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
+static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
+
+// dnsmasq forks per TCP query while FTL threads may be mid-write.  Without
+// atfork handling the child would inherit one of the per-file mutexes locked
+// and the first my_syslog() there would block forever, hanging that query.
+// Lock all log mutexes before fork() and release them in both parent and child.
+static void log_atfork_prepare(void)
+{
+	pthread_mutex_lock(&ftl_log.lock);
+	pthread_mutex_lock(&webserver_log.lock);
+	pthread_mutex_lock(&dnsmasq_log.lock);
+}
+static void log_atfork_parent(void)
+{
+	pthread_mutex_unlock(&ftl_log.lock);
+	pthread_mutex_unlock(&webserver_log.lock);
+	pthread_mutex_unlock(&dnsmasq_log.lock);
+}
+static void log_atfork_child(void)
+{
+	pthread_mutex_unlock(&ftl_log.lock);
+	pthread_mutex_unlock(&webserver_log.lock);
+	pthread_mutex_unlock(&dnsmasq_log.lock);
+}
+
+// Return 1 if this fd is associated with any logfile to avoid
+// dnsmasq closing it during initialization
+int __attribute__((pure)) is_log_fd(const int fd)
+{
+	return fd == ftl_log.fd || fd == webserver_log.fd || fd == dnsmasq_log.fd;
+}
+
+// Writer-preferenced per-file lock: only the fd for this specific log is
+// held, so writes to different files never contend.  The reopen flag is
+// per-file so SIGUSR2 only touches the fd that actually needs it.
+static bool write_log_line(struct log_fd *log, const char *line, size_t len)
+{
+	if(log->fd == -1)
+		return false;
+
+	pthread_mutex_lock(&log->lock);
+
+	if(log->reopen_needed)
+	{
+		log->reopen_needed = 0;
+		close(log->fd);
+		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	}
+
+	ssize_t written = 0;
+	while(written < (ssize_t)len)
+	{
+		ssize_t rc = write(log->fd, line + written, len - written);
+		if(rc == -1)
+		{
+			if(errno == EINTR)
+				continue;
+			pthread_mutex_unlock(&log->lock);
+			return false;
+		}
+		written += rc;
+	}
+
+	pthread_mutex_unlock(&log->lock);
+	return true;
+}
 
 void clear_debug_flags(void)
 {
@@ -45,26 +123,58 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-void init_FTL_log(void)
+// Open cached log fds from config paths.
+// open_log_fds(true):  open FTL.log only (called early, before full config)
+// open_log_fds(false): open webserver.log + pihole.log (called after config)
+void open_log_fds(bool ftl)
 {
-	// Open the log file in append/create mode
-	if(config.files.log.ftl.v.s != NULL)
+	if(ftl)
 	{
-		FILE *logfile = NULL;
-		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
+		// FTL.log - path is known from getLogFilePath()
+		if(config.files.log.ftl.v.s != NULL)
 		{
-			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
-			       config.files.log.ftl.v.s, strerror(errno));
-			syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
-			ftl_log_available = false;
+			ftl_log.path = config.files.log.ftl.v.s;
+			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+			if(ftl_log.fd == -1)
+			{
+				printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
+				       ftl_log.path, strerror(errno));
+				syslog(LOG_ERR, "Opening of FTL\'s log file failed, using syslog instead!");
+			}
 		}
-		else
-			ftl_log_available = true;
-
-		// Close log file
-		if(logfile != NULL)
-			fclose(logfile);
+		return;
 	}
+
+	// webserver.log + pihole.log - paths are known after readFTLconf()
+	if(config.files.log.webserver.v.s != NULL)
+	{
+		webserver_log.path = config.files.log.webserver.v.s;
+		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	}
+
+	// pihole.log (dnsmasq) - FTL owns this file from now on
+	if(config.files.log.dnsmasq.v.s != NULL)
+	{
+		dnsmasq_log.path = config.files.log.dnsmasq.v.s;
+		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	}
+
+	// Register atfork handlers once, before any threads or dnsmasq forks
+	// exist, so a TCP-query fork can never inherit a locked log mutex
+	static bool atfork_registered = false;
+	if(!atfork_registered)
+	{
+		atfork_registered = true;
+		pthread_atfork(log_atfork_prepare, log_atfork_parent, log_atfork_child);
+	}
+}
+
+// Signal that log fds need to be reopened (called from SIGUSR2 handler path)
+void mark_log_reopen(void)
+{
+	ftl_log.reopen_needed = 1;
+	webserver_log.reopen_needed = 1;
+	dnsmasq_log.reopen_needed = 1;
 }
 
 // Return time(NULL) but with (up to) nanosecond accuracy
@@ -254,6 +364,36 @@ const char *debugstr(const enum debug_flag flag)
 	}
 }
 
+// Write a dnsmasq log line to pihole.log in dnsmasq's exact on-disk format.
+// The message is the bare body (no timestamp, no prefix) as handed to
+// FTL_dnsmasq_log() from my_syslog().  We reproduce dnsmasq's format:
+//   "Mon Jan  1 12:00:00 2024 dnsmasq-dhcp[12345]: <message>\n"
+// where the func suffix (e.g. "-dhcp", "-tftp") comes from the priority
+// bits extracted in my_syslog().
+void FTL_write_dnsmasq_log(const char *message, const char *func)
+{
+	if(dnsmasq_log.fd == -1)
+		return;
+
+	time_t now = time(NULL);
+	char *ts = ctime(&now);
+
+	char line[2048];
+	int off = snprintf(line, sizeof(line), "%.20s dnsmasq%s[%d]: ", ts + 4, func ? func : "", getpid());
+
+	const char *msg = message ? message : "";
+	off += snprintf(line + off, sizeof(line) - off, "%s", msg);
+
+	// Clamp to buffer end - snprintf returns would-be length on truncation
+	if(off >= (int)sizeof(line))
+		off = sizeof(line) - 1;
+
+	if(off > 0 && line[off - 1] != '\n')
+		line[off++] = '\n';
+
+	write_log_line(&dnsmasq_log, line, off);
+}
+
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE];
@@ -294,40 +434,22 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		va_end(args);
 		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
-		bool logged = false;
-		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
+		// Format full line and write to cached fd
+		char line[2048];
+		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+		va_start(args, format);
+		off += vsnprintf(line + off, sizeof(line) - off, format, args);
+		va_end(args);
+
+		// Clamp to buffer end - snprintf returns would-be length on truncation
+		if(off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
+		line[off++] = '\n';
+
+		if(!write_log_line(&ftl_log, line, off))
 		{
-			// Open log file
-			FILE *logfile = fopen(config.files.log.ftl.v.s, "a+");
-
-			// Write to log file
-			if(logfile != NULL)
-			{
-				// Prepend message with identification string and priority
-				fprintf(logfile, "%s [%s] %s: ", timestring, idstr, prio);
-
-				// Log message
-				va_start(args, format);
-				vfprintf(logfile, format, args);
-				va_end(args);
-
-				// Append newline character to the end of the file
-				fputc('\n', logfile);
-
-				// Close file after writing
-				fclose(logfile);
-
-				logged = true;
-			}
-			else if(!daemonmode)
-			{
-				printf("!!! WARNING: Writing to FTL\'s log file failed!\n");
-				syslog(LOG_ERR, "Writing to FTL\'s log file failed!");
-			}
-		}
-		if(!logged)
-		{
-			// Syslog logging
+			// Fallback: syslog if fd is unavailable or write failed
 			va_start(args, format);
 			vsyslog(priority, format, args);
 			va_end(args);
@@ -354,16 +476,8 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 	get_idstr(idstr, sizeof(idstr));
 	const char *prio = priostr(priority, flag);
 
-	// Open web log file (if a path is configured)
-	FILE *weblog = NULL;
-	if(print_log && config.files.log.webserver.v.s != NULL)
-		weblog = fopen(config.files.log.webserver.v.s, "a+");
-
-	// _FTL_log() prints these itself, so do not print them twice
-	const bool relay = print_log && weblog == NULL && priority <= LOG_WARNING;
-
 	// Print to stdout before writing to file
-	if(!relay && (!daemonmode || cli_mode) && print_stdout)
+	if((!daemonmode || cli_mode) && print_stdout)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
@@ -377,28 +491,30 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 	// Print to log file or FIFO
 	if(print_log)
 	{
-		// Add line to FIFO buffer. It lives in shared memory and is
-		// independent of the log file, so it is filled even when we relay
+		// Add line to FIFO buffer
 		char buffer[MAX_MSG_FIFO + 1u];
 		va_start(args, format);
 		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
 		va_end(args);
 		add_to_fifo_buffer(FIFO_WEBSERVER, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
-		if(relay)
+		// Format full line and write to cached fd
+		char line[2048];
+		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+		va_start(args, format);
+		off += vsnprintf(line + off, sizeof(line) - off, format, args);
+		va_end(args);
+
+		// Clamp to buffer end - snprintf returns would-be length on truncation
+		if(off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
+		line[off++] = '\n';
+
+		if(!write_log_line(&webserver_log, line, off) && config.files.log.webserver.v.s != NULL && !daemonmode)
 		{
-			// No web log available - keep severe messages durable in FTL.log/syslog
+			// No web log available - keep severe messages durable
 			_FTL_log(priority, flag, "%s", buffer);
-		}
-		else if(weblog != NULL)
-		{
-			// Write to web log file
-			fprintf(weblog, "%s [%s] %s: ", timestring, idstr, prio);
-			va_start(args, format);
-			vfprintf(weblog, format, args);
-			va_end(args);
-			fputc('\n',weblog);
-			fclose(weblog);
 		}
 	}
 }
@@ -817,6 +933,13 @@ bool flush_dnsmasq_log(void)
 		return false;
 	}
 	fclose(logfile);
+
+	// Reopen the cached fd to point at the new empty file
+	pthread_mutex_lock(&dnsmasq_log.lock);
+	if(dnsmasq_log.fd != -1)
+		close(dnsmasq_log.fd);
+	dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	pthread_mutex_unlock(&dnsmasq_log.lock);
 
 	// Flush dnsmasq FIFO logs
 	if(fifo_log)
