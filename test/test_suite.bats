@@ -1165,6 +1165,30 @@ setup() {
   assert_line --partial '_VERSION = "inspect.lua 3.1.0"'
 }
 
+@test "LUA: pihole.json_decode round-trips JSON" {
+  run bash -c './pihole-FTL lua -e "local t = pihole.json_decode([[{\"a\":1,\"b\":[2,3],\"c\":true,\"d\":null,\"e\":\"x\"}]]); print(t.a, t.b[1], t.b[2], t.c, t.d, t.e)"'
+  assert_success
+  assert_line --index 0 "1.0	2.0	3.0	true	nil	x"
+}
+
+@test "LUA: pihole.json_decode handles nested objects" {
+  run bash -c './pihole-FTL lua -e "local t = pihole.json_decode([[{\"o\":{\"k\":\"v\"}}]]); print(t.o.k)"'
+  assert_success
+  assert_line --index 0 "v"
+}
+
+@test "LUA: pihole.json_decode handles empty object and array" {
+  run bash -c './pihole-FTL lua -e "local t = pihole.json_decode([[{\"o\":{},\"a\":[]}]]); print(next(t.o), next(t.a))"'
+  assert_success
+  assert_line --index 0 "nil	nil"
+}
+
+@test "LUA: pihole.json_decode returns nil + error for invalid JSON" {
+  run bash -c './pihole-FTL lua -e "local t, err = pihole.json_decode([[{not json}]]); print(type(t), err)"'
+  assert_line --index 0 --partial "nil"
+  assert_line --index 0 --partial "invalid JSON"
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"

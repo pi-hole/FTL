@@ -25,6 +25,8 @@
 #include "scripts/scripts.h"
 // get_prefix_webhome(), get_api_uri()
 #include "webserver/webserver.h"
+// cJSON parsing for pihole.json_decode
+#include "webserver/cJSON/cJSON.h"
 
 // prototype for luaopen_pihole()
 #include "lualib.h"
@@ -311,6 +313,91 @@ static int pihole_format_path(lua_State *L) {
 	return 1; // number of results
 }
 
+// Forward declaration for recursive JSON -> Lua conversion
+static void ftl_cjson_to_lua(lua_State *L, const cJSON *item);
+
+// Convert a cJSON object into a Lua table on the top of the stack.
+static void ftl_cjson_object_to_lua(lua_State *L, const cJSON *object)
+{
+	lua_newtable(L);
+	const cJSON *child = NULL;
+	for(child = object->child; child != NULL; child = child->next)
+	{
+		lua_pushstring(L, child->string);
+		ftl_cjson_to_lua(L, child);
+		lua_settable(L, -3);
+	}
+}
+
+// Convert a cJSON array into a Lua table (with integer keys) on the top of the stack.
+static void ftl_cjson_array_to_lua(lua_State *L, const cJSON *array)
+{
+	lua_newtable(L);
+	const cJSON *child = NULL;
+	int idx = 1;
+	for(child = array->child; child != NULL; child = child->next)
+	{
+		ftl_cjson_to_lua(L, child);
+		lua_rawseti(L, -2, idx++);
+	}
+}
+
+// Recursively convert a cJSON item into the equivalent Lua value.
+static void ftl_cjson_to_lua(lua_State *L, const cJSON *item)
+{
+	switch(item->type & 0xFF)
+	{
+		case cJSON_NULL:
+			lua_pushnil(L);
+			break;
+		case cJSON_False:
+			lua_pushboolean(L, 0);
+			break;
+		case cJSON_True:
+			lua_pushboolean(L, 1);
+			break;
+		case cJSON_Number:
+			lua_pushnumber(L, item->valuedouble);
+			break;
+		case cJSON_String:
+			lua_pushstring(L, item->valuestring);
+			break;
+		case cJSON_Array:
+			ftl_cjson_array_to_lua(L, item);
+			break;
+		case cJSON_Object:
+			ftl_cjson_object_to_lua(L, item);
+			break;
+		default:
+			lua_pushnil(L);
+			break;
+	}
+}
+
+// pihole.json_decode(<json:str>) -> table|nil, err_str
+// Uses the thread-safe cJSON_ParseWithLengthOpts variant with a stack-local
+// error pointer (return_parse_end) rather than the global cJSON_GetErrorPtr(),
+// consistent with other FTL cJSON consumers (teleporter.c, cli.c, http-common.c).
+static int pihole_json_decode(lua_State *L) {
+	size_t json_len = 0;
+	const char *json = luaL_checklstring(L, 1, &json_len);
+	const char *errptr = NULL;
+	cJSON *root = cJSON_ParseWithLengthOpts(json, json_len, &errptr, false);
+	if (root == NULL)
+	{
+		lua_pushnil(L);
+		if(errptr != NULL)
+			lua_pushfstring(L, "invalid JSON near offset %d", (int)(errptr - json));
+		else
+			lua_pushstring(L, "invalid JSON");
+		return 2;
+	}
+
+	ftl_cjson_to_lua(L, root);
+	cJSON_Delete(root);
+	return 1;
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -322,6 +409,7 @@ static const luaL_Reg piholelib[] = {
 	{"needLogin", pihole_needLogin},
 	{"api_url", pihole_api_url},
 	{"format_path", pihole_format_path},
+	{"json_decode", pihole_json_decode},
 	{NULL, NULL}
 };
 
