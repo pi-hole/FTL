@@ -330,17 +330,7 @@ void my_syslog(int priority, const char *format, ...)
   va_start(ap, format);
   len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
   va_end(ap);
-  FTL_dnsmasq_log(buffer, priority, len > MAX_MESSAGE ? MAX_MESSAGE : len);
-  /*******************************************************************************/
-
-  if (echo_stderr) 
-    {
-      fprintf(stderr, "dnsmasq%s: ", func);
-      va_start(ap, format);
-      vfprintf(stderr, format, ap);
-      va_end(ap);
-      fputc('\n', stderr);
-    }
+  FTL_dnsmasq_log(buffer, priority, func, len > MAX_MESSAGE ? MAX_MESSAGE : len);
 
   /* Pi-hole diagnosis system */
   if(priority == LOG_WARNING)
@@ -353,6 +343,21 @@ void my_syslog(int priority, const char *format, ...)
           free(message);
         }
       va_end(ap);
+    }
+
+  /* Pi-hole: FTL owns pihole.log.  Bypass dnsmasq's file-write path
+     and syslog fallback entirely. */
+  return;
+  /*******************************************************************************/
+
+
+  if (echo_stderr) 
+    {
+      fprintf(stderr, "dnsmasq%s: ", func);
+      va_start(ap, format);
+      vfprintf(stderr, format, ap);
+      va_end(ap);
+      fputc('\n', stderr);
     }
 
   if (log_fd == -1)

@@ -2009,7 +2009,7 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 	config.files.log.ftl.c = validate_filepath;
-	config.files.log.ftl.f = FLAG_FTL_LOG;
+	config.files.log.ftl.f = FLAG_FTL_LOG | FLAG_RESTART_FTL;
 
 	// Try sources in priority order: ENV > TOML > legacy
 	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
