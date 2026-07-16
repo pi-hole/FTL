@@ -1715,6 +1715,82 @@ setup() {
   assert_line --partial --index 0 '"no password set"'
 }
 
+@test "CLI: Setting password via stdin (--config <key> -) leaves no net change" {
+  # Set password via stdin (value is piped, not in argv)
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "echo 'STDIN_PW' | ./pihole-FTL --config webserver.api.password -"
+  assert_success
+
+  # Wait for the running FTL instance to pick up the config file change
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Verify login is required
+  run bash -c 'curl -s 127.0.0.1/api/auth'
+  assert_line --partial --index 0 '"valid":false'
+
+  # Verify the stdin-supplied password works
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"STDIN_PW\"}" | jq .session.valid'
+  assert_line --index 0 "true"
+
+  # Verify the password was never present in the long-running FTL
+  # daemon's argv. The daemon was started without --config so its
+  # cmdline should not contain the password.
+  for pid in $(pidof pihole-FTL 2>/dev/null); do
+    if [ -r "/proc/$pid/cmdline" ]; then
+      ! tr '\0' ' ' < "/proc/$pid/cmdline" | grep -q "STDIN_PW"
+    fi
+  done
+
+  # Remove password via stdin (empty value)
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "echo '' | ./pihole-FTL --config webserver.api.password -"
+  assert_success
+
+  # Wait for the running FTL instance to pick up the config file change
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Verify no login is required again
+  run bash -c 'curl -s 127.0.0.1/api/auth'
+  assert_line --partial --index 0 '"valid":true'
+  assert_line --partial --index 0 '"no password set"'
+}
+
+@test "CLI: Stdin --config rejects values longer than 4095 bytes" {
+  # Generate a value that is exactly 4096 bytes (no newline within the
+  # 4096-byte buffer means the value did not fit and would be silently
+  # truncated). The CLI must refuse this with a non-zero exit code.
+  run bash -c "python3 -c 'import sys; sys.stdout.write(\"a\"*4096)' | ./pihole-FTL --config webserver.api.password -"
+  assert_failure
+  assert_output --partial "too long"
+}
+
+@test "CLI: Stdin --config reads only the first line for multi-line input" {
+  # For multi-line input, only the first line is consumed. The second
+  # line ("SECOND_LINE") is dropped. We verify by piping "MULTI\nSECOND"
+  # and confirming only "MULTI" was set.
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "printf 'MULTI\nSECOND_LINE\n' | ./pihole-FTL --config webserver.api.password -"
+  assert_success
+
+  # Wait for the running FTL instance to pick up the config file change
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Only the first line was used as the password
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"MULTI\"}" | jq .session.valid'
+  assert_line --index 0 "true"
+
+  # The second line was NOT used
+  run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"SECOND_LINE\"}" | jq .session.valid'
+  refute_line --index 0 "true"
+
+  # Cleanup: remove the password
+  run bash -c "./pihole-FTL --config webserver.api.password \"\""
+  assert_success
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request

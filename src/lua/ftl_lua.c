@@ -376,8 +376,8 @@ static void ftl_cjson_to_lua(lua_State *L, const cJSON *item)
 
 // pihole.json_decode(<json:str>) -> table|nil, err_str
 // Uses the thread-safe cJSON_ParseWithLengthOpts variant with a stack-local
-// error pointer (return_parse_end) rather than the global cJSON_GetErrorPtr(),
-// consistent with other FTL cJSON consumers (teleporter.c, cli.c, http-common.c).
+// error pointer (return_parse_end) rather than global, consistent with
+// other FTL cJSON consumers (teleporter.c, cli.c, http-common.c).
 static int pihole_json_decode(lua_State *L) {
 	size_t json_len = 0;
 	const char *json = luaL_checklstring(L, 1, &json_len);
