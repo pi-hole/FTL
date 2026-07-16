@@ -875,7 +875,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			if(dbID >= 0)
 				log_debug(DEBUG_ARP, "Network table: Client with MAC %s is network ID %i", hwaddr, dbID);
 		}
-		if (dbID == DB_NODATA)
+		else
 		{
 			//
 			// Variant 2: Try to find a device using the same IP address within the last 24 hours
@@ -897,7 +897,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// if DHCP server is enabled
 		//
 		bool dhcp_lease = false;
-		if (dbID == DB_NODATA && config.dhcp.active.v.b)
+		if (snap_hwlen != 6 && dbID == DB_NODATA && config.dhcp.active.v.b)
 		{
 			log_debug(DEBUG_ARP, "Network table: DHCP server enabled, checking leases for IP %s", ipaddr);
 			FILE *fp = fopen(DHCPLEASESFILE, "r");
@@ -963,7 +963,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// Only try this when there is no EDNS(0) MAC address available
 		// nor a corresponding DHCP lease
 		//
-		if (dbID < 0 && dhcp_lease == false)
+		if (snap_hwlen != 6 && dbID < 0 && dhcp_lease == false)
 		{
 			unlock_shm();
 			dbID = find_device_by_mock_hwaddr(db, ipaddr);
