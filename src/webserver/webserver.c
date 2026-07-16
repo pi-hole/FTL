@@ -24,6 +24,8 @@
 #include "files.h"
 // generate_certificate()
 #include "webserver/x509.h"
+// terminator_start(), terminator_stop()
+#include "webserver/terminator.h"
 // allocate_lua(), free_lua(), init_lua(), request_handler()
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()
@@ -611,6 +613,78 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 	}
 }
 
+#ifdef HAVE_TLS
+// Split the configured webserver port list for TLS-terminator mode. Every
+// secure ("...s") entry names a public TLS port the terminator will own, so it
+// is removed from the list handed to CivetWeb; a single loopback plaintext
+// backend (ephemeral port, read back after start) is appended instead. Returns
+// the first secure port found (the terminator's public port), or 0 if the list
+// has no TLS port.
+static int split_terminator_ports(const char *cfg, char *backend, size_t backend_len)
+{
+	backend[0] = '\0';
+	int tls_port = 0;
+
+	char *copy = strdup(cfg);
+	if(copy == NULL)
+		return 0;
+
+	char *save = NULL;
+	for(char *tok = strtok_r(copy, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save))
+	{
+		// Skip leading whitespace
+		while(*tok == ' ')
+			tok++;
+		if(*tok == '\0')
+			continue;
+
+		// A secure entry (carries the 's' flag) is owned by the terminator
+		if(strchr(tok, 's') != NULL)
+		{
+			if(tls_port == 0)
+			{
+				// The port digits follow the last ':' (IP-prefixed entries such
+				// as "[::]:443os") or start the token ("443os"); atoi() stops at
+				// the flag letters.
+				const char *p = strrchr(tok, ':');
+				tls_port = atoi(p != NULL ? p + 1 : tok);
+			}
+			continue; // drop from the list handed to CivetWeb
+		}
+
+		// Keep plaintext entries verbatim
+		if(backend[0] != '\0')
+			strncat(backend, ",", backend_len - strlen(backend) - 1);
+		strncat(backend, tok, backend_len - strlen(backend) - 1);
+	}
+	free(copy);
+
+	// Append the loopback plaintext backend CivetWeb serves the terminator on.
+	// Port 0 lets the kernel pick a free port; it is read back after mg_start2().
+	if(backend[0] != '\0')
+		strncat(backend, ",", backend_len - strlen(backend) - 1);
+	strncat(backend, "127.0.0.1:0", backend_len - strlen(backend) - 1);
+
+	return tls_port;
+}
+
+// After CivetWeb has started, find the ephemeral port it bound for the loopback
+// plaintext backend (the single non-secure listener on 127.0.0.1). Returns 0 if
+// not found.
+static int find_backend_port(void)
+{
+	for(unsigned int i = 0; i < MAXPORTS; i++)
+	{
+		if(server_ports[i].protocol == 0)
+			break;
+		if(!server_ports[i].is_secure &&
+		   strcmp(server_ports[i].addr, "127.0.0.1") == 0)
+			return server_ports[i].port;
+	}
+	return 0;
+}
+#endif /* HAVE_TLS */
+
 void http_init(void)
 {
 	// Don't start web server if port is not set
@@ -639,13 +713,11 @@ void http_init(void)
 
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	// No MG_FEATURES_TLS: civetweb is built without TLS (NO_SSL) and only serves
+	// plain HTTP/1.1 on the loopback backend; the front terminator does TLS.
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
-
-#ifdef HAVE_TLS
-	features |= MG_FEATURES_TLS;
-#endif
 
 	if(mg_init_library(features) == 0)
 	{
@@ -689,11 +761,32 @@ void http_init(void)
 		strcat(webheaders, "\r\n");
 	}
 
+	// TLS is terminated by the in-process front terminator, not by CivetWeb.
+	// When the port list contains a secure port, hand CivetWeb a plaintext
+	// loopback backend instead and let the terminator own the public TLS port.
+	const char *listening_ports = config.webserver.port.v.s;
+#ifdef HAVE_TLS
+	const bool tls_used = config.webserver.port.v.s != NULL &&
+	                      strchr(config.webserver.port.v.s, 's') != NULL;
+	char backend_ports[256];
+	int terminator_port = 0;
+	if(tls_used)
+	{
+		terminator_port = split_terminator_ports(config.webserver.port.v.s,
+		                                          backend_ports, sizeof(backend_ports));
+		if(terminator_port > 0)
+			listening_ports = backend_ports;
+		else
+			log_err("Could not extract a TLS port from '%s'; the web server will not offer TLS",
+			        config.webserver.port.v.s);
+	}
+#endif
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	const char *static_options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
-		"listening_ports", config.webserver.port.v.s,
+		"listening_ports", listening_ports,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
@@ -725,16 +818,9 @@ void http_init(void)
 	}
 
 #ifdef HAVE_TLS
-	// Add TLS options if configured
-
-	// TLS is used when webserver.port contains "s" (e.g. "443s")
-	const bool tls_used = config.webserver.port.v.s != NULL &&
-	                      strchr(config.webserver.port.v.s, 's') != NULL;
-
-	// Check certificate domain if
-	// - TLS is used
-	// - A certificate is configured
-	// - The certificate is readable
+	// Ensure the TLS certificate exists and matches the configured domain. The
+	// terminator (not CivetWeb) uses it to terminate TLS; CivetWeb serves plain
+	// HTTP/1.1 on the loopback backend, so no ssl_certificate option is passed.
 	if(tls_used &&
 	   config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)
@@ -754,20 +840,13 @@ void http_init(void)
 			}
 		}
 
-		// Check if the certificate is readable (we may have just
-		// created it)
+		// Check if the certificate is readable (we may have just created it)
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
 			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
 			{
 				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
 			}
-			conf_opts[idx * 2] = strdup("ssl_certificate");
-			conf_opts[idx * 2 + 1] = strdup(config.webserver.tls.cert.v.s);
-			idx++;
-
-			log_info("Using SSL/TLS certificate file %s",
-			         config.webserver.tls.cert.v.s);
 		}
 		else
 		{
@@ -935,6 +1014,24 @@ void http_init(void)
 
 	// Create CLI password (if enabled)
 	create_cli_password();
+
+#ifdef HAVE_TLS
+	// Start the TLS terminator in front of the (now plaintext) CivetWeb backend.
+	// CivetWeb bound the loopback backend on an ephemeral port; read it back and
+	// forward the public TLS port to it. Record the public TLS port as the HTTPS
+	// port (civetweb no longer reports one) so the /api/info report and the
+	// certificate-expiry renewal loop in webserver_thread() keep working.
+	if(tls_used && terminator_port > 0)
+	{
+		const int be_port = find_backend_port();
+		if(be_port <= 0)
+			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
+		else if(terminator_start(terminator_port, be_port, config.webserver.tls.cert.v.s))
+			https_port = (in_port_t)terminator_port;
+		else
+			log_err("Failed to start the TLS terminator on port %d", terminator_port);
+	}
+#endif
 }
 
 static char *append_to_path(char *path, const char *append)
@@ -1019,6 +1116,11 @@ void http_terminate(void)
 	// The server may have never been started
 	if(!ctx)
 		return;
+
+#ifdef HAVE_TLS
+	// Stop the TLS terminator before the backend it forwards to
+	terminator_stop();
+#endif
 
 	/* Stop the server */
 	mg_stop(ctx);

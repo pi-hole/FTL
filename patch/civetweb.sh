@@ -23,4 +23,7 @@ patch -p1 < patch/civetweb/0001-Expose-bound-to-addresses-from-CivetWeb-to-the-f
 echo "Applying patch 0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch"
 patch -p1 < patch/civetweb/0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch
 
+echo "Applying patch 0001-Adopt-client-address-from-PROXY-protocol-v2.patch"
+patch -p1 < patch/civetweb/0001-Adopt-client-address-from-PROXY-protocol-v2.patch
+
 echo "ALL PATCHES APPLIED OKAY"

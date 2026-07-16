@@ -208,16 +208,10 @@ if(STATIC)
 else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
-# Position-independent executable (image ASLR). -fPIE compiles the objects
-# position-independent; the executable is then linked PIE via -pie (dynamic
-# build) or -static-pie (static build, set on the link line below). A plain
-# -static silently overrides -pie and yields a non-PIE binary with a fixed load
-# address, so the static build - the one we actually ship - must use -static-pie.
+# -pie -fPIE: (Dynamic) position independent executable
+
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fPIE")
-    if(NOT STATIC)
-        set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie")
-    endif()
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
@@ -314,7 +308,7 @@ add_executable(pihole-FTL
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static-pie)
+    target_link_libraries(pihole-FTL -static-libgcc -static)
     set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
@@ -549,20 +543,17 @@ option(USE_TLS "Build FTL with TLS support, if available" ON)
 find_library(LIBSSL NAMES libssl${LIBRARY_SUFFIX} ssl)
 find_library(LIBCRYPTO NAMES libcrypto${LIBRARY_SUFFIX} crypto)
 if(LIBSSL AND LIBCRYPTO AND USE_TLS)
-    # Enable TLS support in civetweb using its OpenSSL backend
+    # OpenSSL is used by the TLS terminator, the x509 certificate handling and
+    # the dotdoh client. civetweb itself is always built without TLS (NO_SSL,
+    # set in its own CMakeLists) since the terminator does TLS termination now.
     message(STATUS "Building FTL with TLS support: YES")
     target_compile_definitions(core PRIVATE HAVE_TLS)
-    # OPENSSL_API_3_0 selects civetweb's OpenSSL backend, NO_SSL_DL (set in
-    # the civetweb CMakeLists) links it statically instead of via dlopen
-    target_compile_definitions(civetweb PRIVATE OPENSSL_API_3_0)
     target_compile_definitions(webserver PRIVATE HAVE_TLS)
     target_compile_definitions(dotdoh PRIVATE HAVE_TLS)
     # Link against OpenSSL, the order is important (libssl depends on libcrypto)
     target_link_libraries(pihole-FTL ${LIBSSL} ${LIBCRYPTO})
 else()
-    # Disable TLS support in civetweb if OpenSSL is not selected or not available
     message(STATUS "Building FTL with TLS support: NO")
-    target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
 # After finishing building the FTL binary, we append the sha256sum of the binary

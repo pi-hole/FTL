@@ -19,15 +19,16 @@ set(sources
 
 add_library(civetweb OBJECT ${sources})
 target_compile_options(civetweb PRIVATE -Wno-unused-but-set-variable -Wno-unused-variable)
-# We can remove the NO_SSL later on. It adds additional constraints to the build system (availablity of libSSL-dev)
 # NO_CGI = no CGI support (we don't need it)
-# NO_SSL_DL NO_SSL = no SSL support (for now)
+# NO_SSL = no TLS in civetweb: the in-process front terminator terminates TLS
+#          and civetweb only ever serves plain HTTP/1.1 on the loopback backend,
+#          so civetweb's whole SSL layer is dead code and compiled out.
 # USE_IPV6: add IPv6 support
 # USE_LUA: add Lua support
 # TIMER_RESOLUTION: set timer resolution to 1000ms (default is 10ms) in an attempt to reduce CPU load
 target_compile_definitions(civetweb PRIVATE NO_CGI
                                             NO_DLOPEN
-                                            NO_SSL_DL
+                                            NO_SSL
                                             USE_IPV6
                                             USE_LUA
                                             TIMER_RESOLUTION=1000)

@@ -20318,6 +20318,112 @@ produce_socket(struct mg_context *ctx, const struct socket *sp)
 #endif /* ALTERNATIVE_QUEUE */
 
 
+/* Pi-hole: parse a PROXY protocol v2 header on a fresh connection coming from
+ * the in-process TLS terminator (which reaches CivetWeb on the loopback
+ * backend), and replace the remote address with the real client the header
+ * announces. This keeps client-IP-based logging and authentication accurate
+ * behind the terminator. Only loopback connections are trusted, so a plain-HTTP
+ * client on a public port cannot spoof its address this way; a no-op if no
+ * PROXY header is present (e.g. a direct localhost request). */
+static void
+parse_proxy_protocol_v2(struct mg_connection *conn)
+{
+	static const unsigned char sig[12] = {0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D,
+	                                      0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A};
+	struct pollfd pfd;
+	unsigned char hdr[16];
+	unsigned char buf[16 + 216]; /* 216 = largest v2 address block */
+	size_t addr_len, total, got;
+	int have;
+	const unsigned char *a;
+
+	/* Only trust the header on loopback connections (from the terminator). */
+	if (conn->client.lsa.sa.sa_family == AF_INET) {
+		if (conn->client.lsa.sin.sin_addr.s_addr != htonl(INADDR_LOOPBACK)) {
+			return;
+		}
+#if defined(USE_IPV6)
+	} else if (conn->client.lsa.sa.sa_family == AF_INET6) {
+		if (!IN6_IS_ADDR_LOOPBACK(&conn->client.lsa.sin6.sin6_addr)) {
+			return;
+		}
+#endif
+	} else {
+		return;
+	}
+
+	/* Peek the fixed 16-byte v2 header. Retry until 16 bytes are available, or
+	 * bail as soon as the available prefix already fails to match the
+	 * signature (i.e. this is a normal request, not a PROXY header). */
+	have = 0;
+	while (have < 16) {
+		int n;
+		pfd.fd = conn->client.sock;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 1000) <= 0) {
+			return;
+		}
+		n = (int)recv(conn->client.sock, hdr, sizeof(hdr), MSG_PEEK);
+		if (n <= 0) {
+			return;
+		}
+		if (memcmp(hdr, sig, (n < 12) ? (size_t)n : (size_t)12) != 0) {
+			return;
+		}
+		have = n;
+	}
+	if ((hdr[12] & 0xF0) != 0x20) {
+		return; /* not version 2 */
+	}
+
+	addr_len = ((size_t)hdr[14] << 8) | (size_t)hdr[15];
+	total = 16 + addr_len;
+	if (total > sizeof(buf)) {
+		return;
+	}
+
+	/* Consume the whole header for real so the HTTP request follows it. */
+	got = 0;
+	while (got < total) {
+		int n;
+		pfd.fd = conn->client.sock;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 1000) <= 0) {
+			return;
+		}
+		n = (int)recv(conn->client.sock, buf + got, total - got, 0);
+		if (n <= 0) {
+			return;
+		}
+		got += (size_t)n;
+	}
+
+	/* Only the PROXY command (0x01) carries a real address; LOCAL (0x00) keeps
+	 * the original one. */
+	if ((hdr[12] & 0x0F) != 0x01) {
+		return;
+	}
+
+	a = buf + 16;
+	if (hdr[13] == 0x11 && addr_len >= 12) { /* TCP over IPv4 */
+		memset(&conn->client.rsa, 0, sizeof(conn->client.rsa));
+		conn->client.rsa.sin.sin_family = AF_INET;
+		memcpy(&conn->client.rsa.sin.sin_addr, a, 4);
+		memcpy(&conn->client.rsa.sin.sin_port, a + 8, 2);
+	}
+#if defined(USE_IPV6)
+	else if (hdr[13] == 0x21 && addr_len >= 36) { /* TCP over IPv6 */
+		memset(&conn->client.rsa, 0, sizeof(conn->client.rsa));
+		conn->client.rsa.sin6.sin6_family = AF_INET6;
+		memcpy(&conn->client.rsa.sin6.sin6_addr, a, 16);
+		memcpy(&conn->client.rsa.sin6.sin6_port, a + 32, 2);
+	}
+#endif
+}
+
+
 static void
 worker_thread_run(struct mg_connection *conn)
 {
@@ -20402,6 +20508,10 @@ worker_thread_run(struct mg_connection *conn)
 		conn->conn_close_time = 0;
 #endif
 		conn->conn_birth_time = time(NULL);
+
+		/* Pi-hole: adopt the real client address from a PROXY protocol v2
+		 * header if this connection comes from the loopback TLS terminator. */
+		parse_proxy_protocol_v2(conn);
 
 		/* Fill in IP, port info early so even if SSL setup below fails,
 		 * error handler would have the corresponding info.
