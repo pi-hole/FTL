@@ -42,6 +42,7 @@ do
         "dev"            ) dev=1;;
         "test"           ) test=1;;
         "test-perf"      ) test=1; export RUN_PERF_TEST=1;;
+        "test-http2"     ) testhttp2=1;;
         "clean-logs"     ) clean_logs=1;;
         "clang"          ) clang=1;;
         "ci"             ) builddir="cmake_ci/";;
@@ -221,6 +222,15 @@ fi
 if [[ -n "${test}" ]]; then
     cd ..
     bash test/run.sh
+fi
+
+# Dedicated TLS terminator test. The regular suite exercises the plain HTTP/1.1
+# port; this starts a throwaway FTL instance and drives the TLS port directly to
+# cover HTTP/2, ALPN fall-through, POST-body forwarding, the long CSP header and
+# PROXY protocol v2 client-IP forwarding.
+if [[ -n "${testhttp2}" ]]; then
+    cd ..
+    bash test/http2_test.sh
 fi
 
 # If we are asked to restart, we do this here

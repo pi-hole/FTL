@@ -552,6 +552,17 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
     target_compile_definitions(dotdoh PRIVATE HAVE_TLS)
     # Link against OpenSSL, the order is important (libssl depends on libcrypto)
     target_link_libraries(pihole-FTL ${LIBSSL} ${LIBCRYPTO})
+
+    # HTTP/2 for the TLS terminator (nghttp2). Optional: without it the
+    # terminator negotiates HTTP/1.1 only.
+    find_library(LIBNGHTTP2 NAMES libnghttp2${LIBRARY_SUFFIX} nghttp2)
+    if(LIBNGHTTP2)
+        message(STATUS "Building FTL with HTTP/2 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP2)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP2})
+    else()
+        message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
+    endif()
 else()
     message(STATUS "Building FTL with TLS support: NO")
 endif()
