@@ -56,16 +56,74 @@ static struct {
 		const char *addr1;
 		const char *addr2;
 	} v6;
+	// DoT/DoH URIs pinned to the primary v4 and v6 address, so no untrusted
+	// lookup of the resolver hostname is needed before switching to it.
+	struct {
+		const char *v4;
+		const char *v6;
+	} dot;
+	struct {
+		const char *v4;
+		const char *v6;
+	} doh;
 } dns_server[] =
 {
-	{ "Google (ECS, DNSSEC)", { "8.8.8.8", "8.8.4.4" }, { "2001:4860:4860:0:0:0:0:8888", "2001:4860:4860:0:0:0:0:8844" } },
-	{ "OpenDNS (ECS, DNSSEC)", { "208.67.222.222", "208.67.220.220" }, {"2620:119:35::35", "2620:119:53::53"} },
-	{ "Level3", { "4.2.2.1", "4.2.2.2" }, { NULL, NULL } },
-	{ "Comodo", { "8.26.56.26", "8.20.247.20" }, { NULL, NULL} },
-	{ "Quad9 (filtered, DNSSEC)", {"9.9.9.9", "149.112.112.112" }, { "2620:fe::fe", "2620:fe::9" } },
-	{ "Quad9 (unfiltered, no DNSSEC)", { "9.9.9.10", "149.112.112.10" }, { "2620:fe::10", "2620:fe::fe:10" } },
-	{ "Quad9 (filtered, ECS, DNSSEC)", { "9.9.9.11", "149.112.112.11" }, { "2620:fe::11", "2620:fe::fe:11" } },
-	{ "Cloudflare (DNSSEC)", { "1.1.1.1", "1.0.0.1" }, { "2606:4700:4700::1111", "2606:4700:4700::1001" } }
+	{
+		.name = "Google (ECS, DNSSEC)",
+		.v4 = { "8.8.8.8", "8.8.4.4" },
+		.v6 = {	"2001:4860:4860:0:0:0:0:8888", "2001:4860:4860:0:0:0:0:8844" },
+		.dot = { "tls://dns.google@8.8.8.8", "tls://dns.google@[2001:4860:4860:0:0:0:0:8888]" },
+		.doh = { "https://dns.google@8.8.8.8/dns-query", "https://dns.google@[2001:4860:4860:0:0:0:0:8888]/dns-query" }
+	},
+	{
+		.name = "OpenDNS (ECS, DNSSEC)",
+		.v4 = { "208.67.222.222", "208.67.220.220" },
+		.v6 = {	"2620:119:35::35", "2620:119:53::53" },
+		.dot = { "tls://dns.opendns.com@208.67.222.222", "tls://dns.opendns.com@[2620:119:35::35]" },
+		.doh = { "https://doh.opendns.com@208.67.222.222/dns-query", "https://doh.opendns.com@[2620:119:35::35]/dns-query" }
+	},
+	{
+		.name = "Level3",
+		.v4 = { "4.2.2.1", "4.2.2.2" },
+		.v6 = {	"2001:4:112::1", "2001:4:112::2" },
+		.dot = { NULL, NULL },
+		.doh = { NULL, NULL }
+	},
+	{
+		.name = "Comodo",
+		.v4 = { "8.26.56.26", "8.20.247.20" },
+		.v6 = {	"2001:5a60::ad1:0ff", "2001:5a60::ad2:0ff" },
+		.dot = { NULL, NULL },
+		.doh = { NULL, NULL }
+	},
+	{
+		.name = "Quad9 (filtered, DNSSEC)",
+		.v4 = { "9.9.9.9", "149.112.112.112" },
+		.v6 = {	"2620:fe::fe", "2620:fe::9" },
+		.dot = { "tls://dns.quad9.net@9.9.9.9", "tls://dns.quad9.net@[2620:fe::fe]" },
+		.doh = { "https://dns.quad9.net@9.9.9.9/dns-query", "https://dns.quad9.net@[2620:fe::fe]/dns-query" }
+	},
+	{
+		.name = "Quad9 (unfiltered, no DNSSEC)",
+		.v4 = { "9.9.9.10", "149.112.112.10" },
+		.v6 = {	"2620:fe::10", "2620:fe::fe:10" },
+		.dot = { "tls://dns10.quad9.net@9.9.9.10", "tls://dns10.quad9.net@[2620:fe::10]" },
+		.doh = { "https://dns10.quad9.net@9.9.9.10/dns-query", "https://dns10.quad9.net@[2620:fe::10]/dns-query" }
+	},
+	{
+		.name = "Quad9 (filtered, ECS, DNSSEC)",
+		.v4 = { "9.9.9.11", "149.112.112.11" },
+		.v6 = {	"2620:fe::11", "2620:fe::fe:11" },
+		.dot = { "tls://dns11.quad9.net@9.9.9.11", "tls://dns11.quad9.net@[2620:fe::11]" },
+		.doh = { "https://dns11.quad9.net@9.9.9.11/dns-query", "https://dns11.quad9.net@[2620:fe::11]/dns-query" }
+	},
+	{
+		.name = "Cloudflare (DNSSEC)",
+		.v4 = { "1.1.1.1", "1.0.0.1" },
+		.v6 = {	"2606:4700:4700::1111", "2606:4700:4700::1001" },
+		.dot = { "tls://one.one.one.one@1.1.1.1", "tls://one.one.one.one@[2606:4700:4700::1111]" },
+		.doh = { "https://cloudflare-dns.com@1.1.1.1/dns-query", "https://cloudflare-dns.com@[2606:4700:4700::1111]/dns-query" }
+	}
 };
 
 // The following functions are used to create the JSON output
@@ -636,6 +694,24 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			if(dns_server[i].v6.addr2 != NULL)
 				JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr2);
 			JSON_ADD_ITEM_TO_OBJECT(server, "v6", v6);
+
+			// DoT/DoH endpoints pinned to the v4/v6 address. The object is
+			// always present; the v4/v6 keys appear only for the families the
+			// resolver actually offers, so it is empty for resolvers without
+			// any encrypted endpoint.
+			cJSON *dot = JSON_NEW_OBJECT();
+			if(dns_server[i].dot.v4 != NULL)
+				JSON_REF_STR_IN_OBJECT(dot, "v4", dns_server[i].dot.v4);
+			if(dns_server[i].dot.v6 != NULL)
+				JSON_REF_STR_IN_OBJECT(dot, "v6", dns_server[i].dot.v6);
+			JSON_ADD_ITEM_TO_OBJECT(server, "dot", dot);
+
+			cJSON *doh = JSON_NEW_OBJECT();
+			if(dns_server[i].doh.v4 != NULL)
+				JSON_REF_STR_IN_OBJECT(doh, "v4", dns_server[i].doh.v4);
+			if(dns_server[i].doh.v6 != NULL)
+				JSON_REF_STR_IN_OBJECT(doh, "v6", dns_server[i].doh.v6);
+			JSON_ADD_ITEM_TO_OBJECT(server, "doh", doh);
 
 			JSON_ADD_ITEM_TO_ARRAY(servers, server);
 		}

@@ -155,6 +155,7 @@ struct config {
 		struct conf_item port;
 		struct conf_item localise;
 		struct conf_item revServers;
+		struct conf_item upstreamCA;
 		struct {
 			struct conf_item name;
 			struct conf_item local;

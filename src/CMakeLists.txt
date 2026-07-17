@@ -303,6 +303,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>
+        $<TARGET_OBJECTS:dotdoh>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -373,6 +374,7 @@ add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
 add_subdirectory(ntp)
+add_subdirectory(dotdoh)
 
 # Standalone regression harness for the in-memory tar parser (zip/tar.c).
 # It #includes tar.c directly to reach the file-internal helpers, stubs the
@@ -400,6 +402,29 @@ if(BUILD_TAR_REGRESSION)
     if(TAR_REGRESSION_SANITIZE)
         target_compile_options(tar_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(tar_regression PRIVATE -fsanitize=address,undefined)
+    endif()
+endif()
+
+# Standalone regression harness for the dotdoh leaf units (URI parser and
+# DoT/DoH framing). It #includes the self-contained implementation .c files
+# directly; no object dependencies are needed. The "dotdoh regression
+# harness" bats test runs the resulting binary. Deliberately NOT given the
+# strict EXTRAWARN/-Werror flags applied to FTL code.
+#
+# Only built on request: `./build.sh test` enables it for local runs and the
+# CI Dockerfile passes -DBUILD_DOTDOH_REGRESSION=ON at build time.
+option(BUILD_DOTDOH_REGRESSION "Build the dotdoh regression test harness" OFF)
+if(BUILD_DOTDOH_REGRESSION)
+    add_executable(dotdoh_regression
+            ${PROJECT_SOURCE_DIR}/test/dotdoh_regression.c)
+    target_include_directories(dotdoh_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DDOTDOH_REGRESSION_SANITIZE=ON" test
+    option(DOTDOH_REGRESSION_SANITIZE "Build the dotdoh regression test with ASan/UBSan" OFF)
+    if(DOTDOH_REGRESSION_SANITIZE)
+        target_compile_options(dotdoh_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(dotdoh_regression PRIVATE -fsanitize=address,undefined)
     endif()
 endif()
 
@@ -520,6 +545,7 @@ if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS AND USE_MBED_TLS)
     target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
     target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
     target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
+    target_compile_definitions(dotdoh PRIVATE HAVE_MBEDTLS)
     # Link against the mbedTLS libraries, the order is important (!)
     target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
 else()

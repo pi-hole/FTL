@@ -14,6 +14,7 @@
 #include "FTL.h"
 #include "enums.h"
 #include "dnsmasq_interface.h"
+#include "dotdoh/proxy.h"
 #include "shmem.h"
 #include "overTime.h"
 #include "database/common.h"
@@ -3595,6 +3596,21 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Initialize FTL HTTP server
 	http_init();
 #endif /* HAVE_MBEDTLS */
+
+	// Arm the encrypted-upstream (DoT/DoH) proxy and start its worker. This must
+	// happen here - after dnsmasq's own startup has closed stray fds - because
+	// binding the listeners any earlier would get their fds closed and their
+	// numbers reused by dnsmasq. Only relevant when dnsmasq is actually running.
+	if(dnsmasq_start)
+	{
+		dotdoh_init();
+		if(dotdoh_count() > 0 &&
+		   pthread_create( &threads[DOTDOH], &attr, dotdoh_thread, NULL ) != 0)
+		{
+			log_crit("Unable to create dotdoh thread. Exiting...");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")

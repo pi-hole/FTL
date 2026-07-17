@@ -18,6 +18,9 @@
 #include "config/config.h"
 // JSON array functions
 #include "webserver/cJSON/cJSON.h"
+// encrypted upstreams: parse_upstream_uri() + the deterministic loopback tuple
+#include "dotdoh/upstream_uri.h"
+#include "dotdoh/registry.h"
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
@@ -351,10 +354,39 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(cJSON_GetArraySize(conf->dns.upstreams.v.json) > 0)
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);
+
+		// Encrypted upstreams (tls:// / https://) are not handed to dnsmasq
+		// directly: dnsmasq forwards their plaintext queries to a deterministic
+		// loopback tuple in 127.47.11.0/24 that FTL's DoT/DoH proxy binds later
+		// (in FTL_fork_and_bind_sockets, after dnsmasq's startup has closed stray
+		// fds). The proxy derives the tuple from the same formula, so the two
+		// agree without anything being bound here.
+		int enc = 0;
 		cJSON *server = NULL;
 		cJSON_ArrayForEach(server, conf->dns.upstreams.v.json)
 		{
-			if(server != NULL && cJSON_IsString(server))
+			if(server == NULL || !cJSON_IsString(server) || server->valuestring == NULL)
+				continue;
+
+			struct upstream_uri u;
+			const bool encrypted = parse_upstream_uri(server->valuestring, &u) && u.type != UST_PLAIN;
+			if(encrypted)
+			{
+				// The proxy binds at most DOTDOH_MAX_UPSTREAMS loopback tuples
+				// (proxy.c walks the same list with the same index). Never point
+				// dnsmasq at a tuple beyond that range - it would be bound by
+				// nothing and only add failover delay.
+				if(enc >= DOTDOH_MAX_UPSTREAMS)
+				{
+					log_warn("Ignoring encrypted upstream '%s': at most %d are supported",
+					         server->valuestring, DOTDOH_MAX_UPSTREAMS);
+					continue;
+				}
+				fprintf(pihole_conf, "server=%s%d#%d\n",
+				        DOTDOH_NET_PREFIX, enc + 1, DOTDOH_PORT_BASE + enc + 1);
+				enc++;
+			}
+			else
 				fprintf(pihole_conf, "server=%s\n", server->valuestring);
 		}
 		fputs("\n", pihole_conf);

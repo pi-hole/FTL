@@ -418,7 +418,7 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.upstreams.d.json = cJSON_CreateArray();
 	conf->dns.upstreams.f = FLAG_RESTART_FTL;
-	conf->dns.upstreams.c = validate_array_no_newline;
+	conf->dns.upstreams.c = validate_upstreams;
 
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
@@ -602,6 +602,14 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.d.json = cJSON_CreateArray();
 	conf->dns.revServers.c = validate_dns_revServers;
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
+
+	conf->dns.upstreamCA.k = "dns.upstreamCA";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
+	conf->dns.upstreamCA.t = CONF_STRING;
+	conf->dns.upstreamCA.d.s = (char*)"";
+	conf->dns.upstreamCA.f = FLAG_RESTART_FTL;
+	conf->dns.upstreamCA.c = validate_filepath_empty;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";

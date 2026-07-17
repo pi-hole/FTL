@@ -25,7 +25,7 @@ RUN sed -i '/buffer_with_truncation /d' /bats/bats-core/libexec/bats-core/bats-f
 # Remove possible old build files
 RUN rm -rf cmake && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON" ${BUILD_OPTS} && \
+    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON" ${BUILD_OPTS} && \
 # Copy FTL binary to root directory
     cd / &&\
     cp /app/pihole-FTL . && \
