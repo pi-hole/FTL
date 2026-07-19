@@ -208,10 +208,16 @@ if(STATIC)
 else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
-# -pie -fPIE: (Dynamic) position independent executable
-
+# Position-independent executable (image ASLR). -fPIE compiles the objects
+# position-independent; the executable is then linked PIE via -pie (dynamic
+# build) or -static-pie (static build, set on the link line below). A plain
+# -static silently overrides -pie and yields a non-PIE binary with a fixed load
+# address, so the static build - the one we actually ship - must use -static-pie.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fPIE")
+    if(NOT STATIC)
+        set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie")
+    endif()
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
@@ -308,7 +314,7 @@ add_executable(pihole-FTL
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static)
+    target_link_libraries(pihole-FTL -static-libgcc -static-pie)
     set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
@@ -559,9 +565,27 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
     if(LIBNGHTTP2)
         message(STATUS "Building FTL with HTTP/2 support: YES")
         target_compile_definitions(webserver PRIVATE HAVE_HTTP2)
+        # The dotdoh client auto-negotiates HTTP/2 (DoH2) on https:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP2)
         target_link_libraries(pihole-FTL ${LIBNGHTTP2})
     else()
         message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
+    endif()
+
+    # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Optional and
+    # additionally requires QUIC support in the linked OpenSSL; without it the
+    # terminator serves HTTP/1.1 and (if built) HTTP/2 only. HTTP/3 also needs
+    # OpenSSL >= 4.0 for SSL_get_peer_addr() to forward the real client address;
+    # terminator.c raises a #error against an older OpenSSL.
+    find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
+    if(LIBNGHTTP3)
+        message(STATUS "Building FTL with HTTP/3 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP3)
+        # The dotdoh client speaks DoH3 (HTTP/3 over QUIC) on h3:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP3)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP3})
+    else()
+        message(STATUS "Building FTL with HTTP/3 support: NO (nghttp3 not found)")
     endif()
 else()
     message(STATUS "Building FTL with TLS support: NO")
