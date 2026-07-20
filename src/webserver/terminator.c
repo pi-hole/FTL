@@ -21,6 +21,12 @@
 // log_err(), log_info(), log_warn()
 #include "log.h"
 
+// The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
+// the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
+// guards every terminator_start()/stop() call with HAVE_TLS; only the token
+// accessor (referenced unconditionally by the civetweb PROXY parser) needs a stub.
+#ifdef HAVE_TLS
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -34,10 +40,9 @@
 #include <openssl/opensslv.h>
 #include <nghttp3/nghttp3.h>
 #include <time.h>
-// The HTTP/3 gateway forwards the real client IP to the backend via
-// SSL_get_peer_addr(), a per-connection QUIC peer getter added in OpenSSL 4.0.
-// Refuse to build HTTP/3 against an older OpenSSL rather than silently
-// attributing every request to the loopback terminator.
+// HTTP/3 forwards the real client IP via SSL_get_peer_addr(), a per-connection
+// QUIC peer getter added in OpenSSL 4.0; refuse to build against older OpenSSL
+// rather than attributing every request to the loopback terminator.
 #if OPENSSL_VERSION_NUMBER < 0x40000000L
 #error "HTTP/3 requires OpenSSL >= 4.0, which provides SSL_get_peer_addr() for QUIC (needed to forward the real client IP). Upgrade OpenSSL to 4.0 or later, or build without nghttp3 to disable HTTP/3."
 #endif
@@ -45,6 +50,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <sys/prctl.h>
 #include <pthread.h>
 #include <poll.h>
@@ -55,11 +61,89 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 // Bidirectional relay buffer size (per direction, per iteration).
 #define RELAY_BUF 16384u
 // Socket send/receive timeout so a stuck peer cannot pin a handler thread.
 #define IO_TIMEOUT_SEC 30
+// Cap on concurrent handler threads so a connection flood on the public TLS port
+// cannot exhaust the FTL process (threads, fds, memory). A browser needs only a
+// handful thanks to keep-alive and h2/h3 multiplexing, so this is generous for the
+// admin UI yet fatal to a flood; connections beyond it are dropped immediately.
+#define TERMINATOR_MAX_HANDLERS 256
+// Same cap for concurrent HTTP/3 connections. The QUIC gateway runs on one thread
+// and holds per-connection OpenSSL/nghttp3 state (plus a backend fd per request
+// stream), so an uncapped handshake flood would exhaust memory/fds; connections
+// beyond this are accepted and immediately closed, mirroring the TCP handler cap.
+#define TERMINATOR_MAX_H3_CONNS 256
+// Absolute wall-clock budget for the whole TLS handshake, independent of the
+// per-recv SO_RCVTIMEO (which a byte-at-a-time peer resets on every recv).
+#define HANDSHAKE_TIMEOUT_SEC 15
+
+// Number of live handler threads, for the cap above.
+static atomic_int active_handlers = 0;
+
+// A per-boot secret carried in a custom PROXY v2 TLV so the loopback CivetWeb
+// backend can tell a genuine terminator->backend header apart from one forged by
+// another local process (the loopback bind is the only other trust gate, and the
+// backend port is locally reachable). PP2_TYPE_MIN_CUSTOM..MAX_CUSTOM is 0xE0-EF.
+#define PP2_TYPE_FTL_TOKEN 0xE0u
+#define PROXY_TOKEN_LEN 16u
+// Largest PROXY v2 header we emit: 16 header + 36 IPv6 address block + 8 SSL TLV
+// + (3 + PROXY_TOKEN_LEN) token TLV.
+#define PROXY_V2_MAX (16u + 36u + 8u + 3u + PROXY_TOKEN_LEN)
+static unsigned char g_proxy_token[PROXY_TOKEN_LEN];
+static bool g_proxy_token_ready = false;
+// FTL's secure RNG (getrandom with a /dev/urandom fallback); declared here to
+// avoid pulling the whole config/password.h (and its config types) into this TU.
+extern bool get_secure_randomness(uint8_t *buffer, const size_t length);
+
+// Generate the per-boot backend-auth token once; idempotent. A restart (e.g.
+// cert renewal) must not rewrite it while leftover detached handlers may still
+// be reading it. Returns false only if the RNG fails.
+static bool ensure_proxy_token(void)
+{
+	if(g_proxy_token_ready)
+		return true;
+	if(!get_secure_randomness(g_proxy_token, sizeof(g_proxy_token)))
+		return false;
+	g_proxy_token_ready = true;
+	return true;
+}
+
+// Hex-encode the per-boot token into out (needs 2*PROXY_TOKEN_LEN+1 bytes),
+// generating it if necessary. webserver.c passes this to the loopback backend
+// as its "proxy_protocol_secret", the shared secret the backend uses to
+// authenticate our PROXY headers. Returns false if out is too small or the RNG
+// fails.
+bool terminator_proxy_token_hex(char *out, size_t outsz)
+{
+	static const char hex[] = "0123456789abcdef";
+	size_t i;
+	if(outsz < 2 * PROXY_TOKEN_LEN + 1 || !ensure_proxy_token())
+		return false;
+	for(i = 0; i < PROXY_TOKEN_LEN; i++)
+	{
+		out[2 * i]     = hex[g_proxy_token[i] >> 4];
+		out[2 * i + 1] = hex[g_proxy_token[i] & 0x0F];
+	}
+	out[2 * PROXY_TOKEN_LEN] = '\0';
+	return true;
+}
+
+// Passed to each detached handler: the client fd plus our own reference to the
+// SSL_CTX, taken while it is live, so terminator_stop() can free the context
+// without racing a handler that has not yet reached SSL_new().
+struct handler_arg { int client_fd; SSL_CTX *ctx; };
+
+// Monotonic milliseconds, for wall-clock deadlines.
+static uint64_t mono_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
 
 // Terminator state. There is a single terminator instance for the whole
 // process, mirroring the single CivetWeb context in webserver.c.
@@ -71,9 +155,8 @@ static pthread_t accept_tid;
 static bool accept_tid_valid = false;
 
 #ifdef HAVE_HTTP3
-// HTTP/3 (QUIC) listener state. The QUIC side runs a dedicated event-loop
-// thread that owns one UDP socket, one OpenSSL QUIC listener, and every QUIC
-// connection and stream on top of it (see the HAVE_HTTP3 section below).
+// HTTP/3 (QUIC) listener state, owned by the dedicated event-loop thread below
+// (one UDP socket, one OpenSSL QUIC listener, all connections and streams).
 static SSL_CTX *quic_ctx = NULL;
 static int quic_fd = -1;
 static pthread_t quic_tid;
@@ -93,9 +176,8 @@ static void log_ssl_errors(const char *context)
 	}
 }
 
-// ALPN selection: pick our most-preferred protocol that the client offers.
-// "h2" is preferred when HTTP/2 support is compiled in, otherwise (and as the
-// fallback) "http/1.1". Selection is done by hand to avoid the confusing
+// ALPN selection: pick our most-preferred protocol the client offers ("h2" when
+// HTTP/2 is compiled in, else "http/1.1"). Done by hand to avoid the confusing
 // server/client argument order of SSL_select_next_proto().
 static int alpn_select_cb(SSL *ssl, const unsigned char **out, unsigned char *outlen,
                           const unsigned char *in, unsigned int inlen, void *arg)
@@ -155,7 +237,35 @@ static SSL_CTX *create_server_ctx(const char *cert_path)
 
 // Bind a dual-stack (IPv4 + IPv6) TCP listener on the given port, all
 // interfaces. Returns the fd or -1.
-static int bind_listener(int port)
+// Fill a dual-stack sockaddr_in6 for the given bind address and port. addr may be
+// NULL or empty (bind all interfaces), an IPv6 literal, or an IPv4 literal (bound
+// as a v4-mapped address on the IPv6 socket, honouring IPV6_V6ONLY=off). Returns
+// false on an unparsable address so the caller fails closed rather than silently
+// widening the scope to all interfaces.
+static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
+{
+	memset(sa, 0, sizeof(*sa));
+	sa->sin6_family = AF_INET6;
+	sa->sin6_port = htons((uint16_t)port);
+	if(addr == NULL || addr[0] == '\0')
+	{
+		sa->sin6_addr = in6addr_any;
+		return true;
+	}
+	if(inet_pton(AF_INET6, addr, &sa->sin6_addr) == 1)
+		return true;
+	struct in_addr v4;
+	if(inet_pton(AF_INET, addr, &v4) == 1)
+	{
+		sa->sin6_addr.s6_addr[10] = 0xff; // ::ffff:a.b.c.d
+		sa->sin6_addr.s6_addr[11] = 0xff;
+		memcpy(&sa->sin6_addr.s6_addr[12], &v4, sizeof(v4));
+		return true;
+	}
+	return false;
+}
+
+static int bind_listener(const char *addr, int port)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
 	// where it would keep the port busy and make the new process fail to re-bind.
@@ -173,13 +283,16 @@ static int bind_listener(int port)
 	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
 
 	struct sockaddr_in6 sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sin6_family = AF_INET6;
-	sa.sin6_addr = in6addr_any;
-	sa.sin6_port = htons((uint16_t)port);
+	if(!fill_bind_addr(&sa, addr, port))
+	{
+		log_err("Terminator: invalid bind address '%s'", addr);
+		close(fd);
+		return -1;
+	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: bind() to port %d failed: %s", port, strerror(errno));
+		log_err("Terminator: bind() to %s#%d failed: %s",
+		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -239,8 +352,14 @@ static int write_all_fd(int fd, const char *buf, size_t len)
 }
 
 // Write the full buffer to the TLS connection (blocking socket). Returns 0 or -1.
+// The socket carries SO_SNDTIMEO, so each SSL_write() waits at most IO_TIMEOUT_SEC
+// for the peer to accept data; a WANT_WRITE then means a full timeout elapsed with
+// no progress. Bound the total no-progress time so a client that stops reading a
+// large response cannot pin this handler thread (and its active_handlers slot)
+// forever. Any forward progress resets the budget, so a slow-but-live reader is fine.
 static int write_all_ssl(SSL *ssl, const char *buf, size_t len)
 {
+	uint64_t deadline = mono_ms() + (uint64_t)IO_TIMEOUT_SEC * 1000u;
 	while(len > 0)
 	{
 		const int n = SSL_write(ssl, buf, (int)len);
@@ -248,25 +367,26 @@ static int write_all_ssl(SSL *ssl, const char *buf, size_t len)
 		{
 			buf += n;
 			len -= (size_t)n;
+			deadline = mono_ms() + (uint64_t)IO_TIMEOUT_SEC * 1000u;
 		}
 		else
 		{
 			const int err = SSL_get_error(ssl, n);
-			if(err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
-				continue;
-			return -1;
+			if(err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE)
+				return -1;
+			if(mono_ms() >= deadline)
+				return -1;
 		}
 	}
 	return 0;
 }
 
-// Fill a PROXY protocol v2 header describing the real client (source) and the
-// local accepting socket (destination) into hdr, which must hold at least 52
-// bytes. Returns 0 and the header length in *out_len, or -1 for an unsupported
-// address family. CivetWeb parses this header and attributes the request to the
-// actual client instead of the loopback terminator, so client-IP-based logging
-// and auth stay correct. This variant takes the addresses directly, so callers
-// without a client socket fd (e.g., the QUIC/HTTP3 gateway) can reuse it.
+// Build a PROXY protocol v2 header (real client as source, local socket as
+// destination) into hdr, which must hold at least PROXY_V2_MAX bytes. Returns 0 with the
+// length in *out_len, or -1 for an unsupported family. CivetWeb parses it and
+// attributes the request to the real client, not the loopback terminator, so
+// client-IP logging and auth stay correct. Takes the addresses directly so
+// callers without a client fd (the QUIC/HTTP3 gateway) can reuse it.
 static int build_proxy_v2_sa(const struct sockaddr_storage *src,
                              const struct sockaddr_storage *dst,
                              unsigned char *hdr, size_t *out_len)
@@ -323,6 +443,28 @@ static int build_proxy_v2_sa(const struct sockaddr_storage *src,
 	else
 		return -1;
 
+	// Announce that we terminated TLS via PP2_TYPE_SSL (0x20), value {client=
+	// PP2_CLIENT_SSL (0x01), verify=0}. Without it the plaintext loopback hop
+	// makes every request look like plain HTTP (no Secure cookie, wrong scheme).
+	static const unsigned char ssl_tlv[8] =
+		{ 0x20, 0x00, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00 };
+	memcpy(hdr + len, ssl_tlv, sizeof(ssl_tlv));
+	len += sizeof(ssl_tlv);
+
+	// Authenticate this header to the backend with the per-boot token TLV, so a
+	// PROXY header forged by another local process (which lacks the token) is
+	// ignored rather than adopted as the client address / TLS status.
+	hdr[len++] = PP2_TYPE_FTL_TOKEN;
+	hdr[len++] = 0x00;
+	hdr[len++] = (unsigned char)PROXY_TOKEN_LEN;
+	memcpy(hdr + len, g_proxy_token, PROXY_TOKEN_LEN);
+	len += PROXY_TOKEN_LEN;
+
+	// Rewrite the v2 length field to cover the address block plus the TLVs.
+	const size_t block = len - 16;
+	hdr[14] = (unsigned char)(block >> 8);
+	hdr[15] = (unsigned char)(block & 0xFF);
+
 	*out_len = len;
 	return 0;
 }
@@ -344,7 +486,7 @@ static int build_proxy_v2(int client_fd, unsigned char *hdr, size_t *out_len)
 // Returns 0 on success, -1 on error.
 static int send_proxy_v2(int be_fd, int client_fd)
 {
-	unsigned char hdr[16 + 36];
+	unsigned char hdr[PROXY_V2_MAX]; // address block + SSL + token TLVs
 	size_t len = 0;
 	if(build_proxy_v2(client_fd, hdr, &len) != 0)
 		return -1;
@@ -352,9 +494,8 @@ static int send_proxy_v2(int be_fd, int client_fd)
 }
 
 // Relay bytes both ways between the TLS'd client and the plaintext backend until
-// either side closes. TLS is transparent here: CivetWeb sees a normal HTTP/1.1
-// stream, so keep-alive, chunked bodies, ranges, etc. all work unchanged. The
-// real client address was already announced to the backend via send_proxy_v2().
+// either side closes. CivetWeb sees a normal HTTP/1.1 stream, so keep-alive,
+// chunked bodies, ranges, etc. all work unchanged.
 static void relay(SSL *ssl, int client_fd, int be_fd)
 {
 	char buf[RELAY_BUF];
@@ -417,10 +558,9 @@ static void relay(SSL *ssl, int client_fd, int be_fd)
 
 #if defined(HAVE_HTTP2) || defined(HAVE_HTTP3)
 // ---------------------------------------------------------------------------
-// Helpers shared by the HTTP/2 and HTTP/3 gateways. Both terminate an upgraded
-// protocol on the public port and bridge every request to a plain HTTP/1.1
-// request against the CivetWeb backend, so the non-blocking backend socket, the
-// growing byte buffer, and the hop-by-hop header filter are common ground.
+// Helpers shared by the HTTP/2 and HTTP/3 gateways. Both bridge every request to
+// a plain HTTP/1.1 request against the CivetWeb backend, so the non-blocking
+// backend socket, growing byte buffer, and hop-by-hop header filter are common.
 // ---------------------------------------------------------------------------
 
 // EAGAIN and EWOULDBLOCK are the same value on Linux; test both only where they
@@ -441,11 +581,9 @@ static int set_nonblocking(int fd)
 }
 
 // Open a non-blocking plaintext TCP socket to the CivetWeb backend on loopback.
-// Sets *connected to true if the connection completed immediately (the common
-// case on loopback), false if it is still in progress (EINPROGRESS). Returns the
-// fd or -1. Shared by the streaming gateways; marked inline so a build with only
-// one of HTTP/2 / HTTP/3 does not warn when the other's caller is absent.
-static inline int connect_backend_nb(bool *connected)
+// Sets *connected to true if connect() completed immediately (common on
+// loopback), false if still in progress (EINPROGRESS). Returns the fd or -1.
+static int connect_backend_nb(bool *connected)
 {
 	const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(fd < 0)
@@ -497,7 +635,10 @@ static bool hbh_skip_header(const char *name, size_t len)
 {
 	static const char *const skip[] = {
 		"connection", "keep-alive", "proxy-connection", "transfer-encoding",
-		"upgrade", "te", "host", "http2-settings"
+		"upgrade", "te", "host", "http2-settings",
+		// "expect" (100-continue) is dropped: the gateway does not relay interim
+		// 1xx responses, and h2/h3 clients send the body via flow control anyway.
+		"expect"
 	};
 	for(size_t i = 0; i < sizeof(skip) / sizeof(skip[0]); i++)
 		if(len == strlen(skip[i]) && strncasecmp(name, skip[i], len) == 0)
@@ -513,10 +654,9 @@ enum { BODY_NONE, BODY_LENGTH, BODY_CHUNKED, BODY_CLOSE };
 enum { CH_SIZE, CH_EXT, CH_SIZE_LF, CH_DATA, CH_DATA_CR, CH_DATA_LF, CH_TRAILER, CH_DONE };
 
 // Protocol-agnostic HTTP/1.1 backend-bridge state. Each streaming gateway embeds
-// one of these per request stream and drives it through the be_* helpers below:
-// an outbound request buffer, an incrementally parsed response-header
-// accumulator, the response body de-framing (Content-Length / chunked / close)
-// state machine, and a decoded-body buffer for the protocol's data provider.
+// one per request stream and drives it through the be_* helpers: outbound
+// request buffer, response-header accumulator, body de-framing state machine
+// (Content-Length / chunked / close), and a decoded-body buffer.
 struct be_bridge {
 	// Outbound request buffer (PROXY header + HTTP/1.1 head + body), drained to
 	// the backend from [req_out_off, req_out_len)
@@ -545,12 +685,9 @@ struct be_bridge {
 	bool resp_complete;      // full response body has been decoded
 };
 
-// The be_* helpers below are marked inline so a build with only one of the two
-// streaming gateways does not warn about the ones the other gateway would call.
-
 // Queue bytes to send to the backend, compacting already-sent data first so the
 // buffer does not grow without bound. Returns 0 or -1.
-static inline int be_req_push(struct be_bridge *b, const char *data, size_t n)
+static int be_req_push(struct be_bridge *b, const char *data, size_t n)
 {
 	if(b->req_out_off > 0)
 	{
@@ -563,7 +700,7 @@ static inline int be_req_push(struct be_bridge *b, const char *data, size_t n)
 
 // Queue decoded response body bytes for the data provider, compacting already-
 // delivered data first. Returns 0 or -1.
-static inline int be_body_push(struct be_bridge *b, const char *data, size_t n)
+static int be_body_push(struct be_bridge *b, const char *data, size_t n)
 {
 	if(b->body_off > 0)
 	{
@@ -577,7 +714,7 @@ static inline int be_body_push(struct be_bridge *b, const char *data, size_t n)
 // Incrementally de-chunk a Transfer-Encoding: chunked response body, appending
 // decoded bytes to the bridge body buffer. State persists across calls. Returns
 // 0 or -1.
-static inline int be_feed_chunked(struct be_bridge *b, const char *data, size_t n)
+static int be_feed_chunked(struct be_bridge *b, const char *data, size_t n)
 {
 	size_t i = 0;
 	while(i < n && b->chunk_state != CH_DONE)
@@ -639,7 +776,7 @@ static inline int be_feed_chunked(struct be_bridge *b, const char *data, size_t 
 
 // Decode response body bytes according to the negotiated framing and append the
 // result to the bridge body buffer. Returns 0 or -1.
-static inline int be_feed_body(struct be_bridge *b, const char *data, size_t n)
+static int be_feed_body(struct be_bridge *b, const char *data, size_t n)
 {
 	switch(b->body_mode)
 	{
@@ -668,7 +805,7 @@ static inline int be_feed_body(struct be_bridge *b, const char *data, size_t n)
 // True if the response body framing is known and has not reached its end, i.e.
 // an early backend close or read error would truncate it. Close-delimited
 // (BODY_CLOSE) and body-less (BODY_NONE) responses end legitimately on close.
-static inline bool be_body_truncated(const struct be_bridge *b)
+static bool be_body_truncated(const struct be_bridge *b)
 {
 	if(b->body_mode == BODY_LENGTH)
 		return b->body_remaining > 0;
@@ -677,13 +814,43 @@ static inline bool be_body_truncated(const struct be_bridge *b)
 	return false;
 }
 
+// Release the bridge's heap buffers. FTL's free() warns on NULL, so only free
+// what was actually allocated (an unused stream leaves some fields NULL).
+static void be_free(struct be_bridge *b)
+{
+	// Idempotent by construction: FTL's free() macro NULLs each pointer, and we
+	// skip already-NULL ones, so calling this twice on the same bridge is safe
+	// (the h3 reap path frees once in the nghttp3 stream_close callback and again
+	// after nghttp3_conn_close_stream()), and control/QPACK streams that never
+	// allocated a buffer do not trip FTLfree()'s NULL-pointer warning.
+	if(b->req_out != NULL)
+		free(b->req_out);
+	if(b->resp_hdr != NULL)
+		free(b->resp_hdr);
+	if(b->body_buf != NULL)
+		free(b->body_buf);
+}
+
+// Copy an h2/h3 request pseudo-header value into a fixed buffer. If it does not
+// fit, set *oversize so the caller rejects the request with 414 instead of
+// silently forwarding a truncated (i.e. different) request target to the backend.
+static void copy_pseudo_header(char *dst, size_t cap, const char *v, size_t vlen, bool *oversize)
+{
+	if(vlen >= cap)
+	{
+		*oversize = true;
+		return;
+	}
+	memcpy(dst, v, vlen);
+	dst[vlen] = '\0';
+}
+
 // Format the plain HTTP/1.1 request head (request line + reconstructed headers)
-// for the backend into out. The backend is asked to close after the response
-// (Connection: close), so responses are cleanly delimited. extra_headers, if
-// non-NULL, is inserted verbatim after the reconstructed headers (e.g. a framing
-// header such as Transfer-Encoding or Content-Length). Returns the snprintf()
-// result: the would-be length, negative on error, >= outcap if truncated.
-static inline int be_format_request_head(char *out, size_t outcap,
+// into out. Connection: close is added so responses are cleanly delimited.
+// extra_headers, if non-NULL, is inserted verbatim (e.g. a framing header such
+// as Transfer-Encoding). Returns the snprintf() result: the would-be length,
+// negative on error, >= outcap if truncated.
+static int be_format_request_head(char *out, size_t outcap,
                                          const char *method, const char *path,
                                          const char *authority, const char *reqhdr,
                                          size_t reqhdr_len, const char *extra_headers)
@@ -704,16 +871,14 @@ static inline int be_format_request_head(char *out, size_t outcap,
 //
 // Runs an nghttp2 server session on the TLS connection and bridges every request
 // stream to a plain HTTP/1.1 request against the CivetWeb backend, translating
-// the response back to HTTP/2. CivetWeb keeps speaking HTTP/1.1 and never sees
-// HTTP/2.
+// the response back to HTTP/2. CivetWeb never sees HTTP/2.
 //
-// The gateway streams and multiplexes: each request stream gets its own
-// non-blocking backend connection, the request body is streamed to the backend
-// as it arrives (respecting HTTP/2 flow control), and the HTTP/1.1 response is
-// parsed incrementally and pulled back into HTTP/2 DATA frames on demand via an
-// nghttp2 data provider. A single poll() loop drives the client TLS socket and
-// every active backend socket, so many streams make progress concurrently and
-// no single stream blocks the whole session.
+// Streams and multiplexes: each request stream gets its own non-blocking backend
+// connection, the request body is streamed to the backend as it arrives
+// (respecting HTTP/2 flow control), and the HTTP/1.1 response is parsed
+// incrementally and pulled into HTTP/2 DATA frames on demand via an nghttp2 data
+// provider. A single poll() loop drives the client TLS socket and every backend
+// socket, so streams progress concurrently and none blocks the session.
 // ---------------------------------------------------------------------------
 
 #define H2_REQHDR_MAX 8192u
@@ -724,11 +889,17 @@ static inline int be_format_request_head(char *out, size_t outcap,
 // body is buffered we stop reading the backend, applying backpressure toward the
 // (slower) client.
 #define H2_BODY_HIGH_WATER (256u * 1024u)
+// Aggregate cap on decoded response body buffered across ALL streams of one
+// connection. The per-stream high-water alone lets MAX_CONCURRENT_STREAMS x 256
+// KiB accumulate in a single handler thread if a client stalls; this bounds the
+// total so a slow/hostile multiplexed client cannot exhaust memory on a small
+// device. Legit clients drain quickly and never reach it.
+#define H2_CONN_BODY_CAP (4u * 1024u * 1024u)
 // Soft cap on the outbound TLS buffer; we stop pulling more frames out of
 // nghttp2 once this much is queued for SSL_write().
 #define H2_WBUF_SOFT_CAP (512u * 1024u)
 // Maximum PROXY protocol v2 header size (16 fixed + 36 for IPv6).
-#define H2_PROXY_MAX 52u
+#define H2_PROXY_MAX PROXY_V2_MAX
 
 struct h2_conn;
 
@@ -744,6 +915,7 @@ struct h2_stream {
 	char reqhdr[H2_REQHDR_MAX];
 	size_t reqhdr_len;
 	bool content_length_seen;
+	bool oversize;           // a pseudo-header did not fit -> answer 414, do not forward
 
 	// Backend connection (non-blocking)
 	int be_fd;
@@ -801,15 +973,22 @@ static void h2_stream_unlink(struct h2_conn *c, struct h2_stream *s)
 	}
 }
 
+// Total decoded response body buffered across all of a connection's streams.
+static size_t __attribute__((pure)) h2_conn_buffered(const struct h2_conn *c)
+{
+	size_t total = 0;
+	for(const struct h2_stream *s = c->streams; s != NULL; s = s->next)
+		total += s->be.body_len - s->be.body_off;
+	return total;
+}
+
 static void h2_stream_free(struct h2_stream *s)
 {
 	if(s == NULL)
 		return;
 	if(s->be_fd >= 0)
 		close(s->be_fd);
-	free(s->be.req_out);
-	free(s->be.resp_hdr);
-	free(s->be.body_buf);
+	be_free(&s->be);
 	free(s);
 }
 
@@ -859,6 +1038,13 @@ static void h2_gateway_error(struct h2_stream *s, const char *status3)
 // the backend connection, and queue the PROXY header and HTTP/1.1 request head.
 static void h2_start_backend(struct h2_stream *s, bool has_body)
 {
+	// A pseudo-header that did not fit its buffer would forward a truncated
+	// request target; reject cleanly instead of serving the wrong resource.
+	if(s->oversize)
+	{
+		h2_gateway_error(s, "414");
+		return;
+	}
 	if(!has_body)
 		s->be.req_mode = REQ_NONE;
 	else if(s->content_length_seen)
@@ -965,6 +1151,7 @@ static int h2_parse_and_submit(struct h2_stream *s, char *hdr, size_t hdrlen)
 
 	bool chunked = false, have_clen = false;
 	size_t clen = 0;
+	char *clen_name = NULL, *clen_val = NULL; // Content-Length, forwarded after framing
 	char *line = strstr(hdr, "\r\n"); // skip the status line
 	if(line != NULL)
 	{
@@ -990,7 +1177,9 @@ static int h2_parse_and_submit(struct h2_stream *s, char *hdr, size_t hdrlen)
 				{
 					have_clen = true;
 					clen = (size_t)strtoull(val, NULL, 10);
-					h2_add_nv(nva, &nvlen, line, val);
+					// Defer forwarding until the body framing is known: a
+					// de-chunked body makes the original length wrong.
+					clen_name = line; clen_val = val;
 				}
 				else if(nlen > 0 && !hbh_skip_header(line, nlen))
 				{
@@ -1025,6 +1214,12 @@ static int h2_parse_and_submit(struct h2_stream *s, char *hdr, size_t hdrlen)
 	}
 	else
 		s->be.body_mode = BODY_CLOSE; // length delimited by the backend closing
+
+	// Forward Content-Length unless the terminator de-chunked the body, in which
+	// case the original length no longer matches the DATA the client receives
+	// (the HTTP/3 path drops it unconditionally for the same reason).
+	if(!chunked && clen_name != NULL && nvlen < H2_MAX_HDRS)
+		h2_add_nv(nva, &nvlen, clen_name, clen_val);
 
 	s->be.resp_headers_parsed = true;
 
@@ -1122,6 +1317,10 @@ static void h2_be_readable(struct h2_stream *s)
 {
 	if(s->be_fd < 0)
 		return;
+	// Body already buffered by the OTHER streams on this connection (fixed for the
+	// duration of this call), so the per-connection cap can be enforced with a
+	// single walk rather than one per read.
+	const size_t conn_other = h2_conn_buffered(s->conn) - (s->be.body_len - s->be.body_off);
 	char tmp[16384];
 	for(;;)
 	{
@@ -1136,15 +1335,16 @@ static void h2_be_readable(struct h2_stream *s)
 			if(s->be.resp_complete)
 				break;
 			if((s->be.body_len - s->be.body_off) >= H2_BODY_HIGH_WATER)
-				break; // backpressure: let the client drain first
+				break; // per-stream backpressure: let the client drain first
+			if(conn_other + (s->be.body_len - s->be.body_off) >= H2_CONN_BODY_CAP)
+				break; // per-connection backpressure: aggregate body cap reached
 			continue;
 		}
 		if(r == 0)
 		{
-			// Backend closed. For close-delimited bodies this is the normal end;
-			// for a length/chunked-framed body that has not reached its end it is
-			// a truncation, which we signal to the client with RST_STREAM rather
-			// than delivering a silently short body as if complete.
+			// Backend closed. Normal end for close-delimited bodies; for a
+			// length/chunked body short of its end it is a truncation, signalled
+			// to the client with RST_STREAM rather than a silently short body.
 			if(!s->be.resp_headers_parsed || be_body_truncated(&s->be))
 			{
 				h2_gateway_error(s, "502");
@@ -1211,11 +1411,11 @@ static int h2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
 	if(namelen > 0 && n[0] == ':')
 	{
 		if(namelen == 7 && memcmp(n, ":method", 7) == 0)
-			snprintf(s->method, sizeof(s->method), "%.*s", (int)valuelen, v);
+			copy_pseudo_header(s->method, sizeof(s->method), v, valuelen, &s->oversize);
 		else if(namelen == 5 && memcmp(n, ":path", 5) == 0)
-			snprintf(s->path, sizeof(s->path), "%.*s", (int)valuelen, v);
+			copy_pseudo_header(s->path, sizeof(s->path), v, valuelen, &s->oversize);
 		else if(namelen == 10 && memcmp(n, ":authority", 10) == 0)
-			snprintf(s->authority, sizeof(s->authority), "%.*s", (int)valuelen, v);
+			copy_pseudo_header(s->authority, sizeof(s->authority), v, valuelen, &s->oversize);
 		// :scheme is always https at the terminator and is not forwarded
 		return 0;
 	}
@@ -1305,6 +1505,12 @@ static int h2_on_stream_close(nghttp2_session *session, int32_t stream_id, uint3
 	struct h2_stream *s = nghttp2_session_get_stream_user_data(session, stream_id);
 	if(s != NULL)
 	{
+		// Return any request-body bytes still charged against the connection
+		// window (e.g. a stream reset mid-body before the backend flushed): the
+		// session is still alive here, and h2_stream_free() would not reclaim
+		// them. h2_be_close() is a no-op if already reclaimed (body_uncredited
+		// zeroed).
+		h2_be_close(s);
 		h2_stream_unlink(conn, s);
 		h2_stream_free(s);
 		nghttp2_session_set_stream_user_data(session, stream_id, NULL);
@@ -1473,6 +1679,8 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 		conn.pfds[0].revents = 0;
 		conn.pmap[0] = NULL;
 
+		// Aggregate body buffered across the connection, for the per-connection cap.
+		const size_t conn_buffered = h2_conn_buffered(&conn);
 		nfds_t nfds = 1;
 		for(struct h2_stream *s = conn.streams; s != NULL; s = s->next)
 		{
@@ -1485,8 +1693,10 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 			{
 				if(s->be.req_out_off < s->be.req_out_len)
 					ev |= POLLOUT; // request bytes still to flush
-				if(!s->be.resp_complete && (s->be.body_len - s->be.body_off) < H2_BODY_HIGH_WATER)
-					ev |= POLLIN;  // room for more response body
+				if(!s->be.resp_complete &&
+				   (s->be.body_len - s->be.body_off) < H2_BODY_HIGH_WATER &&
+				   conn_buffered < H2_CONN_BODY_CAP)
+					ev |= POLLIN;  // room for more response body (per-stream + per-conn)
 			}
 			if(ev == 0)
 				continue;
@@ -1497,12 +1707,11 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 			nfds++;
 		}
 
-		// If nghttp2 still has data to send that the H2_WBUF_SOFT_CAP throttle
-		// deferred, and the outbound TLS buffer is already drained, do not block:
-		// poll with a zero timeout so the next loop iteration pumps the next
-		// batch. Otherwise a large or aggregated response would stall until the
-		// idle timeout and be truncated. When the buffer is not yet drained the
-		// pollfds carry POLLOUT and we wait for the client to accept more.
+		// If nghttp2 still has data the H2_WBUF_SOFT_CAP throttle deferred and
+		// the outbound TLS buffer is drained, poll with a zero timeout so the
+		// next iteration pumps the next batch; otherwise a large response would
+		// stall until the idle timeout and be truncated. When the buffer is not
+		// drained the pollfds carry POLLOUT and we wait for the client.
 		const bool more_to_pump = conn.wlen == conn.woff && !conn.ssl_want_write &&
 		                          nghttp2_session_want_write(conn.session);
 		const int pr = poll(conn.pfds, nfds, more_to_pump ? 0 : (IO_TIMEOUT_SEC * 1000));
@@ -1535,9 +1744,8 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 		}
 	}
 
-	// nghttp2_session_del() closes any remaining streams (invoking
-	// on_stream_close, which unlinks and frees them); drain defensively in case
-	// this version does not, then release the connection buffers.
+	// nghttp2_session_del() closes remaining streams via on_stream_close (which
+	// frees them); drain defensively in case it does not, then free the buffers.
 	nghttp2_session_del(conn.session);
 	while(conn.streams != NULL)
 	{
@@ -1557,25 +1765,22 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 //
 // A single dedicated thread owns one UDP socket, one OpenSSL QUIC listener, and
 // every QUIC connection and HTTP/3 stream on top of it. OpenSSL performs the
-// QUIC transport (packetisation, congestion control, loss recovery, per-stream
-// flow control); nghttp3 performs the HTTP/3 layer (QPACK, framing) on top of
-// the per-stream byte streams that OpenSSL exposes as child SSL objects.
+// QUIC transport (congestion control, loss recovery, per-stream flow control);
+// nghttp3 performs the HTTP/3 layer (QPACK, framing) over the per-stream byte
+// streams OpenSSL exposes as child SSL objects.
 //
-// Each HTTP/3 request is bridged to a plain HTTP/1.1 request against the
-// CivetWeb backend, exactly like the HTTP/2 gateway, and the response is
-// translated back to HTTP/3. The bridge is non-blocking and streaming, mirroring
-// the HTTP/2 gateway and reusing the same shared HTTP/1.1 backend-bridge helpers:
-// each request stream gets its own non-blocking backend connection, the request
-// body is streamed to the backend as it arrives, and the HTTP/1.1 response is
-// parsed incrementally and pulled back into HTTP/3 DATA frames on demand via an
-// nghttp3 data reader (defer with NGHTTP3_ERR_WOULDBLOCK, resume with
-// nghttp3_conn_resume_stream). The single QUIC event-loop poll() set covers the
-// UDP socket plus every active backend socket, so a slow backend never blocks
-// QUIC processing for the other live HTTP/3 connections.
+// Each request is bridged to a plain HTTP/1.1 request against the CivetWeb
+// backend and translated back, exactly like the HTTP/2 gateway and reusing the
+// same be_* helpers: a per-stream non-blocking backend connection, the request
+// body streamed as it arrives, and the HTTP/1.1 response parsed incrementally
+// and pulled into HTTP/3 DATA frames on demand via an nghttp3 data reader (defer
+// with NGHTTP3_ERR_WOULDBLOCK, resume with nghttp3_conn_resume_stream). One
+// poll() set covers the UDP socket plus every backend socket, so a slow backend
+// never blocks QUIC processing for the other connections.
 //
-// Client-IP note: each backend request carries a PROXY protocol v2 header with
-// the real client address, obtained from SSL_get_peer_addr() (OpenSSL 4.0's QUIC
-// per-connection peer getter), identical to the TCP and HTTP/2 paths.
+// Client-IP note: each backend request carries a PROXY v2 header with the real
+// client address from SSL_get_peer_addr() (OpenSSL 4.0's QUIC peer getter),
+// identical to the TCP and HTTP/2 paths.
 // ---------------------------------------------------------------------------
 
 #define H3_REQHDR_MAX 8192u
@@ -1591,7 +1796,7 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 // QUIC flow control backpressures the client.
 #define H3_REQ_HIGH_WATER (256u * 1024u)
 // Maximum PROXY protocol v2 header size (16 fixed + 36 for IPv6).
-#define H3_PROXY_MAX 52u
+#define H3_PROXY_MAX PROXY_V2_MAX
 
 struct h3_conn;
 
@@ -1608,6 +1813,7 @@ struct h3_stream {
 	char authority[256];
 	char path[2048];
 	char reqhdr[H3_REQHDR_MAX];
+	bool oversize;           // a pseudo-header did not fit -> answer 414, do not forward
 	size_t reqhdr_len;
 	bool content_length_seen;
 
@@ -1648,7 +1854,7 @@ static nghttp3_tstamp h3_now(void)
 	return (nghttp3_tstamp)ts.tv_sec * 1000000000ull + (nghttp3_tstamp)ts.tv_nsec;
 }
 
-static struct h3_stream *h3_find_stream(struct h3_conn *c, int64_t id)
+static struct h3_stream *__attribute__((pure)) h3_find_stream(struct h3_conn *c, int64_t id)
 {
 	for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
 		if(s->id == id)
@@ -1698,10 +1904,10 @@ static void h3_reset_stream(struct h3_stream *s)
 
 // nghttp3 data reader: hand decoded response body bytes to nghttp3 on demand,
 // zero-copy from the bridge body buffer. Returns NGHTTP3_ERR_WOULDBLOCK when the
-// backend has not produced more body yet; h3_be_readable() resumes the stream
-// once it does. The buffer stays stable while nghttp3 references it because the
-// event loop only reads more backend data (which may reallocate the buffer) once
-// nghttp3 has flushed everything produced so far (nghttp3_conn_is_stream_flushed).
+// backend has no more body yet; h3_be_readable() resumes the stream once it
+// does. The buffer stays stable while nghttp3 references it because the event
+// loop reads more backend data (which may realloc it) only after nghttp3 has
+// flushed everything so far (nghttp3_conn_is_stream_flushed).
 static nghttp3_ssize h3_read_data(nghttp3_conn *h3, int64_t stream_id,
                                   nghttp3_vec *vec, size_t veccnt,
                                   uint32_t *pflags, void *conn_user_data,
@@ -1769,6 +1975,13 @@ static void h3_start_backend(struct h3_stream *s, bool has_body)
 {
 	s->be_started = true;
 
+	// A pseudo-header that did not fit its buffer would forward a truncated
+	// request target; reject cleanly instead of serving the wrong resource.
+	if(s->oversize)
+	{
+		h3_gateway_error(s, "414");
+		return;
+	}
 	if(!has_body)
 		s->be.req_mode = REQ_NONE;
 	else if(s->content_length_seen)
@@ -2068,11 +2281,11 @@ static int h3_cb_recv_header(nghttp3_conn *h3, int64_t stream_id, int32_t token,
 	if(nl > 0 && n[0] == ':')
 	{
 		if(nl == 7 && memcmp(n, ":method", 7) == 0)
-			snprintf(s->method, sizeof(s->method), "%.*s", (int)vl, v);
+			copy_pseudo_header(s->method, sizeof(s->method), v, vl, &s->oversize);
 		else if(nl == 5 && memcmp(n, ":path", 5) == 0)
-			snprintf(s->path, sizeof(s->path), "%.*s", (int)vl, v);
+			copy_pseudo_header(s->path, sizeof(s->path), v, vl, &s->oversize);
 		else if(nl == 10 && memcmp(n, ":authority", 10) == 0)
-			snprintf(s->authority, sizeof(s->authority), "%.*s", (int)vl, v);
+			copy_pseudo_header(s->authority, sizeof(s->authority), v, vl, &s->oversize);
 		// :scheme is always https at the terminator and is not forwarded
 		return 0;
 	}
@@ -2174,11 +2387,9 @@ static int h3_cb_stream_close(nghttp3_conn *h3, int64_t stream_id,
 		// backend socket. The node and its QUIC stream object are reclaimed by
 		// h3_conn_reap_streams() once the send part is concluded/reset.
 		h3_be_close(s);
-		free(s->be.req_out); s->be.req_out = NULL;
+		be_free(&s->be);
 		s->be.req_out_len = s->be.req_out_off = s->be.req_out_cap = 0;
-		free(s->be.resp_hdr); s->be.resp_hdr = NULL;
 		s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
-		free(s->be.body_buf); s->be.body_buf = NULL;
 		s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 	}
 	return 0;
@@ -2409,9 +2620,7 @@ static void h3_conn_free(struct h3_conn *c)
 			SSL_free(s->ssl);
 		if(s->be_fd >= 0)
 			close(s->be_fd);
-		free(s->be.req_out);
-		free(s->be.resp_hdr);
-		free(s->be.body_buf);
+		be_free(&s->be);
 		free(s);
 		s = nx;
 	}
@@ -2420,13 +2629,12 @@ static void h3_conn_free(struct h3_conn *c)
 	free(c);
 }
 
-// A finished request stream may be reclaimed once its QUIC send part has been
-// concluded or reset. SSL_free() only resets stream parts that were NOT already
-// concluded/reset, and a concluded send part keeps being flushed reliably by the
-// parent connection after the stream object is freed, so reaping here loses no
-// response data. For a normal finish we also wait for the receive part to end so
-// we do not STOP_SENDING a request body still in flight; a reset stream is torn
-// down regardless. Control/QPACK streams live for the whole connection.
+// A finished request stream may be reclaimed once its QUIC send part is
+// concluded or reset: a concluded send part keeps being flushed by the parent
+// connection after the stream object is freed, so reaping loses no response
+// data. For a normal finish we also wait for the receive part to end so we do
+// not STOP_SENDING a request body still in flight; a reset stream is reaped
+// regardless. Control/QPACK streams live for the whole connection.
 static bool h3_stream_reapable(const struct h3_stream *s)
 {
 	if(s->uni_local)
@@ -2441,9 +2649,8 @@ static bool h3_stream_reapable(const struct h3_stream *s)
 }
 
 // Reclaim completed request streams so per-connection memory and the event-loop
-// scan do not grow with the number of requests served over a long-lived HTTP/3
-// connection. Without this, browsers multiplexing thousands of requests on one
-// connection accumulate a node (and QUIC stream object) each.
+// scan do not grow with each request over a long-lived HTTP/3 connection (a
+// browser multiplexing thousands of requests would otherwise leak a node each).
 static void h3_conn_reap_streams(struct h3_conn *c)
 {
 	struct h3_stream **pp = &c->streams;
@@ -2460,9 +2667,7 @@ static void h3_conn_reap_streams(struct h3_conn *c)
 		nghttp3_conn_close_stream(c->h3, s->id, 0);
 		*pp = s->next;
 		h3_be_close(s);
-		free(s->be.req_out);
-		free(s->be.resp_hdr);
-		free(s->be.body_buf);
+		be_free(&s->be);
 		if(s->ssl != NULL)
 			SSL_free(s->ssl);
 		free(s);
@@ -2530,6 +2735,7 @@ static void *quic_accept_loop(void *arg)
 	size_t pcap = 0;
 
 	struct h3_conn *conns = NULL;
+	unsigned int h3_live = 0; // live connections on `conns`, capped below
 	while(quic_running)
 	{
 		// Size the poll set: the UDP socket plus every active backend socket.
@@ -2547,9 +2753,8 @@ static void *quic_accept_loop(void *arg)
 			if(np != NULL && nm != NULL)
 				pcap = need;
 			// On a transient allocation failure keep the old capacity and poll
-			// only what fits this round; the backend fds that do not fit are
-			// serviced on a later iteration. Never tear down live connections
-			// over a momentary memory spike.
+			// only what fits; the rest are serviced on a later iteration. Never
+			// tear down live connections over a momentary memory spike.
 		}
 		if(pcap == 0)
 		{
@@ -2620,11 +2825,19 @@ static void *quic_accept_loop(void *arg)
 			SSL *cs = SSL_accept_connection(listener, SSL_ACCEPT_CONNECTION_NO_BLOCK);
 			if(cs == NULL)
 				break;
+			// Over the cap: reject the connection but keep draining the accept
+			// queue so a flood cannot pile up inside OpenSSL either.
+			if(h3_live >= TERMINATOR_MAX_H3_CONNS)
+			{
+				SSL_free(cs);
+				continue;
+			}
 			struct h3_conn *c = h3_conn_new(cs);
 			if(c != NULL)
 			{
 				c->next = conns;
 				conns = c;
+				h3_live++;
 			}
 			else
 				SSL_free(cs);
@@ -2686,6 +2899,7 @@ static void *quic_accept_loop(void *arg)
 			{
 				*pp = c->next;
 				h3_conn_free(c);
+				h3_live--;
 			}
 			else
 				pp = &(*pp)->next;
@@ -2749,7 +2963,7 @@ static SSL_CTX *create_quic_server_ctx(const char *cert_path)
 }
 
 // Bind a dual-stack UDP socket on the given port for the QUIC listener.
-static int bind_udp(int port)
+static int bind_udp(const char *addr, int port)
 {
 	const int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
@@ -2763,13 +2977,16 @@ static int bind_udp(int port)
 	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
 
 	struct sockaddr_in6 sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sin6_family = AF_INET6;
-	sa.sin6_addr = in6addr_any;
-	sa.sin6_port = htons((uint16_t)port);
+	if(!fill_bind_addr(&sa, addr, port))
+	{
+		log_err("Terminator: invalid QUIC bind address '%s'", addr);
+		close(fd);
+		return -1;
+	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: QUIC bind() to port %d failed: %s", port, strerror(errno));
+		log_err("Terminator: QUIC bind() to %s#%d failed: %s",
+		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -2784,12 +3001,12 @@ static int bind_udp(int port)
 
 // Start the HTTP/3 listener alongside the TCP terminator. HTTP/3 is optional, so
 // a failure here is logged and the terminator keeps serving HTTP/1.1 and HTTP/2.
-static void terminator_quic_start(int public_port, const char *cert_path)
+static void terminator_quic_start(const char *bind_addr, int public_port, const char *cert_path)
 {
 	quic_ctx = create_quic_server_ctx(cert_path);
 	if(quic_ctx == NULL)
 		return;
-	quic_fd = bind_udp(public_port);
+	quic_fd = bind_udp(bind_addr, public_port);
 	if(quic_fd < 0)
 	{
 		SSL_CTX_free(quic_ctx);
@@ -2835,16 +3052,55 @@ static void terminator_quic_stop(void)
 }
 #endif /* HAVE_HTTP3 */
 
+// Drive SSL_accept to completion in non-blocking mode against an absolute
+// deadline, so a slow-drip client cannot pin a handler thread indefinitely
+// (SO_RCVTIMEO only bounds a single idle recv, which a dribbling peer resets on
+// every byte). Restores the fd's blocking mode on return for the post-handshake
+// relay/gateway code. Returns true iff the handshake completed in time.
+static bool terminator_handshake(SSL *ssl, int fd)
+{
+	const int fl = fcntl(fd, F_GETFL, 0);
+	if(fl >= 0)
+		fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	const uint64_t deadline = mono_ms() + (uint64_t)HANDSHAKE_TIMEOUT_SEC * 1000u;
+	bool ok = false;
+	for(;;)
+	{
+		const int r = SSL_accept(ssl);
+		if(r == 1)
+		{
+			ok = true;
+			break;
+		}
+		const int err = SSL_get_error(ssl, r);
+		if(err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE)
+			break; // hard error or a plain-HTTP probe on the TLS port
+		const uint64_t now = mono_ms();
+		if(now >= deadline)
+			break;
+		struct pollfd pfd = { .fd = fd,
+		                      .events = (short)((err == SSL_ERROR_WANT_WRITE) ? POLLOUT : POLLIN),
+		                      .revents = 0 };
+		poll(&pfd, 1, (int)(deadline - now));
+	}
+	if(fl >= 0)
+		fcntl(fd, F_SETFL, fl); // restore blocking for relay()/h2/h3
+	return ok;
+}
+
 // Per-connection handler, run in a detached thread.
 static void *handle_conn(void *arg)
 {
-	const int client_fd = (int)(intptr_t)arg;
+	struct handler_arg *ha = arg;
+	const int client_fd = ha->client_fd;
+	SSL_CTX *const ctx = ha->ctx;
+	free(ha);
 
 	const struct timeval tv = { .tv_sec = IO_TIMEOUT_SEC, .tv_usec = 0 };
 	setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-	SSL *ssl = SSL_new(ssl_ctx);
+	SSL *ssl = SSL_new(ctx);
 	int be_fd = -1;
 	if(ssl == NULL)
 	{
@@ -2852,11 +3108,11 @@ static void *handle_conn(void *arg)
 		goto cleanup;
 	}
 	SSL_set_fd(ssl, client_fd);
-	if(SSL_accept(ssl) != 1)
+	if(!terminator_handshake(ssl, client_fd))
 	{
-		// A failed handshake (e.g. a plain-HTTP probe on the TLS port) is not
-		// worth an error; keep it at debug level to avoid log flooding.
-		log_debug(DEBUG_WEBSERVER, "Terminator: TLS handshake failed");
+		// A failed/slow handshake (e.g. a plain-HTTP probe on the TLS port) is
+		// not worth an error; keep it at debug level to avoid log flooding.
+		log_debug(DEBUG_WEBSERVER, "Terminator: TLS handshake failed or timed out");
 		goto cleanup;
 	}
 
@@ -2897,6 +3153,8 @@ cleanup:
 	if(be_fd >= 0)
 		close(be_fd);
 	close(client_fd);
+	SSL_CTX_free(ctx); // release our reference (keeps the ctx alive across stop)
+	atomic_fetch_sub(&active_handlers, 1);
 	return NULL;
 }
 
@@ -2924,12 +3182,37 @@ static void *accept_loop(void *arg)
 			continue;
 		}
 
-		// TODO(M1): bound the number of concurrent handler threads (a worker
-		// pool) instead of one detached thread per connection.
+		// Cap concurrent handlers so a connection flood cannot exhaust the
+		// process. fetch_add reserves a slot; drop the connection if over cap.
+		if(atomic_fetch_add(&active_handlers, 1) >= TERMINATOR_MAX_HANDLERS)
+		{
+			atomic_fetch_sub(&active_handlers, 1);
+			log_debug(DEBUG_WEBSERVER, "Terminator: handler cap reached, dropping connection");
+			close(client_fd);
+			continue;
+		}
+
+		// Hand the detached handler its own SSL_CTX reference, taken now while
+		// the context is live, so terminator_stop() can free it without racing a
+		// handler that has not yet reached SSL_new().
+		struct handler_arg *ha = malloc(sizeof(*ha));
+		if(ha == NULL)
+		{
+			atomic_fetch_sub(&active_handlers, 1);
+			close(client_fd);
+			continue;
+		}
+		ha->client_fd = client_fd;
+		SSL_CTX_up_ref(ssl_ctx);
+		ha->ctx = ssl_ctx;
+
 		pthread_t tid;
-		if(pthread_create(&tid, &attr, handle_conn, (void *)(intptr_t)client_fd) != 0)
+		if(pthread_create(&tid, &attr, handle_conn, ha) != 0)
 		{
 			log_err("Terminator: pthread_create() failed: %s", strerror(errno));
+			SSL_CTX_free(ha->ctx);
+			free(ha);
+			atomic_fetch_sub(&active_handlers, 1);
 			close(client_fd);
 		}
 	}
@@ -2938,7 +3221,7 @@ static void *accept_loop(void *arg)
 	return NULL;
 }
 
-bool terminator_start(int public_port, int be_port, const char *cert_path)
+bool terminator_start(const char *bind_addr, int public_port, int be_port, const char *cert_path)
 {
 	if(running)
 	{
@@ -2948,11 +3231,21 @@ bool terminator_start(int public_port, int be_port, const char *cert_path)
 	if(cert_path == NULL || public_port <= 0 || be_port <= 0)
 		return false;
 
+	// Per-boot secret authenticating our PROXY headers to the loopback backend.
+	// Usually already generated by webserver.c (it passes the hex form to the
+	// backend as proxy_protocol_secret); ensure it here too. Fail closed if the
+	// RNG fails: without it the backend would ignore every header.
+	if(!ensure_proxy_token())
+	{
+		log_err("Terminator: could not obtain secure randomness, cannot start");
+		return false;
+	}
+
 	ssl_ctx = create_server_ctx(cert_path);
 	if(ssl_ctx == NULL)
 		return false;
 
-	listen_fd = bind_listener(public_port);
+	listen_fd = bind_listener(bind_addr, public_port);
 	if(listen_fd < 0)
 	{
 		SSL_CTX_free(ssl_ctx);
@@ -2974,13 +3267,13 @@ bool terminator_start(int public_port, int be_port, const char *cert_path)
 	}
 	accept_tid_valid = true;
 
-	log_info("TLS terminator listening on port %d, forwarding to 127.0.0.1:%d",
-	         public_port, be_port);
+	log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
+	         (bind_addr && bind_addr[0]) ? bind_addr : "*", public_port, be_port);
 
 #ifdef HAVE_HTTP3
 	// Serve HTTP/3 over QUIC on the same public port (UDP). Optional: on failure
 	// the terminator keeps serving HTTP/1.1 and (if built) HTTP/2 over TCP.
-	terminator_quic_start(public_port, cert_path);
+	terminator_quic_start(bind_addr, public_port, cert_path);
 #endif
 	return true;
 }
@@ -3010,9 +3303,28 @@ void terminator_stop(void)
 	}
 	if(ssl_ctx != NULL)
 	{
+		// Drops our reference only. Each in-flight handler holds its own ref
+		// (taken in accept_loop before SSL_new()), so the context stays valid
+		// until the last handler exits - no use-after-free on SSL_new().
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 	}
 	// Note: in-flight detached handler threads are not joined here; they finish
-	// on their own when their connection closes or times out (IO_TIMEOUT_SEC).
+	// on their own when their connection closes or times out (IO_TIMEOUT_SEC),
+	// then release their SSL_CTX reference.
 }
+
+#else // !HAVE_TLS
+
+// No-TLS build: the terminator does not exist. webserver.c still links
+// terminator_proxy_token_hex() (its call is guarded by terminator_port > 0,
+// which stays 0 here), so provide a stub. terminator_start()/stop() are only
+// ever called under HAVE_TLS, so they need no stubs.
+bool terminator_proxy_token_hex(char *out, size_t outsz)
+{
+	(void)out;
+	(void)outsz;
+	return false;
+}
+
+#endif // HAVE_TLS

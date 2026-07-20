@@ -54,6 +54,17 @@ def note_query(transport, query):
             fh.write("%s %d\n" % (transport, len(query)))
 
 
+def note_proto(transport, proto):
+    # Record the wire protocol a request arrived on (e.g. "HTTP/1.1") so the test
+    # suite can assert the DoH transport. Written with a distinct "<t>-proto"
+    # label so it never collides with the "<t> <len>" padding records above.
+    if not PAD_LOG:
+        return
+    with _pad_lock:
+        with open(PAD_LOG, "a") as fh:
+            fh.write("%s-proto %s\n" % (transport, proto))
+
+
 def resolve(wire):
     """Forward a DNS wire message to the plaintext backend and return the reply."""
     if DELAY_S > 0:
@@ -135,6 +146,14 @@ def doh_handle(ctx, raw):
                 if len(buf) > 65536:
                     return
             head, _, rest = buf.partition(b"\r\n\r\n")
+
+            # Record the request-line HTTP version (FTL's DoH client speaks
+            # HTTP/1.1) so the suite can assert the DoH transport.
+            try:
+                req_line = head.split(b"\r\n", 1)[0].decode("latin-1")
+                note_proto("doh", req_line.rsplit(" ", 1)[-1])
+            except Exception:
+                pass
 
             # Require a valid, positive Content-Length and read exactly that many
             # body bytes. A malformed request fails closed (connection dropped, no

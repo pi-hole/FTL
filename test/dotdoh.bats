@@ -176,6 +176,15 @@ teardown_file() {
   assert_success
 }
 
+@test "dotdoh-client: the DoH exchange uses HTTP/1.1" {
+  run bash -c "dig +short +tries=1 +time=5 @127.47.11.2 -p 5302 a.ftl"
+  assert_output --partial "192.168.1.1"
+  # The shim records the request-line HTTP version it received from FTL's DoH
+  # client. DoH-over-HTTP/2 and DoH3/DoQ are out of scope for this client.
+  run bash -c "grep -F 'doh-proto HTTP/1.1' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
 @test "dotdoh-client: many concurrent queries over the DoT proxy all resolve" {
   run run_concurrent DoT 25
   assert_success
