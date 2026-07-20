@@ -12,70 +12,215 @@
 #include "log.h"
 #include "x509.h"
 
-#ifdef HAVE_MBEDTLS
-# ifndef MBEDTLS_MPI_INIT
-# define MBEDTLS_MPI_INIT { 0, 1, 0 }
-# endif
-# include <mbedtls/x509_crt.h>
-# include <mbedtls/pk.h>
+#ifdef HAVE_TLS
+# include <openssl/opensslv.h>
+# include <openssl/bio.h>
+# include <openssl/bn.h>
+# include <openssl/evp.h>
+# include <openssl/pem.h>
+# include <openssl/x509.h>
+# include <openssl/x509v3.h>
+// open(), O_* flags for the atomic 0600 key-file creation
+#include <fcntl.h>
 
-// We enforce at least mbedTLS v3.5.0 if we use it
-#if MBEDTLS_VERSION_NUMBER < 0x03050000
-# error "mbedTLS version 3.5.0 or later is required"
+// We enforce at least OpenSSL v3.0.0 if we use it (providers, EVP_PKEY_Q_keygen)
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+# error "OpenSSL version 3.0.0 or later is required"
 #endif
 
 #define RSA_KEY_SIZE 4096
-#define EC_KEY_SIZE 384
-#define BUFFER_SIZE 16000
-#define PIHOLE_ISSUER "CN=pi.hole,O=Pi-hole,C=DE"
+#define EC_KEY_CURVE "P-384"
+#define PIHOLE_ISSUER_CN "pi.hole"
+#define PIHOLE_ISSUER_O "Pi-hole"
+#define PIHOLE_ISSUER_C "DE"
 
-// Generate private RSA or EC key
-static int generate_private_key(mbedtls_pk_context *pk_key, const bool rsa,
-                                unsigned char key_buffer[])
+// Read the pending data of a memory BIO into a freshly allocated,
+// NUL-terminated string (caller frees). Returns NULL on error.
+static char *bio_to_string(BIO *bio)
 {
-	int ret;
-	psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
-	const psa_status_t status = psa_crypto_init();
-	if(status != PSA_SUCCESS)
+	char *data = NULL;
+	const long len = BIO_get_mem_data(bio, &data);
+	if(len < 0 || data == NULL)
+		return NULL;
+
+	char *out = calloc((size_t)len + 1, sizeof(char));
+	if(out == NULL)
+		return NULL;
+
+	memcpy(out, data, (size_t)len);
+	out[len] = '\0';
+	return out;
+}
+
+// Serialize an X.509 certificate to a PEM string (caller frees)
+static char *x509_to_pem(X509 *cert)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	if(bio == NULL)
+		return NULL;
+
+	char *pem = NULL;
+	if(PEM_write_bio_X509(bio, cert) == 1)
+		pem = bio_to_string(bio);
+
+	BIO_free(bio);
+	return pem;
+}
+
+// Serialize a private key to a PEM string (caller frees)
+static char *pkey_to_pem(EVP_PKEY *key)
+{
+	BIO *bio = BIO_new(BIO_s_mem());
+	if(bio == NULL)
+		return NULL;
+
+	char *pem = NULL;
+	if(PEM_write_bio_PrivateKey(bio, key, NULL, NULL, 0, NULL, NULL) == 1)
+		pem = bio_to_string(bio);
+
+	BIO_free(bio);
+	return pem;
+}
+
+// Generate a private RSA or EC key using the OpenSSL default provider
+static EVP_PKEY *generate_private_key(const bool rsa)
+{
+	EVP_PKEY *pkey = rsa
+		? EVP_PKEY_Q_keygen(NULL, NULL, "RSA", (size_t)RSA_KEY_SIZE)
+		: EVP_PKEY_Q_keygen(NULL, NULL, "EC", EC_KEY_CURVE);
+
+	if(pkey == NULL)
+		log_err("Failed to generate %s key", rsa ? "RSA" : "EC");
+
+	return pkey;
+}
+
+// Set a distinguished name from its CN (required) plus optional O and C
+static bool set_name(X509_NAME *name, const char *cn, const char *o, const char *c)
+{
+	if(X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (const unsigned char *)cn, -1, -1, 0) != 1 ||
+	   (o != NULL && X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC, (const unsigned char *)o, -1, -1, 0) != 1) ||
+	   (c != NULL && X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (const unsigned char *)c, -1, -1, 0) != 1))
 	{
-		log_err("Failed to initialize PSA crypto, returned %d\n", (int)status);
-		return CERT_CANNOT_PARSE_CERT;
+		log_err("Failed to set certificate distinguished name (CN=%s)", cn);
+		return false;
 	}
-	psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_EXPORT | PSA_KEY_USAGE_SIGN_HASH | PSA_KEY_USAGE_DECRYPT);
-	psa_set_key_type(&attributes, rsa ? PSA_KEY_TYPE_RSA_KEY_PAIR : PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
-	psa_set_key_bits(&attributes, rsa ? RSA_KEY_SIZE : EC_KEY_SIZE);
+	return true;
+}
 
-	// Generate key
-	mbedtls_svc_key_id_t key = MBEDTLS_SVC_KEY_ID_INIT;
-	if((ret = psa_generate_key(&attributes, &key)) != PSA_SUCCESS) {
-		printf("ERROR: psa_generate_key failed: %d\n", ret);
-		return ret;
-	}
-
-	// Copy key to mbedtls_pk_context
-	if((ret = mbedtls_pk_copy_from_psa(key, pk_key)) != 0) {
-		printf("ERROR: mbedtls_pk_copy_from_psa returned %d\n", ret);
-		return ret;
+// Add a configured X.509v3 extension to a certificate
+static bool add_ext(X509 *cert, X509V3_CTX *ctx, int nid, const char *value)
+{
+	X509_EXTENSION *ex = X509V3_EXT_conf_nid(NULL, ctx, nid, value);
+	if(ex == NULL)
+	{
+		log_err("Failed to create X.509 extension (NID %d)", nid);
+		return false;
 	}
 
-	// Destroy the key handle as we have copied the key
-	psa_reset_key_attributes(&attributes);
-	psa_destroy_key(key);
+	const int added = X509_add_ext(cert, ex, -1);
+	X509_EXTENSION_free(ex);
+	if(added != 1)
+	{
+		log_err("Failed to add X.509 extension (NID %d)", nid);
+		return false;
+	}
+	return true;
+}
 
-	// Export key in PEM format
-	if ((ret = mbedtls_pk_write_key_pem(pk_key, key_buffer, BUFFER_SIZE)) != 0) {
-		printf("ERROR: mbedtls_pk_write_key_pem returned %d\n", ret);
-		return ret;
+// Assign a random, positive serial number to a certificate. Serials must be
+// unique per issuer (RFC 5280); a random one keeps browsers from rejecting a
+// freshly issued certificate as a duplicate of an earlier one.
+static bool set_random_serial(X509 *cert)
+{
+	bool ok = false;
+	BIGNUM *bn = BN_new();
+	// 128 random bits (16 octets, positive) - comfortably above the CA/Browser
+	// Forum minimum of 64 bits of entropy and well within the 20-octet limit.
+	if(bn != NULL && BN_rand(bn, 128, BN_RAND_TOP_ANY, BN_RAND_BOTTOM_ANY) == 1)
+	{
+		// A serial number must be a positive, non-zero integer (RFC 5280).
+		// Guard against the astronomically unlikely all-zero draw.
+		if(BN_is_zero(bn))
+			BN_one(bn);
+		ok = BN_to_ASN1_INTEGER(bn, X509_get_serialNumber(cert)) != NULL;
 	}
 
-	return 0;
+	BN_free(bn);
+	return ok;
+}
+
+// Create and sign an X.509 certificate.
+//
+// subject_key is embedded as the certificate's public key, issuer_key signs
+// it. issuer_cert provides the authority key identifier (pass the certificate
+// itself for a self-signed CA). san, when not NULL, is an OpenSSL SAN string
+// such as "DNS:pi.hole,DNS:example.com".
+static X509 *build_certificate(EVP_PKEY *subject_key, EVP_PKEY *issuer_key, X509 *issuer_cert,
+                               X509_NAME *subject, X509_NAME *issuer, const bool is_ca,
+                               const char *san, const long validity_secs)
+{
+	X509 *cert = X509_new();
+	if(cert == NULL)
+		return NULL;
+
+	if(X509_set_version(cert, X509_VERSION_3) != 1 ||
+	   !set_random_serial(cert) ||
+	   X509_gmtime_adj(X509_getm_notBefore(cert), 0) == NULL ||
+	   X509_gmtime_adj(X509_getm_notAfter(cert), validity_secs) == NULL ||
+	   X509_set_pubkey(cert, subject_key) != 1 ||
+	   X509_set_subject_name(cert, subject) != 1 ||
+	   X509_set_issuer_name(cert, issuer) != 1)
+	{
+		log_err("Failed to assemble certificate");
+		X509_free(cert);
+		return NULL;
+	}
+
+	// The issuer certificate (self for a CA) supplies the authority key
+	// identifier; the order below matters as the AKI is derived from the
+	// issuer's subject key identifier.
+	X509V3_CTX ctx;
+	memset(&ctx, 0, sizeof(ctx));
+	X509V3_set_ctx_nodb(&ctx);
+	X509V3_set_ctx(&ctx, issuer_cert != NULL ? issuer_cert : cert, cert, NULL, NULL, 0);
+
+	// CN is ignored when a SAN is present (RFC 2818) and RFC 3280 requires the
+	// SAN, so add it alongside the CN set above.
+	// A leaf needs extendedKeyUsage=serverAuth or Apple clients (iOS 13+, macOS
+	// 10.15+) reject it even under a privately-trusted root; set keyUsage too.
+	if(!add_ext(cert, &ctx, NID_basic_constraints, is_ca ? "critical,CA:TRUE" : "critical,CA:FALSE") ||
+	   !add_ext(cert, &ctx, NID_key_usage, is_ca ? "critical,keyCertSign,cRLSign" : "critical,digitalSignature,keyEncipherment") ||
+	   !add_ext(cert, &ctx, NID_subject_key_identifier, "hash") ||
+	   !add_ext(cert, &ctx, NID_authority_key_identifier, "keyid:always") ||
+	   (!is_ca && !add_ext(cert, &ctx, NID_ext_key_usage, "serverAuth")) ||
+	   (san != NULL && !add_ext(cert, &ctx, NID_subject_alt_name, san)))
+	{
+		X509_free(cert);
+		return NULL;
+	}
+
+	if(X509_sign(cert, issuer_key, EVP_sha256()) == 0)
+	{
+		log_err("Failed to sign certificate");
+		X509_free(cert);
+		return NULL;
+	}
+
+	return cert;
 }
 
 // Write a key and/or certificate to a file
 static bool write_to_file(const char *filename, const char *type, const char *suffix, const char *cert, const char *key, const char *cacert)
 {
-	// Create file with CA certificate only
+	// Build the target file name (filename with an optional suffix replacing a
+	// trailing ".pem")
 	char *targetname = calloc(strlen(filename) + (suffix != NULL ? strlen(suffix) : 0) + 1, sizeof(char));
+	if(targetname == NULL)
+	{
+		printf("ERROR: Could not allocate memory for file name\n");
+		return false;
+	}
 	strcpy(targetname, filename);
 
 	if(suffix != NULL)
@@ -89,316 +234,300 @@ static bool write_to_file(const char *filename, const char *type, const char *su
 		strcat(targetname, suffix);
 	}
 
-	printf("Storing %s in %s ...\n", type, targetname);
-	FILE *f = NULL;
-	if ((f = fopen(targetname, "wb")) == NULL)
+	// Write to a temporary file next to the target and rename it into place at
+	// the end. This way a partial or failed write (e.g. disk full during the
+	// automatic renewal) never truncates or corrupts a certificate file that
+	// is currently in use by the running web server.
+	char *tempname = calloc(strlen(targetname) + sizeof(".tmp"), sizeof(char));
+	if(tempname == NULL)
 	{
-		printf("ERROR: Could not open %s for writing\n", targetname);
+		printf("ERROR: Could not allocate memory for file name\n");
+		free(targetname);
+		return false;
+	}
+	strcpy(tempname, targetname);
+	strcat(tempname, ".tmp");
+
+	printf("Storing %s in %s ...\n", type, targetname);
+	// open() with 0600 creates the temp file atomically (no group/world-readable
+	// window like fopen()+fchmod()). O_EXCL after unlink() means we create it
+	// ourselves; O_NOFOLLOW refuses to write through a planted symlink.
+	unlink(tempname); // best-effort: clear a stale .tmp or a planted decoy
+	const int fd = open(tempname, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+	if(fd < 0)
+	{
+		printf("ERROR: Could not open %s for writing: %s\n", tempname, strerror(errno));
+		free(targetname);
+		free(tempname);
+		return false;
+	}
+	FILE *f = fdopen(fd, "wb");
+	if(f == NULL)
+	{
+		printf("ERROR: Could not open %s for writing: %s\n", tempname, strerror(errno));
+		close(fd);
+		unlink(tempname); // do not leave the freshly-created 0600 file behind
+		free(targetname);
+		free(tempname);
 		return false;
 	}
 
-	// Restrict permissions to owner read/write only
+	// Pin permissions to owner read/write only (open() already created it 0600,
+	// but a restrictive umask could have trimmed it further)
 	if(fchmod(fileno(f), S_IRUSR | S_IWUSR) != 0)
-		log_warn("Unable to set permissions on file \"%s\": %s", targetname, strerror(errno));
+		log_warn("Unable to set permissions on file \"%s\": %s", tempname, strerror(errno));
 
-	// Write key (if provided)
-	if(key != NULL)
+	// Write the key, certificate and CA certificate in this order (whichever
+	// are provided)
+	bool ok = true;
+	const char *parts[3] = { key, cert, cacert };
+	for(unsigned int i = 0; ok && i < sizeof(parts) / sizeof(parts[0]); i++)
 	{
-		const size_t olen = strlen((char *) key);
-		if (fwrite(key, 1, olen, f) != olen)
+		if(parts[i] == NULL)
+			continue;
+		const size_t olen = strlen(parts[i]);
+		if(fwrite(parts[i], 1, olen, f) != olen)
 		{
-			printf("ERROR: Could not write key to %s\n", targetname);
-			fclose(f);
-			return false;
+			printf("ERROR: Could not write to %s\n", tempname);
+			ok = false;
 		}
 	}
 
-	// Write certificate (if provided)
-	if(cert != NULL)
+	// Flush and fsync before the rename so a crash mid-renewal leaves either the
+	// complete new file or the untouched old one, never a truncated certificate.
+	if(ok && (fflush(f) != 0 || fsync(fileno(f)) != 0))
 	{
-		const size_t olen = strlen((char *) cert);
-		if (fwrite(cert, 1, olen, f) != olen)
-		{
-			printf("ERROR: Could not write certificate to %s\n", targetname);
-			fclose(f);
-			return false;
-		}
+		printf("ERROR: Could not flush %s to disk\n", tempname);
+		ok = false;
+	}
+	// fclose() always runs (closing the descriptor on every path); a close
+	// failure is only treated as fatal if the data was otherwise written
+	// successfully.
+	const bool close_failed = (fclose(f) != 0);
+	if(close_failed && ok)
+	{
+		printf("ERROR: Could not finalize %s\n", tempname);
+		ok = false;
 	}
 
-	// Write CA certificate (if provided)
-	if(cacert != NULL)
+	// Atomically move the completed file into place, or discard it on error so
+	// the previous (still valid) file is left untouched
+	if(ok && rename(tempname, targetname) != 0)
 	{
-		const size_t olen = strlen((char *) cacert);
-		if (fwrite(cacert, 1, olen, f) != olen)
-		{
-			printf("ERROR: Could not write CA certificate to %s\n", targetname);
-			fclose(f);
-			return false;
-		}
+		printf("ERROR: Could not rename %s to %s\n", tempname, targetname);
+		ok = false;
 	}
+	if(!ok)
+		unlink(tempname);
 
-	// Close cert file
-	fclose(f);
 	free(targetname);
+	free(tempname);
 
-	return true;
+	return ok;
 }
 
 bool generate_certificate(const char* certfile, bool rsa, const char *domain, const unsigned int validity_days)
 {
-	int ret;
-	mbedtls_x509write_cert ca_cert, server_cert;
-	mbedtls_pk_context ca_key, server_key;
-	unsigned char ca_buffer[BUFFER_SIZE];
-	unsigned char cert_buffer[BUFFER_SIZE];
-	unsigned char key_buffer[BUFFER_SIZE];
-	unsigned char ca_key_buffer[BUFFER_SIZE];
+	bool success = false;
+	EVP_PKEY *ca_key = NULL, *server_key = NULL;
+	X509 *ca_cert = NULL, *server_cert = NULL;
+	X509_NAME *ca_name = NULL, *server_name = NULL;
+	char *san = NULL, *ca_pem = NULL, *cert_pem = NULL, *key_pem = NULL;
 
-	// Initialize structures
-	mbedtls_x509write_crt_init(&ca_cert);
-	mbedtls_x509write_crt_init(&server_cert);
-	mbedtls_pk_init(&ca_key);
-	mbedtls_pk_init(&server_key);
+	// Reject domains containing characters that would break the subject and
+	// SAN config syntax. A comma or whitespace could otherwise inject
+	// additional SAN entries or produce an invalid certificate.
+	for(const char *p = domain; *p != '\0'; p++)
+	{
+		if(*p == ',' || *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+		{
+			log_err("Invalid character in domain \"%s\"", domain);
+			return false;
+		}
+	}
 
-	// Generate key
+	// Generate keys
 	printf("Generating %s key...\n", rsa ? "RSA" : "EC");
-	if((ret = generate_private_key(&ca_key, rsa, ca_key_buffer)) != 0)
+	ca_key = generate_private_key(rsa);
+	server_key = generate_private_key(rsa);
+	if(ca_key == NULL || server_key == NULL)
+		goto cleanup;
+
+	// Validity period: valid from now until now + validity_days. If no
+	// validity is specified, use 30 years.
+	const long validity_secs = (validity_days > 0 ? (long)validity_days : 30L * 365L) * 24L * 3600L;
+
+	// Distinguished names: CA is "CN=pi.hole,O=Pi-hole,C=DE", the server
+	// certificate uses the (optionally custom) domain as its CN.
+	ca_name = X509_NAME_new();
+	server_name = X509_NAME_new();
+	if(ca_name == NULL || server_name == NULL)
+		goto cleanup;
+	if(!set_name(ca_name, PIHOLE_ISSUER_CN, PIHOLE_ISSUER_O, PIHOLE_ISSUER_C) ||
+	   !set_name(server_name, domain, NULL, NULL))
+		goto cleanup;
+
+	// 1. Create self-signed CA certificate
+	printf("Generating new CA...\n");
+	ca_cert = build_certificate(ca_key, ca_key, NULL, ca_name, ca_name, true, NULL, validity_secs);
+	if(ca_cert == NULL)
+		goto cleanup;
+
+	// Add "DNS:pi.hole" as subject alternative name (SAN), plus the custom
+	// domain (when used) to make the certificate more universal.
+	if(strcasecmp(domain, "pi.hole") == 0)
+		san = strdup("DNS:pi.hole");
+	else
 	{
-		printf("ERROR: generate_private_key returned %d\n", ret);
-		return false;
+		const size_t len = strlen("DNS:pi.hole,DNS:") + strlen(domain) + 1;
+		san = calloc(len, sizeof(char));
+		if(san != NULL)
+			snprintf(san, len, "DNS:pi.hole,DNS:%s", domain);
 	}
-	if((ret = generate_private_key(&server_key, rsa, key_buffer)) != 0)
+	if(san == NULL)
+		goto cleanup;
+
+	// 2. Create server certificate signed by the CA
+	printf("Generating new server certificate...\n");
+	server_cert = build_certificate(server_key, ca_key, ca_cert, server_name, ca_name, false, san, validity_secs);
+	if(server_cert == NULL)
+		goto cleanup;
+
+	// Export everything to PEM
+	ca_pem = x509_to_pem(ca_cert);
+	cert_pem = x509_to_pem(server_cert);
+	key_pem = pkey_to_pem(server_key);
+	if(ca_pem == NULL || cert_pem == NULL || key_pem == NULL)
 	{
-		printf("ERROR: generate_private_key returned %d\n", ret);
-		return false;
-	}
-
-	// Create string with random digits for unique serial number
-	// RFC 2459: The serial number is an integer assigned by the CA to each
-	// certificate. It MUST be unique for each certificate issued by a given
-	// CA (i.e., the issuer name and serial number identify a unique
-	// certificate).
-	// We generate a random string of 16 digits, which should be unique enough
-	// for our purposes. We use the same random number generator as for the
-	// key generation to ensure that the serial number is not predictable.
-	// The serial number could be a constant, e.g., 1, but this would allow
-	// only one certificate being issued with a given browser. Any new generated
-	// certificate would be rejected by the browser as it would have the same
-	// serial number as the previous one and uniques is violated.
-	unsigned char serial1[16] = { 0 }, serial2[16] = { 0 };
-	for(unsigned int i = 0; i < sizeof(serial1) - 1; i++)
-		serial1[i] = '0' + (rand() % 10);
-	serial1[sizeof(serial1) - 1] = '\0';
-	for(unsigned int i = 0; i < sizeof(serial2) - 1; i++)
-		serial2[i] = '0' + (rand() % 10);
-	serial2[sizeof(serial2) - 1] = '\0';
-
-	// Create validity period
-	// Use YYYYMMDDHHMMSS as required by RFC 5280 (UTCTime)
-	const time_t now = time(NULL);
-	struct tm tms = { 0 };
-	struct tm *tm = gmtime_r(&now, &tms);
-	char not_before[16] = { 0 };
-	char not_after[16] = { 0 };
-	strftime(not_before, sizeof(not_before), "%Y%m%d%H%M%S", tm);
-	tm->tm_mday += validity_days > 0 ? validity_days : 30*365; // If no validity is specified, use 30 years
-	tm->tm_isdst = -1; // Not set, let mktime() determine it
-	mktime(tm); // normalize time
-	// Check for leap year, and adjust the date accordingly
-	const bool isLeapYear = tm->tm_year % 4 == 0 && (tm->tm_year % 100 != 0 || tm->tm_year % 400 == 0);
-	tm->tm_mday = tm->tm_mon == 1 && tm->tm_mday == 29 && !isLeapYear ? 28 : tm->tm_mday;
-	strftime(not_after, sizeof(not_after), "%Y%m%d%H%M%S", tm);
-
-	// 1. Create CA certificate
-	printf("Generating new CA with serial number %s...\n", serial1);
-	mbedtls_x509write_crt_set_version(&ca_cert, MBEDTLS_X509_CRT_VERSION_3);
-
-	mbedtls_x509write_crt_set_serial_raw(&ca_cert, serial1, sizeof(serial1)-1);
-	mbedtls_x509write_crt_set_md_alg(&ca_cert, MBEDTLS_MD_SHA256);
-	mbedtls_x509write_crt_set_subject_key(&ca_cert, &ca_key);
-	mbedtls_x509write_crt_set_subject_key_identifier(&ca_cert);
-	mbedtls_x509write_crt_set_issuer_key(&ca_cert, &ca_key);
-	mbedtls_x509write_crt_set_authority_key_identifier(&ca_cert);
-	mbedtls_x509write_crt_set_issuer_name(&ca_cert, PIHOLE_ISSUER);
-	mbedtls_x509write_crt_set_subject_name(&ca_cert, PIHOLE_ISSUER);
-	mbedtls_x509write_crt_set_validity(&ca_cert, not_before, not_after);
-	mbedtls_x509write_crt_set_basic_constraints(&ca_cert, 1, -1);
-
-	// Export CA in PEM format
-	if((ret = mbedtls_x509write_crt_pem(&ca_cert, ca_buffer, sizeof(ca_buffer))) != 0)
-	{
-		printf("ERROR: mbedtls_x509write_crt_pem (CA) returned %d\n", ret);
-		return false;
+		printf("ERROR: Could not serialize certificate to PEM\n");
+		goto cleanup;
 	}
 
-	printf("Generating new server certificate with serial number %s...\n", serial2);
-	mbedtls_x509write_crt_set_version(&server_cert, MBEDTLS_X509_CRT_VERSION_3);
+	// Write the CA certificate, the server certificate, and the combined
+	// server key + certificate; fail if any of the writes fails.
+	if(!write_to_file(certfile, "CA certificate", "_ca.crt", ca_pem, NULL, NULL) ||
+	   !write_to_file(certfile, "server certificate", ".crt", cert_pem, NULL, NULL) ||
+	   !write_to_file(certfile, "server key + certificate", NULL, cert_pem, key_pem, ca_pem))
+		goto cleanup;
 
-	mbedtls_x509write_crt_set_serial_raw(&server_cert, serial2, sizeof(serial2)-1);
-	mbedtls_x509write_crt_set_md_alg(&server_cert, MBEDTLS_MD_SHA256);
-	mbedtls_x509write_crt_set_subject_key(&server_cert, &server_key);
-	mbedtls_x509write_crt_set_subject_key_identifier(&server_cert);
-	mbedtls_x509write_crt_set_issuer_key(&server_cert, &ca_key);
-	mbedtls_x509write_crt_set_authority_key_identifier(&server_cert);
-	// subject name set below
-	mbedtls_x509write_crt_set_issuer_name(&server_cert, PIHOLE_ISSUER);
-	mbedtls_x509write_crt_set_validity(&server_cert, not_before, not_after);
-	mbedtls_x509write_crt_set_basic_constraints(&server_cert, 0, -1);
+	success = true;
 
-	// Set subject name depending on the (optionally) specified domain
-	{
-		char *subject_name = calloc(strlen(domain) + 4, sizeof(char));
-		strcpy(subject_name, "CN=");
-		strcat(subject_name, domain);
-		mbedtls_x509write_crt_set_subject_name(&server_cert, subject_name);
-		free(subject_name);
-	}
+cleanup:
+	free(san);
+	free(ca_pem);
+	free(cert_pem);
+	// Scrub the plaintext private key from the heap before releasing it; the cert
+	// and CA are public, but this key copy should not linger in freed memory.
+	if(key_pem != NULL)
+		OPENSSL_cleanse(key_pem, strlen(key_pem));
+	free(key_pem);
+	X509_free(ca_cert);
+	X509_free(server_cert);
+	X509_NAME_free(ca_name);
+	X509_NAME_free(server_name);
+	EVP_PKEY_free(ca_key);
+	EVP_PKEY_free(server_key);
 
-	// Add "DNS:pi.hole" as subject alternative name (SAN)
-	//
-	// Since RFC 2818 (May 2000), the Common Name (CN) field is ignored
-	// in certificates if the subject alternative name extension is present.
-	//
-	// Furthermore, RFC 3280 (4.2.1.7, 1. paragraph) specifies that
-	// subjectAltName must always be used and that the use of the CN field
-	// should be limited to support legacy implementations.
-	//
-	mbedtls_x509_san_list san_dns_pihole = { 0 };
-	san_dns_pihole.node.type = MBEDTLS_X509_SAN_DNS_NAME;
-	san_dns_pihole.node.san.unstructured_name.p = (unsigned char *) "pi.hole";
-	san_dns_pihole.node.san.unstructured_name.len = 7; // strlen("pi.hole")
-	san_dns_pihole.next = NULL; // No further element
-
-	// Furthermore, add the domain when a custom domain is used to make the
-	// certificate more universal
-	mbedtls_x509_san_list san_dns_domain = { 0 };
-	if(strcasecmp(domain, "pi.hole") != 0)
-	{
-		san_dns_domain.node.type = MBEDTLS_X509_SAN_DNS_NAME;
-		san_dns_domain.node.san.unstructured_name.p = (unsigned char *) domain;
-		san_dns_domain.node.san.unstructured_name.len = strlen(domain);
-		san_dns_domain.next = NULL; // No more SANs (linked list)
-
-		san_dns_pihole.next = &san_dns_domain; // Link this domain
-	}
-
-	ret = mbedtls_x509write_crt_set_subject_alternative_name(&server_cert, &san_dns_pihole);
-	if (ret != 0)
-		printf("mbedtls_x509write_crt_set_subject_alternative_name returned %d\n", ret);
-
-	// Export certificate in PEM format
-	if((ret = mbedtls_x509write_crt_pem(&server_cert, cert_buffer, sizeof(cert_buffer))) != 0)
-	{
-		printf("ERROR: mbedtls_x509write_crt_pem returned %d\n", ret);
-		return false;
-	}
-
-	// Create file with CA certificate only
-	write_to_file(certfile, "CA certificate", "_ca.crt", (char*)ca_buffer, NULL, NULL);
-
-	// Create file with server certificate only
-	write_to_file(certfile, "server certificate", ".crt", (char*)cert_buffer, NULL, NULL);
-
-	// Write server's private key and certificate to file
-	write_to_file(certfile, "server key + certificate", NULL, (char*)cert_buffer, (char*)key_buffer, (char*)ca_buffer);
-
-	// Free resources
-	mbedtls_x509write_crt_free(&ca_cert);
-	mbedtls_x509write_crt_free(&server_cert);
-	mbedtls_pk_free(&ca_key);
-	mbedtls_pk_free(&server_key);
-
-	return true;
+	return success;
 }
 
-static bool check_wildcard_domain(const char *domain, char *san, const size_t san_len)
+static bool check_wildcard_domain(const char *domain, const char *san, const size_t san_len)
 {
-	// Also check if the SAN is a wildcard domain and if the domain
-	// matches the wildcard (e.g. "*.pi-hole.net" and "abc.pi-hole.net")
-	const bool is_wild = san_len > 1 && san[0] == '*';
-	if(!is_wild)
+	// A leading "*." wildcard matches exactly one left-most label (RFC 6125):
+	// "*.pi-hole.net" covers "abc.pi-hole.net" but not "a.b.pi-hole.net" or the
+	// bare "pi-hole.net". Mirrors OpenSSL's X509_check_host() rules.
+	if(san_len < 2 || san[0] != '*' || san[1] != '.')
 		return false;
 
-	// The domain must be at least as long as the wildcard domain
+	// The wildcard tail is everything after '*' (e.g. ".pi-hole.net"); the domain
+	// must end with it plus the one label replacing '*'. The SAN is not
+	// NUL-terminated, so use the length field.
+	const char *tail = san + 1;
+	const size_t tail_len = san_len - 1;
 	const size_t domain_len = strlen(domain);
-	if(domain_len < san_len - 1)
+	if(domain_len <= tail_len)
 		return false;
 
-	// Check if the domain ends with the wildcard domain
-	// Attention: The SAN is not NUL-terminated, so we need to
-	//            use the length field
-	const char *wild_domain = domain + domain_len - san_len + 1;
-	return strncasecmp(wild_domain, san + 1, san_len - 1) == 0;
+	// The replacing label may not itself span multiple labels, i.e. the part of
+	// the domain before the tail must contain no dot.
+	const size_t label_len = domain_len - tail_len;
+	if(memchr(domain, '.', label_len) != NULL)
+		return false;
+
+	return strncasecmp(domain + label_len, tail, tail_len) == 0;
 }
 
-static bool search_domain(mbedtls_x509_crt *crt, mbedtls_x509_sequence *sans, const char *domain)
+// Copy the first Common Name (CN) of an X.509 name into buf as a NUL-terminated
+// string, returning its length or -1 if there is none (or it does not fit).
+// Replaces the convenience X509_NAME_get_text_by_NID(), deprecated in OpenSSL
+// 4.0, with the plain, non-deprecated entry accessors.
+static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
+{
+	if(buflen == 0)
+		return -1;
+	buf[0] = '\0';
+	const int idx = X509_NAME_get_index_by_NID(name, NID_commonName, -1);
+	if(idx < 0)
+		return -1;
+	const X509_NAME_ENTRY *entry = X509_NAME_get_entry(name, idx);
+	const ASN1_STRING *data = entry != NULL ? X509_NAME_ENTRY_get_data(entry) : NULL;
+	if(data == NULL)
+		return -1;
+	const int len = ASN1_STRING_length(data);
+	const unsigned char *txt = ASN1_STRING_get0_data(data);
+	if(txt == NULL || len < 0 || (size_t)len >= buflen)
+		return -1;
+	memcpy(buf, txt, (size_t)len);
+	buf[len] = '\0';
+	return len;
+}
+
+// Check whether the given domain is covered by the certificate, either through
+// one of its subject alternative names (SAN) or, as a fallback, its CN.
+static bool search_domain(X509 *crt, const char *domain)
 {
 	bool found = false;
-	// Loop over all SANs
-	while(sans != NULL)
+
+	// Loop over all subject alternative names (SANs)
+	GENERAL_NAMES *sans = X509_get_ext_d2i(crt, NID_subject_alt_name, NULL, NULL);
+	if(sans != NULL)
 	{
-		// Parse the SAN
-		mbedtls_x509_subject_alternative_name san = { 0 };
-		const int ret = mbedtls_x509_parse_subject_alt_name(&sans->buf, &san);
-
-		// Check if SAN is used (otherwise ret < 0, e.g.,
-		// MBEDTLS_ERR_X509_FEATURE_UNAVAILABLE) and if it is a
-		// DNS name, skip otherwise
-		if(ret < 0 || san.type != MBEDTLS_X509_SAN_DNS_NAME)
-			goto next_san;
-
-		// Check if the SAN matches the domain
-		// Attention: The SAN is not NUL-terminated, so we need to
-		//            use the length field
-		if(strncasecmp(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len) == 0)
+		const int count = sk_GENERAL_NAME_num(sans);
+		for(int i = 0; i < count && !found; i++)
 		{
-			found = true;
-			// Free resources
-			mbedtls_x509_free_subject_alt_name(&san);
-			break;
-		}
+			const GENERAL_NAME *gn = sk_GENERAL_NAME_value(sans, i);
 
-		// Also check if the SAN is a wildcard domain and if the domain
-		// matches the wildcard
-		if(check_wildcard_domain(domain, (char*)san.san.unstructured_name.p, san.san.unstructured_name.len))
-		{
-			found = true;
-			// Free resources
-			mbedtls_x509_free_subject_alt_name(&san);
-			break;
-		}
-next_san:
-		// Free resources
-		mbedtls_x509_free_subject_alt_name(&san);
+			// Only DNS names are of interest here
+			if(gn == NULL || gn->type != GEN_DNS)
+				continue;
 
-		// Go to next SAN
-		sans = sans->next;
+			// Attention: The SAN is not NUL-terminated, so we need
+			//            to use the length field
+			const char *name = (const char *)ASN1_STRING_get0_data(gn->d.dNSName);
+			const size_t len = (size_t)ASN1_STRING_length(gn->d.dNSName);
+
+			if(strlen(domain) == len && strncasecmp(domain, name, len) == 0)
+				found = true;
+			else if(check_wildcard_domain(domain, name, len))
+				found = true;
+		}
+		GENERAL_NAMES_free(sans);
 	}
 
 	if(found)
 		return true;
 
 	// Also check against the common name (CN) field
-	char subject[MBEDTLS_X509_MAX_DN_NAME_SIZE];
-	const size_t subject_len = mbedtls_x509_dn_gets(subject, sizeof(subject), &(crt->subject));
-	if(subject_len > 0)
+	char cn[256] = { 0 };
+	const int cn_len = get_common_name(X509_get_subject_name(crt), cn, sizeof(cn));
+	if(cn_len > 0)
 	{
-		// Check subjects prefixed with "CN="
-		if(subject_len > 3 && strncasecmp(subject, "CN=", 3) == 0)
-		{
-			// Check subject + 3 to skip the prefix
-			if(strncasecmp(domain, subject + 3, subject_len - 3) == 0)
-				found = true;
-			// Also check if the subject is a wildcard domain
-			else if(check_wildcard_domain(domain, subject + 3, subject_len - 3))
-				found = true;
-		}
-		// Check subject == "<domain>"
-		else if(strcasecmp(domain, subject) == 0)
+		// cn is NUL-terminated by get_common_name(); use strlen() as the length
+		// so a CN longer than the buffer cannot lead to an out-of-bounds read
+		// regardless of the returned length
+		if(strcasecmp(domain, cn) == 0)
 			found = true;
-		// Also check if the subject is a wildcard domain and if the domain
-		// matches the wildcard
-		else if(check_wildcard_domain(domain, subject, subject_len))
+		else if(check_wildcard_domain(domain, cn, strlen(cn)))
 			found = true;
 	}
 
@@ -413,7 +542,7 @@ next_san:
 // and about the private key (if requested).
 enum cert_check read_certificate(const char *certfile, const char *domain, const bool private_key)
 {
-	if(certfile == NULL && domain == NULL)
+	if(certfile == NULL)
 	{
 		log_err("No certificate file specified\n");
 		return CERT_FILE_NOT_FOUND;
@@ -428,125 +557,77 @@ enum cert_check read_certificate(const char *certfile, const char *domain, const
 		return CERT_FILE_NOT_FOUND;
 	}
 
-	const psa_status_t status = psa_crypto_init();
-	if(status != PSA_SUCCESS)
+	// Load the certificate
+	X509 *crt = NULL;
+	BIO *bio = BIO_new_file(certfile, "r");
+	if(bio != NULL)
 	{
-		log_err("Failed to initialize PSA crypto, returned %d\n", (int)status);
+		crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+		BIO_free(bio);
+	}
+	if(crt == NULL)
+	{
+		log_err("Cannot parse certificate");
 		return CERT_CANNOT_PARSE_CERT;
 	}
 
-	mbedtls_pk_context key;
-	mbedtls_pk_init(&key);
-	bool has_key = true;
-	int rc = mbedtls_pk_parse_keyfile(&key, certfile, NULL);
-	if (rc != 0)
+	// Load the private key (if any) from a fresh handle on the same file
+	EVP_PKEY *key = NULL;
+	BIO *kbio = BIO_new_file(certfile, "r");
+	if(kbio != NULL)
 	{
+		key = PEM_read_bio_PrivateKey(kbio, NULL, NULL, NULL);
+		BIO_free(kbio);
+	}
+	const bool has_key = key != NULL;
+	if(!has_key)
 		log_info("No key found");
-		has_key = false;
-	}
 
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt_init(&crt);
-	rc = mbedtls_x509_crt_parse_file(&crt, certfile);
-	if (rc != 0)
-	{
-		log_err("Cannot parse certificate: Error code %d", rc);
-		return CERT_CANNOT_PARSE_CERT;
-	}
-
-	// Parse mbedtls_x509_parse_subject_alt_names()
-	mbedtls_x509_sequence *sans = &crt.subject_alt_names;
-
-	// When a domain is specified, possibly return early
+	// When a domain is specified, only check the domain and return
 	if(domain != NULL)
-		return search_domain(&crt, sans, domain) ? CERT_DOMAIN_MATCH : CERT_DOMAIN_MISMATCH;
+	{
+		const enum cert_check result = search_domain(crt, domain) ? CERT_DOMAIN_MATCH : CERT_DOMAIN_MISMATCH;
+		X509_free(crt);
+		if(key != NULL)
+			EVP_PKEY_free(key);
+		return result;
+	}
 
 	// else: Print verbose information about the certificate
-	char certinfo[BUFFER_SIZE] = { 0 };
-	mbedtls_x509_crt_info(certinfo, BUFFER_SIZE, "  ", &crt);
+	BIO *out = BIO_new_fp(stdout, BIO_NOCLOSE);
+	if(out == NULL)
+	{
+		log_err("Cannot allocate output stream for certificate");
+		X509_free(crt);
+		if(key != NULL)
+			EVP_PKEY_free(key);
+		return CERT_CANNOT_PARSE_CERT;
+	}
 	puts("Certificate (X.509):");
-	puts(certinfo);
+	X509_print(out, crt);
 
-	if(!private_key || !has_key)
-		goto end;
-
-	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
-	mbedtls_pk_get_psa_attributes(&key, PSA_KEY_USAGE_DERIVE, &key_attributes);
-
-	puts("Private key:");
-	psa_key_type_t pk_type = psa_get_key_type(&key_attributes);
-	printf("  ID: %u\n", psa_get_key_id(&key_attributes));
-	const size_t key_bits = psa_get_key_bits(&key_attributes);
-	printf("  Keysize: %zu bits\n", key_bits);
-	printf("  Algorithm: %u\n", psa_get_key_algorithm(&key_attributes));
-	printf("  Lifetime: %u\n", psa_get_key_lifetime(&key_attributes));
-	if(PSA_KEY_TYPE_IS_RSA(pk_type))
+	// Print private key information (if requested and available)
+	if(private_key && has_key)
 	{
-		printf("  Type: RSA (%s)\n\n", pk_type == PSA_KEY_TYPE_RSA_KEY_PAIR ? "key pair" : "public key only");
-	}
-	else if(PSA_KEY_TYPE_IS_ECC_KEY_PAIR(pk_type) || PSA_KEY_TYPE_IS_ECC_PUBLIC_KEY(pk_type))
-	{
-		printf("  Type: ECC (%s)\n", PSA_KEY_TYPE_IS_ECC_KEY_PAIR(pk_type) ? "key pair" : "public key only");
-		const psa_ecc_family_t ecc_family = PSA_KEY_TYPE_ECC_GET_FAMILY(pk_type);
-		switch(ecc_family)
-		{
-			case PSA_ECC_FAMILY_SECP_K1:
-				printf("  Curvetype: SEC Koblitz curve over prime fields (secp%zuk1)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_SECP_R1:
-				printf("  Curvetype: SEC random curve over prime fields (secp%zur1)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_SECP_R2:
-				printf("  Curve family: secp%zur2 is obsolete and not supported\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_SECT_K1:
-				printf("  Curvetype: SEC Koblitz curve over binary fields (sect%zuk1)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_SECT_R1:
-				printf("  Curvetype: SEC random curve over binary fields (sect%zur1)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_SECT_R2:
-				printf("  Curvetype: SEC additional random curve over binary fields (sect%zur2)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_BRAINPOOL_P_R1:
-				printf("  Curvetype: Brainpool P random curve (brainpoolP%zur1)\n", key_bits);
-				break;
-			case PSA_ECC_FAMILY_MONTGOMERY:
-				printf("  Curvetype: Montgomery curve (Curve%s)\n", key_bits == 255 ? "25519" : key_bits == 448 ? "448" : "Unknown");
-				break;
-			case PSA_ECC_FAMILY_TWISTED_EDWARDS:
-				printf("  Curvetype: Twisted Edwards curve (Ed%s)\n", key_bits == 255 ? "25519" : key_bits == 448 ? "448" : "Unknown");
-				break;
-			default:
-				puts("  Curvetype: Unknown");
-				break;
-		}
-		puts("");
-	}
-	else if(PSA_KEY_TYPE_IS_DH(pk_type))
-	{
-		printf("  Type: Diffie-Hellman (%s)\n\n", PSA_KEY_TYPE_IS_DH_KEY_PAIR(pk_type) ? "key pair" : "public key only");
-	}
-	else
-	{
-		puts("Sorry, but FTL does not know how to print key information for this type\n");
-		goto end;
+		puts("Private key:");
+		EVP_PKEY_print_private(out, key, 2, NULL);
+		puts("\nPrivate key (PEM):");
+		PEM_write_bio_PrivateKey(out, key, NULL, NULL, 0, NULL, NULL);
 	}
 
-	// Print private key in PEM format
-	mbedtls_pk_write_key_pem(&key, (unsigned char*)certinfo, BUFFER_SIZE);
-	puts("Private key (PEM):");
-	puts(certinfo);
-
-end:
-	// Print public key in PEM format
-	mbedtls_pk_write_pubkey_pem(&key, (unsigned char*)certinfo, BUFFER_SIZE);
+	// Print public key in PEM format (taken from the certificate)
 	puts("Public key (PEM):");
-	puts(certinfo);
+	EVP_PKEY *pub = X509_get_pubkey(crt);
+	if(pub != NULL)
+	{
+		PEM_write_bio_PUBKEY(out, pub);
+		EVP_PKEY_free(pub);
+	}
 
-	// Free resources
-	mbedtls_x509_crt_free(&crt);
-	mbedtls_pk_free(&key);
+	BIO_free(out);
+	X509_free(crt);
+	if(key != NULL)
+		EVP_PKEY_free(key);
 
 	return CERT_OKAY;
 }
@@ -574,9 +655,6 @@ enum cert_check cert_currently_valid(const char *certfile, const time_t valid_fo
 	if(certfile == NULL)
 		return CERT_FILE_NOT_FOUND;
 
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt_init(&crt);
-
 	// Check if the file exists and is readable
 	if(access(certfile, R_OK) != 0)
 	{
@@ -584,23 +662,28 @@ enum cert_check cert_currently_valid(const char *certfile, const time_t valid_fo
 		return CERT_FILE_NOT_FOUND;
 	}
 
-	int rc = mbedtls_x509_crt_parse_file(&crt, certfile);
-	if (rc != 0)
+	X509 *crt = NULL;
+	BIO *bio = BIO_new_file(certfile, "r");
+	if(bio != NULL)
 	{
-		log_err("Cannot parse certificate: Error code %d", rc);
+		crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+		BIO_free(bio);
+	}
+	if(crt == NULL)
+	{
+		log_err("Cannot parse certificate");
 		return CERT_CANNOT_PARSE_CERT;
 	}
 
-	// Compare validity of certificate
-	// - crt.valid_from needs to be in the past
-	// - crt.valid_to should be further away than at least two days
-	mbedtls_x509_time until = { 0 };
-	mbedtls_x509_time_gmtime(mbedtls_time(NULL) + valid_for_at_least_days * (24 * 3600), &until);
-	const bool is_valid_to = mbedtls_x509_time_cmp(&(crt.valid_to), &until) > 0;
-	const bool is_valid_from = mbedtls_x509_time_is_past(&(crt.valid_from));
+	// Validity check via ASN1_TIME_cmp_time_t() (X509_cmp_time() is deprecated in
+	// OpenSSL 4.0): notBefore must be in the past, notAfter beyond `future`. A
+	// compare error (-2) matches neither, so it fails closed.
+	const time_t future = time(NULL) + valid_for_at_least_days * (24 * 3600);
+	const bool is_valid_from = ASN1_TIME_cmp_time_t(X509_get0_notBefore(crt), time(NULL)) == -1;
+	const bool is_valid_to = ASN1_TIME_cmp_time_t(X509_get0_notAfter(crt), future) == 1;
 
 	// Free resources
-	mbedtls_x509_crt_free(&crt);
+	X509_free(crt);
 
 	// Return result
 	if(!is_valid_from)
@@ -619,32 +702,36 @@ bool is_pihole_certificate(const char *certfile)
 		return false;
 	}
 
-	mbedtls_x509_crt crt;
-	mbedtls_x509_crt_init(&crt);
-
-	int rc = mbedtls_x509_crt_parse_file(&crt, certfile);
-	if (rc != 0)
+	X509 *crt = NULL;
+	BIO *bio = BIO_new_file(certfile, "r");
+	if(bio != NULL)
 	{
-		log_err("Cannot parse certificate: Error code %d", rc);
+		crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+		BIO_free(bio);
+	}
+	if(crt == NULL)
+	{
+		log_err("Cannot parse certificate");
 		return false;
 	}
-	// Check if the issuer is "pi.hole"
-	const bool is_pihole_issuer = strncasecmp((char*)crt.issuer.val.p, "pi.hole", crt.issuer.val.len) == 0;
-	// Check if the subject is "pi.hole"
-	const bool is_pihole_subject = strncasecmp((char*)crt.subject.val.p, "pi.hole", crt.subject.val.len) == 0;
 
+	// Check if both the issuer and subject common name are "pi.hole"
+	char issuer_cn[256] = { 0 };
+	char subject_cn[256] = { 0 };
+	get_common_name(X509_get_issuer_name(crt), issuer_cn, sizeof(issuer_cn));
+	get_common_name(X509_get_subject_name(crt), subject_cn, sizeof(subject_cn));
 
 	// Free resources
-	mbedtls_x509_crt_free(&crt);
+	X509_free(crt);
 
-	return is_pihole_issuer && is_pihole_subject;
+	return strcasecmp(issuer_cn, "pi.hole") == 0 && strcasecmp(subject_cn, "pi.hole") == 0;
 }
 
 #else
 
 enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
 {
-	log_err("FTL was not compiled with mbedtls support");
+	log_err("FTL was not compiled with TLS support");
 	return CERT_FILE_NOT_FOUND;
 }
 
