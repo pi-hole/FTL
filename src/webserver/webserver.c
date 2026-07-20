@@ -33,9 +33,10 @@
 // thread_names
 #include "signals.h"
 
-#ifdef HAVE_MBEDTLS
-#include <mbedtls/ssl_ciphersuites.h>
-#endif /* HAVE_MBEDTLS */
+#ifdef HAVE_TLS
+#include <openssl/ssl.h>
+#include <openssl/opensslv.h>
+#endif /* HAVE_TLS */
 
 // Server context handle
 static struct mg_context *ctx = NULL;
@@ -328,30 +329,6 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	}
 
 	return 1;
-}
-
-void FTL_mbed_debug(void *user_param, int level, const char *file, int line, const char *message)
-{
-	// Only log when in TLS debugging mode
-	if(!config.debug.tls.v.b)
-		return;
-
-	(void)user_param;
-
-	// Skip initial pointer in message (like 0x7f73000279e0) if present
-	size_t len = strlen(message);
-	if(len > 0 && message[0] == '0' && message[1] == 'x')
-	{
-		message = strstr(message, ": ") + 2;
-		len = strlen(message);
-	}
-
-	// Truncate trailing newline in message if present
-	if(len > 0 && message[len - 1] == '\n')
-		len--;
-
-	// Log the message
-	log_web("mbedTLS(%s:%d, %d): %.*s", file, line, level, (int)len, message);
 }
 
 /**
@@ -666,7 +643,7 @@ void http_init(void)
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 	features |= MG_FEATURES_TLS;
 #endif
 
@@ -747,7 +724,7 @@ void http_init(void)
 		idx++;
 	}
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 	// Add TLS options if configured
 
 	// TLS is used when webserver.port contains "s" (e.g. "443s")
@@ -1073,7 +1050,7 @@ void http_terminate(void)
 		free(login_uri);
 }
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 static void restart_http(void)
 {
 	// Stop the server
@@ -1082,37 +1059,47 @@ static void restart_http(void)
 	// Reinitialize the webserver
 	http_init();
 }
-#endif /* HAVE_MBEDTLS */
+#endif /* HAVE_TLS */
 
 /**
- * @brief Prints all supported TLS cipher suites by mbedTLS.
+ * @brief Prints all supported TLS cipher suites by OpenSSL.
  *
- * This function retrieves the list of all available TLS cipher suites
- * supported by the mbedTLS library and prints their names, cipher IDs,
- * and key lengths to the standard output.
+ * This function retrieves the list of TLS cipher suites enabled by default in
+ * OpenSSL and prints their names, protocol versions, and key lengths to the
+ * standard output.
  *
  * The output format for each cipher suite is:
- *   - <suite_name> (Cipher ID: <suite_id>, Key length: <bitlen> bits)
+ *   - <suite_name> (Protocol: <version>, Key length: <bitlen> bits)
  *
  * No parameters are required and no value is returned.
  */
 void get_all_supported_ciphersuites(void)
 {
-#ifdef HAVE_MBEDTLS
-	const int *all = mbedtls_ssl_list_ciphersuites();
+#ifdef HAVE_TLS
+	SSL_CTX *ssl_ctx = SSL_CTX_new(TLS_method());
+	if(ssl_ctx == NULL)
+	{
+		printf("Unable to create SSL context\n");
+		return;
+	}
+
+	STACK_OF(SSL_CIPHER) *ciphers = SSL_CTX_get_ciphers(ssl_ctx);
 	printf("Supported TLS cipher suites:\n");
-	for (size_t i = 0; all[i] != 0; ++i)
+	for(int i = 0; i < sk_SSL_CIPHER_num(ciphers); i++)
 	{
 		// Get cipher suite details
-		const mbedtls_ssl_ciphersuite_t *suite_info = mbedtls_ssl_ciphersuite_from_id(all[i]);
-		const char *suite_name = mbedtls_ssl_ciphersuite_get_name(suite_info);
-		const size_t bitlen = mbedtls_ssl_ciphersuite_get_cipher_key_bitlen(suite_info);
-		printf("- %s (Cipher ID: %d, Key length: %zu bits)\n", suite_name, all[i], bitlen);
+		const SSL_CIPHER *cipher = sk_SSL_CIPHER_value(ciphers, i);
+		int bitlen = 0;
+		SSL_CIPHER_get_bits(cipher, &bitlen);
+		printf("- %s (Protocol: %s, Key length: %d bits)\n",
+		       SSL_CIPHER_get_name(cipher), SSL_CIPHER_get_version(cipher), bitlen);
 	}
-#endif /* HAVE_MBEDTLS */
+
+	SSL_CTX_free(ssl_ctx);
+#endif /* HAVE_TLS */
 }
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 void *webserver_thread(void *val)
 {
 	(void)val;
@@ -1140,15 +1127,25 @@ void *webserver_thread(void *val)
 			{
 				log_info("TLS certificate at %s is about to expire soon, generating new one",
 				         config.webserver.tls.cert.v.s);
-				generate_certificate(config.webserver.tls.cert.v.s, false,
+				if(generate_certificate(config.webserver.tls.cert.v.s, false,
 				             config.webserver.domain.v.s,
-				             config.webserver.tls.validity.v.ui);
+				             config.webserver.tls.validity.v.ui))
+				{
+					log_info("Restarting HTTP server");
+					restart_http();
 
-				log_info("Restarting HTTP server");
-				restart_http();
-
-				log_info("Done. The new certificate is valid for %u days",
-				         config.webserver.tls.validity.v.ui);
+					log_info("Done. The new certificate is valid for %u days",
+					         config.webserver.tls.validity.v.ui);
+				}
+				else
+				{
+					// Certificate generation failed. Thanks to the atomic
+					// write in write_to_file() the existing certificate file
+					// is untouched, so keep serving with it instead of
+					// restarting into a broken/missing certificate.
+					log_err("Failed to renew TLS certificate at %s, keeping the existing one",
+					        config.webserver.tls.cert.v.s);
+				}
 			}
 			else
 			{
@@ -1166,4 +1163,4 @@ void *webserver_thread(void *val)
 	log_info("Terminating webserver thread");
 	return NULL;
 }
-#endif /* HAVE_MBEDTLS */
+#endif /* HAVE_TLS */
