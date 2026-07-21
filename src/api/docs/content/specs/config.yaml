@@ -678,6 +678,8 @@ components:
                   type: boolean
                 performance:
                    type: boolean
+                dotdoh:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -975,6 +977,7 @@ components:
             netlink: false
             timing: false
             performance: false
+            dotdoh: false
             all: false
           took: 0.003
     config_one:
