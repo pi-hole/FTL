@@ -99,8 +99,13 @@ jobs:
             build_opts: ""
           - platform: linux/riscv64
             bin_name: pihole-FTL-riscv64
-            runner: ubuntu-24.04-arm
+            # Native RISC-V runner from the RISE project (Scaleway EM-RV1) so we
+            # build natively instead of under QEMU emulation. The early-access
+            # ubuntu-26.04-riscv pool never picked our jobs up, so use the GA label.
+            # https://riscv-runners.riseproject.dev/docs/getting-started/labels
+            runner: ubuntu-24.04-riscv
             build_opts: ""
+            native: true
     runs-on: ${{ matrix.runner }}
     env:
       CI_ARCH: ${{ matrix.platform }}
@@ -111,9 +116,10 @@ jobs:
       -
         name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 #v7.0.0
-      # QEMU should come before Buildx
+      # QEMU should come before Buildx. Not needed on native runners.
       -
         name: Set up QEMU
+        if: ${{ matrix.native != true }}
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 #v4.2.0
       -
         name: Set up Docker Buildx
@@ -131,7 +137,7 @@ jobs:
           timeout_minutes: 30
           command: |
             docker buildx build \
-              --platform ${{ matrix.platform }} \
+              ${{ matrix.native != true && format('--platform {0}', matrix.platform) || '' }} \
               --pull \
               --load \
               --build-arg "CI_ARCH=${{ matrix.platform }}" \
@@ -152,7 +158,7 @@ jobs:
             STATIC="true"
             if [ "${{ matrix.build_opts }}" = "clang" ]; then STATIC="false"; fi
             docker run --rm \
-              --platform ${{ matrix.platform }} \
+              ${{ matrix.native != true && format('--platform {0}', matrix.platform) || '' }} \
               --env CI_ARCH=${{ matrix.platform }} \
               --env BUILD_OPTS=${{ matrix.build_opts }} \
               --env STATIC=${STATIC} \
@@ -162,7 +168,7 @@ jobs:
         name: Export FTL files from ftl-build container (QEMU)
         # Create a temporary container to extract the built files
         run: |
-            docker create --platform ${{ matrix.platform }} --name temp-container ftl-builder:local
+            docker create ${{ matrix.native != true && format('--platform {0}', matrix.platform) || '' }} --name temp-container ftl-builder:local
             docker cp temp-container:/pihole-FTL ./pihole-FTL
             docker cp temp-container:/api-docs.tar.gz ./api-docs.tar.gz
             docker cp temp-container:/pihole.toml ./pihole.toml
