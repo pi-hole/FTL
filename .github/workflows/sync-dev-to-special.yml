@@ -1,0 +1,18 @@
+name: Sync Development to Special
+
+on:
+  push:
+    branches:
+      - development
+
+jobs:
+  sync-branches:
+    runs-on: ubuntu-latest
+    name: Syncing branches
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 #v7.0.0
+      - name: Opening pull request
+        run: gh pr create -B special/CI_development -H development --title 'Sync development into special/CI_development' --body 'Created by Github action' --label 'internal'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
