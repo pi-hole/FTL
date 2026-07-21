@@ -106,6 +106,12 @@ static void test_doh(void)
 	// sni@[ipv6] pinning, as emitted for the suggested DoH servers
 	ok("https://dns.google@[2001:4860:4860::8888]/dns-query", UST_DOH, "2001:4860:4860::8888", "dns.google", 443, "/dns-query");
 	ok("https://doh.example#8443/q",           UST_DOH, "doh.example", "doh.example", 8443, "/q");
+
+	// DoH3 (HTTP/3 over QUIC): same grammar and defaults as https://, only the scheme differs.
+	ok("h3://cloudflare-dns.com/dns-query", UST_DOH3, "cloudflare-dns.com", "cloudflare-dns.com", 443, "/dns-query");
+	ok("h3://cloudflare-dns.com",           UST_DOH3, "cloudflare-dns.com", "cloudflare-dns.com", 443, "/dns-query");
+	ok("h3://dns.google@[2001:4860:4860::8888]/dns-query", UST_DOH3, "2001:4860:4860::8888", "dns.google", 443, "/dns-query");
+	ok("h3://doh.example#8443/q",           UST_DOH3, "doh.example", "doh.example", 8443, "/q");
 }
 
 static void test_reject(void)
@@ -121,6 +127,9 @@ static void test_reject(void)
 	bad("ftp://x"); // unknown scheme
 	bad("tls://@1.1.1.1"); // empty verify name
 	bad("tls://name@"); // empty connect host
+	bad("h3://"); // empty host
+	bad("h3://ho st/dns-query"); // space in host
+	bad("h3://host#0"); // port 0
 	bad(NULL); // NULL input
 	bad(""); // empty input
 }

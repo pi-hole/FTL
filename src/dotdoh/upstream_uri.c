@@ -76,6 +76,8 @@ static int __attribute__((pure)) parse_port(const char *s)
 // tls://[<ipv6>][#<port>]               DoT to a bracketed IPv6 literal
 // https://<host>[#<port>][/<path>]      DoH, default port 443, path /dns-query
 // https://<verify>@<ip>[#<port>][/<path>]
+// h3://<host>[#<port>][/<path>]         DoH3 (HTTP/3 over QUIC), same defaults
+// h3://<verify>@<ip>[#<port>][/<path>]
 //
 // Rejects control characters (incl. CR/LF), empty host, invalid/oversized
 // fields, and unknown schemes.
@@ -112,17 +114,23 @@ bool parse_upstream_uri(const char *in, struct upstream_uri *out)
 		out->type = UST_DOT;
 	else if(schemelen == 5 && strncmp(in, "https", 5) == 0)
 		out->type = UST_DOH;
+	else if(schemelen == 2 && strncmp(in, "h3", 2) == 0)
+		out->type = UST_DOH3;
 	else
 		return false; // unknown scheme
 
+	// DoH over TCP (h1.1/h2) and DoH3 over QUIC share the same authority/path
+	// grammar and defaults; only the transport differs.
+	const bool is_doh = (out->type == UST_DOH || out->type == UST_DOH3);
+
 	const char *rest = sep + 3;
 	// 853 is the DoT default port (RFC 7858 Sec. 3.1); 443 is HTTPS for
-	// DoH.
+	// DoH and the default UDP port for DoH3/QUIC.
 	const int default_port = (out->type == UST_DOT) ? 853 : 443;
 
-	// For DoH, split off the path at the first '/'.
+	// For DoH(3), split off the path at the first '/'.
 	const char *authority_end = rest + strlen(rest);
-	if(out->type == UST_DOH)
+	if(is_doh)
 	{
 		const char *slash = strchr(rest, '/');
 		if(slash != NULL)

@@ -27,6 +27,10 @@
 #ifdef HAVE_TLS
 
 #include "framing.h"
+#ifdef HAVE_HTTP2
+// DoH: an https:// upstream that negotiates "h2" via ALPN is driven by nghttp2.
+#include <nghttp2/nghttp2.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
@@ -92,6 +96,10 @@ struct tls_conn {
 	unsigned queries_served;                        // exchanges on this connection
 	uint8_t req[DNS_MSG_MAX + 512];                 // framed request we send
 	uint8_t rbuf[DNS_MSG_MAX + DOH_HEADER_MAX];     // response accumulation buffer
+#ifdef HAVE_HTTP2
+	bool is_h2;                                     // ALPN negotiated "h2" (DoH only)
+	nghttp2_session *h2;                            // persistent client session, lazy
+#endif
 };
 
 // Per-upstream pool: a bounded set of connections plus the shared resumption
@@ -300,6 +308,13 @@ static bool ssl_io_wait(int fd, int ssl_err, uint64_t deadline)
 // not touch pool bookkeeping.
 static void conn_teardown(struct tls_conn *c)
 {
+#ifdef HAVE_HTTP2
+	if(c->h2 != NULL)
+	{
+		nghttp2_session_del(c->h2);
+		c->h2 = NULL;
+	}
+#endif
 	if(c->ssl != NULL)
 	{
 		if(c->connected)
@@ -388,6 +403,17 @@ static bool conn_connect(struct tls_pool *p, struct tls_conn *c,
 	if(SSL_set_fd(c->ssl, c->fd) != 1)
 		goto fail;
 
+#ifdef HAVE_HTTP2
+	// DoH offers "h2" then "http/1.1" and lets the server choose; if h2 is not
+	// selected we fall back to HTTP/1.1 framing. DoT does not use ALPN.
+	if(u->type == UST_DOH)
+	{
+		static const unsigned char alpn[] =
+			{ 2, 'h', '2', 8, 'h', 't', 't', 'p', '/', '1', '.', '1' };
+		SSL_set_alpn_protos(c->ssl, alpn, sizeof(alpn));
+	}
+#endif
+
 	// Non-blocking handshake: SSL_connect yields WANT_READ/WANT_WRITE and we poll
 	// with the remaining budget, so a slow-drip peer cannot outlast the deadline.
 	// A verification failure returns a hard error here - fail-closed.
@@ -408,6 +434,19 @@ static bool conn_connect(struct tls_pool *p, struct tls_conn *c,
 			goto fail;
 		}
 	}
+
+#ifdef HAVE_HTTP2
+	// Record the negotiated protocol; the nghttp2 session is created lazily in conn_do_h2().
+	c->is_h2 = false;
+	if(u->type == UST_DOH)
+	{
+		const unsigned char *proto = NULL;
+		unsigned int plen = 0;
+		SSL_get0_alpn_selected(c->ssl, &proto, &plen);
+		if(proto != NULL && plen == 2 && memcmp(proto, "h2", 2) == 0)
+			c->is_h2 = true;
+	}
+#endif
 
 	*outcome = SSL_session_reused(c->ssl) ? HS_RESUMED
 	         : (tried_resume ? HS_FULL_FALLBACK : HS_FRESH_COLD);
@@ -444,12 +483,258 @@ static bool ssl_write_all(struct tls_conn *c, const uint8_t *buf, size_t len, ui
 	return true;
 }
 
+#ifdef HAVE_HTTP2
+// --- DoH over HTTP/2 (nghttp2) ---------------------------------------------
+//
+// Driven when an https:// upstream selected "h2" via ALPN. The pool serialises
+// exchanges, so one request stream is in flight at a time; the nghttp2 session
+// persists across exchanges (preface sent once). Any error maps to -1 so the
+// caller tears down the connection and fails over.
+
+// Per-exchange state, on the worker stack for the duration of conn_do_h2().
+// Reached from the nghttp2 callbacks via the stream user data.
+struct h2_xfer {
+	const uint8_t *query;   // request body (the padded DNS query)
+	size_t qlen;            // request body length
+	size_t qoff;            // bytes already pulled by the data provider
+	uint8_t *answer;        // caller's answer buffer
+	size_t answer_sz;       // its capacity
+	size_t answer_len;      // response body bytes collected so far
+	int status;             // parsed :status (0 until seen)
+	bool overflow;          // response body exceeded answer_sz
+	bool closed;            // stream has closed
+	bool failed;            // stream closed with an error (RST/GOAWAY)
+};
+
+// nghttp2 data provider: hand the padded DNS query to nghttp2 as the POST body.
+static nghttp2_ssize h2_req_read(nghttp2_session *session, int32_t stream_id,
+                                 uint8_t *buf, size_t length, uint32_t *data_flags,
+                                 nghttp2_data_source *source, void *user_data)
+{
+	(void)session; (void)stream_id; (void)user_data;
+	struct h2_xfer *x = source->ptr;
+	const size_t avail = x->qlen - x->qoff;
+	const size_t n = avail < length ? avail : length;
+	if(n > 0)
+	{
+		memcpy(buf, x->query + x->qoff, n);
+		x->qoff += n;
+	}
+	if(x->qoff >= x->qlen)
+		*data_flags |= NGHTTP2_DATA_FLAG_EOF;
+	return (nghttp2_ssize)n;
+}
+
+// Capture the :status pseudo-header of the response.
+static int h2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
+                        const uint8_t *name, size_t namelen,
+                        const uint8_t *value, size_t valuelen,
+                        uint8_t flags, void *user_data)
+{
+	(void)flags; (void)user_data;
+	if(frame->hd.type != NGHTTP2_HEADERS)
+		return 0;
+	struct h2_xfer *x = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
+	if(x == NULL)
+		return 0;
+	if(namelen == 7 && memcmp(name, ":status", 7) == 0)
+	{
+		int s = 0;
+		// A :status is exactly three digits; cap the loop so a hostile upstream's
+		// long digit run cannot overflow the int accumulator (undefined behaviour).
+		for(size_t i = 0; i < valuelen && i < 3 && value[i] >= '0' && value[i] <= '9'; i++)
+			s = s * 10 + (value[i] - '0');
+		x->status = s;
+	}
+	return 0;
+}
+
+// Collect response DATA into the answer buffer. Overrunning the bounded buffer
+// is a hard failure (fail closed): abort the session so the exchange returns -1.
+static int h2_on_data_chunk(nghttp2_session *session, uint8_t flags, int32_t stream_id,
+                            const uint8_t *data, size_t len, void *user_data)
+{
+	(void)flags; (void)user_data;
+	struct h2_xfer *x = nghttp2_session_get_stream_user_data(session, stream_id);
+	if(x == NULL)
+		return 0;
+	if(len > x->answer_sz - x->answer_len)
+	{
+		x->overflow = true;
+		return NGHTTP2_ERR_CALLBACK_FAILURE;
+	}
+	memcpy(x->answer + x->answer_len, data, len);
+	x->answer_len += len;
+	return 0;
+}
+
+// Mark the stream done; a non-zero error code means it was reset, not completed.
+static int h2_on_stream_close(nghttp2_session *session, int32_t stream_id,
+                              uint32_t error_code, void *user_data)
+{
+	(void)user_data;
+	struct h2_xfer *x = nghttp2_session_get_stream_user_data(session, stream_id);
+	if(x == NULL)
+		return 0;
+	x->closed = true;
+	if(error_code != NGHTTP2_NO_ERROR)
+		x->failed = true;
+	return 0;
+}
+
+// Create the persistent nghttp2 client session on first use and queue the
+// connection preface (SETTINGS). Returns true once c->h2 is ready.
+static bool h2_session_init(struct tls_conn *c)
+{
+	if(c->h2 != NULL)
+		return true;
+
+	nghttp2_session_callbacks *cbs = NULL;
+	if(nghttp2_session_callbacks_new(&cbs) != 0)
+		return false;
+	nghttp2_session_callbacks_set_on_header_callback(cbs, h2_on_header);
+	nghttp2_session_callbacks_set_on_data_chunk_recv_callback(cbs, h2_on_data_chunk);
+	nghttp2_session_callbacks_set_on_stream_close_callback(cbs, h2_on_stream_close);
+	const int rv = nghttp2_session_client_new(&c->h2, cbs, c);
+	nghttp2_session_callbacks_del(cbs);
+	if(rv != 0)
+	{
+		c->h2 = NULL;
+		return false;
+	}
+	// The connection preface is the 24-byte magic (auto-emitted) plus a SETTINGS
+	// frame we submit; an empty SETTINGS is valid. Flushed with the first request.
+	if(nghttp2_submit_settings(c->h2, NGHTTP2_FLAG_NONE, NULL, 0) != 0)
+	{
+		nghttp2_session_del(c->h2);
+		c->h2 = NULL;
+		return false;
+	}
+	return true;
+}
+
+// Flush all frames nghttp2 has queued to the TLS connection.
+static bool h2_send(struct tls_conn *c, uint64_t deadline)
+{
+	for(;;)
+	{
+		const uint8_t *data = NULL;
+		const nghttp2_ssize n = nghttp2_session_mem_send2(c->h2, &data);
+		if(n < 0)
+			return false;
+		if(n == 0)
+			return true;
+		if(!ssl_write_all(c, data, (size_t)n, deadline))
+			return false;
+	}
+}
+
+// Fill one nghttp2_nv from NUL-terminated name/value strings.
+static nghttp2_nv h2_nv(const char *name, const char *value)
+{
+	nghttp2_nv nv;
+	nv.name = (uint8_t *)name;
+	nv.namelen = strlen(name);
+	nv.value = (uint8_t *)value;
+	nv.valuelen = strlen(value);
+	nv.flags = NGHTTP2_NV_FLAG_NONE;
+	return nv;
+}
+
+// Perform one DoH exchange over HTTP/2 on an established, h2-negotiated
+// connection. Returns the answer length, or -1 on any error.
+static ssize_t conn_do_h2(struct tls_conn *c, const struct upstream_uri *u,
+                          const uint8_t *query, size_t qlen,
+                          uint8_t *answer, size_t answer_sz, uint64_t deadline)
+{
+	if(qlen == 0 || qlen > DNS_MSG_MAX)
+		return -1;
+	if(!h2_session_init(c))
+		return -1;
+
+	struct h2_xfer x = { .query = query, .qlen = qlen,
+	                     .answer = answer, .answer_sz = answer_sz };
+
+	// An IPv6-literal authority must be bracketed; a hostname never contains ':'.
+	char authority[UURI_HOST_MAX + 2];
+	if(strchr(u->verify_name, ':') != NULL)
+		snprintf(authority, sizeof(authority), "[%s]", u->verify_name);
+	else
+		snprintf(authority, sizeof(authority), "%s", u->verify_name);
+
+	char clen[16];
+	snprintf(clen, sizeof(clen), "%zu", qlen);
+
+	// RFC 8484: POST the DNS wire message with media type application/dns-message.
+	const nghttp2_nv nva[] = {
+		h2_nv(":method", "POST"),
+		h2_nv(":scheme", "https"),
+		h2_nv(":authority", authority),
+		h2_nv(":path", u->doh_path),
+		h2_nv("content-type", "application/dns-message"),
+		h2_nv("accept", "application/dns-message"),
+		h2_nv("content-length", clen),
+	};
+
+	nghttp2_data_provider2 prd = { .source.ptr = &x, .read_callback = h2_req_read };
+	const int32_t sid = nghttp2_submit_request2(c->h2, NULL, nva,
+	                                            sizeof(nva) / sizeof(nva[0]), &prd, &x);
+	if(sid < 0)
+		return -1;
+
+	// Drive the single in-flight request until the stream closes or the deadline
+	// passes. The read scratch reuses c->rbuf (unused on the h2 path).
+	while(!x.closed)
+	{
+		if(!h2_send(c, deadline))
+			return -1;
+		if(x.closed)
+			break;
+		if(!nghttp2_session_want_read(c->h2) && !nghttp2_session_want_write(c->h2))
+			break;
+		if(now_ms() >= deadline)
+			return -1;
+		const int r = SSL_read(c->ssl, c->rbuf, (int)sizeof(c->rbuf));
+		if(r <= 0)
+		{
+			const int err = SSL_get_error(c->ssl, r);
+			// Block in poll() until readable/writable or the deadline passes,
+			// instead of spinning the CPU re-reading the non-blocking socket
+			// (mirrors conn_do()); the deadline is still enforced at the top.
+			if((err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) &&
+			   ssl_io_wait(c->fd, err, deadline))
+				continue;
+			return -1;
+		}
+		if(nghttp2_session_mem_recv2(c->h2, c->rbuf, (size_t)r) < 0)
+			return -1;
+	}
+
+	// Flush frames the final recv queued (SETTINGS ACK, WINDOW_UPDATE) to leave a
+	// reused keep-alive connection clean. Best-effort - the answer is in hand.
+	(void)h2_send(c, deadline);
+
+	// A cleanly closed stream carrying a 200 with a non-empty body is the only
+	// success; anything else fails closed.
+	if(x.failed || x.overflow || x.status != 200 || x.answer_len == 0)
+		return -1;
+	return (ssize_t)x.answer_len;
+}
+#endif // HAVE_HTTP2
+
 // Send one query and read back the framed answer over an established connection.
 // Returns the answer length, or -1 on any protocol/transport error.
 static ssize_t conn_do(struct tls_conn *c, const struct upstream_uri *u,
                        const uint8_t *query, size_t qlen,
                        uint8_t *answer, size_t answer_sz, uint64_t deadline)
 {
+#ifdef HAVE_HTTP2
+	// A DoH upstream that negotiated "h2" uses the nghttp2 path; DoT and the
+	// HTTP/1.1 DoH fallback continue below unchanged.
+	if(u->type == UST_DOH && c->is_h2)
+		return conn_do_h2(c, u, query, qlen, answer, answer_sz, deadline);
+#endif
+
 	// Frame the request: DoT prepends a 2-byte length, DoH wraps it in a POST.
 	ssize_t reqlen;
 	if(u->type == UST_DOT)
