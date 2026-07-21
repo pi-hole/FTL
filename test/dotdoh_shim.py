@@ -37,6 +37,13 @@ DOH_ADDR = ("127.0.0.1", 8443)
 # 128-octet boundary (RFC 8467), so a padded query arrives as a multiple of 128.
 PAD_LOG = os.environ.get("SHIM_PAD_LOG", "")
 _pad_lock = threading.Lock()
+# Optional per-response delay (ms). When set, each backend resolution sleeps this
+# long before replying, so a concurrency test can make in-flight exchanges
+# overlap (a serial client would take N*delay, a parallel one ~delay).
+try:
+    DELAY_S = float(os.environ.get("SHIM_DELAY_MS", "0")) / 1000.0
+except ValueError:
+    DELAY_S = 0.0
 
 
 def note_query(transport, query):
@@ -49,6 +56,8 @@ def note_query(transport, query):
 
 def resolve(wire):
     """Forward a DNS wire message to the plaintext backend and return the reply."""
+    if DELAY_S > 0:
+        time.sleep(DELAY_S)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(5)
     try:
@@ -108,47 +117,55 @@ def doh_handle(ctx, raw):
     except Exception:
         raw.close()
         return
+    # Persistent HTTP/1.1 keep-alive, like a real DoH resolver (Cloudflare/Google
+    # keep the connection open for a long time): serve request after request on the
+    # same connection so FTL's connection pool actually reuses it. An idle timeout
+    # eventually closes it, matching a real server.
+    conn.settimeout(30)
+    buf = b""
     try:
-        # Read up to the end of the request headers.
-        data = b""
-        while b"\r\n\r\n" not in data:
-            chunk = conn.recv(4096)
-            if not chunk:
-                return
-            data += chunk
-            if len(data) > 65536:
-                return
-        head, _, body = data.partition(b"\r\n\r\n")
-
-        # Require a valid, positive Content-Length and read exactly that many
-        # body bytes. A malformed client request then fails closed (the
-        # connection is dropped with no answer) instead of being resolved with
-        # an empty or partial body, which could mask a broken client.
-        content_len = None
-        for line in head.split(b"\r\n")[1:]:
-            if line.lower().startswith(b"content-length:"):
-                try:
-                    content_len = int(line.split(b":", 1)[1].strip())
-                except ValueError:
+        while True:
+            # Read up to the end of the request headers, keeping any bytes that
+            # belong to the following pipelined request in buf.
+            while b"\r\n\r\n" not in buf:
+                chunk = conn.recv(4096)
+                if not chunk:
                     return
-        if content_len is None or content_len <= 0:
-            return
-        while len(body) < content_len:
-            chunk = conn.recv(content_len - len(body))
-            if not chunk:
-                return  # connection closed before the full body arrived
-            body += chunk
-        body = body[:content_len]
+                buf += chunk
+                if len(buf) > 65536:
+                    return
+            head, _, rest = buf.partition(b"\r\n\r\n")
 
-        note_query("doh", body)
-        answer = resolve(body)
-        resp = (
-            b"HTTP/1.1 200 OK\r\n"
-            b"Content-Type: application/dns-message\r\n"
-            b"Content-Length: " + str(len(answer)).encode() + b"\r\n"
-            b"Connection: close\r\n\r\n" + answer
-        )
-        conn.sendall(resp)
+            # Require a valid, positive Content-Length and read exactly that many
+            # body bytes. A malformed request fails closed (connection dropped, no
+            # answer) instead of being resolved with an empty or partial body.
+            content_len = None
+            for line in head.split(b"\r\n")[1:]:
+                if line.lower().startswith(b"content-length:"):
+                    try:
+                        content_len = int(line.split(b":", 1)[1].strip())
+                    except ValueError:
+                        return
+            if content_len is None or content_len <= 0:
+                return
+            body = rest
+            while len(body) < content_len:
+                chunk = conn.recv(content_len - len(body))
+                if not chunk:
+                    return  # connection closed before the full body arrived
+                body += chunk
+            buf = body[content_len:]  # leftover -> start of the next request
+            body = body[:content_len]
+
+            note_query("doh", body)
+            answer = resolve(body)
+            resp = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: application/dns-message\r\n"
+                b"Content-Length: " + str(len(answer)).encode() + b"\r\n"
+                b"Connection: keep-alive\r\n\r\n" + answer
+            )
+            conn.sendall(resp)
     except Exception:
         pass
     finally:

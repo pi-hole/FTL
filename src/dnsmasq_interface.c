@@ -3585,7 +3585,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		exit(EXIT_FAILURE);
 	}
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 	// Start webserver thread
 	if(pthread_create( &threads[WEBSERVER], &attr, webserver_thread, NULL ) != 0)
 	{
@@ -3595,22 +3595,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 #else
 	// Initialize FTL HTTP server
 	http_init();
-#endif /* HAVE_MBEDTLS */
+#endif /* HAVE_TLS */
 
-	// Arm the encrypted-upstream (DoT/DoH) proxy and start its worker. This must
-	// happen here - after dnsmasq's own startup has closed stray fds - because
-	// binding the listeners any earlier would get their fds closed and their
-	// numbers reused by dnsmasq. Only relevant when dnsmasq is actually running.
+	// Arm the DoT/DoH proxy here - after dnsmasq's startup has closed stray fds,
+	// or the listener fds would be closed and their numbers reused. It runs its
+	// own (auto-scaled) worker threads, so no FTL thread slot is needed.
 	if(dnsmasq_start)
-	{
 		dotdoh_init();
-		if(dotdoh_count() > 0 &&
-		   pthread_create( &threads[DOTDOH], &attr, dotdoh_thread, NULL ) != 0)
-		{
-			log_crit("Unable to create dotdoh thread. Exiting...");
-			exit(EXIT_FAILURE);
-		}
-	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")
@@ -4170,6 +4161,20 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 {
 	for (unsigned int i = 0; i < __METRIC_MAX; i++)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
+}
+
+// Fail-closed forwarding gate: for one of our DoT/DoH loopback tuples, return
+// false unless the proxy actually armed it, so dnsmasq skips it (fails over)
+// instead of leaking the plaintext query to a tuple we do not own. Anything else
+// is always available, decided in two comparisons to keep this hot path cheap.
+bool FTL_is_forward_available(const union mysockaddr *addr)
+{
+	if(addr == NULL || addr->sa.sa_family != AF_INET)
+		return true;
+	const uint32_t a = ntohl(addr->in.sin_addr.s_addr);
+	if((a >> 24) != 127)
+		return true; // not 127.0.0.0/8: a real upstream, never gated
+	return dotdoh_forward_available(a, ntohs(addr->in.sin_port));
 }
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)

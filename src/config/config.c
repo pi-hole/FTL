@@ -1682,6 +1682,12 @@ void initConfig(struct config *conf)
 	conf->debug.performance.d.b = false;
 	conf->debug.performance.c = validate_stub; // Only type-based checking
 
+	conf->debug.dotdoh.k = "debug.dotdoh";
+	conf->debug.dotdoh.h = "Print periodic per-upstream statistics for the encrypted-upstream (DoT/DoH) proxy: query throughput, connection reuse depth, TLS session resumption and how often a full handshake was needed. Useful for assessing keep-alive effectiveness against real upstream resolvers.";
+	conf->debug.dotdoh.t = CONF_BOOL;
+	conf->debug.dotdoh.d.b = false;
+	conf->debug.dotdoh.c = validate_stub; // Only type-based checking
+
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;
