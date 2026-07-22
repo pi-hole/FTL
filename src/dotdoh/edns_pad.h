@@ -32,4 +32,8 @@
 // dropped.
 size_t edns_pad_query(uint8_t *buf, size_t len, size_t bufsz);
 
+// Requestor's advertised EDNS UDP payload size from a query (OPT CLASS field), or
+// 512 when absent/unparsable. See edns_pad.c for details.
+uint16_t edns_query_udp_size(const uint8_t *buf, size_t len) __attribute__((pure));
+
 #endif // DOTDOH_EDNS_PAD_H

@@ -58,8 +58,8 @@ struct proxy_up {
 	char target[INET_ADDRSTRLEN + 8]; // "127.47.11.N#P", for logging
 };
 
-// Human-readable transport name for logging. Kept as an if-ladder (not a switch)
-// to avoid -Wswitch-enum churn; UST_PLAIN never reaches the proxy.
+// Transport name for logging. An if-ladder (not a switch) dodges -Wswitch-enum;
+// UST_PLAIN never reaches the proxy.
 static const char *ustype_name(enum ustype t)
 {
 	if(t == UST_DOT)  return "DoT";
@@ -68,8 +68,8 @@ static const char *ustype_name(enum ustype t)
 	return "?";
 }
 
-// Route one exchange to the transport this upstream uses: DoH3 goes over QUIC,
-// everything else over the TCP TLS pool. Returns the answer length or -1.
+// Route one exchange to this upstream's transport: DoH3 over QUIC, else the TCP
+// TLS pool. Returns the answer length or -1.
 static ssize_t up_exchange(struct proxy_up *up, const uint8_t *query, size_t qlen,
                            uint8_t *answer, size_t answer_sz)
 {
@@ -193,6 +193,11 @@ void dotdoh_init(void)
 	if(!tls_ok)
 		log_err("dotdoh: TLS init failed - encrypted upstreams are disabled");
 
+	// Bring up the QUIC context for h3:// (separate OpenSSL ctx, same trust store).
+	// Failure fails closed: h3:// pools stay un-armed, DoT/DoH keep working. No-op
+	// stub without QUIC/nghttp3.
+	quic_client_global_init(config.dns.upstreamCA.v.s);
+
 	compute_scale(n_encrypted);
 
 	// Walk the upstreams in order. Each encrypted entry consumes one slot (enc)
@@ -227,8 +232,7 @@ void dotdoh_init(void)
 		// queries fail over, never downgrade to plaintext.
 		if(tls_ok && proxy_listener_bind(enc, &up->listener))
 		{
-			// DoH3 runs over QUIC and owns a separate pool type; DoT and DoH
-			// over TLS share the TCP pool. Only one is ever non-NULL.
+			// DoH3 uses the QUIC pool; DoT/DoH share the TCP pool - only one is non-NULL.
 			bool pool_ok;
 			if(u.type == UST_DOH3)
 			{
@@ -402,6 +406,42 @@ static bool write_full(int fd, const uint8_t *buf, size_t len, uint64_t deadline
 	return true;
 }
 
+// IPv4 UDP payload cap (65535 - 20 IP - 8 UDP). A DNS answer above this cannot be
+// sent in a single loopback UDP datagram.
+#define UDP4_MAX_PAYLOAD 65507u
+
+// Build a minimal TC=1 (truncated) response - the DNS header plus the question
+// section, with the answer/authority/additional counts cleared - from a full
+// answer too large for a UDP datagram, so dnsmasq retries the query over TCP.
+// Returns the length written, or 0 if the answer is too short/malformed to parse.
+static size_t dns_truncated_response(const uint8_t *ans, size_t alen,
+                                     uint8_t *out, size_t out_sz)
+{
+	if(alen < 12)
+		return 0;
+	const unsigned qd = ((unsigned)ans[4] << 8) | ans[5];
+	size_t off = 12;
+	for(unsigned q = 0; q < qd && off < alen; q++)
+	{
+		// Walk the QNAME labels; compression is not legal in a question.
+		while(off < alen && ans[off] != 0)
+		{
+			if((ans[off] & 0xC0) != 0)
+				return 0;
+			off += (size_t)ans[off] + 1;
+		}
+		off += 1 + 4; // root label + QTYPE + QCLASS
+	}
+	if(off > alen || off > out_sz)
+		return 0;
+	memcpy(out, ans, off);
+	out[2] |= 0x02;                      // set TC
+	out[6] = out[7] = 0;                 // ANCOUNT = 0
+	out[8] = out[9] = 0;                 // NSCOUNT = 0
+	out[10] = out[11] = 0;               // ARCOUNT = 0
+	return off;
+}
+
 // A single UDP query from dnsmasq: receive, forward over TLS, send the answer
 // back to the same source. On failure we drop it (see the file header).
 static void handle_udp(struct proxy_up *up)
@@ -421,6 +461,15 @@ static void handle_udp(struct proxy_up *up)
 	if(!is_loopback_v4(&src))
 		return;
 
+	// The requestor's advertised UDP payload size, read before padding. A stream
+	// upstream (DoT/DoH/DoH3) is not bound by it (RFC 7766) and may return a full
+	// answer, but we are emulating a DNS server to dnsmasq and must honour it: an
+	// answer above it (capped at the IP datagram limit) is TC-truncated so dnsmasq
+	// retries over TCP, rather than sent whole and silently byte-chopped by
+	// dnsmasq's receive buffer (breaking DNSSEC and large answers).
+	const uint16_t udp_max = edns_query_udp_size(query, (size_t)n);
+	const size_t max_reply = udp_max < UDP4_MAX_PAYLOAD ? udp_max : UDP4_MAX_PAYLOAD;
+
 	// Pad the query to a block boundary (RFC 8467) before it is encrypted, so the
 	// ciphertext size no longer leaks the query. Only this encrypted leg is
 	// padded; the plaintext dnsmasq spoke to us over loopback is left untouched.
@@ -429,6 +478,16 @@ static void handle_udp(struct proxy_up *up)
 	if(a < 0)
 		return; // drop -> dnsmasq times out and fails over
 
+	if((size_t)a > max_reply)
+	{
+		// Reply TC=1 so dnsmasq retries over TCP, where the length-prefixed leg
+		// carries the whole answer.
+		uint8_t tc[512];
+		const size_t tlen = dns_truncated_response(answer, (size_t)a, tc, sizeof(tc));
+		if(tlen > 0)
+			sendto(up->listener.udp_fd, tc, tlen, 0, (struct sockaddr *)&src, sl);
+		return;
+	}
 	sendto(up->listener.udp_fd, answer, (size_t)a, 0, (struct sockaddr *)&src, sl);
 }
 
@@ -655,4 +714,5 @@ void dotdoh_cleanup(void)
 	g_armed = false;
 	g_uri_count = 0;
 	tls_client_global_free();
+	quic_client_global_free();
 }

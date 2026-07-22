@@ -24,24 +24,26 @@
 #include <sys/types.h>
 
 #include "upstream_uri.h"
-// struct dotdoh_stats is shared with the TCP client so the proxy can report both
-// transports through one summary path.
+// struct dotdoh_stats is shared with the TCP client (one summary path).
 #include "tls_client.h"
 
-// Per-upstream QUIC connection pool. Opaque: all connection and concurrency
-// state lives inside the implementation.
+// Per-upstream QUIC connection pool; all state lives in the implementation.
 struct quic_pool; // opaque
 
-// Create / destroy a per-upstream DoH3 pool. max_conns bounds the concurrent
-// QUIC connections to this upstream. The pool copies *u. Returns NULL on failure
-// (e.g. this build has no QUIC/nghttp3 support).
+// Build / tear down the shared QUIC SSL_CTX (trust store, ca_file NULL = system
+// bundle; fail-closed verify), mirroring tls_client_global_init(). Idempotent;
+// returns false in a build without OpenSSL QUIC + nghttp3. Call before quic_pool_new.
+bool quic_client_global_init(const char *ca_file);
+void quic_client_global_free(void);
+
+// Create / destroy a per-upstream DoH3 pool. max_conns bounds concurrent QUIC
+// connections; the pool copies *u. Returns NULL on failure (e.g. no QUIC build).
 struct quic_pool *quic_pool_new(const struct upstream_uri *u, int max_conns) __attribute__((malloc));
 void quic_pool_free(struct quic_pool *p);
 
 // Perform one DNS exchange over HTTP/3. query/qlen is the DNS wire message; the
 // answer is written into answer[answer_sz]. Returns the answer length, or -1 on
-// any failure (the caller drops the query so dnsmasq fails over). Thread-safe.
-// Fail-closed.
+// failure (caller drops the query, dnsmasq fails over). Thread-safe, fail-closed.
 ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qlen,
                            uint8_t *answer, size_t answer_sz);
 
