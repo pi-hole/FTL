@@ -283,6 +283,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
 			case CONF_ENUM_BLOCKING_EDNS_MODE:
+			case CONF_ENUM_LOG_DESTINATION:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -321,6 +322,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		case CONF_ENUM_LOG_DESTINATION:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 		case CONF_ALL_DEBUG_BOOL:
@@ -377,6 +379,7 @@ void free_config(struct config *conf, const bool terminating)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
 			case CONF_ENUM_BLOCKING_EDNS_MODE:
+			case CONF_ENUM_LOG_DESTINATION:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -1378,7 +1381,7 @@ void initConfig(struct config *conf)
 	conf->files.pcap.c = validate_filepath_empty;
 
 	// sub-struct files.log
-	// conf->files.log.ftl is set in a separate function (getLogFilePath)
+	// conf->files.log.ftl and conf->files.log.destination is set in a separate function (getLogFilePath)
 
 	conf->files.log.dnsmasq.k = "files.log.dnsmasq";
 	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
@@ -2003,6 +2006,20 @@ static bool getLogFilePathENV(void)
 	return true;
 }
 
+static bool getLogDestinationENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_destination");
+	if(val == NULL || *val == '\0')
+		return false;
+
+	const int dest = get_log_destination_val(val);
+	if(dest == -1)
+		return false;
+
+	config.files.log.destination.v.log_destination = dest;
+	return true;
+}
+
 bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
@@ -2018,9 +2035,38 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Try sources in priority order: ENV > TOML > legacy
-	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
-		return getLogFilePathLegacy(&config, NULL);
+	// Initialize log destination
+	config.files.log.destination.k = "files.log.destination";
+	config.files.log.destination.h = "Where to write FTL, webserver and dnsmasq log output";
+	{
+		struct enum_options log_destination[] =
+		{
+			{ "FILE", "Write logs to the configured log files" },
+			{ "JSON", "Write logs as structured JSON to stdout" }
+		};
+		CONFIG_ADD_ENUM_OPTIONS(config.files.log.destination.a, log_destination);
+	}
+	config.files.log.destination.t = CONF_ENUM_LOG_DESTINATION;
+	config.files.log.destination.f = FLAG_READ_ONLY;
+	config.files.log.destination.d.log_destination = LOG_DEST_FILE;
+	config.files.log.destination.c = validate_stub;
+
+	// Read log file path: ENV > TOML > legacy
+	// ENV is always checked so it works during early init (try_read=false).
+	// When try_read is true, TOML and legacy are also checked. Since ENV
+	// runs last, it takes precedence over TOML and legacy if set.
+	if(try_read)
+	{
+		if(!getLogFilePathTOML())
+			getLogFilePathLegacy(&config, NULL);
+	}
+	getLogFilePathENV();
+
+	// Read log destination: ENV > TOML
+	// Same priority logic: ENV runs last and wins if set.
+	if(try_read)
+		getLogDestinationTOML();
+	getLogDestinationENV();
 
 	return true;
 }
@@ -2072,6 +2118,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		case CONF_ENUM_LOG_DESTINATION:
 			return "enum (string)";
 		case CONF_ENUM_PRIVACY_LEVEL:
 			return "enum (unsigned integer)";
