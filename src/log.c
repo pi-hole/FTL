@@ -30,6 +30,8 @@
 #include "gc.h"
 // open(), O_WRONLY, O_CREAT, O_APPEND, O_CLOEXEC
 #include <fcntl.h>
+// cJSON_CreateObject(), ...
+#include "webserver/cJSON/cJSON.h"
 
 static bool print_log = true, print_stdout = true;
 bool debug_flags[DEBUG_MAX] = { false };
@@ -154,6 +156,10 @@ static void set_log_path(struct log_fd *log, const char *path)
 // open_log_fds(false): open webserver.log + pihole.log (called after config)
 void open_log_fds(bool ftl)
 {
+	// Only open log files when file logging is explicitly selected
+	if(config.files.log.destination.v.log_destination != LOG_DEST_FILE)
+		return;
+
 	if(ftl)
 	{
 		// FTL.log - path is known from getLogFilePath()
@@ -280,7 +286,56 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static void get_idstr(char *idstr, size_t size)
+static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t timein)
+{
+	struct tm tm;
+	gmtime_r(&timein, &tm);
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+
+	int millisec = 0;
+	if(tv.tv_sec == timein)
+		millisec = tv.tv_usec / 1000;
+
+	snprintf(timestring, TIMESTR_SIZE,
+	         "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+	         tm.tm_year + 1900,
+	         tm.tm_mon + 1,
+	         tm.tm_mday,
+	         tm.tm_hour,
+	         tm.tm_min,
+	         tm.tm_sec,
+	         millisec);
+
+	// Ensure null termination
+	timestring[TIMESTR_SIZE - 1] = '\0';
+}
+
+void log_to_json(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
+{
+	char timestring_iso8601[TIMESTR_SIZE];
+	get_timestr_iso8601(timestring_iso8601, now);
+
+	cJSON *root = cJSON_CreateObject();
+	if (!root) return;
+
+	cJSON_AddStringToObject(root, "timestamp", timestring_iso8601);
+	cJSON_AddStringToObject(root, "log_level", log_level);
+	cJSON_AddStringToObject(root, "service", "pihole-FTL");
+	cJSON_AddStringToObject(root, "component", component);
+	cJSON_AddStringToObject(root, "pid", pid);
+	cJSON_AddStringToObject(root, "message", msg);
+
+	char *out = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+
+	if (!out) return;
+	printf("%s\n", out);
+	free(out);
+}
+
+void get_idstr(char *idstr, size_t size)
 {
 	const int pid = getpid(); // Get the process ID of the calling process
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
@@ -463,6 +518,7 @@ bool FTL_write_dnsmasq_log(const char *message, const char *func)
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
 {
 	char timestring[TIMESTR_SIZE];
+	const time_t now = time(NULL);
 	va_list args;
 
 	// We have been explicitly asked to not print anything to the log
@@ -470,7 +526,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true, false);
+	get_timestr(timestring, now, true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -479,7 +535,8 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	const char *prio = priostr(priority, flag);
 
 	// Print to stdout before writing to file
-	if((!daemonmode || cli_mode) && print_stdout)
+	// Skip human-readable output when structured logging (JSON) is active
+	if((!daemonmode || cli_mode) && print_stdout && config.files.log.destination.v.log_destination != LOG_DEST_JSON)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
@@ -500,32 +557,47 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		va_end(args);
 		add_to_fifo_buffer(FIFO_FTL, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
-		// Format full line and write to cached fd
-		char line[2048];
-		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
-
-		// Clamp before using off as an offset - snprintf returns the would-be
-		// length on truncation and sizeof(line) - off would underflow otherwise;
-		// it may also return negative on an encoding error
-		if(off < 0 || off >= (int)sizeof(line))
-			off = sizeof(line) - 1;
-
-		va_start(args, format);
-		off += vsnprintf(line + off, sizeof(line) - off, format, args);
-		va_end(args);
-
-		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off < 0 || off >= (int)sizeof(line))
-			off = sizeof(line) - 1;
-
-		line[off++] = '\n';
-
-		if(!write_log_line(&ftl_log, line, off))
+		// Route to JSON output (in addition to file logging)
+		if(config.files.log.destination.v.log_destination == LOG_DEST_JSON && !daemonmode)
 		{
-			// Fallback: syslog if fd is unavailable or write failed
+			char json_buffer[8192];
 			va_start(args, format);
-			vsyslog(priority, format, args);
+			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
 			va_end(args);
+
+			log_to_json(now, prio, "FTL", idstr, json_buffer);
+		}
+
+		// Write to log file only when file logging is explicitly selected
+		if(config.files.log.destination.v.log_destination == LOG_DEST_FILE)
+		{
+			// Format full line and write to cached fd
+			char line[2048];
+			int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+
+			// Clamp before using off as an offset - snprintf returns the would-be
+			// length on truncation and sizeof(line) - off would underflow otherwise;
+			// it may also return negative on an encoding error
+			if(off < 0 || off >= (int)sizeof(line))
+				off = sizeof(line) - 1;
+
+			va_start(args, format);
+			off += vsnprintf(line + off, sizeof(line) - off, format, args);
+			va_end(args);
+
+			// Clamp to buffer end - snprintf returns would-be length on truncation
+			if(off < 0 || off >= (int)sizeof(line))
+				off = sizeof(line) - 1;
+
+			line[off++] = '\n';
+
+			if(!write_log_line(&ftl_log, line, off))
+			{
+				// Fallback: syslog if fd is unavailable or write failed
+				va_start(args, format);
+				vsyslog(priority, format, args);
+				va_end(args);
+			}
 		}
 	}
 }
@@ -571,30 +643,38 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 		va_end(args);
 		add_to_fifo_buffer(FIFO_WEBSERVER, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
-		// Format full line and write to cached fd
-		char line[2048];
-		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
-
-		// Clamp before using off as an offset - snprintf returns the would-be
-		// length on truncation and sizeof(line) - off would underflow otherwise;
-		// it may also return negative on an encoding error
-		if(off < 0 || off >= (int)sizeof(line))
-			off = sizeof(line) - 1;
-
-		va_start(args, format);
-		off += vsnprintf(line + off, sizeof(line) - off, format, args);
-		va_end(args);
-
-		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off < 0 || off >= (int)sizeof(line))
-			off = sizeof(line) - 1;
-
-		line[off++] = '\n';
-
-		if(!write_log_line(&webserver_log, line, off) && priority <= LOG_WARNING)
+		// Route to JSON output (in addition to file logging)
+		if(config.files.log.destination.v.log_destination == LOG_DEST_JSON && !daemonmode)
 		{
-			// No web log available - keep severe messages durable
-			_FTL_log(priority, flag, "%s", buffer);
+			char json_buffer[8192];
+			va_start(args, format);
+			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
+			va_end(args);
+
+			log_to_json(now, prio, "webserver", idstr, json_buffer);
+		}
+
+		// Write to log file only when file logging is explicitly selected
+		if(config.files.log.destination.v.log_destination == LOG_DEST_FILE)
+		{
+			// Format full line and write to cached fd
+			char line[2048];
+			int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+			va_start(args, format);
+			off += vsnprintf(line + off, sizeof(line) - off, format, args);
+			va_end(args);
+
+			// Clamp to buffer end - snprintf returns would-be length on truncation
+			if(off < 0 || off >= (int)sizeof(line))
+				off = sizeof(line) - 1;
+
+			line[off++] = '\n';
+
+			if(!write_log_line(&webserver_log, line, off) && priority <= LOG_WARNING)
+			{
+				// No web log available - keep severe messages durable
+				_FTL_log(priority, flag, "%s", buffer);
+			}
 		}
 	}
 }

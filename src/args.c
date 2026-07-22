@@ -1790,6 +1790,16 @@ void suggest_complete(const int argc, char *argv[])
 							}
 							break;
 
+						case CONF_ENUM_LOG_DESTINATION:
+							// Provide matching suggestions
+							for(size_t j = 0; j < LOG_DEST_MAX; j++)
+							{
+								const char *dest = get_log_destination_str(j);
+								if(strStartsWithIgnoreCase(dest, last_word) || strlen(last_word) == 0)
+									puts(dest);
+							}
+							break;
+
 						case CONF_ENUM_PRIVACY_LEVEL:
 							// This enum is in reality a numeric value
 							printf("%d\n", (int)conf_item->d.privacy_level);

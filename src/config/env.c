@@ -528,6 +528,20 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			break;
 		}
+		case CONF_ENUM_LOG_DESTINATION:
+		{
+			const int dest = get_log_destination_val(envvar);
+			if(dest != -1)
+			{
+				conf_item->v.log_destination = dest;
+				item->valid = true;
+			}
+			else
+			{
+				invalid_enum_item(envvar, conf_item, item);
+			}
+			break;
+		}
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			int val = 0;
