@@ -4245,6 +4245,10 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 
 	// Write to pihole.log via shared writer (FTL owns this file now)
 	FTL_write_dnsmasq_log(payload, func);
+
+	/* Pi-hole diagnosis system */
+	if(priority == LOG_WARNING)
+		dnsmasq_diagnosis_warning(payload);
 }
 
 static const char *check_dnsmasq_name(const char *name)

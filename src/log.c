@@ -847,7 +847,7 @@ void print_FTL_version(void)
 }
 
 // Skip leading string if found
-static char *skipStr(const char *startstr, char *message)
+static const char *skipStr(const char *startstr, const char *message)
 {
 	const size_t startlen = strlen(startstr);
 	if(strncmp(startstr, message, startlen) == 0)
@@ -856,7 +856,7 @@ static char *skipStr(const char *startstr, char *message)
 		return message;
 }
 
-void dnsmasq_diagnosis_warning(char *message)
+void dnsmasq_diagnosis_warning(const char *message)
 {
 	// Crop away any existing initial "warning: "
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
