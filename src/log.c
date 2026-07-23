@@ -155,7 +155,20 @@ void open_log_fds(bool ftl)
 	// pihole.log (dnsmasq) - FTL owns this file from now on
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-		dnsmasq_log.path = config.files.log.dnsmasq.v.s;
+		// The value "-" used to select stderr logging via dnsmasq's
+		// log-facility.  Since FTL writes pihole.log itself, this value
+		// is no longer supported: warn about it (without this hint users
+		// upgrading from v6 have no way to know why their stderr logging
+		// silently stopped working) and fall back to the default path so
+		// no file named "-" is created in the working directory.
+		const char *path = config.files.log.dnsmasq.v.s;
+		if(strcmp(path, "-") == 0)
+		{
+			log_warn("files.log.dnsmasq = \"-\" (log to stderr) is no longer supported, using %s instead (see https://github.com/pi-hole/FTL/pull/2960)",
+			         config.files.log.dnsmasq.d.s);
+			path = config.files.log.dnsmasq.d.s;
+		}
+		dnsmasq_log.path = path;
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 	}
 
@@ -847,7 +860,7 @@ void print_FTL_version(void)
 }
 
 // Skip leading string if found
-static char *skipStr(const char *startstr, char *message)
+static const char *skipStr(const char *startstr, const char *message)
 {
 	const size_t startlen = strlen(startstr);
 	if(strncmp(startstr, message, startlen) == 0)
@@ -856,7 +869,7 @@ static char *skipStr(const char *startstr, char *message)
 		return message;
 }
 
-void dnsmasq_diagnosis_warning(char *message)
+void dnsmasq_diagnosis_warning(const char *message)
 {
 	// Crop away any existing initial "warning: "
 	logg_warn_dnsmasq_message(skipStr("warning: ", message));
