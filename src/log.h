@@ -58,7 +58,7 @@ const char *priostr(const int priority, const enum debug_flag flag)  __attribute
 const char *debugstr(const enum debug_flag flag) __attribute__((const));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
-void dnsmasq_diagnosis_warning(char *message);
+void dnsmasq_diagnosis_warning(const char *message);
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts
