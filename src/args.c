@@ -45,6 +45,7 @@
 #endif
 
 #ifdef HAVE_LIBJOURNAL
+// journal_sendv(), LIBJOURNAL_VERSION_STRING
 #include <journal.h>
 #endif
 
@@ -594,6 +595,95 @@ void parse_args(int argc, char *argv[])
 		}
 #else
 		printf("Error: FTL was compiled without TLS support. Certificate reading is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
+	}
+
+	// Send fields to the systemd journal
+	if(argc > 1 && strcmp(argv[1], "journal-send") == 0)
+	{
+#ifdef HAVE_LIBJOURNAL
+		if(argc < 3)
+		{
+			printf("Usage: %s journal-send FIELD=VALUE [FIELD=VALUE ...]\n", argv[0]);
+			printf("Example: %s journal-send MESSAGE=\"hello world\" PRIORITY=5\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Valid fields: must start with an uppercase ASCII letter and may contain
+		// only uppercase ASCII letters, digits, and underscores.
+		for(int i = 2; i < argc; i++)
+		{
+			const char *eq = strchr(argv[i], '=');
+			if(eq == NULL || eq == argv[i])
+			{
+				printf("Error: Invalid field '%s'. Fields must be in KEY=VALUE format.\n", argv[i]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Validate key: must start with A-Z, rest A-Z/0-9/_
+			const char *key = argv[i];
+			if(key[0] < 'A' || key[0] > 'Z')
+			{
+				printf("Error: Field key in '%s' must start with an uppercase letter.\n", argv[i]);
+				exit(EXIT_FAILURE);
+			}
+			for(const char *p = key + 1; p < eq; p++)
+			{
+				const char c = *p;
+				if(!(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '_')
+				{
+					printf("Error: Field key in '%s' contains invalid character '%c'. "
+					       "Keys may only contain uppercase letters, digits, or underscores.\n",
+					       argv[i], c);
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+
+		// Connect to the journal socket
+		const int rc = journal_init();
+		if(rc < 0)
+		{
+			printf("Error: Cannot connect to systemd-journald: %s\n", strerror(-rc));
+			exit(EXIT_FAILURE);
+		}
+
+		// Build iovec array for journal_sendv()
+		// Each field must be in "KEY=value\n" format per the journald wire protocol
+		const int nfields = argc - 2;
+		struct iovec *iov = malloc(nfields * sizeof(struct iovec));
+		if(iov == NULL)
+		{
+			printf("Error: Memory allocation failed.\n");
+			exit(EXIT_FAILURE);
+		}
+		for(int i = 0; i < nfields; i++)
+		{
+			const char *arg = argv[2 + i];
+			const size_t len = strlen(arg);
+			char *field = malloc(len + 1);
+			if(field == NULL)
+			{
+				printf("Error: Memory allocation failed.\n");
+				exit(EXIT_FAILURE);
+			}
+			memcpy(field, arg, len);
+			field[len] = '\n';
+			iov[i].iov_base = field;
+			iov[i].iov_len = len + 1;
+		}
+
+		const int rc2 = journal_sendv(iov, nfields);
+		if(rc2 < 0)
+		{
+			printf("Error: Failed to send journal message: %s\n", strerror(-rc2));
+			exit(EXIT_FAILURE);
+		}
+
+		exit(EXIT_SUCCESS);
+#else
+		printf("Error: FTL was compiled without journal support. journal-send is not available.\n");
 		exit(EXIT_FAILURE);
 #endif
 	}
@@ -1421,6 +1511,12 @@ void parse_args(int argc, char *argv[])
 			printf("    memory footprint.\n\n");
 			printf("    Usage: %s%s sha256sum %sfile%s\n\n", green, argv[0], cyan, normal);
 
+			printf("%sJournal:%s\n", yellow, normal);
+			printf("    Send fields to the systemd journal (journald). Each argument\n");
+			printf("    must be in %sFIELD=VALUE%s format.\n\n", cyan, normal);
+			printf("    Usage: %s%s journal-send %sFIELD=VALUE%s [%sFIELD=VALUE%s ...]\n", green, argv[0], cyan, normal, cyan, normal);
+			printf("    Example: %s%s journal-send %sMESSAGE=\"hello world\" PRIORITY=5%s\n\n", green, argv[0], cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
 			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
@@ -1538,8 +1634,8 @@ void suggest_complete(const int argc, char *argv[])
 			"arp-scan", "branch", "backtrace", "crash", "--config", "debug",
 		    "--default-gateway", "dhcp-discover", "dnsmasq-test", "-f",
 		    "--gen-x509", "gravity", "gzip", "help", "-h", "--help", "idn2",
-			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac", "lua",
-		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
+			"journal-send", "--list-dhcp4", "--list-dhcp6", "--lua", "--luac",
+			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
 		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
