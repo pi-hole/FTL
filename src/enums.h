@@ -318,6 +318,7 @@ enum fifo_logs {
 enum log_destination {
 	LOG_DEST_FILE = 0,
 	LOG_DEST_JSON,
+	LOG_DEST_JOURNAL,
 	LOG_DEST_MAX
 } __attribute__ ((packed));
 

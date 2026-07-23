@@ -2042,6 +2042,7 @@ bool getLogFilePath(bool try_read)
 		struct enum_options log_destination[] =
 		{
 			{ "FILE", "Write logs to the configured log files" },
+			{ "JOURNAL", "Write logs to the systemd journal" },
 			{ "JSON", "Write logs as structured JSON to stdout" }
 		};
 		CONFIG_ADD_ENUM_OPTIONS(config.files.log.destination.a, log_destination);

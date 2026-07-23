@@ -386,7 +386,7 @@ bool getLogDestinationTOML(void)
 	if(dest != -1)
 		config.files.log.destination.v.log_destination = dest;
 	else
-		log_warn("Config setting %s is invalid, allowed options are: %s", "files.log.destination", "FILE, JSON");
+		log_warn("Config setting %s is invalid, allowed options are: %s", "files.log.destination", "FILE, JOURNAL, JSON");
 
 	toml_free(conf);
 	return true;

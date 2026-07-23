@@ -33,6 +33,10 @@
 #include "files.h"
 // add_to_fifo_buffer() u.a.
 #include "log.h"
+#ifdef HAVE_LIBJOURNAL
+// journal_send()
+#include <journal.h>
+#endif
 // global variable daemonmode
 #include "args.h"
 // handle_realtime_signals()
@@ -4261,6 +4265,18 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 
 		write_json_log(time(NULL), prio, "dnsmasq", idstr, payload);
 	}
+
+	// Route to journald output
+#ifdef HAVE_LIBJOURNAL
+	if(config.files.log.destination.v.log_destination == LOG_DEST_JOURNAL)
+	{
+		journal_send("MESSAGE=%s", payload,
+		             "PRIORITY=%d", priority,
+		             "COMPONENT=%s", "dnsmasq",
+		             "SYSLOG_IDENTIFIER=pihole-FTL",
+		             NULL);
+	}
+#endif
 
 	// Write to pihole.log via shared writer (FTL owns this file now).
 	// If pihole.log is unavailable, fall back to syslog for warnings and

@@ -44,6 +44,10 @@
 #endif
 #endif
 
+#ifdef HAVE_LIBJOURNAL
+#include <journal.h>
+#endif
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -1183,6 +1187,12 @@ void parse_args(int argc, char *argv[])
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
 			printf("\n");
+#ifdef HAVE_LIBJOURNAL
+			printf("****************************** %s%slibjournal%s ********************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s%s%s\n", green, bold, LIBJOURNAL_VERSION_STRING, normal);
+			printf("\n");
+#endif
 			exit(EXIT_SUCCESS);
 		}
 

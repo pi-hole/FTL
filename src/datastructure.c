@@ -1531,6 +1531,8 @@ const char * __attribute__ ((const)) get_log_destination_str(const enum log_dest
 			return "FILE";
 		case LOG_DEST_JSON:
 			return "JSON";
+		case LOG_DEST_JOURNAL:
+			return "JOURNAL";
 		case LOG_DEST_MAX:
 		default:
 			return NULL;
@@ -1543,6 +1545,8 @@ int __attribute__ ((pure)) get_log_destination_val(const char *dest)
 		return LOG_DEST_FILE;
 	else if(strcasecmp(dest, "JSON") == 0)
 		return LOG_DEST_JSON;
+	else if(strcasecmp(dest, "JOURNAL") == 0)
+		return LOG_DEST_JOURNAL;
 
 	// Invalid value
 	return -1;

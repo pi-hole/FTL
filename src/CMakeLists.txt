@@ -566,6 +566,17 @@ else()
     message(STATUS "Building FTL with readline support: NO")
 endif()
 
+option(USE_JOURNAL "Build FTL with native journal support, if available" ON)
+
+find_library(LIBJOURNAL NAMES libjournal${LIBRARY_SUFFIX} journal)
+if(LIBJOURNAL AND USE_JOURNAL)
+    message(STATUS "Building FTL with native journal support: YES")
+    target_compile_definitions(core PRIVATE HAVE_LIBJOURNAL)
+    target_link_libraries(pihole-FTL ${LIBJOURNAL})
+else()
+    message(STATUS "Building FTL with native journal support: NO")
+endif()
+
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
