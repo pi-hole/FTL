@@ -34,10 +34,10 @@
 static bool print_log = true, print_stdout = true;
 bool debug_flags[DEBUG_MAX] = { false };
 
-// Per-file log state: fd, path, writer-preferenced lock, reopen flag
+// Per-file log state: fd, path (owned copy), writer-preferenced lock, reopen flag
 struct log_fd {
 	int fd;
-	const char *path;
+	char *path;
 	pthread_mutex_t lock;
 	volatile sig_atomic_t reopen_needed;
 };
@@ -75,21 +75,47 @@ int __attribute__((pure)) is_log_fd(const int fd)
 	return fd == ftl_log.fd || fd == webserver_log.fd || fd == dnsmasq_log.fd;
 }
 
+// Reopen the log if requested.  Must be called with log->lock held.
+// Testing reopen_needed before fd == -1 lets SIGUSR2 revive a log whose
+// initial open failed (missing directory, transient EACCES, ...) and makes
+// sure a flush honors a rotation that happened since the last write.
+static void reopen_log_fd(struct log_fd *log)
+{
+	if(!log->reopen_needed)
+		return;
+
+	log->reopen_needed = 0;
+	if(log->fd != -1)
+		close(log->fd);
+	if(log->path != NULL)
+		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	else
+		log->fd = -1;
+}
+
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
 // per-file so SIGUSR2 only touches the fd that actually needs it.
 static bool write_log_line(struct log_fd *log, const char *line, size_t len)
 {
-	if(log->fd == -1)
+	// Do not try to write when the path is unknown
+	if(log->path == NULL)
 		return false;
 
+	// log->fd and log->reopen_needed are only accessed under the lock so a
+	// reopen (e.g. from flush_dnsmasq_log()) can never race a concurrent write
 	pthread_mutex_lock(&log->lock);
 
-	if(log->reopen_needed)
+	// Reopen the log if requested.  This must be tested before the fd == -1
+	// check so that SIGUSR2 can revive a log whose initial open failed (missing
+	// directory, transient EACCES, ...).
+	reopen_log_fd(log);
+
+	// No usable descriptor: let the caller fall back to another channel
+	if(log->fd == -1)
 	{
-		log->reopen_needed = 0;
-		close(log->fd);
-		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		pthread_mutex_unlock(&log->lock);
+		return false;
 	}
 
 	ssize_t written = 0;
@@ -122,6 +148,18 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
+// Set a log_fd path from a config string.  The path is duplicated so
+// that a config replacement (free_config + memcpy) cannot leave a
+// dangling pointer in the reopen path.
+static void set_log_path(struct log_fd *log, const char *path)
+{
+	if(log->path != NULL && path != NULL && strcmp(log->path, path) == 0)
+		return; // unchanged
+	if(log->path != NULL)
+		free(log->path);
+	log->path = path != NULL ? strdup(path) : NULL;
+}
+
 // Open cached log fds from config paths.
 // open_log_fds(true):  open FTL.log only (called early, before full config)
 // open_log_fds(false): open webserver.log + pihole.log (called after config)
@@ -132,7 +170,7 @@ void open_log_fds(bool ftl)
 		// FTL.log - path is known from getLogFilePath()
 		if(config.files.log.ftl.v.s != NULL)
 		{
-			ftl_log.path = config.files.log.ftl.v.s;
+			set_log_path(&ftl_log, config.files.log.ftl.v.s);
 			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 			if(ftl_log.fd == -1)
 			{
@@ -147,8 +185,15 @@ void open_log_fds(bool ftl)
 	// webserver.log + pihole.log - paths are known after readFTLconf()
 	if(config.files.log.webserver.v.s != NULL)
 	{
-		webserver_log.path = config.files.log.webserver.v.s;
+		set_log_path(&webserver_log, config.files.log.webserver.v.s);
+		if(webserver_log.fd >= 0)
+			close(webserver_log.fd);
 		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		if(webserver_log.fd == -1)
+		{
+			log_warn("webserver.log is unavailable (%s); warnings are still relayed to the FTL log",
+			         strerror(errno));
+		}
 	}
 
 	// pihole.log (dnsmasq) - FTL owns this file from now on
@@ -171,8 +216,17 @@ void open_log_fds(bool ftl)
 			config.files.log.dnsmasq.v.s = strdup(path);
 			config.files.log.dnsmasq.t = CONF_STRING_ALLOCATED;
 		}
-		dnsmasq_log.path = path;
+		set_log_path(&dnsmasq_log, path);
+		if(dnsmasq_log.fd >= 0)
+			close(dnsmasq_log.fd);
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		if(dnsmasq_log.fd == -1)
+		{
+			// misc.hide_dnsmasq_warn only hides dnsmasq warnings from the web
+			// diagnosis table; it does not affect how they are logged here
+			log_warn("pihole.log is unavailable (%s); dnsmasq warnings are relayed to syslog",
+			         strerror(errno));
+		}
 	}
 
 	// Register atfork handlers once, before any threads or dnsmasq forks
@@ -386,31 +440,41 @@ const char *debugstr(const enum debug_flag flag)
 // Write a dnsmasq log line to pihole.log in dnsmasq's exact on-disk format.
 // The message is the bare body (no timestamp, no prefix) as handed to
 // FTL_dnsmasq_log() from my_syslog().  We reproduce dnsmasq's format:
-//   "Mon Jan  1 12:00:00 2024 dnsmasq-dhcp[12345]: <message>\n"
+//   "Jan  1 12:00:00 dnsmasq-dhcp[12345]: <message>\n"
 // where the func suffix (e.g. "-dhcp", "-tftp") comes from the priority
 // bits extracted in my_syslog().
-void FTL_write_dnsmasq_log(const char *message, const char *func)
+bool FTL_write_dnsmasq_log(const char *message, const char *func)
 {
-	if(dnsmasq_log.fd == -1)
-		return;
-
+	// Locale-independent and thread-safe (unlike ctime()), and keeps the
+	// on-disk format byte-identical to what dnsmasq wrote before.
 	time_t now = time(NULL);
-	char *ts = ctime(&now);
+	char ctime_buf[26];
+	const char *ctime_str = ctime_r(&now, ctime_buf);
+	if(ctime_str == NULL)
+		ctime_str = "Thu Jan  1 00:00:00 1970\n";
+	char ts_buf[16];
+	snprintf(ts_buf, sizeof(ts_buf), "%.15s", ctime_str + 4);
 
 	char line[2048];
-	int off = snprintf(line, sizeof(line), "%.20s dnsmasq%s[%d]: ", ts + 4, func ? func : "", getpid());
+	int off = snprintf(line, sizeof(line), "%s dnsmasq%s[%d]: ", ts_buf, func ? func : "", getpid());
+
+	// Clamp before using off as an offset - snprintf returns the would-be
+	// length on truncation and sizeof(line) - off would underflow otherwise;
+	// it may also return negative on an encoding error
+	if(off < 0 || off >= (int)sizeof(line))
+		off = sizeof(line) - 1;
 
 	const char *msg = message ? message : "";
 	off += snprintf(line + off, sizeof(line) - off, "%s", msg);
 
 	// Clamp to buffer end - snprintf returns would-be length on truncation
-	if(off >= (int)sizeof(line))
+	if(off < 0 || off >= (int)sizeof(line))
 		off = sizeof(line) - 1;
 
 	if(off > 0 && line[off - 1] != '\n')
 		line[off++] = '\n';
 
-	write_log_line(&dnsmasq_log, line, off);
+	return write_log_line(&dnsmasq_log, line, off);
 }
 
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
@@ -459,12 +523,19 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		// trade-off of the cached-fd design vs. the old unbounded vfprintf()).
 		char line[2048];
 		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+
+		// Clamp before using off as an offset - snprintf returns the would-be
+		// length on truncation and sizeof(line) - off would underflow otherwise;
+		// it may also return negative on an encoding error
+		if(off < 0 || off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
 		va_start(args, format);
 		off += vsnprintf(line + off, sizeof(line) - off, format, args);
 		va_end(args);
 
 		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off >= (int)sizeof(line))
+		if(off < 0 || off >= (int)sizeof(line))
 			off = sizeof(line) - 1;
 
 		line[off++] = '\n';
@@ -498,9 +569,17 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 	get_idstr(idstr, sizeof(idstr));
 	const char *prio = priostr(priority, flag);
 
+	// Relay severe messages through _FTL_log() when webserver.log is
+	// unavailable or a write fails, and skip the stdout print when a
+	// relay will happen - _FTL_log() prints it itself, so it would
+	// otherwise appear twice.
+	const bool severe = print_log && priority <= LOG_WARNING;
+	bool printed_stdout = false;
+
 	// Print to stdout before writing to file
-	if((!daemonmode || cli_mode) && print_stdout)
+	if(!(severe && webserver_log.fd == -1) && (!daemonmode || cli_mode) && print_stdout)
 	{
+		printed_stdout = true;
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
 			printf("%s [%s] %s: ", timestring, idstr, prio);
@@ -523,20 +602,32 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 		// Format full line and write to cached fd
 		char line[2048];
 		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+
+		// Clamp before using off as an offset - snprintf returns the would-be
+		// length on truncation and sizeof(line) - off would underflow otherwise;
+		// it may also return negative on an encoding error
+		if(off < 0 || off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
 		va_start(args, format);
 		off += vsnprintf(line + off, sizeof(line) - off, format, args);
 		va_end(args);
 
 		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off >= (int)sizeof(line))
+		if(off < 0 || off >= (int)sizeof(line))
 			off = sizeof(line) - 1;
 
 		line[off++] = '\n';
 
-		if(!write_log_line(&webserver_log, line, off) && config.files.log.webserver.v.s != NULL && !daemonmode)
+		if(!write_log_line(&webserver_log, line, off))
 		{
-			// No web log available - keep severe messages durable
-			_FTL_log(priority, flag, "%s", buffer);
+			// Web log write failed (unusable descriptor or a mid-write
+			// error) - keep severe messages durable by relaying them to
+			// FTL.log/syslog, matching _FTL_log()'s own fallback.  Skip
+			// the relay when we already printed to stdout above so the
+			// line does not appear twice on the console.
+			if(severe && !printed_stdout)
+				_FTL_log(priority, flag, "%s", buffer);
 		}
 	}
 }
@@ -942,28 +1033,28 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 bool flush_dnsmasq_log(void)
 {
 	const double mintime = double_time();
+	int trunc_err = 0;
 
 	// Lock shared memory
 	lock_shm();
 
-	// Open file in write mode to truncate it
-	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
-	if(!logfile)
-	{
-		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));
-		unlock_shm();
-		return false;
-	}
-	fclose(logfile);
-
-	// Reopen the cached fd to point at the new empty file
+	// Truncate pihole.log via its cached fd; O_APPEND appends future writes
+	// to the empty file.  Lock order stays SHM first, then the per-file lock.
 	pthread_mutex_lock(&dnsmasq_log.lock);
-	if(dnsmasq_log.fd != -1)
-		close(dnsmasq_log.fd);
-	dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+
+	// Reopen first if logrotate's SIGUSR2 fired since the last write, so the
+	// truncation hits the current file instead of the rotated one the cached
+	// fd still points at.
+	reopen_log_fd(&dnsmasq_log);
+
+	if(dnsmasq_log.fd == -1)
+		trunc_err = -1;          // no log file open
+	else if(ftruncate(dnsmasq_log.fd, 0) == -1)
+		trunc_err = errno;       // the fd stays usable for future writes
 	pthread_mutex_unlock(&dnsmasq_log.lock);
 
-	// Flush dnsmasq FIFO logs
+	// Flush the FIFO, in-memory datastructure and database even if the
+	// truncation above failed; the log file is then just left non-empty
 	if(fifo_log)
 		memset(&fifo_log->logs[FIFO_DNSMASQ], 0, sizeof(fifo_log->logs[FIFO_DNSMASQ]));
 
@@ -973,12 +1064,21 @@ bool flush_dnsmasq_log(void)
 	// Unlock shared memory
 	unlock_shm();
 
+	// Report a failed truncation now that the SHM lock is released
+	if(trunc_err == -1)
+		log_warn("Could not truncate pihole.log: no log file is open");
+	else if(trunc_err > 0)
+		log_err("Could not truncate log file %s: %s", dnsmasq_log.path, strerror(trunc_err));
+
 	// Flush last 24 hours of on-disk database
 	if(!delete_old_queries_from_db(false, mintime))
 	{
 		log_err("Could not flush on-disk database");
 		return false;
 	}
+
+	if(trunc_err != 0)
+		return false;
 
 	log_info("Log has been flushed due to API request");
 

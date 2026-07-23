@@ -1918,6 +1918,13 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// First, read the environment
 	getEnvVars();
 
+	// Open pihole.log and webserver.log now (with default or ENV paths)
+	// so that any log output during write_dnsmasq_config() below is not
+	// silently lost.  open_log_fds(false) will be called again after the
+	// config parse in main() to pick up any path overrides from the TOML
+	// file or legacy config.
+	open_log_fds(false);
+
 	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
