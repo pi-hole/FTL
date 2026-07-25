@@ -45,7 +45,7 @@ extern bool only_testing;
 void clear_debug_flags(void);
 void open_log_fds(bool ftl);
 void mark_log_reopen(void);
-void FTL_write_dnsmasq_log(const char *message, const char *func);
+bool FTL_write_dnsmasq_log(const char *message, const char *func);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], const off_t bytes, double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);

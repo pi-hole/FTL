@@ -34,10 +34,10 @@
 static bool print_log = true, print_stdout = true;
 bool debug_flags[DEBUG_MAX] = { false };
 
-// Per-file log state: fd, path, writer-preferenced lock, reopen flag
+// Per-file log state: fd, path (owned copy), writer-preferenced lock, reopen flag
 struct log_fd {
 	int fd;
-	const char *path;
+	char *path;
 	pthread_mutex_t lock;
 	volatile sig_atomic_t reopen_needed;
 };
@@ -137,6 +137,18 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
+// Set a log_fd path from a config string.  The path is duplicated so
+// that a config replacement (free_config + memcpy) cannot leave a
+// dangling pointer in the reopen path.
+static void set_log_path(struct log_fd *log, const char *path)
+{
+	if(log->path != NULL && path != NULL && strcmp(log->path, path) == 0)
+		return; // unchanged
+	if(log->path != NULL)
+		free(log->path);
+	log->path = path != NULL ? strdup(path) : NULL;
+}
+
 // Open cached log fds from config paths.
 // open_log_fds(true):  open FTL.log only (called early, before full config)
 // open_log_fds(false): open webserver.log + pihole.log (called after config)
@@ -147,7 +159,7 @@ void open_log_fds(bool ftl)
 		// FTL.log - path is known from getLogFilePath()
 		if(config.files.log.ftl.v.s != NULL)
 		{
-			ftl_log.path = config.files.log.ftl.v.s;
+			set_log_path(&ftl_log, config.files.log.ftl.v.s);
 			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 			if(ftl_log.fd == -1)
 			{
@@ -162,7 +174,9 @@ void open_log_fds(bool ftl)
 	// webserver.log + pihole.log - paths are known after readFTLconf()
 	if(config.files.log.webserver.v.s != NULL)
 	{
-		webserver_log.path = config.files.log.webserver.v.s;
+		set_log_path(&webserver_log, config.files.log.webserver.v.s);
+		if(webserver_log.fd >= 0)
+			close(webserver_log.fd);
 		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(webserver_log.fd == -1)
 		{
@@ -174,7 +188,9 @@ void open_log_fds(bool ftl)
 	// pihole.log (dnsmasq) - FTL owns this file from now on
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-		dnsmasq_log.path = config.files.log.dnsmasq.v.s;
+		set_log_path(&dnsmasq_log, config.files.log.dnsmasq.v.s);
+		if(dnsmasq_log.fd >= 0)
+			close(dnsmasq_log.fd);
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(dnsmasq_log.fd == -1)
 		{
@@ -190,7 +206,10 @@ void open_log_fds(bool ftl)
 	}
 
 	// Register atfork handlers once, before any threads or dnsmasq forks
-	// exist, so a TCP-query fork can never inherit a locked log mutex
+	// exist, so a TCP-query fork can never inherit a locked log mutex.
+	// Invariant: fork() is never called from inside a log write, so the
+	// atfork prepare/parent/child handlers only need to cover the case
+	// where a thread holds a log mutex at the moment of the fork.
 	static bool atfork_registered = false;
 	if(!atfork_registered)
 	{
@@ -397,31 +416,48 @@ const char *debugstr(const enum debug_flag flag)
 // Write a dnsmasq log line to pihole.log in dnsmasq's exact on-disk format.
 // The message is the bare body (no timestamp, no prefix) as handed to
 // FTL_dnsmasq_log() from my_syslog().  We reproduce dnsmasq's format:
-//   "Mon Jan  1 12:00:00 2024 dnsmasq-dhcp[12345]: <message>\n"
+//   "Jan  1 12:00:00 dnsmasq-dhcp[12345]: <message>\n"
 // where the func suffix (e.g. "-dhcp", "-tftp") comes from the priority
 // bits extracted in my_syslog().
-void FTL_write_dnsmasq_log(const char *message, const char *func)
+bool FTL_write_dnsmasq_log(const char *message, const char *func)
 {
-	if(dnsmasq_log.fd == -1)
-		return;
-
+	// Locale-independent timestamp: ctime_r() renders the month/day in the
+	// C locale regardless of setlocale(LC_ALL, ""), so the buffer cannot
+	// overflow with non-English month names (strftime("%b") would emit
+	// e.g. six bytes for ru_RU). ctime_r() is reentrant, unlike ctime()
+	// which returns a pointer to a static buffer shared with localtime()
+	// and asctime() - critical since FTL_write_dnsmasq_log() runs on the
+	// DNS thread while the webserver, database and NTP threads format their
+	// own timestamps. This is dnsmasq's own idiom and keeps the on-disk
+	// format byte-identical to what we wrote before.
 	time_t now = time(NULL);
-	char *ts = ctime(&now);
+	char ctime_buf[26];
+	const char *ctime_str = ctime_r(&now, ctime_buf);
+	if(ctime_str == NULL)
+		ctime_str = "Thu Jan  1 00:00:00 1970\n";
+	char ts_buf[16];
+	snprintf(ts_buf, sizeof(ts_buf), "%.15s", ctime_str + 4);
 
 	char line[2048];
-	int off = snprintf(line, sizeof(line), "%.20s dnsmasq%s[%d]: ", ts + 4, func ? func : "", getpid());
+	int off = snprintf(line, sizeof(line), "%s dnsmasq%s[%d]: ", ts_buf, func ? func : "", getpid());
+
+	// Clamp before using off as an offset - snprintf returns the would-be
+	// length on truncation and sizeof(line) - off would underflow otherwise;
+	// it may also return negative on an encoding error
+	if(off < 0 || off >= (int)sizeof(line))
+		off = sizeof(line) - 1;
 
 	const char *msg = message ? message : "";
 	off += snprintf(line + off, sizeof(line) - off, "%s", msg);
 
 	// Clamp to buffer end - snprintf returns would-be length on truncation
-	if(off >= (int)sizeof(line))
+	if(off < 0 || off >= (int)sizeof(line))
 		off = sizeof(line) - 1;
 
 	if(off > 0 && line[off - 1] != '\n')
 		line[off++] = '\n';
 
-	write_log_line(&dnsmasq_log, line, off);
+	return write_log_line(&dnsmasq_log, line, off);
 }
 
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
@@ -467,12 +503,19 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		// Format full line and write to cached fd
 		char line[2048];
 		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+
+		// Clamp before using off as an offset - snprintf returns the would-be
+		// length on truncation and sizeof(line) - off would underflow otherwise;
+		// it may also return negative on an encoding error
+		if(off < 0 || off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
 		va_start(args, format);
 		off += vsnprintf(line + off, sizeof(line) - off, format, args);
 		va_end(args);
 
 		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off >= (int)sizeof(line))
+		if(off < 0 || off >= (int)sizeof(line))
 			off = sizeof(line) - 1;
 
 		line[off++] = '\n';
@@ -531,12 +574,19 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 		// Format full line and write to cached fd
 		char line[2048];
 		int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
+
+		// Clamp before using off as an offset - snprintf returns the would-be
+		// length on truncation and sizeof(line) - off would underflow otherwise;
+		// it may also return negative on an encoding error
+		if(off < 0 || off >= (int)sizeof(line))
+			off = sizeof(line) - 1;
+
 		va_start(args, format);
 		off += vsnprintf(line + off, sizeof(line) - off, format, args);
 		va_end(args);
 
 		// Clamp to buffer end - snprintf returns would-be length on truncation
-		if(off >= (int)sizeof(line))
+		if(off < 0 || off >= (int)sizeof(line))
 			off = sizeof(line) - 1;
 
 		line[off++] = '\n';
@@ -955,10 +1005,10 @@ bool flush_dnsmasq_log(void)
 	lock_shm();
 
 	// Open file in write mode to truncate it
-	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
+	FILE *logfile = fopen(dnsmasq_log.path, "w");
 	if(!logfile)
 	{
-		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));
+		log_err("Could not open log file %s for truncation: %s\n", dnsmasq_log.path, strerror(errno));
 		unlock_shm();
 		return false;
 	}
@@ -969,6 +1019,8 @@ bool flush_dnsmasq_log(void)
 	if(dnsmasq_log.fd != -1)
 		close(dnsmasq_log.fd);
 	dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	if(dnsmasq_log.fd == -1)
+		log_warn("pihole.log reopen failed after flush (%s)", strerror(errno));
 	pthread_mutex_unlock(&dnsmasq_log.lock);
 
 	// Flush dnsmasq FIFO logs

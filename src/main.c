@@ -83,7 +83,8 @@ int main (int argc, char *argv[])
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
 
-	// Open webserver.log and pihole.log (paths now known after config parse)
+	// Re-open webserver.log and pihole.log to pick up any path overrides
+	// from the TOML file or legacy config
 	open_log_fds(false);
 
 	// Check if another FTL process is already running

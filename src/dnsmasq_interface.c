@@ -4243,8 +4243,11 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 	// Unlock SHM
 	unlock_shm();
 
-	// Write to pihole.log via shared writer (FTL owns this file now)
-	FTL_write_dnsmasq_log(payload, func);
+	// Write to pihole.log via shared writer (FTL owns this file now).
+	// If pihole.log is unavailable, fall back to syslog for warnings and
+	// errors so they are not silently lost for the lifetime of the process.
+	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
+		syslog(priority, "%s", payload);
 
 	/* Pi-hole diagnosis system */
 	if(priority == LOG_WARNING)
