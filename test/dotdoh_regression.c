@@ -229,31 +229,53 @@ static int occupy(const char *ip, int port, int socktype)
 
 static void test_registry(void)
 {
-	struct proxy_listener l0, l1, l2;
+	struct proxy_listener l0, l1;
 
+	// Tuples are randomised per process but stable across queries.
+	const uint32_t a0 = dotdoh_tuple_addr(0);
+	EXPECT((a0 >> 24) == 127, "slot 0 address in 127.0.0.0/8 (%08x)", a0);
+	EXPECT((a0 & 0xff) != 0 && (a0 & 0xff) != 255, "slot 0 address avoids .0/.255");
+	EXPECT(a0 != 0x7f000001u && a0 != 0x7f000035u, "slot 0 address avoids 127.0.0.1/.53");
+	EXPECT(dotdoh_tuple_addr(0) == a0, "slot 0 address stable");
+	EXPECT(dotdoh_tuple_addr(1) != a0, "slots 0 and 1 have distinct addresses");
+	EXPECT(dotdoh_tuple_port(0) > 1023 && dotdoh_tuple_port(0) <= 65535, "slot 0 port %d in range", dotdoh_tuple_port(0));
+	EXPECT(dotdoh_tuple_addr(-1) == 0 && dotdoh_tuple_port(-1) == -1, "out-of-range -> 0 / -1");
+
+	// A fresh slot is bindable and binds exactly the tuple the table records.
+	EXPECT(dotdoh_tuple_ensure_bindable(0), "slot 0 tuple is bindable");
 	EXPECT(proxy_listener_bind(0, &l0), "bind slot 0");
-	EXPECT(strcmp(l0.ip, "127.47.11.1") == 0, "slot 0 ip %s", l0.ip);
-	EXPECT(l0.port == DOTDOH_PORT_BASE + 1, "slot 0 preferred port %d", l0.port);
+	char ip0[INET_ADDRSTRLEN];
+	dotdoh_tuple_ip(0, ip0, sizeof(ip0));
+	EXPECT(strcmp(l0.ip, ip0) == 0, "slot 0 bound its table address %s", l0.ip);
+	// The dotted-quad the config/bind use must round-trip to the host-order uint32
+	// the FTL_is_forward_available() gate matches on, or the gate would misjudge.
+	struct in_addr rt;
+	EXPECT(inet_pton(AF_INET, ip0, &rt) == 1 && ntohl(rt.s_addr) == a0, "ip string round-trips to addr");
+	EXPECT(l0.port == dotdoh_tuple_port(0), "slot 0 bound its table port %d", l0.port);
 	EXPECT(l0.udp_fd >= 0 && l0.tcp_fd >= 0, "slot 0 fds");
 
-	EXPECT(proxy_listener_bind(1, &l1), "bind slot 1");
-	EXPECT(strcmp(l1.ip, "127.47.11.2") == 0, "slot 1 ip %s", l1.ip);
+	// Squat slot 1's current tuple; ensure_bindable() must redraw a fresh tuple
+	// and still succeed, leaving the table on the new (bindable) tuple.
+	char ip1[INET_ADDRSTRLEN];
+	dotdoh_tuple_ip(1, ip1, sizeof(ip1));
+	const uint32_t a1_before = dotdoh_tuple_addr(1);
+	const int p1_before = dotdoh_tuple_port(1);
+	int occ_udp = occupy(ip1, p1_before, SOCK_DGRAM);
+	int occ_tcp = occupy(ip1, p1_before, SOCK_STREAM);
+	EXPECT(occ_udp >= 0 && occ_tcp >= 0, "occupy slot 1's tuple");
+	EXPECT(dotdoh_tuple_ensure_bindable(1), "ensure_bindable retries past a squatted tuple");
+	EXPECT(dotdoh_tuple_addr(1) != a1_before || dotdoh_tuple_port(1) != p1_before, "slot 1 tuple was redrawn");
+	EXPECT(proxy_listener_bind(1, &l1), "bind slot 1 on the redrawn tuple");
 
-	// Squat the deterministic TCP tuple of slot 2 -> bind must now FAIL (the port
-	// is fixed, so there is no iteration); the upstream is left disabled.
-	int occ = occupy("127.47.11.3", DOTDOH_PORT_BASE + 3, SOCK_STREAM);
-	EXPECT(occ >= 0, "occupy deterministic tuple of slot 2");
-	EXPECT(!proxy_listener_bind(2, &l2), "bind slot 2 fails when its tuple is squatted");
-
-	// Bind-first / exclusivity: our owned tuple cannot be co-bound.
+	// Exclusivity: our owned tuple cannot be co-bound.
 	int again = occupy(l0.ip, l0.port, SOCK_STREAM);
 	EXPECT(again < 0, "owned tuple is exclusive (no SO_REUSEADDR)");
 	if(again >= 0) close(again);
 
 	proxy_listener_close(&l0);
 	proxy_listener_close(&l1);
-	proxy_listener_close(&l2);
-	if(occ >= 0) close(occ);
+	if(occ_udp >= 0) close(occ_udp);
+	if(occ_tcp >= 0) close(occ_tcp);
 }
 
 // "example.com" IN A: a 17-byte question section (13-byte QNAME + QTYPE + QCLASS).

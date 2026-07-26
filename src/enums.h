@@ -159,6 +159,7 @@ enum debug_flag {
 	DEBUG_NETLINK,
 	DEBUG_TIMING,
 	DEBUG_PERFORMANCE,
+	DEBUG_DOTDOH,
 	DEBUG_MAX
 } __attribute__ ((packed));
 

@@ -10,6 +10,13 @@
 *  construction. The caller then gets -1 and drops the query, and FTL fails over
 *  to the next server - we never downgrade to plaintext.
 *
+*  Each upstream owns a connection pool: a bounded, thread-safe set of keep-alive
+*  connections that many worker threads borrow concurrently, with TLS 1.3 session
+*  resumption so a rebuilt connection skips the full handshake. There is no
+*  proactive refresh - a DoT server closes idle connections on its own schedule
+*  and we simply resume-on-demand, skipping connections we can tell are already
+*  dead (idle longer than the learned per-upstream idle window).
+*
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
@@ -17,49 +24,43 @@
 #include "log.h"
 #include "tls_client.h"
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 
 #include "framing.h"
-#include <mbedtls/build_info.h>
-#include <mbedtls/ssl.h>
-#include <mbedtls/net_sockets.h>
-#include <mbedtls/x509_crt.h>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
+#include <openssl/err.h>
 // For the bounded, non-blocking connect and the socket-level send timeout below.
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <poll.h>
 #include <fcntl.h>
 #include <time.h>
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-// Before Mbed TLS 4.0 the RNG was wired up by hand from a CTR_DRBG seeded off
-// an entropy source; 4.0+ draws randomness from PSA and needs neither header.
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#endif
-#ifdef MBEDTLS_PSA_CRYPTO_C
-#include <psa/crypto.h>
-#endif
+#include <pthread.h>
 
-// Read timeout (ms) applied to the handshake and to reading the answer. Keeps a
-// dead or slow upstream from stalling the query indefinitely; on timeout the
-// exchange fails and dnsmasq fails over.
-#define TLS_READ_TIMEOUT_MS 5000
-
-// Timeout (ms) for the TCP connect to the upstream, plus an overall wall-clock
-// budget for the whole exchange (connect + handshake + write + read). The
-// per-op read timeout above only bounds an idle peer; it does not bound a
-// black-holed connect(), a blocking write to a peer whose receive window is
-// full, or a peer that trickles one byte before each idle timeout. These hard
-// deadlines do, so a single unreachable or misbehaving upstream cannot pin the
-// single worker thread and stall every other encrypted upstream with it.
+// Timeout (ms) for the TCP connect, plus an overall wall-clock budget for the
+// whole exchange. The per-op read timeout above only bounds an idle peer; these
+// hard deadlines also bound a black-holed connect, a full receive window, or a
+// peer trickling one byte per idle window, so one bad upstream cannot pin a worker.
 #define TLS_CONNECT_TIMEOUT_MS 5000
 #define TLS_EXCHANGE_TIMEOUT_MS 10000
 
-// Where to look for trust anchors when no explicit CA path is configured.
-// Distributions place the system bundle differently, so try the common
-// single-file locations in turn and finally the hashed directory. FTL ships as
-// a musl binary that can run on any of these, so this is deliberately not
-// Debian-only.
+// Learned per-upstream idle window (ms): how long a pooled connection may sit
+// idle before we assume the server closed it and rebuild via resumption. Seeded
+// from measured values (see seed_idle_ms), adapted at runtime, clamped to
+// [MIN, MAX] with a slack band for hysteresis.
+#define IDLE_SEED_DOT_MS   10000
+#define IDLE_SEED_DOH_MS   30000
+#define IDLE_MIN_MS         2000
+#define IDLE_MAX_MS       120000
+#define IDLE_SLACK_MS       1000
+
+// Where to look for trust anchors when no explicit CA path is set. Distributions
+// place the bundle differently, so try the common single-file locations then the
+// hashed directory. FTL's musl binary runs on any of these, so not Debian-only.
 static const char *const TLS_DEFAULT_CA_FILES[] = {
 	"/etc/ssl/certs/ca-certificates.crt", // Debian, Ubuntu, Alpine, Gentoo
 	"/etc/pki/tls/certs/ca-bundle.crt",   // RHEL, Fedora, CentOS
@@ -68,130 +69,49 @@ static const char *const TLS_DEFAULT_CA_FILES[] = {
 };
 #define TLS_DEFAULT_CA_DIR  "/etc/ssl/certs"
 
-// Shared, read-only-after-init crypto state. One trust store and (pre-4.0) one
-// DRBG are enough for all upstreams; each connection gets its own SSL context.
+// Shared, read-only-after-init crypto state: one SSL_CTX carries the trust store,
+// fail-closed verify mode and client session cache for all upstreams; each
+// connection draws its own SSL from it. OpenSSL seeds its own RNG, no DRBG here.
 static bool g_ready = false;
-static mbedtls_x509_crt g_cacert;
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-static mbedtls_entropy_context g_entropy;
-static mbedtls_ctr_drbg_context g_ctr;
-#endif
+static SSL_CTX *g_ctx = NULL;
+// ex_data slot carrying the owning pool pointer on each SSL, so the new-session
+// callback can file a fresh ticket back into the right pool.
+static int g_pool_ex_idx = -1;
 
-// One pooled connection per upstream. The scratch buffers live here (not on the
-// stack and not shared) so that concurrent exchanges on different connections
-// never clobber each other.
+// One pooled connection. The scratch buffers live here (not on the stack and not
+// shared) so that concurrent exchanges on different connections never clobber
+// each other. Borrowed exclusively by one worker between borrow and return, so
+// nothing here needs its own lock.
 struct tls_conn {
 	bool connected;
-	mbedtls_net_context net;
-	mbedtls_ssl_context ssl;
-	mbedtls_ssl_config conf;
+	bool in_use;
+	int fd;                                         // connected TCP socket
+	SSL *ssl;
+	uint64_t last_used_ms;                          // when last returned to the pool
+	uint64_t borrowed_idle_ms;                      // idle age at the current borrow
+	unsigned queries_served;                        // exchanges on this connection
 	uint8_t req[DNS_MSG_MAX + 512];                 // framed request we send
 	uint8_t rbuf[DNS_MSG_MAX + DOH_HEADER_MAX];     // response accumulation buffer
 };
 
-bool tls_client_global_init(const char *ca_file)
-{
-	// Idempotent: the proxy may be (re)started, but the trust store only
-	// needs to be built once.
-	if(g_ready)
-		return true;
+// Per-upstream pool: a bounded set of connections plus the shared resumption
+// ticket, the learned idle window and the diagnostic counters. The lock guards
+// every field except u/max (immutable after creation).
+struct tls_pool {
+	struct upstream_uri u;         // upstream descriptor (immutable)
+	int max;                       // connection cap (immutable)
+	pthread_mutex_t lock;
+	pthread_cond_t cond;           // signalled when a slot frees
+	struct tls_conn **slots;       // max entries; NULL = empty slot
+	int nconns;                    // non-NULL slots (open or connecting)
+	SSL_SESSION *sess;             // newest resumption ticket, or NULL
+	uint64_t idle_est_ms;          // learned idle window
+	struct dotdoh_stats stats;
+};
 
-#ifdef MBEDTLS_PSA_CRYPTO_C
-	// PSA must be up before any TLS work. On 4.0+ it is also the RNG
-	// source, which is why no explicit DRBG is wired below on that branch.
-	if(psa_crypto_init() != PSA_SUCCESS)
-	{
-		log_err("dotdoh: psa_crypto_init() failed");
-		return false;
-	}
-#endif
+enum hs_outcome { HS_RESUMED, HS_FRESH_COLD, HS_FULL_FALLBACK };
 
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-	// Pre-4.0: seed the DRBG handed to mbedtls_ssl_conf_rng() at connect
-	// time.
-	mbedtls_entropy_init(&g_entropy);
-	mbedtls_ctr_drbg_init(&g_ctr);
-	if(mbedtls_ctr_drbg_seed(&g_ctr, mbedtls_entropy_func, &g_entropy,
-	                         (const unsigned char *)"pihole-dotdoh", 15) != 0)
-	{
-		log_err("dotdoh: CTR_DRBG seeding failed");
-		mbedtls_ctr_drbg_free(&g_ctr);
-		mbedtls_entropy_free(&g_entropy);
-		return false;
-	}
-#endif
-
-	// Load the trust anchors. An explicit path (dns.upstreamCA, or the test CA
-	// during E2E) always wins. Otherwise try each well-known system bundle and
-	// finally the hashed directory. mbedtls_x509_crt_parse_file() returns the
-	// number of certs it could not parse (>= 0) or a negative error, so only a
-	// negative result means nothing at all was loaded.
-	mbedtls_x509_crt_init(&g_cacert);
-	int rc = -1;
-	if(ca_file != NULL && ca_file[0] != '\0')
-		rc = mbedtls_x509_crt_parse_file(&g_cacert, ca_file);
-	else
-	{
-		for(size_t i = 0; rc < 0 && i < sizeof(TLS_DEFAULT_CA_FILES) / sizeof(*TLS_DEFAULT_CA_FILES); i++)
-			rc = mbedtls_x509_crt_parse_file(&g_cacert, TLS_DEFAULT_CA_FILES[i]);
-		if(rc < 0)
-			rc = mbedtls_x509_crt_parse_path(&g_cacert, TLS_DEFAULT_CA_DIR);
-	}
-	if(rc < 0)
-	{
-		log_err("dotdoh: could not load a CA trust store "
-		        "(set dns.upstreamCA or install a system CA bundle)");
-		mbedtls_x509_crt_free(&g_cacert);
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-		mbedtls_ctr_drbg_free(&g_ctr);
-		mbedtls_entropy_free(&g_entropy);
-#endif
-		return false;
-	}
-
-	g_ready = true;
-	return true;
-}
-
-void tls_client_global_free(void)
-{
-	if(!g_ready)
-		return;
-	mbedtls_x509_crt_free(&g_cacert);
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-	mbedtls_ctr_drbg_free(&g_ctr);
-	mbedtls_entropy_free(&g_entropy);
-#endif
-	g_ready = false;
-}
-
-struct tls_conn *tls_conn_new(void)
-{
-	return calloc(1, sizeof(struct tls_conn));
-}
-
-// Tear down an established connection so the next exchange reconnects cleanly.
-static void conn_close(struct tls_conn *c)
-{
-	if(!c->connected)
-		return;
-	// Best-effort notify; we do not care whether the peer sees it.
-	mbedtls_ssl_close_notify(&c->ssl);
-	mbedtls_ssl_free(&c->ssl);
-	mbedtls_ssl_config_free(&c->conf);
-	mbedtls_net_free(&c->net);
-	c->connected = false;
-}
-
-void tls_conn_free(struct tls_conn *c)
-{
-	if(c == NULL)
-		return;
-	conn_close(c);
-	free(c);
-}
-
-// Monotonic clock in milliseconds, for the exchange deadline.
+// Monotonic clock in milliseconds, for deadlines and idle ages.
 static uint64_t now_ms(void)
 {
 	struct timespec ts;
@@ -209,12 +129,103 @@ static int ms_left(uint64_t deadline, int cap)
 	return left < (uint64_t)cap ? (int)left : cap;
 }
 
-// Bounded, non-blocking TCP connect. mbedtls_net_connect() does a blocking
-// connect() with no timeout, so a black-holed upstream (dropped SYN) would pin
-// the single worker thread for the kernel's full SYN timeout (~2 min) and stall
-// every other encrypted upstream with it. Connect non-blocking and poll() for
-// the deadline instead, then hand the ready socket to mbedTLS.
-static int net_connect_timeout(mbedtls_net_context *net, const char *host,
+// Capture a fresh TLS 1.3 ticket into the owning pool so the next (re)connect can
+// resume. Returns 1 to take ownership of sess (OpenSSL keeps our stored ref).
+static int new_session_cb(SSL *ssl, SSL_SESSION *sess)
+{
+	struct tls_pool *p = SSL_get_ex_data(ssl, g_pool_ex_idx);
+	if(p == NULL)
+		return 0; // not ours to keep; let OpenSSL free it
+	pthread_mutex_lock(&p->lock);
+	if(p->sess != NULL)
+		SSL_SESSION_free(p->sess);
+	p->sess = sess;
+	pthread_mutex_unlock(&p->lock);
+	return 1;
+}
+
+bool tls_client_global_init(const char *ca_file)
+{
+	// Idempotent: the proxy may be (re)started, but the context only needs to
+	// be built once.
+	if(g_ready)
+		return true;
+
+	g_ctx = SSL_CTX_new(TLS_client_method());
+	if(g_ctx == NULL)
+	{
+		log_err("dotdoh: SSL_CTX_new() failed");
+		return false;
+	}
+
+	// Require at least TLS 1.2 for encrypted DNS upstreams.
+	SSL_CTX_set_min_proto_version(g_ctx, TLS1_2_VERSION);
+
+	// Enforce forward secrecy on the TLS 1.2 leg: OpenSSL's default list still
+	// offers static-RSA suites with no PFS, so a passive recorder who later obtains
+	// the key could decrypt a captured session. Restrict TLS 1.2 to ECDHE; TLS 1.3
+	// (the primary path) is forward-secret by definition and unaffected.
+	if(SSL_CTX_set_cipher_list(g_ctx, "ECDHE+AESGCM:ECDHE+CHACHA20:ECDHE+AES") != 1)
+	{
+		log_err("dotdoh: SSL_CTX_set_cipher_list() failed");
+		SSL_CTX_free(g_ctx);
+		g_ctx = NULL;
+		return false;
+	}
+
+	// This is the fail-closed heart of the client: SSL_VERIFY_PEER makes a bad
+	// chain abort the handshake instead of merely being reported after the
+	// fact. The hostname is checked per-connection via SSL_set1_host() below.
+	SSL_CTX_set_verify(g_ctx, SSL_VERIFY_PEER, NULL);
+
+	// Client-side session cache for TLS 1.3 resumption: we file tickets into the
+	// owning pool from new_session_cb and re-apply them per (re)connect, so no
+	// internal store is needed.
+	SSL_CTX_set_session_cache_mode(g_ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL_STORE);
+	SSL_CTX_sess_set_new_cb(g_ctx, new_session_cb);
+	if(g_pool_ex_idx < 0)
+		g_pool_ex_idx = SSL_get_ex_new_index(0, NULL, NULL, NULL, NULL);
+
+	// Load the trust anchors. An explicit path (dns.upstreamCA, or the test CA
+	// during E2E) always wins. Otherwise try each well-known system bundle and
+	// finally the hashed directory.
+	int loaded = 0;
+	if(ca_file != NULL && ca_file[0] != '\0')
+		loaded = SSL_CTX_load_verify_file(g_ctx, ca_file) == 1;
+	else
+	{
+		for(size_t i = 0; !loaded && i < sizeof(TLS_DEFAULT_CA_FILES) / sizeof(*TLS_DEFAULT_CA_FILES); i++)
+			loaded = SSL_CTX_load_verify_file(g_ctx, TLS_DEFAULT_CA_FILES[i]) == 1;
+		if(!loaded)
+			loaded = SSL_CTX_load_verify_dir(g_ctx, TLS_DEFAULT_CA_DIR) == 1;
+	}
+	if(!loaded)
+	{
+		log_err("dotdoh: could not load a CA trust store "
+		        "(set dns.upstreamCA or install a system CA bundle)");
+		SSL_CTX_free(g_ctx);
+		g_ctx = NULL;
+		return false;
+	}
+
+	g_ready = true;
+	return true;
+}
+
+void tls_client_global_free(void)
+{
+	if(!g_ready)
+		return;
+	SSL_CTX_free(g_ctx);
+	g_ctx = NULL;
+	g_ready = false;
+}
+
+// Bounded, non-blocking TCP connect returning a connected socket in *out_fd. A
+// blocking connect() has no timeout, so a black-holed upstream would pin the
+// worker for the kernel's full SYN timeout (~2 min); connect non-blocking and
+// poll() for the deadline. The socket stays non-blocking for the OpenSSL I/O.
+static int net_connect_timeout(int *out_fd, const char *host,
                                const char *port, int timeout_ms)
 {
 	struct addrinfo hints = { 0 };
@@ -224,14 +235,14 @@ static int net_connect_timeout(mbedtls_net_context *net, const char *host,
 
 	struct addrinfo *res = NULL;
 	if(getaddrinfo(host, port, &hints, &res) != 0)
-		return MBEDTLS_ERR_NET_UNKNOWN_HOST;
+		return -1;
 
 	// timeout_ms is the budget for the whole connect, not per address: share
 	// the remaining time across every A/AAAA record rather than restarting the
 	// full timeout for each, so a multi-homed host cannot blow the deadline.
 	const uint64_t deadline = now_ms() + (uint64_t)timeout_ms;
 
-	int ret = MBEDTLS_ERR_NET_CONNECT_FAILED;
+	int ret = -1;
 	for(struct addrinfo *cur = res; cur != NULL; cur = cur->ai_next)
 	{
 		// SOCK_CLOEXEC so a connected upstream socket is not inherited across
@@ -256,8 +267,10 @@ static int net_connect_timeout(mbedtls_net_context *net, const char *host,
 		   poll(&pfd, 1, ms_left(deadline, timeout_ms)) == 1 && (pfd.revents & POLLOUT) &&
 		   getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &sl) == 0 && soerr == 0)
 		{
-			fcntl(fd, F_SETFL, flags); // restore blocking mode for mbedTLS I/O
-			net->fd = fd;
+			// Leave the socket non-blocking: the handshake and exchange are driven
+			// by poll() against a deadline (ssl_io_wait), which a fixed SO_RCVTIMEO
+			// cannot bound against a peer that trickles bytes below the timeout.
+			*out_fd = fd;
 			ret = 0;
 			break;
 		}
@@ -268,75 +281,127 @@ static int net_connect_timeout(mbedtls_net_context *net, const char *host,
 	return ret;
 }
 
-// Open a TCP connection and drive the TLS handshake to the upstream described
-// by u. Returns true only once the connection is verified and ready. deadline
-// bounds the connect and handshake so a stalled peer cannot pin the worker.
-static bool conn_connect(struct tls_conn *c, const struct upstream_uri *u, uint64_t deadline)
+// Wait, bounded by the deadline, for the fd to be ready for the I/O OpenSSL asked
+// for. On a non-blocking socket SSL_* returns WANT_READ/WANT_WRITE as soon as it
+// would block, so polling here is what actually caps total handshake/exchange
+// wall-clock - a fixed SO_RCVTIMEO only bounds one idle read(), not a slow drip.
+// Returns false on timeout, deadline reached, or poll error (all fail-closed).
+static bool ssl_io_wait(int fd, int ssl_err, uint64_t deadline)
 {
-	mbedtls_net_init(&c->net);
-	mbedtls_ssl_init(&c->ssl);
-	mbedtls_ssl_config_init(&c->conf);
+	const uint64_t now = now_ms();
+	if(now >= deadline)
+		return false;
+	struct pollfd pfd = { .fd = fd,
+	                      .events = (ssl_err == SSL_ERROR_WANT_WRITE) ? POLLOUT : POLLIN };
+	return poll(&pfd, 1, (int)(deadline - now)) == 1;
+}
 
-	// net_connect_timeout() wants the port as a string.
+// Free the OpenSSL/socket objects of a connection that is being discarded. Does
+// not touch pool bookkeeping.
+static void conn_teardown(struct tls_conn *c)
+{
+	if(c->ssl != NULL)
+	{
+		if(c->connected)
+		{
+			// Runs under the pool lock, so a blocking close_notify to a stalled
+			// upstream would freeze the pool - and it buys nothing on a connection
+			// we are discarding. Shut down quietly (no I/O); the TCP close signals
+			// the end.
+			SSL_set_quiet_shutdown(c->ssl, 1);
+			SSL_shutdown(c->ssl);
+		}
+		SSL_free(c->ssl);
+		c->ssl = NULL;
+	}
+	if(c->fd >= 0)
+	{
+		close(c->fd);
+		c->fd = -1;
+	}
+	c->connected = false;
+}
+
+// Open a TCP connection and drive the TLS handshake to the pool's upstream,
+// applying any stored resumption ticket. Returns true once verified and ready
+// and reports the handshake outcome in *outcome. deadline bounds connect +
+// handshake so a stalled peer cannot pin the worker.
+static bool conn_connect(struct tls_pool *p, struct tls_conn *c,
+                         uint64_t deadline, enum hs_outcome *outcome)
+{
+	const struct upstream_uri *u = &p->u;
+	c->fd = -1;
+	c->ssl = NULL;
+	*outcome = HS_FRESH_COLD;
+
 	char portstr[8];
 	snprintf(portstr, sizeof(portstr), "%d", u->port);
 
-	int rc;
-	if((rc = net_connect_timeout(&c->net, u->connect_host, portstr,
-	                             ms_left(deadline, TLS_CONNECT_TIMEOUT_MS))) != 0)
+	if(net_connect_timeout(&c->fd, u->connect_host, portstr,
+	                       ms_left(deadline, TLS_CONNECT_TIMEOUT_MS)) != 0)
 	{
-		log_warn("dotdoh: connect to %s#%d failed (mbedtls -0x%04x)",
-		         u->connect_host, u->port, (unsigned)-rc);
+		log_warn("dotdoh: connect to %s#%d failed", u->connect_host, u->port);
 		goto fail;
 	}
 
-	// Bound blocking sends too: the write BIO (mbedtls_net_send) has no timeout
-	// of its own, so without this a peer that stops reading would block
-	// ssl_write_all() forever once its receive window fills.
-	const struct timeval sndto = { .tv_sec = TLS_READ_TIMEOUT_MS / 1000, .tv_usec = 0 };
-	setsockopt(c->net.fd, SOL_SOCKET, SO_SNDTIMEO, &sndto, sizeof(sndto));
-
-	if(mbedtls_ssl_config_defaults(&c->conf, MBEDTLS_SSL_IS_CLIENT,
-	                               MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT) != 0)
+	c->ssl = SSL_new(g_ctx);
+	if(c->ssl == NULL)
 		goto fail;
 
-	// This is the fail-closed heart of the client: REQUIRED means a bad
-	// chain or hostname mismatch aborts the handshake instead of merely
-	// being reported after the fact.
-	mbedtls_ssl_conf_authmode(&c->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-	mbedtls_ssl_conf_ca_chain(&c->conf, &g_cacert, NULL);
-	mbedtls_ssl_conf_read_timeout(&c->conf, TLS_READ_TIMEOUT_MS);
-#if MBEDTLS_VERSION_NUMBER < 0x04000000
-	// 4.0+ pulls randomness from PSA automatically; only older versions need
-	// the DRBG wired in explicitly.
-	mbedtls_ssl_conf_rng(&c->conf, mbedtls_ctr_drbg_random, &g_ctr);
-#endif
+	// Tie the SSL to its pool so new_session_cb can file tickets back.
+	SSL_set_ex_data(c->ssl, g_pool_ex_idx, p);
 
-	if(mbedtls_ssl_setup(&c->ssl, &c->conf) != 0)
-		goto fail;
-
-	// verify_name is the hostname the certificate is checked against and
-	// the SNI sent to the server. For a pinned "sni-host@ip" upstream this
-	// is the hostname, not the IP, so verification still matches the real
-	// cert.
-	if(mbedtls_ssl_set_hostname(&c->ssl, u->verify_name) != 0)
-		goto fail;
-
-	// Use the timeout-aware receive callback so the read timeout above
-	// applies.
-	mbedtls_ssl_set_bio(&c->ssl, &c->net, mbedtls_net_send, NULL, mbedtls_net_recv_timeout);
-
-	// Blocking sockets should not normally yield WANT_READ/WANT_WRITE, but
-	// the read timeout can surface them; loop until the handshake resolves.
-	while((rc = mbedtls_ssl_handshake(&c->ssl)) != 0)
+	// Apply the newest stored ticket for this upstream, if any. SSL_set_session
+	// takes its own ref, so we drop ours right after.
+	bool tried_resume = false;
+	pthread_mutex_lock(&p->lock);
+	SSL_SESSION *s = p->sess;
+	if(s != NULL)
+		SSL_SESSION_up_ref(s);
+	pthread_mutex_unlock(&p->lock);
+	if(s != NULL)
 	{
-		if(rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE)
+		SSL_set_session(c->ssl, s);
+		SSL_SESSION_free(s);
+		tried_resume = true;
+	}
+
+	// verify_name is what the cert is checked against and, for a hostname, the SNI.
+	// A bare-IP upstream is verified against iPAddress SANs instead (host matching
+	// only covers dNSName/CN) and RFC 6066 forbids an IP literal as SNI. Both bind
+	// the check to the SSL's verify param (SSL_set1_host() is deprecated in 4.0).
+	struct in_addr v4;
+	struct in6_addr v6;
+	if(inet_pton(AF_INET, u->verify_name, &v4) == 1 ||
+	   inet_pton(AF_INET6, u->verify_name, &v6) == 1)
+	{
+		if(X509_VERIFY_PARAM_set1_ip_asc(SSL_get0_param(c->ssl), u->verify_name) != 1)
+			goto fail;
+	}
+	else
+	{
+		if(X509_VERIFY_PARAM_set1_host(SSL_get0_param(c->ssl), u->verify_name, 0) != 1)
+			goto fail;
+		SSL_set_tlsext_host_name(c->ssl, u->verify_name);
+	}
+
+	if(SSL_set_fd(c->ssl, c->fd) != 1)
+		goto fail;
+
+	// Non-blocking handshake: SSL_connect yields WANT_READ/WANT_WRITE and we poll
+	// with the remaining budget, so a slow-drip peer cannot outlast the deadline.
+	// A verification failure returns a hard error here - fail-closed.
+	int rc;
+	while((rc = SSL_connect(c->ssl)) != 1)
+	{
+		const int err = SSL_get_error(c->ssl, rc);
+		if(err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE)
 		{
-			log_warn("dotdoh: TLS handshake with %s (%s#%d) failed (mbedtls -0x%04x)",
-			         u->verify_name, u->connect_host, u->port, (unsigned)-rc);
+			log_warn("dotdoh: TLS handshake with %s (%s#%d) failed",
+			         u->verify_name, u->connect_host, u->port);
 			goto fail;
 		}
-		if(now_ms() >= deadline)
+		if(!ssl_io_wait(c->fd, err, deadline))
 		{
 			log_warn("dotdoh: TLS handshake with %s (%s#%d) timed out",
 			         u->verify_name, u->connect_host, u->port);
@@ -344,49 +409,48 @@ static bool conn_connect(struct tls_conn *c, const struct upstream_uri *u, uint6
 		}
 	}
 
+	*outcome = SSL_session_reused(c->ssl) ? HS_RESUMED
+	         : (tried_resume ? HS_FULL_FALLBACK : HS_FRESH_COLD);
 	c->connected = true;
 	return true;
 
 fail:
-	// We never reached the "connected" state, so free the half-initialised
-	// contexts directly rather than via conn_close().
-	mbedtls_ssl_free(&c->ssl);
-	mbedtls_ssl_config_free(&c->conf);
-	mbedtls_net_free(&c->net);
-	c->connected = false;
+	conn_teardown(c);
 	return false;
 }
 
-// Write the whole buffer, tolerating short writes and the transient
+// Write the whole buffer, tolerating short writes and transient
 // WANT_READ/WANT_WRITE conditions. Returns true once everything is sent.
 static bool ssl_write_all(struct tls_conn *c, const uint8_t *buf, size_t len, uint64_t deadline)
 {
 	size_t off = 0;
 	while(off < len)
 	{
-		int w = mbedtls_ssl_write(&c->ssl, buf + off, len - off);
-		if(w == MBEDTLS_ERR_SSL_WANT_READ || w == MBEDTLS_ERR_SSL_WANT_WRITE)
+		const int w = SSL_write(c->ssl, buf + off, (int)(len - off));
+		if(w > 0)
 		{
-			if(now_ms() >= deadline)
+			off += (size_t)w;
+			continue;
+		}
+		const int err = SSL_get_error(c->ssl, w);
+		if(err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
+		{
+			if(!ssl_io_wait(c->fd, err, deadline))
 				return false;
 			continue;
 		}
-		if(w <= 0)
-			return false;
-		off += (size_t)w;
+		return false;
 	}
 	return true;
 }
 
-// Send one query and read back the framed answer over the established
-// connection. Returns the answer length, or -1 on any protocol/transport error
-// (which makes the caller drop and, once, rebuild the connection).
+// Send one query and read back the framed answer over an established connection.
+// Returns the answer length, or -1 on any protocol/transport error.
 static ssize_t conn_do(struct tls_conn *c, const struct upstream_uri *u,
                        const uint8_t *query, size_t qlen,
                        uint8_t *answer, size_t answer_sz, uint64_t deadline)
 {
-	// Frame the request: DoT prepends a 2-byte length, DoH wraps it in a
-	// POST.
+	// Frame the request: DoT prepends a 2-byte length, DoH wraps it in a POST.
 	ssize_t reqlen;
 	if(u->type == UST_DOT)
 		reqlen = dot_frame(query, qlen, c->req, sizeof(c->req));
@@ -398,35 +462,29 @@ static ssize_t conn_do(struct tls_conn *c, const struct upstream_uri *u,
 	if(!ssl_write_all(c, c->req, (size_t)reqlen, deadline))
 		return -1;
 
-	// Accumulate the response until the framer says a full message is
-	// present. The buffer is bounded, so a misbehaving upstream cannot make
-	// us grow it.
+	// Accumulate the response until the framer says a full message is present.
+	// The buffer is bounded, so a misbehaving upstream cannot make us grow it.
 	uint8_t *buf = c->rbuf;
 	const size_t bufcap = sizeof(c->rbuf);
 	size_t have = 0;
 	for(;;)
 	{
-		// Bounds both a full buffer and a peer that trickles a byte at a time:
-		// such reads return r > 0 and would otherwise loop until the buffer
-		// fills (many hours) without ever hitting the WANT_READ deadline below.
+		// A bounded buffer stops a peer padding the response indefinitely.
 		if(have >= bufcap || now_ms() >= deadline)
 			return -1;
-		int r = mbedtls_ssl_read(&c->ssl, buf + have, bufcap - have);
-		// TLS 1.3 delivers post-handshake messages to the application
-		// as these non-fatal returns: a NewSessionTicket arrives right
-		// after the handshake (which the upstream sends before our
-		// answer). They are not errors - just read again for the actual
-		// response.
-		if(r == MBEDTLS_ERR_SSL_WANT_READ || r == MBEDTLS_ERR_SSL_WANT_WRITE
-#ifdef MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET
-		   // Only present on mbedTLS builds with TLS 1.3 post-handshake tickets;
-		   // guarded so older versions still compile (they never return it).
-		   || r == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET
-#endif
-		   )
-			continue; // deadline is enforced at the top of the loop
+		const int r = SSL_read(c->ssl, buf + have, (int)(bufcap - have));
 		if(r <= 0)
+		{
+			// TLS 1.3 delivers post-handshake messages (e.g., a
+			// NewSessionTicket sent right after the handshake) to SSL_read() as
+			// WANT_READ once consumed without app data. Not an error - poll within
+			// the deadline and read again for the actual response.
+			const int err = SSL_get_error(c->ssl, r);
+			if((err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) &&
+			   ssl_io_wait(c->fd, err, deadline))
+				continue;
 			return -1; // timeout, close_notify or hard error
+		}
 		have += (size_t)r;
 
 		size_t off = 0, blen = 0;
@@ -460,49 +518,315 @@ static ssize_t conn_do(struct tls_conn *c, const struct upstream_uri *u,
 	}
 }
 
-ssize_t tls_exchange(struct tls_conn *c, const struct upstream_uri *u,
-                     const uint8_t *query, size_t qlen,
-                     uint8_t *answer, size_t answer_sz)
+// Seed the learned idle window from measured resolver behaviour: DoT closes idle
+// connections quickly (~10 s), DoH keeps them far longer, and a couple of known
+// DoT providers hold on longer. Everything adapts from here at runtime.
+static uint64_t seed_idle_ms(const struct upstream_uri *u)
 {
-	if(!g_ready || c == NULL || u == NULL)
+	if(u->type == UST_DOT)
+	{
+		if(strstr(u->verify_name, "dns.google") != NULL)
+			return 60000; // measured ~60 s
+		return IDLE_SEED_DOT_MS;
+	}
+	// DoH
+	if(strstr(u->verify_name, "cloudflare-dns.com") != NULL ||
+	   strstr(u->verify_name, "dns.google") != NULL)
+		return IDLE_MAX_MS; // measured effectively unbounded within the probe cap
+	return IDLE_SEED_DOH_MS;
+}
+
+// --- pool bookkeeping (all callers hold p->lock) ---------------------------
+
+// Record a connection's reuse depth as it is retired, then tear it down and
+// clear its slot.
+static void retire_slot(struct tls_pool *p, int i)
+{
+	struct tls_conn *c = p->slots[i];
+	if(c == NULL)
+		return;
+	p->stats.sessions_closed++;
+	p->stats.queries_per_session_sum += c->queries_served;
+	if(c->queries_served > p->stats.queries_per_session_max)
+		p->stats.queries_per_session_max = c->queries_served;
+	conn_teardown(c);
+	free(c);
+	p->slots[i] = NULL;
+	p->nconns--;
+}
+
+// Nudge the learned idle window: a reuse that succeeded after idle_age proves
+// the server keeps connections at least that long (grow); a reuse that died
+// proves it closes by then (shrink). Clamped, with a slack band to damp it.
+static void adapt_idle(struct tls_pool *p, uint64_t idle_age, bool alive)
+{
+	if(idle_age == 0)
+		return;
+	if(alive)
+	{
+		const uint64_t want = idle_age + IDLE_SLACK_MS;
+		if(want > p->idle_est_ms)
+			p->idle_est_ms = want > IDLE_MAX_MS ? IDLE_MAX_MS : want;
+	}
+	else
+	{
+		const uint64_t want = idle_age > IDLE_SLACK_MS ? idle_age - IDLE_SLACK_MS : IDLE_MIN_MS;
+		if(want < p->idle_est_ms)
+			p->idle_est_ms = want < IDLE_MIN_MS ? IDLE_MIN_MS : want;
+	}
+}
+
+struct tls_pool *tls_pool_new(const struct upstream_uri *u, int max_conns)
+{
+	if(!g_ready || u == NULL || max_conns < 1)
+		return NULL;
+	struct tls_pool *p = calloc(1, sizeof(*p));
+	if(p == NULL)
+		return NULL;
+	p->slots = calloc((size_t)max_conns, sizeof(*p->slots));
+	if(p->slots == NULL)
+	{
+		free(p);
+		return NULL;
+	}
+	p->u = *u;
+	p->max = max_conns;
+	p->idle_est_ms = seed_idle_ms(u);
+	pthread_mutex_init(&p->lock, NULL);
+	pthread_cond_init(&p->cond, NULL);
+	return p;
+}
+
+void tls_pool_free(struct tls_pool *p)
+{
+	if(p == NULL)
+		return;
+	pthread_mutex_lock(&p->lock);
+	for(int i = 0; i < p->max; i++)
+		retire_slot(p, i);
+	if(p->sess != NULL)
+	{
+		SSL_SESSION_free(p->sess);
+		p->sess = NULL;
+	}
+	pthread_mutex_unlock(&p->lock);
+	pthread_mutex_destroy(&p->lock);
+	pthread_cond_destroy(&p->cond);
+	free(p->slots);
+	free(p);
+}
+
+// Borrow a ready connection: reuse a warm one, reap ones we can tell are dead,
+// open a fresh one while under the cap, or wait for a slot to free. On success
+// returns a connected, exclusively-owned connection and sets *reused. Returns
+// NULL if it could not obtain one before the deadline.
+static struct tls_conn *borrow(struct tls_pool *p, uint64_t deadline, bool *reused)
+{
+	pthread_mutex_lock(&p->lock);
+	for(;;)
+	{
+		int free_slot = -1;
+		const uint64_t now = now_ms();
+		for(int i = 0; i < p->max; i++)
+		{
+			struct tls_conn *c = p->slots[i];
+			if(c == NULL)
+			{
+				if(free_slot < 0)
+					free_slot = i;
+				continue;
+			}
+			if(c->in_use || !c->connected)
+				continue;
+			const uint64_t idle_age = now > c->last_used_ms ? now - c->last_used_ms : 0;
+			if(idle_age > p->idle_est_ms)
+			{
+				// Almost certainly closed by the server - reap and resume.
+				p->stats.conns_reaped_idle++;
+				retire_slot(p, i);
+				if(free_slot < 0)
+					free_slot = i;
+				continue;
+			}
+			// Reuse this warm connection.
+			c->in_use = true;
+			c->borrowed_idle_ms = idle_age;
+			pthread_mutex_unlock(&p->lock);
+			*reused = true;
+			return c;
+		}
+
+		// Nothing warm; open a fresh connection if we are under the cap.
+		if(free_slot >= 0 && p->nconns < p->max)
+		{
+			struct tls_conn *c = calloc(1, sizeof(*c));
+			if(c == NULL)
+			{
+				pthread_mutex_unlock(&p->lock);
+				return NULL;
+			}
+			c->fd = -1;
+			c->in_use = true;
+			p->slots[free_slot] = c;
+			p->nconns++;
+			pthread_mutex_unlock(&p->lock);
+
+			enum hs_outcome outcome;
+			const bool ok = conn_connect(p, c, deadline, &outcome);
+
+			pthread_mutex_lock(&p->lock);
+			if(!ok)
+			{
+				// Never became a session; drop the slot without reuse stats.
+				free(c);
+				p->slots[free_slot] = NULL;
+				p->nconns--;
+				pthread_cond_signal(&p->cond);
+				pthread_mutex_unlock(&p->lock);
+				return NULL;
+			}
+			p->stats.conns_opened++;
+			if(outcome == HS_RESUMED)
+				p->stats.handshakes_resumed++;
+			else if(outcome == HS_FULL_FALLBACK)
+				p->stats.handshakes_full_fallback++;
+			else
+				p->stats.handshakes_fresh_cold++;
+			c->borrowed_idle_ms = 0;
+			pthread_mutex_unlock(&p->lock);
+			*reused = false;
+			return c;
+		}
+
+		// Saturated: wait for a slot to free, bounded by the deadline.
+		const uint64_t now2 = now_ms();
+		if(now2 >= deadline)
+		{
+			pthread_mutex_unlock(&p->lock);
+			return NULL;
+		}
+		const uint64_t left = deadline - now2;
+		struct timespec ts;
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += (time_t)(left / 1000u);
+		ts.tv_nsec += (long)((left % 1000u) * 1000000u);
+		if(ts.tv_nsec >= 1000000000L)
+		{
+			ts.tv_sec++;
+			ts.tv_nsec -= 1000000000L;
+		}
+		if(pthread_cond_timedwait(&p->cond, &p->lock, &ts) == ETIMEDOUT)
+		{
+			pthread_mutex_unlock(&p->lock);
+			return NULL;
+		}
+		// Woken (or spurious): re-scan.
+	}
+}
+
+// Return a connection after a successful exchange: keep it warm and account the
+// query. Grows the learned idle window if the reuse survived a long gap.
+static void return_ok(struct tls_pool *p, struct tls_conn *c)
+{
+	pthread_mutex_lock(&p->lock);
+	c->in_use = false;
+	c->last_used_ms = now_ms();
+	c->queries_served++;
+	p->stats.queries_total++;
+	if(c->borrowed_idle_ms > 0)
+		adapt_idle(p, c->borrowed_idle_ms, true);
+	pthread_cond_signal(&p->cond);
+	pthread_mutex_unlock(&p->lock);
+}
+
+// Discard a connection after a failed exchange: tear it down and free its slot.
+// If a reused connection died, that informs the learned idle window.
+static void return_dead(struct tls_pool *p, struct tls_conn *c, bool reused)
+{
+	pthread_mutex_lock(&p->lock);
+	if(reused)
+	{
+		p->stats.conns_dead_on_reuse++;
+		adapt_idle(p, c->borrowed_idle_ms, false);
+	}
+	for(int i = 0; i < p->max; i++)
+	{
+		if(p->slots[i] == c)
+		{
+			retire_slot(p, i);
+			break;
+		}
+	}
+	pthread_cond_signal(&p->cond);
+	pthread_mutex_unlock(&p->lock);
+}
+
+ssize_t tls_pool_exchange(struct tls_pool *p, const uint8_t *query, size_t qlen,
+                          uint8_t *answer, size_t answer_sz)
+{
+	if(!g_ready || p == NULL)
 		return -1;
 
-	// Two attempts at most: a pooled keep-alive connection the upstream
-	// closed while idle is transparently rebuilt once. A second failure is
-	// real and we give up (fail-closed) rather than retry forever.
-	// One overall budget for the whole exchange (both attempts share it) so a
-	// stalled connect, handshake, read or write cannot pin the single worker
-	// thread and starve every other encrypted upstream.
+	// One budget for the whole exchange (both attempts share it) so a stalled
+	// connect, handshake, read or write cannot pin a worker. A pooled connection
+	// the upstream closed while idle is rebuilt once; a second failure fails closed.
 	const uint64_t deadline = now_ms() + TLS_EXCHANGE_TIMEOUT_MS;
 
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
-		if(!c->connected && !conn_connect(c, u, deadline))
-			continue;
+		bool reused = false;
+		struct tls_conn *c = borrow(p, deadline, &reused);
+		if(c == NULL)
+			continue; // could not connect/obtain one; retry once
 
-		const ssize_t r = conn_do(c, u, query, qlen, answer, answer_sz, deadline);
+		const ssize_t r = conn_do(c, &p->u, query, qlen, answer, answer_sz, deadline);
 		if(r >= 0)
+		{
+			return_ok(p, c);
 			return r;
-
-		conn_close(c);
+		}
+		return_dead(p, c, reused);
 	}
 	return -1;
 }
 
-#else // !HAVE_MBEDTLS
-
-// Without mbedTLS there is no TLS client; encrypted upstreams are unavailable
-// and every exchange fails closed. The config layer refuses to enable them.
-bool tls_client_global_init(const char *ca_file) { (void)ca_file; return false; }
-void tls_client_global_free(void) { }
-struct tls_conn *tls_conn_new(void) { return NULL; }
-void tls_conn_free(struct tls_conn *c) { (void)c; }
-ssize_t tls_exchange(struct tls_conn *c, const struct upstream_uri *u,
-                     const uint8_t *query, size_t qlen,
-                     uint8_t *answer, size_t answer_sz)
+void tls_pool_get_stats(struct tls_pool *p, struct dotdoh_stats *out)
 {
-	(void)c; (void)u; (void)query; (void)qlen; (void)answer; (void)answer_sz;
-	return -1;
+	if(p == NULL || out == NULL)
+		return;
+	pthread_mutex_lock(&p->lock);
+	*out = p->stats;
+	pthread_mutex_unlock(&p->lock);
 }
 
-#endif // HAVE_MBEDTLS
+#else // !HAVE_TLS
+
+// Without TLS there is no client; encrypted upstreams are unavailable and every
+// exchange fails closed (the config layer refuses to enable them). These stubs
+// are const-folding candidates, so GCC raises -Wsuggest-attribute=const, which
+// cannot be applied (conflicts with tls_pool_new()'s malloc attribute) - silence
+// it (GCC-only; clang lacks the warning).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
+bool tls_client_global_init(const char *ca_file) { (void)ca_file; return false; }
+void tls_client_global_free(void) { }
+struct tls_pool *tls_pool_new(const struct upstream_uri *u, int max_conns)
+{
+	(void)u; (void)max_conns;
+	return NULL;
+}
+void tls_pool_free(struct tls_pool *p) { (void)p; }
+ssize_t tls_pool_exchange(struct tls_pool *p, const uint8_t *query, size_t qlen,
+                          uint8_t *answer, size_t answer_sz)
+{
+	(void)p; (void)query; (void)qlen; (void)answer; (void)answer_sz;
+	return -1;
+}
+void tls_pool_get_stats(struct tls_pool *p, struct dotdoh_stats *out) { (void)p; (void)out; }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+#endif // HAVE_TLS

@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_* flags for the atomic 0600 config-file creation
+#include <fcntl.h>
 #include "dnsmasq_config.h"
 // logging routines
 #include "log.h"
@@ -331,11 +333,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	}
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
-	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
+	// Create it 0600 and atomically: it carries the randomised loopback tuples, and
+	// open(O_EXCL|O_NOFOLLOW) avoids the world-readable window fopen()+fchmod() would
+	// leave. The rename below preserves the mode; chown_pihole() sets the owner.
+	unlink(DNSMASQ_TEMP_CONF);
+	const int conf_fd = open(DNSMASQ_TEMP_CONF, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+	FILE *pihole_conf = conf_fd >= 0 ? fdopen(conf_fd, "w") : NULL;
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
 		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		if(conf_fd >= 0)
+			close(conf_fd);
 		return false;
 	}
 
@@ -355,12 +364,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);
 
-		// Encrypted upstreams (tls:// / https://) are not handed to dnsmasq
-		// directly: dnsmasq forwards their plaintext queries to a deterministic
-		// loopback tuple in 127.47.11.0/24 that FTL's DoT/DoH proxy binds later
-		// (in FTL_fork_and_bind_sockets, after dnsmasq's startup has closed stray
-		// fds). The proxy derives the tuple from the same formula, so the two
-		// agree without anything being bound here.
+		// Encrypted upstreams are not handed to dnsmasq directly: it forwards their
+		// plaintext to a loopback tuple the DoT/DoH proxy binds later, from the same
+		// per-process table (so the two agree). No fail-closed check is needed here -
+		// FTL_is_forward_available() skips any tuple the proxy does not actually own.
 		int enc = 0;
 		cJSON *server = NULL;
 		cJSON_ArrayForEach(server, conf->dns.upstreams.v.json)
@@ -382,8 +389,13 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 					         server->valuestring, DOTDOH_MAX_UPSTREAMS);
 					continue;
 				}
-				fprintf(pihole_conf, "server=%s%d#%d\n",
-				        DOTDOH_NET_PREFIX, enc + 1, DOTDOH_PORT_BASE + enc + 1);
+				// Settle on a tuple that actually binds (redrawing on a collision) so
+				// dnsmasq is pointed at the one the proxy will bind; skip for validation.
+				if(!test_config)
+					dotdoh_tuple_ensure_bindable(enc);
+				char ip[INET_ADDRSTRLEN];
+				dotdoh_tuple_ip(enc, ip, sizeof(ip));
+				fprintf(pihole_conf, "server=%s#%d\n", ip, dotdoh_tuple_port(enc));
 				enc++;
 			}
 			else
@@ -961,6 +973,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	else
 	{
 		log_debug(DEBUG_CONFIG, "dnsmasq.conf unchanged");
+		// Unchanged content keeps the existing file; tighten its mode too, in case an
+		// older FTL left it world-readable (the changed path creates it 0600 itself).
+		if(chmod(DNSMASQ_PH_CONFIG, S_IRUSR | S_IWUSR) != 0)
+			log_warn("Unable to restrict permissions on "DNSMASQ_PH_CONFIG": %s", strerror(errno));
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
