@@ -208,10 +208,16 @@ if(STATIC)
 else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
-# -pie -fPIE: (Dynamic) position independent executable
-
+# Position-independent executable (image ASLR). -fPIE compiles the objects
+# position-independent; the executable is then linked PIE via -pie (dynamic
+# build) or -static-pie (static build, set on the link line below). A plain
+# -static silently overrides -pie and yields a non-PIE binary with a fixed load
+# address, so the static build - the one we actually ship - must use -static-pie.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fPIE")
+    if(NOT STATIC)
+        set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie")
+    endif()
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
@@ -308,7 +314,7 @@ add_executable(pihole-FTL
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static)
+    target_link_libraries(pihole-FTL -static-libgcc -static-pie)
     set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
@@ -463,6 +469,10 @@ check_include_file("sys/random.h" HAVE_RANDOM_H)
 if(HAVE_RANDOM_H)
     target_compile_definitions(config PRIVATE USE_GETRANDOM)
     target_compile_definitions(core PRIVATE USE_GETRANDOM)
+    target_compile_definitions(dotdoh PRIVATE USE_GETRANDOM)
+    if(TARGET dotdoh_regression)
+        target_compile_definitions(dotdoh_regression PRIVATE USE_GETRANDOM)
+    endif()
 endif()
 
 # <unwind.h> is part of GCC's libgcc — available on ALL targets (musl+glibc, static+dynamic)
@@ -534,22 +544,23 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
-option(USE_MBED_TLS "Build FTL with TLS support, if available" ON)
+option(USE_TLS "Build FTL with TLS support, if available" ON)
 
-find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
-find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
-find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
-if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS AND USE_MBED_TLS)
-    # Enable TLS support in civetweb if mbedTLS is selected and available
+find_library(LIBSSL NAMES libssl${LIBRARY_SUFFIX} ssl)
+find_library(LIBCRYPTO NAMES libcrypto${LIBRARY_SUFFIX} crypto)
+if(LIBSSL AND LIBCRYPTO AND USE_TLS)
+    # Enable TLS support in civetweb using its OpenSSL backend
     message(STATUS "Building FTL with TLS support: YES")
-    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
-    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
-    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
-    target_compile_definitions(dotdoh PRIVATE HAVE_MBEDTLS)
-    # Link against the mbedTLS libraries, the order is important (!)
-    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+    target_compile_definitions(core PRIVATE HAVE_TLS)
+    # OPENSSL_API_3_0 selects civetweb's OpenSSL backend, NO_SSL_DL (set in
+    # the civetweb CMakeLists) links it statically instead of via dlopen
+    target_compile_definitions(civetweb PRIVATE OPENSSL_API_3_0)
+    target_compile_definitions(webserver PRIVATE HAVE_TLS)
+    target_compile_definitions(dotdoh PRIVATE HAVE_TLS)
+    # Link against OpenSSL, the order is important (libssl depends on libcrypto)
+    target_link_libraries(pihole-FTL ${LIBSSL} ${LIBCRYPTO})
 else()
-    # Disable TLS support in civetweb if mbedTLS is not selected or not available
+    # Disable TLS support in civetweb if OpenSSL is not selected or not available
     message(STATUS "Building FTL with TLS support: NO")
     target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()

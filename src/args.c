@@ -19,8 +19,29 @@
 #  define NETTLE_VERSION_MINOR 0
 #endif
 
-#ifdef HAVE_MBEDTLS
-#include <mbedtls/version.h>
+#ifdef HAVE_TLS
+/*
+ * dnsmasq.h (included above) defines common allocator names like `free` and
+ * `strdup` as macros expanding to FTL's tracked wrappers. If still active while
+ * the OpenSSL headers are included, they get expanded inside OpenSSL's
+ * declarations/inline functions and produce invalid code (the exact breakage
+ * depends on the OpenSSL version). Undefine them around the includes and
+ * restore afterwards - the same protection src/FTL.h applies to its own system
+ * headers.
+ */
+#ifdef __GNUC__
+#pragma push_macro("free")
+#pragma push_macro("strdup")
+#undef free
+#undef strdup
+#endif
+#include <openssl/opensslv.h>
+#include <openssl/crypto.h>
+#include <openssl/provider.h>
+#ifdef __GNUC__
+#pragma pop_macro("strdup")
+#pragma pop_macro("free")
+#endif
 #endif
 
 #include "FTL.h"
@@ -218,6 +239,16 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 {
 	return strncasecmp(input, start, strlen(start)) == 0;
 }
+
+#ifdef HAVE_TLS
+// Return the value part of an OpenSSL_version() string, skipping the leading
+// "label: " prefix that most of them carry (e.g. "built on: <date>").
+static const char *openssl_value(const char *s)
+{
+	const char *sep = strstr(s, ": ");
+	return sep != NULL ? sep + 2 : s;
+}
+#endif
 
 void parse_args(int argc, char *argv[])
 {
@@ -481,7 +512,7 @@ void parse_args(int argc, char *argv[])
 	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
@@ -512,7 +543,7 @@ void parse_args(int argc, char *argv[])
 	  (strcmp(argv[1], "--read-x509") == 0 ||
 	   strcmp(argv[1], "--read-x509-key") == 0))
 	{
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
@@ -1048,13 +1079,8 @@ void parse_args(int argc, char *argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef HAVE_MBEDTLS
-			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
-			       green, bold, mg_version(), normal, yellow, green, bold, normal);
-#else
-			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
-			       green, bold, mg_version(), normal, red, yellow, normal);
-#endif
+			printf("Version:         %s%s%s%s (modified by Pi-hole)\n",
+			       green, bold, mg_version(), normal);
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
 				printf("Files: %sYes%s, ", green, normal);
@@ -1105,6 +1131,30 @@ void parse_args(int argc, char *argv[])
 			else
 				printf("Unix domain sockets: %sNo%s\n", red, normal);
 			printf("\n");
+#ifdef HAVE_TLS
+			printf("****************************** %s%sOpenSSL%s ******************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s"OPENSSL_FULL_VERSION_STR"%s\n", green, bold, normal);
+			printf("Built on:        %s\n", openssl_value(OpenSSL_version(OPENSSL_BUILT_ON)));
+			printf("Platform:        %s\n", openssl_value(OpenSSL_version(OPENSSL_PLATFORM)));
+			printf("CPU info:        %s\n", openssl_value(OpenSSL_version(OPENSSL_CPU_INFO)));
+			printf("Providers:       default: %s%s%s, legacy: %s%s%s, fips: %s%s%s\n",
+			       OSSL_PROVIDER_available(NULL, "default") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "default") ? "Yes" : "No", normal,
+			       OSSL_PROVIDER_available(NULL, "legacy") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "legacy") ? "Yes" : "No", normal,
+			       OSSL_PROVIDER_available(NULL, "fips") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "fips") ? "Yes" : "No", normal);
+			// QUIC (needed for DoQ/DoH3) is available from OpenSSL
+			// 3.5 onwards, unless the library was built with the
+			// build-time option "no-quic".
+#if defined(OPENSSL_NO_QUIC) || !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x30500000L
+			printf("QUIC:            %sNo%s\n", red, normal);
+#else
+			printf("QUIC:            %sYes%s\n", green, normal);
+#endif
+			printf("\n");
+#endif /* HAVE_TLS */
 			printf("****************************** %s%scJSON%s ********************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
@@ -1293,7 +1343,7 @@ void parse_args(int argc, char *argv[])
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");
 			printf("    and store it in %soutfile%s.\n\n", cyan, normal);
 			printf("    By default, this new certificate is based on the elliptic\n");
-			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
+			printf("    curve secp384r1 (NIST P-384). If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
 			printf("    for which the certificate is valid. If omitted, the domain\n");

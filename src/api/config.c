@@ -101,21 +101,24 @@ static struct {
 		.v4 = { "9.9.9.9", "149.112.112.112" },
 		.v6 = {	"2620:fe::fe", "2620:fe::9" },
 		.dot = { "tls://dns.quad9.net@9.9.9.9", "tls://dns.quad9.net@[2620:fe::fe]" },
-		.doh = { "https://dns.quad9.net@9.9.9.9/dns-query", "https://dns.quad9.net@[2620:fe::fe]/dns-query" }
+		// TODO: Quad9 DoH is HTTP/2-only; our DoH client speaks HTTP/1.1. Re-enable once we have native HTTP/2.
+		//.doh = { "https://dns.quad9.net@9.9.9.9/dns-query", "https://dns.quad9.net@[2620:fe::fe]/dns-query" }
 	},
 	{
 		.name = "Quad9 (unfiltered, no DNSSEC)",
 		.v4 = { "9.9.9.10", "149.112.112.10" },
 		.v6 = {	"2620:fe::10", "2620:fe::fe:10" },
 		.dot = { "tls://dns10.quad9.net@9.9.9.10", "tls://dns10.quad9.net@[2620:fe::10]" },
-		.doh = { "https://dns10.quad9.net@9.9.9.10/dns-query", "https://dns10.quad9.net@[2620:fe::10]/dns-query" }
+		// TODO: Quad9 DoH is HTTP/2-only; our DoH client speaks HTTP/1.1. Re-enable once we have native HTTP/2.
+		//.doh = { "https://dns10.quad9.net@9.9.9.10/dns-query", "https://dns10.quad9.net@[2620:fe::10]/dns-query" }
 	},
 	{
 		.name = "Quad9 (filtered, ECS, DNSSEC)",
 		.v4 = { "9.9.9.11", "149.112.112.11" },
 		.v6 = {	"2620:fe::11", "2620:fe::fe:11" },
 		.dot = { "tls://dns11.quad9.net@9.9.9.11", "tls://dns11.quad9.net@[2620:fe::11]" },
-		.doh = { "https://dns11.quad9.net@9.9.9.11/dns-query", "https://dns11.quad9.net@[2620:fe::11]/dns-query" }
+		// TODO: Quad9 DoH is HTTP/2-only; our DoH client speaks HTTP/1.1. Re-enable once we have native HTTP/2.
+		//.doh = { "https://dns11.quad9.net@9.9.9.11/dns-query", "https://dns11.quad9.net@[2620:fe::11]/dns-query" }
 	},
 	{
 		.name = "Cloudflare (DNSSEC)",

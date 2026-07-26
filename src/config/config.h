@@ -368,6 +368,7 @@ struct config {
 		struct conf_item netlink;
 		struct conf_item timing;
 		struct conf_item performance;
+		struct conf_item dotdoh;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

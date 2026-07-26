@@ -81,6 +81,43 @@ assert_padded() {  # $1 = transport (dot|doh)
   return 1
 }
 
+# The randomised loopback tuple the proxy actually bound for an upstream, read
+# from its "armed on <ip#port>" log line. Sets $tuple_ip and $tuple_port.
+armed_tuple() {  # $1 = DoT | DoH
+  local t
+  t="$(grep -oE "dotdoh: $1 upstream [^ ]+ armed on 127(\.[0-9]+){3}#[0-9]+" /var/log/pihole/FTL.log \
+       | grep -oE '127(\.[0-9]+){3}#[0-9]+' | tail -1)"
+  tuple_ip="${t%#*}"
+  tuple_port="${t#*#}"
+}
+
+# Fire $2 concurrent dig queries at the proxy's randomised listener and succeed
+# only if every one resolved to the expected answer. This is the meaningful
+# concurrency test: the worker pool and per-upstream connection pool must serve
+# many in-flight exchanges at once without racing or dropping.
+run_concurrent() {  # $1 = DoT|DoH, $2 = number of queries
+  local n="$2" tmp i ok=0 tuple_ip tuple_port
+  armed_tuple "$1"
+  tmp="$(mktemp -d)"
+  for i in $(seq 1 "$n"); do
+    ( dig +short +tries=1 +time=8 "@${tuple_ip}" -p "$tuple_port" a.ftl > "${tmp}/${i}" 2>&1 ) &
+  done
+  wait
+  for i in $(seq 1 "$n"); do
+    grep -q "192.168.1.1" "${tmp}/${i}" && ok=$((ok + 1))
+  done
+  rm -rf "$tmp"
+  echo "$ok/$n resolved"
+  [ "$ok" -eq "$n" ]
+}
+
+# Set a non-RESTART_FTL config value (e.g. a debug flag) live, no restart.
+set_debug_dotdoh() {  # $1 = true|false
+  curl -s -o /dev/null --max-time 10 -X PATCH "${FTL_URL}/api/config" \
+       -H "Content-Type: application/json" \
+       -d "{\"config\":{\"debug\":{\"dotdoh\":$1}}}" || true
+}
+
 setup_file() {
   ensure_shim || return 1
   # The DoH upstream is armed last, so waiting for it means both listeners are up.
@@ -112,25 +149,62 @@ teardown_file() {
 # UDP hop and, worse, .ftl is pinned to the plaintext recursor by a server=/ftl/
 # rule in 01-pihole-tests.conf, so it would never traverse the proxy at all.
 @test "dotdoh-client: a query resolves through the DoT proxy path" {
-  run bash -c "dig +short +tries=1 +time=5 @127.47.11.1 -p 5301 a.ftl"
+  armed_tuple DoT
+  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
   assert_output --partial "192.168.1.1"
 }
 
 @test "dotdoh-client: a query resolves through the DoH proxy path" {
-  run bash -c "dig +short +tries=1 +time=5 @127.47.11.2 -p 5302 a.ftl"
+  armed_tuple DoH
+  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
   assert_output --partial "192.168.1.1"
 }
 
 @test "dotdoh-client: the DoT-forwarded query is padded (RFC 8467)" {
-  run bash -c "dig +short +tries=1 +time=5 @127.47.11.1 -p 5301 a.ftl"
+  armed_tuple DoT
+  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
   assert_output --partial "192.168.1.1"
   run assert_padded dot
   assert_success
 }
 
 @test "dotdoh-client: the DoH-forwarded query is padded (RFC 8467)" {
-  run bash -c "dig +short +tries=1 +time=5 @127.47.11.2 -p 5302 a.ftl"
+  armed_tuple DoH
+  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
   assert_output --partial "192.168.1.1"
   run assert_padded doh
   assert_success
+}
+
+@test "dotdoh-client: many concurrent queries over the DoT proxy all resolve" {
+  run run_concurrent DoT 25
+  assert_success
+  assert_output --partial "25/25 resolved"
+}
+
+@test "dotdoh-client: many concurrent queries over the DoH proxy all resolve" {
+  run run_concurrent DoH 25
+  assert_success
+  assert_output --partial "25/25 resolved"
+}
+
+@test "dotdoh-client: debug.dotdoh emits a per-upstream statistics summary" {
+  set_debug_dotdoh true
+  # Generate some traffic so the counters are non-zero.
+  armed_tuple DoT
+  for i in $(seq 1 10); do
+    dig +short +tries=1 +time=5 @"${tuple_ip}" -p "${tuple_port}" a.ftl >/dev/null 2>&1
+  done
+  # The summary is emitted periodically (~10 s) by whichever worker is idle.
+  # Wait for one that reflects our queries to appear in the log.
+  local found=""
+  for _ in $(seq 1 20); do
+    if grep -qE "dotdoh\[pi.hole\]:.*queries=[1-9]" /var/log/pihole/FTL.log; then
+      found=1
+      break
+    fi
+    sleep 1
+  done
+  set_debug_dotdoh false
+  [ -n "$found" ]
 }
