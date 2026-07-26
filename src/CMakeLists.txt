@@ -220,12 +220,14 @@ if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
-# Emit each function/variable in its own section and let the linker drop the
-# unreferenced ones (-Wl,--gc-sections). Combined with the static libraries
-# built with the same flags (see the ftl-build image), this strips dead code -
-# including large unused parts of OpenSSL - from the shipped binary.
+# Emit each function/variable in its own section so the linker can drop the
+# unreferenced ones at link time (-Wl,--gc-sections, added as a link option
+# below). Combined with the static libraries built with the same flags (see the
+# ftl-build image), this strips dead code - including large unused parts of
+# OpenSSL - from the shipped binary.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections -Wl,--gc-sections")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections")
+    add_link_options(-Wl,--gc-sections)
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
