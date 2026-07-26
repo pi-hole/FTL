@@ -220,6 +220,14 @@ if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
+# Emit each function/variable in its own section and let the linker drop the
+# unreferenced ones (-Wl,--gc-sections). Combined with the static libraries
+# built with the same flags (see the ftl-build image), this strips dead code -
+# including large unused parts of OpenSSL - from the shipped binary.
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections -Wl,--gc-sections")
+endif()
+
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
 set(CMAKE_C_FLAGS "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
