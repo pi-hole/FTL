@@ -167,11 +167,11 @@ static void set_log_path(struct log_fd *log, const char *path)
 // Open cached log fds from config paths.
 // open_log_fds(true):  open FTL.log only (called early, before full config)
 // open_log_fds(false): open webserver.log + pihole.log (called after config)
-void open_log_fds(bool ftl)
+void open_log_fds(bool early)
 {
 #ifdef HAVE_LIBJOURNAL
 	// Initialize journal if configured
-	if(ftl && config.files.log.destination.v.log_destination == LOG_DEST_JOURNAL)
+	if(early && config.files.log.destination.v.log_destination == LOG_DEST_JOURNAL)
 	{
 		const int rc = journal_init();
 		if(rc < 0)
@@ -188,7 +188,7 @@ void open_log_fds(bool ftl)
 	if(config.files.log.destination.v.log_destination != LOG_DEST_FILE)
 		return;
 
-	if(ftl)
+	if(early)
 	{
 		// FTL.log - path is known from getLogFilePath()
 		if(config.files.log.ftl.v.s != NULL)
@@ -680,6 +680,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 			             "DEBUG_FLAG=%s", debugstr(flag),
 			             "COMPONENT=%s", "FTL",
 			             "SYSLOG_IDENTIFIER=pihole-FTL",
+			             "TID=%d", gettid(),
 			             NULL);
 		}
 #endif
@@ -763,6 +764,7 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 		             "DEBUG_FLAG=%s", debugstr(flag),
 		             "COMPONENT=%s", "webserver",
 		             "SYSLOG_IDENTIFIER=pihole-FTL",
+		             "TID=%d", gettid(),
 		             NULL);
 	}
 #endif
