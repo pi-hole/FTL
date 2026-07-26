@@ -572,18 +572,28 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
         message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
     endif()
 
-    # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Optional and
-    # additionally requires QUIC support in the linked OpenSSL; without it the
-    # terminator serves HTTP/1.1 and (if built) HTTP/2 only. HTTP/3 also needs
-    # OpenSSL >= 4.0 for SSL_get_peer_addr() to forward the real client address;
-    # terminator.c raises a #error against an older OpenSSL.
+    # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Requires nghttp3
+    # AND OpenSSL >= 4.0, which provides SSL_get_peer_addr() (the per-connection
+    # QUIC peer getter used to forward the real client IP). Against an older
+    # OpenSSL such as 3.5.x, HTTP/3 and QUIC are disabled at build time and the
+    # terminator serves HTTP/1.1 and (if built) HTTP/2 only.
+    include(CheckCSourceCompiles)
+    check_c_source_compiles("
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER < 0x40000000L
+#error OpenSSL < 4.0 has no QUIC peer-address API
+#endif
+int main(void) { return 0; }
+" OPENSSL_HAS_QUIC_PEER_ADDR)
     find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
-    if(LIBNGHTTP3)
+    if(LIBNGHTTP3 AND OPENSSL_HAS_QUIC_PEER_ADDR)
         message(STATUS "Building FTL with HTTP/3 support: YES")
         target_compile_definitions(webserver PRIVATE HAVE_HTTP3)
         # The dotdoh client speaks DoH3 (HTTP/3 over QUIC) on h3:// upstreams.
         target_compile_definitions(dotdoh PRIVATE HAVE_HTTP3)
         target_link_libraries(pihole-FTL ${LIBNGHTTP3})
+    elseif(LIBNGHTTP3)
+        message(STATUS "Building FTL with HTTP/3 support: NO (OpenSSL < 4.0 lacks the QUIC peer-address API)")
     else()
         message(STATUS "Building FTL with HTTP/3 support: NO (nghttp3 not found)")
     endif()
