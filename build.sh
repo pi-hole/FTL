@@ -109,9 +109,9 @@ fi
 # They are gated behind CMake options so ordinary builds do not produce them.
 if [[ -n "${test}" ]]; then
     if [[ -n "${cmake_args}" ]]; then
-        cmake_args="${cmake_args} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON"
+        cmake_args="${cmake_args} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON"
     else
-        cmake_args="-DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON"
+        cmake_args="-DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON"
     fi
 fi
 
@@ -210,7 +210,7 @@ else
     cp pihole-FTL ../
     # Copy the regression test binaries alongside it so the bats tests can run
     # them from the repo root.
-    for regression_bin in tar_regression gzip_regression; do
+    for regression_bin in tar_regression gzip_regression dotdoh_regression; do
         if [[ -f "${regression_bin}" ]]; then
             cp "${regression_bin}" ../
         fi

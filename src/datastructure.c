@@ -22,6 +22,8 @@
 #include "database/aliasclients.h"
 // config struct
 #include "config/config.h"
+// dotdoh_uri_for_listener()
+#include "dotdoh/proxy.h"
 // set_event(RESOLVE_NEW_HOSTNAMES)
 #include "events.h"
 // overTime array
@@ -193,6 +195,20 @@ int findQueryID(const int id)
 
 int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, const char *func, const char *file)
 {
+	// Encrypted upstreams are forwarded to an internal loopback proxy tuple
+	// (127.47.11.N#port). Record the real configured upstream instead, so every
+	// consumer (all API endpoints, PADD, the query database, ...) sees it and
+	// not the internal address. Cheap for plaintext upstreams: the prefix check
+	// inside short-circuits before any config walk.
+	in_port_t eff_port = port;
+	char dotdoh_uri[512];
+	int dotdoh_port = 0;
+	if(dotdoh_uri_for_listener(upstreamString, port, dotdoh_uri, sizeof(dotdoh_uri), &dotdoh_port))
+	{
+		upstreamString = dotdoh_uri;
+		eff_port = (in_port_t)dotdoh_port;
+	}
+
 	// Go through already knows upstream servers and see if we used one of those
 	for(unsigned int upstreamID = 0; upstreamID < counters->upstreams; upstreamID++)
 	{
@@ -203,13 +219,13 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 		if(upstream == NULL)
 			continue;
 
-		if(strcmp(getstr(upstream->ippos), upstreamString) == 0 && upstream->port == port)
+		if(strcmp(getstr(upstream->ippos), upstreamString) == 0 && upstream->port == eff_port)
 			return upstreamID;
 	}
 	// This upstream server is not known
 	// Store ID
 	const unsigned int upstreamID = counters->upstreams;
-	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %u)", upstreamString, port, upstreamID);
+	log_debug(DEBUG_GC, "New upstream server: %s:%u (ID %u)", upstreamString, eff_port, upstreamID);
 
 	// Get upstream pointer
 	upstreamsData *upstream = _getUpstream(upstreamID, false, line, func, file);
@@ -238,7 +254,7 @@ int _findUpstreamID(const char *upstreamString, const in_port_t port, int line, 
 	set_event(RESOLVE_NEW_HOSTNAMES);
 	upstream->lastQuery = 0.0;
 	// Store port
-	upstream->port = port;
+	upstream->port = eff_port;
 	// Increase counter by one
 	counters->upstreams++;
 

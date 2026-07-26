@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.19
+FROM ghcr.io/pi-hole/ftl-build:v2.23
 
 WORKDIR /app
 
@@ -16,16 +16,11 @@ ENV BUILD_OPTS=${BUILD_OPTS}
 # Setting TERM is needed for pretty output in BATS tests
 ENV TERM=xterm
 
-# Monkeypatch BATS to remove duplicate output of starting and finished test
-# BATS uses ANSI escape codes to overwrite the line after the test has finished
-# This is not supported by Github Actions as it does not provide a TTY to the docker build container
-RUN sed -i '/buffer_with_truncation /d' /bats/bats-core/libexec/bats-core/bats-format-pretty
-
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON" ${BUILD_OPTS} && \
+    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON" ${BUILD_OPTS} && \
 # Copy FTL binary to root directory
     cd / &&\
     cp /app/pihole-FTL . && \

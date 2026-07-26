@@ -1195,38 +1195,43 @@ setup() {
   assert_line --index 0 "1"
 }
 
-@test "EDNS(0) ECS can overwrite client address (IPv4)" {
-  # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+@test "EDNS(0) MAC groups ECS addresses in network table" {
+  mac="02:00:00:00:00:01"
+  ipv4="192.168.47.97"
+  ipv6="fe80::b167:af1e:968b:dead"
 
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=192.168.47.97/32 @127.0.0.1'
-  assert_line --index 0 "127.0.0.1"
+  seed="INSERT INTO network (hwaddr, interface, firstSeen, lastQuery, numQueries) VALUES ('ip-${ipv4}', 'test', 0, 0, 0); INSERT INTO network_addresses (network_id, ip) SELECT id, '${ipv4}' FROM network WHERE hwaddr = 'ip-${ipv4}';"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${seed}"
   assert_success
 
-  # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
-  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/192.168.47.97#53 "
-}
-
-@test "EDNS(0) ECS can overwrite client address (IPv6)" {
-  # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128 @127.0.0.1'
+  run bash -c "dig localhost +short +subnet=${ipv4}/32 +ednsopt=65001:020000000001 @127.0.0.1"
   assert_line --index 0 "127.0.0.1"
   assert_success
-
-  # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/fe80::b167:af1e:968b:dead#53 "
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv4}#53 "
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "dig localhost +short +subnet=${ipv6}/128 +ednsopt=65001:020000000001 @127.0.0.1"
+  assert_line --index 0 "127.0.0.1"
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv6}#53 "
+
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+
+  query="SELECT lower(n.hwaddr) || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE a.ip IN ('${ipv4}', '${ipv6}') ORDER BY a.ip; SELECT 'mac_rows=' || count(*) FROM network WHERE lower(hwaddr) = '${mac}'; SELECT 'mock_rows=' || count(*) FROM network WHERE lower(hwaddr) IN ('ip-${ipv4}', 'ip-${ipv6}');"
+  expected="${mac}|${ipv4}"$'\n'"${mac}|${ipv6}"$'\n'"mac_rows=1"$'\n'"mock_rows=0"
+  for _ in $(seq 1 30); do
+    result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
+    [[ "${result}" == "${expected}" ]] && break
+    sleep 0.1
+  done
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}"
+  assert_output "${expected}"
 }
 
 @test "alias-client is imported and used for configured client" {
@@ -1705,67 +1710,20 @@ setup() {
 }
 
 @test "X.509 certificate parser returns expected result" {
-  # We are getting the certificate from the config
-  run bash -c './pihole-FTL --read-x509'
-  assert_line --index 0 "Reading certificate from /etc/pihole/test.pem ..."
-  assert_line --index 1 "Certificate (X.509):"
-  assert_line --index 2 "  cert. version     : 3"
-  assert_line --index 3 "  serial number     : 36:36:32:32:35:31:37:36:30:30:39:31:30:30:37"
-  assert_line --index 4 "  issuer name       : CN=pi.hole, O=Pi-hole, C=DE"
-  assert_line --index 5 "  subject name      : CN=pi.hole"
-  assert_line --index 6 "  issued  on        : 2023-01-16 21:15:12"
-  assert_line --index 7 "  expires on        : 2053-01-16 21:15:12"
-  assert_line --index 8 "  signed using      : ECDSA with SHA256"
-  assert_line --index 9 "  EC key size       : 384 bits"
-  assert_line --index 10 "  basic constraints : CA=false"
-  assert_line --index 11 "  subject alt name  :"
-  assert_line --index 12 "      dNSName : pi.hole"
-  assert_line --index 13 "Public key (PEM):"
-  assert_line --index 14 "-----BEGIN PUBLIC KEY-----"
-  assert_line --index 15 "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuH7sWfGRkvm5s5LVYTwbM6PjZmuK4KPh"
-  assert_line --index 16 "A5qaWfVqJw4jeEMkvyT4CKtiruLEBcqzimkBhP6dlMOUM/K0caRC5Jm46fMC9bV3"
-  assert_line --index 17 "74ibYXxiX4bkiu8m/GDjM5RgiS1D1x+U"
-  assert_line --index 18 "-----END PUBLIC KEY-----"
-  assert_line --index 19 ""
+  # We are getting the certificate from the config. The verbose output is the
+  # OpenSSL X509_print() representation (identical to "openssl x509 -text"). It
+  # is compared against a recorded expectation file, ignoring whitespace-only
+  # formatting differences between OpenSSL versions (diff -w).
+  run bash -c 'diff -w <(./pihole-FTL --read-x509 2>&1) test/x509_read.expected'
+  assert_success
 }
 
 @test "X.509 certificate parser returns expected result (with private key)" {
-  # We are explicitly specifying the certificate file here
-  run bash -c './pihole-FTL --read-x509-key /etc/pihole/test.pem'
-  [[ "${lines[0]}"  == "Reading certificate from /etc/pihole/test.pem ..." ]]
-  [[ "${lines[1]}"  == "Certificate (X.509):" ]]
-  [[ "${lines[2]}"  == "  cert. version     : 3" ]]
-  [[ "${lines[3]}"  == "  serial number     : 36:36:32:32:35:31:37:36:30:30:39:31:30:30:37" ]]
-  [[ "${lines[4]}"  == "  issuer name       : CN=pi.hole, O=Pi-hole, C=DE" ]]
-  [[ "${lines[5]}"  == "  subject name      : CN=pi.hole" ]]
-  [[ "${lines[6]}"  == "  issued  on        : 2023-01-16 21:15:12" ]]
-  [[ "${lines[7]}"  == "  expires on        : 2053-01-16 21:15:12" ]]
-  [[ "${lines[8]}"  == "  signed using      : ECDSA with SHA256" ]]
-  [[ "${lines[9]}"  == "  EC key size       : 384 bits" ]]
-  [[ "${lines[10]}" == "  basic constraints : CA=false" ]]
-  [[ "${lines[11]}" == "  subject alt name  :" ]]
-  [[ "${lines[12]}" == "      dNSName : pi.hole" ]]
-  [[ "${lines[13]}" == "Private key:" ]]
-  [[ "${lines[14]}" == "  ID: 0" ]]
-  [[ "${lines[15]}" == "  Keysize: 384 bits" ]]
-  [[ "${lines[16]}" == "  Algorithm: 151126016" ]]
-  [[ "${lines[17]}" == "  Lifetime: 0" ]]
-  [[ "${lines[18]}" == "  Type: ECC (key pair)" ]]
-  [[ "${lines[19]}" == "  Curvetype: SEC random curve over prime fields (secp384r1)" ]]
-  [[ "${lines[20]}" == "Private key (PEM):" ]]
-  [[ "${lines[21]}" == "-----BEGIN EC PRIVATE KEY-----" ]]
-  [[ "${lines[22]}" == "MIGkAgEBBDBGWIbQ11v8sQjrlj+KUS7OJoR0M9xyZyMLhkejtXlHGNXn2lK8ZzPW" ]]
-  [[ "${lines[23]}" == "UUA6+ZqgdA+gBwYFK4EEACKhZANiAAS4fuxZ8ZGS+bmzktVhPBszo+Nma4rgo+ED" ]]
-  [[ "${lines[24]}" == "mppZ9WonDiN4QyS/JPgIq2Ku4sQFyrOKaQGE/p2Uw5Qz8rRxpELkmbjp8wL1tXfv" ]]
-  [[ "${lines[25]}" == "iJthfGJfhuSK7yb8YOMzlGCJLUPXH5Q=" ]]
-  [[ "${lines[26]}" == "-----END EC PRIVATE KEY-----" ]]
-  [[ "${lines[27]}" == "Public key (PEM):" ]]
-  [[ "${lines[28]}" == "-----BEGIN PUBLIC KEY-----" ]]
-  [[ "${lines[29]}" == "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuH7sWfGRkvm5s5LVYTwbM6PjZmuK4KPh" ]]
-  [[ "${lines[30]}" == "A5qaWfVqJw4jeEMkvyT4CKtiruLEBcqzimkBhP6dlMOUM/K0caRC5Jm46fMC9bV3" ]]
-  [[ "${lines[31]}" == "74ibYXxiX4bkiu8m/GDjM5RgiS1D1x+U" ]]
-  [[ "${lines[32]}" == "-----END PUBLIC KEY-----" ]]
-  [[ "${lines[33]}" == "" ]]
+  # We are explicitly specifying the certificate file here. Compare the full
+  # certificate and private key dump against the recorded expectation file,
+  # ignoring whitespace-only formatting differences between OpenSSL versions.
+  run bash -c 'diff -w <(./pihole-FTL --read-x509-key /etc/pihole/test.pem 2>&1) test/x509_read_key.expected'
+  assert_success
 }
 
 @test "X.509 certificate parser can check if domain is included" {
@@ -1807,6 +1765,11 @@ setup() {
 
 @test "GZIP parser regression harness" {
   run ./gzip_regression
+  assert_success
+}
+
+@test "DoT/DoH parser regression harness" {
+  run ./dotdoh_regression
   assert_success
 }
 

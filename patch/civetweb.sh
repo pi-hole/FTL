@@ -11,9 +11,6 @@ patch -p1 < patch/civetweb/0001-Always-Kepler-syntax-for-Lua-server-pages.patch
 echo "Applying patch 0001-Add-FTL-URI-rewriting-changes-to-CivetWeb.patch"
 patch -p1 < patch/civetweb/0001-Add-FTL-URI-rewriting-changes-to-CivetWeb.patch
 
-echo "Applying patch 0001-Add-mbedTLS-debug-logging-hook.patch"
-patch -p1 < patch/civetweb/0001-Add-mbedTLS-debug-logging-hook.patch
-
 echo "Applying patch 0001-Add-Register-CSRF-token-in-conn-request_info.patch"
 patch -p1 < patch/civetweb/0001-Register-CSRF-token-in-conn-request_info.patch
 
