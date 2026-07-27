@@ -1147,13 +1147,26 @@ static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJ
 				inet_ntop(AF_INET6, RTA_DATA(rta), ip, sizeof(ip));
 		}
 		else if(rta->rta_type == NDA_LLADDR) {
-			const unsigned char *addr = RTA_DATA(rta);
-			log_debug(DEBUG_NETLINK, "NDA_LLADDR raw bytes: %02x:%02x:%02x:%02x:%02x:%02x "
-			          "(rtattr at %p, rta_len %u, payload %zu)",
-			          addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
-			          (void*)rta, rta->rta_len, RTA_PAYLOAD(rta));
-			snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-				addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+			// LLADDR must be exactly 6 bytes (EUI-48 MAC).
+			// There are interfaces with a different MAC length,
+			// but they are rejected for use in the network table.
+			// The kernel sends NDA_LLADDR with a 0-byte payload
+			// for some virtual interfaces (e.g. WireGuard peers).
+			// Reading from RTA_DATA() without checking the payload
+			// size reads garbage bytes from the rtattr padding.
+			if(RTA_PAYLOAD(rta) == 6) {
+				const unsigned char *addr = RTA_DATA(rta);
+				log_debug(DEBUG_NETLINK, "NDA_LLADDR raw bytes: %02x:%02x:%02x:%02x:%02x:%02x "
+				          "(rtattr at %p, rta_len %u, payload %zu)",
+				          addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
+				          (void*)rta, rta->rta_len, RTA_PAYLOAD(rta));
+				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+					addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+			}
+			else {
+				log_debug(DEBUG_NETLINK, "NDA_LLADDR with unexpected payload %zu on ifindex %d, skipping",
+				          RTA_PAYLOAD(rta), ndm->ndm_ifindex);
+			}
 		}
 	}
 	if_indextoname(ndm->ndm_ifindex, ifname);
