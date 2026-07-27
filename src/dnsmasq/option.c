@@ -1474,58 +1474,45 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
   
   while (arg)
     {
+      char *start = arg;
       comma = split(arg);      
-
-      for (cp = arg; *cp; cp++)
+      
+      if (strstr(arg, "option:") == arg)
+	start = arg+7;
+#ifdef HAVE_DHCP6
+      else if (strstr(arg, "option6:") == arg)
+	{
+	  start = arg+8;
+	  is6 = 1;
+	}
+#endif
+      else if (strstr(arg, "option4:") == arg)
+	start = arg+8;
+      
+      for (cp = start; *cp; cp++)
 	if (*cp < '0' || *cp > '9')
 	  break;
       
       if (!*cp)
 	{
-	  new->opt = atoi(arg);
+	  new->opt = atoi(start);
 	  opt_len = 0;
 	  option_ok = 1;
 	  break;
 	}
-      
-      if (strstr(arg, "option:") == arg)
+
+      /* option*:<opt>|<optname> must follow tag and vendor string. */
+      if (start != arg)
 	{
-	  if ((new->opt = lookup_dhcp_opt(AF_INET, arg+7)) != -1)
+	  if ((new->opt = lookup_dhcp_opt(is6 ? AF_INET6: AF_INET, start)) != -1)
 	    {
-	      opt_len = lookup_dhcp_len(AF_INET, new->opt);
+	      opt_len = lookup_dhcp_len(is6 ? AF_INET6: AF_INET, new->opt);
 	      /* option:<optname> must follow tag and vendor string. */
 	      if (!(opt_len & OT_INTERNAL) || flags == DHOPT_MATCH)
 		option_ok = 1;
 	    }
 	  break;
 	}
-#ifdef HAVE_DHCP6
-      else if (strstr(arg, "option6:") == arg)
-	{
-	  for (cp = arg+8; *cp; cp++)
-	    if (*cp < '0' || *cp > '9')
-	      break;
-	 
-	  if (!*cp)
-	    {
-	      new->opt = atoi(arg+8);
-	      opt_len = 0;
-	      option_ok = 1;
-	    }
-	  else
-	    {
-	      if ((new->opt = lookup_dhcp_opt(AF_INET6, arg+8)) != -1)
-		{
-		  opt_len = lookup_dhcp_len(AF_INET6, new->opt);
-		  if (!(opt_len & OT_INTERNAL) || flags == DHOPT_MATCH)
-		    option_ok = 1;
-		}
-	    }
-	  /* option6:<opt>|<optname> must follow tag and vendor string. */
-	  is6 = 1;
-	  break;
-	}
-#endif
       else if (strstr(arg, "vendor:") == arg)
 	{
 	  new->u.vendor_class = (unsigned char *)opt_string_alloc(arg+7);
@@ -2013,7 +2000,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 
   if (flags == DHOPT_PXE_OPT &&  (new->flags & DHOPT_VENDOR))
     goto_err(_("No vendor-encap options allowed in dhcp-option-pxe")); 
-      
+
   if (flags == DHOPT_MATCH)
     {
       if ((new->flags & (DHOPT_ENCAPSULATE | DHOPT_VENDOR)) ||
