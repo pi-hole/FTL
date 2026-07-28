@@ -596,13 +596,25 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_BROADCAST:
 			case IFLA_PERM_ADDRESS:
 			{
-				char mac[18];
-				const unsigned char *addr = RTA_DATA(rta);
-				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-				         addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+				// MAC addresses must be exactly 6 bytes (EUI-48).
+				// Some virtual interfaces may send a zero-length payload.
+				// Reading from RTA_DATA() without checking the payload
+				// size reads garbage bytes from the rtattr padding.
+				if(RTA_PAYLOAD(rta) == 6)
+				{
+					char mac[18];
+					const unsigned char *addr = RTA_DATA(rta);
+					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+					         addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
-				// Addresses may be empty, so only add them if they are not
-				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), mac);
+					// Addresses may be empty, so only add them if they are not
+					cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), mac);
+				}
+				else
+				{
+					log_debug(DEBUG_NETLINK, "%s with unexpected payload %zu on ifindex %d, skipping",
+					          iflaTypeToString(rta->rta_type), RTA_PAYLOAD(rta), ifi->ifi_index);
+				}
 				break;
 			}
 
