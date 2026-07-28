@@ -619,9 +619,9 @@ unsigned short get_api_string(char **buf, const bool domain)
 			return 0;
 		}
 
-		// Check if snprintf() truncated the string (this should never
-		// happen as we allocate enough memory for the domain to fit)
-		if((size_t)this_len >= bufsz - len - 1)
+		// Reject the URL if snprintf() truncated it to fit api_str (this_len is
+		// the would-be length) or if it does not fit the destination buffer.
+		if((size_t)this_len >= MAX_URL_LEN || (size_t)this_len >= bufsz - len - 1)
 		{
 			log_err("API URL buffer too small!");
 			free(api_str);
