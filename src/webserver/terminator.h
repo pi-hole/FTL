@@ -15,6 +15,7 @@
 #define WEBSERVER_TERMINATOR_H
 
 #include <stdbool.h>
+#include <stddef.h> // size_t
 
 // Start the TLS terminator: bind public_port on bind_addr (NULL/"" = all
 // interfaces, else an IPv4/IPv6 literal), terminate TLS with the PEM (cert + key)

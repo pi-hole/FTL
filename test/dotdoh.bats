@@ -141,9 +141,10 @@ setup_file() {
   #   2  DoH over h2   (https://, shim :8443, ALPN "h2")
   #   3  DoH over h1.1 (https://, shim :8445, ALPN "http/1.1")
   #   4  DoH3 over h3  (h3://,    shim :8444, QUIC)
-  # The h3:// upstream is armed last, so its (unique) armed marker means every
-  # listener is up. ensure_shim already required the h3 listener's readiness, so
-  # the DoH3 query is guaranteed to have a server to talk to.
+  # The h3:// upstream is armed last, so its (unique) armed marker means FTL
+  # accepted every upstream. This only arms the config; the shim's h3 listener is
+  # UDP and not covered by ensure_shim's TCP checks, so the DoH3 test itself waits
+  # on SHIM_H3_READY before querying.
   api_patch_dns "{\"upstreamCA\":\"$(pwd)/test/test_ca.crt\",\"upstreams\":[\"tls://pi.hole@127.0.0.1#8853\",\"https://pi.hole@127.0.0.1#8443/dns-query\",\"https://pi.hole@127.0.0.1#8445/dns-query\",\"h3://pi.hole@127.0.0.1#8444/dns-query\"]}" \
                 "dotdoh: DoH3 upstream pi.hole armed"
 }

@@ -221,11 +221,14 @@ if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 # Emit each function/variable in its own section so the linker can drop the
-# unreferenced ones at link time (-Wl,--gc-sections, added as a link option
-# below). Combined with the static libraries built with the same flags (see the
-# ftl-build image), this strips dead code - including large unused parts of
-# OpenSSL - from the shipped binary.
-if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+# unreferenced ones at link time (-Wl,--gc-sections). Combined with the static
+# libraries built with the same flags (see the ftl-build image), this strips dead
+# code - including large unused parts of OpenSSL - from the shipped binary. Probe
+# the linker for the flag rather than assuming it from the compiler: it is a GNU
+# ld/gold/lld feature, so e.g. Apple's ld64 (which spells it -dead_strip) skips it.
+include(CheckLinkerFlag)
+check_linker_flag(C "-Wl,--gc-sections" HAVE_LD_GC_SECTIONS)
+if (HAVE_LD_GC_SECTIONS)
     set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections")
     add_link_options(-Wl,--gc-sections)
 endif()

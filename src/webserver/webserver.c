@@ -444,7 +444,10 @@ static bool get_server_ports(void)
 	}
 
 	// Rebuild the table from scratch (http_init may run again on a restart).
+	// https_port is only ever assigned below when still 0, so clear it here too;
+	// otherwise a stale value from a previous run survives the rebuild.
 	memset(server_ports, 0, sizeof(server_ports));
+	https_port = 0;
 
 	// Loop over all ports CivetWeb reports. In terminator mode CivetWeb binds the
 	// public plaintext port(s) plus an internal loopback backend; the public TLS
@@ -700,6 +703,16 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 }
 
 #ifdef HAVE_TLS
+// Append src to dst (buffer size dstsz), keeping dst NUL-terminated. A no-op once
+// dst is full, so the length handed to strncat() can never underflow.
+static void str_append(char *dst, size_t dstsz, const char *src)
+{
+	const size_t used = strlen(dst);
+	if(used + 1 >= dstsz)
+		return;
+	strncat(dst, src, dstsz - used - 1);
+}
+
 // Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
 // name public TLS ports the terminator owns, so they are dropped from CivetWeb's
 // list and a loopback plaintext backend (ephemeral port, read back after start)
@@ -765,16 +778,16 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 
 		// Keep plaintext entries verbatim
 		if(backend[0] != '\0')
-			strncat(backend, ",", backend_len - strlen(backend) - 1);
-		strncat(backend, ent, backend_len - strlen(backend) - 1);
+			str_append(backend, backend_len, ",");
+		str_append(backend, backend_len, ent);
 	}
 	free(copy);
 
 	// Append the loopback plaintext backend CivetWeb serves the terminator on.
 	// Port 0 lets the kernel pick a free port; it is read back after mg_start2().
 	if(backend[0] != '\0')
-		strncat(backend, ",", backend_len - strlen(backend) - 1);
-	strncat(backend, "127.0.0.1:0", backend_len - strlen(backend) - 1);
+		str_append(backend, backend_len, ",");
+	str_append(backend, backend_len, "127.0.0.1:0");
 
 	return tls_port;
 }

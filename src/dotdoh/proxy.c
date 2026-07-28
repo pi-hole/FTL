@@ -414,27 +414,27 @@ static bool write_full(int fd, const uint8_t *buf, size_t len, uint64_t deadline
 // section, with the answer/authority/additional counts cleared - from a full
 // answer too large for a UDP datagram, so dnsmasq retries the query over TCP.
 // Returns the length written, or 0 if the answer is too short/malformed to parse.
-static size_t dns_truncated_response(const uint8_t *ans, size_t alen,
+static size_t dns_truncated_response(const uint8_t *answer, size_t alen,
                                      uint8_t *out, size_t out_sz)
 {
 	if(alen < 12)
 		return 0;
-	const unsigned qd = ((unsigned)ans[4] << 8) | ans[5];
+	const unsigned qd = ((unsigned)answer[4] << 8) | answer[5];
 	size_t off = 12;
 	for(unsigned q = 0; q < qd && off < alen; q++)
 	{
 		// Walk the QNAME labels; compression is not legal in a question.
-		while(off < alen && ans[off] != 0)
+		while(off < alen && answer[off] != 0)
 		{
-			if((ans[off] & 0xC0) != 0)
+			if((answer[off] & 0xC0) != 0)
 				return 0;
-			off += (size_t)ans[off] + 1;
+			off += (size_t)answer[off] + 1;
 		}
 		off += 1 + 4; // root label + QTYPE + QCLASS
 	}
 	if(off > alen || off > out_sz)
 		return 0;
-	memcpy(out, ans, off);
+	memcpy(out, answer, off);
 	out[2] |= 0x02;                      // set TC
 	out[6] = out[7] = 0;                 // ANCOUNT = 0
 	out[8] = out[9] = 0;                 // NSCOUNT = 0
