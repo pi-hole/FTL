@@ -17097,7 +17097,18 @@ sslize(struct mg_connection *conn,
 
 			} else {
 				/* This is an SSL specific error, e.g. SSL_ERROR_SSL */
-				mg_cry_internal(conn, "sslize error: %s", ssl_error());
+#if !defined(USE_MBEDTLS) && !defined(USE_GNUTLS)
+				/* Pi-hole modification: a failed server-side handshake is
+				 * usually the peer rejecting our self-signed certificate via a
+				 * TLS alert - recoverable, so log it only in webserver debug. */
+				if ((conn->phys_ctx->context_type == CONTEXT_SERVER)
+				    && (ERR_GET_REASON(ERR_peek_error()) >= SSL_AD_REASON_OFFSET)) {
+					DEBUG_TRACE("sslize handshake alert: %s", ssl_error());
+				} else
+#endif
+				{
+					mg_cry_internal(conn, "sslize error: %s", ssl_error());
+				}
 				break;
 			}
 
