@@ -1156,10 +1156,6 @@ static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJ
 			// size reads garbage bytes from the rtattr padding.
 			if(RTA_PAYLOAD(rta) == 6) {
 				const unsigned char *addr = RTA_DATA(rta);
-				log_debug(DEBUG_NETLINK, "NDA_LLADDR raw bytes: %02x:%02x:%02x:%02x:%02x:%02x "
-				          "(rtattr at %p, rta_len %u, payload %zu)",
-				          addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
-				          (void*)rta, rta->rta_len, RTA_PAYLOAD(rta));
 				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 					addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 			}
