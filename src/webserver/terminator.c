@@ -2656,6 +2656,12 @@ static bool h3_stream_reapable(const struct h3_stream *s)
 {
 	if(s->uni_local)
 		return false;
+	// A remote unidirectional stream (the client's control and QPACK streams) is
+	// receive-only: it has no QUIC send part, so SSL_get_stream_write_state()
+	// below does not apply to it (querying it dereferences a NULL send-stream).
+	// These live for the whole connection anyway, so keep them.
+	if(SSL_get_stream_type(s->ssl) == SSL_STREAM_TYPE_READ)
+		return false;
 	const int ws = SSL_get_stream_write_state(s->ssl);
 	if(ws == SSL_STREAM_STATE_OK || ws == SSL_STREAM_STATE_NONE ||
 	   ws == SSL_STREAM_STATE_WRONG_DIR)
