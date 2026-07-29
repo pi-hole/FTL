@@ -113,6 +113,17 @@ else
 fi
 check "Content-Security-Policy intact over HTTP/2" "ok" "${csp}"
 
+# The terminator advertises its HTTP/3 endpoint to h2 clients via Alt-Svc, so an
+# h3-capable browser upgrades from this h2 connection to HTTP/3 on the same port
+# (the h3 listener is up in this build, so the header must be present).
+if "${H2[@]}" -D - -o /dev/null https://pi.hole/ \
+     | grep -qiE "^alt-svc:.*h3="; then
+  altsvc="ok"
+else
+  altsvc="missing"
+fi
+check "Alt-Svc advertises HTTP/3 over HTTP/2" "ok" "${altsvc}"
+
 # (3) A POST with a body is served over HTTP/2 (not downgraded) and reaches the
 # backend: the wrong password yields valid=false only if the JSON body was parsed.
 post_ver="$("${H2[@]}" -o "${BODY}" -w '%{http_version}' -X POST \

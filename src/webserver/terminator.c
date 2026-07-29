@@ -162,6 +162,9 @@ static int quic_fd = -1;
 static pthread_t quic_tid;
 static bool quic_tid_valid = false;
 static volatile bool quic_running = false;
+// Public UDP/TCP port the QUIC listener bound to, advertised to h2 clients via
+// Alt-Svc so h3-capable browsers upgrade to HTTP/3.
+static int quic_public_port = 0;
 #endif
 
 // Log the pending OpenSSL error queue at error level, prefixed with context.
@@ -1220,6 +1223,20 @@ static int h2_parse_and_submit(struct h2_stream *s, char *hdr, size_t hdrlen)
 	// (the HTTP/3 path drops it unconditionally for the same reason).
 	if(!chunked && clen_name != NULL && nvlen < H2_MAX_HDRS)
 		h2_add_nv(nva, &nvlen, clen_name, clen_val);
+
+#ifdef HAVE_HTTP3
+	// Advertise HTTP/3 so an h3-capable browser on this h2 connection upgrades to
+	// it, but only while the QUIC listener is actually up. h2_add_nv() lowercases
+	// the name in place, so both name and value must be writable; nghttp2 copies
+	// the nv, so these stack buffers only need to outlive the submit call below.
+	char altsvc_name[] = "alt-svc";
+	char altsvc[32];
+	if(quic_running && nvlen < H2_MAX_HDRS)
+	{
+		snprintf(altsvc, sizeof(altsvc), "h3=\":%d\"; ma=86400", quic_public_port);
+		h2_add_nv(nva, &nvlen, altsvc_name, altsvc);
+	}
+#endif
 
 	s->be.resp_headers_parsed = true;
 
@@ -3014,6 +3031,7 @@ static void terminator_quic_start(const char *bind_addr, int public_port, const 
 		return;
 	}
 	quic_running = true;
+	quic_public_port = public_port;
 	if(pthread_create(&quic_tid, NULL, quic_accept_loop, NULL) != 0)
 	{
 		log_err("Terminator: failed to start HTTP/3 thread: %s", strerror(errno));
