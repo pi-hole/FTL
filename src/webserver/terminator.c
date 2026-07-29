@@ -3340,8 +3340,11 @@ void terminator_stop(void)
 // ever called under HAVE_TLS, so they need no stubs.
 bool terminator_proxy_token_hex(char *out, size_t outsz)
 {
-	(void)out;
-	(void)outsz;
+	// No terminator here, so there is no token: return an empty string. The
+	// write also gives the stub a side effect, so it is not mistaken for a
+	// candidate for __attribute__((const)) under -Wsuggest-attribute=const.
+	if(outsz > 0)
+		out[0] = '\0';
 	return false;
 }
 
