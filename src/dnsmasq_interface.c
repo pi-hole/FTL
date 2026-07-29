@@ -688,18 +688,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
-	// Add HTTPS RR for pi.hole / <hostname> if HTTPS is active
+	// Add HTTPS RR (RFC 9460 §9) for pi.hole / <hostname> if HTTPS is active
 	bool https_rr_added = false;
 	if(hostn && qtype == T_HTTPS)
 	{
 		const in_port_t https_port = get_https_port();
 		if(https_port > 0)
 		{
-			// Build SvcParams
+			// Build SvcParams (RFC 9460 §2.2)
 			unsigned char svcparams[64];
 			unsigned char *sp = svcparams;
 
-			// ALPN (key=1): include "h2"/"h3" based on compile-time support
+			// "alpn" SvcParamKey (key=1, RFC 9460 §7.1): include "h2"/"h3" based on compile-time support
 			unsigned char alpn[6];
 			unsigned char *ap = alpn;
 #ifdef HAVE_HTTP2
@@ -711,18 +711,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			const size_t alpn_len = ap - alpn;
 			if(alpn_len > 0)
 			{
-				PUTSHORT(1, sp); // alpn key
+				PUTSHORT(1, sp); // SvcParamKey 1 = "alpn"
 				PUTSHORT(alpn_len, sp);
 				memcpy(sp, alpn, alpn_len);
 				sp += alpn_len;
 			}
 
-			// port (key=3)
-			PUTSHORT(3, sp); // port key
-			PUTSHORT(2, sp); // length: 2 bytes (in_port_t)
+			// "port" SvcParamKey (key=3, RFC 9460 §7.2)
+			PUTSHORT(3, sp); // SvcParamKey 3 = "port"
+			PUTSHORT(2, sp); // value length: 2 octets, network byte order (RFC 9460 §7.2)
 			PUTSHORT(https_port, sp);
 
-			// ipv4hint (key=4) — if available
+			// "ipv4hint" SvcParamKey (key=4, RFC 9460 §7.3) — if available
 			const bool have_v4 = next_iface.haveIPv4 || config.dns.reply.host.force4.v.b;
 			if(have_v4)
 			{
@@ -731,13 +731,13 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 					memcpy(&v4addr, &config.dns.reply.host.v4.v.in_addr, sizeof(v4addr));
 				else
 					memcpy(&v4addr, &next_iface.addr4.addr4, sizeof(v4addr));
-				PUTSHORT(4, sp); // ipv4hint key
+				PUTSHORT(4, sp); // SvcParamKey 4 = "ipv4hint"
 				PUTSHORT(4, sp); // length: 4 bytes
 				memcpy(sp, &v4addr, 4);
 				sp += 4;
 			}
 
-			// ipv6hint (key=6) — if available
+			// "ipv6hint" SvcParamKey (key=6, RFC 9460 §7.3) — if available
 			const bool have_v6 = next_iface.haveIPv6 || config.dns.reply.host.force6.v.b;
 			if(have_v6)
 			{
@@ -746,7 +746,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 					memcpy(&v6addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(v6addr));
 				else
 					memcpy(&v6addr, &next_iface.addr6.addr6, sizeof(v6addr));
-				PUTSHORT(6, sp); // ipv6hint key
+				PUTSHORT(6, sp); // SvcParamKey 6 = "ipv6hint"
 				PUTSHORT(16, sp); // length: 16 bytes
 				memcpy(sp, &v6addr, 16);
 				sp += 16;
@@ -759,13 +759,13 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . port=%d\"",
 				          name, https_port);
 
-			// Add HTTPS resource record: priority=1 (ServiceMode), target="." (self)
+			// Add HTTPS RR (ServiceMode, RFC 9460 §2.4.3): SvcPriority=1, TargetName="." (self, RFC 9460 §2.5.2)
 			header->ancount = htons(ntohs(header->ancount) + 1);
 			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 			                       &p, daemon->local_ttl, NULL,
 			                       T_HTTPS, C_IN, (char*)"sbt",
-			                       1,                            // priority
-			                       0,                            // target "." (root label)
+			                       1,                            // SvcPriority = 1 (ServiceMode)
+			                       0,                            // TargetName "." (zero-length label, RFC 9460 §2.5.2)
 			                       (int)svcparam_len, svcparams))
 				log_query(flags, name, NULL, (char*)blockingreason, 0);
 
