@@ -1848,6 +1848,7 @@ struct h3_stream {
 	bool resp_deferred;      // data reader parked on NGHTTP3_ERR_WOULDBLOCK
 	bool error;              // gateway error: backend torn down, stream ending
 	bool reset;              // QUIC RESET_STREAM sent, stop writing this stream
+	bool send_concluded;     // response FIN queued (SSL_stream_conclude called)
 };
 
 struct h3_conn {
@@ -2503,7 +2504,10 @@ static int h3_conn_pump_write(struct h3_conn *c)
 			return -1;
 
 		if(fin && !blocked)
+		{
 			SSL_stream_conclude(s->ssl, 0); // send FIN once all data is flushed
+			s->send_concluded = true;
+		}
 		if(blocked)
 			break;
 	}
@@ -2656,19 +2660,15 @@ static bool h3_stream_reapable(const struct h3_stream *s)
 {
 	if(s->uni_local)
 		return false;
-	// A remote unidirectional stream (the client's control and QPACK streams) is
-	// receive-only: it has no QUIC send part, so SSL_get_stream_write_state()
-	// below does not apply to it (querying it dereferences a NULL send-stream).
-	// These live for the whole connection anyway, so keep them.
-	if(SSL_get_stream_type(s->ssl) == SSL_STREAM_TYPE_READ)
-		return false;
-	const int ws = SSL_get_stream_write_state(s->ssl);
-	if(ws == SSL_STREAM_STATE_OK || ws == SSL_STREAM_STATE_NONE ||
-	   ws == SSL_STREAM_STATE_WRONG_DIR)
-		return false; // send part still open: freeing now would truncate it
-	if(ws == SSL_STREAM_STATE_FINISHED && !s->read_done)
-		return false;
-	return true;
+	// Decide from our own state, never SSL_get_stream_write_state(): once we
+	// conclude the send part OpenSSL may release its send-stream, and querying the
+	// write state then dereferences NULL. A reset stream is done and can go;
+	// otherwise wait until we have queued the response FIN (OpenSSL keeps flushing
+	// it after the node is freed) and the receive side has ended. Receive-only
+	// remote streams (control/QPACK) never conclude a send, so are never reaped.
+	if(s->reset)
+		return true;
+	return s->send_concluded && s->read_done;
 }
 
 // Reclaim completed request streams so per-connection memory and the event-loop
