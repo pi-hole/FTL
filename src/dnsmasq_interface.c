@@ -688,8 +688,93 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
-	// Log empty replies
-	if(!(flags & (F_IPV4 | F_IPV6)))
+	// Add HTTPS RR for pi.hole / <hostname> if HTTPS is active
+	bool https_rr_added = false;
+	if(hostn && qtype == T_HTTPS)
+	{
+		const in_port_t https_port = get_https_port();
+		if(https_port > 0)
+		{
+			// Build SvcParams
+			unsigned char svcparams[64];
+			unsigned char *sp = svcparams;
+
+			// ALPN (key=1): include "h2"/"h3" based on compile-time support
+			unsigned char alpn[6];
+			unsigned char *ap = alpn;
+#ifdef HAVE_HTTP2
+			*ap++ = 2; *ap++ = 'h'; *ap++ = '2';
+#endif
+#ifdef HAVE_HTTP3
+			*ap++ = 2; *ap++ = 'h'; *ap++ = '3';
+#endif
+			const size_t alpn_len = ap - alpn;
+			if(alpn_len > 0)
+			{
+				PUTSHORT(1, sp); // alpn key
+				PUTSHORT(alpn_len, sp);
+				memcpy(sp, alpn, alpn_len);
+				sp += alpn_len;
+			}
+
+			// port (key=3)
+			PUTSHORT(3, sp); // port key
+			PUTSHORT(2, sp); // length: 2 bytes (in_port_t)
+			PUTSHORT(https_port, sp);
+
+			// ipv4hint (key=4) — if available
+			const bool have_v4 = next_iface.haveIPv4 || config.dns.reply.host.force4.v.b;
+			if(have_v4)
+			{
+				struct in_addr v4addr = {};
+				if(config.dns.reply.host.force4.v.b)
+					memcpy(&v4addr, &config.dns.reply.host.v4.v.in_addr, sizeof(v4addr));
+				else
+					memcpy(&v4addr, &next_iface.addr4.addr4, sizeof(v4addr));
+				PUTSHORT(4, sp); // ipv4hint key
+				PUTSHORT(4, sp); // length: 4 bytes
+				memcpy(sp, &v4addr, 4);
+				sp += 4;
+			}
+
+			// ipv6hint (key=6) — if available
+			const bool have_v6 = next_iface.haveIPv6 || config.dns.reply.host.force6.v.b;
+			if(have_v6)
+			{
+				struct in6_addr v6addr = {};
+				if(config.dns.reply.host.force6.v.b)
+					memcpy(&v6addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(v6addr));
+				else
+					memcpy(&v6addr, &next_iface.addr6.addr6, sizeof(v6addr));
+				PUTSHORT(6, sp); // ipv6hint key
+				PUTSHORT(16, sp); // length: 16 bytes
+				memcpy(sp, &v6addr, 16);
+				sp += 16;
+			}
+
+			const size_t svcparam_len = sp - svcparams;
+
+			// Debug logging
+			if(config.debug.queries.v.b)
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . port=%d\"",
+				          name, https_port);
+
+			// Add HTTPS resource record: priority=1 (ServiceMode), target="." (self)
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL,
+			                       T_HTTPS, C_IN, (char*)"sbt",
+			                       1,                            // priority
+			                       0,                            // target "." (root label)
+			                       (int)svcparam_len, svcparams))
+				log_query(flags, name, NULL, (char*)blockingreason, 0);
+
+			https_rr_added = true;
+		}
+	}
+
+	// Log empty replies (skip if we added an HTTPS RR above)
+	if(!(flags & (F_IPV4 | F_IPV6)) && !https_rr_added)
 	{
 		if(flags == 0)
 		{
@@ -826,6 +911,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			            "interface-local IP address" :
 			            "NODATA due to missing iface address");
 
+			cacheStatus = QUERY_CACHE;
+			return true;
+		}
+		else if(querytype == TYPE_HTTPS)
+		{
+			// Reply with NODATA by default; _FTL_make_answer() will
+			// craft an HTTPS RR if HTTPS is actually active
+			force_next_DNS_reply = REPLY_NODATA;
+			blockingreason = HOSTNAME;
 			cacheStatus = QUERY_CACHE;
 			return true;
 		}
@@ -1675,7 +1769,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
 	//
 	// RFC 9462, Section 4 says:
-	// 
+	//
 	// If the recursive resolver that receives this query has no Designated
 	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
 	// zone, to provide a consistent and accurate signal to clients that it
@@ -1925,7 +2019,7 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	}
 
 	// when we reach this point: the query is not in FTL's cache (for this client)
-	
+
 	// Check exact whitelist for match
 	const char *blockedDomain = domainstr;
 	PERF_START(_pcb_allow);
