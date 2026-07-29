@@ -1152,15 +1152,9 @@ void parse_args(int argc, char *argv[])
 			else
 				printf("HTTP/2:          %sNo%s\n", red, normal);
 			if(webserver_have_http3())
-			{
 				printf("HTTP/3:          %sYes%s\n", green, normal);
-				printf("QUIC:            %sYes%s\n", green, normal);
-			}
 			else
-			{
 				printf("HTTP/3:          %sNo%s\n", red, normal);
-				printf("QUIC:            %sNo%s\n", red, normal);
-			}
 			printf("\n");
 			printf("****************************** %s%sOpenSSL%s ******************************\n",
 			       yellow, bold, normal);
