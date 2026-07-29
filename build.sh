@@ -94,6 +94,9 @@ fi
 if [[ -n "${debug}" ]]; then
     install=1
     restart=1
+    # Propagate into test/run.sh so it attaches gdb to the test instance and
+    # dumps a backtrace when FTL crashes during the suite
+    export GDB=1
 fi
 
 # If we are building in debug mode, ensure CMake is configured for a Debug build
@@ -201,21 +204,24 @@ cmake --build . -- ${MAKEFLAGS}
 # Checksum verification
 ./pihole-FTL verify
 
+# Always copy the freshly built binary (and the regression test harnesses) to the
+# repository root, so test/run.sh runs exactly what we just built regardless of
+# whether we also install it system-wide. Skipping this on install let the tests
+# silently run a stale repo-root binary.
+echo "Copying compiled pihole-FTL binary to repository root"
+cp pihole-FTL ../
+# Copy the regression test binaries alongside it so the bats tests can run them
+# from the repo root.
+for regression_bin in tar_regression gzip_regression dotdoh_regression; do
+    if [[ -f "${regression_bin}" ]]; then
+        cp "${regression_bin}" ../
+    fi
+done
+
 # If we are asked to install, we do this here (requires root privileges)
-# Otherwise, we simply copy the binary one level down
 if [[ -n "${install}" ]]; then
     echo "Installing pihole-FTL"
     ${SUDO} cmake --install .
-else
-    echo "Copying compiled pihole-FTL binary to repository root"
-    cp pihole-FTL ../
-    # Copy the regression test binaries alongside it so the bats tests can run
-    # them from the repo root.
-    for regression_bin in tar_regression gzip_regression dotdoh_regression; do
-        if [[ -f "${regression_bin}" ]]; then
-            cp "${regression_bin}" ../
-        fi
-    done
 fi
 
 # If we are asked to run tests, we do this here
@@ -233,16 +239,22 @@ if [[ -n "${testhttp2}" ]]; then
     bash test/http2_test.sh
 fi
 
-# If we are asked to restart, we do this here
+# If we are asked to restart, we do this here. This drives the systemd service,
+# so skip it where there is no service manager (e.g. inside the test container,
+# where test/run.sh manages its own FTL instance instead).
 if [[ -n "${restart}" ]]; then
-    echo "Restarting pihole-FTL"
+    if command -v systemctl &> /dev/null; then
+        echo "Restarting pihole-FTL"
 
-    # First, reset the failure-counter in case a previous error caused a
-    # restarting loop now preventing systemd from starting FTL
-    ${SUDO} systemctl reset-failed pihole-FTL
+        # First, reset the failure-counter in case a previous error caused a
+        # restarting loop now preventing systemd from starting FTL
+        ${SUDO} systemctl reset-failed pihole-FTL
 
-    # Restart FTL
-    ${SUDO} systemctl restart pihole-FTL
+        # Restart FTL
+        ${SUDO} systemctl restart pihole-FTL
+    else
+        echo "Skipping restart: no systemctl (not a systemd host)"
+    fi
 fi
 
 # If we are asked to clean the logs, we do this here
@@ -254,22 +266,28 @@ if [[ -n "${clean_logs}" ]]; then
     done
 fi
 
-# If we want to attach the debugger, we do this here
-if [[ -n "${debug}" ]]; then
-    echo "Waiting for pihole-FTL to start..."
-    pid_file=/run/pihole-FTL.pid
+# If we want to attach the debugger, we do this here. This targets the live
+# systemd-managed daemon; in a container there is none to attach to (test/run.sh
+# already attaches gdb to the test instance via GDB=1 above), so skip it there.
+if [[ -n "${debug}" && -n "${test}" ]]; then
+    if command -v systemctl &> /dev/null; then
+        echo "Waiting for pihole-FTL to start..."
+        pid_file=/run/pihole-FTL.pid
 
-    # Loop until the pid file is created and non-empty
-    while [ ! -f "${pid_file}" ] || [ ! -s "${pid_file}" ]; do
-        sleep 0.1
-    done
+        # Loop until the pid file is created and non-empty
+        while [ ! -f "${pid_file}" ] || [ ! -s "${pid_file}" ]; do
+            sleep 0.1
+        done
 
-    # Get the pid from the pid file
-    pid=$(cat "${pid_file}")
+        # Get the pid from the pid file
+        pid=$(cat "${pid_file}")
 
-    # Attach gdb to the process
-    echo "Attaching debugger to pihole-FTL (PID: ${pid})..."
-    ${SUDO} gdb -p "${pid}"
+        # Attach gdb to the process
+        echo "Attaching debugger to pihole-FTL (PID: ${pid})..."
+        ${SUDO} gdb -p "${pid}"
+    else
+        echo "Skipping debugger attach: no systemd service (test/run.sh handles GDB via GDB=1)"
+    fi
 fi
 
 # If we are asked to tail the log, we do this here
