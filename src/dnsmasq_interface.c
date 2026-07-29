@@ -699,7 +699,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			unsigned char svcparams[64];
 			unsigned char *sp = svcparams;
 
-			// "alpn" SvcParamKey (key=1, RFC 9460 §7.1): include "h2"/"h3" based on compile-time support
+			// "alpn" SvcParamKey (key=1, RFC 9460 §7.1): include "h2"/"h3" based on compile-time support.
+			// RFC 9460 §9 defines the default ALPN set as ["http/1.1"], so we do not emit
+			// "no-default-alpn" (key=2): http/1.1 is always available via the CivetWeb server.
 			unsigned char alpn[6];
 			unsigned char *ap = alpn;
 #ifdef HAVE_HTTP2
@@ -722,7 +724,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			PUTSHORT(2, sp); // value length: 2 octets, network byte order (RFC 9460 §7.2)
 			PUTSHORT(https_port, sp);
 
-			// "ipv4hint" SvcParamKey (key=4, RFC 9460 §7.3) — if available
+			// "ipv4hint" SvcParamKey (key=4, RFC 9460 §7.3) — if available.
+			// Note: RFC 9460 §7.3 says server operators SHOULD NOT include these
+			// hints when TargetName is "." (owner name), but we include them here
+			// as they may save clients an additional A/AAAA lookup.
 			const bool have_v4 = next_iface.haveIPv4 || config.dns.reply.host.force4.v.b;
 			if(have_v4)
 			{
@@ -755,21 +760,21 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			const size_t svcparam_len = sp - svcparams;
 
 			// Debug logging
-			if(config.debug.queries.v.b)
-				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . port=%d\"",
-				          name, https_port);
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . port=%d\"",
+				      name, https_port);
 
 			// Add HTTPS RR (ServiceMode, RFC 9460 §2.4.3): SvcPriority=1, TargetName="." (self, RFC 9460 §2.5.2)
-			header->ancount = htons(ntohs(header->ancount) + 1);
 			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
 			                       &p, daemon->local_ttl, NULL,
 			                       T_HTTPS, C_IN, (char*)"sbt",
 			                       1,                            // SvcPriority = 1 (ServiceMode)
 			                       0,                            // TargetName "." (zero-length label, RFC 9460 §2.5.2)
 			                       (int)svcparam_len, svcparams))
+			{
+				header->ancount = htons(ntohs(header->ancount) + 1);
 				log_query(flags, name, NULL, (char*)blockingreason, 0);
-
-			https_rr_added = true;
+				https_rr_added = true;
+			}
 		}
 	}
 
