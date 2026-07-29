@@ -729,9 +729,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			// hints when TargetName is "." (owner name), but we include them here
 			// as they may save clients an additional A/AAAA lookup.
 			const bool have_v4 = next_iface.haveIPv4 || config.dns.reply.host.force4.v.b;
+			struct in_addr v4addr = {};
 			if(have_v4)
 			{
-				struct in_addr v4addr = {};
 				if(config.dns.reply.host.force4.v.b)
 					memcpy(&v4addr, &config.dns.reply.host.v4.v.in_addr, sizeof(v4addr));
 				else
@@ -744,9 +744,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 			// "ipv6hint" SvcParamKey (key=6, RFC 9460 §7.3) — if available
 			const bool have_v6 = next_iface.haveIPv6 || config.dns.reply.host.force6.v.b;
+			struct in6_addr v6addr = {};
 			if(have_v6)
 			{
-				struct in6_addr v6addr = {};
 				if(config.dns.reply.host.force6.v.b)
 					memcpy(&v6addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(v6addr));
 				else
@@ -759,9 +759,39 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 			const size_t svcparam_len = sp - svcparams;
 
-			// Debug logging
-			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . port=%d\"",
-				      name, https_port);
+			// Debug logging — show all SvcParams in presentation format
+			if(config.debug.queries.v.b)
+			{
+				char alpn_buf[32] = "";
+#ifdef HAVE_HTTP2
+				strcat(alpn_buf, "h2,");
+#endif
+#ifdef HAVE_HTTP3
+				strcat(alpn_buf, "h3,");
+#endif
+				const size_t alpn_s = strlen(alpn_buf);
+				if(alpn_s > 0)
+					alpn_buf[alpn_s - 1] = '\0';
+
+				char v4_buf[INET6_ADDRSTRLEN + 16] = "";
+				if(have_v4)
+				{
+					char ip[INET6_ADDRSTRLEN];
+					inet_ntop(AF_INET, &v4addr, ip, sizeof(ip));
+					snprintf(v4_buf, sizeof(v4_buf), " ipv4hint=%s", ip);
+				}
+
+				char v6_buf[INET6_ADDRSTRLEN + 16] = "";
+				if(have_v6)
+				{
+					char ip[INET6_ADDRSTRLEN];
+					inet_ntop(AF_INET6, &v6addr, ip, sizeof(ip));
+					snprintf(v6_buf, sizeof(v6_buf), " ipv6hint=%s", ip);
+				}
+
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . alpn=%s port=%d%s%s\"",
+				          name, alpn_s > 0 ? alpn_buf : "-", https_port, v4_buf, v6_buf);
+			}
 
 			// Add HTTPS RR (ServiceMode, RFC 9460 §2.4.3): SvcPriority=1, TargetName="." (self, RFC 9460 §2.5.2)
 			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
