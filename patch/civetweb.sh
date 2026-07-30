@@ -23,4 +23,7 @@ patch -p1 < patch/civetweb/0001-Expose-bound-to-addresses-from-CivetWeb-to-the-f
 echo "Applying patch 0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch"
 patch -p1 < patch/civetweb/0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch
 
+echo "Applying patch 0001-Demote-server-side-TLS-handshake-alerts-to-debug.patch"
+patch -p1 < patch/civetweb/0001-Demote-server-side-TLS-handshake-alerts-to-debug.patch
+
 echo "ALL PATCHES APPLIED OKAY"

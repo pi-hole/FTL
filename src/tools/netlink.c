@@ -596,13 +596,25 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_BROADCAST:
 			case IFLA_PERM_ADDRESS:
 			{
-				char mac[18];
-				const unsigned char *addr = RTA_DATA(rta);
-				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-				         addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+				// MAC addresses must be exactly 6 bytes (EUI-48).
+				// Some virtual interfaces may send a zero-length payload.
+				// Reading from RTA_DATA() without checking the payload
+				// size reads garbage bytes from the rtattr padding.
+				if(RTA_PAYLOAD(rta) == 6)
+				{
+					char mac[18];
+					const unsigned char *addr = RTA_DATA(rta);
+					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+					         addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
-				// Addresses may be empty, so only add them if they are not
-				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), mac);
+					// Addresses may be empty, so only add them if they are not
+					cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), mac);
+				}
+				else
+				{
+					log_debug(DEBUG_NETLINK, "%s with unexpected payload %zu on ifindex %d, skipping",
+					          iflaTypeToString(rta->rta_type), RTA_PAYLOAD(rta), ifi->ifi_index);
+				}
 				break;
 			}
 
@@ -1147,9 +1159,22 @@ static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJ
 				inet_ntop(AF_INET6, RTA_DATA(rta), ip, sizeof(ip));
 		}
 		else if(rta->rta_type == NDA_LLADDR) {
-			const unsigned char *addr = RTA_DATA(rta);
-			snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-				addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+			// LLADDR must be exactly 6 bytes (EUI-48 MAC).
+			// There are interfaces with a different MAC length,
+			// but they are rejected for use in the network table.
+			// The kernel sends NDA_LLADDR with a 0-byte payload
+			// for some virtual interfaces (e.g. WireGuard peers).
+			// Reading from RTA_DATA() without checking the payload
+			// size reads garbage bytes from the rtattr padding.
+			if(RTA_PAYLOAD(rta) == 6) {
+				const unsigned char *addr = RTA_DATA(rta);
+				snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+					addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+			}
+			else {
+				log_debug(DEBUG_NETLINK, "NDA_LLADDR with unexpected payload %zu on ifindex %d, skipping",
+				          RTA_PAYLOAD(rta), ndm->ndm_ifindex);
+			}
 		}
 	}
 	if_indextoname(ndm->ndm_ifindex, ifname);
