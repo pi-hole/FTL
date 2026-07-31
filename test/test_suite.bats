@@ -1337,10 +1337,7 @@ setup() {
 
 @test "Pi-hole returns HTTPS RR for pi.hole" {
   run bash -c "dig HTTPS pi.hole @127.0.0.1 +short"
-  assert_line --partial "alpn=\"h2,h3\""
-  assert_line --partial "port=443"
-  assert_line --partial "ipv4hint="
-  assert_line --partial "ipv6hint="
+  assert_line --index 0 "1 . alpn=\"h2,h3\" port=443 ipv4hint=127.0.0.1 ipv6hint=::1"
 
   run bash -c "dig HTTPS pi.hole @127.0.0.1 +noall +comments | grep -o \" aa\""
   assert_line --index 0 " aa"
@@ -1354,6 +1351,10 @@ setup() {
   run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
   assert_line --index 0 "pi.hole."
   assert_line --index 1 "::1"
+
+  run bash -c "dig HTTPS pihole.mydomain.net @127.0.0.1 +short"
+  assert_line --index 0 "pi.hole."
+  assert_line --index 1 "1 . alpn=\"h2,h3\" port=443 ipv4hint=127.0.0.1 ipv6hint=::1"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
