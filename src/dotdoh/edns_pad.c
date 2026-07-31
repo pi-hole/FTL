@@ -58,6 +58,44 @@ static bool skip_name(const uint8_t *buf, size_t len, size_t *pos)
 	return true;
 }
 
+// Requestor's advertised UDP payload size from the query's EDNS OPT record (the
+// OPT CLASS field, RFC 6891), or 512 (the pre-EDNS default / RFC floor) when the
+// query carries no OPT or cannot be parsed. Used to decide when a UDP answer must
+// be TC-truncated so dnsmasq retries over TCP instead of receiving a byte-chopped
+// datagram. Reads only up to the OPT RR; the padding appended later does not move
+// the CLASS field, so this may be called before or after edns_pad_query().
+uint16_t __attribute__((pure)) edns_query_udp_size(const uint8_t *buf, size_t len)
+{
+	if(len < 12)
+		return 512;
+	const uint16_t qdcount = (uint16_t)((buf[4] << 8) | buf[5]);
+	const uint16_t ancount = (uint16_t)((buf[6] << 8) | buf[7]);
+	const uint16_t nscount = (uint16_t)((buf[8] << 8) | buf[9]);
+	const uint16_t arcount = (uint16_t)((buf[10] << 8) | buf[11]);
+	size_t pos = 12;
+	for(uint16_t i = 0; i < qdcount; i++)
+	{
+		if(!skip_name(buf, len, &pos) || pos + 4 > len)
+			return 512;
+		pos += 4;
+	}
+	const unsigned long total_rr = (unsigned long)ancount + nscount + arcount;
+	for(unsigned long i = 0; i < total_rr; i++)
+	{
+		if(!skip_name(buf, len, &pos) || pos + 10 > len)
+			return 512;
+		const uint16_t type = (uint16_t)((buf[pos] << 8) | buf[pos + 1]);
+		const uint16_t cls = (uint16_t)((buf[pos + 2] << 8) | buf[pos + 3]);
+		const size_t rdlen = (size_t)((buf[pos + 8] << 8) | buf[pos + 9]);
+		if(pos + 10 + rdlen > len)
+			return 512;
+		if(type == DNS_TYPE_OPT)
+			return cls < 512 ? 512 : cls; // RFC 6891: values below 512 are 512
+		pos += 10 + rdlen;
+	}
+	return 512;
+}
+
 size_t edns_pad_query(uint8_t *buf, size_t len, size_t bufsz)
 {
 	// Need at least a fixed 12-byte header to look at.

@@ -165,8 +165,13 @@ ssize_t doh_parse_response(const uint8_t *buf, size_t buflen,
 		return -1;
 
 	// Status line must be exactly "HTTP/x.y 200 " - require the 3-digit code to
-	// be followed by a space or CR so a malformed "2000" is rejected.
-	const uint8_t *sp = memchr(buf, ' ', hlen);
+	// be followed by a space or CR so a malformed "2000" is rejected. Search for
+	// the separating space only within the status line (up to the first CR), so a
+	// space inside a later header VALUE cannot be mistaken for the status code.
+	const uint8_t *eol = memchr(buf, '\r', hlen);
+	if(eol == NULL)
+		return -1;
+	const uint8_t *sp = memchr(buf, ' ', (size_t)(eol - buf));
 	if(sp == NULL || sp + 5 > buf + hlen)
 		return -1;
 	if(!(sp[1] == '2' && sp[2] == '0' && sp[3] == '0' &&

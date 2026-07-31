@@ -1095,6 +1095,17 @@ static void resolveUpstreams(const bool onlynew)
 		size_t ippos = upstream->ippos;
 		size_t oldnamepos = upstream->namepos;
 
+		// Encrypted (DoT/DoH) upstreams are recorded by their scheme URL, e.g.
+		// "https://dns.quad9.net@9.9.9.9/dns-query", not a bare IP. They have no
+		// PTR to look up, so skip them: resolveHostname() would otherwise read the
+		// "://" as an IPv6 address and warn about it on every refresh.
+		if(strstr(getstr(ippos), "://") != NULL)
+		{
+			upstream->flags.new = false;
+			unlock_shm();
+			continue;
+		}
+
 		// Only try to resolve host names of upstream servers which were recently active
 		// Limit for a "recently active" upstream server is two hours ago
 		if(upstream->lastQuery < now - 2*60*60)
