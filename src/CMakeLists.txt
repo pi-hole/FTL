@@ -576,8 +576,6 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
         target_compile_definitions(webserver PRIVATE HAVE_HTTP2)
         # The dotdoh client auto-negotiates HTTP/2 (DoH2) on https:// upstreams.
         target_compile_definitions(dotdoh PRIVATE HAVE_HTTP2)
-        # h2 is dynamically enabled in the HTTPS RR
-        target_compile_definitions(core PRIVATE HAVE_HTTP2)
         target_link_libraries(pihole-FTL ${LIBNGHTTP2})
     else()
         message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
@@ -602,8 +600,6 @@ int main(void) { return 0; }
         target_compile_definitions(webserver PRIVATE HAVE_HTTP3)
         # The dotdoh client speaks DoH3 (HTTP/3 over QUIC) on h3:// upstreams.
         target_compile_definitions(dotdoh PRIVATE HAVE_HTTP3)
-        # h3 is dynamically enabled in the HTTPS RR
-        target_compile_definitions(core PRIVATE HAVE_HTTP3)
         target_link_libraries(pihole-FTL ${LIBNGHTTP3})
     elseif(LIBNGHTTP3)
         message(STATUS "Building FTL with HTTP/3 support: NO (OpenSSL < 4.0 lacks the QUIC peer-address API)")

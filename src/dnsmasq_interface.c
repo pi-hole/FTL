@@ -45,7 +45,7 @@
 #include <stddef.h>
 // logg_rate_limit_message()
 #include "database/message-table.h"
-// http_init(), webserver_thread()
+// http_init(), webserver_thread(), get_https_port(), webserver_have_http2(), webserver_have_http3()
 #include "webserver/webserver.h"
 // init_memory_database()
 #include "database/query-table.h"
@@ -704,12 +704,14 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			// "no-default-alpn" (key=2): http/1.1 is always available via the CivetWeb server.
 			unsigned char alpn[6];
 			unsigned char *ap = alpn;
-#ifdef HAVE_HTTP2
-			*ap++ = 2; *ap++ = 'h'; *ap++ = '2';
-#endif
-#ifdef HAVE_HTTP3
-			*ap++ = 2; *ap++ = 'h'; *ap++ = '3';
-#endif
+			if(webserver_have_http2())
+			{
+				*ap++ = 2; *ap++ = 'h'; *ap++ = '2';
+			}
+			if(webserver_have_http3())
+			{
+				*ap++ = 2; *ap++ = 'h'; *ap++ = '3';
+			}
 			const size_t alpn_len = ap - alpn;
 			if(alpn_len > 0)
 			{
@@ -763,12 +765,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			if(config.debug.queries.v.b)
 			{
 				char alpn_buf[32] = "";
-#ifdef HAVE_HTTP2
-				strcat(alpn_buf, "h2,");
-#endif
-#ifdef HAVE_HTTP3
-				strcat(alpn_buf, "h3,");
-#endif
+				if(webserver_have_http2())
+					strcat(alpn_buf, "h2,");
+				if(webserver_have_http3())
+					strcat(alpn_buf, "h3,");
 				const size_t alpn_s = strlen(alpn_buf);
 				if(alpn_s > 0)
 					alpn_buf[alpn_s - 1] = '\0';
