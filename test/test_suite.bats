@@ -1341,6 +1341,9 @@ setup() {
   assert_line --partial "port=443"
   assert_line --partial "ipv4hint="
   assert_line --partial "ipv6hint="
+
+  run bash -c "dig HTTPS pi.hole @127.0.0.1 +noall +comments | grep -o \" aa\""
+  assert_line --index 0 " aa"
 }
 
 @test "Pi-hole uses interface-dependent replies inside CNAME chains" {

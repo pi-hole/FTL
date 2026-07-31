@@ -802,6 +802,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			                       (int)svcparam_len, svcparams))
 			{
 				header->ancount = htons(ntohs(header->ancount) + 1);
+				// Set the Authoritative Answer flag to be consistent with the
+				// A/AAAA replies for pi.hole / <hostname> (setup_reply() above
+				// cleared it, see rfc1035.c)
+				header->hb3 |= HB3_AA;
 				log_query(flags, name, NULL, (char*)blockingreason, 0);
 				https_rr_added = true;
 			}
