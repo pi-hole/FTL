@@ -817,21 +817,31 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
       return resize_packet(header, n, pheader, plen);
     }
   
+  /* If we forwarded a query for a locally known name (because it was for
+     an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
+     since we know that the domain exists, even if upstream doesn't. Local
+     host records (/etc/hosts, DHCP leases, Pi-hole's dns.hosts/custom.list)
+     are authoritative for the *existence* of the domain regardless of what
+     upstream DNSSEC validation says about it, so this must happen before
+     the bogusanswer gate below: otherwise a signed upstream NXDOMAIN proof
+     that fails validation (because it contradicts our local knowledge)
+     bypasses this safety net entirely and the client is handed the bogus
+     NXDOMAIN instead of the correct NODATA. */
+  if (!(header->hb3 & HB3_TC) &&
+      rcode == NXDOMAIN && extract_name(header, n, NULL, daemon->namebuff, EXTR_NAME_EXTRACT, 0) &&
+      (check_for_local_domain(daemon->namebuff, now) || lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL)))
+    {
+      header->hb3 |= HB3_AA;
+      SET_RCODE(header, NOERROR);
+      cache_secure = 0;
+      bogusanswer = 0;
+      rcode = NOERROR;
+    }
+
   if (header->hb3 & HB3_TC)
     log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
   else if (!bogusanswer || (header->hb4 & HB4_CD))
     {
-      if (rcode == NXDOMAIN && extract_name(header, n, NULL, daemon->namebuff, EXTR_NAME_EXTRACT, 0) &&
-	  (check_for_local_domain(daemon->namebuff, now) || lookup_domain(daemon->namebuff, F_CONFIG, NULL, NULL)))
-	{
-	  /* if we forwarded a query for a locally known name (because it was for 
-	     an unknown type) and the answer is NXDOMAIN, convert that to NODATA,
-	     since we know that the domain exists, even if upstream doesn't */
-	  header->hb3 |= HB3_AA;
-	  SET_RCODE(header, NOERROR);
-	  cache_secure = 0;
-	}
-      
       if (daemon->doctors && do_doctor(header, n, daemon->namebuff))
 	cache_secure = 0;
       

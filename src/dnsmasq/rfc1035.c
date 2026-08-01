@@ -2357,11 +2357,26 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	    }
 	}
     }
-  
-  if (!ans)
-    return 0; /* failed to answer a question */
 
-  /* We found a negative record. See if we have an SOA record to 
+  if (!ans)
+    {
+      /* We have no answer for this specific query type, but the name is
+	 locally configured (F_HOSTS/F_DHCP/F_CONFIG), e.g. only an A record
+	 exists and the client asked for AAAA/HTTPS/SVCB. The domain does
+	 exist, just not for this type, so answer NODATA ourselves rather
+	 than forwarding: forwarding would let an upstream authoritative
+	 server return NXDOMAIN for a name that's actually a local override,
+	 which incorrectly makes the whole domain look non-existent. */
+      if (qclass == C_IN && cache_find_by_name(NULL, name, now, F_HOSTS | F_DHCP | F_CONFIG))
+	{
+	  ans = 1;
+	  sec_data = 0;
+	}
+      else
+	return 0; /* failed to answer a question */
+    }
+
+  /* We found a negative record. See if we have an SOA record to
      return in the AUTH section. 
      
      For FORWARD NEG records, the addr.rrdata.datalen field of the othewise
