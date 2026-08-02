@@ -25,11 +25,19 @@ bool generate_password(char **password, char **pwhash);
 bool create_cli_password(void);
 bool remove_cli_password(void);
 
+// The shared secret the nodes of a cluster authenticate to each other with. It
+// is stored in its own file instead of in pihole.toml so it is neither
+// world-readable nor served by the API
+#define CLUSTER_SECRET_FILE "/etc/pihole/cluster_secret"
+bool create_cluster_secret(void);
+const char *cluster_secret(void) __attribute__ ((pure));
+
 enum password_result {
 	PASSWORD_INCORRECT = 0,
 	PASSWORD_CORRECT = 1,
 	APPPASSWORD_CORRECT = 2,
 	CLIPASSWORD_CORRECT = 3,
+	CLUSTERPASSWORD_CORRECT = 5,
 	NO_PASSWORD_SET = 4,
 	PASSWORD_RATE_LIMITED = -1
 } __attribute__((packed));
