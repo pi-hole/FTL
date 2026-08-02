@@ -147,6 +147,12 @@ bool backup_db_sessions(struct session *sessions, const uint16_t max_sessions)
 		if(!sess->used)
 			continue;
 
+		// Skip sessions of other cluster nodes. They are read-only, and
+		// the table has no column saying so - a restored session would
+		// come back as a full one. A peer simply logs in again
+		if(sess->cluster)
+			continue;
+
 		// Bind values to statement
 		// 1: login_at
 		if(sqlite3_bind_int64(stmt, 1, sess->login_at) != SQLITE_OK)
