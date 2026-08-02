@@ -47,6 +47,7 @@ struct session {
 	bool used;
 	bool app;
 	bool cli;
+	bool cluster;
 	struct {
 		bool login;
 		bool mixed;

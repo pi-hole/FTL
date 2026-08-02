@@ -584,7 +584,8 @@ int api_auth(struct ftl_conn *api)
 
 	if(result == PASSWORD_CORRECT ||
 	   result == APPPASSWORD_CORRECT ||
-	   result == CLIPASSWORD_CORRECT)
+	   result == CLIPASSWORD_CORRECT ||
+	   result == CLUSTERPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -687,6 +688,7 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].tls.mixed = false;
 				auth_data[i].app = result == APPPASSWORD_CORRECT;
 				auth_data[i].cli = result == CLIPASSWORD_CORRECT;
+				auth_data[i].cluster = result == CLUSTERPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token. On RNG failure,
 				// release the slot we just claimed so no session with
