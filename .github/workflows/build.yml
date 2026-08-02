@@ -123,6 +123,19 @@ jobs:
         shell: bash
         run: ls -l
       -
+        name: Restore ccache
+        # Restored into the build context, where .github/Dockerfile picks it up
+        # through its COPY. Keyed per matrix entry: the platforms compile for
+        # different architectures and the clang entry uses a different compiler,
+        # so none of them can share entries. The restore-keys prefix falls back
+        # to whatever the most recent run of this entry saved.
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.bin_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.bin_name }}-
+      -
         name: Build FTL in ftl-build container (QEMU)
         # Creates an image to build FTL and load it into the local Docker daemon
         uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 #v4.0.0
@@ -140,6 +153,28 @@ jobs:
               --build-arg "BUILD_OPTS=${{ matrix.build_opts }}" \
               --tag ftl-builder:local \
               --file .github/Dockerfile .
+      -
+        name: Export ccache from ftl-build container (QEMU)
+        # Exported here rather than alongside the other files further down, so a
+        # failing test run does not discard a cache the build just filled. The
+        # restored copy is removed first, as docker cp would otherwise nest the
+        # directory inside it.
+        run: |
+            docker create --platform ${{ matrix.platform }} --name ccache-container ftl-builder:local
+            rm -rf .ccache
+            docker cp ccache-container:/app/.ccache ./.ccache
+            docker rm ccache-container
+      -
+        name: Save ccache
+        # Cache entries are immutable, so the key carries the commit SHA and
+        # every run writes a new entry for GitHub to age out. Pull requests only
+        # run here when they come from a fork, and a fork's token cannot write
+        # caches, so there is nothing to save for them.
+        if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.bin_name }}-${{ github.sha }}
       -
         name: Test FTL in ftl-build container (QEMU)
         # Uses the ftl-builder image to run tests
