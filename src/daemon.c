@@ -43,6 +43,8 @@
 #include "procps.h"
 // dotdoh_cleanup()
 #include "dotdoh/proxy.h"
+// cluster_vip_shutdown()
+#include "cluster/dhcp.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -426,6 +428,11 @@ void cleanup(const int ret)
 		// clean exit, so it does not surface as a leak under valgrind.
 		log_debug(DEBUG_ANY, "Terminating: Stopping encrypted-upstream proxy");
 		dotdoh_cleanup();
+
+		// Give the virtual IP address back while the configuration
+		// holding it is still there. The cluster thread cannot do this
+		// itself: it is cancelled in its sleep and never joined
+		cluster_vip_shutdown();
 
 		// Close database connection
 		lock_shm();
