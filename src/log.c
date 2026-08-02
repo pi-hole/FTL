@@ -246,6 +246,8 @@ const char *debugstr(const enum debug_flag flag)
 			return "DEBUG_PERFORMANCE";
 		case DEBUG_DOTDOH:
 			return "DEBUG_DOTDOH";
+		case DEBUG_CLUSTER:
+			return "DEBUG_CLUSTER";
 		case DEBUG_MAX:
 			return "DEBUG_MAX";
 		case DEBUG_NONE: // fall through

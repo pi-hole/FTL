@@ -260,6 +260,8 @@ paths:
 
   /teleporter:
     $ref: 'teleporter.yaml#/components/paths/teleporter'
+  /cluster/status:
+    $ref: 'cluster.yaml#/components/paths/status'
 
   /action/gravity:
     $ref: 'action.yaml#/components/paths/gravity'

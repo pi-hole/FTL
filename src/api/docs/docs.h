@@ -25,6 +25,7 @@
 #include "hex/images/favicon_ico.h"
 #include "hex/specs/auth_yaml.h"
 #include "hex/specs/clients_yaml.h"
+#include "hex/specs/cluster_yaml.h"
 #include "hex/specs/common_yaml.h"
 #include "hex/specs/dhcp_yaml.h"
 #include "hex/specs/dns_yaml.h"
@@ -61,6 +62,7 @@ struct {
     {"images/favicon.ico", "image/ico", (const char*)images_favicon_ico, images_favicon_ico_len},
     {"specs/auth.yaml", "text/plain", (const char*)specs_auth_yaml, specs_auth_yaml_len},
     {"specs/clients.yaml", "text/plain", (const char*)specs_clients_yaml, specs_clients_yaml_len},
+    {"specs/cluster.yaml", "text/plain", (const char*)specs_cluster_yaml, specs_cluster_yaml_len},
     {"specs/config.yaml", "text/plain", (const char*)specs_config_yaml, specs_config_yaml_len},
     {"specs/common.yaml", "text/plain", (const char*)specs_common_yaml, specs_common_yaml_len},
     {"specs/dhcp.yaml", "text/plain", (const char*)specs_dhcp_yaml, specs_dhcp_yaml_len},

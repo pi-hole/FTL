@@ -15,6 +15,8 @@
 #include "enums.h"
 #include "dnsmasq_interface.h"
 #include "dotdoh/proxy.h"
+// cluster_start_thread()
+#include "cluster/cluster.h"
 #include "dotdoh/server.h"
 #include "shmem.h"
 #include "overTime.h"
@@ -3716,6 +3718,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			exit(EXIT_FAILURE);
 		}
 	}
+
+	// Start cluster thread if this node is part of a cluster
+	cluster_start_thread(&attr);
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")

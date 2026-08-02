@@ -965,6 +965,104 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.rtc.utc.c = validate_stub; // Only type-based checking
 
 
+	// struct cluster
+	conf->cluster.enabled.k = "cluster.enabled";
+	conf->cluster.enabled.h = "Should this Pi-hole be part of a cluster? When enabled, FTL periodically contacts the peers configured in cluster.peers and keeps track of their health. Clustering itself does not change anything on this machine - the individual features (config synchronization, DHCP failover, virtual IP) are enabled separately below.";
+	conf->cluster.enabled.t = CONF_BOOL;
+	conf->cluster.enabled.f = FLAG_RESTART_FTL;
+	conf->cluster.enabled.d.b = false;
+	conf->cluster.enabled.c = validate_stub; // Only type-based checking
+
+	conf->cluster.name.k = "cluster.name";
+	conf->cluster.name.h = "Name of this node inside the cluster. If left empty, the system's hostname is used. The name is only used for display purposes and to break ties when two nodes have the same priority.";
+	conf->cluster.name.a = cJSON_CreateStringReference("A name for this node, or an empty string to use the hostname");
+	conf->cluster.name.t = CONF_STRING;
+	conf->cluster.name.d.s = (char*)"";
+	conf->cluster.name.c = validate_str_no_newline;
+
+	conf->cluster.priority.k = "cluster.priority";
+	conf->cluster.priority.h = "Priority of this node inside the cluster. The reachable node with the numerically lowest priority is the one publishing the configuration and, if enabled, serving DHCP. Ties are broken by node name. Give every node a distinct value.";
+	conf->cluster.priority.a = cJSON_CreateStringReference("A positive integer, lower values win");
+	conf->cluster.priority.t = CONF_UINT;
+	conf->cluster.priority.d.ui = 100;
+	conf->cluster.priority.c = validate_stub; // Only type-based checking
+
+	conf->cluster.peers.k = "cluster.peers";
+	conf->cluster.peers.h = "The other Pi-holes in this cluster, as the URLs of their web interfaces.\n\n The nodes authenticate to each other with a shared secret rather than with individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering is enabled, and that file is copied to every other node once. A peer session may only read, so a node can never change anything on its peers.\n\n Example: [ \"https://192.168.0.5\" ]";
+	conf->cluster.peers.a = cJSON_CreateStringReference("Array of http:// or https:// URLs, one per peer, e.g. \"https://192.168.0.5:443\"");
+	conf->cluster.peers.t = CONF_JSON_STRING_ARRAY;
+	conf->cluster.peers.f = FLAG_RESTART_FTL;
+	conf->cluster.peers.d.json = cJSON_CreateArray();
+	conf->cluster.peers.c = validate_cluster_peers;
+
+	conf->cluster.interval.k = "cluster.interval";
+	conf->cluster.interval.h = "How often should the peers be contacted [seconds]? This is also the granularity of DHCP failover decisions.";
+	conf->cluster.interval.t = CONF_UINT;
+	conf->cluster.interval.d.ui = 10;
+	conf->cluster.interval.c = validate_stub; // Only type-based checking
+
+	conf->cluster.timeout.k = "cluster.timeout";
+	conf->cluster.timeout.h = "Timeout for a single request to a peer [seconds]. A peer that does not answer within this time is considered unreachable for this round.";
+	conf->cluster.timeout.t = CONF_UINT;
+	conf->cluster.timeout.d.ui = 2;
+	conf->cluster.timeout.c = validate_stub; // Only type-based checking
+
+	conf->cluster.tls.verify.k = "cluster.tls.verify";
+	conf->cluster.tls.verify.h = "Verify the TLS certificate of https:// peers. Pi-hole's default certificate is self-signed and is not signed by any CA this machine knows, so point cluster.tls.ca at the peers' certificates instead of turning this off: a node that does not verify its peers hands the cluster secret to whoever answers, and applies the configuration it gets back.";
+	conf->cluster.tls.verify.t = CONF_BOOL;
+	conf->cluster.tls.verify.d.b = true;
+	conf->cluster.tls.verify.c = validate_stub; // Only type-based checking
+
+	conf->cluster.tls.ca.k = "cluster.tls.ca";
+	conf->cluster.tls.ca.h = "Path to a certificate bundle the peers' TLS certificates are verified against. Pi-hole's own certificates are self-signed, so collecting the peers' certificates (/etc/pihole/tls.crt) in one file and pointing this at it is what makes https:// peers verifiable. If left empty, the system's trust store is used.";
+	conf->cluster.tls.ca.a = cJSON_CreateStringReference("A path to a PEM certificate bundle, or empty for the system trust store");
+	conf->cluster.tls.ca.t = CONF_STRING;
+	conf->cluster.tls.ca.d.s = (char*)"";
+	conf->cluster.tls.ca.c = validate_filepath_empty;
+
+	conf->cluster.dhcp.failover.k = "cluster.dhcp.failover";
+	conf->cluster.dhcp.failover.h = "Hand DHCP over to another node when this one fails? The reachable node with the lowest priority serves DHCP, the others keep their DHCP server switched off until they are needed. Only enable this when Pi-hole is your DHCP server on all cluster nodes.";
+	conf->cluster.dhcp.failover.t = CONF_BOOL;
+	conf->cluster.dhcp.failover.f = FLAG_RESTART_FTL;
+	conf->cluster.dhcp.failover.d.b = false;
+	conf->cluster.dhcp.failover.c = validate_stub; // Only type-based checking
+
+	conf->cluster.dhcp.master.k = "cluster.dhcp.master";
+	conf->cluster.dhcp.master.h = "Force a specific node to be the DHCP server, identified by its name or URL as configured in cluster.peers. If the designated node is down, the remaining nodes fall back to priority order. An empty string selects fully automatic operation.";
+	conf->cluster.dhcp.master.a = cJSON_CreateStringReference("A node name, a peer URL, or an empty string for automatic operation");
+	conf->cluster.dhcp.master.t = CONF_STRING;
+	conf->cluster.dhcp.master.d.s = (char*)"";
+	conf->cluster.dhcp.master.c = validate_str_no_newline;
+
+	conf->cluster.dhcp.activateAfter.k = "cluster.dhcp.activateAfter";
+	conf->cluster.dhcp.activateAfter.h = "How many consecutive rounds a higher-priority node has to be unreachable before this node takes DHCP over. Together with cluster.interval this defines how quickly DHCP fails over. Higher values are more tolerant of a short blip.";
+	conf->cluster.dhcp.activateAfter.t = CONF_UINT;
+	conf->cluster.dhcp.activateAfter.d.ui = 2;
+	conf->cluster.dhcp.activateAfter.c = validate_stub; // Only type-based checking
+
+	conf->cluster.dhcp.deactivateAfter.k = "cluster.dhcp.deactivateAfter";
+	conf->cluster.dhcp.deactivateAfter.h = "How many consecutive rounds a higher-priority node has to be healthy again before this node yields DHCP back to it.";
+	conf->cluster.dhcp.deactivateAfter.t = CONF_UINT;
+	conf->cluster.dhcp.deactivateAfter.d.ui = 3;
+	conf->cluster.dhcp.deactivateAfter.c = validate_stub; // Only type-based checking
+
+	conf->cluster.vip.address.k = "cluster.vip.address";
+	conf->cluster.vip.address.h = "Virtual IP address floating between the cluster nodes. Whichever node is currently in charge adds this address to its interface and answers on it, so clients only ever need to know this one address. It is advertised to DHCP clients as their DNS server and DHCP server identifier. An empty string disables the virtual IP.";
+	conf->cluster.vip.address.a = cJSON_CreateStringReference("An unused IPv4 or IPv6 address in your local network, or an empty string to disable");
+	conf->cluster.vip.address.t = CONF_STRING;
+	conf->cluster.vip.address.f = FLAG_RESTART_FTL;
+	conf->cluster.vip.address.d.s = (char*)"";
+	conf->cluster.vip.address.c = validate_cluster_vip;
+
+	conf->cluster.vip.interface.k = "cluster.vip.interface";
+	conf->cluster.vip.interface.h = "Interface the virtual IP address is added to. If left empty, the interface holding the route to the default gateway is used.";
+	conf->cluster.vip.interface.a = cJSON_CreateStringReference("An interface name, or an empty string to use the interface of the default route");
+	conf->cluster.vip.interface.t = CONF_STRING;
+	conf->cluster.vip.interface.d.s = (char*)"";
+	conf->cluster.vip.interface.c = validate_str_no_newline;
+
+
+
 	// struct resolver
 	conf->resolver.resolveIPv6.k = "resolver.resolveIPv6";
 	conf->resolver.resolveIPv6.h = "Should FTL try to resolve IPv6 addresses to hostnames?";
@@ -1695,6 +1793,12 @@ void initConfig(struct config *conf)
 	conf->debug.dotdoh.t = CONF_BOOL;
 	conf->debug.dotdoh.d.b = false;
 	conf->debug.dotdoh.c = validate_stub; // Only type-based checking
+
+	conf->debug.cluster.k = "debug.cluster";
+	conf->debug.cluster.h = "Print debugging information about the cluster: every request sent to a peer, the answer it gave, and how the DHCP election and configuration synchronization decided.";
+	conf->debug.cluster.t = CONF_BOOL;
+	conf->debug.cluster.d.b = false;
+	conf->debug.cluster.c = validate_stub; // Only type-based checking
 
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";

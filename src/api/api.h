@@ -141,6 +141,9 @@ int api_search(struct ftl_conn *api);
 int api_dhcp_leases_GET(struct ftl_conn *api);
 int api_dhcp_leases_DELETE(struct ftl_conn *api);
 
+// Cluster methods
+int api_cluster_status(struct ftl_conn *api);
+
 // PADD methods
 int api_padd(struct ftl_conn *api);
 

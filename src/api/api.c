@@ -105,6 +105,7 @@ static struct {
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/network",              "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/cluster/status",                    "",                           api_cluster_status,                    { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
@@ -191,6 +192,22 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
+				break;
+			}
+
+			// Another node of the cluster only ever reads, and only
+			// what the synchronization needs. Confining the session to
+			// the cluster endpoints keeps a leaked cluster secret from
+			// reaching the password hashes in /api/config or the
+			// Teleporter archive that carries them
+			if(api.session.used && api.session.cluster &&
+			   (api.method != HTTP_GET ||
+			    strncmp(api.request->local_uri_raw, "/api/cluster/", sizeof("/api/cluster/") - 1) != 0))
+			{
+				ret = send_json_error(&api, 403,
+				                      "forbidden",
+				                      "Cluster sessions may only read the cluster endpoints",
+				                      "The cluster secret authenticates a peer synchronizing from this node, which needs nothing beyond /api/cluster");
 				break;
 			}
 

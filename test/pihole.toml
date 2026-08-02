@@ -750,6 +750,118 @@
       #     true or false
       utc = true
 
+[cluster]
+  # Should this Pi-hole be part of a cluster? When enabled, FTL periodically contacts the
+  # peers configured in cluster.peers and keeps track of their health. Clustering itself
+  # does not change anything on this machine - the individual features (config
+  # synchronization, DHCP failover, virtual IP) are enabled separately below.
+  #
+  # Allowed values are:
+  #     true or false
+  enabled = false
+
+  # Name of this node inside the cluster. If left empty, the system's hostname is used.
+  # The name is only used for display purposes and to break ties when two nodes have the
+  # same priority.
+  #
+  # Allowed values are:
+  #     A name for this node, or an empty string to use the hostname
+  name = ""
+
+  # Priority of this node inside the cluster. The reachable node with the numerically
+  # lowest priority is the one publishing the configuration and, if enabled, serving
+  # DHCP. Ties are broken by node name. Give every node a distinct value.
+  #
+  # Allowed values are:
+  #     A positive integer, lower values win
+  priority = 100
+
+  # The other Pi-holes in this cluster, as the URLs of their web interfaces.
+  #
+  # The nodes authenticate to each other with a shared secret rather than with
+  # individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering
+  # is enabled, and that file is copied to every other node once. A peer session may
+  # only read, so a node can never change anything on its peers.
+  #
+  # Example: [ "https://192.168.0.5" ]
+  #
+  # Allowed values are:
+  #     Array of http:// or https:// URLs, one per peer, e.g. "https://192.168.0.5:443"
+  peers = []
+
+  # How often should the peers be contacted [seconds]? This is also the granularity of
+  # DHCP failover decisions.
+  interval = 10
+
+  # Timeout for a single request to a peer [seconds]. A peer that does not answer within
+  # this time is considered unreachable for this round.
+  timeout = 2
+
+  [cluster.tls]
+    # Verify the TLS certificate of https:// peers. Pi-hole's default certificate is
+    # self-signed and is not signed by any CA this machine knows, so point cluster.tls.ca
+    # at the peers' certificates instead of turning this off: a node that does not verify
+    # its peers hands the cluster secret to whoever answers, and applies the configuration
+    # it gets back.
+    #
+    # Allowed values are:
+    #     true or false
+    verify = true
+
+    # Path to a certificate bundle the peers' TLS certificates are verified against.
+    # Pi-hole's own certificates are self-signed, so collecting the peers' certificates
+    # (/etc/pihole/tls.crt) in one file and pointing this at it is what makes https://
+    # peers verifiable. If left empty, the system's trust store is used.
+    #
+    # Allowed values are:
+    #     A path to a PEM certificate bundle, or empty for the system trust store
+    ca = ""
+
+  [cluster.dhcp]
+    # Hand DHCP over to another node when this one fails? The reachable node with the
+    # lowest priority serves DHCP, the others keep their DHCP server switched off until
+    # they are needed. Only enable this when Pi-hole is your DHCP server on all cluster
+    # nodes.
+    #
+    # Allowed values are:
+    #     true or false
+    failover = false
+
+    # Force a specific node to be the DHCP server, identified by its name or URL as
+    # configured in cluster.peers. If the designated node is down, the remaining nodes
+    # fall back to priority order. An empty string selects fully automatic operation.
+    #
+    # Allowed values are:
+    #     A node name, a peer URL, or an empty string for automatic operation
+    master = ""
+
+    # How many consecutive rounds a higher-priority node has to be unreachable before this
+    # node takes DHCP over. Together with cluster.interval this defines how quickly DHCP
+    # fails over. Higher values are more tolerant of a short blip.
+    activateAfter = 2
+
+    # How many consecutive rounds a higher-priority node has to be healthy again before
+    # this node yields DHCP back to it.
+    deactivateAfter = 3
+
+  [cluster.vip]
+    # Virtual IP address floating between the cluster nodes. Whichever node is currently in
+    # charge adds this address to its interface and answers on it, so clients only ever
+    # need to know this one address. It is advertised to DHCP clients as their DNS server
+    # and DHCP server identifier. An empty string disables the virtual IP.
+    #
+    # Allowed values are:
+    #     An unused IPv4 or IPv6 address in your local network, or an empty string to
+    #     disable
+    address = ""
+
+    # Interface the virtual IP address is added to. If left empty, the interface holding
+    # the route to the default gateway is used.
+    #
+    # Allowed values are:
+    #     An interface name, or an empty string to use the interface of the default route
+    interface = ""
+
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
   #
@@ -1755,14 +1867,21 @@
   #     true or false
   dotdoh = true ### CHANGED, default = false
 
+  # Print debugging information about the cluster: every request sent to a peer, the
+  # answer it gave, and how the DHCP election and configuration synchronization decided.
+  #
+  # Allowed values are:
+  #     true or false
+  cluster = true ### CHANGED, default = false
+
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
-# --> 56 entries are modified
+# 185 total entries out of which 128 entries are default
+# --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

@@ -19,6 +19,7 @@ set(sources
         hex/specs/action_yaml.h
         hex/specs/auth_yaml.h
         hex/specs/clients_yaml.h
+        hex/specs/cluster_yaml.h
         hex/specs/config_yaml.h
         hex/specs/common_yaml.h
         hex/specs/dhcp_yaml.h

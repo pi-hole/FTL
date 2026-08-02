@@ -425,6 +425,53 @@ components:
                           type: string
                         utc:
                           type: boolean
+            cluster:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                name:
+                  type: string
+                priority:
+                  type: integer
+                peers:
+                  type: array
+                  items:
+                    type: string
+                interval:
+                  type: integer
+                timeout:
+                  type: integer
+                tls:
+                  type: object
+                  properties:
+                    verify:
+                      type: boolean
+                    ca:
+                      type: string
+                sync:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                dhcp:
+                  type: object
+                  properties:
+                    failover:
+                      type: boolean
+                    master:
+                      type: string
+                    activateAfter:
+                      type: integer
+                    deactivateAfter:
+                      type: integer
+                vip:
+                  type: object
+                  properties:
+                    address:
+                      type: string
+                    interface:
+                      type: string
             resolver:
               type: object
               properties:
@@ -682,6 +729,8 @@ components:
                    type: boolean
                 dotdoh:
                   type: boolean
+                cluster:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -859,6 +908,26 @@ components:
                 set: true
                 device: ""
                 utc: true
+          cluster:
+            enabled: false
+            name: ""
+            priority: 100
+            peers: []
+            interval: 10
+            timeout: 2
+            tls:
+              verify: true
+              ca: ""
+            sync:
+              enabled: false
+            dhcp:
+              failover: false
+              master: ""
+              activateAfter: 2
+              deactivateAfter: 3
+            vip:
+              address: ""
+              interface: ""
           resolver:
             resolveIPv4: true
             resolveIPv6: true
@@ -981,6 +1050,7 @@ components:
             timing: false
             performance: false
             dotdoh: false
+            cluster: false
             all: false
           took: 0.003
     config_one:

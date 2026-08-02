@@ -336,6 +336,7 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>
         $<TARGET_OBJECTS:dotdoh>
+        $<TARGET_OBJECTS:cluster>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
@@ -407,6 +408,7 @@ add_subdirectory(config)
 add_subdirectory(tools)
 add_subdirectory(ntp)
 add_subdirectory(dotdoh)
+add_subdirectory(cluster)
 
 # Standalone regression harness for the in-memory tar parser (zip/tar.c).
 # It #includes tar.c directly to reach the file-internal helpers, stubs the
@@ -596,6 +598,23 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
         target_link_libraries(pihole-FTL ${LIBNGHTTP2})
     else()
         message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
+    endif()
+
+    # libcurl is the HTTP client used to talk to the other nodes of a cluster.
+    # It is built against the same OpenSSL as the rest of FTL
+    find_library(LIBCURL NAMES libcurl${LIBRARY_SUFFIX} curl)
+    if(LIBCURL)
+        message(STATUS "Building FTL with cluster support: YES")
+        target_compile_definitions(cluster PRIVATE HAVE_CURL)
+        target_compile_definitions(api PRIVATE HAVE_CURL)
+        target_link_libraries(pihole-FTL ${LIBCURL})
+        # Static libcurl pulls in zlib for the content encodings it offers
+        find_library(LIBZ NAMES libz${LIBRARY_SUFFIX} z)
+        if(LIBZ)
+            target_link_libraries(pihole-FTL ${LIBZ})
+        endif()
+    else()
+        message(STATUS "Building FTL with cluster support: NO (libcurl not found)")
     endif()
 
     # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Requires nghttp3

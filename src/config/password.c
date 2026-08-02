@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_CREAT and friends
+#include <fcntl.h>
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
@@ -51,6 +53,9 @@
 // the password file. Leaking the password after exit is not a concern as a new
 // password is generated on every start.
 #define CLI_PW_FILE "/etc/pihole/cli_pw"
+
+// Cached content of CLUSTER_SECRET_FILE
+static char *cluster_pw = NULL;
 static char *cli_password = NULL;
 
 // Convert RAW data into hex representation
@@ -402,6 +407,15 @@ enum password_result verify_login(const char *password)
 	{
 		if(strcmp(cli_password, password) == 0)
 			return CLIPASSWORD_CORRECT;
+	}
+
+	// Check if this is another node of the cluster. Such a session is
+	// restricted to reading, just like a CLI session: a peer synchronizes
+	// *from* us and never has a reason to change anything here
+	if(cluster_pw != NULL && strcmp(cluster_pw, password) == 0)
+	{
+		log_debug(DEBUG_API, "Cluster secret correct");
+		return CLUSTERPASSWORD_CORRECT;
 	}
 
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
@@ -774,6 +788,98 @@ bool generate_password(char **password, char **pwhash)
 	}
 
 	return true;
+}
+
+// Read the cluster secret, creating it if this node does not have one yet. All
+// nodes of a cluster share the same secret, so the file is copied to the other
+// nodes once - there is nothing per-peer to manage
+bool create_cluster_secret(void)
+{
+	if(cluster_pw != NULL)
+	{
+		free(cluster_pw);
+		cluster_pw = NULL;
+	}
+
+	// An existing secret is used as it is
+	FILE *file = fopen(CLUSTER_SECRET_FILE, "r");
+	if(file != NULL)
+	{
+		char buffer[256] = { 0 };
+		const bool okay = fgets(buffer, sizeof(buffer), file) != NULL;
+		fclose(file);
+
+		// Trailing newlines are what an editor adds, not part of the secret
+		size_t len = strlen(buffer);
+		while(len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r'))
+			buffer[--len] = '\0';
+
+		if(okay && len > 0)
+		{
+			cluster_pw = strdup(buffer);
+			return cluster_pw != NULL;
+		}
+
+		// An empty or unreadable file would make the O_EXCL below fail
+		// forever, so it goes and a fresh secret takes its place
+		log_warn("Cluster secret file %s is unusable, replacing it", CLUSTER_SECRET_FILE);
+		if(unlink(CLUSTER_SECRET_FILE) < 0 && errno != ENOENT)
+		{
+			log_err("Failed to remove %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+			return false;
+		}
+	}
+
+	if(!generate_password(&cluster_pw, NULL))
+	{
+		log_err("Failed to generate a cluster secret");
+		return false;
+	}
+
+	// Created with its final permissions right away: FTL runs with umask(0),
+	// so a file opened by name would be world-readable until a later chmod,
+	// which is a window a local user can grab the secret in. O_EXCL because
+	// we only get here when the file does not exist
+	const int fd = open(CLUSTER_SECRET_FILE, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+	                    S_IRUSR | S_IWUSR | S_IRGRP);
+	if(fd < 0)
+	{
+		log_err("Failed to create %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		free(cluster_pw);
+		cluster_pw = NULL;
+		return false;
+	}
+
+	file = fdopen(fd, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open %s for writing: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		close(fd);
+		free(cluster_pw);
+		cluster_pw = NULL;
+		return false;
+	}
+
+	// Both matter: a full disk shows up in either the write or the flush
+	const bool written = fputs(cluster_pw, file) != EOF;
+	if(fclose(file) != 0 || !written)
+	{
+		log_err("Failed to write the cluster secret: %s", strerror(errno));
+		unlink(CLUSTER_SECRET_FILE);
+		free(cluster_pw);
+		cluster_pw = NULL;
+		return false;
+	}
+
+	log_info("Generated a cluster secret in %s - copy this file to the other nodes",
+	         CLUSTER_SECRET_FILE);
+
+	return true;
+}
+
+const char *cluster_secret(void)
+{
+	return cluster_pw;
 }
 
 bool create_cli_password(void)

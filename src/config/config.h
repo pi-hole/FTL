@@ -235,6 +235,29 @@ struct config {
 	} ntp;
 
 	struct {
+		struct conf_item enabled;
+		struct conf_item name;
+		struct conf_item priority;
+		struct conf_item peers;
+		struct conf_item interval;
+		struct conf_item timeout;
+		struct {
+			struct conf_item verify;
+			struct conf_item ca;
+		} tls;
+		struct {
+			struct conf_item failover;
+			struct conf_item master;
+			struct conf_item activateAfter;
+			struct conf_item deactivateAfter;
+		} dhcp;
+		struct {
+			struct conf_item address;
+			struct conf_item interface;
+		} vip;
+	} cluster;
+
+	struct {
 		struct conf_item resolveIPv4;
 		struct conf_item resolveIPv6;
 		struct conf_item macNames;
@@ -370,6 +393,7 @@ struct config {
 		struct conf_item timing;
 		struct conf_item performance;
 		struct conf_item dotdoh;
+		struct conf_item cluster;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

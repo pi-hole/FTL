@@ -26,6 +26,9 @@
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
+// cluster_peer_ipv4()
+#include "cluster/cluster.h"
+
 #include "config/setupVars.h"
 // run_dnsmasq_main()
 #include "args.h"
@@ -750,15 +753,53 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		if(conf->dhcp.rapidCommit.v.b)
 			fputs("dhcp-rapid-commit\n", pihole_conf);
 
-		if(conf->dhcp.multiDNS.v.b)
+		// In a cluster, the clients have to keep resolving when this
+		// node stops serving them, so they are told about more than
+		// just this machine. The address 0.0.0.0 below has the special
+		// meaning to take the address of the interface on which the
+		// DHCP request was received.
+		const bool cluster_dhcp = conf->cluster.enabled.v.b && conf->cluster.dhcp.failover.v.b;
+		// DHCPv4 can only carry an IPv4 address here. An IPv6 virtual IP
+		// address is advertised in the option6 block further down
+		struct in_addr vip4 = { 0 };
+		const bool cluster_vip4 = strlen(conf->cluster.vip.address.v.s) > 0 &&
+		                          inet_pton(AF_INET, conf->cluster.vip.address.v.s, &vip4) == 1;
+		if(cluster_dhcp && cluster_vip4)
 		{
-			// The address 0.0.0.0 has the special meaning to take
-			// the address of the interface on which the DHCP
-			// request was received. Similarly, :: has the special
-			// meaning to take the global address of the interface
-			// on which the DHCP request was received for IPv6,
-			// whilst [fd00::] is replaced with the ULA, if it
-			// exists, and [fe80::] with the link-local address.
+			fputs("# Cluster: the virtual IP address is the only address the\n", pihole_conf);
+			fputs("# clients need to know, it follows whichever node answers.\n", pihole_conf);
+			fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n",
+			        conf->cluster.vip.address.v.s);
+		}
+		else if(cluster_dhcp)
+		{
+			// Without a virtual IP address, every node is advertised
+			// individually so a client can fall back on its own
+			char servers[512] = "0.0.0.0";
+			cJSON *peers = conf->cluster.peers.v.json;
+			for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
+			{
+				char address[INET_ADDRSTRLEN] = "";
+				if(!cJSON_IsString(item) || !cluster_peer_ipv4(item->valuestring, address, sizeof(address)))
+					continue;
+
+				if(strlen(servers) + strlen(address) + 2 > sizeof(servers))
+					break;
+
+				strcat(servers, ",");
+				strcat(servers, address);
+			}
+			fputs("# Cluster: advertise every node so the clients keep\n", pihole_conf);
+			fputs("# resolving when this one stops serving them.\n", pihole_conf);
+			fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n", servers);
+		}
+		else if(conf->dhcp.multiDNS.v.b)
+		{
+			// The address :: has the special meaning to take the
+			// global address of the interface on which the DHCP
+			// request was received for IPv6, whilst [fd00::] is
+			// replaced with the ULA, if it exists, and [fe80::]
+			// with the link-local address.
 			fputs("# Advertise the DNS server multiple times to work around\n", pihole_conf);
 			fputs("# issues with some clients adding their own servers if only\n", pihole_conf);
 			fputs("# one DNS server is advertised by the DHCP server.\n", pihole_conf);
@@ -767,8 +808,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 
 		if(conf->dhcp.ipv6.v.b)
 		{
+			struct in6_addr vip6 = { 0 };
+			const bool cluster_vip6 = strlen(conf->cluster.vip.address.v.s) > 0 &&
+			                          inet_pton(AF_INET6, conf->cluster.vip.address.v.s, &vip6) == 1;
 			// Add dns-server option only if not already done above (dhcp.multiDNS)
-			if(conf->dhcp.multiDNS.v.b)
+			if(cluster_dhcp && cluster_vip6)
+				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s]\n",
+				        conf->cluster.vip.address.v.s);
+			else if(conf->dhcp.multiDNS.v.b)
 				fputs("dhcp-option=option6:dns-server,[::],[::],[fd00::],[fd00::],[fe80::],[fe80::]\n", pihole_conf);
 			else
 				fputs("dhcp-option=option6:dns-server,[::]\n", pihole_conf);
