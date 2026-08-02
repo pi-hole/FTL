@@ -47,7 +47,6 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
-# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -g3: More debugging information
@@ -60,7 +59,7 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
     set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 endif()
 
@@ -220,14 +219,24 @@ if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
+# Emit each function/variable in its own section so the linker can drop the
+# unreferenced ones at link time (-Wl,--gc-sections). Combined with the static
+# libraries built with the same flags (see the ftl-build image), this strips dead
+# code - including large unused parts of OpenSSL - from the shipped binary.
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections")
+    add_link_options(-Wl,--gc-sections)
+endif()
+
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
 set(CMAKE_C_FLAGS "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
+# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. _FORTIFY_SOURCE requires -O1 or higher to build. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} -g3")
-set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3")
 
 set(sources
         args.c
@@ -549,20 +558,56 @@ option(USE_TLS "Build FTL with TLS support, if available" ON)
 find_library(LIBSSL NAMES libssl${LIBRARY_SUFFIX} ssl)
 find_library(LIBCRYPTO NAMES libcrypto${LIBRARY_SUFFIX} crypto)
 if(LIBSSL AND LIBCRYPTO AND USE_TLS)
-    # Enable TLS support in civetweb using its OpenSSL backend
+    # OpenSSL is used by the TLS terminator, the x509 certificate handling and
+    # the dotdoh client. civetweb itself is always built without TLS (NO_SSL,
+    # set in its own CMakeLists) since the terminator does TLS termination now.
     message(STATUS "Building FTL with TLS support: YES")
     target_compile_definitions(core PRIVATE HAVE_TLS)
-    # OPENSSL_API_3_0 selects civetweb's OpenSSL backend, NO_SSL_DL (set in
-    # the civetweb CMakeLists) links it statically instead of via dlopen
-    target_compile_definitions(civetweb PRIVATE OPENSSL_API_3_0)
     target_compile_definitions(webserver PRIVATE HAVE_TLS)
     target_compile_definitions(dotdoh PRIVATE HAVE_TLS)
     # Link against OpenSSL, the order is important (libssl depends on libcrypto)
     target_link_libraries(pihole-FTL ${LIBSSL} ${LIBCRYPTO})
+
+    # HTTP/2 for the TLS terminator (nghttp2). Optional: without it the
+    # terminator negotiates HTTP/1.1 only.
+    find_library(LIBNGHTTP2 NAMES libnghttp2${LIBRARY_SUFFIX} nghttp2)
+    if(LIBNGHTTP2)
+        message(STATUS "Building FTL with HTTP/2 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP2)
+        # The dotdoh client auto-negotiates HTTP/2 (DoH2) on https:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP2)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP2})
+    else()
+        message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
+    endif()
+
+    # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Requires nghttp3
+    # AND OpenSSL >= 4.0, which provides SSL_get_peer_addr() (the per-connection
+    # QUIC peer getter used to forward the real client IP). Against an older
+    # OpenSSL such as 3.5.x, HTTP/3 and QUIC are disabled at build time and the
+    # terminator serves HTTP/1.1 and (if built) HTTP/2 only.
+    include(CheckCSourceCompiles)
+    check_c_source_compiles("
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER < 0x40000000L
+#error OpenSSL < 4.0 has no QUIC peer-address API
+#endif
+int main(void) { return 0; }
+" OPENSSL_HAS_QUIC_PEER_ADDR)
+    find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
+    if(LIBNGHTTP3 AND OPENSSL_HAS_QUIC_PEER_ADDR)
+        message(STATUS "Building FTL with HTTP/3 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP3)
+        # The dotdoh client speaks DoH3 (HTTP/3 over QUIC) on h3:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP3)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP3})
+    elseif(LIBNGHTTP3)
+        message(STATUS "Building FTL with HTTP/3 support: NO (OpenSSL < 4.0 lacks the QUIC peer-address API)")
+    else()
+        message(STATUS "Building FTL with HTTP/3 support: NO (nghttp3 not found)")
+    endif()
 else()
-    # Disable TLS support in civetweb if OpenSSL is not selected or not available
     message(STATUS "Building FTL with TLS support: NO")
-    target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
 # After finishing building the FTL binary, we append the sha256sum of the binary

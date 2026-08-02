@@ -19,6 +19,8 @@ set(dotdoh_sources
         registry.h
         tls_client.c
         tls_client.h
+        quic_client.c
+        quic_client.h
         proxy.c
         proxy.h
         )

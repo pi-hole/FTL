@@ -190,6 +190,16 @@ pdnsutil rrset add arpa. 2.1.168.192.in-addr.arpa. PTR a.ftl.
 pdnsutil rrset add arpa. 1.0.c.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa. PTR ftl.
 pdnsutil rrset add arpa. 2.0.c.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa. PTR aaaa.ftl.
 
+# Delegate the unsigned child zones from the locally-signed root. Both ftl and
+# arpa are children of the '.' zone we serve, so the root has to carry an NS
+# delegation for them; without it the signed root answers NXDOMAIN for their DS
+# query (rather than a proper "insecure delegation" NODATA proof) and
+# `pdnsutil zone check` reports "No delegation ... in parent '.'". They are
+# unsigned, so an NS record with no DS is the correct, secure-parent way to mark
+# them as an insecure delegation.
+pdnsutil rrset add . ftl.  NS ns1.ftl.
+pdnsutil rrset add . arpa. NS ns1.ftl.
+
 # Calculates the ‘ordername’ and ‘auth’ fields for all zones so they comply with
 # DNSSEC settings. Can be used to fix up migrated data. Can always safely be
 # run, it does no harm.

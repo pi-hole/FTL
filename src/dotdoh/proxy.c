@@ -24,6 +24,7 @@
 #include "proxy.h"
 #include "registry.h"
 #include "tls_client.h"
+#include "quic_client.h"
 #include "framing.h"
 #include "edns_pad.h"
 // global config
@@ -52,9 +53,30 @@ struct proxy_up {
 	bool active;                    // armed: listener bound and pool ready
 	struct upstream_uri uri;        // parsed descriptor
 	struct proxy_listener listener; // bound UDP+TCP pair
-	struct tls_pool *pool;          // per-upstream connection pool
-	char target[INET_ADDRSTRLEN + 8]; // "<ip>#<port>", for logging
+	struct tls_pool *pool;          // per-upstream TCP pool (DoT/DoH over TLS)
+	struct quic_pool *qpool;        // per-upstream QUIC pool (DoH3 only)
+	char target[INET_ADDRSTRLEN + 8]; // "127.47.11.N#P", for logging
 };
+
+// Transport name for logging. An if-ladder (not a switch) dodges -Wswitch-enum;
+// UST_PLAIN never reaches the proxy.
+static const char *ustype_name(enum ustype t)
+{
+	if(t == UST_DOT)  return "DoT";
+	if(t == UST_DOH)  return "DoH";
+	if(t == UST_DOH3) return "DoH3";
+	return "?";
+}
+
+// Route one exchange to this upstream's transport: DoH3 over QUIC, else the TCP
+// TLS pool. Returns the answer length or -1.
+static ssize_t up_exchange(struct proxy_up *up, const uint8_t *query, size_t qlen,
+                           uint8_t *answer, size_t answer_sz)
+{
+	if(up->uri.type == UST_DOH3)
+		return quic_pool_exchange(up->qpool, query, qlen, answer, answer_sz);
+	return tls_pool_exchange(up->pool, query, qlen, answer, answer_sz);
+}
 
 static struct proxy_up g_ups[DOTDOH_MAX_UPSTREAMS];
 static int g_nups = 0;       // number of encrypted upstreams recorded
@@ -160,7 +182,9 @@ void dotdoh_init(void)
 	cJSON *it = NULL;
 	cJSON_ArrayForEach(it, ups)
 		if(it != NULL && cJSON_IsString(it) && it->valuestring != NULL &&
-		   (strncmp(it->valuestring, "tls://", 6) == 0 || strncmp(it->valuestring, "https://", 8) == 0))
+		   (strncmp(it->valuestring, "tls://", 6) == 0 ||
+		    strncmp(it->valuestring, "https://", 8) == 0 ||
+		    strncmp(it->valuestring, "h3://", 5) == 0))
 			n_encrypted++;
 	if(n_encrypted == 0)
 		return; // fail-closed: nothing to arm, no plaintext fallback
@@ -168,6 +192,11 @@ void dotdoh_init(void)
 	const bool tls_ok = tls_client_global_init(config.dns.upstreamCA.v.s);
 	if(!tls_ok)
 		log_err("dotdoh: TLS init failed - encrypted upstreams are disabled");
+
+	// Bring up the QUIC context for h3:// (separate OpenSSL ctx, same trust store).
+	// Failure fails closed: h3:// pools stay un-armed, DoT/DoH keep working. No-op
+	// stub without QUIC/nghttp3.
+	quic_client_global_init(config.dns.upstreamCA.v.s);
 
 	compute_scale(n_encrypted);
 
@@ -203,15 +232,26 @@ void dotdoh_init(void)
 		// queries fail over, never downgrade to plaintext.
 		if(tls_ok && proxy_listener_bind(enc, &up->listener))
 		{
-			up->pool = tls_pool_new(&u, g_pool_k);
-			if(up->pool != NULL)
+			// DoH3 uses the QUIC pool; DoT/DoH share the TCP pool - only one is non-NULL.
+			bool pool_ok;
+			if(u.type == UST_DOH3)
+			{
+				up->qpool = quic_pool_new(&u, g_pool_k);
+				pool_ok = (up->qpool != NULL);
+			}
+			else
+			{
+				up->pool = tls_pool_new(&u, g_pool_k);
+				pool_ok = (up->pool != NULL);
+			}
+			if(pool_ok)
 			{
 				snprintf(up->target, sizeof(up->target), "%s#%d",
 				         up->listener.ip, up->listener.port);
 				up->active = true;
 				g_nactive++;
 				log_info("dotdoh: %s upstream %s armed on %s",
-				         u.type == UST_DOT ? "DoT" : "DoH", u.verify_name, up->target);
+				         ustype_name(u.type), u.verify_name, up->target);
 			}
 			else
 				proxy_listener_close(&up->listener);
@@ -366,6 +406,42 @@ static bool write_full(int fd, const uint8_t *buf, size_t len, uint64_t deadline
 	return true;
 }
 
+// IPv4 UDP payload cap (65535 - 20 IP - 8 UDP). A DNS answer above this cannot be
+// sent in a single loopback UDP datagram.
+#define UDP4_MAX_PAYLOAD 65507u
+
+// Build a minimal TC=1 (truncated) response - the DNS header plus the question
+// section, with the answer/authority/additional counts cleared - from a full
+// answer too large for a UDP datagram, so dnsmasq retries the query over TCP.
+// Returns the length written, or 0 if the answer is too short/malformed to parse.
+static size_t dns_truncated_response(const uint8_t *answer, size_t alen,
+                                     uint8_t *out, size_t out_sz)
+{
+	if(alen < 12)
+		return 0;
+	const unsigned qd = ((unsigned)answer[4] << 8) | answer[5];
+	size_t off = 12;
+	for(unsigned q = 0; q < qd && off < alen; q++)
+	{
+		// Walk the QNAME labels; compression is not legal in a question.
+		while(off < alen && answer[off] != 0)
+		{
+			if((answer[off] & 0xC0) != 0)
+				return 0;
+			off += (size_t)answer[off] + 1;
+		}
+		off += 1 + 4; // root label + QTYPE + QCLASS
+	}
+	if(off > alen || off > out_sz)
+		return 0;
+	memcpy(out, answer, off);
+	out[2] |= 0x02;                      // set TC
+	out[6] = out[7] = 0;                 // ANCOUNT = 0
+	out[8] = out[9] = 0;                 // NSCOUNT = 0
+	out[10] = out[11] = 0;               // ARCOUNT = 0
+	return off;
+}
+
 // A single UDP query from dnsmasq: receive, forward over TLS, send the answer
 // back to the same source. On failure we drop it (see the file header).
 static void handle_udp(struct proxy_up *up)
@@ -385,14 +461,33 @@ static void handle_udp(struct proxy_up *up)
 	if(!is_loopback_v4(&src))
 		return;
 
+	// The requestor's advertised UDP payload size, read before padding. A stream
+	// upstream (DoT/DoH/DoH3) is not bound by it (RFC 7766) and may return a full
+	// answer, but we are emulating a DNS server to dnsmasq and must honour it: an
+	// answer above it (capped at the IP datagram limit) is TC-truncated so dnsmasq
+	// retries over TCP, rather than sent whole and silently byte-chopped by
+	// dnsmasq's receive buffer (breaking DNSSEC and large answers).
+	const uint16_t udp_max = edns_query_udp_size(query, (size_t)n);
+	const size_t max_reply = udp_max < UDP4_MAX_PAYLOAD ? udp_max : UDP4_MAX_PAYLOAD;
+
 	// Pad the query to a block boundary (RFC 8467) before it is encrypted, so the
 	// ciphertext size no longer leaks the query. Only this encrypted leg is
 	// padded; the plaintext dnsmasq spoke to us over loopback is left untouched.
 	const size_t qlen = edns_pad_query(query, (size_t)n, sizeof(query));
-	const ssize_t a = tls_pool_exchange(up->pool, query, qlen, answer, sizeof(answer));
+	const ssize_t a = up_exchange(up, query, qlen, answer, sizeof(answer));
 	if(a < 0)
 		return; // drop -> dnsmasq times out and fails over
 
+	if((size_t)a > max_reply)
+	{
+		// Reply TC=1 so dnsmasq retries over TCP, where the length-prefixed leg
+		// carries the whole answer.
+		uint8_t tc[512];
+		const size_t tlen = dns_truncated_response(answer, (size_t)a, tc, sizeof(tc));
+		if(tlen > 0)
+			sendto(up->listener.udp_fd, tc, tlen, 0, (struct sockaddr *)&src, sl);
+		return;
+	}
 	sendto(up->listener.udp_fd, answer, (size_t)a, 0, (struct sockaddr *)&src, sl);
 }
 
@@ -471,7 +566,7 @@ static void handle_tcp(struct proxy_up *up)
 
 		// Pad before encrypting (see handle_udp()); the loopback leg stays plain.
 		const size_t plen = edns_pad_query(query, qlen, sizeof(query));
-		const ssize_t a = tls_pool_exchange(up->pool, query, plen, answer, sizeof(answer));
+		const ssize_t a = up_exchange(up, query, plen, answer, sizeof(answer));
 		if(a < 0)
 			break; // drop: closing the connection makes dnsmasq retry/fail over
 
@@ -498,10 +593,21 @@ static void emit_summary(void)
 {
 	for(int i = 0; i < g_nups; i++)
 	{
-		if(!g_ups[i].active || g_ups[i].pool == NULL)
+		if(!g_ups[i].active)
 			continue;
 		struct dotdoh_stats s;
-		tls_pool_get_stats(g_ups[i].pool, &s);
+		if(g_ups[i].uri.type == UST_DOH3)
+		{
+			if(g_ups[i].qpool == NULL)
+				continue;
+			quic_pool_get_stats(g_ups[i].qpool, &s);
+		}
+		else
+		{
+			if(g_ups[i].pool == NULL)
+				continue;
+			tls_pool_get_stats(g_ups[i].pool, &s);
+		}
 		const double avg = s.sessions_closed > 0
 		                 ? (double)s.queries_per_session_sum / (double)s.sessions_closed : 0.0;
 		log_debug(DEBUG_DOTDOH,
@@ -597,6 +703,8 @@ void dotdoh_cleanup(void)
 	{
 		if(g_ups[i].pool != NULL)
 			tls_pool_free(g_ups[i].pool);
+		if(g_ups[i].qpool != NULL)
+			quic_pool_free(g_ups[i].qpool);
 		if(g_ups[i].active)
 			proxy_listener_close(&g_ups[i].listener);
 		memset(&g_ups[i], 0, sizeof(g_ups[i]));
@@ -606,4 +714,5 @@ void dotdoh_cleanup(void)
 	g_armed = false;
 	g_uri_count = 0;
 	tls_client_global_free();
+	quic_client_global_free();
 }

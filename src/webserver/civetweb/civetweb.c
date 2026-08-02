@@ -2105,6 +2105,7 @@ enum {
 #endif
 	ADDITIONAL_HEADER,
 	ALLOW_INDEX_SCRIPT_SUB_RES,
+	PROXY_PROTOCOL_SECRET,
 
 	NUM_OPTIONS
 };
@@ -2271,6 +2272,7 @@ static const struct mg_option config_options[] = {
 #endif
     {"additional_header", MG_CONFIG_TYPE_STRING_MULTILINE, NULL},
     {"allow_index_script_resource", MG_CONFIG_TYPE_BOOLEAN, "no"},
+    {"proxy_protocol_secret", MG_CONFIG_TYPE_STRING, NULL},
 
     {NULL, MG_CONFIG_TYPE_UNKNOWN, NULL}};
 
@@ -2607,6 +2609,8 @@ struct mg_connection {
 	char *path_info;          /* PATH_INFO part of the URL */
 
 	int must_close;       /* 1 if connection must be closed */
+	unsigned char proxy_is_ssl; /* Pi-hole: PROXY v2 announced a TLS-terminated
+	                             * client (PP2_TYPE_SSL), so treat as HTTPS */
 	int accept_gzip;      /* 1 if gzip encoding is accepted */
 	int in_error_handler; /* 1 if in handler for user defined error
 	                       * pages */
@@ -20329,6 +20333,12 @@ produce_socket(struct mg_context *ctx, const struct socket *sp)
 #endif /* ALTERNATIVE_QUEUE */
 
 
+/* Pi-hole: adopt the real client address from a PROXY protocol v2 header sent
+ * by the loopback TLS terminator. Kept in its own unit to keep this patch
+ * small; parse_proxy_protocol_v2() is defined there. */
+#include "proxy_v2.inl"
+
+
 static void
 worker_thread_run(struct mg_connection *conn)
 {
@@ -20414,6 +20424,10 @@ worker_thread_run(struct mg_connection *conn)
 #endif
 		conn->conn_birth_time = time(NULL);
 
+		/* Pi-hole: adopt the real client address from a PROXY protocol v2
+		 * header if this connection comes from the loopback TLS terminator. */
+		parse_proxy_protocol_v2(conn);
+
 		/* Fill in IP, port info early so even if SSL setup below fails,
 		 * error handler would have the corresponding info.
 		 * Thanks to Johannes Winkelmann for the patch.
@@ -20432,7 +20446,9 @@ worker_thread_run(struct mg_connection *conn)
 		            (conn->client.is_ssl ? "SSL " : ""),
 		            conn->request_info.remote_addr);
 
-		conn->request_info.is_ssl = conn->client.is_ssl;
+		/* Pi-hole: a PROXY v2 header from the TLS terminator can mark an
+		 * otherwise-plaintext loopback connection as HTTPS (PP2_TYPE_SSL). */
+		conn->request_info.is_ssl = conn->client.is_ssl || conn->proxy_is_ssl;
 
 		if (conn->client.is_ssl) {
 
