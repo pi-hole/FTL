@@ -7,7 +7,7 @@ FTL (`pihole-FTL`) is Pi-hole's DNS/DHCP engine. It embeds a modified `dnsmasq`,
 ## Repository layout
 
 - `src/` - FTL source code (C)
-- `src/dnsmasq/` - embedded dnsmasq. This is vendored upstream code that is regularly synced with dnsmasq upstream. Do not make changes here unless strictly necessary; Pi-hole-specific hooks live in `src/dnsmasq_interface.c`. Any unavoidable modification to dnsmasq source must be minimal and clearly marked so it survives upstream merges.
+- `src/dnsmasq/` - embedded dnsmasq. This is vendored upstream code that is regularly synced with dnsmasq upstream. Do not make changes here unless strictly necessary; Pi-hole-specific hooks live in `src/dnsmasq_interface.c`. Any unavoidable modification to vendored source (dnsmasq, or the other vendored libraries under `patch/`) must be minimal, clearly marked so it survives upstream merges, and captured as a patch file under `patch/<library>/` applied via the matching `patch/<library>.sh` script.
 - `src/api/` - REST API implementation and OpenAPI specification
 - `src/config/` - configuration handling (`pihole.toml`)
 - `src/database/` - query database (SQLite3)
@@ -34,6 +34,7 @@ FTL (`pihole-FTL`) is Pi-hole's DNS/DHCP engine. It embeds a modified `dnsmasq`,
 - Base all work on the `development` branch; pull requests target `development`.
 - Read the [contributors guide](https://docs.pi-hole.net/guides/github/contributing/)
 - Every commit must be signed off (DCO): use `git commit -s`.
+- Commits must also be cryptographically signed (GPG or SSH) so GitHub marks them Verified; DCO sign-off alone does not satisfy branch protection. See [GitHub's guide to commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification).
 - Run the test suite before committing.
 - Use Unix line endings (LF).
 - Code is licensed under the EUPL 1.2; contributions must be compatible.
