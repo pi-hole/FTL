@@ -159,6 +159,7 @@ enum debug_flag {
 	DEBUG_TIMING,
 	DEBUG_PERFORMANCE,
 	DEBUG_DOTDOH,
+	DEBUG_CLUSTER,
 	DEBUG_MAX
 } __attribute__ ((packed));
 
@@ -254,6 +255,7 @@ enum thread_types {
 	DOTDOH,
 	DOTDOH_DOT,
 	DOTDOH_DOQ,
+	CLUSTER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
