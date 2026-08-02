@@ -25,6 +25,11 @@ ENV TERM=xterm
 RUN apk add --no-cache ccache
 ENV CCACHE_DIR=/app/.ccache
 ENV CCACHE_MAXSIZE=500M
+# Identify the compiler by hashing the binary rather than by its mtime and size,
+# which is what ccache would do by default. The compiler arrives in an image
+# here, so a rebuilt ftl-build must never be able to reuse entries made by the
+# gcc it replaced.
+ENV CCACHE_COMPILERCHECK=content
 
 # Build FTL
 # Remove possible old build files
