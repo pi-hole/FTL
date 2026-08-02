@@ -1,0 +1,217 @@
+openapi: 3.0.2
+components:
+  paths:
+    status:
+      get:
+        summary: Get the state of this Pi-hole's cluster
+        tags:
+          - "Cluster"
+        operationId: "get_cluster_status"
+        description: |
+          Returns this node's identity and its view of every configured peer.
+          The other nodes of a cluster poll exactly this endpoint, which is why
+          it also carries the fingerprints used to decide whether a node has to
+          pull the configuration from the publishing node.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/schemas/status'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  schemas:
+    status:
+      type: object
+      properties:
+        cluster:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: Is this Pi-hole part of a cluster?
+              example: true
+            leader:
+              type: string
+              description: |
+                Highest-priority reachable node. It anchors the virtual IP
+                address when DHCP failover does not; it does not decide what
+                the cluster's configuration is - every node may publish a
+                change, and the newest one wins.
+              example: "pi-hole-1"
+            dhcp_owner:
+              type: string
+              description: |
+                Name of the node that should be serving DHCP. Empty when DHCP
+                failover is disabled, in which case every node keeps whatever
+                DHCP state it was configured with.
+              example: "pi-hole-1"
+            last_round:
+              type: number
+              nullable: true
+              description: Unix timestamp of the last completed round
+              example: 1735689600.0
+            node:
+              $ref: 'cluster.yaml#/components/schemas/node'
+            peers:
+              type: array
+              items:
+                $ref: 'cluster.yaml#/components/schemas/peer'
+    node:
+      type: object
+      description: This node, as the peers see it
+      properties:
+        name:
+          type: string
+          example: "pi-hole-1"
+        id:
+          type: string
+          description: |
+            Identity of this node, generated once and kept in
+            /etc/pihole/cluster.state. Names can collide - two Pi-holes imaged
+            from the same card are both called "raspberrypi" - so this is what
+            the nodes compare when an election has to pick one of two.
+          example: "aB3dEf7hJ9kLmN2p"
+        priority:
+          type: integer
+          example: 100
+        version:
+          type: string
+          example: "v6.5"
+        dhcp:
+          type: object
+          properties:
+            active:
+              type: boolean
+              description: Is this node currently serving DHCP?
+              example: false
+            failover:
+              type: boolean
+              description: Does this node take part in DHCP failover?
+              example: false
+            capable:
+              type: boolean
+              description: |
+                Does this node have a lease range to serve from? A node without
+                one never wins the DHCP election, as taking over would leave the
+                network without a server.
+              example: false
+        vip:
+          type: object
+          properties:
+            address:
+              type: string
+              description: Configured virtual IP address, empty if none
+              example: ""
+            held:
+              type: boolean
+              description: Does this node currently hold the virtual IP address?
+              example: false
+    peer:
+      type: object
+      properties:
+        url:
+          type: string
+          example: "https://192.168.0.5"
+        name:
+          type: string
+          example: "pi-hole-2"
+        id:
+          type: string
+          example: "qR5tUv8wX1yZ3aB4"
+        version:
+          type: string
+          example: "v6.5"
+        priority:
+          type: integer
+          example: 200
+        reachable:
+          type: boolean
+          example: true
+        last_seen:
+          type: number
+          nullable: true
+          description: Unix timestamp of the last successful contact
+          example: 1735689600.0
+        error:
+          type: string
+          nullable: true
+          description: Why the last contact failed, null if it did not
+          example: null
+        dhcp:
+          type: object
+          properties:
+            active:
+              type: boolean
+              example: false
+            failover:
+              type: boolean
+              example: false
+            capable:
+              type: boolean
+              example: false
+        vip:
+          type: object
+          properties:
+            held:
+              type: boolean
+              example: false
+    peer:
+      type: object
+      properties:
+        url:
+          type: string
+          example: "https://192.168.0.5"
+        name:
+          type: string
+          example: "pi-hole-2"
+        id:
+          type: string
+          example: "qR5tUv8wX1yZ3aB4"
+        version:
+          type: string
+          example: "v6.5"
+        priority:
+          type: integer
+          example: 200
+        reachable:
+          type: boolean
+          example: true
+        last_seen:
+          type: number
+          nullable: true
+          description: Unix timestamp of the last successful contact
+          example: 1735689600.0
+        error:
+          type: string
+          nullable: true
+          description: Why the last contact failed, null if it did not
+          example: null
+        dhcp:
+          type: object
+          properties:
+            active:
+              type: boolean
+              example: false
+            failover:
+              type: boolean
+              example: false
+            capable:
+              type: boolean
+              example: false
+        vip:
+          type: object
+          properties:
+            held:
+              type: boolean
+              example: false
