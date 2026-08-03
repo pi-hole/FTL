@@ -188,7 +188,7 @@ void open_log_fds(bool ftl)
 	// pihole.log (dnsmasq) - FTL owns this file from now on
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-// The value "-" used to select stderr logging via dnsmasq's
+		// The value "-" used to select stderr logging via dnsmasq's
 		// log-facility.  Since FTL writes pihole.log itself, this value
 		// is no longer supported: warn about it (without this hint users
 		// upgrading from v6 have no way to know why their stderr logging
