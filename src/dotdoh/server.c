@@ -7,8 +7,8 @@
 *
 *  Accepts encrypted DNS from downstream clients, decrypts it, resolves it
 *  through dnsmasq while preserving the real client address, and returns the
-*  encrypted answer. DoH is served as a handler on the existing pi.hole HTTPS
-*  server (civetweb already terminates TLS), so there is no parallel TLS server
+*  encrypted answer. DoH is served by the front TLS terminator (which already
+*  terminates TLS for HTTP/1.1, /2 and /3), so there is no parallel TLS server
 *  for it - only DoT (not HTTP) needs its own raw-TLS listener.
 *
 *  This file is copyright under the latest version of the EUPL.
@@ -210,8 +210,8 @@ static int loopback_connect(void)
 // The reused loopback fd is thread-local. It is closed on a thread-exit
 // destructor so it does not outlive its owning thread: native DoH is served from
 // the terminator's per-connection detached handler threads (and from restartable
-// h3 workers), neither of which lives for the whole process the way a civetweb
-// pool thread does, so without this each such thread would leak its loopback fd.
+// h3 workers), neither of which lives for the whole life of the process, so
+// without this each such thread would leak its loopback fd.
 static _Thread_local int up_fd = -1;
 static pthread_key_t up_fd_key;
 static pthread_once_t up_fd_once = PTHREAD_ONCE_INIT;
@@ -227,8 +227,8 @@ static void up_fd_key_init(void)
 
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS
 // listener over loopback TCP: dnsmasq accepts it as an ordinary TCP DNS query,
-// so nothing unsafe (a direct tcp_request()/fork) happens from this civetweb
-// worker thread. `client` (the real downstream client) is carried into dnsmasq
+// so nothing unsafe (a direct tcp_request()/fork) happens from the calling DoH
+// handler thread. `client` (the real downstream client) is carried into dnsmasq
 // via a private EDNS option so the query is attributed to it rather than to
 // loopback (see dotdoh_inject_client and FTL_parse_pseudoheaders). Returns the
 // answer length or -1.

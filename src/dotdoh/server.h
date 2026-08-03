@@ -8,9 +8,9 @@
 *  Public interface of the inbound encrypted-DNS server (serving downstream
 *  clients). Throughout this module "client" always means the downstream device
 *  that queries us - as in Pi-hole's client tables (clientsData/getClient) - never
-*  our own TLS-client role (that is the outbound "upstream" side). DoH reuses the
-*  pi.hole HTTPS server (civetweb) for TLS termination and is served as a request
-*  handler; DoT has its own raw-TLS listener as it is not HTTP.
+*  our own TLS-client role (that is the outbound "upstream" side). DoH is served
+*  natively by the front TLS terminator over HTTP/1.1, HTTP/2 and HTTP/3 (see
+*  terminator.c). DoT has its own raw-TLS listener as it is not HTTP.
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -27,8 +27,8 @@
 // the DNS query in buf[0..plen) with capacity cap, and return the new packet
 // length (unchanged if client_ip is not a valid address or there is no room).
 // Implemented in src/edns0.c (which has the dnsmasq wire helpers); declared here
-// so the civetweb handler can call it without pulling dnsmasq.h into its
-// translation unit (that conflicts with civetweb under the strict warnings).
+// rather than in edns0.h so the dotdoh translation units can call it without
+// pulling dnsmasq.h (and its wire types) into these TLS units.
 size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
                             const char *client_ip, const char *dest_ip);
 
@@ -52,7 +52,7 @@ bool dotdoh_source_allowed(const char *client_ip);
 // its native /dns-query handling without pulling in the config headers.
 bool dotdoh_doh_enabled(void) __attribute__((pure));
 
-// DoH wire helpers (civetweb-free, implemented in server.c), shared with the
+// DoH wire helpers (implemented in server.c), shared with the
 // terminator-native h2/h3 DoH path. base64url_decode decodes the GET "dns"
 // parameter; doh_answer_min_ttl yields the Cache-Control max-age (RFC 8484).
 ssize_t base64url_decode(const char *in, size_t inlen, uint8_t *out, size_t outcap);
@@ -70,7 +70,7 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 
 // FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener on port
 // 853. Runs only when dns.dot is enabled. Terminates TLS itself (DoT is not
-// HTTP, so it cannot use the civetweb webserver) and resolves via
+// HTTP, so it needs its own raw-TLS listener) and resolves via
 // dotdoh_server_resolve().
 void *dotdoh_dot_thread(void *val);
 

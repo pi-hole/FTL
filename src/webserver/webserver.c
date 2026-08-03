@@ -255,6 +255,23 @@ static int begin_request_handler(struct mg_connection *conn)
 	return 0;
 }
 
+// Guard on the CivetWeb /dns-query path. Inbound DoH is served natively by the
+// front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query that
+// reaches CivetWeb is either plaintext - refuse it with 426, DoH must be
+// encrypted or the client's "encrypted" queries would leak - or misdirected.
+static int dns_query_guard(struct mg_connection *conn, void *cbdata)
+{
+	(void)cbdata;
+	const struct mg_request_info *ri = mg_get_request_info(conn);
+	if(ri != NULL && !ri->is_ssl)
+	{
+		mg_send_http_error(conn, 426, "%s", "DoH requires HTTPS");
+		return 426;
+	}
+	mg_send_http_error(conn, 421, "%s", "misdirected DoH request");
+	return 421;
+}
+
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
 {
 	// Get requested URI
@@ -905,6 +922,11 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
+		// Disable Nagle: without it a small TLS response is split across segments
+		// and stalls ~40 ms on the client's delayed ACK, which dominates DoH
+		// (and UI/API) latency. Responses are normally sent in full, so Nagle
+		// buys nothing here.
+		"tcp_nodelay", "1",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
@@ -1099,6 +1121,12 @@ void http_init(void)
 	// Register API handler, use "/api" even when a prefix is defined as the
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
+
+	// Inbound DoH (RFC 8484) is served natively by the front terminator on
+	// /dns-query for HTTP/1.1, HTTP/2 and HTTP/3 (see terminator.c). The only
+	// CivetWeb registration is a guard that refuses a plaintext /dns-query (426).
+	if(config.dns.doh.v.b)
+		mg_set_request_handler(ctx, "/dns-query", dns_query_guard, NULL);
 
 	if(strcmp(prefix_webhome, "/") == 0)
 	{

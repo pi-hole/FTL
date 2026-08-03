@@ -5,9 +5,8 @@
 *  FTL Engine
 *  Inbound DoT/DoH source-address filter
 *
-*  See source_filter.h. Kept free of FTL globals (config) and of civetweb so it
-*  can be #included straight into the dotdoh regression harness and exercised in
-*  isolation.
+*  See source_filter.h. Kept free of FTL globals (config) so it can be #included
+*  straight into the dotdoh regression harness and exercised in isolation.
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */

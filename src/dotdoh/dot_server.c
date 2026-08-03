@@ -6,7 +6,7 @@
 *  Inbound DoT (DNS-over-TLS) listener - event-driven
 *
 *  DoT is raw TLS carrying length-prefixed DNS (RFC 7858), not HTTP, so - unlike
-*  DoH - it cannot be served by the civetweb webserver and needs its own OpenSSL
+*  DoH, which the front terminator serves over HTTP - it needs its own OpenSSL
 *  server listener. This is a single-threaded event loop: every connection is a
 *  non-blocking state machine (TLS handshake -> read query -> resolve over a
 *  non-blocking loopback socket -> write answer -> keep-alive), multiplexed with

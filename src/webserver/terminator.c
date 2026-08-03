@@ -18,6 +18,10 @@
 
 #include "FTL.h"
 #include "webserver/terminator.h"
+// native DoH: dotdoh_server_resolve(), base64url_decode(), doh_answer_min_ttl(),
+// dotdoh_source_allowed(), dotdoh_doh_enabled(), and DNS_MSG_MAX
+#include "dotdoh/server.h"
+#include "dotdoh/framing.h"
 // log_err(), log_info(), log_warn()
 #include "log.h"
 
@@ -50,8 +54,10 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <sys/prctl.h>
+#include <sys/eventfd.h>
 #include <pthread.h>
 #include <poll.h>
 #include <unistd.h>
@@ -65,6 +71,9 @@
 
 // Bidirectional relay buffer size (per direction, per iteration).
 #define RELAY_BUF 16384u
+// Upper bound on the base64url "dns" value of a native DoH GET (ample for a real
+// query, which encodes to a few hundred bytes).
+#define DOH_GET_B64_MAX 8192
 // Socket send/receive timeout so a stuck peer cannot pin a handler thread.
 #define IO_TIMEOUT_SEC 30
 // Cap on concurrent handler threads so a connection flood on the public TLS port
@@ -83,6 +92,68 @@
 
 // Number of live handler threads, for the cap above.
 static atomic_int active_handlers = 0;
+
+// Per-source-IP connection cap, so one client cannot hold every handler/QUIC slot
+// and lock out the DoH resolver and the admin UI (a global cap alone does not
+// bound a single source). Mirrors DOT_MAX_CONNS_PER_IP in dot_server.c. Sized to
+// a quarter of the global caps; a browser or DoH client stays well under it.
+#define TERMINATOR_MAX_CONNS_PER_IP 64
+struct ip_slot { uint8_t key[16]; unsigned count; };
+// One slot per distinct source. Sized for the combined worst case of both
+// subsystems (TCP handlers and HTTP/3 connections, each with its own global cap
+// and both keyed into this one table), so a free slot always exists while either
+// global cap still has headroom - even with every connection from a distinct IP.
+static struct ip_slot ip_table[TERMINATOR_MAX_HANDLERS + TERMINATOR_MAX_H3_CONNS];
+static pthread_mutex_t ip_table_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+// A 16-byte canonical key for a peer address (IPv4 stored v4-mapped), for the
+// per-source counters. Ports are ignored - the cap is per host, not per socket.
+static void ip_key(const struct sockaddr_storage *ss, uint8_t key[16])
+{
+	memset(key, 0, 16);
+	if(ss->ss_family == AF_INET6)
+		memcpy(key, &((const struct sockaddr_in6 *)ss)->sin6_addr, 16);
+	else if(ss->ss_family == AF_INET)
+	{
+		key[10] = 0xff; key[11] = 0xff;
+		memcpy(key + 12, &((const struct sockaddr_in *)ss)->sin_addr, 4);
+	}
+}
+
+// Reserve a per-source slot; returns true (and increments) when the source is
+// under TERMINATOR_MAX_CONNS_PER_IP, false when it is at the cap. The table is
+// sized so a free slot is always available while a global cap has headroom, so a
+// full table never spuriously rejects. Pair every true with one ip_release(key).
+static bool ip_reserve(const uint8_t key[16])
+{
+	pthread_mutex_lock(&ip_table_mtx);
+	struct ip_slot *slot = NULL, *freeslot = NULL;
+	for(size_t i = 0; i < sizeof(ip_table) / sizeof(ip_table[0]); i++)
+	{
+		if(ip_table[i].count == 0)
+		{ if(freeslot == NULL) freeslot = &ip_table[i]; }
+		else if(memcmp(ip_table[i].key, key, 16) == 0)
+		{ slot = &ip_table[i]; break; }
+	}
+	bool ok;
+	if(slot != NULL)
+		ok = slot->count < TERMINATOR_MAX_CONNS_PER_IP ? (slot->count++, true) : false;
+	else if(freeslot != NULL)
+	{ memcpy(freeslot->key, key, 16); freeslot->count = 1; ok = true; }
+	else
+		ok = false;
+	pthread_mutex_unlock(&ip_table_mtx);
+	return ok;
+}
+
+static void ip_release(const uint8_t key[16])
+{
+	pthread_mutex_lock(&ip_table_mtx);
+	for(size_t i = 0; i < sizeof(ip_table) / sizeof(ip_table[0]); i++)
+		if(ip_table[i].count > 0 && memcmp(ip_table[i].key, key, 16) == 0)
+		{ ip_table[i].count--; break; }
+	pthread_mutex_unlock(&ip_table_mtx);
+}
 
 // A per-boot secret carried in a custom PROXY v2 TLV so the loopback CivetWeb
 // backend can tell a genuine terminator->backend header apart from one forged by
@@ -135,7 +206,7 @@ bool terminator_proxy_token_hex(char *out, size_t outsz)
 // Passed to each detached handler: the client fd plus our own reference to the
 // SSL_CTX, taken while it is live, so terminator_stop() can free the context
 // without racing a handler that has not yet reached SSL_new().
-struct handler_arg { int client_fd; SSL_CTX *ctx; };
+struct handler_arg { int client_fd; SSL_CTX *ctx; uint8_t ipkey[16]; };
 
 // Monotonic milliseconds, for wall-clock deadlines.
 static uint64_t mono_ms(void)
@@ -559,6 +630,392 @@ static void relay(SSL *ssl, int client_fd, int be_fd)
 	}
 }
 
+// Whether an h1/h2/h3 request target is the DoH endpoint (/dns-query, with or
+// without a query string). DoH is served on this fixed path (webserver.c).
+static bool path_is_doh(const char *path)
+{
+	return strncmp(path, "/dns-query", 10) == 0 &&
+	       (path[10] == '\0' || path[10] == '?');
+}
+
+// Format a socket address as a numeric string, de-mapping a v4-mapped IPv6 to a
+// plain dotted quad so the client/destination match what dnsmasq and the source
+// filter expect (the dual-stack listener delivers IPv4 clients as ::ffff:a.b.c.d).
+static void sockaddr_numeric(const struct sockaddr_storage *ss, char *out, size_t outlen)
+{
+	out[0] = '\0';
+	if(ss->ss_family == AF_INET6)
+	{
+		const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)ss;
+		// The unspecified address means "no usable address": a QUIC connection off
+		// the wildcard-bound UDP socket reports :: as its local (destination)
+		// address via getsockname. Leave out empty so the caller treats it as none.
+		if(IN6_IS_ADDR_UNSPECIFIED(&s6->sin6_addr))
+			return;
+		if(IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+		{
+			if(memcmp(s6->sin6_addr.s6_addr + 12, "\0\0\0\0", 4) == 0)
+				return;
+			inet_ntop(AF_INET, s6->sin6_addr.s6_addr + 12, out, (socklen_t)outlen);
+		}
+		else
+			inet_ntop(AF_INET6, &s6->sin6_addr, out, (socklen_t)outlen);
+	}
+	else if(ss->ss_family == AF_INET)
+	{
+		const struct sockaddr_in *s4 = (const struct sockaddr_in *)ss;
+		if(s4->sin_addr.s_addr == htonl(INADDR_ANY))
+			return;
+		inet_ntop(AF_INET, &s4->sin_addr, out, (socklen_t)outlen);
+	}
+}
+
+static int hexnib(int c)
+{
+	if(c >= '0' && c <= '9') return c - '0';
+	if(c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if(c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return -1;
+}
+
+// Copy the value of query-string parameter `name` into out (NUL-terminated),
+// percent-decoding %XX escapes. Returns the value length, or -1 if absent or too
+// long. base64url is URL-safe, so a conformant "dns" value needs no decoding, but
+// we honor it for parity with the previous mg_get_var-based handler.
+static int query_param(const char *qs, const char *name, char *out, size_t outlen)
+{
+	const size_t nlen = strlen(name);
+	for(const char *p = qs; p != NULL && *p != '\0'; )
+	{
+		const char *amp = strchr(p, '&');
+		const char *end = amp ? amp : p + strlen(p);
+		if((size_t)(end - p) > nlen && strncmp(p, name, nlen) == 0 && p[nlen] == '=')
+		{
+			size_t o = 0;
+			const char *c = p + nlen + 1;
+			while(c < end)
+			{
+				int ch = (unsigned char)*c;
+				int hi, lo;
+				if(ch == '%' && c + 2 < end &&
+				   (hi = hexnib((unsigned char)c[1])) >= 0 &&
+				   (lo = hexnib((unsigned char)c[2])) >= 0)
+				{
+					ch = (hi << 4) | lo;
+					c += 2;
+				}
+				if(o + 1 >= outlen)
+					return -1;
+				out[o++] = (char)ch;
+				c++;
+			}
+			out[o] = '\0';
+			return (int)o;
+		}
+		p = amp ? amp + 1 : NULL;
+	}
+	return -1;
+}
+
+// ---------------------------------------------------------------------------
+// Native HTTP/1.1 DoH. The terminator has no HTTP/1.1 parser (it byte-pumps h1 to
+// CivetWeb), so serving /dns-query natively over h1 needs a minimal request
+// reader for the single DoH endpoint. Everything else on the connection is handed
+// to CivetWeb via relay(), unchanged. Reads are blocking, bounded by SO_RCVTIMEO.
+// ---------------------------------------------------------------------------
+
+// Largest HTTP/1.1 request head (request line + headers) we parse for DoH.
+#define H1_HEAD_MAX 8192
+
+struct h1_req {
+	char method[8];
+	char path[2048];
+	char ctype[64];
+	long content_length;  // -1 if absent
+	bool conn_close;      // client asked to close (Connection: close or HTTP/1.0)
+	bool has_te;          // Transfer-Encoding present (chunked framing, not Content-Length)
+	bool expect_100;      // client sent Expect: 100-continue
+};
+
+// Parse an HTTP/1.1 request head in buf[0..len) (must contain the trailing
+// CRLFCRLF). Returns 0 on success, -1 on a malformed request line.
+static int h1_parse_head(const char *buf, size_t len, struct h1_req *r)
+{
+	memset(r, 0, sizeof(*r));
+	r->content_length = -1;
+
+	const char *eol = memmem(buf, len, "\r\n", 2);
+	if(eol == NULL)
+		return -1;
+	const char *sp1 = memchr(buf, ' ', (size_t)(eol - buf));
+	if(sp1 == NULL || (size_t)(sp1 - buf) >= sizeof(r->method))
+		return -1;
+	memcpy(r->method, buf, (size_t)(sp1 - buf));
+	const char *ps = sp1 + 1;
+	const char *sp2 = memchr(ps, ' ', (size_t)(eol - ps));
+	if(sp2 == NULL || (size_t)(sp2 - ps) >= sizeof(r->path))
+		return -1;
+	memcpy(r->path, ps, (size_t)(sp2 - ps));
+	// HTTP/1.1 keeps the connection alive by default; HTTP/1.0 closes.
+	if(memmem(sp2, (size_t)(eol - sp2), "HTTP/1.0", 8) != NULL)
+		r->conn_close = true;
+
+	for(const char *p = eol + 2; p < buf + len; )
+	{
+		const char *le = memmem(p, (size_t)(buf + len - p), "\r\n", 2);
+		if(le == NULL || le == p)
+			break; // empty line: end of headers
+		const char *colon = memchr(p, ':', (size_t)(le - p));
+		if(colon != NULL)
+		{
+			const size_t nl = (size_t)(colon - p);
+			const char *v = colon + 1;
+			while(v < le && (*v == ' ' || *v == '\t'))
+				v++;
+			const size_t vl = (size_t)(le - v);
+			if(nl == 14 && strncasecmp(p, "content-length", 14) == 0)
+			{
+				char tmp[24];
+				if(vl < sizeof(tmp))
+				{ memcpy(tmp, v, vl); tmp[vl] = '\0'; r->content_length = strtol(tmp, NULL, 10); }
+			}
+			else if(nl == 12 && strncasecmp(p, "content-type", 12) == 0)
+			{
+				const size_t c = vl < sizeof(r->ctype) - 1 ? vl : sizeof(r->ctype) - 1;
+				memcpy(r->ctype, v, c); r->ctype[c] = '\0';
+			}
+			else if(nl == 10 && strncasecmp(p, "connection", 10) == 0 &&
+			        vl >= 5 && strncasecmp(v, "close", 5) == 0)
+				r->conn_close = true;
+			else if(nl == 17 && strncasecmp(p, "transfer-encoding", 17) == 0)
+				r->has_te = true;
+			else if(nl == 6 && strncasecmp(p, "expect", 6) == 0 &&
+			        vl >= 12 && strncasecmp(v, "100-continue", 12) == 0)
+				r->expect_100 = true;
+		}
+		p = le + 2;
+	}
+	return 0;
+}
+
+// Send a status-only HTTP/1.1 error and close the connection (DoH errors are
+// terminal for the request; a client retries on a fresh connection).
+static void h1_doh_error(SSL *ssl, const char *status_line, const char *extra)
+{
+	char resp[256];
+	const int n = snprintf(resp, sizeof(resp),
+	                       "HTTP/1.1 %s\r\nContent-Length: 0\r\nConnection: close\r\n%s\r\n",
+	                       status_line, extra != NULL ? extra : "");
+	if(n > 0 && (size_t)n < sizeof(resp))
+		write_all_ssl(ssl, resp, (size_t)n);
+}
+
+// One non-blocking SSL_read bounded by an absolute deadline. A blocking read with
+// SO_RCVTIMEO is not enough: a peer can reset that timeout on every byte by
+// dribbling just inside it (SSL_read keeps returning progress), or stall forever
+// mid-record (SSL_read never returns), pinning the handler thread. Polling against
+// a fixed deadline the peer cannot push back bounds the total read time. The fd
+// must be non-blocking. Returns bytes read (>0), or -1 on close/error/timeout.
+static ssize_t h1_read(SSL *ssl, int fd, void *buf, size_t max, uint64_t deadline)
+{
+	for(;;)
+	{
+		const int n = SSL_read(ssl, buf, (int)max);
+		if(n > 0)
+			return n;
+		const int e = SSL_get_error(ssl, n);
+		if(e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE)
+			return -1;
+		const uint64_t now = mono_ms();
+		if(now >= deadline)
+			return -1;
+		struct pollfd pfd = { .fd = fd,
+		                      .events = (short)((e == SSL_ERROR_WANT_WRITE) ? POLLOUT : POLLIN),
+		                      .revents = 0 };
+		poll(&pfd, 1, (int)(deadline - now));
+	}
+}
+
+// Serve HTTP/1.1: answer DoH (/dns-query) natively, hand everything else (and the
+// rest of the connection once a non-DoH request appears) to CivetWeb via relay().
+static void terminator_h1_serve(SSL *ssl, int client_fd)
+{
+	// Off the small handler-thread stack, as on the h2 path.
+	static _Thread_local uint8_t query[DNS_MSG_MAX];
+	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	char buf[H1_HEAD_MAX + 512];
+	size_t have = 0;
+
+	for(;;) // one iteration per keep-alive request
+	{
+		// Read the request head in non-blocking mode against a fixed absolute
+		// deadline (see h1_read): a slow-drip or partial-record client cannot pin
+		// this thread by resetting SO_RCVTIMEO on every byte. A legitimate client
+		// sends its (<= H1_HEAD_MAX) head well within the window; keep-alive re-arms
+		// it per request. Blocking mode is restored before any response/relay write.
+		const int fl = fcntl(client_fd, F_GETFL, 0);
+		if(fl >= 0)
+			fcntl(client_fd, F_SETFL, fl | O_NONBLOCK);
+		const uint64_t deadline = mono_ms() + (uint64_t)IO_TIMEOUT_SEC * 1000u;
+		char *eoh;
+		bool overflow = false, readfail = false;
+		while((eoh = memmem(buf, have, "\r\n\r\n", 4)) == NULL)
+		{
+			if(have >= H1_HEAD_MAX) { overflow = true; break; }
+			const ssize_t n = h1_read(ssl, client_fd, buf + have, sizeof(buf) - have, deadline);
+			if(n <= 0) { readfail = true; break; }
+			have += (size_t)n;
+		}
+		if(fl >= 0)
+			fcntl(client_fd, F_SETFL, fl); // restore blocking for the writes below
+		if(readfail)
+			return; // clean close, timeout, or error
+		if(overflow)
+		{
+			// Oversized head: only the native DoH fast-path is bounded here. Hand
+			// the whole connection to CivetWeb, which has a larger request-size cap
+			// and emits a proper error, so a UI/API request with a large header
+			// block is not silently dropped.
+			const int be = connect_backend();
+			if(be < 0) { h1_doh_error(ssl, "431 Request Header Fields Too Large", NULL); return; }
+			if(send_proxy_v2(be, client_fd) != 0 || write_all_fd(be, buf, have) != 0)
+			{ close(be); return; }
+			relay(ssl, client_fd, be);
+			close(be);
+			return;
+		}
+		const size_t head_len = (size_t)(eoh - buf) + 4;
+
+		struct h1_req rq;
+		if(h1_parse_head(buf, head_len, &rq) != 0)
+		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+
+		const bool is_post = strcmp(rq.method, "POST") == 0;
+		const bool is_get  = strcmp(rq.method, "GET") == 0;
+
+		// A DoH request with a method other than GET/POST gets a native 405 with
+		// the mandatory Allow header (RFC 9110 15.5.6); relaying it to CivetWeb
+		// (which no longer owns /dns-query) would answer 421 instead.
+		if(dotdoh_doh_enabled() && path_is_doh(rq.path) && !is_get && !is_post)
+		{ h1_doh_error(ssl, "405 Method Not Allowed", "Allow: GET, POST\r\n"); return; }
+
+		// A chunked (Transfer-Encoding) DoH request is refused natively: we cannot
+		// safely frame it by Content-Length (request smuggling, RFC 7230 3.3.3) and
+		// our endpoint requires a Content-Length body per RFC 8484. Answer 400 here
+		// rather than relaying to CivetWeb, which would return a misleading 421.
+		if(dotdoh_doh_enabled() && path_is_doh(rq.path) && rq.has_te)
+		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+
+		// Only a bodyless DoH GET or a Content-Length DoH POST is served natively;
+		// anything else (UI/API, a GET carrying a body) hands the whole connection
+		// to CivetWeb from here on. A GET with a body is relayed rather than served
+		// so its body is consumed by CivetWeb and cannot desync the next keep-alive
+		// request.
+		if(!(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
+		     ((is_get && rq.content_length <= 0) || (is_post && rq.content_length >= 0))))
+		{
+			const int be = connect_backend();
+			if(be < 0) { h1_doh_error(ssl, "502 Bad Gateway", NULL); return; }
+			if(send_proxy_v2(be, client_fd) != 0 || write_all_fd(be, buf, have) != 0)
+			{ close(be); return; }
+			relay(ssl, client_fd, be);
+			close(be);
+			return;
+		}
+
+		size_t qlen = 0;
+		size_t consumed = head_len;
+		if(is_post)
+		{
+			const size_t ctl = sizeof("application/dns-message") - 1;
+			if(strncasecmp(rq.ctype, "application/dns-message", ctl) != 0 ||
+			   (rq.ctype[ctl] != '\0' && rq.ctype[ctl] != ';' &&
+			    rq.ctype[ctl] != ' ' && rq.ctype[ctl] != '\t'))
+			{ h1_doh_error(ssl, "415 Unsupported Media Type", NULL); return; }
+			if(rq.content_length == 0 || rq.content_length > DNS_MSG_MAX)
+			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+			const size_t blen = (size_t)rq.content_length;
+			size_t in_buf = have - head_len;
+			if(in_buf > blen)
+				in_buf = blen;
+			memcpy(query, buf + head_len, in_buf);
+			// A client using Expect: 100-continue withholds the body until it sees
+			// an interim 100; send it before blocking on the read (RFC 9110 10.1.1).
+			if(rq.expect_100 && in_buf < blen &&
+			   write_all_ssl(ssl, "HTTP/1.1 100 Continue\r\n\r\n", 25) != 0)
+				return;
+			// Read the (small) DoH body non-blocking against a fixed deadline, same
+			// slow-drip guard as the head read; restore blocking for the response.
+			const int bfl = fcntl(client_fd, F_GETFL, 0);
+			if(bfl >= 0)
+				fcntl(client_fd, F_SETFL, bfl | O_NONBLOCK);
+			const uint64_t bdeadline = mono_ms() + (uint64_t)IO_TIMEOUT_SEC * 1000u;
+			bool bodyfail = false;
+			for(size_t got = in_buf; got < blen; )
+			{
+				const ssize_t n = h1_read(ssl, client_fd, query + got, blen - got, bdeadline);
+				if(n <= 0) { bodyfail = true; break; }
+				got += (size_t)n;
+			}
+			if(bfl >= 0)
+				fcntl(client_fd, F_SETFL, bfl);
+			if(bodyfail)
+				return;
+			qlen = blen;
+			consumed = head_len + in_buf;
+		}
+		else // GET
+		{
+			char b64[DOH_GET_B64_MAX];
+			const char *qs = strchr(rq.path, '?');
+			const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
+			if(vlen <= 0)
+			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+			const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+			if(dlen <= 0)
+			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+			qlen = (size_t)dlen;
+		}
+
+		struct sockaddr_storage src, dst;
+		socklen_t sl = sizeof(src), dl = sizeof(dst);
+		char client[INET6_ADDRSTRLEN] = "", dest[INET6_ADDRSTRLEN] = "";
+		if(getpeername(client_fd, (struct sockaddr *)&src, &sl) == 0)
+			sockaddr_numeric(&src, client, sizeof(client));
+		if(getsockname(client_fd, (struct sockaddr *)&dst, &dl) == 0)
+			sockaddr_numeric(&dst, dest, sizeof(dest));
+		if(!dotdoh_source_allowed(client))
+		{ h1_doh_error(ssl, "403 Forbidden", NULL); return; }
+
+		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
+		                                           query, qlen, answer, sizeof(answer));
+		if(alen <= 0)
+		{ h1_doh_error(ssl, "502 Bad Gateway", NULL); return; }
+
+		char rhead[256];
+		const int hn = snprintf(rhead, sizeof(rhead),
+			"HTTP/1.1 200 OK\r\n"
+			"Content-Type: application/dns-message\r\n"
+			"Content-Length: %zd\r\n"
+			"Cache-Control: private, max-age=%u\r\n"
+			"X-Content-Type-Options: nosniff\r\n"
+			"Connection: %s\r\n\r\n",
+			alen, (unsigned)doh_answer_min_ttl(answer, (size_t)alen),
+			rq.conn_close ? "close" : "keep-alive");
+		if(hn <= 0 || (size_t)hn >= sizeof(rhead) ||
+		   write_all_ssl(ssl, rhead, (size_t)hn) != 0 ||
+		   write_all_ssl(ssl, (const char *)answer, (size_t)alen) != 0)
+			return;
+
+		if(rq.conn_close)
+			return;
+
+		// Keep-alive: drop the consumed request, keep any pipelined tail.
+		memmove(buf, buf + consumed, have - consumed);
+		have -= consumed;
+	}
+}
+
 #if defined(HAVE_HTTP2) || defined(HAVE_HTTP3)
 // ---------------------------------------------------------------------------
 // Helpers shared by the HTTP/2 and HTTP/3 gateways. Both bridge every request to
@@ -919,6 +1376,11 @@ struct h2_stream {
 	size_t reqhdr_len;
 	bool content_length_seen;
 	bool oversize;           // a pseudo-header did not fit -> answer 414, do not forward
+	char ctype[64];          // request Content-Type (for the native DoH POST check)
+
+	// Inbound DoH served natively in the terminator (no backend). The POST body /
+	// GET dns= query accrues in be.req_out; the DNS answer is pushed to be.body_buf.
+	bool is_doh;
 
 	// Backend connection (non-blocking)
 	int be_fd;
@@ -1037,6 +1499,9 @@ static void h2_gateway_error(struct h2_stream *s, const char *status3)
 	}
 }
 
+// Serve one native DoH request; defined after the h2 data provider it feeds.
+static void h2_doh_serve(struct h2_stream *s);
+
 // Once the request headers are complete, decide the request body framing, open
 // the backend connection, and queue the PROXY header and HTTP/1.1 request head.
 static void h2_start_backend(struct h2_stream *s, bool has_body)
@@ -1048,6 +1513,18 @@ static void h2_start_backend(struct h2_stream *s, bool has_body)
 		h2_gateway_error(s, "414");
 		return;
 	}
+
+	// Serve DoH natively when enabled: the terminator already knows the real client
+	// and the address it connected to, so it resolves /dns-query in-process rather
+	// than proxying to CivetWeb, and never opens a backend for this stream.
+	if(dotdoh_doh_enabled() && path_is_doh(s->path))
+	{
+		s->is_doh = true;
+		if(!has_body)          // GET: END_STREAM already arrived on the HEADERS frame
+			h2_doh_serve(s);
+		return;                // POST: body accrues in h2_on_data_chunk, served at END_STREAM
+	}
+
 	if(!has_body)
 		s->be.req_mode = REQ_NONE;
 	else if(s->content_length_seen)
@@ -1116,6 +1593,107 @@ static nghttp2_ssize h2_body_read(nghttp2_session *session, int32_t stream_id,
 	if(s->be.resp_complete && s->be.body_len == 0)
 		*data_flags |= NGHTTP2_DATA_FLAG_EOF;
 	return (nghttp2_ssize)n;
+}
+
+// Resolve a native DoH request and submit the h2 response. Called for GET at
+// header time and for POST once the body is complete. The DNS answer flows out
+// through the same be.body_buf -> h2_body_read path a proxied response uses, so
+// no backend socket is ever opened for this stream. Runs on the connection's own
+// handler thread, so the blocking resolve only stalls this one connection.
+static void h2_doh_serve(struct h2_stream *s)
+{
+	// Off the small handler-thread stack, like the CivetWeb DoH path's buffers.
+	static _Thread_local uint8_t query[DNS_MSG_MAX];
+	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	size_t qlen = 0;
+
+	if(strcmp(s->method, "POST") == 0)
+	{
+		// RFC 8484: body media type application/dns-message (exact, trailing ";..." ok).
+		const size_t ctl = sizeof("application/dns-message") - 1;
+		if(strncasecmp(s->ctype, "application/dns-message", ctl) != 0 ||
+		   (s->ctype[ctl] != '\0' && s->ctype[ctl] != ';' &&
+		    s->ctype[ctl] != ' ' && s->ctype[ctl] != '\t'))
+		{ h2_gateway_error(s, "415"); return; }
+		const size_t blen = s->be.req_out_len - s->be.req_out_off;
+		if(blen == 0 || blen > DNS_MSG_MAX)
+		{ h2_gateway_error(s, "400"); return; }
+		memcpy(query, s->be.req_out + s->be.req_out_off, blen);
+		qlen = blen;
+	}
+	else if(strcmp(s->method, "GET") == 0)
+	{
+		// RFC 8484: query base64url-encoded in the "dns" parameter.
+		char b64[DOH_GET_B64_MAX];
+		const char *qs = strchr(s->path, '?');
+		const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
+		if(vlen <= 0)
+		{ h2_gateway_error(s, "400"); return; }
+		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+		if(dlen <= 0)
+		{ h2_gateway_error(s, "400"); return; }
+		qlen = (size_t)dlen;
+	}
+	else
+	{
+		// 405 carries the mandatory Allow header (RFC 9110 15.5.6); the plain
+		// gateway_error emits only :status, so submit the response directly.
+		h2_be_close(s);
+		s->error = true;
+		s->be.resp_complete = true;
+		if(s->resp_headers_sent)
+			nghttp2_submit_rst_stream(s->conn->session, NGHTTP2_FLAG_NONE,
+			                          s->stream_id, NGHTTP2_INTERNAL_ERROR);
+		else
+		{
+			const nghttp2_nv nva[] = {
+				{ (uint8_t *)":status", (uint8_t *)"405", 7, 3, NGHTTP2_NV_FLAG_NONE },
+				{ (uint8_t *)"allow", (uint8_t *)"GET, POST", 5, 9, NGHTTP2_NV_FLAG_NONE }
+			};
+			nghttp2_submit_response2(s->conn->session, s->stream_id, nva, 2, NULL);
+			s->resp_headers_sent = true;
+		}
+		return;
+	}
+
+	// Real client and the local address it connected to, both from the socket.
+	struct sockaddr_storage src, dst;
+	socklen_t sl = sizeof(src), dl = sizeof(dst);
+	char client[INET6_ADDRSTRLEN] = "", dest[INET6_ADDRSTRLEN] = "";
+	if(getpeername(s->conn->client_fd, (struct sockaddr *)&src, &sl) == 0)
+		sockaddr_numeric(&src, client, sizeof(client));
+	if(getsockname(s->conn->client_fd, (struct sockaddr *)&dst, &dl) == 0)
+		sockaddr_numeric(&dst, dest, sizeof(dest));
+
+	if(!dotdoh_source_allowed(client))
+	{ h2_gateway_error(s, "403"); return; }
+
+	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
+	                                           query, qlen, answer, sizeof(answer));
+	if(alen <= 0)
+	{ h2_gateway_error(s, "502"); return; }
+
+	if(be_body_push(&s->be, (const char *)answer, (size_t)alen) != 0)
+	{ h2_gateway_error(s, "500"); return; }
+	s->be.resp_complete = true;
+
+	// Mark it cacheable to the answer's minimum TTL, private (Pi-hole answers are
+	// per-client). Same headers the CivetWeb DoH handler sends.
+	char clen[32], cc[48];
+	snprintf(clen, sizeof(clen), "%zd", alen);
+	snprintf(cc, sizeof(cc), "private, max-age=%u",
+	         (unsigned)doh_answer_min_ttl(answer, (size_t)alen));
+	const nghttp2_nv nva[] = {
+		{ (uint8_t *)":status", (uint8_t *)"200", 7, 3, NGHTTP2_NV_FLAG_NONE },
+		{ (uint8_t *)"content-type", (uint8_t *)"application/dns-message", 12, 23, NGHTTP2_NV_FLAG_NONE },
+		{ (uint8_t *)"content-length", (uint8_t *)clen, 14, strlen(clen), NGHTTP2_NV_FLAG_NONE },
+		{ (uint8_t *)"cache-control", (uint8_t *)cc, 13, strlen(cc), NGHTTP2_NV_FLAG_NONE },
+		{ (uint8_t *)"x-content-type-options", (uint8_t *)"nosniff", 22, 7, NGHTTP2_NV_FLAG_NONE },
+	};
+	nghttp2_data_provider2 prd = { .source.ptr = s, .read_callback = h2_body_read };
+	nghttp2_submit_response2(s->conn->session, s->stream_id, nva,
+	                         sizeof(nva) / sizeof(nva[0]), alen ? &prd : NULL);
+	s->resp_headers_sent = true;
 }
 
 // Lowercase the header name in place (HTTP/2 requires it) and append the
@@ -1455,6 +2033,14 @@ static int h2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
 		if(namelen == 14 && strncasecmp(n, "content-length", 14) == 0)
 			s->content_length_seen = true;
 	}
+	// Capture Content-Type for the native DoH POST check (independent of whether
+	// the header block above had room, since DoH does not forward it).
+	if(namelen == 12 && strncasecmp(n, "content-type", 12) == 0)
+	{
+		const size_t cl = valuelen < sizeof(s->ctype) - 1 ? valuelen : sizeof(s->ctype) - 1;
+		memcpy(s->ctype, v, cl);
+		s->ctype[cl] = '\0';
+	}
 	return 0;
 }
 
@@ -1465,6 +2051,21 @@ static int h2_on_data_chunk(nghttp2_session *session, uint8_t flags, int32_t str
 	struct h2_stream *s = nghttp2_session_get_stream_user_data(session, stream_id);
 	if(s == NULL)
 		return 0;
+	// Native DoH: accumulate the POST body (bounded to a DNS message) for the
+	// in-process resolve, and return the flow-control window ourselves since no
+	// backend will credit it.
+	if(s->is_doh)
+	{
+		if(!s->error && len > 0)
+		{
+			if(s->be.req_out_len - s->be.req_out_off + len > DNS_MSG_MAX)
+				h2_gateway_error(s, "413");
+			else if(be_req_push(&s->be, (const char *)data, len) != 0)
+				return NGHTTP2_ERR_CALLBACK_FAILURE;
+		}
+		nghttp2_session_consume(session, stream_id, len);
+		return 0;
+	}
 	// If the backend is gone (error, or it already responded and we closed the
 	// socket), discard the body but keep the flow-control window moving so the
 	// client is not stalled.
@@ -1509,8 +2110,16 @@ static int h2_on_frame_recv(nghttp2_session *session, const nghttp2_frame *frame
 	   (frame->hd.type == NGHTTP2_HEADERS || frame->hd.type == NGHTTP2_DATA))
 	{
 		struct h2_stream *s = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
-		if(s != NULL && !s->error && s->be.req_mode == REQ_CHUNKED && s->be_fd >= 0)
-			be_req_push(&s->be, "0\r\n\r\n", 5);
+		if(s != NULL && !s->error)
+		{
+			if(s->is_doh)
+			{
+				if(!s->resp_headers_sent)  // POST body complete (a GET is served earlier)
+					h2_doh_serve(s);
+			}
+			else if(s->be.req_mode == REQ_CHUNKED && s->be_fd >= 0)
+				be_req_push(&s->be, "0\r\n\r\n", 5);
+		}
 	}
 	return 0;
 }
@@ -1808,6 +2417,10 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 // body is buffered we stop reading the backend, applying backpressure toward the
 // (slower) client.
 #define H3_BODY_HIGH_WATER (256u * 1024u)
+// Per-connection aggregate response-body cap, mirroring H2_CONN_BODY_CAP: the
+// per-stream high-water alone lets many concurrent streams each buffer up to the
+// high-water, so bound the connection total too.
+#define H3_CONN_BODY_CAP (4u * 1024u * 1024u)
 // Outbound request buffer high-water mark: once this much request body is queued
 // for a backend that has not drained it, we stop reading the client stream so
 // QUIC flow control backpressures the client.
@@ -1833,6 +2446,12 @@ struct h3_stream {
 	bool oversize;           // a pseudo-header did not fit -> answer 414, do not forward
 	size_t reqhdr_len;
 	bool content_length_seen;
+	char ctype[64];          // request Content-Type (for the native DoH POST check)
+
+	// Native DoH served in the terminator (resolve off-loaded to a worker).
+	bool is_doh;
+	bool resolving;          // a DoH resolve job is in flight for this stream
+	bool close_pending;      // nghttp3 closed the stream while resolving; free be after
 
 	// Backend connection (non-blocking)
 	int be_fd;
@@ -1862,7 +2481,37 @@ struct h3_conn {
 	struct sockaddr_storage client_addr;
 	struct sockaddr_storage server_addr;
 	bool have_client_addr;
+	uint8_t ipkey[16];     // per-source key held in ip_table while this conn lives
+	bool ip_reserved;      // this conn holds an ip_table reservation to release
+	uint64_t gen;          // stable id for off-loop DoH job lookup (survives reuse)
+	unsigned inflight;     // in-flight DoH resolves; conn is not freed while > 0
 };
+
+// Off-loop DoH resolve. The single QUIC event loop must never block on a resolve,
+// so a small worker pool runs dotdoh_server_resolve() and hands the answer back
+// via h3_wake_fd (an eventfd in the loop's poll set). A job carries only copied
+// bytes and the (conn gen, stream id) of its target - a worker never touches an
+// h3_conn/h3_stream, and the loop looks the target up by generation, so a client
+// RESET or connection close during a resolve can never race the worker.
+struct h3_job {
+	struct h3_job *next;
+	uint64_t conn_gen;
+	int64_t  stream_id;
+	char client[INET6_ADDRSTRLEN];
+	char dest[INET6_ADDRSTRLEN];
+	uint8_t  query[DNS_MSG_MAX];  size_t qlen;
+	uint8_t  answer[DNS_MSG_MAX]; ssize_t alen;
+};
+#define H3_DOH_WORKERS 4
+static int h3_wake_fd = -1;
+static uint64_t h3_gen_ctr = 0;                 // loop-thread only
+static pthread_t h3_workers[H3_DOH_WORKERS];
+static unsigned h3_workers_n = 0;
+static bool h3_workers_stop = false;
+static pthread_mutex_t h3_jobs_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  h3_jobs_cv  = PTHREAD_COND_INITIALIZER;
+static struct h3_job *h3_jobs_pending;          // loop -> worker
+static struct h3_job *h3_jobs_done;             // worker -> loop
 
 // Monotonic timestamp in nanoseconds for nghttp3's rate limiter / bookkeeping.
 static nghttp3_tstamp h3_now(void)
@@ -1986,6 +2635,115 @@ static void h3_gateway_error(struct h3_stream *s, const char *status3)
 		h3_submit_status(s, status3);
 }
 
+// 405 for a DoH request with an unsupported method: like h3_gateway_error but
+// carries the mandatory Allow header (RFC 9110 15.5.6).
+static void h3_method_not_allowed(struct h3_stream *s)
+{
+	h3_be_close(s);
+	s->error = true;
+	if(s->resp_headers_sent)
+	{ h3_reset_stream(s); return; }
+	const nghttp3_nv nva[] = {
+		{ (uint8_t *)":status", (uint8_t *)"405", 7, 3, NGHTTP3_NV_FLAG_NONE },
+		{ (uint8_t *)"allow", (uint8_t *)"GET, POST", 5, 9, NGHTTP3_NV_FLAG_NONE },
+	};
+	const nghttp3_data_reader dr = { h3_read_data };
+	s->be.resp_complete = true;
+	s->be.body_len = s->be.body_off = 0;
+	nghttp3_conn_submit_response(s->conn->h3, s->id, nva, 2, &dr);
+	s->resp_headers_sent = true;
+}
+
+// Submit the synthesized DoH 200 with the answer as the response body (loop
+// thread). The answer flows out through the same be.body_buf -> h3_read_data path
+// a proxied response uses.
+static void h3_doh_respond(struct h3_stream *s, const uint8_t *answer, ssize_t alen)
+{
+	if(be_body_push(&s->be, (const char *)answer, (size_t)alen) != 0)
+	{ h3_gateway_error(s, "500"); return; }
+	s->be.resp_complete = true;
+	char clen[32], cc[48];
+	snprintf(clen, sizeof(clen), "%zd", alen);
+	snprintf(cc, sizeof(cc), "private, max-age=%u",
+	         (unsigned)doh_answer_min_ttl(answer, (size_t)alen));
+	const nghttp3_nv nva[] = {
+		{ (uint8_t *)":status", (uint8_t *)"200", 7, 3, NGHTTP3_NV_FLAG_NONE },
+		{ (uint8_t *)"content-type", (uint8_t *)"application/dns-message", 12, 23, NGHTTP3_NV_FLAG_NONE },
+		{ (uint8_t *)"content-length", (uint8_t *)clen, 14, strlen(clen), NGHTTP3_NV_FLAG_NONE },
+		{ (uint8_t *)"cache-control", (uint8_t *)cc, 13, strlen(cc), NGHTTP3_NV_FLAG_NONE },
+		{ (uint8_t *)"x-content-type-options", (uint8_t *)"nosniff", 22, 7, NGHTTP3_NV_FLAG_NONE },
+	};
+	const nghttp3_data_reader dr = { h3_read_data };
+	nghttp3_conn_submit_response(s->conn->h3, s->id, nva, sizeof(nva) / sizeof(nva[0]), &dr);
+	s->resp_headers_sent = true;
+}
+
+// Validate a native DoH request (loop thread), extract the query, and hand it to
+// a worker thread to resolve off the event loop. GET is dispatched at header
+// time, POST once the body is complete. Errors answer synchronously.
+static void h3_doh_dispatch(struct h3_stream *s)
+{
+	static _Thread_local uint8_t query[DNS_MSG_MAX]; // loop thread only
+	size_t qlen = 0;
+
+	if(strcmp(s->method, "POST") == 0)
+	{
+		const size_t ctl = sizeof("application/dns-message") - 1;
+		if(strncasecmp(s->ctype, "application/dns-message", ctl) != 0 ||
+		   (s->ctype[ctl] != '\0' && s->ctype[ctl] != ';' &&
+		    s->ctype[ctl] != ' ' && s->ctype[ctl] != '\t'))
+		{ h3_gateway_error(s, "415"); return; }
+		const size_t blen = s->be.req_out_len - s->be.req_out_off;
+		if(blen == 0 || blen > DNS_MSG_MAX)
+		{ h3_gateway_error(s, "400"); return; }
+		memcpy(query, s->be.req_out + s->be.req_out_off, blen);
+		qlen = blen;
+	}
+	else if(strcmp(s->method, "GET") == 0)
+	{
+		char b64[DOH_GET_B64_MAX];
+		const char *qs = strchr(s->path, '?');
+		const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
+		if(vlen <= 0)
+		{ h3_gateway_error(s, "400"); return; }
+		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+		if(dlen <= 0)
+		{ h3_gateway_error(s, "400"); return; }
+		qlen = (size_t)dlen;
+	}
+	else
+	{ h3_method_not_allowed(s); return; }
+
+	char client[INET6_ADDRSTRLEN] = "", dest[INET6_ADDRSTRLEN] = "";
+	if(s->conn->have_client_addr)
+	{
+		sockaddr_numeric(&s->conn->client_addr, client, sizeof(client));
+		sockaddr_numeric(&s->conn->server_addr, dest, sizeof(dest));
+	}
+	// Without a real client address we cannot attribute or authorize the query;
+	// refuse rather than resolve it unattributed (or as loopback).
+	if(client[0] == '\0' || !dotdoh_source_allowed(client))
+	{ h3_gateway_error(s, "403"); return; }
+
+	struct h3_job *job = calloc(1, sizeof(*job));
+	if(job == NULL)
+	{ h3_gateway_error(s, "500"); return; }
+	job->conn_gen = s->conn->gen;
+	job->stream_id = s->id;
+	snprintf(job->client, sizeof(job->client), "%s", client);
+	snprintf(job->dest, sizeof(job->dest), "%s", dest);
+	memcpy(job->query, query, qlen);
+	job->qlen = qlen;
+
+	s->resolving = true;
+	s->conn->inflight++;
+	pthread_mutex_lock(&h3_jobs_mtx);
+	job->next = h3_jobs_pending;
+	h3_jobs_pending = job;
+	pthread_cond_signal(&h3_jobs_cv);
+	pthread_mutex_unlock(&h3_jobs_mtx);
+}
+
 // Once the request headers are complete, decide the request body framing, open
 // the non-blocking backend connection, and queue the PROXY header and HTTP/1.1
 // request head. Mirrors h2_start_backend().
@@ -2000,6 +2758,21 @@ static void h3_start_backend(struct h3_stream *s, bool has_body)
 		h3_gateway_error(s, "414");
 		return;
 	}
+
+	// Serve DoH natively (resolve off-loaded to a worker); never open a backend.
+	// The off-load needs the wakeup fd and worker pool; if they failed to start,
+	// answer 503 rather than proxying /dns-query to CivetWeb, which no longer owns
+	// that path and would return a misleading 426.
+	if(dotdoh_doh_enabled() && path_is_doh(s->path))
+	{
+		if(h3_wake_fd < 0 || h3_workers_n == 0)
+		{ h3_gateway_error(s, "503"); return; }
+		s->is_doh = true;
+		if(!has_body)          // GET: request already complete
+			h3_doh_dispatch(s);
+		return;                // POST: body accrues in h3_cb_recv_data, dispatched at end_stream
+	}
+
 	if(!has_body)
 		s->be.req_mode = REQ_NONE;
 	else if(s->content_length_seen)
@@ -2216,6 +2989,15 @@ static void h3_be_writable(struct h3_stream *s)
 // Backend socket became readable: pull response bytes, feed the parser/decoder,
 // and resume the stream's data reader if it was parked. Stops early at the body
 // high-water mark to apply backpressure toward the client.
+// Total decoded response body buffered across all of a connection's streams.
+static size_t __attribute__((pure)) h3_conn_buffered(const struct h3_conn *c)
+{
+	size_t total = 0;
+	for(const struct h3_stream *s = c->streams; s != NULL; s = s->next)
+		total += s->be.body_len - s->be.body_off;
+	return total;
+}
+
 static void h3_be_readable(struct h3_stream *s)
 {
 	if(s->be_fd < 0)
@@ -2233,7 +3015,8 @@ static void h3_be_readable(struct h3_stream *s)
 			}
 			if(s->be.resp_complete)
 				break;
-			if((s->be.body_len - s->be.body_off) >= H3_BODY_HIGH_WATER)
+			if((s->be.body_len - s->be.body_off) >= H3_BODY_HIGH_WATER ||
+			   h3_conn_buffered(s->conn) >= H3_CONN_BODY_CAP)
 				break; // backpressure: let the client drain first
 			continue;
 		}
@@ -2326,6 +3109,12 @@ static int h3_cb_recv_header(nghttp3_conn *h3, int64_t stream_id, int32_t token,
 		if(nl == 14 && strncasecmp(n, "content-length", 14) == 0)
 			s->content_length_seen = true;
 	}
+	// Capture Content-Type for the native DoH POST check (DoH does not forward it).
+	if(nl == 12 && strncasecmp(n, "content-type", 12) == 0)
+	{
+		const size_t ctl = vl < sizeof(s->ctype) - 1 ? vl : sizeof(s->ctype) - 1;
+		memcpy(s->ctype, v, ctl); s->ctype[ctl] = '\0';
+	}
 	return 0;
 }
 
@@ -2352,6 +3141,19 @@ static int h3_cb_recv_data(nghttp3_conn *h3, int64_t stream_id,
 	struct h3_stream *s = h3_find_stream(c, stream_id);
 	if(s == NULL)
 		return 0;
+	// Native DoH: accumulate the POST body (bounded to a DNS message) for the
+	// off-loaded resolve. OpenSSL manages QUIC flow control on SSL_read.
+	if(s->is_doh)
+	{
+		if(!s->error && datalen > 0)
+		{
+			if(s->be.req_out_len - s->be.req_out_off + datalen > DNS_MSG_MAX)
+				h3_gateway_error(s, "413");
+			else if(be_req_push(&s->be, (const char *)data, datalen) != 0)
+				return NGHTTP3_ERR_CALLBACK_FAILURE;
+		}
+		return 0;
+	}
 	// The backend is gone (gateway error) or never opened: discard the body.
 	// OpenSSL manages QUIC flow control as we SSL_read the stream, so there is no
 	// separate credit to return here.
@@ -2386,8 +3188,13 @@ static int h3_cb_end_stream(nghttp3_conn *h3, int64_t stream_id,
 	struct h3_stream *s = h3_find_stream(c, stream_id);
 	if(s == NULL)
 		return 0;
+	if(!s->error && s->is_doh)
+	{
+		if(!s->resp_headers_sent && !s->resolving)  // POST body complete
+			h3_doh_dispatch(s);
+	}
 	// End of the request body: finish a chunked request with the terminator.
-	if(!s->error && s->be.req_mode == REQ_CHUNKED && s->be_fd >= 0)
+	else if(!s->error && s->be.req_mode == REQ_CHUNKED && s->be_fd >= 0)
 		be_req_push(&s->be, "0\r\n\r\n", 5);
 	return 0;
 }
@@ -2401,6 +3208,14 @@ static int h3_cb_stream_close(nghttp3_conn *h3, int64_t stream_id,
 	struct h3_stream *s = h3_find_stream(c, stream_id);
 	if(s != NULL)
 	{
+		// A DoH resolve is still in flight: defer freeing the bridge buffers (the
+		// completion in h3_drain_resolved does it), or we would free body_buf out
+		// from under the answer the worker is about to hand back.
+		if(s->resolving)
+		{
+			s->close_pending = true;
+			return 0;
+		}
 		// nghttp3 is done with the stream: release the HTTP buffers and the
 		// backend socket. The node and its QUIC stream object are reclaimed by
 		// h3_conn_reap_streams() once the send part is concluded/reset.
@@ -2546,6 +3361,7 @@ static struct h3_conn *h3_conn_new(SSL *cssl)
 	if(c == NULL)
 		return NULL;
 	c->ssl = cssl;
+	c->gen = ++h3_gen_ctr; // loop thread only; stable id for off-loop job lookup
 
 	// Capture the real client address so each backend request can announce it
 	// via PROXY v2, mirroring the TCP and HTTP/2 paths. OpenSSL hands us the
@@ -2632,6 +3448,8 @@ static void h3_conn_free(struct h3_conn *c)
 {
 	if(c == NULL)
 		return;
+	if(c->ip_reserved)
+		ip_release(c->ipkey);
 	if(c->h3 != NULL)
 		nghttp3_conn_del(c->h3);
 	for(struct h3_stream *s = c->streams; s != NULL; )
@@ -2659,6 +3477,10 @@ static void h3_conn_free(struct h3_conn *c)
 static bool h3_stream_reapable(const struct h3_stream *s)
 {
 	if(s->uni_local)
+		return false;
+	// A DoH resolve is still in flight: keep the stream (and its conn, via
+	// inflight) alive so the completion can find it by (gen, id).
+	if(s->resolving)
 		return false;
 	// Decide from our own state, never SSL_get_stream_write_state(): once we
 	// conclude the send part OpenSSL may release its send-stream, and querying the
@@ -2724,6 +3546,96 @@ static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
 // HTTP/3 event-loop thread: own the UDP socket, the QUIC listener, and every
 // connection and stream. One poll() over the shared UDP socket drives OpenSSL's
 // event handling; the rest is bookkeeping to bridge HTTP/3 to the backend.
+// DoH resolve worker: block on the resolve off the event loop, then hand the
+// answer back and wake the loop. Works only on the copied-in/out job bytes.
+static void *h3_doh_worker(void *arg)
+{
+	(void)arg;
+	prctl(PR_SET_NAME, "terminator-doh", 0, 0, 0);
+	for(;;)
+	{
+		pthread_mutex_lock(&h3_jobs_mtx);
+		while(h3_jobs_pending == NULL && !h3_workers_stop)
+			pthread_cond_wait(&h3_jobs_cv, &h3_jobs_mtx);
+		if(h3_jobs_pending == NULL && h3_workers_stop)
+		{
+			pthread_mutex_unlock(&h3_jobs_mtx);
+			break;
+		}
+		struct h3_job *job = h3_jobs_pending;
+		if(job != NULL)
+			h3_jobs_pending = job->next;
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		if(job == NULL)
+			continue;
+
+		job->alen = dotdoh_server_resolve(job->client, job->dest[0] != '\0' ? job->dest : NULL,
+		                                  job->query, job->qlen, job->answer, sizeof(job->answer));
+
+		pthread_mutex_lock(&h3_jobs_mtx);
+		job->next = h3_jobs_done;
+		h3_jobs_done = job;
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		const uint64_t one = 1;
+		if(write(h3_wake_fd, &one, sizeof(one)) != (ssize_t)sizeof(one))
+			{ /* the loop also drains every iteration, so a lost wake only adds latency */ }
+	}
+	return NULL;
+}
+
+// Submit answers for completed DoH resolves (loop thread). Targets are looked up
+// by (conn generation, stream id), never by raw pointer, and inflight/close_pending
+// guards ensure the conn/stream still exist and want the answer.
+static void h3_drain_resolved(struct h3_conn *conns)
+{
+	pthread_mutex_lock(&h3_jobs_mtx);
+	struct h3_job *done = h3_jobs_done;
+	h3_jobs_done = NULL;
+	pthread_mutex_unlock(&h3_jobs_mtx);
+
+	while(done != NULL)
+	{
+		struct h3_job *job = done;
+		done = done->next;
+
+		struct h3_conn *c = NULL;
+		for(struct h3_conn *x = conns; x != NULL; x = x->next)
+			if(x->gen == job->conn_gen) { c = x; break; }
+		if(c != NULL)
+		{
+			if(c->inflight > 0)
+				c->inflight--;
+			struct h3_stream *s = h3_find_stream(c, job->stream_id);
+			if(s != NULL)
+			{
+				s->resolving = false;
+				if(s->close_pending || s->reset || s->error)
+				{
+					// Client bailed while resolving: run the deferred cleanup.
+					h3_be_close(s);
+					be_free(&s->be);
+					s->be.req_out_len = s->be.req_out_off = s->be.req_out_cap = 0;
+					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
+					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
+				}
+				else if(job->alen <= 0)
+					h3_gateway_error(s, "502");
+				else if(s->ssl != NULL && SSL_get_stream_write_state(s->ssl) != SSL_STREAM_STATE_OK)
+					// The client RESET/STOP_SENDING this stream while the resolve was
+					// in flight. Submitting a response we can no longer send would
+					// never conclude and would leak the stream node for the whole
+					// connection lifetime; reset it so it is reaped instead. (The
+					// send side still exists here - we have not concluded it - so
+					// querying the write state is safe.)
+					h3_reset_stream(s);
+				else
+					h3_doh_respond(s, job->answer, job->alen);
+			}
+		}
+		free(job);
+	}
+}
+
 static void *quic_accept_loop(void *arg)
 {
 	(void)arg;
@@ -2761,8 +3673,9 @@ static void *quic_accept_loop(void *arg)
 	unsigned int h3_live = 0; // live connections on `conns`, capped below
 	while(quic_running)
 	{
-		// Size the poll set: the UDP socket plus every active backend socket.
-		size_t need = 1;
+		// Size the poll set: the UDP socket, the DoH-resolve wakeup eventfd, plus
+		// every active backend socket.
+		size_t need = 2;
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
 				if(s->be_fd >= 0)
@@ -2779,7 +3692,7 @@ static void *quic_accept_loop(void *arg)
 			// only what fits; the rest are serviced on a later iteration. Never
 			// tear down live connections over a momentary memory spike.
 		}
-		if(pcap == 0)
+		if(pcap == 0 || pfds == NULL || pmap == NULL)
 		{
 			// Cannot poll the UDP socket yet (allocation failed at startup).
 			const struct timespec ts = { 0, 20 * 1000 * 1000 };
@@ -2797,7 +3710,13 @@ static void *quic_accept_loop(void *arg)
 			if(SSL_net_write_desired(c->ssl))
 				pfds[0].events |= POLLOUT;
 
-		nfds_t nfds = 1;
+		// Slot 1: the eventfd a DoH worker writes when a resolve completes.
+		pfds[1].fd = h3_wake_fd;
+		pfds[1].events = POLLIN;
+		pfds[1].revents = 0;
+		pmap[1] = NULL;
+
+		nfds_t nfds = 2;
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 		{
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
@@ -2812,6 +3731,7 @@ static void *quic_accept_loop(void *arg)
 				// not reallocated while nghttp3 still references it.
 				if(!s->be.resp_complete &&
 				   (s->be.body_len - s->be.body_off) < H3_BODY_HIGH_WATER &&
+				   h3_conn_buffered(c) < H3_CONN_BODY_CAP &&
 				   (!s->be.resp_headers_parsed ||
 				    nghttp3_conn_is_stream_flushed(c->h3, s->id)))
 					ev |= POLLIN;
@@ -2856,15 +3776,32 @@ static void *quic_accept_loop(void *arg)
 				continue;
 			}
 			struct h3_conn *c = h3_conn_new(cs);
-			if(c != NULL)
+			if(c == NULL)
 			{
-				c->next = conns;
-				conns = c;
-				h3_live++;
-			}
-			else
 				SSL_free(cs);
+				continue;
+			}
+			// Per-source cap, shared with the TCP handlers via ip_table so one host
+			// cannot hold every h1/h2/h3 slot. Released in h3_conn_free.
+			ip_key(&c->client_addr, c->ipkey);
+			if(!ip_reserve(c->ipkey))
+			{
+				log_debug(DEBUG_WEBSERVER, "Terminator: per-source h3 cap reached, dropping connection");
+				h3_conn_free(c);
+				continue;
+			}
+			c->ip_reserved = true;
+			c->next = conns;
+			conns = c;
+			h3_live++;
 		}
+
+		// Submit answers for DoH resolves completed off-loop. Drain the wakeup
+		// eventfd (an EFD read returns and clears the accumulated count) and run
+		// the drain every iteration so a coalesced/lost wake only adds latency.
+		if(pfds[1].revents & POLLIN)
+		{ uint64_t v; if(read(h3_wake_fd, &v, sizeof(v)) != (ssize_t)sizeof(v)) { /* EAGAIN */ } }
+		h3_drain_resolved(conns);
 
 		// Service the backend sockets first. Streams are reaped only at the end of
 		// the iteration (h3_conn_reap_streams), so the pmap stays valid here; this
@@ -2918,7 +3855,9 @@ static void *quic_accept_loop(void *arg)
 			struct h3_conn *c = *pp;
 			SSL_CONN_CLOSE_INFO info;
 			const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
-			if(c->dead || closed)
+			// Keep a connection with an in-flight DoH resolve until its worker's
+			// answer has been drained, so its stable `gen` stays valid for lookup.
+			if((c->dead || closed) && c->inflight == 0)
 			{
 				*pp = c->next;
 				h3_conn_free(c);
@@ -3038,10 +3977,30 @@ static void terminator_quic_start(const char *bind_addr, int public_port, const 
 	}
 	quic_running = true;
 	quic_public_port = public_port;
+
+	// DoH resolve off-load: a wakeup eventfd plus a small worker pool, both driven
+	// by the event loop below. If either fails to come up, h3_start_backend answers
+	// /dns-query with 503 rather than serving DoH natively.
+	h3_workers_stop = false;
+	h3_workers_n = 0;
+	h3_wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+	if(h3_wake_fd >= 0)
+		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
+			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker, NULL) == 0)
+				h3_workers_n++;
+
 	if(pthread_create(&quic_tid, NULL, quic_accept_loop, NULL) != 0)
 	{
 		log_err("Terminator: failed to start HTTP/3 thread: %s", strerror(errno));
 		quic_running = false;
+		pthread_mutex_lock(&h3_jobs_mtx);
+		h3_workers_stop = true;
+		pthread_cond_broadcast(&h3_jobs_cv);
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		for(unsigned i = 0; i < h3_workers_n; i++)
+			pthread_join(h3_workers[i], NULL);
+		h3_workers_n = 0;
+		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 		close(quic_fd);
 		quic_fd = -1;
 		SSL_CTX_free(quic_ctx);
@@ -3056,12 +4015,32 @@ static void terminator_quic_stop(void)
 {
 	if(quic_running)
 	{
+		// Stop the DoH workers first, so no resolve is in flight when the event
+		// loop frees its connections and we free the job queues below. Set the
+		// predicate under the mutex the workers hold across their wait, so a worker
+		// between its predicate check and pthread_cond_wait cannot miss the wakeup.
+		pthread_mutex_lock(&h3_jobs_mtx);
+		h3_workers_stop = true;
+		pthread_cond_broadcast(&h3_jobs_cv);
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		for(unsigned i = 0; i < h3_workers_n; i++)
+			pthread_join(h3_workers[i], NULL);
+		h3_workers_n = 0;
+
 		quic_running = false;
 		if(quic_tid_valid)
 		{
 			pthread_join(quic_tid, NULL);
 			quic_tid_valid = false;
 		}
+
+		// Free any results the loop did not drain and any still-queued jobs.
+		for(struct h3_job *j = h3_jobs_done; j != NULL; )
+		{ struct h3_job *n = j->next; free(j); j = n; }
+		for(struct h3_job *j = h3_jobs_pending; j != NULL; )
+		{ struct h3_job *n = j->next; free(j); j = n; }
+		h3_jobs_done = h3_jobs_pending = NULL;
+		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 	}
 	if(quic_fd >= 0)
 	{
@@ -3118,11 +4097,19 @@ static void *handle_conn(void *arg)
 	struct handler_arg *ha = arg;
 	const int client_fd = ha->client_fd;
 	SSL_CTX *const ctx = ha->ctx;
+	uint8_t ipkey[16];
+	memcpy(ipkey, ha->ipkey, 16);
 	free(ha);
 
 	const struct timeval tv = { .tv_sec = IO_TIMEOUT_SEC, .tv_usec = 0 };
 	setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	// Disable Nagle: a native DoH response (and h2 frames) is written in a couple
+	// of small segments and would otherwise stall ~40 ms on the client's delayed
+	// ACK. The backend responses relayed to the client are equally latency-
+	// sensitive, so this applies to the whole connection.
+	const int one = 1;
+	setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
 	SSL *ssl = SSL_new(ctx);
 	int be_fd = -1;
@@ -3154,19 +4141,10 @@ static void *handle_conn(void *arg)
 	}
 #endif
 
-	// HTTP/1.1: terminate TLS and relay the byte stream to the backend.
-	be_fd = connect_backend();
-	if(be_fd < 0)
-		goto cleanup;
-
-	// Announce the real client to the backend before relaying any request bytes
-	if(send_proxy_v2(be_fd, client_fd) != 0)
-	{
-		log_debug(DEBUG_WEBSERVER, "Terminator: could not send PROXY header");
-		goto cleanup;
-	}
-
-	relay(ssl, client_fd, be_fd);
+	// HTTP/1.1: serve DoH (/dns-query) natively and relay everything else to the
+	// CivetWeb backend (the relay hands off inside terminator_h1_serve, prefixing
+	// the PROXY header, so the web UI/API keep working unchanged).
+	terminator_h1_serve(ssl, client_fd);
 
 cleanup:
 	if(ssl != NULL)
@@ -3178,6 +4156,7 @@ cleanup:
 		close(be_fd);
 	close(client_fd);
 	SSL_CTX_free(ctx); // release our reference (keeps the ctx alive across stop)
+	ip_release(ipkey);
 	atomic_fetch_sub(&active_handlers, 1);
 	return NULL;
 }
@@ -3194,7 +4173,9 @@ static void *accept_loop(void *arg)
 
 	while(running)
 	{
-		const int client_fd = accept4(listen_fd, NULL, NULL, SOCK_CLOEXEC);
+		struct sockaddr_storage peer;
+		socklen_t plen = sizeof(peer);
+		const int client_fd = accept4(listen_fd, (struct sockaddr *)&peer, &plen, SOCK_CLOEXEC);
 		if(client_fd < 0)
 		{
 			if(errno == EINTR)
@@ -3216,16 +4197,29 @@ static void *accept_loop(void *arg)
 			continue;
 		}
 
+		// Also cap per source IP, so one host cannot hold every handler slot.
+		uint8_t ipkey[16];
+		ip_key(&peer, ipkey);
+		if(!ip_reserve(ipkey))
+		{
+			atomic_fetch_sub(&active_handlers, 1);
+			log_debug(DEBUG_WEBSERVER, "Terminator: per-source connection cap reached, dropping connection");
+			close(client_fd);
+			continue;
+		}
+
 		// Hand the detached handler its own SSL_CTX reference, taken now while
 		// the context is live, so terminator_stop() can free it without racing a
 		// handler that has not yet reached SSL_new().
 		struct handler_arg *ha = malloc(sizeof(*ha));
 		if(ha == NULL)
 		{
+			ip_release(ipkey);
 			atomic_fetch_sub(&active_handlers, 1);
 			close(client_fd);
 			continue;
 		}
+		memcpy(ha->ipkey, ipkey, 16);
 		ha->client_fd = client_fd;
 		SSL_CTX_up_ref(ssl_ctx);
 		ha->ctx = ssl_ctx;
@@ -3235,6 +4229,7 @@ static void *accept_loop(void *arg)
 		{
 			log_err("Terminator: pthread_create() failed: %s", strerror(errno));
 			SSL_CTX_free(ha->ctx);
+			ip_release(ha->ipkey);
 			free(ha);
 			atomic_fetch_sub(&active_handlers, 1);
 			close(client_fd);
