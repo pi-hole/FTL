@@ -3733,6 +3733,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL log file
 			chown_pihole(config.files.log.ftl.v.s, ent_pw);
 
+			// Configured webserver log file
+			if(config.files.log.webserver.v.s != NULL)
+				chown_pihole(config.files.log.webserver.v.s, ent_pw);
+
+			// Configured dnsmasq log file (pihole.log)
+			if(config.files.log.dnsmasq.v.s != NULL)
+				chown_pihole(config.files.log.dnsmasq.v.s, ent_pw);
+
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
