@@ -1918,13 +1918,6 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// First, read the environment
 	getEnvVars();
 
-	// Open pihole.log and webserver.log now (with default or ENV paths)
-	// so that any log output during write_dnsmasq_config() below is not
-	// silently lost.  open_log_fds(false) will be called again after the
-	// config parse in main() to pick up any path overrides from the TOML
-	// file or legacy config.
-	open_log_fds(false);
-
 	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
@@ -1939,6 +1932,11 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			// about options deviating from the default are present
 			if(rewrite)
 			{
+				// Open webserver.log and pihole.log now that paths are
+				// known from the config.  CLI invocations (rewrite == false)
+				// never reach here, so log files are not created on
+				// pihole-FTL --config etc.
+				open_log_fds(false);
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
 				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
@@ -1971,6 +1969,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// setupVars.conf
 	get_web_port(&config);
 
+	// Open webserver.log and pihole.log at default paths (TOML was unreadable)
+	open_log_fds(false);
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
