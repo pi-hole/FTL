@@ -81,16 +81,30 @@ int __attribute__((pure)) is_log_fd(const int fd)
 // per-file so SIGUSR2 only touches the fd that actually needs it.
 static bool write_log_line(struct log_fd *log, const char *line, size_t len)
 {
-	if(log->fd == -1)
+	// Do not try to write when the path is unknown
+	if(log->path == NULL)
 		return false;
 
+	// log->fd and log->reopen_needed are only accessed under the lock so a
+	// reopen (e.g. from flush_dnsmasq_log()) can never race a concurrent write
 	pthread_mutex_lock(&log->lock);
 
+	// Reopen the log if requested.  This must be tested before the fd == -1
+	// check so that SIGUSR2 can revive a log whose initial open failed (missing
+	// directory, transient EACCES, ...).
 	if(log->reopen_needed)
 	{
 		log->reopen_needed = 0;
-		close(log->fd);
+		if(log->fd != -1)
+			close(log->fd);
 		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+	}
+
+	// No usable descriptor: let the caller fall back to another channel
+	if(log->fd == -1)
+	{
+		pthread_mutex_unlock(&log->lock);
+		return false;
 	}
 
 	ssize_t written = 0;
@@ -150,6 +164,11 @@ void open_log_fds(bool ftl)
 	{
 		webserver_log.path = config.files.log.webserver.v.s;
 		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		if(webserver_log.fd == -1)
+		{
+			log_warn("webserver.log is unavailable (%s); warnings are still relayed to the FTL log",
+			         strerror(errno));
+		}
 	}
 
 	// pihole.log (dnsmasq) - FTL owns this file from now on
@@ -157,6 +176,17 @@ void open_log_fds(bool ftl)
 	{
 		dnsmasq_log.path = config.files.log.dnsmasq.v.s;
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		if(dnsmasq_log.fd == -1)
+		{
+			// Warn regardless - the hide_dnsmasq_warn setting only controls
+			// whether the warnings themselves are shown, not this notice
+			if(config.misc.hide_dnsmasq_warn.v.b)
+				log_warn("pihole.log is unavailable (%s); dnsmasq warnings are hidden (misc.hide_dnsmasq_warn)",
+				         strerror(errno));
+			else
+				log_warn("pihole.log is unavailable (%s); dnsmasq warnings are still relayed to the FTL log",
+				         strerror(errno));
+		}
 	}
 
 	// Register atfork handlers once, before any threads or dnsmasq forks
@@ -511,7 +541,7 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 
 		line[off++] = '\n';
 
-		if(!write_log_line(&webserver_log, line, off) && config.files.log.webserver.v.s != NULL && !daemonmode)
+		if(!write_log_line(&webserver_log, line, off) && priority <= LOG_WARNING)
 		{
 			// No web log available - keep severe messages durable
 			_FTL_log(priority, flag, "%s", buffer);
