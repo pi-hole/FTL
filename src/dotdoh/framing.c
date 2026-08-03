@@ -193,6 +193,42 @@ ssize_t doh_parse_response(const uint8_t *buf, size_t buflen,
 		return -1;
 	if(mem_findci(buf, hlen, "\r\ntransfer-encoding:") != NULL)
 		return -1;
+
+	// RFC 8484 Sec. 5: DoH responses MUST include Content-Type:
+	// application/dns-message. Require it so a malformed or non-DoH HTTP
+	// response is rejected before it can desync the pooled connection.
+	const uint8_t *ct = mem_findci(buf, hlen, "\r\ncontent-type:");
+	if(ct == NULL)
+		return -1;
+	{
+		const uint8_t *ct_val = ct + strlen("\r\ncontent-type:");
+		while(ct_val < buf + hlen && (*ct_val == ' ' || *ct_val == '\t'))
+			ct_val++;
+		// Verify Content-Type starts with "application/dns-message"
+		const size_t ct_min_len = strlen("application/dns-message");
+		if(ct_val + ct_min_len > buf + hlen)
+			return -1;
+		// Case-insensitive comparison
+		bool ct_ok = true;
+		const char *expected = "application/dns-message";
+		for(size_t i = 0; i < ct_min_len; i++)
+		{
+			unsigned char a = ct_val[i];
+			if(a >= 'A' && a <= 'Z')
+				a = (unsigned char)(a + 32);
+			if(a != (unsigned char)expected[i])
+			{
+				ct_ok = false;
+				break;
+			}
+		}
+		if(!ct_ok)
+			return -1;
+		const uint8_t after = ct_val[ct_min_len];
+		if(after != '\r' && after != ';' && after != ' ' && after != '\t')
+			return -1;
+	}
+
 	const uint8_t *v = cl + strlen("\r\ncontent-length:");
 	while(v < buf + hlen && (*v == ' ' || *v == '\t'))
 		v++;

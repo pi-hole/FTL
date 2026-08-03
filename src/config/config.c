@@ -611,6 +611,20 @@ void initConfig(struct config *conf)
 	conf->dns.upstreamCA.f = FLAG_RESTART_FTL;
 	conf->dns.upstreamCA.c = validate_filepath_empty;
 
+	conf->dns.doh.k = "dns.doh";
+	conf->dns.doh.h = "Enable the inbound DNS-over-HTTPS (DoH) server. When enabled, FTL answers DoH queries (RFC 8484: an HTTP POST with an application/dns-message body, or a GET with a base64url-encoded ?dns= parameter, to /dns-query) on the Pi-hole HTTPS webserver, letting downstream clients use this Pi-hole directly as their encrypted resolver. This requires a TLS-enabled webserver.port (e.g. \"443s\") with a valid certificate, see config option webserver.port.";
+	conf->dns.doh.t = CONF_BOOL;
+	conf->dns.doh.d.b = true;
+	conf->dns.doh.f = FLAG_RESTART_FTL;
+	conf->dns.doh.c = validate_stub;
+
+	conf->dns.dot.k = "dns.dot";
+	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
+	conf->dns.dot.t = CONF_BOOL;
+	conf->dns.dot.d.b = true;
+	conf->dns.dot.f = FLAG_RESTART_FTL;
+	conf->dns.dot.c = validate_stub;
+
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
 	conf->dns.domain.name.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";

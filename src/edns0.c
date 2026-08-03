@@ -14,9 +14,17 @@
 #include "FTL.h"
 #include "log.h"
 #include "edns0.h"
+// dotdoh_inject_client() prototype (declared in the dnsmasq-free server header)
+#include "dotdoh/server.h"
 #include "config/config.h"
 #include "datastructure.h"
 #include "shmem.h"
+// pthread_once for the one-time client-option MAC-key init
+#include <pthread.h>
+// getrandom()
+#include <sys/random.h>
+// HMAC-SHA256 for the per-run client-attribution MAC (same crypto lib as the TOTP code)
+#include <nettle/hmac.h>
 
 // EDNS(0) Client Subnet [Optional, RFC7871]
 #define EDNS0_ECS EDNS0_OPTION_CLIENT_SUBNET
@@ -57,24 +65,198 @@ ednsData *getEDNS(void)
 	return NULL;
 }
 
-void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
+// Per-run secret shared between our inbound DoT/DoH server (which injects the
+// private-client option) and the parser below. Both run in this same FTL process,
+// so the key never leaves our memory. The option carries an HMAC-SHA256 MAC over
+// (client address || question section) keyed by this secret, not the secret
+// itself, so a loopback sniffer cannot learn the key and forge attributions: the
+// most it could do is replay an identical, already-legitimate query, which has no
+// effect. Trusted only when the MAC verifies AND (in FTL_new_query) the query
+// source is loopback. It does not defend against a process that can read our
+// memory, which is already privileged and out of scope.
+#define DOTDOH_MAC_LEN 16
+static unsigned char dotdoh_mac_key[DOTDOH_MAC_LEN];
+static pthread_once_t dotdoh_mac_key_once = PTHREAD_ONCE_INIT;
+static void dotdoh_mac_key_init(void)
 {
+	if(getrandom(dotdoh_mac_key, sizeof(dotdoh_mac_key), 0) != (ssize_t)sizeof(dotdoh_mac_key))
+	{
+		// Fall back to an all-zero key both sides share (still gated on a loopback
+		// source); log so a weakened boundary is visible. Practically never hit.
+		// Zero explicitly: a short read may have filled only a prefix, and a
+		// half-random key is worse than a known all-zero one (both peers must agree).
+		memset(dotdoh_mac_key, 0, sizeof(dotdoh_mac_key));
+		log_err("dotdoh: could not obtain a random client-option key");
+	}
+}
+
+// Byte length of the question section (all QDCOUNT questions) from offset 12, or
+// 0 if the message is malformed. The MAC is bound to these bytes so a captured
+// MAC cannot be replayed onto a different query.
+static size_t __attribute__((pure)) dotdoh_question_len(const unsigned char *msg, const size_t msglen)
+{
+	if(msg == NULL || msglen < 12)
+		return 0;
+	const unsigned qdcount = ((unsigned)msg[4] << 8) | msg[5];
+	size_t pos = 12;
+	for(unsigned q = 0; q < qdcount; q++)
+	{
+		for(;;)
+		{
+			if(pos >= msglen)
+				return 0;
+			const unsigned char c = msg[pos];
+			if(c == 0) { pos += 1; break; }
+			if((c & 0xC0) == 0xC0) { pos += 2; break; } // compression pointer
+			if(c & 0xC0) return 0;                       // reserved label type
+			pos += 1 + c;
+		}
+		pos += 4; // QTYPE + QCLASS
+		if(pos > msglen)
+			return 0;
+	}
+	return pos - 12;
+}
+
+// HMAC-SHA256(key = dotdoh_mac_key, code || addr || question), truncated into out.
+// Binds the value to the exact query (so the MAC is not a reusable bearer secret)
+// AND to the option code (so a dest option cannot be replayed as a client one).
+static void dotdoh_addr_mac(const unsigned short code,
+                            const unsigned char *addr, const size_t addrlen,
+                            const unsigned char *question, const size_t qlen,
+                            unsigned char out[DOTDOH_MAC_LEN])
+{
+	const unsigned char codebytes[2] = { (unsigned char)(code >> 8), (unsigned char)(code & 0xff) };
+	struct hmac_sha256_ctx ctx;
+	hmac_sha256_set_key(&ctx, sizeof(dotdoh_mac_key), dotdoh_mac_key);
+	hmac_sha256_update(&ctx, sizeof(codebytes), codebytes);
+	hmac_sha256_update(&ctx, addrlen, addr);
+	if(qlen > 0)
+		hmac_sha256_update(&ctx, qlen, question);
+	hmac_sha256_digest(&ctx, DOTDOH_MAC_LEN, out);
+}
+
+// Encode ip as [family(1B): 4 or 6][address] into out (<= 17 bytes), returning the
+// encoded length (5 or 17) or 0 if ip does not parse. A v4-mapped IPv6 address
+// (::ffff:a.b.c.d) folds to IPv4 so an encrypted client is attributed to the same
+// client as plain DNS (the source filter folds it too), not a distinct v6 client.
+static size_t dotdoh_encode_addr(const char *ip, unsigned char *out)
+{
+	struct in_addr v4;
+	struct in6_addr v6;
+	if(inet_pton(AF_INET, ip, &v4) == 1)
+	{
+		out[0] = 4;
+		memcpy(out + 1, &v4.s_addr, 4);
+		return 5;
+	}
+	if(inet_pton(AF_INET6, ip, &v6) == 1)
+	{
+		if(IN6_IS_ADDR_V4MAPPED(&v6))
+		{
+			out[0] = 4;
+			memcpy(out + 1, &v6.s6_addr[12], 4);
+			return 5;
+		}
+		out[0] = 6;
+		memcpy(out + 1, v6.s6_addr, 16);
+		return 17;
+	}
+	return 0;
+}
+
+// add_pseudoheader() invokes dnsmasq's non-reentrant rrfilter() - which mutates a
+// process-wide static workspace - whenever an existing OPT RR is not the last
+// record, is a signed (TSIG/TKEY) packet, or carries a malformed option. Reaching
+// that from our worker threads (the DoT reactor, the terminator handlers, the h3
+// pool) races the dnsmasq main thread and the other workers and corrupts the heap.
+// A well-formed DNS query never triggers it (its OPT, if any, is the sole last
+// additional record with valid options), so detect the unsafe shapes here and let
+// the caller reject the query. Read-only; touches no shared state.
+static bool dotdoh_opt_rrfilter_safe(unsigned char *buf, size_t plen)
+{
+	int is_sign = 0, is_last = 0;
+	unsigned char *udp = NULL;
+	const unsigned char *opt = find_pseudoheader((struct dns_header *)(void *)buf,
+	                                             plen, NULL, &udp, &is_sign, &is_last);
+	if(opt == NULL)
+		return true;             // no OPT: add_pseudoheader appends a fresh one
+	if(is_sign || !is_last)
+		return false;            // signed, or OPT not last -> rrfilter / reject
+	// The OPT fixed fields after `udp` are CLASS(2) + TTL(4) + RDLEN(2); walk its
+	// option TLVs exactly as add_pseudoheader does - an option whose length overruns
+	// RDLEN makes it delete the OPT via rrfilter (RFC 6891 option framing).
+	if(udp + 8 > buf + plen)
+		return false;
+	const unsigned int rdlen = ((unsigned int)udp[6] << 8) | udp[7];
+	const unsigned char *rdata = udp + 8;
+	if(rdata + rdlen > buf + plen)
+		return false;
+	for(unsigned int i = 0; i + 4 < rdlen;)
+	{
+		const unsigned int len = ((unsigned int)rdata[i + 2] << 8) | rdata[i + 3];
+		if(i + 4 + len > rdlen)
+			return false;    // malformed option -> add_pseudoheader takes rrfilter
+		i += len + 4;
+	}
+	return true;
+}
+
+// Build [family][address][MAC] for ip and add it (replace=1, overwriting any
+// instance a client injected itself) as the given private option code. The MAC
+// over (code || address || question) binds it to this exact query. Returns the new
+// packet length, unchanged if ip does not parse.
+static size_t dotdoh_inject_addr(unsigned char *buf, size_t plen, size_t cap,
+                                 const unsigned short code, const char *ip)
+{
+	unsigned char payload[1 + 16 + DOTDOH_MAC_LEN];
+	size_t optlen = dotdoh_encode_addr(ip, payload);
+	if(optlen == 0)
+		return plen;
+	dotdoh_addr_mac(code, payload + 1, optlen - 1, buf + 12,
+	                dotdoh_question_len(buf, plen), payload + optlen);
+	optlen += DOTDOH_MAC_LEN;
+	return add_pseudoheader((struct dns_header *)(void *)buf, plen, cap,
+	                        code, payload, optlen, 0, 1);
+}
+
+size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
+                            const char *client_ip, const char *dest_ip)
+{
+	if(buf == NULL || client_ip == NULL)
+		return plen;
+
+	// Refuse a query whose OPT would drive add_pseudoheader() into the
+	// non-reentrant rrfilter() path (see dotdoh_opt_rrfilter_safe). Returning the
+	// length unchanged makes dotdoh_prepare_query fail closed, so the malformed or
+	// adversarial query is rejected rather than resolved unattributed.
+	if(!dotdoh_opt_rrfilter_safe(buf, plen))
+		return plen;
+
+	pthread_once(&dotdoh_mac_key_once, dotdoh_mac_key_init);
+
+	// The parser trusts either option only when the source is loopback AND its MAC
+	// verifies (see below). Both hash the same (unchanged) question section.
+	plen = dotdoh_inject_addr(buf, plen, cap, EDNS0_OPTION_PIHOLE_CLIENT, client_ip);
+	if(dest_ip != NULL)
+		plen = dotdoh_inject_addr(buf, plen, cap, EDNS0_OPTION_PIHOLE_DEST, dest_ip);
+	return plen;
+}
+
+void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
+                             unsigned char *pheader, const size_t plen)
+{
+	// Invalidate any previous query's EDNS up front. getEDNS() is consume-once,
+	// so a query that populated `edns` but was never read must not leak into the
+	// next one - only a valid OPT parsed below makes it valid again. This matters
+	// now that `edns` also carries the private client-attribution options.
+	edns.valid = false;
+
 	// Return early if we have no pseudoheader (a.k.a. additional records)
 	if (!pheader)
 	{
 		log_debug(DEBUG_EDNS0, "No EDNS(0) pheader found");
 		return;
-	}
-
-	// Debug logging
-	if(config.debug.edns0.v.b)
-	{
-		char *payload = calloc(3*plen+1, sizeof(char));
-		for(unsigned int i = 0; i < plen; i++)
-			sprintf(&payload[3*i], "%02X ", pheader[i]);
-		log_debug(DEBUG_EDNS0, "pheader: %s (%lu bytes)",
-		          payload, (long unsigned int)plen);
-		free(payload);
 	}
 
 	// Working pointer
@@ -274,6 +456,78 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 		}
+		else if((code == EDNS0_OPTION_PIHOLE_CLIENT || code == EDNS0_OPTION_PIHOLE_DEST) &&
+		        (optlen == 5 + DOTDOH_MAC_LEN || optlen == 17 + DOTDOH_MAC_LEN))
+		{
+			// Pi-hole-private hint injected by our own inbound DoT/DoH server:
+			// [family(1B): 4 or 6][address(4 or 16B)][MAC]. PIHOLE_CLIENT carries
+			// the real downstream client, PIHOLE_DEST the address it connected to.
+			// Trusted only when the MAC verifies (proving it came from our own
+			// process) AND later when the query source is loopback (FTL_new_query).
+			const unsigned char pfam = *p;
+			union all_addr paddr = {};
+			int af = 0;
+			size_t addrlen = 0;
+			if(pfam == 4 && optlen == 5 + DOTDOH_MAC_LEN)
+			{
+				af = AF_INET;
+				addrlen = 4;
+				memcpy(&paddr.addr4.s_addr, p + 1, 4);
+			}
+			else if(pfam == 6 && optlen == 17 + DOTDOH_MAC_LEN)
+			{
+				af = AF_INET6;
+				addrlen = 16;
+				memcpy(paddr.addr6.s6_addr, p + 1, 16);
+			}
+			// Recompute the MAC over (address || question of this message) and
+			// constant-time compare it to the one carried in the option.
+			pthread_once(&dotdoh_mac_key_once, dotdoh_mac_key_init);
+			unsigned char tdiff = 0;
+			if(af != 0)
+			{
+				// Bound the question walk to where our OPT (pheader) begins: inject
+				// saw the query without it, so a lying QDCOUNT must not let verify
+				// read into the appended option and disagree with inject. (A
+				// disagreement only ever fails safe - it never accepts a wrong MAC.)
+				const size_t qbound = ((const unsigned char *)pheader >= msg &&
+				    (size_t)((const unsigned char *)pheader - msg) <= msglen)
+				    ? (size_t)((const unsigned char *)pheader - msg) : msglen;
+				unsigned char want[DOTDOH_MAC_LEN];
+				dotdoh_addr_mac(code, p + 1, addrlen, msg + 12,
+				                dotdoh_question_len(msg, qbound), want);
+				for(size_t i = 0; i < DOTDOH_MAC_LEN; i++)
+					tdiff |= (unsigned char)(p[1 + addrlen + i] ^ want[i]);
+			}
+			if(af != 0 && tdiff == 0)
+			{
+				char ipaddr[ADDRSTRLEN] = { 0 };
+				inet_ntop(af, &paddr, ipaddr, sizeof(ipaddr));
+				// Store in a dedicated field, NOT the shared client[] the ECS
+				// parser uses, so this option cannot influence ECS attribution.
+				if(code == EDNS0_OPTION_PIHOLE_CLIENT)
+				{
+					strncpy(edns.private_client, ipaddr, ADDRSTRLEN);
+					edns.private_client[ADDRSTRLEN - 1] = '\0';
+					edns.private_client_set = true;
+					log_debug(DEBUG_EDNS0, "PIHOLE CLIENT: %s (IPv%u)", ipaddr, pfam);
+				}
+				else
+				{
+					strncpy(edns.private_dest, ipaddr, ADDRSTRLEN);
+					edns.private_dest[ADDRSTRLEN - 1] = '\0';
+					edns.private_dest_set = true;
+					log_debug(DEBUG_EDNS0, "PIHOLE DEST: %s (IPv%u)", ipaddr, pfam);
+				}
+			}
+			// Neutralise the option in place so the real downstream client IP is
+			// not forwarded to the upstream resolver (dnsmasq preserves unknown
+			// EDNS options on the forward path). We keep the option length - only
+			// zero the payload - because shortening it would require changing the
+			// caller's plen at the dnsmasq call sites (a core patch).
+			memset(p, 0, optlen);
+			p += optlen; // advance to the next option
+		}
 		else if(code == EDNS0_COOKIE && optlen == 8)
 		{
 			// EDNS(0) COOKIE client
@@ -436,6 +690,21 @@ void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 
 			// Advance working pointer
 			p += optlen;
+		}
+	}
+
+	// Debug dump AFTER the parse loop: if our private-client option was present
+	// it has been neutralised above, so its per-run MAC is never written to
+	// the log (which any log reader could otherwise use to forge attribution).
+	if(config.debug.edns0.v.b)
+	{
+		char *payload = calloc(3*plen + 1, sizeof(char));
+		if(payload != NULL)
+		{
+			for(size_t i = 0; i < plen; i++)
+				sprintf(&payload[3*i], "%02X ", pheader[i]);
+			log_debug(DEBUG_EDNS0, "pheader: %s (%zu bytes)", payload, plen);
+			free(payload);
 		}
 	}
 }

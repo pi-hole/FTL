@@ -18,11 +18,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
-// Pad a DNS query in place to the next multiple of EDNS_PAD_BLOCK octets by
-// adding (or extending) an EDNS(0) Padding option (RFC 7830, option code 12)
-// following the recommended query policy of RFC 8467. buf holds the len-byte
-// message and has capacity bufsz.
+// Pad a DNS query in place to the next multiple of 128 octets (RFC 8467 client
+// policy) by adding or extending an EDNS(0) Padding option (RFC 7830, option code
+// 12). buf holds the len-byte message and has capacity bufsz.
 //
 // Returns the new message length, or len unchanged (fail-open) when padding is
 // not safely possible: a truncated/malformed message, an OPT record that is not
@@ -35,5 +35,20 @@ size_t edns_pad_query(uint8_t *buf, size_t len, size_t bufsz);
 // Requestor's advertised EDNS UDP payload size from a query (OPT CLASS field), or
 // 512 when absent/unparsable. See edns_pad.c for details.
 uint16_t edns_query_udp_size(const uint8_t *buf, size_t len) __attribute__((pure));
+
+// Pad a DNS response in place to the next multiple of 468 octets (RFC 8467 server
+// policy). Unlike a query, a response is only padded when it already carries an
+// EDNS(0) OPT record - a fresh OPT is never synthesised onto an answer. Same
+// in-place semantics, idempotency and fail-open behaviour as edns_pad_query.
+//
+// The caller must gate this on the request having carried a Padding option
+// (RFC 8467 Sec. 4): a server MUST NOT pad a response otherwise. See
+// edns_has_padding_option().
+size_t edns_pad_response(uint8_t *buf, size_t len, size_t bufsz);
+
+// Whether the DNS message msg carries an EDNS(0) Padding option in its OPT RR.
+// Fail-safe: returns false on any malformed input. Used to decide whether a
+// response may be padded (per the request).
+bool edns_has_padding_option(const uint8_t *msg, size_t len) __attribute__((pure));
 
 #endif // DOTDOH_EDNS_PAD_H

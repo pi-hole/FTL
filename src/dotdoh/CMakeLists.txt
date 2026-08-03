@@ -23,6 +23,11 @@ set(dotdoh_sources
         quic_client.h
         proxy.c
         proxy.h
+        server.c
+        server.h
+        source_filter.c
+        source_filter.h
+        dot_server.c
         )
 
 add_library(dotdoh OBJECT ${dotdoh_sources})

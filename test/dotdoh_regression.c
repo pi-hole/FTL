@@ -26,6 +26,7 @@
 #include "dotdoh/framing.c"
 #include "dotdoh/registry.c"
 #include "dotdoh/edns_pad.c"
+#include "dotdoh/source_filter.c"
 
 static int failures = 0;
 
@@ -177,23 +178,23 @@ static void test_doh_request(void)
 static void test_doh_response(void)
 {
 	size_t bo = 0, bl = 0;
-	const char *r1 = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nAB";
+	const char *r1 = "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: 2\r\n\r\nAB";
 	ssize_t c = doh_parse_response((const uint8_t *)r1, strlen(r1), &bo, &bl);
 	EXPECT(c == (ssize_t)strlen(r1), "doh resp consumed");
 	EXPECT(bl == 2 && memcmp(r1 + bo, "AB", 2) == 0, "doh resp body");
 
 	EXPECT(doh_parse_response((const uint8_t *)"HTTP/1.1 200 OK\r\n", 17, &bo, &bl) == 0, "doh resp partial headers");
-	const char *r2 = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nAB";
+	const char *r2 = "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: 5\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r2, strlen(r2), &bo, &bl) == 0, "doh resp partial body");
 	const char *r3 = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
 	EXPECT(doh_parse_response((const uint8_t *)r3, strlen(r3), &bo, &bl) == -1, "doh resp non-200");
 	const char *r4 = "HTTP/1.1 200 OK\r\nFoo: bar\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r4, strlen(r4), &bo, &bl) == -1, "doh resp missing content-length");
-	const char *r5 = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nAB";
+	const char *r5 = "HTTP/1.1 200 OK\r\ncontent-type: application/dns-message\r\ncontent-length: 2\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r5, strlen(r5), &bo, &bl) == (ssize_t)strlen(r5), "doh resp case-insensitive");
 	const char *r6 = "HTTP/1.1 200 OK\r\nContent-Length: 70000\r\n\r\n";
 	EXPECT(doh_parse_response((const uint8_t *)r6, strlen(r6), &bo, &bl) == -1, "doh resp oversized");
-	const char *r7 = "HTTP/1.1 200 OK\r\nX-Content-Length: 9\r\nContent-Length: 2\r\n\r\nAB";
+	const char *r7 = "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nX-Content-Length: 9\r\nContent-Length: 2\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r7, strlen(r7), &bo, &bl) == (ssize_t)strlen(r7) && bl == 2, "doh resp ignores X-Content-Length prefix");
 	const char *r8 = "HTTP/1.1 200 OK\r\nX-Content-Length: 2\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r8, strlen(r8), &bo, &bl) == -1, "doh resp X-Content-Length is not Content-Length");
@@ -206,7 +207,7 @@ static void test_doh_response(void)
 	EXPECT(doh_parse_response((const uint8_t *)r11, strlen(r11), &bo, &bl) == -1, "doh resp rejects trailing junk in Content-Length");
 	const char *r12 = "220 smtp ready\r\nContent-Length: 2\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r12, strlen(r12), &bo, &bl) == -1, "doh resp rejects non-HTTP status line");
-	const char *r13 = "HTTP/1.1 200 OK\r\nContent-Length: 2 \r\n\r\nAB";
+	const char *r13 = "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: 2 \r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r13, strlen(r13), &bo, &bl) == (ssize_t)strlen(r13), "doh resp tolerates trailing OWS in Content-Length");
 	// Message-smuggling shapes must be rejected so leftover bytes cannot desync
 	// the pooled connection for later queries.
@@ -214,6 +215,10 @@ static void test_doh_response(void)
 	EXPECT(doh_parse_response((const uint8_t *)r14, strlen(r14), &bo, &bl) == -1, "doh resp rejects duplicate Content-Length");
 	const char *r15 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 2\r\n\r\nAB";
 	EXPECT(doh_parse_response((const uint8_t *)r15, strlen(r15), &bo, &bl) == -1, "doh resp rejects Transfer-Encoding");
+	const char *r16 = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nAB";
+	EXPECT(doh_parse_response((const uint8_t *)r16, strlen(r16), &bo, &bl) == -1, "doh resp requires Content-Type");
+	const char *r17 = "HTTP/1.1 200 OK\r\nContent-Type: application/dns-message\r\nContent-Length: 18446744073709551616\r\n\r\n";
+	EXPECT(doh_parse_response((const uint8_t *)r17, strlen(r17), &bo, &bl) == -1, "doh resp rejects overflowing Content-Length");
 }
 
 // Occupy ip:port with a socket of the given type; returns fd or -1.
@@ -410,6 +415,162 @@ static void test_edns_pad(void)
 	}
 }
 
+static void test_edns_pad_response(void)
+{
+	// edns_has_padding_option: absent on a bare query, present once padded.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 0);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		const size_t len = 12 + sizeof(QUESTION);
+		EXPECT(!edns_has_padding_option(buf, len), "bare query reports no padding option");
+		const size_t padded = edns_pad_query(buf, len, sizeof(buf));
+		EXPECT(edns_has_padding_option(buf, padded), "padded query reports a padding option");
+	}
+
+	// A response with an existing OPT (no options) is padded to a 468 multiple by
+	// extending the OPT RDATA; ARCOUNT is unchanged.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);           // question + one additional (OPT)
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION);      // 29
+		buf[p++] = 0x00;                       // root name
+		buf[p++] = 0x00; buf[p++] = 0x29;      // type OPT
+		buf[p++] = 0x10; buf[p++] = 0x00;      // UDP size 4096
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; // TTL
+		buf[p++] = 0x00; buf[p++] = 0x00;      // RDLEN 0
+		const size_t len = p;                  // 40
+
+		const size_t out = edns_pad_response(buf, len, sizeof(buf));
+		EXPECT(out == 468, "response padded length %zu != 468", out);
+		EXPECT(out % 468 == 0, "response length not a multiple of 468");
+		EXPECT(buf[10] == 0x00 && buf[11] == 0x01, "response ARCOUNT changed");
+		// OPT RDLEN grew to 4 (pad option header) + 424 (pad) = 428 = 0x01AC
+		EXPECT(buf[38] == 0x01 && buf[39] == 0xAC, "response OPT RDLEN not grown to 428");
+		EXPECT(buf[40] == 0x00 && buf[41] == 0x0C, "response padding option code != 12");
+		EXPECT(edns_has_padding_option(buf, out), "padded response reports a padding option");
+		expect_zeros(buf, 44, 468, "response padding octets");
+	}
+
+	// A response with no OPT is left unchanged - a server must not fabricate one.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 0);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		const size_t len = 12 + sizeof(QUESTION);
+		EXPECT(edns_pad_response(buf, len, sizeof(buf)) == len,
+		       "response without OPT must be left unchanged");
+		EXPECT(buf[11] == 0x00, "response without OPT must not gain an OPT RR");
+	}
+
+	// Idempotent: a response already carrying a Padding option is left as-is.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION);
+		buf[p++] = 0x00;                       // root name
+		buf[p++] = 0x00; buf[p++] = 0x29;      // type OPT
+		buf[p++] = 0x10; buf[p++] = 0x00;      // UDP size
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; // TTL
+		buf[p++] = 0x00; buf[p++] = 0x04;      // RDLEN 4
+		buf[p++] = 0x00; buf[p++] = 0x0C;      // Padding option code
+		buf[p++] = 0x00; buf[p++] = 0x00;      // Padding option length 0
+		const size_t len = p;
+		EXPECT(edns_pad_response(buf, len, sizeof(buf)) == len,
+		       "already-padded response changed");
+	}
+}
+
+// The inbound DoT/DoH source filter must serve loopback/local clients yet refuse
+// public ones in every mode except LISTEN_ALL, so an on-by-default resolver does
+// not become an open resolver. Public addresses (8.8.8.8, a public v6) are
+// deterministically non-local on any sane test host, giving a stable negative.
+static void expect_src(const enum listening_mode mode, const char *ip, const bool want,
+                       const char *label)
+{
+	const bool got = dotdoh_source_allowed_mode(mode, ip, NULL);
+	EXPECT(got == want, "source filter %s: got %s, want %s", label,
+	       got ? "allow" : "deny", want ? "allow" : "deny");
+}
+
+static void test_source_filter(void)
+{
+	// LISTEN_ALL serves every origin, including public and even odd inputs.
+	expect_src(LISTEN_ALL, "8.8.8.8", true, "ALL/public-v4");
+	expect_src(LISTEN_ALL, "2001:4860:4860::8888", true, "ALL/public-v6");
+	// ... but an undetermined peer (NULL) fails closed even in LISTEN_ALL - the
+	// NULL guard runs before the ALL shortcut, so a lost address is never "allow".
+	expect_src(LISTEN_ALL, NULL, false, "ALL/null-fail-closed");
+
+	// Every other mode (LISTEN_LOCAL is the default) serves loopback but must
+	// refuse public clients - this is the open-resolver protection.
+	const enum listening_mode restricted[] = { LISTEN_LOCAL, LISTEN_SINGLE,
+	                                           LISTEN_BIND, LISTEN_NONE };
+	for(size_t i = 0; i < sizeof(restricted) / sizeof(restricted[0]); i++)
+	{
+		const enum listening_mode m = restricted[i];
+		expect_src(m, "127.0.0.1", true, "restricted/loopback-v4");
+		expect_src(m, "127.0.0.2", true, "restricted/loopback-v4b");
+		expect_src(m, "::1", true, "restricted/loopback-v6");
+		expect_src(m, "8.8.8.8", false, "restricted/public-v4");
+		expect_src(m, "1.2.3.4", false, "restricted/public-v4b");
+		expect_src(m, "2001:4860:4860::8888", false, "restricted/public-v6");
+		expect_src(m, "not-an-ip", false, "restricted/garbage");
+		expect_src(m, NULL, false, "restricted/null");
+	}
+
+	// Exercise the local-subnet ALLOW branch (the whole reason getifaddrs is
+	// called): find one non-loopback local IPv4 and assert it is served in a
+	// restricted mode. Skipped where the host has no such interface.
+	char localv4[INET_ADDRSTRLEN] = "";
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) == 0)
+	{
+		for(struct ifaddrs *ifa = ifap; ifa != NULL; ifa = ifa->ifa_next)
+		{
+			if(ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_INET)
+				continue;
+			const uint32_t a = ((struct sockaddr_in *)(void *)ifa->ifa_addr)->sin_addr.s_addr;
+			if((ntohl(a) & 0xFF000000) == 0x7F000000)
+				continue; // skip loopback (handled by the early fast-path)
+			inet_ntop(AF_INET, &a, localv4, sizeof(localv4));
+			break;
+		}
+		freeifaddrs(ifap);
+	}
+	if(localv4[0] != '\0')
+	{
+		expect_src(LISTEN_LOCAL, localv4, true, "restricted/local-subnet");
+		// LISTEN_SINGLE restricted to a non-existent interface must refuse a client
+		// that sits on a real local subnet - proves the interface filter narrows.
+		EXPECT(!dotdoh_source_allowed_mode(LISTEN_SINGLE, localv4, "dotdoh-no-such-if"),
+		       "SINGLE with a foreign interface must refuse a local-subnet client");
+	}
+	else
+		printf("  (skipped local-subnet allow: no non-loopback IPv4 interface)\n");
+
+	// An IPv4-mapped IPv6 loopback must be recognised as loopback, not rejected.
+	expect_src(LISTEN_LOCAL, "::ffff:127.0.0.1", true, "restricted/v4mapped-loopback");
+
+	// A zone id must be stripped before parsing (::1%lo is still loopback).
+	expect_src(LISTEN_LOCAL, "::1%lo", true, "restricted/zoned-loopback");
+
+	// An IPv6 link-local peer (fe80::/10) cannot be attributed to a named
+	// interface (identical /64 on every link, zone stripped), so an
+	// interface-restricted mode denies it - independent of whether that
+	// interface exists, and after the zone id is stripped.
+	EXPECT(!dotdoh_source_allowed_mode(LISTEN_SINGLE, "fe80::1", "dotdoh-no-such-if"),
+	       "link-local refused under interface-restricted SINGLE");
+	EXPECT(!dotdoh_source_allowed_mode(LISTEN_BIND, "fe80::1%eth0", "dotdoh-no-such-if"),
+	       "zoned link-local refused under interface-restricted BIND");
+}
+
 int main(void)
 {
 	test_plain();
@@ -421,6 +582,8 @@ int main(void)
 	test_doh_response();
 	test_registry();
 	test_edns_pad();
+	test_edns_pad_response();
+	test_source_filter();
 
 	if(failures == 0)
 		printf("dotdoh_regression: all tests passed\n");
