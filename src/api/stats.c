@@ -112,6 +112,18 @@ static bool matches_filter(const regex_t *regex, const unsigned int N_regex, con
 	return false;
 }
 
+// Release the regexes compiled by compile_filter_regex()
+static void free_filter_regex(regex_t *regex, const unsigned int N_regex)
+{
+	if(N_regex == 0)
+		return;
+
+	for(unsigned int i = 0; i < N_regex; i++)
+		regfree(&regex[i]);
+
+	free(regex);
+}
+
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
@@ -254,6 +266,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	{
 		log_err("Memory allocation failed in %s()", __FUNCTION__);
 		unlock_shm();
+		free_filter_regex(regex_domains, N_regex_domains);
 		return NULL;
 	}
 
@@ -363,15 +376,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 		free(top_domains);
 
 	// Free regexes
-	if(N_regex_domains > 0)
-	{
-		// Free individual regexes
-		for(unsigned int i = 0; i < N_regex_domains; i++)
-			regfree(&regex_domains[i]);
-
-		// Free array of regex pointers
-		free(regex_domains);
-	}
+	free_filter_regex(regex_domains, N_regex_domains);
 
 	if(domains_only)
 	{
@@ -451,6 +456,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	{
 		log_err("Memory allocation failed in %s()", __FUNCTION__);
 		unlock_shm();
+		free_filter_regex(regex_clients, N_regex_clients);
 		return 0;
 	}
 
@@ -594,15 +600,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		free(top_clients);
 
 	// Free regexes
-	if(N_regex_clients > 0)
-	{
-		// Free individual regexes
-		for(unsigned int i = 0; i < N_regex_clients; i++)
-			regfree(&regex_clients[i]);
-
-		// Free array of regex pointers
-		free(regex_clients);
-	}
+	free_filter_regex(regex_clients, N_regex_clients);
 
 	if(clients_only)
 	{
