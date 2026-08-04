@@ -238,6 +238,23 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops -Wp,-U_FORTIFY_SOURCE -Wp
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} -g3")
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3")
 
+# We ship with debug information so crash backtraces resolve to file:line, which
+# makes DWARF the largest part of the binary. Compressing it is lossless as gdb
+# and addr2line decompress transparently, and the link option is what also
+# covers the statically linked libraries we do not compile ourselves. zstd
+# compresses marginally better but needs binutils >= 2.40 to be read back.
+include(CheckCSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-g -gz=zlib")
+set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--compress-debug-sections=zlib")
+check_c_source_compiles("int main(void) { return 0; }" HAVE_COMPRESSED_DEBUG_SECTIONS)
+unset(CMAKE_REQUIRED_FLAGS)
+unset(CMAKE_REQUIRED_LINK_OPTIONS)
+if(HAVE_COMPRESSED_DEBUG_SECTIONS)
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -gz=zlib")
+    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -gz=zlib")
+    add_link_options(-Wl,--compress-debug-sections=zlib)
+endif()
+
 set(sources
         args.c
         args.h
