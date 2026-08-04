@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.23
+FROM ghcr.io/pi-hole/ftl-build:v2.25
 
 WORKDIR /app
 
@@ -20,9 +20,7 @@ ENV TERM=xterm
 # compare against and recompiles all 207 translation units on every run - on
 # riscv64, sqlite3.c alone is over half of that under QEMU. ccache is keyed on
 # content rather than on mtimes in a build tree, so it survives the fresh clone
-# and only units that actually changed are compiled. Installed here rather than
-# in ftl-build while we measure the payoff; move it into the image once proven.
-RUN apk add --no-cache ccache
+# and only units that actually changed are compiled.
 ENV CCACHE_DIR=/app/.ccache
 ENV CCACHE_MAXSIZE=500M
 # Identify the compiler by hashing the binary rather than by its mtime and size,
