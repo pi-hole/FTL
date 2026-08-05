@@ -157,6 +157,7 @@ struct config {
 		struct conf_item upstreamCA;
 		struct conf_item doh;
 		struct conf_item dot;
+		struct conf_item doq;
 		struct {
 			struct conf_item name;
 			struct conf_item local;

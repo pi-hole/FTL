@@ -259,7 +259,8 @@
 
   # Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH).
   # If left empty, the system default trust store is used. Only relevant when at least
-  # one dns.upstreams entry uses the tls:// or https:// scheme.
+  # one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3:// or
+  # doq://).
   #
   # Allowed values are:
   #     A path to a PEM CA bundle, or empty for the system default trust store
@@ -284,6 +285,17 @@
   # Allowed values are:
   #     true or false
   dot = true
+
+  # Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL
+  # terminates DoQ connections directly (RFC 9250) so downstream clients can use this
+  # Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port
+  # number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS
+  # certificate (the same one configured for the webserver) and an FTL built with QUIC
+  # support.
+  #
+  # Allowed values are:
+  #     true or false
+  doq = true
 
   [dns.domain]
     # The DNS domain used by your Pi-hole.
@@ -1761,7 +1773,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 171 total entries out of which 115 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

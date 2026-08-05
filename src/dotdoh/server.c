@@ -27,6 +27,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
 // dotdoh_source_allowed_mode()
 #include "source_filter.h"
 // edns_pad_response(), edns_has_padding_option()
@@ -178,6 +179,64 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 		got += (size_t)r;
 	}
 	return (ssize_t)alen;
+}
+
+// Shared pool of connected loopback sockets for the DoT and DoQ reactors.
+//
+// dnsmasq forks a child per TCP connection, so tying one loopback socket to each
+// inbound connection (DoT) or to each in-flight stream (DoQ) makes the number of
+// dnsmasq children scale with client behaviour: a client that opens a connection
+// per query forks one child per query, and a burst of them exhausts dnsmasq's
+// child slots, at which point queries are read but never answered. Pooling the
+// sockets decouples the two: a keep-alive socket is reused across unrelated
+// client connections and streams, so a client that opens a connection per query
+// no longer forks a child per query. Note this bounds the IDLE cache, not the
+// number of sockets in flight - concurrency is capped by the reactors' own
+// stream/connection limits, not by LOOPBACK_POOL_MAX.
+//
+// The sockets are non-blocking because both reactors drive them from their poll
+// set. Both are single-threaded but they are two different threads, so the pool
+// is mutex-guarded; contention is a couple of pointer moves per query.
+#define LOOPBACK_POOL_MAX 16
+static pthread_mutex_t pool_lock = PTHREAD_MUTEX_INITIALIZER;
+static int pool_fds[LOOPBACK_POOL_MAX];
+static int pool_n = 0;
+
+int dotdoh_loopback_take(void)
+{
+	int fd = -1;
+	pthread_mutex_lock(&pool_lock);
+	while(pool_n > 0)
+	{
+		fd = pool_fds[--pool_n];
+		// A quiescent socket has nothing to read: dnsmasq only ever writes an
+		// answer to a query we sent. So ANY readable byte means the previous
+		// borrower did not consume its answer and the byte stream is out of
+		// step - reusing it would hand that answer to the next caller as if it
+		// were their own. Readable, EOF and error are therefore all fatal here;
+		// only "nothing pending" is reusable. A poll() interrupted by a signal
+		// tells us nothing either way, so keep the socket rather than bin it.
+		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+		const int pr = poll(&pfd, 1, 0);
+		if(pr == 0 || (pr < 0 && errno == EINTR))
+			break; // nothing pending: still healthy as far as we can tell
+		close(fd);
+		fd = -1;
+	}
+	pthread_mutex_unlock(&pool_lock);
+	return fd;
+}
+
+void dotdoh_loopback_give(int fd)
+{
+	if(fd < 0)
+		return;
+	pthread_mutex_lock(&pool_lock);
+	if(pool_n < LOOPBACK_POOL_MAX)
+		pool_fds[pool_n++] = fd;
+	else
+		close(fd);
+	pthread_mutex_unlock(&pool_lock);
 }
 
 // Open a blocking loopback TCP connection to dnsmasq's own DNS listener, with

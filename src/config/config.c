@@ -598,7 +598,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3:// or doq://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
@@ -618,6 +618,13 @@ void initConfig(struct config *conf)
 	conf->dns.dot.d.b = true;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
+
+	conf->dns.doq.k = "dns.doq";
+	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
+	conf->dns.doq.t = CONF_BOOL;
+	conf->dns.doq.d.b = true;
+	conf->dns.doq.f = FLAG_RESTART_FTL;
+	conf->dns.doq.c = validate_stub;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";

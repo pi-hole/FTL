@@ -215,6 +215,8 @@ struct dot_conn {
 	int upfd;                // loopback resolve socket, kept open across keep-alive
 	                         // queries for reuse; -1 when none is open
 	bool up_reused;          // upfd carried over from a previous query this conn
+	bool up_idle;            // upfd is at a clean message boundary (no exchange
+	                         // in flight), so it may go back into the pool
 	bool up_retried;         // already reconnected once for the current query
 	enum dot_state st;
 	int active_fd;           // fd this connection is currently waiting on
@@ -247,8 +249,18 @@ static void conn_free(struct dot_conn *c)
 	}
 	if(c->cfd >= 0)
 		close(c->cfd);
+	// Hand the loopback socket back only when no exchange is in flight on it.
+	// conn_free() is also the deadline-sweep and shutdown path, which can fire
+	// with a query half-written or an answer not yet read; pooling such a socket
+	// would leave it out of step and serve the pending answer to whoever takes
+	// it next. Anything mid-exchange is closed instead.
 	if(c->upfd >= 0)
-		close(c->upfd);
+	{
+		if(c->up_idle)
+			dotdoh_loopback_give(c->upfd);
+		else
+			close(c->upfd);
+	}
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
 	uint8_t *rbuf = c->rbuf, *abuf = c->abuf, *wbuf = c->wbuf;
@@ -321,6 +333,17 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 // connecting. Returns 0 and sets c->upfd + the wait state, or -1 on failure.
 static int conn_start_resolve(struct dot_conn *c)
 {
+	// Prefer a pooled loopback socket: a client that opens a fresh DoT
+	// connection per query would otherwise fork a dnsmasq child per query, and a
+	// burst of those exhausts dnsmasq's child slots - after which queries are
+	// read but never answered.
+	c->upfd = dotdoh_loopback_take();
+	if(c->upfd >= 0)
+	{
+		c->up_reused = true;
+		c->st = DS_UP_WRITE;
+		return 0;
+	}
 	c->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(c->upfd < 0)
 		return -1;
@@ -436,6 +459,14 @@ static int drive_read(struct dot_conn *c)
 // reused connection means dnsmasq closed a kept-alive child; reconnect once.
 static int drive_up_write(struct dot_conn *c)
 {
+	// The socket stops being poolable the moment we start writing, not once the
+	// write finishes: a short write yields with the frame half sent, and a
+	// teardown in that window (either deadline sweep, or shutdown) would
+	// otherwise pool a socket carrying a partial query. dnsmasq is then blocked
+	// waiting for the rest, so nothing is readable and the checkout probe cannot
+	// tell the socket is unusable.
+	c->up_idle = false;
+
 	while(c->woff < c->wlen)
 	{
 		const ssize_t w = write(c->upfd, c->wbuf + c->woff, c->wlen - c->woff);
@@ -488,7 +519,9 @@ static int drive_up_read(struct dot_conn *c)
 		return -1;
 	}
 	// Answer complete. Keep the loopback socket open so the next keep-alive query
-	// reuses it instead of forking a fresh dnsmasq child.
+	// reuses it instead of forking a fresh dnsmasq child - and it is now back at
+	// a message boundary, so conn_free() may return it to the shared pool.
+	c->up_idle = true;
 
 	// RFC 8467 Sec. 4: pad the answer only if the query asked for it.
 	if(c->client_padded)
@@ -841,10 +874,21 @@ void *dotdoh_dot_thread(void *val)
 
 #else // !HAVE_TLS
 
+// Without TLS there is no DoT listener. dns.dot still starts this thread, which
+// returns immediately, so the setting is inert rather than fatal. The stub is a
+// const-folding candidate, so silence the GCC-only -Wsuggest-attribute
+// suggestion that -Werror would otherwise turn into a build failure.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
 void *dotdoh_dot_thread(void *val)
 {
 	(void)val;
 	return NULL;
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif // HAVE_TLS

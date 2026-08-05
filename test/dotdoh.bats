@@ -6,7 +6,8 @@
 #   - test/dotdoh_shim.py running, terminating TLS with test/test.pem (CN/SAN
 #     "pi.hole", signed by test/test_ca.crt):
 #       DoT   on :8853, DoH on :8443 (HTTP/2 via ALPN, else HTTP/1.1),
-#       DoH1  on :8445 (HTTP/1.1 only), and DoH3 on :8444 (HTTP/3, needs aioquic)
+#       DoH1  on :8445 (HTTP/1.1 only), DoH3 on :8444 (HTTP/3, needs aioquic) and
+#       DoQ   on :8854 (RFC 9250, needs aioquic)
 #
 # dns.upstreams and dns.upstreamCA are RESTART_FTL settings. We switch both to
 # the encrypted test upstream in ONE atomic API request, so FTL restarts exactly
@@ -29,6 +30,9 @@ export SHIM_PAD_LOG="${SHIM_PAD_LOG:-/tmp/dotdoh_pad.log}"
 # The shim touches this file once its HTTP/3 (QUIC) listener is bound; the DoH3
 # test waits on it. Default so a standalone bats run works; run.sh exports it.
 export SHIM_H3_READY="${SHIM_H3_READY:-/tmp/dotdoh_h3_ready}"
+
+# Same for the shim's DoQ (QUIC) listener, which the DoQ test waits on.
+export SHIM_DOQ_READY="${SHIM_DOQ_READY:-/tmp/dotdoh_doq_ready}"
 
 # The shim's own stdout/stderr, so the DoH3 test can show why the HTTP/3 listener
 # did not come up (aioquic missing, or an aioquic error). Default for a standalone
@@ -98,13 +102,27 @@ assert_padded() {  # $1 = transport (dot|doh)
 # dig target ("@IP -p PORT") of the Nth (1-based, config order) armed upstream,
 # read from FTL's log. The proxy binds a randomised loopback tuple per process
 # (127.0.0.0/8 + random port), so the port cannot be assumed - the deterministic
-# 5300+N is only a getrandom-failure fallback. The last four "armed on" lines are
-# this run's four upstreams (DoT, DoH/h2, DoH/h1.1, DoH3).
+# 5300+N is only a getrandom-failure fallback. The last seven "armed on" lines are
+# this run's seven upstreams (DoT, DoH/h2, DoH/h1.1, DoH3, DoQ, DoQ via quic://,
+# DoQ with a mismatched certificate name).
 proxy_at() {  # $1 = 1-based slot -> "@IP -p PORT"
   local t
   t=$(grep -oE "armed on 127\.[0-9.]+#[0-9]+" /var/log/pihole/FTL.log |
-      tail -n 4 | sed -n "${1}p" | grep -oE "127\.[0-9.]+#[0-9]+")
+      tail -n 7 | sed -n "${1}p" | grep -oE "127\.[0-9.]+#[0-9]+")
   echo "@${t%#*} -p ${t#*#}"
+}
+
+# Block until the shim's QUIC listener marker $1 appears, else fail loudly with
+# the shim log. QUIC listeners are UDP, which ensure_shim's TCP probe cannot see.
+wait_for_quic_shim() {  # $1 = readiness marker path, $2 = human name
+  local _
+  for _ in $(seq 1 50); do
+    [ -f "$1" ] && return 0
+    sleep 0.2
+  done
+  echo "$2 shim listener never became ready. Shim log:" >&2
+  cat "$SHIM_LOG" >&2 2>/dev/null || echo "(no shim log at $SHIM_LOG)" >&2
+  return 1
 }
 
 # Fire $2 concurrent dig queries at the Nth upstream's proxy listener and succeed
@@ -141,12 +159,16 @@ setup_file() {
   #   2  DoH over h2   (https://, shim :8443, ALPN "h2")
   #   3  DoH over h1.1 (https://, shim :8445, ALPN "http/1.1")
   #   4  DoH3 over h3  (h3://,    shim :8444, QUIC)
-  # The h3:// upstream is armed last, so its (unique) armed marker means FTL
-  # accepted every upstream. This only arms the config; the shim's h3 listener is
-  # UDP and not covered by ensure_shim's TCP checks, so the DoH3 test itself waits
-  # on SHIM_H3_READY before querying.
-  api_patch_dns "{\"upstreamCA\":\"$(pwd)/test/test_ca.crt\",\"upstreams\":[\"tls://pi.hole@127.0.0.1#8853\",\"https://pi.hole@127.0.0.1#8443/dns-query\",\"https://pi.hole@127.0.0.1#8445/dns-query\",\"h3://pi.hole@127.0.0.1#8444/dns-query\"]}" \
-                "dotdoh: DoH3 upstream pi.hole armed"
+  #   5  DoQ           (doq://,   shim :8854, QUIC)
+  #   6  DoQ via quic:// (the AdGuard/dnsproxy spelling of the same scheme)
+  #   7  DoQ to a name the shim certificate does not carry (must fail closed)
+  # Slot 7 is armed last and is the only upstream whose verify name is
+  # "wrong.pi.hole", so its (unique) armed marker means FTL accepted every
+  # upstream. This only arms the config; the shim's QUIC listeners are UDP and not
+  # covered by ensure_shim's TCP checks, so the DoH3 and DoQ tests wait on their
+  # readiness markers before querying.
+  api_patch_dns "{\"upstreamCA\":\"$(pwd)/test/test_ca.crt\",\"upstreams\":[\"tls://pi.hole@127.0.0.1#8853\",\"https://pi.hole@127.0.0.1#8443/dns-query\",\"https://pi.hole@127.0.0.1#8445/dns-query\",\"h3://pi.hole@127.0.0.1#8444/dns-query\",\"doq://pi.hole@127.0.0.1#8854\",\"quic://pi.hole@127.0.0.1#8854\",\"doq://wrong.pi.hole@127.0.0.1#8854\"]}" \
+                "dotdoh: DoQ upstream wrong.pi.hole armed"
 }
 
 teardown_file() {
@@ -222,19 +244,60 @@ teardown_file() {
   # Wait for it and fail loudly if it never appears (e.g. aioquic missing from the
   # image), so a missing dependency surfaces here instead of being silently
   # skipped - without holding the DoT/DoH/DoH2 tests hostage in setup_file.
-  local ready=""
-  for _ in $(seq 1 50); do
-    [ -f "$SHIM_H3_READY" ] && { ready=1; break; }
-    sleep 0.2
-  done
-  if [ -z "$ready" ]; then
-    echo "DoH3 shim HTTP/3 listener never became ready. Shim log:" >&2
-    cat "$SHIM_LOG" >&2 2>/dev/null || echo "(no shim log at $SHIM_LOG)" >&2
-    false
-  fi
+  wait_for_quic_shim "$SHIM_H3_READY" "DoH3 HTTP/3" || false
   run bash -c "dig +short +tries=1 +time=8 $(proxy_at 4) a.ftl"
   assert_output --partial "192.168.1.1"
   run bash -c "grep -F 'doh3-proto HTTP/3' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
+@test "dotdoh-client: a query resolves over the DoQ (RFC 9250) proxy path" {
+  # Like DoH3 this is required, never skipped: a missing aioquic must surface
+  # here rather than silently drop DoQ coverage.
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 5) a.ftl"
+  assert_output --partial "192.168.1.1"
+  run bash -c "grep -F 'doq-proto DoQ' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
+@test "dotdoh-client: the DoQ query carries Message ID 0 (RFC 9250)" {
+  # RFC 9250 Sec. 4.2.1: the DNS Message ID MUST be 0 on a QUIC stream. The shim
+  # records the ID it received; every DoQ query must show 0. That the answer is
+  # still accepted (the test above) proves FTL maps dnsmasq's ID back afterwards.
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 5) a.ftl"
+  assert_output --partial "192.168.1.1"
+  run bash -c "grep -c '^doq-msgid 0$' \"$SHIM_PAD_LOG\""
+  assert_success
+  run bash -c "grep -v '^doq-msgid 0$' \"$SHIM_PAD_LOG\" | grep '^doq-msgid ' || true"
+  assert_output ""
+}
+
+@test "dotdoh-client: the quic:// alias resolves over the same DoQ transport" {
+  # "quic://" is what AdGuard and dnsproxy configs use, so a copy-pasted resolver
+  # address has to work. It must arm and resolve exactly like doq://.
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 6) a.ftl"
+  assert_output --partial "192.168.1.1"
+}
+
+@test "dotdoh-client: a DoQ upstream with a mismatched certificate name fails closed" {
+  # The single most important property of an encrypted upstream: the QUIC handshake
+  # verifies the certificate against the configured name, and a mismatch drops the
+  # query rather than falling back to an unverified - or plaintext - answer. Slot 7
+  # points at the same shim as slot 5 but verifies "wrong.pi.hole", which the shim
+  # certificate (CN/SAN "pi.hole") does not carry, so the handshake must abort.
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 7) a.ftl"
+  refute_output --partial "192.168.1.1"
+}
+
+@test "dotdoh-client: the DoQ-forwarded query is padded (RFC 8467)" {
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 5) a.ftl"
+  assert_output --partial "192.168.1.1"
+  run assert_padded doq
   assert_success
 }
 
