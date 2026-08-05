@@ -477,11 +477,11 @@ int api_queries(struct ftl_conn *api)
 			// Encoded URI string: %5B = [ and %5D = ]
 			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
 			{
-				log_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
+				log_web_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
 			}
 			else
 			{
-				log_warn("Sorting by column %d (%s) requested, but column name not found",
+				log_web(LOG_WARNING, "Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
 			}
 		}
@@ -538,21 +538,21 @@ int api_queries(struct ftl_conn *api)
 					// Apply the search string to the query if this is an allowed column
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{
-						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
+						log_web_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
 						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
 					}
 					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
 					{
-						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
+						log_web_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
 						// We search both client IP and name
 						add_querystr_string(api, querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
 					}
 					else
-						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
+						log_web(LOG_WARNING, "Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
 						         3 + j, search_col_id_str);
 				}
 				else
-					log_warn("Column %u is not searchable (allowed: 3 = domain, 4 = client)", 3 + j);
+					log_web(LOG_WARNING, "Column %u is not searchable (allowed: 3 = domain, 4 = client)", 3 + j);
 			}
 		}
 	}
@@ -603,7 +603,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":tsfrom");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :tsfrom = %lf to query", timestamp_from);
+			log_web_debug(DEBUG_API, "adding :tsfrom = %lf to query", timestamp_from);
 			filtering = true;
 			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_from)) != SQLITE_OK)
 			{
@@ -617,7 +617,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":tsuntil");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :tsuntil = %lf to query", timestamp_until);
+			log_web_debug(DEBUG_API, "adding :tsuntil = %lf to query", timestamp_until);
 			filtering = true;
 			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_until)) != SQLITE_OK)
 			{
@@ -631,7 +631,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":domain");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
+			log_web_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, domainname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -645,7 +645,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cip");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
+			log_web_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientip, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -659,7 +659,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cname");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
+			log_web_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -673,7 +673,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":upstream");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
+			log_web_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, upstreamname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -695,7 +695,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(type < TYPE_MAX)
 			{
-				log_debug(DEBUG_API, "adding :type = %d to query", type);
+				log_web_debug(DEBUG_API, "adding :type = %d to query", type);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, type);
 				if(rc != SQLITE_OK)
@@ -727,7 +727,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(status < QUERY_STATUS_MAX)
 			{
-				log_debug(DEBUG_API, "adding :status = %d to query", status);
+				log_web_debug(DEBUG_API, "adding :status = %d to query", status);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, status);
 				if(rc != SQLITE_OK)
@@ -759,7 +759,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(reply < QUERY_REPLY_MAX)
 			{
-				log_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
+				log_web_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)
@@ -791,7 +791,7 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(dnssec < DNSSEC_MAX)
 			{
-				log_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
+				log_web_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, dnssec);
 				if(rc != SQLITE_OK)
@@ -815,7 +815,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cursor");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
+			log_web_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
 			// Do not set filtering as the cursor is not a filter
 			rc = sqlite3_bind_int64(read_stmt, idx, cursor);
 			if(rc != SQLITE_OK)
@@ -830,7 +830,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":domain_search");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :domain_search = \"%s\" to query", search[0]);
+			log_web_debug(DEBUG_API, "adding :domain_search = \"%s\" to query", search[0]);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, search[0], -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -844,7 +844,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":client_search");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :client_search = \"%s\" to query", search[1]);
+			log_web_debug(DEBUG_API, "adding :client_search = \"%s\" to query", search[1]);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, search[1], -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
@@ -858,8 +858,8 @@ int api_queries(struct ftl_conn *api)
 	}
 
 	// Debug logging
-	log_debug(DEBUG_API, "SQL: %s", querystr);
-	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
+	log_web_debug(DEBUG_API, "SQL: %s", querystr);
+	log_web_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, recordsCounted = 0, regex_skipped = 0;
@@ -1084,7 +1084,7 @@ int api_queries(struct ftl_conn *api)
 
 		added++;
 	}
-	log_debug(DEBUG_API, "Sending %u of %lld in memory and %lld on disk queries (counted %u, skipped %u)",
+	log_web_debug(DEBUG_API, "Sending %u of %lld in memory and %lld on disk queries (counted %u, skipped %u)",
 	          added, mem_dbnum, disk_dbnum, recordsCounted, regex_skipped);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
@@ -1093,7 +1093,7 @@ int api_queries(struct ftl_conn *api)
 	{
 		// Repeat cursor received in the request. This ensures we get a
 		// static result by skipping any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lu", cursor);
+		log_web_debug(DEBUG_API, "Sending cursor %lu", cursor);
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", cursor);
 	}
 	else
@@ -1101,7 +1101,7 @@ int api_queries(struct ftl_conn *api)
 		// Send cursor pointing to the firstID of the data obtained in
 		// this query. This ensures we get a static result by skipping
 		// any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
+		log_web_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
 	}
 
@@ -1174,7 +1174,7 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 		// Skip non-string, invalid and empty values
 		if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
 		{
-			log_warn("Skipping invalid regex at %s.%u", path, i);
+			log_web(LOG_WARNING, "Skipping invalid regex at %s.%u", path, i);
 			continue;
 		}
 
@@ -1185,7 +1185,7 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 			// Failed to compile regex
 			char errbuf[1024] = { 0 };
 			regerror(rc, &(*regex)[i], errbuf, sizeof(errbuf));
-			log_err("Failed to compile regex \"%s\": %s",
+			log_web(LOG_ERR, "Failed to compile regex \"%s\": %s",
 			        filter->valuestring, errbuf);
 
 			// Release the regexes compiled so far and the array itself
