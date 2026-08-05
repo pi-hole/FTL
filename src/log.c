@@ -131,7 +131,7 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
+const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
 	switch (priority)
 	{

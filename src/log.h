@@ -52,6 +52,7 @@ const char *get_FTL_version(void);
 void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible);
+const char *priostr(const int priority, const enum debug_flag flag)  __attribute__((const));
 const char *debugstr(const enum debug_flag flag) __attribute__((const));
 void log_web(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
