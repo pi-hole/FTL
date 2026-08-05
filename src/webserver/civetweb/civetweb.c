@@ -161,7 +161,7 @@ mg_static_assert(sizeof(void *) >= sizeof(int), "data type size check");
  * file system.
  * NO_FILES only disables the automatic mapping between URLs and local
  * file names.
- * NO_FILESYSTEM = do not access any file at all. Useful for embedded
+ * NO_FILESYSTEMS = do not access any file at all. Useful for embedded
  * devices without file system. Logging to files in not available
  * (use callbacks instead) and API functions like mg_send_file are not
  * available.
@@ -2256,7 +2256,7 @@ static const struct mg_option config_options[] = {
 #if defined(USE_LUA) && defined(USE_WEBSOCKET)
     {"lua_websocket_pattern", MG_CONFIG_TYPE_EXT_PATTERN, "**.lua$"},
 #endif
-	{"replace_asterisk_with_origin", MG_CONFIG_TYPE_BOOLEAN, "no"},
+    {"replace_asterisk_with_origin", MG_CONFIG_TYPE_BOOLEAN, "no"},
     {"access_control_allow_origin", MG_CONFIG_TYPE_STRING, "*"},
     {"access_control_allow_methods", MG_CONFIG_TYPE_STRING, "*"},
     {"access_control_allow_headers", MG_CONFIG_TYPE_STRING, "*"},
@@ -2609,8 +2609,8 @@ struct mg_connection {
 	char *path_info;          /* PATH_INFO part of the URL */
 
 	int must_close;       /* 1 if connection must be closed */
-	unsigned char proxy_is_ssl; /* Pi-hole: PROXY v2 announced a TLS-terminated
-	                             * client (PP2_TYPE_SSL), so treat as HTTPS */
+	unsigned char proxy_is_ssl; /* PROXY v2 announced a TLS-terminated client
+	                             * (PP2_TYPE_SSL), so treat the request as HTTPS */
 	int accept_gzip;      /* 1 if gzip encoding is accepted */
 	int in_error_handler; /* 1 if in handler for user defined error
 	                       * pages */
@@ -4253,26 +4253,29 @@ send_cors_header(struct mg_connection *conn)
 	    conn->dom_ctx->config[ACCESS_CONTROL_EXPOSE_HEADERS];
 	const char *cors_meth_cfg =
 	    conn->dom_ctx->config[ACCESS_CONTROL_ALLOW_METHODS];
-	const char *cors_repl_asterisk_with_orig_cfg = 
-		conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
-		
-	if (cors_orig_cfg && *cors_orig_cfg && origin_hdr && *origin_hdr && cors_repl_asterisk_with_orig_cfg && *cors_repl_asterisk_with_orig_cfg) {
-		int cors_repl_asterisk_with_orig = mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
-		
+	const char *cors_repl_asterisk_with_orig_cfg =
+	    conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
+
+	if (cors_orig_cfg && *cors_orig_cfg && origin_hdr && *origin_hdr
+	    && cors_repl_asterisk_with_orig_cfg
+	    && *cors_repl_asterisk_with_orig_cfg) {
+		int cors_repl_asterisk_with_orig =
+		    mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
+
 		/* Cross-origin resource sharing (CORS), see
 		 * http://www.html5rocks.com/en/tutorials/cors/,
 		 * http://www.html5rocks.com/static/images/cors_server_flowchart.png
 		 * CORS preflight is not supported for files. */
 		if (cors_repl_asterisk_with_orig == 0 && cors_orig_cfg[0] == '*') {
 			mg_response_header_add(conn,
-		                       "Access-Control-Allow-Origin",
-		                       origin_hdr,
-		                       -1);
+			                       "Access-Control-Allow-Origin",
+			                       origin_hdr,
+			                       -1);
 		} else {
 			mg_response_header_add(conn,
-		                       "Access-Control-Allow-Origin",
-		                       cors_orig_cfg,
-		                       -1);
+			                       "Access-Control-Allow-Origin",
+			                       cors_orig_cfg,
+			                       -1);
 		}
 	}
 
@@ -8186,10 +8189,8 @@ interpret_uri(struct mg_connection *conn, /* in/out: request (must be valid) */
 		}
 
 		if (mg_stat(conn, gz_path, filestat)) {
-			if (filestat) {
-				filestat->is_gzipped = 1;
-				*is_found = 1;
-			}
+			filestat->is_gzipped = 1;
+			*is_found = 1;
 			/* Currently gz files can not be scripts. */
 			return;
 		}
@@ -10649,7 +10650,14 @@ handle_static_file_request(struct mg_connection *conn,
 		return;
 	}
 	cl = (int64_t)filep->stat.size;
-	conn->status_code = 200;
+	/* A custom error page is delivered through this function as well, with
+	 * the error status already stored in conn->status_code by
+	 * mg_send_http_error_impl(). Overwriting it with 200 would tell the
+	 * client the request succeeded. handle_file_based_request() guards the
+	 * "not modified" path against the same problem. */
+	if (!conn->in_error_handler) {
+		conn->status_code = 200;
+	}
 	range[0] = '\0';
 
 #if defined(USE_ZLIB)
@@ -10718,7 +10726,7 @@ handle_static_file_request(struct mg_connection *conn,
 	/* If "Range" request was made: parse header, send only selected part
 	 * of the file. */
 	r1 = r2 = 0;
-	if ((range_hdr != NULL)
+	if ((!conn->in_error_handler) && (range_hdr != NULL)
 	    && ((n = parse_range_header(range_hdr, &r1, &r2)) > 0) && (r1 >= 0)
 	    && (r2 >= 0)) {
 		/* actually, range requests don't play well with a pre-gzipped
@@ -13618,9 +13626,10 @@ read_websocket(struct mg_connection *conn,
 		if ((header_len > 0) && (body_len >= header_len)) {
 			/* Allocate space to hold websocket payload */
 			unsigned char *data = mem;
+			size_t required_len = (size_t)data_len + 4;
 
-			if ((size_t)data_len > (size_t)sizeof(mem)) {
-				data = (unsigned char *)mg_malloc_ctx((size_t)data_len,
+			if (required_len > sizeof(mem)) {
+				data = (unsigned char *)mg_malloc_ctx(required_len,
 				                                      conn->phys_ctx);
 				if (data == NULL) {
 					/* Allocation failed, exit the loop and then close the
@@ -15162,7 +15171,7 @@ handle_request(struct mg_connection *conn)
 		}
 		return;
 	}
-	
+
 
 	/* 1.3. decode url (if config says so) */
 	if (should_decode_url(conn)) {
@@ -15190,11 +15199,10 @@ handle_request(struct mg_connection *conn)
 	}
 	remove_dot_segments(tmp);
 	ri->local_uri = tmp;
-	#if !defined(NO_FILES)  /* Only compute if later code can actually use it */
-    /* Cache URI length once; recompute only if the buffer changes later. */
-       uri_len = (int)strlen(ri->local_uri);
-    #endif
-
+#if !defined(NO_FILES) /* Only compute if later code can actually use it */
+	/* Cache URI length once; recompute only if the buffer changes later. */
+	uri_len = (int)strlen(ri->local_uri);
+#endif
 
 
 	/* step 1. completed, the url is known now */
@@ -15248,18 +15256,20 @@ handle_request(struct mg_connection *conn)
 		const char *cors_acrm = get_header(ri->http_headers,
 		                                   ri->num_headers,
 		                                   "Access-Control-Request-Method");
-		const char *cors_repl_asterisk_with_orig_cfg = 
-			conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
-		
+		const char *cors_repl_asterisk_with_orig_cfg =
+		    conn->dom_ctx->config[REPLACE_ASTERISK_WITH_ORIGIN];
+
 		/* Todo: check if cors_origin is in cors_orig_cfg.
 		 * Or, let the client check this. */
 
 		if ((cors_meth_cfg != NULL) && (*cors_meth_cfg != 0)
 		    && (cors_orig_cfg != NULL) && (*cors_orig_cfg != 0)
 		    && (cors_origin != NULL) && (cors_acrm != NULL)
-			&& (cors_repl_asterisk_with_orig_cfg != NULL) && (*cors_repl_asterisk_with_orig_cfg != 0)) {
-			int cors_repl_asterisk_with_orig = mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
-			
+		    && (cors_repl_asterisk_with_orig_cfg != NULL)
+		    && (*cors_repl_asterisk_with_orig_cfg != 0)) {
+			int cors_repl_asterisk_with_orig =
+			    mg_strcasecmp(cors_repl_asterisk_with_orig_cfg, "yes");
+
 			/* This is a valid CORS preflight, and the server is configured
 			 * to handle it automatically. */
 			const char *cors_acrh =
@@ -15280,7 +15290,10 @@ handle_request(struct mg_connection *conn)
 			          "Content-Length: 0\r\n"
 			          "Connection: %s\r\n",
 			          date,
-			          (cors_repl_asterisk_with_orig == 0 && cors_orig_cfg[0] == '*') ? cors_origin : cors_orig_cfg,
+			          (cors_repl_asterisk_with_orig == 0
+			           && cors_orig_cfg[0] == '*')
+			              ? cors_origin
+			              : cors_orig_cfg,
 			          ((cors_meth_cfg[0] == '*') ? cors_acrm : cors_meth_cfg),
 			          suggest_connection_header(conn));
 
@@ -15672,7 +15685,7 @@ handle_request(struct mg_connection *conn)
 
 	/* 12. Directory uris should end with a slash */
 	if (file.stat.is_directory && (uri_len > 0)
-        && (ri->local_uri[uri_len - 1] != '/')) {
+	    && (ri->local_uri[uri_len - 1] != '/')) {
 
 
 		/* Path + server root */
@@ -15702,7 +15715,8 @@ handle_request(struct mg_connection *conn)
 					len++;
 				}
 
-				/* Append with size of space left for query string + null terminator */
+				/* Append with size of space left for query string + null
+				 * terminator */
 				size_t max_append = buflen - len - 1;
 				strncat(new_path, ri->query_string, max_append);
 			}
@@ -16109,7 +16123,7 @@ parse_port_string(const struct vec *vec, struct socket *so, int *ip_version)
 		size_t i;
 
 		/* Parse any suffix character(s) after the port number */
-		for (i = len; i < vec->len; i++) {
+		for (i = (size_t)len; i < vec->len; i++) {
 			unsigned char *opt = NULL;
 			switch (vec->ptr[i]) {
 			case 'o':
@@ -16522,7 +16536,7 @@ set_ports_option(struct mg_context *phys_ctx)
 			mg_cry_ctx_internal(phys_ctx, "%s", "Out of memory");
 			closesocket(so.sock);
 			so.sock = INVALID_SOCKET;
-			mg_free(ptr);
+			phys_ctx->listening_sockets = ptr;
 			continue;
 		}
 
@@ -16859,7 +16873,8 @@ mg_sslctx_init(struct mg_context *phys_ctx, struct mg_domain_context *dom_ctx)
 		return 0;
 	}
 
-	return mbed_sslctx_init(dom_ctx->ssl_ctx, dom_ctx->config[SSL_CERTIFICATE], dom_ctx->config[SSL_CIPHER_LIST])
+	return mbed_sslctx_init(dom_ctx->ssl_ctx, dom_ctx->config[SSL_CERTIFICATE],
+	                        dom_ctx->config[SSL_CIPHER_LIST])
 	               == 0
 	           ? 1
 	           : 0;
@@ -17837,7 +17852,8 @@ init_ssl_ctx_impl(struct mg_context *phys_ctx,
 #endif
 
 	protocol_ver = atoi(dom_ctx->config[SSL_PROTOCOL_VERSION]);
-	SSL_CTX_set_options(dom_ctx->ssl_ctx, ssl_get_protocol(protocol_ver));
+	SSL_CTX_set_options(dom_ctx->ssl_ctx,
+	                    (long unsigned)ssl_get_protocol(protocol_ver));
 	SSL_CTX_set_options(dom_ctx->ssl_ctx, SSL_OP_SINGLE_DH_USE);
 	SSL_CTX_set_options(dom_ctx->ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 	SSL_CTX_set_options(dom_ctx->ssl_ctx,
@@ -18983,12 +18999,12 @@ get_uri_type(const char *uri)
 	for (i = 0; uri[i] != 0; i++) {
 		/* Check for CRLF injection attempts */
 		if (uri[i] == '%') {
-			if (uri[i+1] == '0' && (uri[i+2] == 'd' || uri[i+2] == 'D')) {
+			if (uri[i + 1] == '0' && (uri[i + 2] == 'd' || uri[i + 2] == 'D')) {
 				/* Found %0d (CR) */
 				DEBUG_TRACE("CRLF injection attempt detected: %s\r\n", uri);
 				return 0;
 			}
-			if (uri[i+1] == '0' && (uri[i+2] == 'a' || uri[i+2] == 'A')) {
+			if (uri[i + 1] == '0' && (uri[i + 2] == 'a' || uri[i + 2] == 'A')) {
 				/* Found %0a (LF) */
 				DEBUG_TRACE("CRLF injection attempt detected: %s\r\n", uri);
 				return 0;
@@ -19224,7 +19240,10 @@ get_message(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
 static int
 get_request(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
 {
-	const char *cl;
+#if USE_ZLIB
+	const char *h_zip;
+#endif
+	const char *h_chunk, *h_len;
 
 	conn->connection_type =
 	    CONNECTION_TYPE_REQUEST; /* request (valid of not) */
@@ -19259,20 +19278,22 @@ get_request(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
 	}
 
 #if USE_ZLIB
-	if (((cl = get_header(conn->request_info.http_headers,
+	if (((h_zip = get_header(conn->request_info.http_headers,
 	                      conn->request_info.num_headers,
 	                      "Accept-Encoding"))
 	     != NULL)
-	    && strstr(cl, "gzip")) {
+	    && strstr(h_zip, "gzip")) {
 		conn->accept_gzip = 1;
 	}
 #endif
-	if (((cl = get_header(conn->request_info.http_headers,
-	                      conn->request_info.num_headers,
-	                      "Transfer-Encoding"))
-	     != NULL)
-	    && mg_strcasecmp(cl, "identity")) {
-		if (mg_strcasecmp(cl, "chunked")) {
+	h_chunk = get_header(conn->request_info.http_headers,
+	                     conn->request_info.num_headers,
+	                     "Transfer-Encoding");
+	h_len = get_header(conn->request_info.http_headers,
+	                   conn->request_info.num_headers,
+	                   "Content-Length");
+	if ((h_chunk != NULL) && mg_strcasecmp(h_chunk, "identity")) {
+		if ((0 != mg_strcasecmp(h_chunk, "chunked")) || (h_len != NULL)) {
 			mg_snprintf(conn,
 			            NULL, /* No truncation check for ebuf */
 			            ebuf,
@@ -19284,14 +19305,11 @@ get_request(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
 		}
 		conn->is_chunked = 1;
 		conn->content_len = 0; /* not yet read */
-	} else if ((cl = get_header(conn->request_info.http_headers,
-	                            conn->request_info.num_headers,
-	                            "Content-Length"))
-	           != NULL) {
+	} else if (h_len != NULL) {
 		/* Request has content length set */
 		char *endptr = NULL;
-		conn->content_len = strtoll(cl, &endptr, 10);
-		if ((endptr == cl) || (conn->content_len < 0)) {
+		conn->content_len = strtoll(h_len, &endptr, 10);
+		if ((endptr == h_len) || (conn->content_len < 0)) {
 			mg_snprintf(conn,
 			            NULL, /* No truncation check for ebuf */
 			            ebuf,
@@ -20333,10 +20351,227 @@ produce_socket(struct mg_context *ctx, const struct socket *sp)
 #endif /* ALTERNATIVE_QUEUE */
 
 
-/* Pi-hole: adopt the real client address from a PROXY protocol v2 header sent
- * by the loopback TLS terminator. Kept in its own unit to keep this patch
- * small; parse_proxy_protocol_v2() is defined there. */
-#include "proxy_v2.inl"
+/* PROXY protocol v2 support.
+ *
+ * When the "proxy_protocol_secret" option is set, civetweb parses a PROXY
+ * protocol v2 header at the start of each new connection. The header is trusted
+ * only if it carries a custom TLV whose value equals the configured secret; a
+ * trusted header's announced client address (and TLS status, via the standard
+ * PP2_TYPE_SSL TLV) then replaces the transport peer. The shared secret lets a
+ * trusted upstream terminator or L4 proxy authenticate itself where source-
+ * address trust is not possible (a loopback backend, a sidecar, a shared host).
+ * With no secret configured the parser is a no-op, so normal requests are
+ * unaffected. */
+
+/* Custom PROXY v2 TLV (in the PP2_TYPE_MIN_CUSTOM 0xE0-0xEF range) carrying the
+ * shared secret that authenticates the header. */
+#define PP2_TYPE_PROXY_SECRET 0xE0
+/* Standard PROXY v2 TLV announcing the client spoke TLS to the proxy. */
+#define PP2_TYPE_SSL 0x20
+#define PP2_CLIENT_SSL 0x01
+
+static int
+proxy_v2_hexdigit(char c)
+{
+	if (c >= '0' && c <= '9') {
+		return c - '0';
+	}
+	if (c >= 'a' && c <= 'f') {
+		return c - 'a' + 10;
+	}
+	if (c >= 'A' && c <= 'F') {
+		return c - 'A' + 10;
+	}
+	return -1;
+}
+
+/* Decode the hex string `hex` into up to out_sz bytes of `out`. Returns the
+ * number of bytes decoded, or -1 on an odd length or a non-hex character. */
+static int
+proxy_v2_hex_decode(const char *hex, unsigned char *out, size_t out_sz)
+{
+	size_t n = 0;
+	while (hex[0] != '\0') {
+		int hi, lo;
+		if (hex[1] == '\0' || n >= out_sz) {
+			return -1;
+		}
+		hi = proxy_v2_hexdigit(hex[0]);
+		lo = proxy_v2_hexdigit(hex[1]);
+		if (hi < 0 || lo < 0) {
+			return -1;
+		}
+		out[n++] = (unsigned char)((hi << 4) | lo);
+		hex += 2;
+	}
+	return (int)n;
+}
+
+/* Parse a PROXY protocol v2 header on a fresh connection and, if it is trusted
+ * (carries the configured secret), replace the remote address with the real
+ * client the header announces. A no-op when the feature is disabled or no PROXY
+ * header is present. */
+static void
+parse_proxy_protocol_v2(struct mg_connection *conn)
+{
+	static const unsigned char sig[12] = {0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D,
+	                                      0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A};
+	const char *secret_hex;
+	unsigned char secret[64];
+	int secret_len;
+	struct pollfd pfd;
+	unsigned char hdr[16];
+	unsigned char buf[16 + 216]; /* 216 = largest v2 address block */
+	size_t addr_len, total, got, addr_size = 0;
+	int have;
+	const unsigned char *a;
+
+	/* Worker connection structs are reused across connections, so clear any
+	 * TLS-terminated marker from a previous connection before every early
+	 * return below - otherwise a later plaintext request on the same worker
+	 * would inherit a stale proxy_is_ssl and be mislabelled as HTTPS. */
+	conn->proxy_is_ssl = 0;
+
+	/* Opt-in: with no configured secret there is nothing to trust, so do not
+	 * touch the connection at all. */
+	secret_hex = (conn->dom_ctx != NULL)
+	                 ? conn->dom_ctx->config[PROXY_PROTOCOL_SECRET]
+	                 : NULL;
+	if (secret_hex == NULL || secret_hex[0] == '\0') {
+		return;
+	}
+	secret_len = proxy_v2_hex_decode(secret_hex, secret, sizeof(secret));
+	if (secret_len <= 0) {
+		return; /* misconfigured secret */
+	}
+
+	/* Peek the fixed 16-byte v2 header. Retry until 16 bytes are available, or
+	 * bail as soon as the available prefix already fails to match the
+	 * signature (i.e. this is a normal request, not a PROXY header). */
+	have = 0;
+	while (have < 16) {
+		int n;
+		pfd.fd = conn->client.sock;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 1000) <= 0) {
+			return;
+		}
+		n = (int)recv(conn->client.sock, hdr, sizeof(hdr), MSG_PEEK);
+		if (n <= 0) {
+			return;
+		}
+		if (memcmp(hdr, sig, (n < 12) ? (size_t)n : (size_t)12) != 0) {
+			return;
+		}
+		/* MSG_PEEK does not consume, so poll() keeps reporting the same bytes
+		 * readable: if the peeked count did not grow since the last iteration
+		 * the peer has stalled mid-signature. Bail instead of spinning at 100%
+		 * CPU (a real proxy writes all 16 bytes in one segment). */
+		if (n <= have) {
+			return;
+		}
+		have = n;
+	}
+	if ((hdr[12] & 0xF0) != 0x20) {
+		return; /* not version 2 */
+	}
+
+	addr_len = ((size_t)hdr[14] << 8) | (size_t)hdr[15];
+	total = 16 + addr_len;
+	if (total > sizeof(buf)) {
+		return;
+	}
+
+	/* Consume the whole header for real so the HTTP request follows it. */
+	got = 0;
+	while (got < total) {
+		int n;
+		pfd.fd = conn->client.sock;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 1000) <= 0) {
+			return;
+		}
+		n = (int)recv(conn->client.sock, buf + got, total - got, 0);
+		if (n <= 0) {
+			return;
+		}
+		got += (size_t)n;
+	}
+
+	/* Only the PROXY command (0x01) carries a real address; LOCAL (0x00) keeps
+	 * the original one. */
+	if ((hdr[12] & 0x0F) != 0x01) {
+		return;
+	}
+
+	a = buf + 16;
+	/* Note the address family/size but do NOT adopt the address yet - the header
+	 * must first prove it is trusted via the secret TLV below. */
+	if (hdr[13] == 0x11 && addr_len >= 12) { /* TCP over IPv4 */
+		addr_size = 12;
+	}
+#if defined(USE_IPV6)
+	else if (hdr[13] == 0x21 && addr_len >= 36) { /* TCP over IPv6 */
+		addr_size = 36;
+	}
+#endif
+	if (addr_size == 0) {
+		return; /* unsupported/short address block */
+	}
+
+	/* Walk the TLVs that follow the address block. Require the shared secret
+	 * (PP2_TYPE_PROXY_SECRET) before trusting the header, and note a
+	 * PP2_TYPE_SSL with PP2_CLIENT_SSL set (the client used TLS to the proxy). */
+	{
+		int token_ok = 0, ssl_flag = 0;
+		size_t off = addr_size;
+		while (off + 3 <= addr_len) {
+			const unsigned char t = a[off];
+			const size_t l = ((size_t)a[off + 1] << 8) | (size_t)a[off + 2];
+			off += 3;
+			if (off + l > addr_len) {
+				break;
+			}
+			if (t == PP2_TYPE_PROXY_SECRET && l == (size_t)secret_len) {
+				/* Constant-time compare so a co-resident process cannot time
+				 * byte-wise matching to recover the secret. */
+				unsigned char diff = 0;
+				size_t i;
+				for (i = 0; i < (size_t)secret_len; i++) {
+					diff |= (unsigned char)(a[off + i] ^ secret[i]);
+				}
+				if (diff == 0) {
+					token_ok = 1;
+				}
+			} else if (t == PP2_TYPE_SSL && l >= 1 && (a[off] & PP2_CLIENT_SSL)) {
+				ssl_flag = 1;
+			}
+			off += l;
+		}
+		if (!token_ok) {
+			return; /* secret missing or wrong - ignore the header */
+		}
+
+		/* Trusted: adopt the real client address and TLS status. */
+		if (hdr[13] == 0x11) { /* TCP over IPv4 */
+			memset(&conn->client.rsa, 0, sizeof(conn->client.rsa));
+			conn->client.rsa.sin.sin_family = AF_INET;
+			memcpy(&conn->client.rsa.sin.sin_addr, a, 4);
+			memcpy(&conn->client.rsa.sin.sin_port, a + 8, 2);
+		}
+#if defined(USE_IPV6)
+		else { /* TCP over IPv6 */
+			memset(&conn->client.rsa, 0, sizeof(conn->client.rsa));
+			conn->client.rsa.sin6.sin6_family = AF_INET6;
+			memcpy(&conn->client.rsa.sin6.sin6_addr, a, 16);
+			memcpy(&conn->client.rsa.sin6.sin6_port, a + 32, 2);
+		}
+#endif
+		conn->proxy_is_ssl = ssl_flag ? 1 : 0;
+	}
+}
 
 
 static void
@@ -20424,8 +20659,7 @@ worker_thread_run(struct mg_connection *conn)
 #endif
 		conn->conn_birth_time = time(NULL);
 
-		/* Pi-hole: adopt the real client address from a PROXY protocol v2
-		 * header if this connection comes from the loopback TLS terminator. */
+		/* Adopt the real client from a PROXY protocol v2 header, if configured. */
 		parse_proxy_protocol_v2(conn);
 
 		/* Fill in IP, port info early so even if SSL setup below fails,
@@ -20441,13 +20675,15 @@ worker_thread_run(struct mg_connection *conn)
 		sockaddr_to_string(conn->request_info.remote_addr,
 		                   sizeof(conn->request_info.remote_addr),
 		                   &conn->client.rsa);
+ 
+		sockaddr_to_string(conn->request_info.server_addr,
+		                   sizeof(conn->request_info.server_addr),
+		                   &conn->client.lsa);
 
 		DEBUG_TRACE("Incoming %sconnection from %s",
 		            (conn->client.is_ssl ? "SSL " : ""),
 		            conn->request_info.remote_addr);
 
-		/* Pi-hole: a PROXY v2 header from the TLS terminator can mark an
-		 * otherwise-plaintext loopback connection as HTTPS (PP2_TYPE_SSL). */
 		conn->request_info.is_ssl = conn->client.is_ssl || conn->proxy_is_ssl;
 
 		if (conn->client.is_ssl) {
