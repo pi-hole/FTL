@@ -18,6 +18,9 @@ version~
 /cmake-build-debug/
 /cmake-build-release/
 
+# Compiler cache the CI workflow restores into the build context
+/.ccache/
+
 # IDE files
 .idea/
 *.sw*
