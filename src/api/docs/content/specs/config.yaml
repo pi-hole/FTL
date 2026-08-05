@@ -297,6 +297,10 @@ components:
                     type: string
                 upstreamCA:
                   type: string
+                doh:
+                  type: boolean
+                dot:
+                  type: boolean
                 blocking:
                   type: object
                   properties:
@@ -769,6 +773,8 @@ components:
           dns:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             upstreamCA: ""
+            doh: true
+            dot: true
             CNAMEdeepInspect: true
             blockESNI: true
             EDNS0ECS: true

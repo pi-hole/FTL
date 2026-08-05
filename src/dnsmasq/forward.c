@@ -755,7 +755,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
       // Pi-hole modification: Interpret the pseudoheader before
       // it might get stripped off below (added_pheader == true)
-      FTL_parse_pseudoheaders(pheader, (size_t)plen);
+      FTL_parse_pseudoheaders((unsigned char *)header, n, pheader, (size_t)plen);
       
       if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, n, pheader, query_source))
 	{
@@ -1910,7 +1910,7 @@ void receive_query(struct listener *listen, time_t now)
   //********************** Pi-hole modification **********************//
   { size_t phlen = 0;
     pheader = find_pseudoheader(header, (size_t)n, &phlen, NULL, NULL, NULL);
-    FTL_parse_pseudoheaders(pheader, phlen); }
+    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)n, pheader, phlen); }
   //******************************************************************//
 
   if (OPCODE(header) != QUERY)
@@ -2629,7 +2629,7 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	  //********************** Pi-hole modification **********************//
 	  { size_t phlen = 0;
 	    pheader = find_pseudoheader(header, (size_t)size, &phlen, NULL, NULL, NULL);
-	    FTL_parse_pseudoheaders(pheader, phlen); }
+	    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)size, pheader, phlen); }
 	  //******************************************************************//
 	  
 	  if (OPCODE(header) != QUERY)
