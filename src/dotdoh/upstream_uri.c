@@ -78,6 +78,8 @@ static int __attribute__((pure)) parse_port(const char *s)
 // https://<verify>@<ip>[#<port>][/<path>]
 // h3://<host>[#<port>][/<path>]         DoH3 (HTTP/3 over QUIC), same defaults
 // h3://<verify>@<ip>[#<port>][/<path>]
+// doq://<host>[#<port>]                 DoQ (RFC 9250), default port 853
+// quic://<verify>@<ip>[#<port>]         same as doq://, the AdGuard/dnsproxy spelling
 //
 // Rejects control characters (incl. CR/LF), empty host, invalid/oversized
 // fields, and unknown schemes.
@@ -116,6 +118,11 @@ bool parse_upstream_uri(const char *in, struct upstream_uri *out)
 		out->type = UST_DOH;
 	else if(schemelen == 2 && strncmp(in, "h3", 2) == 0)
 		out->type = UST_DOH3;
+	// DoQ carries DNS on a QUIC stream with no HTTP layer, so it has no path.
+	// "quic://" is the spelling AdGuard/dnsproxy configs use; accept both.
+	else if((schemelen == 3 && strncmp(in, "doq", 3) == 0) ||
+	        (schemelen == 4 && strncmp(in, "quic", 4) == 0))
+		out->type = UST_DOQ;
 	else
 		return false; // unknown scheme
 
@@ -124,9 +131,10 @@ bool parse_upstream_uri(const char *in, struct upstream_uri *out)
 	const bool is_doh = (out->type == UST_DOH || out->type == UST_DOH3);
 
 	const char *rest = sep + 3;
-	// 853 is the DoT default port (RFC 7858 Sec. 3.1); 443 is HTTPS for
-	// DoH and the default UDP port for DoH3/QUIC.
-	const int default_port = (out->type == UST_DOT) ? 853 : 443;
+	// 853 is the default port for both DoT (RFC 7858 Sec. 3.1, TCP) and DoQ
+	// (RFC 9250 Sec. 4.1.1, UDP); 443 is HTTPS for DoH and the default UDP port
+	// for DoH3.
+	const int default_port = (out->type == UST_DOT || out->type == UST_DOQ) ? 853 : 443;
 
 	// For DoH(3), split off the path at the first '/'.
 	const char *authority_end = rest + strlen(rest);

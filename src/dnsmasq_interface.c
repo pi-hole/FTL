@@ -3715,6 +3715,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			log_crit("Unable to create dotdoh DoT thread. Exiting...");
 			exit(EXIT_FAILURE);
 		}
+
+		// Likewise for the inbound DoQ (DNS-over-QUIC) listener on UDP/853.
+		if(config.dns.doq.v.b &&
+		   pthread_create( &threads[DOTDOH_DOQ], &attr, dotdoh_doq_thread, NULL ) != 0)
+		{
+			log_crit("Unable to create dotdoh DoQ thread. Exiting...");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
