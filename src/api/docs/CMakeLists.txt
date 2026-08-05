@@ -48,7 +48,20 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/images)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/hex/external)
 
 # Compile files from content/ into hex/
+# The assets are embedded GZIP-compressed and handed to the client as such (see
+# docs.c), which keeps roughly 1.2 MB of JavaScript and YAML out of the binary
+# and saves the same amount of transfer. -n omits the original name and
+# timestamp from the GZIP header, keeping the build reproducible.
 find_program(RESOURCE_COMPILER xxd)
+find_program(GZIP_COMPRESSOR gzip)
+# Fail at configure time: a missing tool leaves the pipeline below with the exit
+# status of sed, so the build would otherwise succeed with empty assets
+if(NOT RESOURCE_COMPILER)
+    message(FATAL_ERROR "xxd not found, cannot embed the API documentation assets")
+endif()
+if(NOT GZIP_COMPRESSOR)
+    message(FATAL_ERROR "gzip not found, cannot embed the API documentation assets")
+endif()
 file(GLOB_RECURSE COMPILED_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/content" "content/*")
 foreach(INPUT_FILE ${COMPILED_RESOURCES})
     set(IN ${CMAKE_CURRENT_SOURCE_DIR}/content/${INPUT_FILE})
@@ -57,8 +70,8 @@ foreach(INPUT_FILE ${COMPILED_RESOURCES})
     set(OUTPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/hex/${INPUT_FILE_MODIFIED}.h)
     add_custom_command(
         OUTPUT hex/${INPUT_FILE_MODIFIED}.h
-        COMMAND ${RESOURCE_COMPILER} -iC -n ${VARIABLE_NAME} - < ${IN} | sed "s/unsigned /static const unsigned /" > ${OUTPUT_FILE}
-        COMMENT "Compiling ${INPUT_FILE}"
+        COMMAND ${GZIP_COMPRESSOR} -9 -n -c ${IN} | ${RESOURCE_COMPILER} -iC -n ${VARIABLE_NAME} - | sed "s/unsigned /static const unsigned /" > ${OUTPUT_FILE}
+        COMMENT "Compressing and compiling ${INPUT_FILE}"
         VERBATIM)
     list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
 endforeach()
