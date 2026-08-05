@@ -45,9 +45,12 @@ load 'bats_helper.bash'
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
+  # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
+  # slow), leaving just the dns.reply.host PATCH. The CLI password set/remove
+  # do not write: the in-memory config already matches, so they log
+  # "pihole.toml unchanged" - which the next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "6"
+    assert_line --index 0 "1"
   else
     [[ ${lines[0]} == "29" ]]
   fi
@@ -58,10 +61,16 @@ load 'bats_helper.bash'
   [[ ${lines[0]} -ge 2 ]]
   assert_success
   # One more than the deterministic baseline: the randomised DoT/DoH loopback
-  # tuples change the encrypted-upstream config on every (re)start.
+  # tuples change the encrypted-upstream config on every (re)start. Those tuples
+  # need dns.upstreams to hold encrypted entries, which only the dotdoh suites
+  # arrange - on riscv64 they are skipped, leaving a single write.
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
-  assert_line --index 0 "4"
+  if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
+    assert_line --index 0 "1"
+  else
+    assert_line --index 0 "4"
+  fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (3x)

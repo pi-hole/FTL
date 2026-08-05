@@ -48,6 +48,13 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 // served, so an on-by-default server is not an open resolver. Fails closed.
 bool dotdoh_source_allowed(const char *client_ip);
 
+// Borrow a connected, non-blocking loopback socket to dnsmasq from the shared
+// pool, or -1 when the pool is empty (the caller then makes its own). Returning
+// it with dotdoh_loopback_give() lets one socket - and so one dnsmasq TCP child
+// - serve many client connections and streams instead of one each.
+int dotdoh_loopback_take(void);
+void dotdoh_loopback_give(int fd);
+
 // Whether inbound DoH is enabled (config.dns.doh). Lets the h2/h3 terminator gate
 // its native /dns-query handling without pulling in the config headers.
 bool dotdoh_doh_enabled(void) __attribute__((pure));
@@ -73,5 +80,11 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 // HTTP, so it needs its own raw-TLS listener) and resolves via
 // dotdoh_server_resolve().
 void *dotdoh_dot_thread(void *val);
+
+// FTL worker thread entry for the inbound DoQ (DNS-over-QUIC, RFC 9250) listener
+// on UDP port 853. Runs only when dns.doq is enabled. Terminates QUIC itself (DoQ
+// is neither HTTP nor TCP) and drives the same loopback handoff to dnsmasq the DoT
+// listener uses, one non-blocking state machine per in-flight query.
+void *dotdoh_doq_thread(void *val);
 
 #endif // DOTDOH_SERVER_H

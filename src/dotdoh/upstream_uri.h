@@ -18,7 +18,8 @@
 
 // UST_DOH is DoH over a TCP TLS connection (HTTP/1.1, auto-upgraded to HTTP/2
 // via ALPN); UST_DOH3 is DoH over QUIC (HTTP/3), selected by the h3:// scheme.
-enum ustype { UST_PLAIN = 0, UST_DOT, UST_DOH, UST_DOH3 };
+// UST_DOQ is DNS-over-QUIC (RFC 9250) - DNS directly on a QUIC stream, no HTTP.
+enum ustype { UST_PLAIN = 0, UST_DOT, UST_DOH, UST_DOH3, UST_DOQ };
 
 #define UURI_HOST_MAX 256
 #define UURI_PATH_MAX 256
