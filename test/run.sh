@@ -80,7 +80,16 @@ pkill -f "${SHIM_PATTERN}" 2>/dev/null || true
 # Record decrypted query lengths so dotdoh.bats can confirm FTL padded them.
 export SHIM_PAD_LOG="/tmp/dotdoh_pad.log"
 rm -f "${SHIM_PAD_LOG}"
-python3 test/dotdoh_shim.py &
+# The shim touches this marker once its optional HTTP/3 listener is up; dotdoh.bats
+# skips the DoH3 test when it is absent. Clear any stale marker to avoid a false ready.
+export SHIM_H3_READY="/tmp/dotdoh_h3_ready"
+rm -f "${SHIM_H3_READY}"
+# Capture the shim's own output so a failure to bring up the HTTP/3 listener
+# (aioquic missing, or an aioquic error) is visible to dotdoh.bats, which dumps
+# this on the DoH3 test failure instead of leaving the reason on the console.
+export SHIM_LOG="/tmp/dotdoh_shim.log"
+rm -f "${SHIM_LOG}"
+python3 test/dotdoh_shim.py >"${SHIM_LOG}" 2>&1 &
 DOTDOH_SHIM_PID=$!
 # Stop the shim even if the script exits early (e.g. FTL fails to start below),
 # so a leftover process cannot hold ports 8853/8443 and make the next run flaky.
@@ -167,6 +176,14 @@ $BATS -p "test/dotdoh.bats"
 DOTDOH_RET=$?
 if [ $DOTDOH_RET != 0 ]; then
   RET=$DOTDOH_RET
+fi
+
+# Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
+# queries add to the query statistics the API tests assert on.
+$BATS -p "test/dotdoh_server.bats"
+DOTDOH_SERVER_RET=$?
+if [ $DOTDOH_SERVER_RET != 0 ]; then
+  RET=$DOTDOH_SERVER_RET
 fi
 
 # Run final BATS suite — log validation and FTL termination

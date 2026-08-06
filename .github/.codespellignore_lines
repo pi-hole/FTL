@@ -1,3 +1,4 @@
 			self.errors.append("Exception when GETing from FTL: " + str(e))
 //    sitten -> sittin (substitution of "i" for "e"),
 //    sittin -> sitting (insertion of "g" at the end).
+		"upgrade", "te", "host", "http2-settings",

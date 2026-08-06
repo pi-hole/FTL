@@ -3,8 +3,10 @@
 #
 # Prerequisites, provided by test/run.sh:
 #   - pdns_recursor serving the .ftl test zone on 127.0.0.1:5555
-#   - test/dotdoh_shim.py running (DoT on :8853, DoH on :8443), terminating
-#     TLS with test/test.pem (CN/SAN "pi.hole", signed by test/test_ca.crt)
+#   - test/dotdoh_shim.py running, terminating TLS with test/test.pem (CN/SAN
+#     "pi.hole", signed by test/test_ca.crt):
+#       DoT   on :8853, DoH on :8443 (HTTP/2 via ALPN, else HTTP/1.1),
+#       DoH1  on :8445 (HTTP/1.1 only), and DoH3 on :8444 (HTTP/3, needs aioquic)
 #
 # dns.upstreams and dns.upstreamCA are RESTART_FTL settings. We switch both to
 # the encrypted test upstream in ONE atomic API request, so FTL restarts exactly
@@ -24,6 +26,15 @@ FTL_URL="http://127.0.0.1"
 # a standalone bats run works too; run.sh exports the same path.
 export SHIM_PAD_LOG="${SHIM_PAD_LOG:-/tmp/dotdoh_pad.log}"
 
+# The shim touches this file once its HTTP/3 (QUIC) listener is bound; the DoH3
+# test waits on it. Default so a standalone bats run works; run.sh exports it.
+export SHIM_H3_READY="${SHIM_H3_READY:-/tmp/dotdoh_h3_ready}"
+
+# The shim's own stdout/stderr, so the DoH3 test can show why the HTTP/3 listener
+# did not come up (aioquic missing, or an aioquic error). Default for a standalone
+# bats run; run.sh exports the same path.
+export SHIM_LOG="${SHIM_LOG:-/tmp/dotdoh_shim.log}"
+
 # PATCH the given dns config object ($1) in one atomic request and block until
 # the self-restart it triggers has produced the readiness marker ($2) past the
 # pre-change log offset, using pihole-FTL wait-for as the rest of the suite does.
@@ -41,7 +52,7 @@ api_patch_dns() {  # $1 = JSON object for "dns", $2 = readiness log marker
 
 ensure_shim() {
   if ! pgrep -f dotdoh_shim.py >/dev/null 2>&1; then
-    python3 test/dotdoh_shim.py &
+    python3 test/dotdoh_shim.py >"$SHIM_LOG" 2>&1 &
   fi
   # pgrep only proves the process exists, not that it is accepting yet. Wait
   # until both TLS ports actually accept a connection so setup_file cannot race
@@ -49,7 +60,7 @@ ensure_shim() {
   # if a port never comes up instead of letting it surface as a later, harder
   # to diagnose DNS failure.
   local port i ready
-  for port in 8853 8443; do
+  for port in 8853 8443 8445; do
     ready=""
     for i in $(seq 1 50); do
       if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
@@ -64,6 +75,9 @@ ensure_shim() {
       return 1
     fi
   done
+  # The HTTP/3 (QUIC) listener readiness is checked by the DoH3 test itself, not
+  # here: gating the whole setup on it would drop the DoT/DoH/DoH2 tests (and
+  # their config writes) too. See the DoH3 test for the loud, no-skip requirement.
 }
 
 # Succeed if the shim recorded at least one query of the given transport whose
@@ -81,26 +95,27 @@ assert_padded() {  # $1 = transport (dot|doh)
   return 1
 }
 
-# The randomised loopback tuple the proxy actually bound for an upstream, read
-# from its "armed on <ip#port>" log line. Sets $tuple_ip and $tuple_port.
-armed_tuple() {  # $1 = DoT | DoH
+# dig target ("@IP -p PORT") of the Nth (1-based, config order) armed upstream,
+# read from FTL's log. The proxy binds a randomised loopback tuple per process
+# (127.0.0.0/8 + random port), so the port cannot be assumed - the deterministic
+# 5300+N is only a getrandom-failure fallback. The last four "armed on" lines are
+# this run's four upstreams (DoT, DoH/h2, DoH/h1.1, DoH3).
+proxy_at() {  # $1 = 1-based slot -> "@IP -p PORT"
   local t
-  t="$(grep -oE "dotdoh: $1 upstream [^ ]+ armed on 127(\.[0-9]+){3}#[0-9]+" /var/log/pihole/FTL.log \
-       | grep -oE '127(\.[0-9]+){3}#[0-9]+' | tail -1)"
-  tuple_ip="${t%#*}"
-  tuple_port="${t#*#}"
+  t=$(grep -oE "armed on 127\.[0-9.]+#[0-9]+" /var/log/pihole/FTL.log |
+      tail -n 4 | sed -n "${1}p" | grep -oE "127\.[0-9.]+#[0-9]+")
+  echo "@${t%#*} -p ${t#*#}"
 }
 
-# Fire $2 concurrent dig queries at the proxy's randomised listener and succeed
-# only if every one resolved to the expected answer. This is the meaningful
-# concurrency test: the worker pool and per-upstream connection pool must serve
-# many in-flight exchanges at once without racing or dropping.
-run_concurrent() {  # $1 = DoT|DoH, $2 = number of queries
-  local n="$2" tmp i ok=0 tuple_ip tuple_port
-  armed_tuple "$1"
+# Fire $2 concurrent dig queries at the Nth upstream's proxy listener and succeed
+# only if every one resolved. This exercises the worker pool and per-upstream
+# connection pool serving many in-flight exchanges at once without racing.
+run_concurrent() {  # $1 = 1-based slot (1=DoT, 2=DoH), $2 = number of queries
+  local idx="$1" n="$2" tmp i ok=0 at
+  at=$(proxy_at "$idx")
   tmp="$(mktemp -d)"
   for i in $(seq 1 "$n"); do
-    ( dig +short +tries=1 +time=8 "@${tuple_ip}" -p "$tuple_port" a.ftl > "${tmp}/${i}" 2>&1 ) &
+    ( dig +short +tries=1 +time=8 $at a.ftl > "${tmp}/${i}" 2>&1 ) &
   done
   wait
   for i in $(seq 1 "$n"); do
@@ -120,9 +135,18 @@ set_debug_dotdoh() {  # $1 = true|false
 
 setup_file() {
   ensure_shim || return 1
-  # The DoH upstream is armed last, so waiting for it means both listeners are up.
-  api_patch_dns "{\"upstreamCA\":\"$(pwd)/test/test_ca.crt\",\"upstreams\":[\"tls://pi.hole@127.0.0.1#8853\",\"https://pi.hole@127.0.0.1#8443/dns-query\"]}" \
-                "dotdoh: DoH upstream pi.hole armed"
+  # Arm four encrypted upstreams in a fixed order; each takes the next proxy slot,
+  # so proxy_at reads their randomised loopback tuples back in this order:
+  #   1  DoT           (tls://,   shim :8853)
+  #   2  DoH over h2   (https://, shim :8443, ALPN "h2")
+  #   3  DoH over h1.1 (https://, shim :8445, ALPN "http/1.1")
+  #   4  DoH3 over h3  (h3://,    shim :8444, QUIC)
+  # The h3:// upstream is armed last, so its (unique) armed marker means FTL
+  # accepted every upstream. This only arms the config; the shim's h3 listener is
+  # UDP and not covered by ensure_shim's TCP checks, so the DoH3 test itself waits
+  # on SHIM_H3_READY before querying.
+  api_patch_dns "{\"upstreamCA\":\"$(pwd)/test/test_ca.crt\",\"upstreams\":[\"tls://pi.hole@127.0.0.1#8853\",\"https://pi.hole@127.0.0.1#8443/dns-query\",\"https://pi.hole@127.0.0.1#8445/dns-query\",\"h3://pi.hole@127.0.0.1#8444/dns-query\"]}" \
+                "dotdoh: DoH3 upstream pi.hole armed"
 }
 
 teardown_file() {
@@ -149,51 +173,90 @@ teardown_file() {
 # UDP hop and, worse, .ftl is pinned to the plaintext recursor by a server=/ftl/
 # rule in 01-pihole-tests.conf, so it would never traverse the proxy at all.
 @test "dotdoh-client: a query resolves through the DoT proxy path" {
-  armed_tuple DoT
-  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 1) a.ftl"
   assert_output --partial "192.168.1.1"
 }
 
 @test "dotdoh-client: a query resolves through the DoH proxy path" {
-  armed_tuple DoH
-  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 2) a.ftl"
   assert_output --partial "192.168.1.1"
 }
 
 @test "dotdoh-client: the DoT-forwarded query is padded (RFC 8467)" {
-  armed_tuple DoT
-  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 1) a.ftl"
   assert_output --partial "192.168.1.1"
   run assert_padded dot
   assert_success
 }
 
 @test "dotdoh-client: the DoH-forwarded query is padded (RFC 8467)" {
-  armed_tuple DoH
-  run bash -c "dig +short +tries=1 +time=5 @${tuple_ip} -p ${tuple_port} a.ftl"
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 2) a.ftl"
   assert_output --partial "192.168.1.1"
   run assert_padded doh
   assert_success
 }
 
+@test "dotdoh-client: the DoH exchange negotiates HTTP/2 (ALPN h2)" {
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 2) a.ftl"
+  assert_output --partial "192.168.1.1"
+  # The :8443 shim offers ALPN "h2,http/1.1"; FTL's DoH client offers the same,
+  # so the exchange upgrades to HTTP/2 and the shim records the negotiated
+  # protocol. This is the auto-negotiation path for existing https:// upstreams.
+  run bash -c "grep -F 'doh-proto HTTP/2' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
+@test "dotdoh-client: the DoH exchange falls back to HTTP/1.1" {
+  run bash -c "dig +short +tries=1 +time=5 $(proxy_at 3) a.ftl"
+  assert_output --partial "192.168.1.1"
+  # The :8445 shim offers only ALPN "http/1.1", so FTL's DoH client - which
+  # offers "h2,http/1.1" - falls back to the HTTP/1.1 framing. The shim records
+  # the request-line HTTP version it received.
+  run bash -c "grep -F 'doh-proto HTTP/1.1' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
+@test "dotdoh-client: a query resolves over the DoH3 (HTTP/3) proxy path" {
+  # HTTP/3 is required, never skipped: the shim publishes SHIM_H3_READY once its
+  # aioquic QUIC listener is bound (a UDP listener a TCP probe cannot observe).
+  # Wait for it and fail loudly if it never appears (e.g. aioquic missing from the
+  # image), so a missing dependency surfaces here instead of being silently
+  # skipped - without holding the DoT/DoH/DoH2 tests hostage in setup_file.
+  local ready=""
+  for _ in $(seq 1 50); do
+    [ -f "$SHIM_H3_READY" ] && { ready=1; break; }
+    sleep 0.2
+  done
+  if [ -z "$ready" ]; then
+    echo "DoH3 shim HTTP/3 listener never became ready. Shim log:" >&2
+    cat "$SHIM_LOG" >&2 2>/dev/null || echo "(no shim log at $SHIM_LOG)" >&2
+    false
+  fi
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 4) a.ftl"
+  assert_output --partial "192.168.1.1"
+  run bash -c "grep -F 'doh3-proto HTTP/3' \"$SHIM_PAD_LOG\""
+  assert_success
+}
+
 @test "dotdoh-client: many concurrent queries over the DoT proxy all resolve" {
-  run run_concurrent DoT 25
+  run run_concurrent 1 25
   assert_success
   assert_output --partial "25/25 resolved"
 }
 
 @test "dotdoh-client: many concurrent queries over the DoH proxy all resolve" {
-  run run_concurrent DoH 25
+  run run_concurrent 2 25
   assert_success
   assert_output --partial "25/25 resolved"
 }
 
 @test "dotdoh-client: debug.dotdoh emits a per-upstream statistics summary" {
   set_debug_dotdoh true
-  # Generate some traffic so the counters are non-zero.
-  armed_tuple DoT
+  # Generate some traffic so the counters are non-zero. Never abort the test on a
+  # dig hiccup: the summary check below is the real assertion, and set_debug false
+  # must still run so debug.dotdoh is restored (and its write counted).
   for i in $(seq 1 10); do
-    dig +short +tries=1 +time=5 @"${tuple_ip}" -p "${tuple_port}" a.ftl >/dev/null 2>&1
+    dig +short +tries=1 +time=5 $(proxy_at 1) a.ftl >/dev/null 2>&1 || true
   done
   # The summary is emitted periodically (~10 s) by whichever worker is idle.
   # Wait for one that reflects our queries to appear in the log.

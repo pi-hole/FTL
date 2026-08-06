@@ -24,6 +24,8 @@
 #include "files.h"
 // generate_certificate()
 #include "webserver/x509.h"
+// terminator_start(), terminator_stop()
+#include "webserver/terminator.h"
 // allocate_lua(), free_lua(), init_lua(), request_handler()
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()
@@ -112,6 +114,24 @@ char * __attribute__((pure)) get_prefix_webhome(void)
 char * __attribute__((pure)) get_api_uri(void)
 {
 	return api_uri;
+}
+
+bool __attribute__((const)) webserver_have_http2(void)
+{
+#ifdef HAVE_HTTP2
+	return true;
+#else
+	return false;
+#endif
+}
+
+bool __attribute__((const)) webserver_have_http3(void)
+{
+#ifdef HAVE_HTTP3
+	return true;
+#else
+	return false;
+#endif
 }
 
 static int redirect_root_handler(struct mg_connection *conn, void *input)
@@ -233,6 +253,23 @@ static int begin_request_handler(struct mg_connection *conn)
 
 	// Let CivetWeb process the request normally
 	return 0;
+}
+
+// Guard on the CivetWeb /dns-query path. Inbound DoH is served natively by the
+// front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query that
+// reaches CivetWeb is either plaintext - refuse it with 426, DoH must be
+// encrypted or the client's "encrypted" queries would leak - or misdirected.
+static int dns_query_guard(struct mg_connection *conn, void *cbdata)
+{
+	(void)cbdata;
+	const struct mg_request_info *ri = mg_get_request_info(conn);
+	if(ri != NULL && !ri->is_ssl)
+	{
+		mg_send_http_error(conn, 426, "%s", "DoH requires HTTPS");
+		return 426;
+	}
+	mg_send_http_error(conn, 421, "%s", "misdirected DoH request");
+	return 421;
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
@@ -387,6 +424,13 @@ static struct serverports
 	int protocol; // 1 = IPv4, 3 = IPv6
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
+// TLS terminator bookkeeping: the public TLS port it owns and the ephemeral
+// loopback backend port CivetWeb serves it on. Both 0 when TLS is off.
+static int terminator_port = 0;
+static int backend_port = 0;
+// The bind address the operator scoped the secure port to ("" = all interfaces),
+// so the terminator honours it instead of always binding every interface.
+static char terminator_addr[64] = "";
 /**
  * @brief Retrieves and logs the server ports configuration.
  *
@@ -416,55 +460,114 @@ static bool get_server_ports(void)
 		return false;
 	}
 
-	// Loop over all ports
-	for(unsigned int i = 0; i < (unsigned int)ports; i++)
+	// Rebuild the table from scratch (http_init may run again on a restart).
+	// https_port is only ever assigned below when still 0, so clear it here too;
+	// otherwise a stale value from a previous run survives the rebuild.
+	memset(server_ports, 0, sizeof(server_ports));
+	https_port = 0;
+
+	// Loop over all ports CivetWeb reports. In terminator mode CivetWeb binds the
+	// public plaintext port(s) plus an internal loopback backend; the public TLS
+	// port lives on the terminator. Hide the backend and mirror each public
+	// plaintext port with the terminator's TLS port on the same address.
+	log_info("Web server ports:");
+	unsigned int n = 0;
+	for(unsigned int i = 0; i < (unsigned int)ports && n < MAXPORTS; i++)
 	{
 		// Stop if no more ports are configured
 		if(mgports[i].protocol == 0)
 			break;
 
-		// Store port information
-		server_ports[i].port = mgports[i].port;
-		server_ports[i].is_secure = mgports[i].is_ssl;
-		server_ports[i].is_redirect = mgports[i].is_redirect;
-		server_ports[i].is_optional = mgports[i].is_optional;
-		server_ports[i].is_bound = mgports[i].is_bound;
-		// 1 = IPv4, 3 = IPv6 (can also be a combo-socker serving both),
-		// the documentation in civetweb.h is wrong
-		server_ports[i].protocol = mgports[i].protocol;
-
 		// Convert listening address to string
-		if(server_ports[i].protocol == 1)
-			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, server_ports[i].addr, INET_ADDRSTRLEN);
-		else if(server_ports[i].protocol == 3)
+		// 1 = IPv4, 3 = IPv6 (can also be a combo-socket serving both),
+		// the documentation in civetweb.h is wrong
+		char addr[INET6_ADDRSTRLEN + 2] = { 0 };
+		if(mgports[i].protocol == 1)
+			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, addr, INET_ADDRSTRLEN);
+		else if(mgports[i].protocol == 3)
 		{
 			char tmp[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &mgports[i].addr.sa6.sin6_addr, tmp, INET6_ADDRSTRLEN);
 			// Enclose IPv6 address in square brackets
-			snprintf(server_ports[i].addr, sizeof(server_ports[i].addr), "[%s]", tmp);
+			snprintf(addr, sizeof(addr), "[%s]", tmp);
 		}
 		else
+		{
 			log_warn("Unsupported protocol for port %d", mgports[i].port);
+			continue;
+		}
 
-		// Store (first) HTTPS port if not already set
+		// The loopback plaintext backend the terminator forwards to is internal;
+		// remember its port for terminator_start() but do not advertise it.
+		if(terminator_port > 0 && !mgports[i].is_ssl &&
+		   strcmp(addr, "127.0.0.1") == 0)
+		{
+			backend_port = mgports[i].port;
+			continue;
+		}
+
+		// Store the public port
+		strncpy(server_ports[n].addr, addr, sizeof(server_ports[n].addr) - 1);
+		server_ports[n].port = mgports[i].port;
+		server_ports[n].is_secure = mgports[i].is_ssl;
+		server_ports[n].is_redirect = mgports[i].is_redirect;
+		server_ports[n].is_optional = mgports[i].is_optional;
+		server_ports[n].is_bound = mgports[i].is_bound;
+		server_ports[n].protocol = mgports[i].protocol;
 		if(mgports[i].is_ssl && https_port == 0)
 			https_port = mgports[i].port;
-
-		// Print port information
-		if(i == 0)
-			log_info("Web server ports:");
 		log_info("  - %s:%d (HTTP%s, IPv%s%s%s, %s)",
-		         server_ports[i].addr,
-		         server_ports[i].port,
-		         server_ports[i].is_secure ? "S" : "",
-		         server_ports[i].protocol == 1 ? "4" : "6",
-		         server_ports[i].is_redirect ? ", redirecting" : "",
-		         server_ports[i].is_optional ? ", optional" : "",
-		         server_ports[i].is_bound ? "OK" : "NOT bound");
+		         server_ports[n].addr, server_ports[n].port,
+		         server_ports[n].is_secure ? "S" : "",
+		         server_ports[n].protocol == 1 ? "4" : "6",
+		         server_ports[n].is_redirect ? ", redirecting" : "",
+		         server_ports[n].is_optional ? ", optional" : "",
+		         server_ports[n].is_bound ? "OK" : "NOT bound");
+		n++;
 
+		// Mirror each public plaintext (non-redirect) port with the terminator's
+		// TLS port on the same address.
+		if(terminator_port > 0 && !mgports[i].is_ssl &&
+		   !mgports[i].is_redirect && n < MAXPORTS)
+		{
+			server_ports[n] = server_ports[n - 1];
+			server_ports[n].port = terminator_port;
+			server_ports[n].is_secure = true;
+			server_ports[n].is_bound = true;
+			if(https_port == 0)
+				https_port = (in_port_t)terminator_port;
+			log_info("  - %s:%d (HTTPS, IPv%s%s, terminator)",
+			         server_ports[n].addr, server_ports[n].port,
+			         server_ports[n].protocol == 1 ? "4" : "6",
+			         server_ports[n].is_optional ? ", optional" : "");
+			n++;
+		}
 	}
 
-	return true;
+	// The terminator serves the public TLS port outside CivetWeb, so it is
+	// normally registered by mirroring a public plaintext port above. If there is
+	// no plaintext port to mirror - a TLS-only "443s" config, or only a redirect
+	// plaintext port ("80r,443s") - register it explicitly here. Otherwise
+	// get_server_ports() would report failure (aborting the whole web interface)
+	// or leave https_port at 0, which mis-reports the port in /info and skips
+	// certificate auto-renewal (letting an FTL-generated cert silently expire).
+	if(terminator_port > 0 && https_port == 0 && n < MAXPORTS)
+	{
+		memset(&server_ports[n], 0, sizeof(server_ports[n]));
+		strncpy(server_ports[n].addr,
+		        terminator_addr[0] != '\0' ? terminator_addr : "0.0.0.0",
+		        sizeof(server_ports[n].addr) - 1);
+		server_ports[n].port = (in_port_t)terminator_port;
+		server_ports[n].is_secure = true;
+		server_ports[n].is_bound = true;
+		server_ports[n].protocol = 1;
+		https_port = (in_port_t)terminator_port;
+		log_info("  - %s:%d (HTTPS, terminator)",
+		         server_ports[n].addr, server_ports[n].port);
+		n++;
+	}
+
+	return n > 0;
 }
 
 in_port_t __attribute__((pure)) get_https_port(void)
@@ -533,9 +636,9 @@ unsigned short get_api_string(char **buf, const bool domain)
 			return 0;
 		}
 
-		// Check if snprintf() truncated the string (this should never
-		// happen as we allocate enough memory for the domain to fit)
-		if((size_t)this_len >= bufsz - len - 1)
+		// Reject the URL if snprintf() truncated it to fit api_str (this_len is
+		// the would-be length) or if it does not fit the destination buffer.
+		if((size_t)this_len >= MAX_URL_LEN || (size_t)this_len >= bufsz - len - 1)
 		{
 			log_err("API URL buffer too small!");
 			free(api_str);
@@ -582,8 +685,13 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 {
 	for(size_t i = 0; i <= idx; i++)
 	{
-		char *escaped_key = escape_string(static_options[i * 2]);
-		char *escaped_value = escape_string(static_options[i * 2 + 1]);
+		const char *key = static_options[i * 2];
+		const char *value = static_options[i * 2 + 1];
+		// Never log the value of the per-boot backend-auth secret.
+		if(key != NULL && strcmp(key, "proxy_protocol_secret") == 0)
+			value = "<per-boot secret>";
+		char *escaped_key = escape_string(key);
+		char *escaped_value = escape_string(value);
 		if(debug)
 		{
 			if(i == idx)
@@ -610,6 +718,97 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 			free(escaped_value);
 	}
 }
+
+#ifdef HAVE_TLS
+// Append src to dst (buffer size dstsz), keeping dst NUL-terminated. A no-op once
+// dst is full, so the length handed to strncat() can never underflow.
+static void str_append(char *dst, size_t dstsz, const char *src)
+{
+	const size_t used = strlen(dst);
+	if(used + 1 >= dstsz)
+		return;
+	strncat(dst, src, dstsz - used - 1);
+}
+
+// Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
+// name public TLS ports the terminator owns, so they are dropped from CivetWeb's
+// list and a loopback plaintext backend (ephemeral port, read back after start)
+// is appended instead. Returns the first secure port, or 0 if none.
+static int split_terminator_ports(const char *cfg, char *backend, size_t backend_len,
+                                  char *tls_addr, size_t tls_addr_len)
+{
+	backend[0] = '\0';
+	tls_addr[0] = '\0';
+	int tls_port = 0;
+
+	char *copy = strdup(cfg);
+	if(copy == NULL)
+		return 0;
+
+	char *save = NULL;
+	for(char *tok = strtok_r(copy, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save))
+	{
+		// Skip leading whitespace via a separate pointer so the loop variable
+		// itself is not modified in the body.
+		const char *ent = tok;
+		while(*ent == ' ')
+			ent++;
+		if(*ent == '\0')
+			continue;
+
+		// A secure entry (carries the 's' flag) is owned by the terminator
+		if(strchr(ent, 's') != NULL)
+		{
+			if(tls_port == 0)
+			{
+				// Port digits follow the last ':' ("[::]:443os") or start the
+				// token ("443os"); atoi() stops at the flag letters.
+				const char *p = strrchr(ent, ':');
+				tls_port = atoi(p != NULL ? p + 1 : ent);
+				// Everything before that ':' is the bind address the operator
+				// scoped the port to; strip the [ ] around an IPv6 literal. No
+				// ':' means a bare port ("443s") -> all interfaces (empty addr).
+				if(p != NULL)
+				{
+					const char *astart = ent;
+					size_t alen = (size_t)(p - ent);
+					if(alen >= 2 && ent[0] == '[' && p[-1] == ']')
+					{
+						astart++;
+						alen -= 2;
+					}
+					if(alen > 0)
+					{
+						// An over-long address cannot be a valid IP literal;
+						// truncate it (rather than dropping it, which would
+						// silently fall back to all interfaces) so the terminator's
+						// fill_bind_addr() rejects it and fails closed.
+						if(alen >= tls_addr_len)
+							alen = tls_addr_len - 1;
+						memcpy(tls_addr, astart, alen);
+						tls_addr[alen] = '\0';
+					}
+				}
+			}
+			continue; // drop from the list handed to CivetWeb
+		}
+
+		// Keep plaintext entries verbatim
+		if(backend[0] != '\0')
+			str_append(backend, backend_len, ",");
+		str_append(backend, backend_len, ent);
+	}
+	free(copy);
+
+	// Append the loopback plaintext backend CivetWeb serves the terminator on.
+	// Port 0 lets the kernel pick a free port; it is read back after mg_start2().
+	if(backend[0] != '\0')
+		str_append(backend, backend_len, ",");
+	str_append(backend, backend_len, "127.0.0.1:0");
+
+	return tls_port;
+}
+#endif /* HAVE_TLS */
 
 void http_init(void)
 {
@@ -639,13 +838,11 @@ void http_init(void)
 
 	/* Initialize the library */
 	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	// No MG_FEATURES_TLS: civetweb is built without TLS (NO_SSL) and only serves
+	// plain HTTP/1.1 on the loopback backend; the front terminator does TLS.
 	unsigned int features = MG_FEATURES_FILES |
 	                        MG_FEATURES_IPV6 |
 	                        MG_FEATURES_CACHE;
-
-#ifdef HAVE_TLS
-	features |= MG_FEATURES_TLS;
-#endif
 
 	if(mg_init_library(features) == 0)
 	{
@@ -689,11 +886,34 @@ void http_init(void)
 		strcat(webheaders, "\r\n");
 	}
 
+	// TLS is terminated by the in-process front terminator, not CivetWeb: when the
+	// port list has a secure port, hand CivetWeb a plaintext loopback backend instead.
+	const char *listening_ports = config.webserver.port.v.s;
+#ifdef HAVE_TLS
+	const bool tls_used = config.webserver.port.v.s != NULL &&
+	                      strchr(config.webserver.port.v.s, 's') != NULL;
+	char backend_ports[256];
+	terminator_port = 0;
+	backend_port = 0;
+	terminator_addr[0] = '\0';
+	if(tls_used)
+	{
+		terminator_port = split_terminator_ports(config.webserver.port.v.s,
+		                                          backend_ports, sizeof(backend_ports),
+		                                          terminator_addr, sizeof(terminator_addr));
+		if(terminator_port > 0)
+			listening_ports = backend_ports;
+		else
+			log_err("Could not extract a TLS port from '%s'; the web server will not offer TLS",
+			        config.webserver.port.v.s);
+	}
+#endif
+
 	// Prepare options for HTTP server (NULL-terminated list)
 	const char *static_options[] = {
 		"document_root", config.webserver.paths.webroot.v.s,
 		"error_pages", error_pages,
-		"listening_ports", config.webserver.port.v.s,
+		"listening_ports", listening_ports,
 		"decode_url", "yes",
 		"enable_directory_listing", "no",
 		"num_threads", num_threads,
@@ -702,11 +922,16 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
+		// Disable Nagle: without it a small TLS response is split across segments
+		// and stalls ~40 ms on the client's delayed ACK, which dominates DoH
+		// (and UI/API) latency. Responses are normally sent in full, so Nagle
+		// buys nothing here.
+		"tcp_nodelay", "1",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
 	};
-	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json);
+	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json) + 1; // +1: proxy_protocol_secret
 	// We allocate two additional slots for ACL and TLS configuration
 	// which are added later if configured
 	// The last NULL is for the NULL-termination of the array
@@ -725,16 +950,8 @@ void http_init(void)
 	}
 
 #ifdef HAVE_TLS
-	// Add TLS options if configured
-
-	// TLS is used when webserver.port contains "s" (e.g. "443s")
-	const bool tls_used = config.webserver.port.v.s != NULL &&
-	                      strchr(config.webserver.port.v.s, 's') != NULL;
-
-	// Check certificate domain if
-	// - TLS is used
-	// - A certificate is configured
-	// - The certificate is readable
+	// Ensure the TLS certificate exists and matches the configured domain. The
+	// terminator (not CivetWeb) uses it; no ssl_certificate option is passed.
 	if(tls_used &&
 	   config.webserver.tls.cert.v.s != NULL &&
 	   strlen(config.webserver.tls.cert.v.s) > 0)
@@ -754,26 +971,37 @@ void http_init(void)
 			}
 		}
 
-		// Check if the certificate is readable (we may have just
-		// created it)
+		// Check if the certificate is readable (we may have just created it)
 		if(file_readable(config.webserver.tls.cert.v.s))
 		{
 			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
 			{
 				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
 			}
-			conf_opts[idx * 2] = strdup("ssl_certificate");
-			conf_opts[idx * 2 + 1] = strdup(config.webserver.tls.cert.v.s);
-			idx++;
-
-			log_info("Using SSL/TLS certificate file %s",
-			         config.webserver.tls.cert.v.s);
 		}
 		else
 		{
 			log_err("Webserver SSL/TLS certificate %s not found or not readable!",
 			        config.webserver.tls.cert.v.s);
 		}
+	}
+
+	// When the front terminator is active it reaches this loopback backend behind
+	// a PROXY v2 header; hand the backend the shared secret (the per-boot token,
+	// hex-encoded) so it authenticates the header and adopts the real client
+	// address. Generated here so it exists before mg_start2(); terminator_start()
+	// reuses the same token.
+	if(terminator_port > 0)
+	{
+		char secret_hex[33]; // 2 * 16-byte token + NUL
+		if(terminator_proxy_token_hex(secret_hex, sizeof(secret_hex)))
+		{
+			conf_opts[idx * 2] = strdup("proxy_protocol_secret");
+			conf_opts[idx * 2 + 1] = strdup(secret_hex);
+			idx++;
+		}
+		else
+			log_err("Terminator: could not derive proxy_protocol_secret; requests will log the loopback address");
 	}
 #endif
 	// Add access control list if configured (last two options)
@@ -894,6 +1122,12 @@ void http_init(void)
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
+	// Inbound DoH (RFC 8484) is served natively by the front terminator on
+	// /dns-query for HTTP/1.1, HTTP/2 and HTTP/3 (see terminator.c). The only
+	// CivetWeb registration is a guard that refuses a plaintext /dns-query (426).
+	if(config.dns.doh.v.b)
+		mg_set_request_handler(ctx, "/dns-query", dns_query_guard, NULL);
+
 	if(strcmp(prefix_webhome, "/") == 0)
 	{
 		log_debug(DEBUG_API, "Not redirecting root since webhome is '%s'",
@@ -935,6 +1169,22 @@ void http_init(void)
 
 	// Create CLI password (if enabled)
 	create_cli_password();
+
+#ifdef HAVE_TLS
+	// Start the TLS terminator in front of the (now plaintext) CivetWeb backend.
+	// get_server_ports() captured the ephemeral loopback port as backend_port and
+	// the public TLS port as https_port; forward the TLS port to that backend.
+	if(tls_used && terminator_port > 0)
+	{
+		if(backend_port <= 0)
+			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
+		else if(!terminator_start(terminator_addr, terminator_port, backend_port, config.webserver.tls.cert.v.s))
+		{
+			log_err("Failed to start the TLS terminator on port %d", terminator_port);
+			https_port = 0; // TLS is not actually available
+		}
+	}
+#endif
 }
 
 static char *append_to_path(char *path, const char *append)
@@ -1019,6 +1269,11 @@ void http_terminate(void)
 	// The server may have never been started
 	if(!ctx)
 		return;
+
+#ifdef HAVE_TLS
+	// Stop the TLS terminator before the backend it forwards to
+	terminator_stop();
+#endif
 
 	/* Stop the server */
 	mg_stop(ctx);

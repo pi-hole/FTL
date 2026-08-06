@@ -42,13 +42,14 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
+  # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "5"
+      assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "28" ]]
+    [[ ${lines[0]} == "29" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

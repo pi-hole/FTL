@@ -254,6 +254,7 @@ enum thread_types {
 	NTP_SERVER6,
 	WEBSERVER,
 	DOTDOH,
+	DOTDOH_DOT,
 	THREADS_MAX
 } __attribute__ ((packed));
 

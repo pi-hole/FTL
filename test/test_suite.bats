@@ -1699,11 +1699,12 @@ setup() {
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request
+  # --http1.1: force HTTP/1.1 (the terminator advertises h2 via ALPN, else curl negotiates HTTP/2)
   # --cacert: use this CA certificate to verify the server certificate
   # --resolve: resolve pi.hole:443 to 127.0.0.1
   #            we need this line because curl is not using FTL as resolver
   #            and would otherwise not be able to resolve pi.hole
-  run bash -c 'curl -sI --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1 https://pi.hole/'
+  run bash -c 'curl -sI --http1.1 --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1 https://pi.hole/'
   assert_line --partial --index 0 "HTTP/1.1 "
   run bash -c 'curl -I --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1 https://pi.hole/'
   assert_success
@@ -1837,31 +1838,37 @@ setup() {
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/12: document_root=/var/www/html" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/12: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 2/12: listening_ports=80o,443os,[::]:80o,[::]:443os" /var/log/pihole/FTL.log'
+  # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
+  run bash -c 'grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/12: decode_url=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/12: enable_directory_listing=no" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/12: num_threads=50" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/12: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/12: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"'; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"'; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/12: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/12: enable_keep_alive=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/12: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 11/12: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
+  # Nagle disabled so small TLS responses are not delayed on the client's ACK.
+  run bash -c 'grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 12/12: <END OF OPTIONS>" /var/log/pihole/FTL.log'
+  # The terminator's per-boot backend-auth secret; its value is redacted in the log.
+  run bash -c 'grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/FTL.log'
+  assert_success
+  # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
+  run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/FTL.log'
   assert_success
 }
 

@@ -63,6 +63,8 @@
 #include "tools/dhcp-discover.h"
 // mg_version()
 #include "webserver/civetweb/civetweb.h"
+// webserver_have_http2()/webserver_have_http3() for the --version report
+#include "webserver/webserver.h"
 // cJSON_Version()
 #include "webserver/cJSON/cJSON.h"
 #include "config/cli.h"
@@ -1030,6 +1032,7 @@ void parse_args(int argc, char *argv[])
 			const char *green = cli_color(COL_GREEN);
 			const char *red = cli_color(COL_RED);
 			const char *yellow = cli_color(COL_YELLOW);
+			const char *blue = cli_color(COL_BLUE);
 
 			// Print FTL version
 			printf("****************************** %s%sFTL%s **********************************\n",
@@ -1086,10 +1089,13 @@ void parse_args(int argc, char *argv[])
 				printf("Files: %sYes%s, ", green, normal);
 			else
 				printf("Files: %sNo%s, ", red, normal);
-			if(mg_check_feature(MG_FEATURES_TLS))
-				printf("TLS: %sYes%s, ", green, normal);
-			else
-				printf("TLS: %sNo%s, ", red, normal);
+			// CivetWeb is built NO_SSL, so its own TLS feature is always off;
+			// TLS is provided by FTL's in-process backend instead.
+#ifdef HAVE_TLS
+			printf("TLS: %sYes%s %s(via TLS backend)%s, ", green, normal, blue, normal);
+#else
+			printf("TLS: %sNo%s, ", red, normal);
+#endif
 			if(mg_check_feature(MG_FEATURES_CGI))
 				printf("CGI: %sYes%s, ", green, normal);
 			else
@@ -1122,8 +1128,9 @@ void parse_args(int argc, char *argv[])
 				printf("Compression: %sYes%s\n", green, normal);
 			else
 				printf("Compression: %sNo%s\n", red, normal);
-			if(mg_check_feature(MG_FEATURES_HTTP2))
-				printf("                 HTTP2: %sYes%s, ", green, normal);
+			// Likewise CivetWeb's native HTTP/2 stays off; the backend serves it.
+			if(webserver_have_http2())
+				printf("                 HTTP2: %sYes%s %s(via TLS backend)%s, ", green, normal, blue, normal);
 			else
 				printf("                 HTTP2: %sNo%s, ", red, normal);
 			if(mg_check_feature(MG_FEATURES_X_DOMAIN_SOCKET))
@@ -1132,6 +1139,23 @@ void parse_args(int argc, char *argv[])
 				printf("Unix domain sockets: %sNo%s\n", red, normal);
 			printf("\n");
 #ifdef HAVE_TLS
+			// FTL fronts the (plain-HTTP) CivetWeb backend with an in-process
+			// engine that terminates TLS and speaks the modern HTTP versions.
+			// Unencrypted HTTP/1.0 and HTTP/1.1 stay served directly on non-TLS
+			// ports, so this only adds capabilities, it removes none.
+			printf("************************ %s%sAdvanced TLS backend%s ***********************\n",
+			       yellow, bold, normal);
+			printf("HTTP/1.0:        %sYes%s (plaintext)\n", green, normal);
+			printf("HTTP/1.1:        %sYes%s\n", green, normal);
+			if(webserver_have_http2())
+				printf("HTTP/2:          %sYes%s\n", green, normal);
+			else
+				printf("HTTP/2:          %sNo%s\n", red, normal);
+			if(webserver_have_http3())
+				printf("HTTP/3:          %sYes%s\n", green, normal);
+			else
+				printf("HTTP/3:          %sNo%s\n", red, normal);
+			printf("\n");
 			printf("****************************** %s%sOpenSSL%s ******************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s"OPENSSL_FULL_VERSION_STR"%s\n", green, bold, normal);

@@ -32,4 +32,10 @@ unsigned short get_api_string(char **buf, const bool domain);
 char *get_prefix_webhome(void) __attribute__((pure));
 char *get_api_uri(void) __attribute__((pure));
 
+// Compile-time protocol capabilities of the advanced TLS backend, exposed so
+// --version (compiled in core, which lacks the HTTP/2 and HTTP/3 build flags)
+// can report them.
+bool webserver_have_http2(void) __attribute__((const));
+bool webserver_have_http3(void) __attribute__((const));
+
 #endif // WEBSERVER_H
