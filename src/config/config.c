@@ -1661,7 +1661,7 @@ void initConfig(struct config *conf)
 	conf->debug.webserver.c = validate_stub; // Only type-based checking
 
 	conf->debug.extra.k = "debug.extra";
-	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
+	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time. Enabling this flag also raises the resolution of all log timestamps from milliseconds to microseconds.";
 	conf->debug.extra.t = CONF_BOOL;
 	conf->debug.extra.d.b = false;
 	conf->debug.extra.c = validate_stub; // Only type-based checking
