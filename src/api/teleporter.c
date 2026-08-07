@@ -847,6 +847,13 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 		if(file != NULL && fileSize > 0u)
 		{
+			if(i == 1 && !valid_dhcp_leases(file, fileSize))
+			{
+				log_warn("Not importing \"%s\": not a DHCP lease database",
+				         extract_files[i].archive_name);
+				continue;
+			}
+
 			// Write file to disk
 			log_info("Writing file \"%s\" (%zu bytes) to \"%s\"",
 			         extract_files[i].archive_name, fileSize, extract_files[i].destination);
