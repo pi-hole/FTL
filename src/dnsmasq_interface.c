@@ -3722,6 +3722,35 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
+
+		// Give up CAP_CHOWN now that the files needing it have been dealt
+		// with.
+		//
+		// The systemd unit grants the capability through its ambient set,
+		// which is inherited across execve(). Every process FTL starts -
+		// the DHCP script, gravity, anything a Lua page spawns - would
+		// otherwise be able to take ownership of files it does not own,
+		// which is a short step from root. FTL only needs it while starting
+		// up: from here on it chowns files it created itself, which the
+		// kernel allows the owning user to do without any capability.
+		// Dropping it from the permitted set makes this final - neither FTL
+		// nor anything it executes can raise it again.
+		//
+		// This branch is the one that matters: dnsmasq only adjusts
+		// capabilities when it starts as root and drops privileges itself,
+		// and it never populates the ambient set when doing so. Dropping
+		// here would make that capset() fail, so it stays out of that path.
+		//
+		// Setting the RTC changes ownership of the device repeatedly during
+		// runtime and does need the capability.
+		if(config.ntp.sync.rtc.set.v.b)
+		{
+			log_debug(DEBUG_CAPS, "Keeping CAP_CHOWN for RTC synchronization");
+		}
+		else if(drop_capability(CAP_CHOWN))
+		{
+			log_debug(DEBUG_CAPS, "Dropped CAP_CHOWN");
+		}
 	}
 
 	forked = true;

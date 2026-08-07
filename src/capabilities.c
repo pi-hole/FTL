@@ -16,6 +16,8 @@
 #include "capabilities.h"
 #include "config/config.h"
 #include "log.h"
+// prctl(), PR_CAP_AMBIENT
+#include <sys/prctl.h>
 
 static const unsigned int capabilityIDs[]   = { CAP_CHOWN ,  CAP_DAC_OVERRIDE ,  CAP_DAC_READ_SEARCH ,  CAP_FOWNER ,  CAP_FSETID ,  CAP_KILL ,  CAP_SETGID ,  CAP_SETUID ,  CAP_SETPCAP ,  CAP_LINUX_IMMUTABLE ,  CAP_NET_BIND_SERVICE ,  CAP_NET_BROADCAST ,  CAP_NET_ADMIN ,  CAP_NET_RAW ,  CAP_IPC_LOCK ,  CAP_IPC_OWNER ,  CAP_SYS_MODULE ,  CAP_SYS_RAWIO ,  CAP_SYS_CHROOT ,  CAP_SYS_PTRACE ,  CAP_SYS_PACCT ,  CAP_SYS_ADMIN ,  CAP_SYS_BOOT ,  CAP_SYS_NICE ,  CAP_SYS_RESOURCE ,  CAP_SYS_TIME ,  CAP_SYS_TTY_CONFIG ,  CAP_MKNOD ,  CAP_LEASE ,  CAP_AUDIT_WRITE ,  CAP_AUDIT_CONTROL ,  CAP_SETFCAP };
 static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID", "CAP_SETUID", "CAP_SETPCAP", "CAP_LINUX_IMMUTABLE", "CAP_NET_BIND_SERVICE", "CAP_NET_BROADCAST", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_IPC_LOCK", "CAP_IPC_OWNER", "CAP_SYS_MODULE", "CAP_SYS_RAWIO", "CAP_SYS_CHROOT", "CAP_SYS_PTRACE", "CAP_SYS_PACCT", "CAP_SYS_ADMIN", "CAP_SYS_BOOT", "CAP_SYS_NICE", "CAP_SYS_RESOURCE", "CAP_SYS_TIME", "CAP_SYS_TTY_CONFIG", "CAP_MKNOD", "CAP_LEASE", "CAP_AUDIT_WRITE", "CAP_AUDIT_CONTROL", "CAP_SETFCAP"};
@@ -29,10 +31,18 @@ static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", 
  * @param data Pointer to a cap_user_data_t structure where the capabilities
  *             will be stored. The memory for this structure is allocated within
  *             the function and should be freed by the caller.
+ * @param hdr_out If not NULL, receives the negotiated header, which the caller
+ *                needs to hand the same version back to capset(). Allocated
+ *                within the function and to be freed by the caller.
  */
-static bool get_caps(cap_user_data_t *data)
+static bool get_caps(cap_user_data_t *data, cap_user_header_t *hdr_out)
 {
 	cap_user_header_t hdr = calloc(1, sizeof(*hdr));
+	if(hdr == NULL)
+	{
+		log_err("Failed to allocate memory for capabilities header");
+		return false;
+	}
 
 	// Determine capabilities version used by the current kernel
 	if(capget(hdr, NULL) != 0)
@@ -62,18 +72,67 @@ static bool get_caps(cap_user_data_t *data)
 
 	// Get current capabilities
 	*data = calloc(capsize, sizeof(**data));
+	if(*data == NULL)
+	{
+		log_err("Failed to allocate memory for capabilities data");
+		free(hdr);
+		return false;
+	}
 	if(capget(hdr, *data) != 0)
 	{
 		log_err("Failed to retrieve capabilities data: %s", strerror(errno));
 		free(hdr);
 		free(*data);
+		*data = NULL;
 		return false;
 	}
 
-	// Free allocated memory
-	free(hdr);
+	// Hand the header to the caller or free it here
+	if(hdr_out != NULL)
+		*hdr_out = hdr;
+	else
+		free(hdr);
 
 	return true;
+}
+
+/**
+ * @brief Irreversibly removes a capability from this process.
+ *
+ * Clears the capability from the effective, permitted and inheritable sets and
+ * lowers it in the ambient set. Dropping it from the permitted set is what makes
+ * this final: the process cannot raise it again, and no child it executes can
+ * inherit it.
+ *
+ * @param cap The capability to drop.
+ * @return true if the capability is gone afterwards, false otherwise.
+ */
+bool drop_capability(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	// All capabilities FTL uses live in the first 32 bit block
+	data[0].effective &= ~(1U << cap);
+	data[0].permitted &= ~(1U << cap);
+	data[0].inheritable &= ~(1U << cap);
+
+	const bool success = capset(hdr, data) == 0;
+	if(!success)
+		log_warn("Failed to drop capability: %s", strerror(errno));
+
+	// Clearing permitted and inheritable already removes the capability from
+	// the ambient set, but say so explicitly: the ambient set is what an
+	// exec()ed child would inherit.
+	if(success && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, cap, 0, 0) != 0 && errno != EINVAL)
+		log_debug(DEBUG_CAPS, "Could not lower ambient capability: %s", strerror(errno));
+
+	free(hdr);
+	free(data);
+
+	return success;
 }
 
 /**
@@ -88,7 +147,7 @@ static bool get_caps(cap_user_data_t *data)
 bool check_capability(const unsigned int cap)
 {
 	cap_user_data_t data = NULL;
-	if(!get_caps(&data))
+	if(!get_caps(&data, NULL))
 		return false;
 
 	// Check if the capability is available
@@ -174,7 +233,7 @@ static bool warn_missing_cap(const cap_user_data_t data, const unsigned int capi
 bool check_capabilities(void)
 {
 	cap_user_data_t data = NULL;
-	if(!get_caps(&data))
+	if(!get_caps(&data, NULL))
 		return false;
 
 	log_debug(DEBUG_CAPS, "***************************************");
