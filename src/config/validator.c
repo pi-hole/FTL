@@ -366,35 +366,188 @@ bool validate_filepath_dash(union conf_value *val, const char *key, char err[VAL
 	return validate_filepath(val, key, err);
 }
 
-// Validate the web server log file path. In addition to the regular file-path
-// checks, reject a path inside webserver.paths.webroot: a log file served from
-// the web server's document root can be read - and, if the path matches the
-// Lua server-page pattern, executed - by the web server itself, turning
-// attacker-controlled request data written into the access log into code
-// execution.
-bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+// Whether two absolute paths are the same or one contains the other. Comparing
+// at component boundaries keeps a sibling sharing a prefix ("/etc-backup")
+// apart from a real parent ("/etc").
+static bool paths_overlap(const char *a, const size_t alen, const char *b)
 {
-	// Regular file-path validation first
-	if(!validate_filepath(val, key, err))
+	const size_t blen = strlen(b);
+	const size_t shorter = alen < blen ? alen : blen;
+
+	if(strncmp(a, b, shorter) != 0)
 		return false;
 
+	return alen == blen ||
+	       (alen > blen && a[blen] == '/') ||
+	       (blen > alen && b[alen] == '/');
+}
+
+// Strip trailing slashes so "/etc" and "/etc/" are treated identically
+static size_t path_len(const char *path)
+{
+	size_t len = strlen(path);
+	while(len > 1 && path[len - 1] == '/')
+		len--;
+
+	return len;
+}
+
+// The files Pi-hole writes and therefore must keep out of the document root.
+// Their content follows from what clients send - logged requests, resolved
+// names, imported settings - so serving them hands that straight back out, and a
+// name matching the Lua server-page pattern makes the web server evaluate them
+// rather than serve them.
+#define WRITTEN_FILES(conf) { \
+	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
+	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
+	&(conf).files.gravity_tmp, &(conf).files.pcap }
+
+// Reject a path that is inside (or is) the currently configured document root.
+//
+// This is one half of keeping the two apart; validate_webroot() rejects the
+// other direction, a document root moved on top of an existing file. Checking
+// only here would leave that ordering open.
+static bool reject_inside_webroot(const char *path, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
 	const char *webroot = config.webserver.paths.webroot.v.s;
-	if(webroot == NULL || webroot[0] == '\0')
+	if(webroot == NULL || webroot[0] == '\0' || path == NULL || path[0] != '/')
 		return true;
 
-	// Compare against the webroot with trailing slashes stripped so that
-	// "<webroot>" and "<webroot>/..." are both rejected, but a sibling
-	// path sharing the prefix (e.g. "<webroot>-backup") is not.
-	size_t wlen = strlen(webroot);
-	while(wlen > 1 && webroot[wlen - 1] == '/')
-		wlen--;
-	if(strncmp(val->s, webroot, wlen) == 0 &&
-	   (val->s[wlen] == '\0' || val->s[wlen] == '/'))
+	if(paths_overlap(webroot, path_len(webroot), path))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
 		         "%s: must not be inside the web server document root (webserver.paths.webroot = \"%s\")",
 		         key, webroot);
 		return false;
+	}
+
+	return true;
+}
+
+// Check the path relationships of a complete configuration.
+//
+// The per-item validators can only compare a new value against the values
+// currently in effect, which is not enough when several of them change together:
+// a request moving the document root and a log file below it in one go passes
+// both individual checks. Config also reaches FTL through the Teleporter, which
+// parses a whole file at once and never ran the per-item validators at all. This
+// runs over the resulting configuration instead and is the authoritative check -
+// call it before putting a new configuration in place.
+bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_LEN])
+{
+	const char *webroot = conf->webserver.paths.webroot.v.s;
+	if(webroot == NULL || webroot[0] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be an absolute path",
+		         conf->webserver.paths.webroot.k);
+		return false;
+	}
+
+	const size_t wlen = path_len(webroot);
+	if(wlen == 1 || paths_overlap(webroot, wlen, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         conf->webserver.paths.webroot.k, CONFIG_DIR);
+		return false;
+	}
+
+	const struct conf_item *written[] = WRITTEN_FILES(*conf);
+	for(size_t i = 0; i < ArraySize(written); i++)
+	{
+		const char *path = written[i]->v.s;
+		if(path == NULL || path[0] != '/')
+			continue;
+
+		if(paths_overlap(webroot, wlen, path))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN,
+			         "%s (\"%s\") must not be inside %s (\"%s\")",
+			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate a file path Pi-hole writes to (logs, databases, captures)
+bool validate_filepath_written(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!validate_filepath(val, key, err))
+		return false;
+
+	return reject_inside_webroot(val->s, key, err);
+}
+
+// As above, but an empty path is allowed (e.g., to disable PCAP)
+bool validate_filepath_written_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!validate_filepath_empty(val, key, err))
+		return false;
+
+	return reject_inside_webroot(val->s, key, err);
+}
+
+// As above, but a single dash is allowed (printing to stderr)
+bool validate_filepath_written_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!validate_filepath_dash(val, key, err))
+		return false;
+
+	return reject_inside_webroot(val->s, key, err);
+}
+
+// Kept for the web server log, which is the case that first made this necessary
+bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	return validate_filepath_written(val, key, err);
+}
+
+// Validate the web server's document root.
+//
+// Every file below this directory can be requested over the network once
+// webserver.serve_all is enabled, and files outside the web home are served
+// without authentication. A document root spanning Pi-hole's own configuration
+// would therefore hand out the API password hash, the TLS private key and the
+// databases; "/" would hand out everything the pihole user can open. It must
+// equally not come to span a file Pi-hole writes, see reject_inside_webroot().
+bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Regular file-path validation first
+	if(!validate_filepath(val, key, err))
+		return false;
+
+	if(val->s[0] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be an absolute path (\"%s\")", key, val->s);
+		return false;
+	}
+
+	const size_t len = path_len(val->s);
+
+	if(len == 1 || paths_overlap(val->s, len, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, CONFIG_DIR);
+		return false;
+	}
+
+	// Reject a document root that would come to contain a file Pi-hole writes
+	const struct conf_item *written[] = WRITTEN_FILES(config);
+	for(size_t i = 0; i < ArraySize(written); i++)
+	{
+		const char *path = written[i]->v.s;
+		if(path == NULL || path[0] != '/')
+			continue;
+
+		if(paths_overlap(val->s, len, path))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN,
+			         "%s: would contain %s (\"%s\")", key, written[i]->k, path);
+			return false;
+		}
 	}
 
 	return true;

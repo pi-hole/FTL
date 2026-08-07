@@ -1156,12 +1156,12 @@ void initConfig(struct config *conf)
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
-	conf->webserver.paths.webroot.h = "Server root on the host";
-	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid path");
+	conf->webserver.paths.webroot.h = "Server root on the host.\n\n Every file below this directory can be requested over the network once webserver.serve_all is enabled, so it cannot be \"/\" or any other directory containing \""CONFIG_DIR"\".";
+	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid absolute path not containing \""CONFIG_DIR"\"");
 	conf->webserver.paths.webroot.t = CONF_STRING;
 	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
-	conf->webserver.paths.webroot.c = validate_filepath;
+	conf->webserver.paths.webroot.c = validate_webroot;
 
 	conf->webserver.paths.webhome.k = "webserver.paths.webhome";
 	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
@@ -1333,7 +1333,7 @@ void initConfig(struct config *conf)
 	conf->files.database.t = CONF_STRING;
 	conf->files.database.f = FLAG_RESTART_FTL;
 	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
-	conf->files.database.c = validate_filepath;
+	conf->files.database.c = validate_filepath_written;
 
 	conf->files.tmp_db.k = "files.tmp_db";
 	conf->files.tmp_db.h = "The location of FTL's short-term temporary database (only used when database.forceDisk is true)";
@@ -1341,7 +1341,7 @@ void initConfig(struct config *conf)
 	conf->files.tmp_db.t = CONF_STRING;
 	conf->files.tmp_db.f = FLAG_RESTART_FTL;
 	conf->files.tmp_db.d.s = (char*)"/etc/pihole/pihole-tmp.db";
-	conf->files.tmp_db.c = validate_filepath;
+	conf->files.tmp_db.c = validate_filepath_written;
 
 	conf->files.gravity.k = "files.gravity";
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
@@ -1349,7 +1349,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.t = CONF_STRING;
 	conf->files.gravity.f = FLAG_RESTART_FTL;
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
-	conf->files.gravity.c = validate_filepath;
+	conf->files.gravity.c = validate_filepath_written;
 
 	conf->files.gravity_tmp.k = "files.gravity_tmp";
 	conf->files.gravity_tmp.h = "A temporary directory where Pi-hole can store files during gravity updates. This directory must be writable by the user running gravity (typically pihole).";
@@ -1357,7 +1357,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity_tmp.t = CONF_STRING;
 	conf->files.gravity_tmp.f = FLAG_RESTART_FTL;
 	conf->files.gravity_tmp.d.s = (char*)"/tmp";
-	conf->files.gravity_tmp.c = validate_stub; // Only type-based checking
+	conf->files.gravity_tmp.c = validate_filepath_written;
 
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
@@ -1372,7 +1372,7 @@ void initConfig(struct config *conf)
 	conf->files.pcap.t = CONF_STRING;
 	conf->files.pcap.f = FLAG_RESTART_FTL;
 	conf->files.pcap.d.s = (char*)"";
-	conf->files.pcap.c = validate_filepath_empty;
+	conf->files.pcap.c = validate_filepath_written_empty;
 
 	// sub-struct files.log
 	// conf->files.log.ftl is set in a separate function (getLogFilePath)
@@ -1383,7 +1383,7 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.t = CONF_STRING;
 	conf->files.log.dnsmasq.f = FLAG_RESTART_FTL;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
-	conf->files.log.dnsmasq.c = validate_filepath_dash;
+	conf->files.log.dnsmasq.c = validate_filepath_written_dash;
 
 	conf->files.log.webserver.k = "files.log.webserver";
 	conf->files.log.webserver.h = "The log file used by the webserver";
@@ -1976,7 +1976,7 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.t = CONF_STRING;
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
-	config.files.log.ftl.c = validate_filepath;
+	config.files.log.ftl.c = validate_filepath_written;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
 	// Check if the config file contains a different path

@@ -14,6 +14,8 @@
 #include "api/api.h"
 // config struct
 #include "config/config.h"
+// validate_config_paths()
+#include "config/validator.h"
 // struct clientsData
 #include "datastructure.h"
 // INT_MIN, INT_MAX, ...
@@ -871,6 +873,21 @@ static int api_config_patch(struct ftl_conn *api)
 			}
 		}
 
+// Reject a configuration whose paths conflict with each other. The
+		// per-item validators above only see one value at a time, so a request
+		// changing several of them at once has to be checked as a whole.
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!validate_config_paths(&newconf, errbuf))
+			{
+				free_config(&newconf, false);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid configuration",
+				                       errbuf);
+			}
+		}
+
 		// Install new configuration
 		replace_config(&newconf);
 
@@ -1182,6 +1199,19 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                       "bad_request",
 			                       "Invalid configuration",
 			                       errbuf);
+		}
+	}
+
+	// Reject a configuration whose paths conflict with each other
+	{
+		char pathbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(&newconf, pathbuf))
+		{
+			free_config(&newconf, false);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid configuration",
+			                       pathbuf);
 		}
 	}
 

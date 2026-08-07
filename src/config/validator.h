@@ -26,6 +26,11 @@ bool validate_filepath_two_slash(union conf_value *val, const char *key, char er
 bool validate_filepath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_filepath_written(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_filepath_written_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_filepath_written_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_regex_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);

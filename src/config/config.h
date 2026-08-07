@@ -31,7 +31,8 @@
 // enum web_theme
 #include "api/theme.h"
 
-#define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
+#define CONFIG_DIR "/etc/pihole"
+#define GLOBALTOMLPATH CONFIG_DIR"/pihole.toml"
 
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"

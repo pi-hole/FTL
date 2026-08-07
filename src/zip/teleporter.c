@@ -11,6 +11,8 @@
 #include "FTL.h"
 #include "zip/teleporter.h"
 #include "config/config.h"
+// validate_config_paths()
+#include "config/validator.h"
 // hostname()
 #include "daemon.h"
 // get_timestr(), TIMESTR_SIZE
@@ -330,6 +332,20 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 		free_config(&teleporter_config, false);
 		toml_free(toml);
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
+	}
+
+	// Hold the imported configuration to the same path rules the API enforces.
+	// readFTLtoml() only parses, it never runs the validators, so without this
+	// an import is a way around every one of them - including the ones keeping
+	// the document root away from the files Pi-hole writes.
+	char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_config_paths(&teleporter_config, patherr))
+	{
+		log_err("Teleporter: %s", patherr);
+		set_hint(hint, patherr);
+		free_config(&teleporter_config, false);
+		toml_free(toml);
+		return "File etc/pihole/pihole.toml in ZIP archive contains an invalid path configuration";
 	}
 
 	// Test dnsmasq config in the imported configuration
