@@ -171,12 +171,17 @@ int api_padd(struct ftl_conn *api)
 		cJSON_ArrayForEach(entry, gateway)
 		{
 			cJSON *family = cJSON_GetObjectItemCaseSensitive(entry, "family");
-			if(gw_v4_name == NULL && strcmp(cJSON_GetStringValue(family), "inet") == 0)
+			// cJSON_GetStringValue() returns NULL for a missing or
+			// non-string item, so it can never be handed to strcmp() as is
+			const char *family_str = cJSON_GetStringValue(family);
+			if(family_str == NULL)
+				continue;
+			if(gw_v4_name == NULL && strcmp(family_str, "inet") == 0)
 			{
 				gw_v4_name = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "interface"));
 				gw_v4_addr = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "address"));
 			}
-			if(gw_v6_name == NULL && strcmp(cJSON_GetStringValue(family), "inet6") == 0)
+			if(gw_v6_name == NULL && strcmp(family_str, "inet6") == 0)
 			{
 				gw_v6_name = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "interface"));
 				gw_v6_addr = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "address"));
@@ -198,7 +203,12 @@ int api_padd(struct ftl_conn *api)
 		unsigned int v4_addrs = 0, v6_addrs = 0;
 		cJSON_ArrayForEach(entry, interfaces)
 		{
-			if(strcmp(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "name")), gw_v4_name) == 0)
+			// Both the interface name and the gateway name may be absent -
+			// the latter when no gateway of that family was found above
+			const char *if_name = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "name"));
+			if(if_name == NULL)
+				continue;
+			if(gw_v4_name != NULL && strcmp(if_name, gw_v4_name) == 0)
 			{
 				// Add first interface address with family == inet
 				cJSON *addr = NULL;
@@ -206,7 +216,8 @@ int api_padd(struct ftl_conn *api)
 				cJSON_ArrayForEach(addr, addrs)
 				{
 					cJSON *family = cJSON_GetObjectItemCaseSensitive(addr, "family");
-					if(strcmp(cJSON_GetStringValue(family), "inet") == 0)
+					const char *addr_family = cJSON_GetStringValue(family);
+					if(addr_family != NULL && strcmp(addr_family, "inet") == 0)
 					{
 						if(v4_addrs == 0)
 						{
@@ -228,7 +239,7 @@ int api_padd(struct ftl_conn *api)
 				cJSON *tx_bytes = cJSON_GetObjectItemCaseSensitive(stats, "tx_bytes");
 				JSON_ADD_ITEM_TO_OBJECT(iface_v4, "tx_bytes", cJSON_Duplicate(tx_bytes, true));
 			}
-			if(strcmp(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(entry, "name")), gw_v6_name) == 0)
+			if(gw_v6_name != NULL && strcmp(if_name, gw_v6_name) == 0)
 			{
 				// Add first interface address with family == inet
 				cJSON *addr = NULL;
@@ -236,7 +247,8 @@ int api_padd(struct ftl_conn *api)
 				cJSON_ArrayForEach(addr, addrs)
 				{
 					cJSON *family = cJSON_GetObjectItemCaseSensitive(addr, "family");
-					if(strcmp(cJSON_GetStringValue(family), "inet6") == 0)
+					const char *addr_family = cJSON_GetStringValue(family);
+					if(addr_family != NULL && strcmp(addr_family, "inet6") == 0)
 					{
 						if(v6_addrs == 0)
 						{
