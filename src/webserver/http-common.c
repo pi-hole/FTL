@@ -448,6 +448,10 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 			if(api->action_path != NULL)
 				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri_raw);
+			// Returning NULL reads as "route did not match", which yields a
+			// 404 instead of dereferencing the failed allocation right below
+			if(api->action_path == NULL)
+				return NULL;
 			api->action_path[strlen(path)] = '\0';
 			return api->request->local_uri_raw + strlen(path) + 1u;
 		}
@@ -457,6 +461,8 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 			if(api->action_path != NULL)
 				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri_raw);
+			if(api->action_path == NULL)
+				return NULL;
 			return "";
 		}
 		else

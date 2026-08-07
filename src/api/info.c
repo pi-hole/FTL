@@ -998,6 +998,14 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 	// Split ID at commas and validate every ID as a number
 	cJSON *ids = cJSON_CreateArray();
 	char *id = strdup(api->item);
+	if(id == NULL)
+	{
+		cJSON_Delete(ids);
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to allocate memory for the message IDs",
+		                       strerror(errno));
+	}
 	char *saveptr = NULL;
 	char *token = strtok_r(id, ",", &saveptr);
 	while(token != NULL)
