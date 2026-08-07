@@ -740,6 +740,16 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
+		// Pi-hole's web interface is built from Lua *pages* (".lp"), which are
+		// the only files the embedded web server may evaluate. CivetWeb would
+		// otherwise also run standalone ".lua" scripts and expand server-side
+		// includes in ".shtml" files, both through patterns that default to
+		// being enabled. Pin all three: an empty pattern matches nothing (see
+		// match_prefix_strlen(), whose callers all test for a match > 0) and
+		// therefore never selects a handler.
+		"lua_server_page_pattern", "**.lp$",
+		"lua_script_pattern", "",
+		"ssi_pattern", "",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
