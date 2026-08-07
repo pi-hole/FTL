@@ -871,6 +871,10 @@ int api_queries(struct ftl_conn *api)
 
 		// Apply possible domain regex filters to Query Log
 		const char *domain = (const char*)sqlite3_column_text(read_stmt, 4); // d.domain
+		// A broken row can carry a NULL domain. Substitute an empty string
+		// so neither the regex filters nor the JSON output see a NULL
+		if(domain == NULL)
+			domain = "";
 		if(N_regex_domains > 0)
 		{
 			bool match = false;
@@ -897,6 +901,8 @@ int api_queries(struct ftl_conn *api)
 
 		// Apply possible client regex filters to Query Log
 		const char *client_ip = (const char*)sqlite3_column_text(read_stmt, 10); // c.ip
+		if(client_ip == NULL)
+			client_ip = "";
 		const char *client_name = NULL;
 		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT && sqlite3_column_bytes(read_stmt, 11) > 0)
 			client_name = (const char*)sqlite3_column_text(read_stmt, 11); // c.name
