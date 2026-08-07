@@ -732,6 +732,12 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	if(!fifo_log)
 		return;
 
+	// Nothing to store. A zero length would index message[idx][-1] when
+	// looking for a trailing newline below, so drop the record entirely
+	// rather than consuming a slot for it
+	if(payload == NULL || length == 0)
+		return;
+
 	unsigned int idx = fifo_log->logs[which].next_id++;
 	if(idx >= LOG_SIZE)
 	{
