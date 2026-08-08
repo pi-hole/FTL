@@ -830,11 +830,14 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		const int count = sqlite3_column_int(stmt, 1);
 
 		cJSON *item = JSON_NEW_OBJECT();
-		unsigned int port = -1;
+		// Needs a signed data type here as -1 means: no port applicable
+		int port = -1;
+		unsigned int parsed_port = 0;
 		char buffer[512] =  { 0 };
-		if(sscanf(upstream, "%511[^#]#%u", buffer, &port) == 2)
+		if(sscanf(upstream, "%511[^#]#%u", buffer, &parsed_port) == 2)
 		{
 			buffer[sizeof(buffer)-1] = '\0';
+			port = (int)parsed_port;
 			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer);
 		}
 		else

@@ -437,7 +437,7 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 	return len;
 }
 
-const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)
+const char* startsWith(const char *path, struct ftl_conn *api)
 {
 	// We use local_uri_raw here to get the unescaped URI, see
 	// https://github.com/civetweb/civetweb/pull/975
