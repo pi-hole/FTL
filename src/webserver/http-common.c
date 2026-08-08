@@ -411,30 +411,12 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 	if(!source)
 		return -1;
 
-	// Allocate a temporary buffer to store the possibly URI-encoded value
-	// of the variable. We use the real destination later to store the
-	// decoded value. The decoded value will always be shorter than the
-	// encoded value, so using the same length is fine.
-	char *tempbuf = calloc(dest_len, sizeof(char));
-	if(!tempbuf)
-	{
-		log_err("get_string_var: Out of memory");
-		return -1;
-	}
-
-	// Extract value of the particular variable
-	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
-
-	// Decode the URI component if needed
-	if(len > 0)
-		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
-
-	// Free the temporary buffer, if anything was decoded it's now stored in
-	// dest
-	free(tempbuf);
-
-	// Return the length of the decoded string
-	return len;
+	// Extract the value of the particular variable. mg_get_var() decodes it
+	// for us - the query string reaches us as it was sent because CivetWeb's
+	// decode_query_string is left at its default "no". Decoding a second
+	// time here would corrupt every value containing a literal '%' and let
+	// one containing a space or '+' fail altogether.
+	return mg_get_var(source, strlen(source), var, dest, dest_len);
 }
 
 const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)

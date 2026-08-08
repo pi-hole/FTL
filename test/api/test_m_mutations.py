@@ -546,6 +546,36 @@ class TestPutErrors:
         assert r.status_code == 400, \
             f"Expected 400, got {r.status_code} {r.text}"
 
+    def test_put_and_delete_group_with_percent_in_name(self, api_session):
+        """A '%' survives: path and ?item= are both decoded exactly once."""
+        name = "_pytest_%41_group"
+        url = f"{FTL_URL}/api/groups/{quote(name)}?item={quote(name)}"
+
+        r = api_session.put(url,
+                            json={"comment": "pytest percent", "enabled": True},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+        assert _j(r)["groups"][0]["name"] == name
+
+        # Clean up
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    def test_put_and_delete_group_with_space_via_item_query(self, api_session):
+        """A space in ?item= is part of the value, not a decoding error."""
+        name = "_pytest space group"
+        url = f"{FTL_URL}/api/groups?item={quote(name)}"
+
+        r = api_session.put(url,
+                            json={"comment": "pytest space", "enabled": True},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+        assert _j(r)["groups"][0]["name"] == name
+
+        # Clean up
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
 
 # ===========================================================================
 # Batch delete tests
