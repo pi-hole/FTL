@@ -380,7 +380,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 	return true;
 }
 
-int set_config_from_CLI(const char *key, const char *value)
+// Check whether the calling user may modify Pi-hole's config. This requires
+// either root or user pihole with the CAP_CHOWN capability on the binary.
+static bool config_writable_from_CLI(void)
 {
 	// Check if we are either
 	// - root, or
@@ -399,7 +401,7 @@ int set_config_from_CLI(const char *key, const char *value)
 			       current_user != NULL ? current_user->pw_name : "(unknown)");
 
 		printf("Please run this command using sudo\n\n");
-		return EXIT_FAILURE;
+		return false;
 	}
 
 	// Return early if the user tries to change some settings but the config
@@ -407,8 +409,16 @@ int set_config_from_CLI(const char *key, const char *value)
 	if(config.misc.readOnly.v.b)
 	{
 		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
-		return EXIT_FAILURE;
+		return false;
 	}
+
+	return true;
+}
+
+int set_config_from_CLI(const char *key, const char *value)
+{
+	if(!config_writable_from_CLI())
+		return EXIT_FAILURE;
 
 	// Identify config option
 	struct config newconf;
@@ -528,6 +538,69 @@ int set_config_from_CLI(const char *key, const char *value)
 	putchar('\n');
 	writeFTLtoml(false, NULL);
 	return OKAY;
+}
+
+int prometheus_token_from_CLI(const bool revoke)
+{
+	if(!config_writable_from_CLI())
+		return EXIT_FAILURE;
+
+	// Generate a random 256 bit token. We reuse generate_password() (without
+	// requesting the slow balloon hash) purely to obtain a base64-encoded,
+	// cryptographically secure random string. Only its SHA-256 hash is stored,
+	// so this is the one and only time the raw token can be shown.
+	char *token = NULL, *hash = NULL;
+	if(revoke)
+		hash = strdup("");
+	else
+	{
+		if(!generate_password(&token, NULL))
+		{
+			log_err("Failed to generate Prometheus token");
+			return EXIT_FAILURE;
+		}
+
+		hash = sha256_hex(token);
+	}
+
+	if(hash == NULL)
+	{
+		log_err("Failed to hash Prometheus token");
+		free(token);
+		return EXIT_FAILURE;
+	}
+
+	// Install the new hash, replacing (and thereby invalidating) any
+	// previously configured token. Ownership of hash is transferred to the
+	// config item here.
+	struct config newconf;
+	duplicate_config(&newconf, &config);
+	struct conf_item *new_item = &newconf.webserver.api.prometheus.token;
+	if(new_item->t == CONF_STRING_ALLOCATED)
+		free(new_item->v.s);
+	new_item->v.s = hash;
+	new_item->t = CONF_STRING_ALLOCATED;
+	replace_config(&newconf);
+
+	if(!writeFTLtoml(false, NULL))
+	{
+		log_err("Failed to write config file");
+		free(token);
+		return EXIT_FAILURE;
+	}
+
+	if(revoke)
+	{
+		puts("Prometheus scrape token revoked, /api/metrics is disabled");
+		return EXIT_SUCCESS;
+	}
+
+	puts("New Prometheus scrape token (shown only once):\n");
+	printf("  %s\n\n", token);
+	puts("Stored hash in webserver.api.prometheus.token");
+	free(token);
+
+	return EXIT_SUCCESS;
 }
 
 int get_config_from_CLI(const char *key, const bool quiet)
