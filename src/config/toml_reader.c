@@ -25,6 +25,8 @@
 #include "api/api.h"
 // readEnvValue()
 #include "config/env.h"
+// log_teleporter_skipped()
+#include "database/message-table.h"
 
 // Private prototypes
 static bool parseTOML(toml_result_t *toml, const unsigned int version);
@@ -234,6 +236,45 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// Skip this config item if it does not exist
 		if(!item_available)
 			continue;
+
+		// An option the API may not set is equally not settable by uploading a
+		// file through the API. A Teleporter archive carries a whole
+		// pihole.toml, so without this it would be a way around
+		// FLAG_API_READ_ONLY - in the same file that may name a program for
+		// dnsmasq to run. Everything else in the archive is imported as usual
+		// and the value configured on this host is kept, so restoring a backup
+		// taken elsewhere does not fail, it just does not carry these over.
+		// The message table entry makes that visible in the web interface
+		// rather than only in the log.
+		//
+		// Importing the same archive with "pihole-FTL --teleporter <file>" does
+		// apply them: that already requires access to the host, which is the
+		// whole point of the distinction.
+		if(teleporter && !cli_mode && new_conf_item->f & FLAG_API_READ_ONLY)
+		{
+			// Parse into a scratch copy so the archive's value can be looked
+			// at without replacing the one we keep. Only a real difference is
+			// worth reporting - an archive exported on this host carries these
+			// items unchanged, and warning about those would be pure noise.
+			struct conf_item scratch = *new_conf_item;
+			if(scratch.t == CONF_JSON_STRING_ARRAY)
+				scratch.v.json = cJSON_Duplicate(scratch.v.json, true);
+			else if(scratch.t == CONF_STRING_ALLOCATED)
+				scratch.v.s = strdup(scratch.v.s);
+
+			readTOMLvalue(&scratch, scratch.p[level-1], table[level-2], newconf);
+
+			if(!compare_config_item(scratch.t, &scratch.v, &new_conf_item->v))
+				log_teleporter_skipped(new_conf_item->k);
+
+			// The type may have been promoted to an allocated one while parsing
+			if(scratch.t == CONF_JSON_STRING_ARRAY)
+				cJSON_Delete(scratch.v.json);
+			else if(scratch.t == CONF_STRING_ALLOCATED)
+				free(scratch.v.s);
+
+			continue;
+		}
 
 		// Try to parse config item
 		readTOMLvalue(new_conf_item, new_conf_item->p[level-1], table[level-2], newconf);

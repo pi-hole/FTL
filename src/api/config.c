@@ -727,7 +727,7 @@ static int api_config_patch(struct ftl_conn *api)
 			continue;
 		}
 
-		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
+		if(new_item->f & FLAG_API_CLI_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
 		{
 			char *key = strdup(new_item->k);
 			free_config(&newconf, false);
@@ -736,6 +736,7 @@ static int api_config_patch(struct ftl_conn *api)
 			                            "This config option can only be set in pihole.toml, not via the API",
 			                            key, true, true);
 		}
+
 
 		// Check if this is a write-only config item with the placeholder value
 		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
@@ -770,6 +771,23 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Get pointer to memory location of this conf_item (global)
 		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		// Options that hand code to something Pi-hole then runs are not
+		// settable from a web session, see FLAG_API_READ_ONLY.
+		//
+		// Only an actual change is refused. A client sending the whole
+		// configuration back, as the web interface does, mentions every option
+		// including this one, and rejecting it for that alone would make every
+		// save fail.
+		if(new_item->f & FLAG_API_READ_ONLY && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf, false);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
+			                            key, true, true);
+		}
 
 		// Config items that are set via environment variables cannot be changed
 		// via the API
@@ -1038,6 +1056,19 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                            key, true, true);
 		}
 
+		// Options that hand code to something Pi-hole then runs are not
+		// settable from a web session, see FLAG_API_READ_ONLY
+		if(new_item->f & FLAG_API_READ_ONLY)
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf, false);
+			free_config_path(requested_path);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
+			                            key, true, true);
+		}
+
 		// Check if this entry exists in the array
 		int idx = 0;
 		for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
@@ -1241,10 +1272,15 @@ int api_config_properties(struct ftl_conn *api)
 			reason = "read_only";
 			description = "Config is in read-only mode";
 		}
-		else if(conf_item->f & FLAG_READ_ONLY)
+		else if(conf_item->f & FLAG_API_CLI_READ_ONLY)
 		{
 			reason = "read_only";
 			description = "Variable can only be set in pihole.toml, not via API";
+		}
+		else if(conf_item->f & FLAG_API_READ_ONLY)
+		{
+			reason = "read_only";
+			description = "Variable can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via API";
 		}
 		else
 			continue;
