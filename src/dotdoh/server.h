@@ -79,14 +79,14 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
-// FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener on port
-// 853. Runs only when dns.dot is enabled. Terminates TLS itself (DoT is not
+// FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener. Runs only
+// when dns.dot is a non-zero port. Terminates TLS itself (DoT is not
 // HTTP, so it needs its own raw-TLS listener) and resolves via
 // dotdoh_server_resolve().
 void *dotdoh_dot_thread(void *val);
 
 // FTL worker thread entry for the inbound DoQ (DNS-over-QUIC, RFC 9250) listener
-// on UDP port 853. Runs only when dns.doq is enabled. Terminates QUIC itself (DoQ
+// on UDP. Runs only when dns.doq is a non-zero port. Terminates QUIC itself (DoQ
 // is neither HTTP nor TCP) and drives the same loopback handoff to dnsmasq the DoT
 // listener uses, one non-blocking state machine per in-flight query.
 void *dotdoh_doq_thread(void *val);

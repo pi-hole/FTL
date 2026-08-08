@@ -298,9 +298,9 @@ components:
                 doh:
                   type: boolean
                 dot:
-                  type: boolean
+                  type: integer
                 doq:
-                  type: boolean
+                  type: integer
                 blocking:
                   type: object
                   properties:
@@ -774,8 +774,8 @@ components:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             upstreamCA: ""
             doh: true
-            dot: true
-            doq: true
+            dot: 853
+            doq: 853
             CNAMEdeepInspect: true
             EDNS0ECS: true
             ignoreLocalhost: false

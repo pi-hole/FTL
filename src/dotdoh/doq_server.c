@@ -7,8 +7,8 @@
 *
 *  DoQ carries DNS on QUIC streams with the same 2-byte length prefix DoT uses,
 *  one query per client-initiated bidirectional stream. It is neither HTTP nor
-*  TCP, so it gets its own listener on UDP/853 next to the DoT listener on
-*  TCP/853 (different transports may share a port number).
+*  TCP, so it gets its own UDP listener (dns.doq, 853 by default) next to the DoT
+*  listener on TCP (different transports may share a port number).
 *
 *  Like the DoT listener this is a single-threaded event loop: OpenSSL owns the
 *  QUIC transport (handshake, loss recovery, flow control, address validation)
@@ -61,7 +61,10 @@
 
 // RFC 9250 Sec. 4.1.1: DoQ uses UDP port 853 by default - the same number DoT
 // uses on TCP, which does not collide.
-#define DOQ_PORT 853
+// Listener port, read once from dns.doq when the thread starts so the bind, the
+// log line and the local address conn_local_ip() fabricates cannot disagree if
+// the config is replaced underneath us.
+static uint16_t doq_port = 853;
 // ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1.2). QUIC mandates ALPN, so a
 // client that does not offer it is rejected during the handshake.
 #define DOQ_ALPN_STR "doq"
@@ -276,8 +279,12 @@ fail:
 }
 
 // Create a bound, non-blocking UDP socket for the given family, or -1. The v6
-// socket is v6-only so v4 and v6 can share port 853 and v4 clients arrive as
+// socket is v6-only so v4 and v6 can share the port and v4 clients arrive as
 // AF_INET rather than v4-mapped.
+//
+// No SO_REUSEADDR: UDP has no TIME_WAIT to work around, and Linux lets two UDP
+// sockets share an address once both set it - a dns.doq aimed at a port already
+// in use has to fail here, not silently take a share of its datagrams.
 static int doq_bind_socket(int family)
 {
 	const int fd = socket(family, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
@@ -302,7 +309,7 @@ static int doq_bind_socket(int family)
 		struct sockaddr_in *sa = (struct sockaddr_in *)(void *)&ss;
 		sa->sin_family = AF_INET;
 		sa->sin_addr.s_addr = htonl(INADDR_ANY);
-		sa->sin_port = htons(DOQ_PORT);
+		sa->sin_port = htons(doq_port);
 		slen = sizeof(*sa);
 	}
 	else
@@ -310,13 +317,13 @@ static int doq_bind_socket(int family)
 		struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(void *)&ss;
 		sa->sin6_family = AF_INET6;
 		sa->sin6_addr = in6addr_any;
-		sa->sin6_port = htons(DOQ_PORT);
+		sa->sin6_port = htons(doq_port);
 		slen = sizeof(*sa);
 	}
 	if(bind(fd, (struct sockaddr *)&ss, slen) != 0)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ %s bind on UDP port %d failed: %s",
-		          family == AF_INET ? "IPv4" : "IPv6", DOQ_PORT, strerror(errno));
+		          family == AF_INET ? "IPv4" : "IPv6", doq_port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -571,14 +578,14 @@ static void conn_local_ip(const char *peer, char *out, size_t outlen)
 	{
 		struct sockaddr_in *sa = (struct sockaddr_in *)(void *)&ss;
 		sa->sin_family = family = AF_INET;
-		sa->sin_port = htons(DOQ_PORT);
+		sa->sin_port = htons(doq_port);
 		slen = sizeof(*sa);
 	}
 	else if(inet_pton(AF_INET6, peer, &((struct sockaddr_in6 *)(void *)&ss)->sin6_addr) == 1)
 	{
 		struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(void *)&ss;
 		sa->sin6_family = family = AF_INET6;
-		sa->sin6_port = htons(DOQ_PORT);
+		sa->sin6_port = htons(doq_port);
 		slen = sizeof(*sa);
 	}
 	else
@@ -1086,6 +1093,8 @@ void *dotdoh_doq_thread(void *val)
 	sigaddset(&set, SIGHUP);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
+	doq_port = config.dns.doq.v.u16;
+
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		g_streams[i].upfd = -1;
 
@@ -1119,12 +1128,12 @@ void *dotdoh_doq_thread(void *val)
 
 	if(listeners_open() == 0)
 	{
-		log_err("dotdoh: DoQ listener could not bind any socket on UDP port %d", DOQ_PORT);
+		log_err("dotdoh: DoQ listener could not bind any socket on UDP port %d", doq_port);
 		SSL_CTX_free(g_ctx);
 		g_ctx = NULL;
 		return NULL;
 	}
-	log_info("dotdoh: DoQ server listening on UDP port %d", DOQ_PORT);
+	log_info("dotdoh: DoQ server listening on UDP port %d", doq_port);
 
 	time_t last_cert_check = doq_now();
 	while(!killed)

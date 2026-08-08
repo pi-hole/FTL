@@ -699,6 +699,12 @@ setup() {
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
   assert_line --index 0 "80o,443os,[::]:80o,[::]:443os"
+
+  # The inbound DoT/DoQ listeners are ports, not switches
+  run bash -c './pihole-FTL --config dns.dot'
+  assert_line --index 0 "853"
+  run bash -c './pihole-FTL --config dns.doq'
+  assert_line --index 0 "853"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -1587,6 +1593,14 @@ setup() {
 @test "Config validation working on the CLI (type-based checking)" {
   run bash -c './pihole-FTL --config dns.port true'
   assert_line --index 0 'Config setting dns.port is invalid, allowed options are: unsigned integer (16 bit)'
+  assert_failure 2
+
+  run bash -c './pihole-FTL --config dns.dot true'
+  assert_line --index 0 'Config setting dns.dot is invalid, allowed options are: unsigned integer (16 bit)'
+  assert_failure 2
+
+  run bash -c './pihole-FTL --config dns.doq true'
+  assert_line --index 0 'Config setting dns.doq is invalid, allowed options are: unsigned integer (16 bit)'
   assert_failure 2
 
   run bash -c './pihole-FTL --config dns.revServers "abc"'

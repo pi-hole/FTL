@@ -613,16 +613,18 @@ void initConfig(struct config *conf)
 	conf->dns.doh.c = validate_stub;
 
 	conf->dns.dot.k = "dns.dot";
-	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
-	conf->dns.dot.t = CONF_BOOL;
-	conf->dns.dot.d.b = true;
+	conf->dns.dot.h = "Port used by the inbound DNS-over-TLS (DoT) server, or 0 to disable it. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver). The default is the TCP port 853 assigned in RFC 7858, Sec. 3.1.";
+	conf->dns.dot.a = cJSON_CreateStringReference("Any available valid (1 - 65535) port number, or 0 to disable");
+	conf->dns.dot.t = CONF_UINT16;
+	conf->dns.dot.d.u16 = 853u;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
 
 	conf->dns.doq.k = "dns.doq";
-	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
-	conf->dns.doq.t = CONF_BOOL;
-	conf->dns.doq.d.b = true;
+	conf->dns.doq.h = "Port used by the inbound DNS-over-QUIC (DoQ) server, or 0 to disable it. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support. The default is the UDP port 853 assigned in RFC 9250, Sec. 4.1.1.";
+	conf->dns.doq.a = cJSON_CreateStringReference("Any available valid (1 - 65535) port number, or 0 to disable");
+	conf->dns.doq.t = CONF_UINT16;
+	conf->dns.doq.d.u16 = 853u;
 	conf->dns.doq.f = FLAG_RESTART_FTL;
 	conf->dns.doq.c = validate_stub;
 

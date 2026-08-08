@@ -3706,18 +3706,19 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	{
 		dotdoh_init();
 
-		// Start the inbound DoT (DNS-over-TLS) listener if enabled. (The outbound
-		// encrypted-upstream proxy above manages its own auto-scaled worker pool;
-		// the inbound DoT listener is a separate long-lived FTL thread.)
-		if(config.dns.dot.v.b &&
+		// Start the inbound DoT (DNS-over-TLS) listener if dns.dot gives it a
+		// port. (The outbound encrypted-upstream proxy above manages its own
+		// auto-scaled worker pool; the inbound DoT listener is a separate
+		// long-lived FTL thread.)
+		if(config.dns.dot.v.u16 > 0 &&
 		   pthread_create( &threads[DOTDOH_DOT], &attr, dotdoh_dot_thread, NULL ) != 0)
 		{
 			log_crit("Unable to create dotdoh DoT thread. Exiting...");
 			exit(EXIT_FAILURE);
 		}
 
-		// Likewise for the inbound DoQ (DNS-over-QUIC) listener on UDP/853.
-		if(config.dns.doq.v.b &&
+		// Likewise for the inbound DoQ (DNS-over-QUIC) listener, on UDP.
+		if(config.dns.doq.v.u16 > 0 &&
 		   pthread_create( &threads[DOTDOH_DOQ], &attr, dotdoh_doq_thread, NULL ) != 0)
 		{
 			log_crit("Unable to create dotdoh DoQ thread. Exiting...");

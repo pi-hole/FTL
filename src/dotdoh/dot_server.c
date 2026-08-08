@@ -54,7 +54,9 @@
 #include <sys/prctl.h>
 #include <time.h>
 
-#define DOT_PORT 853
+// Listener port, read once from dns.dot when the thread starts so the bind and
+// the log line cannot disagree if the config is replaced underneath us.
+static uint16_t dot_port = 853;
 // Cap concurrent DoT connections so a flood cannot exhaust memory. Each slot
 // holds a small state record plus ~192 KiB of I/O buffers, allocated once and
 // then pooled across connections (freed only at thread shutdown), so the cap
@@ -754,7 +756,7 @@ static int drive_conn(struct dot_conn *c)
 }
 
 // Create a bound, listening, non-blocking DoT socket for the given family, or -1.
-// The v6 socket is v6-only so v4 and v6 can share port 853 (and v4 clients arrive
+// The v6 socket is v6-only so v4 and v6 can share the port (and v4 clients arrive
 // as AF_INET, not v4-mapped).
 static int dot_listen_socket(int family)
 {
@@ -778,7 +780,7 @@ static int dot_listen_socket(int family)
 		struct sockaddr_in *sa = (struct sockaddr_in *)(void *)&ss;
 		sa->sin_family = AF_INET;
 		sa->sin_addr.s_addr = htonl(INADDR_ANY);
-		sa->sin_port = htons(DOT_PORT);
+		sa->sin_port = htons(dot_port);
 		slen = sizeof(*sa);
 	}
 	else
@@ -786,13 +788,13 @@ static int dot_listen_socket(int family)
 		struct sockaddr_in6 *sa = (struct sockaddr_in6 *)(void *)&ss;
 		sa->sin6_family = AF_INET6;
 		sa->sin6_addr = in6addr_any;
-		sa->sin6_port = htons(DOT_PORT);
+		sa->sin6_port = htons(dot_port);
 		slen = sizeof(*sa);
 	}
 	if(bind(fd, (struct sockaddr *)&ss, slen) != 0 || listen(fd, SOMAXCONN) != 0)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoT %s bind/listen on port %d failed: %s",
-		          family == AF_INET ? "IPv4" : "IPv6", DOT_PORT, strerror(errno));
+		          family == AF_INET ? "IPv4" : "IPv6", dot_port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -888,6 +890,8 @@ void *dotdoh_dot_thread(void *val)
 	sigaddset(&set, SIGHUP);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
+	dot_port = config.dns.dot.v.u16;
+
 	// Wait for the webserver thread to write the TLS certificate before loading
 	// it. On a fresh install it does not exist yet; retrying (instead of exiting)
 	// avoids leaving DoT down until the next restart. `killed` breaks us out.
@@ -913,10 +917,10 @@ void *dotdoh_dot_thread(void *val)
 	if(f6 >= 0) lfds[nlisten++] = f6;
 	if(nlisten == 0)
 	{
-		log_err("dotdoh: DoT listener could not bind any socket on port %d", DOT_PORT);
+		log_err("dotdoh: DoT listener could not bind any socket on port %d", dot_port);
 		return NULL;
 	}
-	log_info("dotdoh: DoT server listening on port %d", DOT_PORT);
+	log_info("dotdoh: DoT server listening on port %d", dot_port);
 
 	time_t last_cert_check = dot_now();
 	while(!killed)
