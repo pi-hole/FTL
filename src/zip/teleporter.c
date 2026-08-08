@@ -334,10 +334,33 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 	}
 
-	// Hold the imported configuration to the same path rules the API enforces.
-	// readFTLtoml() only parses, it never runs the validators, so without this
-	// an import is a way around every one of them - including the ones keeping
-	// the document root away from the files Pi-hole writes.
+	// Hold every value in the archive to the validator its config item declares.
+	//
+	// readFTLtoml() only parses - the API, the CLI and environment variables all
+	// run the validators, so without this the import is the one way in that does
+	// not. That is not a lesser path: it is how a value the API refuses reaches
+	// the running configuration, including the embedded newlines that the checks
+	// on dns.hostRecord, dhcp.hosts, dhcp.leaseTime and the other dnsmasq-bound
+	// options exist to reject.
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(&teleporter_config, i);
+		if(conf_item->c == NULL)
+			continue;
+
+		char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!conf_item->c(&conf_item->v, conf_item->k, valerr))
+		{
+			log_err("Teleporter: %s", valerr);
+			set_hint(hint, valerr);
+			free_config(&teleporter_config, false);
+			toml_free(toml);
+			return "File etc/pihole/pihole.toml in ZIP archive contains an invalid value";
+		}
+	}
+
+	// The per-item validators above see one value at a time, so the rules
+	// spanning several of them are checked on the assembled configuration
 	char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
 	if(!validate_config_paths(&teleporter_config, patherr))
 	{

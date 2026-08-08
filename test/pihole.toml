@@ -1078,13 +1078,25 @@
     validity = 47
 
   [webserver.paths]
-    # Server root on the host
+    # Server root on the host.
+    #
+    # Every file below this directory can be requested over the network once
+    # webserver.serve_all is enabled, so it cannot be "/" or any other directory
+    # containing "/etc/pihole".
+    #
+    # Relocating the document root decides which files the web server serves, so it cannot
+    # be set through the API. Set it in /etc/pihole/pihole.toml, through an environment
+    # variable, or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
-    #     A valid path
+    #     A valid absolute path not containing "/etc/pihole"
     webroot = "/var/www/html"
 
     # Sub-directory of the root containing the web interface
+    #
+    # This decides where the web server serves the interface from, so it cannot be set
+    # through the API. Set it in /etc/pihole/pihole.toml, through an environment variable,
+    # or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
     #     A valid subpath, both slashes are needed!
@@ -1102,6 +1114,10 @@
     # empty. Setting this field to an incorrect value may result in the web interface not
     # being accessible.
     # Don't use this setting if you are not using a reverse proxy!
+    #
+    # This decides where the web server serves the interface from, so it cannot be set
+    # through the API. Set it in /etc/pihole/pihole.toml, through an environment variable,
+    # or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
     #     A valid URL prefix or empty

@@ -382,14 +382,72 @@ static bool paths_overlap(const char *a, const size_t alen, const char *b)
 	       (blen > alen && b[alen] == '/');
 }
 
-// Strip trailing slashes so "/etc" and "/etc/" are treated identically
-static size_t path_len(const char *path)
+// Rewrite an absolute path into the one spelling of it we compare against:
+// repeated slashes collapsed, "." segments dropped and ".." resolved, clamping
+// at the root. Without this the comparisons below are defeated by writing the
+// same directory differently - "/." and "//etc/pihole" name the root and the
+// configuration directory just as well as "/" and "/etc/pihole" do.
+//
+// Resolution is lexical, so a symbolic link still points where it points. That
+// is deliberate: realpath() needs the path to exist, which would stop a
+// directory from being configured before it is created, and planting a link in
+// the first place already requires access to the host.
+//
+// Returns the length written, or 0 if the path is not absolute or does not fit,
+// which callers treat as "reject" rather than "skip the check".
+#define NORMALIZED_PATH_LEN 4096
+static size_t normalize_path(const char *path, char *out, const size_t outlen)
 {
-	size_t len = strlen(path);
-	while(len > 1 && path[len - 1] == '/')
-		len--;
+	if(path == NULL || path[0] != '/' || outlen < 2)
+		return 0;
 
-	return len;
+	size_t o = 0;
+	out[o++] = '/';
+
+	for(const char *p = path; *p != '\0';)
+	{
+		// Skip over the separator(s) before this segment
+		while(*p == '/')
+			p++;
+		if(*p == '\0')
+			break;
+
+		const char *seg = p;
+		while(*p != '\0' && *p != '/')
+			p++;
+		const size_t seglen = (size_t)(p - seg);
+
+		// "." is the directory we are already in
+		if(seglen == 1 && seg[0] == '.')
+			continue;
+
+		// ".." drops the segment before it, and does nothing at the root
+		if(seglen == 2 && seg[0] == '.' && seg[1] == '.')
+		{
+			while(o > 1 && out[o - 1] != '/')
+				o--;
+			if(o > 1)
+				o--;
+			continue;
+		}
+
+		// Separator, unless we are still at the leading slash
+		if(o > 1)
+		{
+			if(o + 1 >= outlen)
+				return 0;
+			out[o++] = '/';
+		}
+
+		if(o + seglen >= outlen)
+			return 0;
+		memcpy(out + o, seg, seglen);
+		o += seglen;
+	}
+
+	out[o] = '\0';
+
+	return o;
 }
 
 // The files Pi-hole writes and therefore must keep out of the document root.
@@ -413,7 +471,15 @@ static bool reject_inside_webroot(const char *path, const char *key, char err[VA
 	if(webroot == NULL || webroot[0] == '\0' || path == NULL || path[0] != '/')
 		return true;
 
-	if(paths_overlap(webroot, path_len(webroot), path))
+	char wnorm[NORMALIZED_PATH_LEN], pnorm[NORMALIZED_PATH_LEN];
+	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
+	if(normalize_path(path, pnorm, sizeof(pnorm)) == 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a usable absolute path", key);
+		return false;
+	}
+
+	if(wlen > 0 && paths_overlap(wnorm, wlen, pnorm))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
 		         "%s: must not be inside the web server document root (webserver.paths.webroot = \"%s\")",
@@ -443,8 +509,9 @@ bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_
 		return false;
 	}
 
-	const size_t wlen = path_len(webroot);
-	if(wlen == 1 || paths_overlap(webroot, wlen, CONFIG_DIR))
+	char wnorm[NORMALIZED_PATH_LEN];
+	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
+	if(wlen == 0 || wlen == 1 || paths_overlap(wnorm, wlen, CONFIG_DIR))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
 		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
@@ -459,7 +526,9 @@ bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_
 		if(path == NULL || path[0] != '/')
 			continue;
 
-		if(paths_overlap(webroot, wlen, path))
+		char pnorm[NORMALIZED_PATH_LEN];
+		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
+		   paths_overlap(wnorm, wlen, pnorm))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s (\"%s\") must not be inside %s (\"%s\")",
@@ -524,9 +593,10 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		return false;
 	}
 
-	const size_t len = path_len(val->s);
+	char norm[NORMALIZED_PATH_LEN];
+	const size_t len = normalize_path(val->s, norm, sizeof(norm));
 
-	if(len == 1 || paths_overlap(val->s, len, CONFIG_DIR))
+	if(len == 0 || len == 1 || paths_overlap(norm, len, CONFIG_DIR))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
 		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
@@ -542,7 +612,9 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		if(path == NULL || path[0] != '/')
 			continue;
 
-		if(paths_overlap(val->s, len, path))
+		char pnorm[NORMALIZED_PATH_LEN];
+		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
+		   paths_overlap(norm, len, pnorm))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s: would contain %s (\"%s\")", key, written[i]->k, path);
