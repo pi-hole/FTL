@@ -1299,6 +1299,9 @@
       # login/session password so a long-running scraper does not consume login sessions,
       # and it stays required even on installs without a UI password.
       #
+      # This setting is write-only, the hash itself cannot be read back, but the CLI and the
+      # API will show "********" to indicate that a token is configured.
+      #
       # Allowed values are:
       #     A 64-character lowercase SHA-256 hex digest, or an empty string to disable the
       #     endpoint

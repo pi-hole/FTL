@@ -545,6 +545,15 @@ int prometheus_token_from_CLI(const bool revoke)
 	if(!config_writable_from_CLI())
 		return EXIT_FAILURE;
 
+	// An environment variable always wins over pihole.toml, so storing a hash
+	// here would leave the printed token unusable.
+	if(config.webserver.api.prometheus.token.f & FLAG_ENV_VAR)
+	{
+		log_err("Config option %s is read-only (set via environmental variable)",
+		        config.webserver.api.prometheus.token.k);
+		return ENV_VAR_FORCED;
+	}
+
 	// Generate a random 256 bit token. We reuse generate_password() (without
 	// requesting the slow balloon hash) purely to obtain a base64-encoded,
 	// cryptographically secure random string. Only its SHA-256 hash is stored,
