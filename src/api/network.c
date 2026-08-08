@@ -386,7 +386,7 @@ int api_client_suggestions(struct ftl_conn *api)
 
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
-		log_err("Failed to prepare SQL statement: %s", sqlite3_errmsg(db));
+		log_web(LOG_ERR, "Failed to prepare SQL statement: %s", sqlite3_errmsg(db));
 		dbclose(&db);
 		return send_json_error(api, 500,
 		                       "database_error",
@@ -397,7 +397,7 @@ int api_client_suggestions(struct ftl_conn *api)
 	// Bind parameters
 	if(sqlite3_bind_int(stmt, 1, count) != SQLITE_OK)
 	{
-		log_err("Failed to bind parameter: %s", sqlite3_errmsg(db));
+		log_web(LOG_ERR, "Failed to bind parameter: %s", sqlite3_errmsg(db));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
 		return send_json_error(api, 500,

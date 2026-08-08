@@ -133,7 +133,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		{ API_FLAG_NONE, 0 }
 	};
 
-	log_debug(DEBUG_API, "Requested API URI: %s -> %s %s ? %s (Content-Type %s)",
+	log_web_debug(DEBUG_API, "Requested API URI: %s -> %s %s ? %s (Content-Type %s)",
 	          api.request->remote_addr,
 	          api.request->request_method,
 	          api.request->local_uri_raw,
@@ -196,12 +196,12 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Call the API function and get the return code
-			log_debug(DEBUG_API, "Processing %s %s in %s",
+			log_web_debug(DEBUG_API, "Processing %s %s in %s",
 			          api.request->request_method,
 			          api.request->local_uri_raw,
 			          api_request[i].uri);
 			ret = api_request[i].func(&api);
-			log_debug(DEBUG_API, "Done");
+			log_web_debug(DEBUG_API, "Done");
 			break;
 		}
 	}

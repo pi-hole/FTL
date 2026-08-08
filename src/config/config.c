@@ -538,7 +538,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_FTL;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
-	
+
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("A string in the format \"<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]\"");
@@ -672,7 +672,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
@@ -740,7 +740,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
-	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");	
+	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
@@ -1979,6 +1979,29 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	return false;
 }
 
+static bool getLogFilePathENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_ftl");
+	if(val == NULL)
+		return false;
+
+	// Validate the path the same way the regular config load does. The
+	// rejection is not reported here: logging is not available yet at this
+	// early stage, but the regular env parse reports the same issue later on.
+	union conf_value tmp = { .s = (char *)val };
+	char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_filepath(&tmp, config.files.log.ftl.k, err))
+		return false;
+
+	char *copy = strdup(val);
+	if(copy == NULL)
+		return false;
+
+	config.files.log.ftl.v.s = copy;
+	config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+	return true;
+}
+
 bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
@@ -1994,8 +2017,8 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Check if the config file contains a different path
-	if(try_read && !getLogFilePathTOML())
+	// Try sources in priority order: ENV > TOML > legacy
+	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;

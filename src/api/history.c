@@ -70,7 +70,7 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 		// -1 for the total count
 		if(!client->flags.aliasclient && client->aliasclient_id > -1)
 		{
-			log_debug(DEBUG_API, "Skipping client (ID %u) contained in alias-client with ID %d",
+			log_web_debug(DEBUG_API, "Skipping client (ID %u) contained in alias-client with ID %d",
 			          clientID, client->aliasclient_id);
 			continue;
 		}

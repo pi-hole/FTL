@@ -1790,7 +1790,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
 	//
 	// RFC 9462, Section 4 says:
-	// 
+	//
 	// If the recursive resolver that receives this query has no Designated
 	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
 	// zone, to provide a consistent and accurate signal to clients that it
@@ -2040,7 +2040,7 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	}
 
 	// when we reach this point: the query is not in FTL's cache (for this client)
-	
+
 	// Check exact whitelist for match
 	const char *blockedDomain = domainstr;
 	PERF_START(_pcb_allow);
@@ -4261,13 +4261,15 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 {
 	// Lock SHM
 	lock_shm();
 
-	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, NULL, length);
+	// Add to FIFO buffer. dnsmasq has no FTL debug flags, so its LOG_DEBUG is
+	// a plain "DEBUG" rather than the DEBUG_ANY catch-all priostr() maps to
+	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
 
 	// Unlock SHM
 	unlock_shm();

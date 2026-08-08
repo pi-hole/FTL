@@ -31,7 +31,6 @@
 
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
-static const char *process = "";
 bool debug_flags[DEBUG_MAX] = { false };
 
 void clear_debug_flags(void)
@@ -46,7 +45,7 @@ void log_ctrl(bool plog, bool pstdout)
 	print_stdout = pstdout;
 }
 
-void init_FTL_log(const char *name)
+void init_FTL_log(void)
 {
 	// Open the log file in append/create mode
 	if(config.files.log.ftl.v.s != NULL)
@@ -65,15 +64,6 @@ void init_FTL_log(const char *name)
 		// Close log file
 		if(logfile != NULL)
 			fclose(logfile);
-	}
-
-	// Store process name (if available), strip path if found
-	if(name != NULL)
-	{
-		if(strrchr(name, '/') != NULL)
-			process = strrchr(name, '/')+1;
-		else
-			process = name;
 	}
 }
 
@@ -131,7 +121,30 @@ unsigned int get_year(const time_t timein)
 	return tm.tm_year + 1900;
 }
 
-static const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
+static void get_idstr(char *idstr, size_t size)
+{
+	const int pid = getpid(); // Get the process ID of the calling process
+	const int mpid = main_pid(); // Get the process ID of the main FTL process
+	const int tid = gettid(); // Get the thread ID of the calling process
+
+	// There are four cases we have to differentiate here:
+	if(pid == tid)
+		if(is_fork(mpid, pid))
+			// Fork of the main process
+			snprintf(idstr, size, "%i/F%i", pid, mpid);
+		else
+			// Main process
+			snprintf(idstr, size, "%iM", pid);
+	else
+		if(is_fork(mpid, pid))
+			// Thread of a fork of the main process
+			snprintf(idstr, size, "%i/F%i/T%i", pid, mpid, tid);
+		else
+			// Thread of the main process
+			snprintf(idstr, size, "%i/T%i", pid, tid);
+}
+
+const char * __attribute__((const)) priostr(const int priority, const enum debug_flag flag)
 {
 	switch (priority)
 	{
@@ -256,27 +269,8 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
 	char idstr[42];
-	const int pid = getpid(); // Get the process ID of the calling process
-	const int mpid = main_pid(); // Get the process ID of the main FTL process
-	const int tid = gettid(); // Get the thread ID of the calling process
-
+	get_idstr(idstr, sizeof(idstr));
 	const char *prio = priostr(priority, flag);
-
-	// There are four cases we have to differentiate here:
-	if(pid == tid)
-		if(is_fork(mpid, pid))
-			// Fork of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/F%i", pid, mpid);
-		else
-			// Main process
-			snprintf(idstr, sizeof(idstr)-1, "%iM", pid);
-	else
-		if(is_fork(mpid, pid))
-			// Thread of a fork of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/F%i/T%i", pid, mpid, tid);
-		else
-			// Thread of the main process
-			snprintf(idstr, sizeof(idstr)-1, "%i/T%i", pid, tid);
 
 	// Print to stdout before writing to file
 	if((!daemonmode || cli_mode) && print_stdout)
@@ -341,43 +335,71 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 	}
 }
 
-void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
+void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const enum debug_flag flag, const char *format, ...)
 {
+	// We have been explicitly asked to not print anything to the log
+	if(!print_log && !print_stdout)
+		return;
+
 	char timestring[TIMESTR_SIZE];
 	const time_t now = time(NULL);
 	va_list args;
-
-	// Add line to FIFO buffer
-	char buffer[MAX_MSG_FIFO + 1u];
-	va_start(args, format);
-	const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
-	va_end(args);
-	add_to_fifo_buffer(FIFO_WEBSERVER, buffer, NULL, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
 
 	// Get human-readable time
 	get_timestr(timestring, now, true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
-	const long pid = (long)getpid();
+	char idstr[42];
+	get_idstr(idstr, sizeof(idstr));
+	const char *prio = priostr(priority, flag);
 
-	// Open web log file
-	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
+	// Open web log file (if a path is configured)
+	FILE *weblog = NULL;
+	if(print_log && config.files.log.webserver.v.s != NULL)
+		weblog = fopen(config.files.log.webserver.v.s, "a+");
 
-	// Write to web log file
-	if(weblog != NULL)
+	// _FTL_log() prints these itself, so do not print them twice
+	const bool relay = print_log && weblog == NULL && priority <= LOG_WARNING;
+
+	// Print to stdout before writing to file
+	if(!relay && (!daemonmode || cli_mode) && print_stdout)
 	{
-		fprintf(weblog, "[%s %ld] ", timestring, pid);
+		// Only print time/ID string when not in direct user interaction (CLI mode)
+		if(!cli_mode)
+			printf("%s [%s] %s: ", timestring, idstr, prio);
 		va_start(args, format);
-		vfprintf(weblog, format, args);
+		vprintf(format, args);
 		va_end(args);
-		fputc('\n',weblog);
-		fclose(weblog);
+		printf("\n");
 	}
-	else if(!daemonmode)
+
+	// Print to log file or FIFO
+	if(print_log)
 	{
-		printf("!!! WARNING: Writing to web log file failed!\n");
-		syslog(LOG_ERR, "Writing to web log file failed!");
+		// Add line to FIFO buffer. It lives in shared memory and is
+		// independent of the log file, so it is filled even when we relay
+		char buffer[MAX_MSG_FIFO + 1u];
+		va_start(args, format);
+		const size_t len = vsnprintf(buffer, MAX_MSG_FIFO, format, args) + 1u; /* include zero-terminator */
+		va_end(args);
+		add_to_fifo_buffer(FIFO_WEBSERVER, buffer, prio, len > MAX_MSG_FIFO ? MAX_MSG_FIFO : len);
+
+		if(relay)
+		{
+			// No web log available - keep severe messages durable in FTL.log/syslog
+			_FTL_log(priority, flag, "%s", buffer);
+		}
+		else if(weblog != NULL)
+		{
+			// Write to web log file
+			fprintf(weblog, "%s [%s] %s: ", timestring, idstr, prio);
+			va_start(args, format);
+			vfprintf(weblog, format, args);
+			va_end(args);
+			fputc('\n',weblog);
+			fclose(weblog);
+		}
 	}
 }
 
