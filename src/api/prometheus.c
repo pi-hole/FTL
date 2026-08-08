@@ -330,11 +330,11 @@ int api_metrics(struct ftl_conn *api)
 
 	// Query totals.
 	// Note: these are gauges, not counters - they reflect the queries in FTL's
-	// in-memory history (the last misc.maxHistory window, 24h by default) and
+	// in-memory history (the last webserver.api.maxHistory window, 24h by default)
 	// are decremented by garbage collection as queries age out, so they can go
 	// down as well as up. Use the monotonic pihole_dns_replies_total /
 	// pihole_dns_cache_* counters below for rate() calculations.
-	fputs("# HELP pihole_queries Number of DNS queries in FTL's history window (misc.maxHistory)\n", fp);
+	fputs("# HELP pihole_queries Number of DNS queries in FTL's history window (webserver.api.maxHistory)\n", fp);
 	fputs("# TYPE pihole_queries gauge\n", fp);
 	fprintf(fp, "pihole_queries %u\n", total);
 
