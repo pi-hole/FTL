@@ -1334,6 +1334,11 @@ void initConfig(struct config *conf)
 	conf->webserver.api.prometheus.token.a = cJSON_CreateStringReference("A 64-character lowercase SHA-256 hex digest, or an empty string to disable the endpoint");
 	conf->webserver.api.prometheus.token.t = CONF_STRING;
 	conf->webserver.api.prometheus.token.d.s = (char*)"";
+	// Masked on API/CLI reads like the TOTP secret. The hash is not a
+	// credential (scrapers authenticate with its preimage) but there is no
+	// reason to hand it out. It stays in pihole.toml, so teleporter backups
+	// keep working.
+	conf->webserver.api.prometheus.token.f = FLAG_WRITE_ONLY;
 	conf->webserver.api.prometheus.token.c = validate_prometheus_token_hash;
 
 	conf->webserver.api.prometheus.perEntityMetrics.k = "webserver.api.prometheus.perEntityMetrics";
