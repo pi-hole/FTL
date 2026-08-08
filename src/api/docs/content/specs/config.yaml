@@ -638,7 +638,6 @@ components:
                       properties:
                         token:
                           type: string
-                          pattern: '^[0-9a-f]{64}$|^$'
                         perEntityMetrics:
                           type: boolean
                         topN:
