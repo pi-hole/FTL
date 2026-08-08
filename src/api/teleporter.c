@@ -155,6 +155,12 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 	{
 		// Allocate memory for the SID
 		data->sid = calloc(valuelen + 1, sizeof(char));
+		if(data->sid == NULL)
+		{
+			log_err("Failed to allocate memory for the teleporter SID (%zu bytes)",
+			        valuelen + 1);
+			return MG_FORM_FIELD_HANDLE_ABORT;
+		}
 		// Copy the SID string
 		memcpy(data->sid, value, valuelen);
 		// Add terminating NULL byte (memcpy does not do this)
