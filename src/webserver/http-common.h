@@ -98,7 +98,7 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 
 // Utils
 enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
-const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api);
+const char* startsWith(const char *path, struct ftl_conn *api);
 void read_and_parse_payload(struct ftl_conn *api);
 char * __attribute__((malloc)) escape_html(const char *string);
 int check_json_payload(struct ftl_conn *api);
