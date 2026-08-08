@@ -436,6 +436,16 @@ int generateAppPw(struct ftl_conn *api)
 
 int generatePrometheusToken(struct ftl_conn *api)
 {
+	// An environment variable always wins over the stored hash, so a token
+	// generated here could never authenticate. Refuse like the config PATCH
+	// endpoint does.
+	if(config.webserver.api.prometheus.token.f & FLAG_ENV_VAR)
+		return send_json_error(api,
+		                       400,
+		                       "bad_request",
+		                       "Config items set via environment variables cannot be changed via the API",
+		                       config.webserver.api.prometheus.token.k);
+
 	// Generate a random 256 bit token for the Prometheus/OpenMetrics
 	// endpoint. We reuse generate_password() (without requesting the slow
 	// balloon hash) purely to obtain a base64-encoded, cryptographically
