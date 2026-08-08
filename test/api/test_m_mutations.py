@@ -505,6 +505,47 @@ class TestPutErrors:
         assert r.status_code == 400, \
             f"Expected 400, got {r.status_code} {r.text}"
 
+    def test_put_and_delete_group_via_item_query(self, api_session):
+        """A name browsers strip from the path is carried by ?item=."""
+        name = "."
+        url = f"{FTL_URL}/api/groups?item={quote(name)}"
+
+        r = api_session.put(url,
+                            json={"comment": "pytest dot", "enabled": True},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+        groups = _j(r)["groups"]
+        assert len(groups) == 1
+        assert groups[0]["name"] == name
+
+        # Clean up
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    def test_put_group_with_agreeing_item_query(self, api_session):
+        """The path and ?item= may both be given if they are identical."""
+        name = "_pytest_agree_group"
+        url = f"{FTL_URL}/api/groups/{name}?item={name}"
+
+        r = api_session.put(url,
+                            json={"comment": "pytest agree", "enabled": True},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+        assert _j(r)["groups"][0]["name"] == name
+
+        # Clean up
+        r = api_session.delete(f"{FTL_URL}/api/groups/{name}", timeout=10)
+        assert r.status_code == 204
+
+    def test_put_group_with_conflicting_item_query_returns_400(self, api_session):
+        """A path item disagreeing with ?item= is rejected, not resolved."""
+        r = api_session.put(
+            f"{FTL_URL}/api/groups/_pytest_path_group?item=_pytest_query_group",
+            json={"comment": "err"},
+            timeout=5)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+
 
 # ===========================================================================
 # Batch delete tests

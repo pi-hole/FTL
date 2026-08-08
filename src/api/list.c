@@ -985,7 +985,7 @@ int api_list(struct ftl_conn *api)
 	// local/heap pointer is ever stored back into the longer-lived api struct.
 	const char *item = api->item;
 	char *item_from_query = NULL;
-	if(api->method != HTTP_POST && item != NULL && item[0] == '\0' &&
+	if(api->method != HTTP_POST && item != NULL &&
 	   api->request->query_string != NULL)
 	{
 		// The URL-decoded value is never longer than the raw query string, so
@@ -1000,7 +1000,23 @@ int api_list(struct ftl_conn *api)
 			                       NULL);
 
 		if(get_string_var(api->request->query_string, "item", item_from_query, buflen) > 0)
-			item = item_from_query;
+		{
+			if(item[0] == '\0')
+				item = item_from_query;
+			else if(strcmp(item, item_from_query) != 0)
+			{
+				// The path identifies the resource, so a query value
+				// must never silently overrule it - that would make us
+				// act on something else than what any proxy or access
+				// log in front of us has seen. Both may be given at
+				// once only if they agree.
+				free(item_from_query);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: The item in the URI path and the \"item\" query parameter disagree",
+				                       api->request->local_uri_raw);
+			}
+		}
 	}
 
 	int ret = 0;
