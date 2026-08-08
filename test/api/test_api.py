@@ -10,6 +10,7 @@ Usage:
 """
 
 import json
+import re
 
 import pytest
 
@@ -639,6 +640,56 @@ class TestStatsTopDomains:
         names = [d["domain"] for d in data["domains"]]
         assert "gravity.ftl" not in names, \
             f"gravity.ftl should not be in permitted domains:\n{json.dumps(data, indent=2)}"
+
+    def test_top_domains_small_count_is_true_prefix(self, api_session):
+        # Regression for #2946: the bounded top-K heap selection must return
+        # the real top-K for small counts and must not drop legitimate
+        # domains. A small count reduces the heap capacity to count*4, so any
+        # entry that wrongly occupies a slot would evict a genuine domain and
+        # shorten the result below the requested count.
+        full = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=100", timeout=5),
+                  dump="top_domains_full")["domains"]
+        full_counts = [d["count"] for d in full]
+        assert len(full) > 4, \
+            f"test data must expose more than 4 domains to exercise heap eviction, got {len(full)}"
+        for n in (1, 2, 3, 4):
+            data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count={n}", timeout=5))
+            counts = [d["count"] for d in data["domains"]]
+            assert len(counts) == min(n, len(full)), \
+                f"count={n} returned {len(counts)} domains, expected {min(n, len(full))}"
+            assert counts == sorted(counts, reverse=True), \
+                f"count={n} not sorted descending: {counts}"
+            assert counts == full_counts[:n], \
+                f"count={n} is not the top-{n} prefix: {counts} vs {full_counts[:n]}"
+
+    def test_top_domains_exclude_filter_does_not_shorten(self, api_session):
+        # Regression for #2946: excludeDomains must be applied before the
+        # bounded top-K heap selection, not only at output. Excluded (usually
+        # high-count) domains that reach the heap occupy slots and evict
+        # genuine domains, so the result ends up shorter than requested. At
+        # count=1 the heap capacity is 4, so excluding the four top domains
+        # would empty a broken (output-only) filter's result entirely.
+        full = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=100", timeout=5),
+                  dump="top_domains_exclude_full")["domains"]
+        names = [d["domain"] for d in full]
+        full_counts = [d["count"] for d in full]
+        assert len(names) > 5, \
+            f"test data must expose more than 5 domains to exercise the filter, got {len(names)}"
+
+        excluded = names[:4]
+        try:
+            set_config(api_session, "webserver.api.excludeDomains",
+                       [f"^{re.escape(n)}$" for n in excluded])
+            data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=1", timeout=5))
+            result = data["domains"]
+            assert len(result) == 1, \
+                f"excluding the top domains must not empty the result: {result}"
+            assert result[0]["domain"] not in excluded, \
+                f"an excluded domain leaked into the result: {result}"
+            assert result[0]["count"] == full_counts[4], \
+                f"expected the first non-excluded count {full_counts[4]}, got {result}"
+        finally:
+            set_config(api_session, "webserver.api.excludeDomains", [])
 
 
 # ---------------------------------------------------------------------------
