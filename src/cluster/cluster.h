@@ -19,26 +19,111 @@
 // for: every node talks to every other one, so the number of requests per round
 // grows quadratically with the cluster size
 #define CLUSTER_MAX_PEERS 8
+
+// Bigger than any real DHCP lease file - a /16 handed out in full is about
+// 5 MB - and small enough that neither reading our own nor taking a peer's
+// makes this node hold a lot of memory or write an unbounded file
+#define CLUSTER_MAX_LEASES_SIZE (8u*1024u*1024u)
 #define CLUSTER_STRLEN 128
 #define CLUSTER_URLLEN 256
 #define CLUSTER_HASHLEN 65
+// Base64 of a SHA-256, plus room for the "sha256//" curl wants in front of it
+#define CLUSTER_PINLEN 64
+// Long enough for any address in text form, brackets and zone id included
+#define CLUSTER_ADDRLEN 64
+
+// The longest any of the waits below grows to, which is also the longest one of
+// them can legitimately sit in the future
+#define CLUSTER_BACKOFF_MAX 3600.0
+#define CLUSTER_PUSH_BACKOFF_MAX 600.0
+
+// A deadline this node parked in the future, and the longest it can legitimately
+// be away. Anything beyond that is the wall clock having moved backwards under
+// us rather than a wait somebody asked for - and waiting it out would hold a
+// retry for as long as the step was
+static inline bool cluster_waiting(const double deadline, const double now, const double longest)
+{
+	return deadline > 0.0 && now < deadline && deadline - now <= longest;
+}
+
+// How often a peer may publish a key it does not serve before this node stops
+// trying it, and how long that lasts. Both matter: without the first, somebody
+// on the wire turns one interception into a permanent downgrade; without the
+// second, a proxy in front of a peer costs two TLS handshakes every round
+#define CLUSTER_PIN_FAILURES 5
+// An address offered by another node that did not work is not tried again every
+// round - a peer moves back as easily as it moved away, so it is not for good
+#define CLUSTER_HINT_REARM 300.0
+#define CLUSTER_PIN_REARM 3600.0
+
+// Two nodes deciding which change is newer need clocks that agree. This is how
+// far apart they may be before this node refuses to synchronize with that peer
+#define CLUSTER_MAX_CLOCK_OFFSET 2.0
+
+// The longest a round may be scheduled ahead. Anything beyond this is a clock
+// that moved, not an interval somebody configured
+#define CLUSTER_MAX_INTERVAL 3600.0
 
 struct cluster_peer {
 	char *url;                       // "http(s)://host[:port]"
-	char *sid;                       // cached session ID (NULL if not authenticated)
 	void *curl;                      // CURL handle, kept for connection reuse
 	char name[CLUSTER_STRLEN];       // node name as reported by the peer
 	char version[CLUSTER_STRLEN];    // FTL version of the peer
+	char branch[CLUSTER_STRLEN];     // ...and its branch, when that is not master
 	char id[CLUSTER_HASHLEN];          // the peer's identity, which cannot collide
+	char address[CLUSTER_ADDRLEN];     // where this peer answered, so its name is only resolved once
+	char hint[CLUSTER_ADDRLEN];        // ...or where another node reached it, when we cannot resolve it
+	char hint_failed[CLUSTER_ADDRLEN]; // ...and one such address that did not work
+	double hint_rearm_at;              // ...which is tried again after a while, not never
+	char pin[CLUSTER_PINLEN];          // what its certificate's public key hashes to
+	char pin_refused[CLUSTER_PINLEN];  // ...and one that turned out not to be served
+	unsigned int pin_failures;         // how often in a row, so a relay cannot latch it
+	double pin_rearm_at;               // when to try that key again anyway
+	bool pin_warned;                   // ...which is said once, not every round
+	bool push_warned;                  // ...and the same for one we will not push to
+	bool read_warned;                  // ...and for one we will not take lists or leases from
+	double asked_at;                   // when the last request went out...
+	double answered_at;                // ...and when its answer was in hand
+	double clock_offset;               // how far the peer's clock is from ours [s]
+	bool clock_agrees;                 // ...and whether that is close enough to synchronize
+	bool clock_warned;                 // ...which is said when it changes, not when a poll is missed
+	bool is_self;                      // this member turned out to be this node
+	char confhash[CLUSTER_HASHLEN];    // fingerprint of the peer's synchronized config
+	char credhash[CLUSTER_HASHLEN];    // ...and of its credentials, which travel only
+	bool accepts_credentials;          // ...between two nodes that both accept them
+	double config_changed;             // ...and when somebody last configured it
+	char gravityhash[CLUSTER_HASHLEN]; // fingerprint of the peer's lists
+	double gravity_changed;            // when the peer's lists last changed
+	unsigned long pushed_generation;   // configuration we last handed to this peer
+	char pushed_confhash[CLUSTER_HASHLEN]; // what the peer held when we last caught it up
+	char pushed_ourhash[CLUSTER_HASHLEN];  // ...and what we held ourselves at the time
+	bool stuck_valid;                  // ...and the same for its lists
+	double stuck_changed;
+	double retry_leases_at;            // when to try a failed lease download again
+	double leases_backoff;             // ...and how long that wait has grown to
+	double retry_lists_at;             // when to try a failed list download again
+	double retry_backoff;              // ...and how long the wait has grown to
+	double retry_push_at;              // when to hand this peer the configuration again
+	double push_backoff;               // ...and how long that wait has grown to
+	unsigned int id_changed_rounds;    // rounds this peer answered as somebody else
+	bool id_warned;                    // ...which is said once, not every round
+	bool knows_us;                     // the peer lists this node among its own members
+	uint8_t sees;                      // ...and which of the members it reaches, a bit per entry
+	unsigned int unknown_rounds;       // ...rounds in a row it did not
+	bool unknown_warned;               // ...which is said once, not every round
 	char error[CLUSTER_STRLEN];      // why the last round failed ("" if it did not)
-	unsigned int priority;
-	unsigned int rounds_up;          // consecutive rounds this peer was reachable
 	unsigned int rounds_down;        // consecutive rounds this peer was not
 	double last_seen;
 	bool reachable;
+	// Whether the last request got an answer of any kind. A peer that
+	// refuses us is a peer that is running: it says the fault is here
+	bool answered;
 	bool failover;                   // peer participates in DHCP failover
 	bool dhcp_capable;               // peer has a lease range and could serve
+	bool dhcp_configured;            // ...and whether that is "not now" or "not ever"
 	bool dhcp_active;                // peer is currently serving DHCP
+	char leaseshash[CLUSTER_HASHLEN];// ...and what its DHCP lease file hashes to
+	bool sees_dhcp;                  // ...or can see a node that is
 	bool vip_held;                   // peer currently holds the virtual IP
 };
 
@@ -50,22 +135,34 @@ struct cluster_peer_status {
 	char url[CLUSTER_URLLEN];
 	char name[CLUSTER_STRLEN];
 	char version[CLUSTER_STRLEN];
+	char branch[CLUSTER_STRLEN];
 	char error[CLUSTER_STRLEN];
 	char id[CLUSTER_HASHLEN];
-	unsigned int priority;
+	double clock_offset;
+	bool clock_agrees;
+	bool is_self;
+	bool knows_us;
+	uint8_t sees;
+	char address[CLUSTER_ADDRLEN];
+	char confhash[CLUSTER_HASHLEN];
+	char credhash[CLUSTER_HASHLEN];
+	bool accepts_credentials;
+	double config_changed;
+	char gravityhash[CLUSTER_HASHLEN];
+	double gravity_changed;
 	double last_seen;
 	bool reachable;
 	bool failover;
 	bool dhcp_capable;
+	bool dhcp_configured;
 	bool dhcp_active;
 	bool vip_held;
 };
 
 struct cluster_state {
-	bool enabled;
 	unsigned int num_peers;
 	struct cluster_peer_status peers[CLUSTER_MAX_PEERS];
-	char leader[CLUSTER_STRLEN];     // highest-priority reachable node
+	char leader[CLUSTER_STRLEN];     // reachable node with the lowest identity
 	char dhcp_owner[CLUSTER_STRLEN]; // node serving DHCP ("" if none)
 	bool vip_held;                   // this node holds the virtual IP
 	double last_round;
@@ -73,10 +170,7 @@ struct cluster_state {
 
 bool cluster_start_thread(pthread_attr_t *attr);
 
-// This node's identity inside the cluster. Names can collide - two Pi-holes
-// imaged from the same card are both "raspberrypi" - so everything that has to
-// pick one of two nodes without asking picks by this
-const char *cluster_node_id(void) __attribute__ ((const));
+// Ask the cluster thread to synchronize during its next round
 
 // The cluster thread writes the state, the API threads read it
 void cluster_lock(void);
@@ -96,6 +190,21 @@ void cluster_vip_address(char buf[CLUSTER_STRLEN]);
 // Host part of a peer URL, if it is a plain IPv4 address. Used to tell DHCP
 // clients about every node of the cluster
 bool cluster_peer_ipv4(const char *entry, char *buf, const size_t buflen);
+
+// The name of the node with this identity, for saying where a value came from.
+// Returns NULL when no member of the cluster answers to it
+// A configuration a peer handed us asked FTL to restart. Not done there and
+// then: the nodes would all go down together
+void cluster_restart_later(const char *reason);
+
+// Take this node out of the cluster: the others are told, then clustering
+// stops here. Acted on by the cluster thread at its next round
+void cluster_leave(void);
+
+// Say that the lists of this node were last touched now, but only if this node
+// never knew. Called when somebody joins, so the cluster can hand them over
+void cluster_stamp_lists(void);
+
 
 // Add this node's own status to the given JSON object
 void cluster_local_status(cJSON *node);

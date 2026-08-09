@@ -13,6 +13,10 @@
 #include "config/config.h"
 #include "log.h"
 #include "webserver/json_macros.h"
+// cluster_response_signature()
+#include "cluster/auth.h"
+// cluster_node_id()
+#include "cluster/sync.h"
 // UINT_MAX
 #include <limits.h>
 // HUGE_VAL
@@ -53,8 +57,35 @@ char *json_formatter(const cJSON *object)
 int send_http(struct ftl_conn *api, const char *mime_type,
               const char *msg)
 {
-	mg_send_http_ok(api->conn, mime_type, strlen(msg));
-	return mg_write(api->conn, msg, strlen(msg));
+	const size_t len = strlen(msg);
+	send_http_ok_signed(api, mime_type, msg, len);
+	return mg_write(api->conn, msg, len);
+}
+
+// The header block of a successful answer. An answer to a peer of our cluster
+// carries a signature over what it says: the peers decide who runs DHCP and
+// whose lists to take from these answers, so being able to make one up would be
+// enough to move the DHCP server or to hand a node somebody else's blocklists
+void send_http_ok_signed(struct ftl_conn *api, const char *mime_type,
+                         const char *body, const size_t len)
+{
+	char sig[CLUSTER_SIGLEN] = "";
+	if(!cluster_response_signature(api, body, len, sig))
+	{
+		mg_send_http_ok(api->conn, mime_type, (long long)len);
+		return;
+	}
+
+	char lenstr[32] = "";
+	snprintf(lenstr, sizeof(lenstr), "%zu", len);
+
+	mg_response_header_start(api->conn, 200);
+	if(mime_type != NULL)
+		mg_response_header_add(api->conn, "Content-Type", mime_type, -1);
+	mg_response_header_add(api->conn, "Content-Length", lenstr, -1);
+	mg_response_header_add(api->conn, CLUSTER_HDR_SIG, sig, -1);
+	mg_response_header_add(api->conn, CLUSTER_HDR_BY, cluster_node_id(), -1);
+	mg_response_header_send(api->conn);
 }
 
 int send_http_code(struct ftl_conn *api, const char *mime_type,

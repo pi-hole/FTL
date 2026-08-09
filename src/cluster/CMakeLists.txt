@@ -9,10 +9,16 @@
 # Please see LICENSE file for your rights under this license.
 
 set(cluster_sources
+        auth.c
+        auth.h
         cluster.c
         cluster.h
+        discover.c
+        discover.h
         http.c
         http.h
+        sync.c
+        sync.h
         dhcp.c
         dhcp.h
         vip.c
