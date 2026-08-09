@@ -14,6 +14,8 @@
 #include "tools/gravity-parseList.h"
 // regex
 #include "regex_r.h"
+// parse_upstream_uri()
+#include "dotdoh/upstream_uri.h"
 
 // Stub validator for config types that need to dedicated validation as they can
 // be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
@@ -800,6 +802,43 @@ bool validate_str_no_newline(union conf_value *val, const char *key, char err[VA
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: contains newline characters", key);
 			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validator for dns.upstreams. Enforces the same array/string/newline rules as
+// validate_array_no_newline() and, in addition, requires every encrypted entry
+// (tls:// or https://) to parse as a valid encrypted-upstream URI. Plaintext
+// entries are left untouched - dnsmasq validates those itself.
+bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!validate_array_no_newline(val, key, err))
+		return false;
+
+	int i = 0;
+	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next, i++)
+	{
+		const char *s = item->valuestring;
+		if(s == NULL)
+			continue;
+
+		// Anything carrying a URI scheme ("://") must be a supported encrypted
+		// upstream (tls:// or https://) that parses cleanly. A plaintext server
+		// specification handled downstream by dnsmasq never contains "://", so
+		// an entry that does but is not a valid encrypted URI (e.g. http://,
+		// ftp:// or a malformed tls://) is rejected here rather than being
+		// written into dnsmasq.conf and breaking DNS startup.
+		if(strstr(s, "://") != NULL)
+		{
+			struct upstream_uri u;
+			if(!parse_upstream_uri(s, &u) || u.type == UST_PLAIN)
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN,
+				         "%s[%d]: invalid encrypted upstream URI", key, i);
+				return false;
+			}
 		}
 	}
 

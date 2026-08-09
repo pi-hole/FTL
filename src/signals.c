@@ -857,6 +857,8 @@ const char * const thread_names[THREADS_MAX] = {
 	"ntp-server4",
 	"ntp-server6",
 	"webserver",
+	"dotdoh",
+	"dotdoh-dot",
 };
 
 // Private prototypes

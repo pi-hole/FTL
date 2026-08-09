@@ -616,7 +616,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// This may happen for *extremely* long URLs but is not issue in
 		// itself. Merely add a warning to the log file
-		log_warn("Could not add Location header to response: URL too long");
+		log_web(LOG_WARNING, "Could not add Location header to response: URL too long");
 
 		// Truncate location by replacing the last characters with "...\0"
 		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-4] = '.';

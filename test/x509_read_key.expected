@@ -1,0 +1,72 @@
+Reading certificate from /etc/pihole/test.pem ...
+Certificate (X.509):
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            36:36:32:32:35:31:37:36:30:30:39:31:30:30:37
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: CN=pi.hole, O=Pi-hole, C=DE
+        Validity
+            Not Before: Jan 16 21:15:12 2023 GMT
+            Not After : Jan 16 21:15:12 2053 GMT
+        Subject: CN=pi.hole
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (384 bit field, 192 bit security level)
+                pub:
+                    04:b8:7e:ec:59:f1:91:92:f9:b9:b3:92:d5:61:3c:1b:
+                    33:a3:e3:66:6b:8a:e0:a3:e1:03:9a:9a:59:f5:6a:27:
+                    0e:23:78:43:24:bf:24:f8:08:ab:62:ae:e2:c4:05:ca:
+                    b3:8a:69:01:84:fe:9d:94:c3:94:33:f2:b4:71:a4:42:
+                    e4:99:b8:e9:f3:02:f5:b5:77:ef:88:9b:61:7c:62:5f:
+                    86:e4:8a:ef:26:fc:60:e3:33:94:60:89:2d:43:d7:1f:
+                    94
+                ASN1 OID: secp384r1
+                NIST CURVE: P-384
+        X509v3 extensions:
+            X509v3 Subject Key Identifier: 
+                87:89:46:C1:F5:F4:19:F7:4B:57:39:24:1C:2B:A8:C4:39:1D:89:89
+            X509v3 Authority Key Identifier: 
+                51:E3:2B:67:A2:FE:89:14:A2:71:44:98:6E:89:AA:73:F8:0F:6A:29
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Subject Alternative Name: 
+                DNS:pi.hole
+    Signature Algorithm: ecdsa-with-SHA256
+    Signature Value:
+        30:66:02:31:00:da:94:7d:83:07:54:13:b3:94:f7:56:be:0e:93:e9:3e:f4:4d:b1:
+        13:67:87:a3:03:28:c3:98:c7:85:8a:a6:c5:6d:23:52:a7:8d:3b:51:96:57:22:90:
+        c9:d9:87:b1:b4:02:31:00:e5:72:73:2f:e0:6d:da:b7:4d:a3:fc:4e:d1:05:4e:bb:
+        99:16:0b:f8:31:39:93:4c:a0:5f:50:0d:15:83:19:2a:b4:cc:d3:de:b4:ba:8a:3c:
+        fc:35:25:dd:c7:5e:16:b8
+Private key:
+  Private-Key: (384 bit field, 192 bit security level)
+  priv:
+      46:58:86:d0:d7:5b:fc:b1:08:eb:96:3f:8a:51:2e:ce:
+      26:84:74:33:dc:72:67:23:0b:86:47:a3:b5:79:47:18:
+      d5:e7:da:52:bc:67:33:d6:51:40:3a:f9:9a:a0:74:0f
+  pub:
+      04:b8:7e:ec:59:f1:91:92:f9:b9:b3:92:d5:61:3c:1b:
+      33:a3:e3:66:6b:8a:e0:a3:e1:03:9a:9a:59:f5:6a:27:
+      0e:23:78:43:24:bf:24:f8:08:ab:62:ae:e2:c4:05:ca:
+      b3:8a:69:01:84:fe:9d:94:c3:94:33:f2:b4:71:a4:42:
+      e4:99:b8:e9:f3:02:f5:b5:77:ef:88:9b:61:7c:62:5f:
+      86:e4:8a:ef:26:fc:60:e3:33:94:60:89:2d:43:d7:1f:
+      94
+  ASN1 OID: secp384r1
+  NIST CURVE: P-384
+
+Private key (PEM):
+-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDBGWIbQ11v8sQjrlj+K
+US7OJoR0M9xyZyMLhkejtXlHGNXn2lK8ZzPWUUA6+ZqgdA+hZANiAAS4fuxZ8ZGS
++bmzktVhPBszo+Nma4rgo+EDmppZ9WonDiN4QyS/JPgIq2Ku4sQFyrOKaQGE/p2U
+w5Qz8rRxpELkmbjp8wL1tXfviJthfGJfhuSK7yb8YOMzlGCJLUPXH5Q=
+-----END PRIVATE KEY-----
+Public key (PEM):
+-----BEGIN PUBLIC KEY-----
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuH7sWfGRkvm5s5LVYTwbM6PjZmuK4KPh
+A5qaWfVqJw4jeEMkvyT4CKtiruLEBcqzimkBhP6dlMOUM/K0caRC5Jm46fMC9bV3
+74ibYXxiX4bkiu8m/GDjM5RgiS1D1x+U
+-----END PUBLIC KEY-----

@@ -155,6 +155,9 @@ struct config {
 		struct conf_item port;
 		struct conf_item localise;
 		struct conf_item revServers;
+		struct conf_item upstreamCA;
+		struct conf_item doh;
+		struct conf_item dot;
 		struct {
 			struct conf_item name;
 			struct conf_item local;
@@ -367,6 +370,7 @@ struct config {
 		struct conf_item netlink;
 		struct conf_item timing;
 		struct conf_item performance;
+		struct conf_item dotdoh;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

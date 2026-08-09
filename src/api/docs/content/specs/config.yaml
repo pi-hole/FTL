@@ -295,6 +295,12 @@ components:
                   type: array
                   items:
                     type: string
+                upstreamCA:
+                  type: string
+                doh:
+                  type: boolean
+                dot:
+                  type: boolean
                 blocking:
                   type: object
                   properties:
@@ -676,6 +682,8 @@ components:
                   type: boolean
                 performance:
                    type: boolean
+                dotdoh:
+                  type: boolean
                 all:
                   type: boolean
     topics:
@@ -716,6 +724,26 @@ components:
                 description: Array of IPv6 addresses (if any)
                 items:
                   type: string
+              dot:
+                type: object
+                description: DoT (DNS-over-TLS) endpoints, pinned to the resolver's IPv4/IPv6 address so no untrusted hostname lookup is needed before switching. Always present; the v4/v6 keys appear only for the families offered, so the object is empty if the resolver has no DoT endpoint.
+                properties:
+                  v4:
+                    type: string
+                    description: "tls:// URI pinned to the primary IPv4 address"
+                  v6:
+                    type: string
+                    description: "tls:// URI pinned to the primary IPv6 address"
+              doh:
+                type: object
+                description: DoH (DNS-over-HTTPS) endpoints, pinned to the resolver's IPv4/IPv6 address. Always present; the v4/v6 keys appear only for the families offered, so the object is empty if the resolver has no DoH endpoint.
+                properties:
+                  v4:
+                    type: string
+                    description: "https:// URI pinned to the primary IPv4 address"
+                  v6:
+                    type: string
+                    description: "https:// URI pinned to the primary IPv6 address"
     props:
       type: object
       properties:
@@ -744,6 +772,9 @@ components:
         config:
           dns:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
+            upstreamCA: ""
+            doh: true
+            dot: true
             CNAMEdeepInspect: true
             blockESNI: true
             EDNS0ECS: true
@@ -952,6 +983,7 @@ components:
             netlink: false
             timing: false
             performance: false
+            dotdoh: false
             all: false
           took: 0.003
     config_one:

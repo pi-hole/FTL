@@ -18,6 +18,9 @@ version~
 /cmake-build-debug/
 /cmake-build-release/
 
+# Compiler cache the CI workflow restores into the build context
+/.ccache/
+
 # IDE files
 .idea/
 *.sw*
@@ -54,3 +57,7 @@ test/libs/
 
 # Compiled LUA scripts
 /src/lua/scripts/*.hex
+
+# Local assistant tooling artifacts
+/.claude/settings.local.json
+/.claude/test-logs/

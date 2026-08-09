@@ -56,16 +56,74 @@ static struct {
 		const char *addr1;
 		const char *addr2;
 	} v6;
+	// DoT/DoH URIs pinned to the primary v4 and v6 address, so no untrusted
+	// lookup of the resolver hostname is needed before switching to it.
+	struct {
+		const char *v4;
+		const char *v6;
+	} dot;
+	struct {
+		const char *v4;
+		const char *v6;
+	} doh;
 } dns_server[] =
 {
-	{ "Google (ECS, DNSSEC)", { "8.8.8.8", "8.8.4.4" }, { "2001:4860:4860:0:0:0:0:8888", "2001:4860:4860:0:0:0:0:8844" } },
-	{ "OpenDNS (ECS, DNSSEC)", { "208.67.222.222", "208.67.220.220" }, {"2620:119:35::35", "2620:119:53::53"} },
-	{ "Level3", { "4.2.2.1", "4.2.2.2" }, { NULL, NULL } },
-	{ "Comodo", { "8.26.56.26", "8.20.247.20" }, { NULL, NULL} },
-	{ "Quad9 (filtered, DNSSEC)", {"9.9.9.9", "149.112.112.112" }, { "2620:fe::fe", "2620:fe::9" } },
-	{ "Quad9 (unfiltered, no DNSSEC)", { "9.9.9.10", "149.112.112.10" }, { "2620:fe::10", "2620:fe::fe:10" } },
-	{ "Quad9 (filtered, ECS, DNSSEC)", { "9.9.9.11", "149.112.112.11" }, { "2620:fe::11", "2620:fe::fe:11" } },
-	{ "Cloudflare (DNSSEC)", { "1.1.1.1", "1.0.0.1" }, { "2606:4700:4700::1111", "2606:4700:4700::1001" } }
+	{
+		.name = "Google (ECS, DNSSEC)",
+		.v4 = { "8.8.8.8", "8.8.4.4" },
+		.v6 = {	"2001:4860:4860:0:0:0:0:8888", "2001:4860:4860:0:0:0:0:8844" },
+		.dot = { "tls://dns.google@8.8.8.8", "tls://dns.google@[2001:4860:4860:0:0:0:0:8888]" },
+		.doh = { "https://dns.google@8.8.8.8/dns-query", "https://dns.google@[2001:4860:4860:0:0:0:0:8888]/dns-query" }
+	},
+	{
+		.name = "OpenDNS (ECS, DNSSEC)",
+		.v4 = { "208.67.222.222", "208.67.220.220" },
+		.v6 = {	"2620:119:35::35", "2620:119:53::53" },
+		.dot = { "tls://dns.opendns.com@208.67.222.222", "tls://dns.opendns.com@[2620:119:35::35]" },
+		.doh = { "https://doh.opendns.com@208.67.222.222/dns-query", "https://doh.opendns.com@[2620:119:35::35]/dns-query" }
+	},
+	{
+		.name = "Level3",
+		.v4 = { "4.2.2.1", "4.2.2.2" },
+		.v6 = {	"2001:4:112::1", "2001:4:112::2" },
+		.dot = { NULL, NULL },
+		.doh = { NULL, NULL }
+	},
+	{
+		.name = "Comodo",
+		.v4 = { "8.26.56.26", "8.20.247.20" },
+		.v6 = {	"2001:5a60::ad1:0ff", "2001:5a60::ad2:0ff" },
+		.dot = { NULL, NULL },
+		.doh = { NULL, NULL }
+	},
+	{
+		.name = "Quad9 (filtered, DNSSEC)",
+		.v4 = { "9.9.9.9", "149.112.112.112" },
+		.v6 = {	"2620:fe::fe", "2620:fe::9" },
+		.dot = { "tls://dns.quad9.net@9.9.9.9", "tls://dns.quad9.net@[2620:fe::fe]" },
+		.doh = { "https://dns.quad9.net@9.9.9.9/dns-query", "https://dns.quad9.net@[2620:fe::fe]/dns-query" }
+	},
+	{
+		.name = "Quad9 (unfiltered, no DNSSEC)",
+		.v4 = { "9.9.9.10", "149.112.112.10" },
+		.v6 = {	"2620:fe::10", "2620:fe::fe:10" },
+		.dot = { "tls://dns10.quad9.net@9.9.9.10", "tls://dns10.quad9.net@[2620:fe::10]" },
+		.doh = { "https://dns10.quad9.net@9.9.9.10/dns-query", "https://dns10.quad9.net@[2620:fe::10]/dns-query" }
+	},
+	{
+		.name = "Quad9 (filtered, ECS, DNSSEC)",
+		.v4 = { "9.9.9.11", "149.112.112.11" },
+		.v6 = {	"2620:fe::11", "2620:fe::fe:11" },
+		.dot = { "tls://dns11.quad9.net@9.9.9.11", "tls://dns11.quad9.net@[2620:fe::11]" },
+		.doh = { "https://dns11.quad9.net@9.9.9.11/dns-query", "https://dns11.quad9.net@[2620:fe::11]/dns-query" }
+	},
+	{
+		.name = "Cloudflare (DNSSEC)",
+		.v4 = { "1.1.1.1", "1.0.0.1" },
+		.v6 = {	"2606:4700:4700::1111", "2606:4700:4700::1001" },
+		.dot = { "tls://one.one.one.one@1.1.1.1", "tls://one.one.one.one@[2606:4700:4700::1111]" },
+		.doh = { "https://cloudflare-dns.com@1.1.1.1/dns-query", "https://cloudflare-dns.com@[2606:4700:4700::1111]/dns-query" }
+	}
 };
 
 // The following functions are used to create the JSON output
@@ -170,7 +228,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 {
 	if(conf_item == NULL || elem == NULL)
 	{
-		log_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
+		log_web_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
 		          conf_item, elem);
 		return "invalid arguments";
 	}
@@ -183,7 +241,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type bool";
 			// Set item
 			conf_item->v.b = elem->valueint;
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_web_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
@@ -194,7 +252,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.b = elem->valueint;
 			set_all_debug(newconf, elem->valueint);
-			log_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_web_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_INT:
@@ -206,7 +264,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type integer";
 			// Set item
 			conf_item->v.i = elem->valueint;
-			log_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
+			log_web_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_UINT:
@@ -218,7 +276,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
 			break;
 		}
 		case CONF_UINT16:
@@ -230,7 +288,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer (16bit)";
 			// Set item
 			conf_item->v.u16 = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
+			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
 			break;
 		}
 		case CONF_LONG:
@@ -242,7 +300,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type long";
 			// Set item
 			conf_item->v.l = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
+			log_web_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -252,7 +310,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a number";
 			// Set item
 			conf_item->v.d = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
+			log_web_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
 			break;
 		}
 		case CONF_STRING:
@@ -267,7 +325,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
 			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}
 		case CONF_PASSWORD:
@@ -278,7 +336,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			if(strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 			{
 				// Check if password is unchanged (default value set by PASSWORD_VALUE)
-				log_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
+				log_web_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
 				break;
 			}
 
@@ -297,7 +355,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.ptr_type = ptr_type;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -310,7 +368,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.busy_reply = busy_reply;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -323,7 +381,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -336,7 +394,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.refresh_hostnames = refresh_hostnames;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
@@ -349,7 +407,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.listeningMode = listeningMode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -362,7 +420,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.web_theme = web_theme;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
@@ -375,7 +433,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.temp_unit = temp_unit;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
@@ -388,7 +446,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.edns_mode = edns_mode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -406,7 +464,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not within valid range";
 			// Set item
 			conf_item->v.i = value;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -426,7 +484,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			}
 			else
 				return "not a valid IPv4 address";
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -443,7 +501,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a valid IPv6 address";
 			// Set item
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -455,7 +513,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			{
 				if(!cJSON_IsString(item))
 					return "array has invalid elements";
-				log_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
+				log_web_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
 			}
 			// If we reach this point, all elements are valid. Free the
 			// previous array (duplicated by duplicate_config into newconf)
@@ -551,7 +609,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				cJSON *val = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(val == NULL)
 				{
-					log_warn("Cannot format config item type %s of type %i",
+					log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 						conf_item->k, conf_item->t);
 					continue;
 				}
@@ -562,7 +620,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			cJSON *dval = addJSONConfValue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
-				log_warn("Cannot format config item type %s of type %i",
+				log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 					conf_item->k, conf_item->t);
 				continue;
 			}
@@ -591,7 +649,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				cJSON *leaf = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(leaf == NULL)
 				{
-					log_warn("Cannot format config item type %s of type %i",
+					log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 						conf_item->k, conf_item->t);
 					continue;
 				}
@@ -636,6 +694,24 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			if(dns_server[i].v6.addr2 != NULL)
 				JSON_REF_STR_IN_ARRAY(v6, dns_server[i].v6.addr2);
 			JSON_ADD_ITEM_TO_OBJECT(server, "v6", v6);
+
+			// DoT/DoH endpoints pinned to the v4/v6 address. The object is
+			// always present; the v4/v6 keys appear only for the families the
+			// resolver actually offers, so it is empty for resolvers without
+			// any encrypted endpoint.
+			cJSON *dot = JSON_NEW_OBJECT();
+			if(dns_server[i].dot.v4 != NULL)
+				JSON_REF_STR_IN_OBJECT(dot, "v4", dns_server[i].dot.v4);
+			if(dns_server[i].dot.v6 != NULL)
+				JSON_REF_STR_IN_OBJECT(dot, "v6", dns_server[i].dot.v6);
+			JSON_ADD_ITEM_TO_OBJECT(server, "dot", dot);
+
+			cJSON *doh = JSON_NEW_OBJECT();
+			if(dns_server[i].doh.v4 != NULL)
+				JSON_REF_STR_IN_OBJECT(doh, "v4", dns_server[i].doh.v4);
+			if(dns_server[i].doh.v6 != NULL)
+				JSON_REF_STR_IN_OBJECT(doh, "v6", dns_server[i].doh.v6);
+			JSON_ADD_ITEM_TO_OBJECT(server, "doh", doh);
 
 			JSON_ADD_ITEM_TO_ARRAY(servers, server);
 		}
@@ -721,7 +797,7 @@ static int api_config_patch(struct ftl_conn *api)
 		// Check if this element is present - it doesn't have to be!
 		if(elem == NULL)
 		{
-			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
+			log_web_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
 		}
 
@@ -739,7 +815,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
 		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 		{
-			log_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
+			log_web_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
 			continue;
 		}
 
@@ -785,10 +861,10 @@ static int api_config_patch(struct ftl_conn *api)
 		if((conf_item->t != CONF_PASSWORD && compare_config_item(conf_item->t, &new_item->v, &conf_item->v)) ||
 		   (conf_item->t == CONF_PASSWORD && strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
 		{
-			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
+			log_web_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
 		}
-		log_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
+		log_web_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
 
 		// Memorize that at least one config item actually changed
 		config_changed = true;
@@ -867,7 +943,7 @@ static int api_config_patch(struct ftl_conn *api)
 	{
 		// Nothing changed, merely release copied config memory
 		free_config(&newconf, false);
-		log_info("No config changes detected");
+		log_web(LOG_INFO, "No config changes detected");
 	}
 
 	// Return full config after possible changes above

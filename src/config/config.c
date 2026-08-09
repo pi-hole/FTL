@@ -418,7 +418,7 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.upstreams.d.json = cJSON_CreateArray();
 	conf->dns.upstreams.f = FLAG_RESTART_FTL;
-	conf->dns.upstreams.c = validate_array_no_newline;
+	conf->dns.upstreams.c = validate_upstreams;
 
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
@@ -538,7 +538,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_FTL;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
-	
+
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("A string in the format \"<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]\"");
@@ -603,6 +603,28 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.c = validate_dns_revServers;
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
+	conf->dns.upstreamCA.k = "dns.upstreamCA";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
+	conf->dns.upstreamCA.t = CONF_STRING;
+	conf->dns.upstreamCA.d.s = (char*)"";
+	conf->dns.upstreamCA.f = FLAG_RESTART_FTL;
+	conf->dns.upstreamCA.c = validate_filepath_empty;
+
+	conf->dns.doh.k = "dns.doh";
+	conf->dns.doh.h = "Enable the inbound DNS-over-HTTPS (DoH) server. When enabled, FTL answers DoH queries (RFC 8484: an HTTP POST with an application/dns-message body, or a GET with a base64url-encoded ?dns= parameter, to /dns-query) on the Pi-hole HTTPS webserver, letting downstream clients use this Pi-hole directly as their encrypted resolver. This requires a TLS-enabled webserver.port (e.g. \"443s\") with a valid certificate, see config option webserver.port.";
+	conf->dns.doh.t = CONF_BOOL;
+	conf->dns.doh.d.b = true;
+	conf->dns.doh.f = FLAG_RESTART_FTL;
+	conf->dns.doh.c = validate_stub;
+
+	conf->dns.dot.k = "dns.dot";
+	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
+	conf->dns.dot.t = CONF_BOOL;
+	conf->dns.dot.d.b = true;
+	conf->dns.dot.f = FLAG_RESTART_FTL;
+	conf->dns.dot.c = validate_stub;
+
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
 	conf->dns.domain.name.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
@@ -650,7 +672,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
@@ -718,7 +740,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
-	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");	
+	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
@@ -1674,6 +1696,12 @@ void initConfig(struct config *conf)
 	conf->debug.performance.d.b = false;
 	conf->debug.performance.c = validate_stub; // Only type-based checking
 
+	conf->debug.dotdoh.k = "debug.dotdoh";
+	conf->debug.dotdoh.h = "Print periodic per-upstream statistics for the encrypted-upstream (DoT/DoH) proxy: query throughput, connection reuse depth, TLS session resumption and how often a full handshake was needed. Useful for assessing keep-alive effectiveness against real upstream resolvers.";
+	conf->debug.dotdoh.t = CONF_BOOL;
+	conf->debug.dotdoh.d.b = false;
+	conf->debug.dotdoh.c = validate_stub; // Only type-based checking
+
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;
@@ -1951,6 +1979,29 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	return false;
 }
 
+static bool getLogFilePathENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_ftl");
+	if(val == NULL)
+		return false;
+
+	// Validate the path the same way the regular config load does. The
+	// rejection is not reported here: logging is not available yet at this
+	// early stage, but the regular env parse reports the same issue later on.
+	union conf_value tmp = { .s = (char *)val };
+	char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_filepath(&tmp, config.files.log.ftl.k, err))
+		return false;
+
+	char *copy = strdup(val);
+	if(copy == NULL)
+		return false;
+
+	config.files.log.ftl.v.s = copy;
+	config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+	return true;
+}
+
 bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
@@ -1966,8 +2017,8 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Check if the config file contains a different path
-	if(try_read && !getLogFilePathTOML())
+	// Try sources in priority order: ENV > TOML > legacy
+	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;

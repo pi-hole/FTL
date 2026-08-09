@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.19
+FROM ghcr.io/pi-hole/ftl-build:v2.25
 
 WORKDIR /app
 
@@ -16,16 +16,28 @@ ENV BUILD_OPTS=${BUILD_OPTS}
 # Setting TERM is needed for pretty output in BATS tests
 ENV TERM=xterm
 
-# Monkeypatch BATS to remove duplicate output of starting and finished test
-# BATS uses ANSI escape codes to overwrite the line after the test has finished
-# This is not supported by Github Actions as it does not provide a TTY to the docker build container
-RUN sed -i '/buffer_with_truncation /d' /bats/bats-core/libexec/bats-core/bats-format-pretty
+# CI starts from a fresh checkout every time, so cmake has no build tree to
+# compare against and recompiles all 207 translation units on every run - on
+# riscv64, sqlite3.c alone is over half of that under QEMU. ccache is keyed on
+# content rather than on mtimes in a build tree, so it survives the fresh clone
+# and only units that actually changed are compiled.
+ENV CCACHE_DIR=/app/.ccache
+ENV CCACHE_MAXSIZE=500M
+# Identify the compiler by hashing the binary rather than by its mtime and size,
+# which is what ccache would do by default. The compiler arrives in an image
+# here, so a rebuilt ftl-build must never be able to reuse entries made by the
+# gcc it replaced.
+ENV CCACHE_COMPILERCHECK=content
 
 # Build FTL
 # Remove possible old build files
 RUN rm -rf cmake && \
+# Start from clean counters so the statistics below describe this build alone
+    ccache --zero-stats && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON" ${BUILD_OPTS} && \
+    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache" ${BUILD_OPTS} && \
+# Report what the cache saved, so the CI log shows whether it is worth keeping
+    ccache --show-stats && \
 # Copy FTL binary to root directory
     cd / &&\
     cp /app/pihole-FTL . && \

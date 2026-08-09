@@ -539,10 +539,16 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     { 
       int fd;
       struct server *srv = daemon->serverarray[start];
-      
-      if ((fd = allocate_rfd(&forward->rfds, srv)) != -1)
+
+      /**** Pi-hole modification ****/
+      /* Skip an encrypted-upstream loopback tuple that FTL's DoT/DoH proxy is not
+	 currently serving, so we never forward its plaintext to a socket we do
+	 not own (unbound, disabled or squatted). */
+      if (FTL_is_forward_available(&srv->addr) &&
+      /******************************/
+	  (fd = allocate_rfd(&forward->rfds, srv)) != -1)
 	{
-	  
+
 #ifdef HAVE_CONNTRACK
 	  /* Copy connection mark of incoming query to outgoing connection. */
 	  if (option_bool(OPT_CONNTRACK))
@@ -749,7 +755,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
       // Pi-hole modification: Interpret the pseudoheader before
       // it might get stripped off below (added_pheader == true)
-      FTL_parse_pseudoheaders(pheader, (size_t)plen);
+      FTL_parse_pseudoheaders((unsigned char *)header, n, pheader, (size_t)plen);
       
       if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, n, pheader, query_source))
 	{
@@ -1071,6 +1077,13 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		 allocation of a new one: third arg of get_new_frec() does that. */
 	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, STAT_ISEQUAL(status, STAT_NEED_DS), NULL, NULL)) != -1 &&
 		  (server = daemon->serverarray[serverind]) &&
+		  /**** Pi-hole modification ****/
+		  /* Same gate as the UDP/TCP forward loops: never send this plaintext
+		     DNSKEY/DS sub-query to an encrypted-upstream tuple the proxy is not
+		     serving. Skipping keeps serverind != -1, so validation unwinds to
+		     STAT_ABANDONED (SERVFAIL) rather than assuming the zone unsigned. */
+		  FTL_is_forward_available(&server->addr) &&
+		  /******************************/
 		  (nn = dnssec_generate_query(header, daemon->edns_pktsz,
 					      daemon->keyname, forward->class, get_id(),
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS)) && 
@@ -1897,7 +1910,7 @@ void receive_query(struct listener *listen, time_t now)
   //********************** Pi-hole modification **********************//
   { size_t phlen = 0;
     pheader = find_pseudoheader(header, (size_t)n, &phlen, NULL, NULL, NULL);
-    FTL_parse_pseudoheaders(pheader, phlen); }
+    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)n, pheader, phlen); }
   //******************************************************************//
 
   if (OPCODE(header) != QUERY)
@@ -2184,7 +2197,15 @@ static ssize_t tcp_talk(int first, int last, int start, struct dns_header *heade
 	}
       
       *servp = serv = daemon->serverarray[start];
-      
+
+      /**** Pi-hole modification ****/
+      /* Skip an encrypted-upstream loopback tuple that FTL's DoT/DoH proxy is not
+	 currently serving, so we never forward its plaintext over TCP to a socket
+	 we do not own (unbound, disabled or squatted). */
+      if (!FTL_is_forward_available(&serv->addr))
+	continue;
+      /******************************/
+
     retry:
       if (serv->tcpfd == -1)
 	{
@@ -2608,7 +2629,7 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	  //********************** Pi-hole modification **********************//
 	  { size_t phlen = 0;
 	    pheader = find_pseudoheader(header, (size_t)size, &phlen, NULL, NULL, NULL);
-	    FTL_parse_pseudoheaders(pheader, phlen); }
+	    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)size, pheader, phlen); }
 	  //******************************************************************//
 	  
 	  if (OPCODE(header) != QUERY)
