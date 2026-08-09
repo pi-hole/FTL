@@ -8,6 +8,7 @@ components:
         parameters:
           - $ref: 'lists.yaml#/components/parameters/list'
           - $ref: 'lists.yaml#/components/parameters/listtype_optional'
+          - $ref: 'common.yaml#/components/parameters/item'
         tags:
           - "List management"
         operationId: "get_lists"
@@ -37,11 +38,12 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      put:
+      put: &list_put
         summary: Replace list
         parameters:
           - $ref: 'lists.yaml#/components/parameters/list'
           - $ref: 'lists.yaml#/components/parameters/listtype'
+          - $ref: 'common.yaml#/components/parameters/item'
         tags:
           - "List management"
         operationId: "replace_lists"
@@ -77,6 +79,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/item_mismatch'
                   no_payload:
                     $ref: 'lists.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
@@ -89,11 +93,12 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      delete:
+      delete: &list_delete
         summary: Delete list
         parameters:
           - $ref: 'lists.yaml#/components/parameters/list'
           - $ref: 'lists.yaml#/components/parameters/listtype'
+          - $ref: 'common.yaml#/components/parameters/item'
         tags:
           - "List management"
         operationId: "delete_lists"
@@ -120,6 +125,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'lists.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'lists.yaml#/components/examples/errors/bad_request/item_mismatch'
           '401':
             description: Unauthorized
             content:
@@ -220,6 +227,26 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+      put:
+        <<: *list_put
+        operationId: "replace_lists_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
+        description: |
+          Identical to `PUT /api/lists/{list}`, except that the list is named by the `item` query parameter instead of by a path segment. `{listtype}` stays required.
+
+          This is the only way to reach a list address that is literally `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      delete:
+        <<: *list_delete
+        operationId: "delete_lists_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+          - $ref: 'lists.yaml#/components/parameters/listtype'
+        description: |
+          Identical to `DELETE /api/lists/{list}`, except that the list is named by the `item` query parameter instead of by a path segment. `{listtype}` stays required.
+
+          *Note:* There will be no content on success.
     batchDelete:
       post:
         summary: Delete lists
@@ -490,6 +517,14 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
+        item_mismatch:
+          summary: URI path and "item" query parameter name different lists
+          value:
+            error:
+              key: "bad_request"
+              message: 'Invalid request: The item in the URI path and the "item" query parameter disagree'
+              hint: "/api/lists/https://example.com/list.txt"
             took: 0.003
       database_error:
         duplicate:
