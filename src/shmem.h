@@ -45,6 +45,8 @@ typedef struct {
 
 typedef struct {
 	unsigned int queries;
+	// Subset of `queries` kept out of the statistics (dns.ignoreLocalhost)
+	unsigned int hidden_queries;
 	unsigned int queries_offset;
 	unsigned int upstreams;
 	unsigned int clients;
