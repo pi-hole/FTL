@@ -41,7 +41,8 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # pytest: 48x pihole.toml writes (concurrent config mutations, 4 workers x 6 PUT+DELETE pairs)
-  # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
+  # dotdoh.bats: 5x pihole.toml writes (encrypted setup, then misc.restart_delay
+  #              arm + reset around the two-request plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
@@ -50,7 +51,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "77" ]]
+    [[ ${lines[0]} == "80" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -60,6 +61,8 @@ load 'bats_helper.bash'
   assert_success
   # One more than the deterministic baseline: the randomised DoT/DoH loopback
   # tuples change the encrypted-upstream config on every (re)start.
+  # Unchanged by the split dotdoh teardown: clearing dns.upstreamCA leaves the
+  # generated dnsmasq.conf identical, only the dns.upstreams change rewrites it.
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
   assert_line --index 0 "4"

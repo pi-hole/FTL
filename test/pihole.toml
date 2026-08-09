@@ -1380,6 +1380,19 @@
   #     A positive integer value between 0 and 300
   delay_startup = 0
 
+  # Some configuration changes can only be applied by restarting the DNS resolver. When a
+  # client changes many settings one after another, restarting on each of them takes the
+  # resolver down repeatedly. With this setting, FTL waits the given number of seconds
+  # and applies everything arriving in the meantime in a single restart.
+  #
+  # This setting takes any integer value between 0 and 60 seconds, where 0 restarts
+  # immediately. Each further change extends the wait, but a restart is postponed by no
+  # more than five times this value (hard-coded).
+  #
+  # Allowed values are:
+  #     A positive integer value between 0 and 60
+  restart_delay = 0
+
   # Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting
   # a value of -999. The nice value is an attribute that can be used to influence the
   # CPU scheduler to favor or disfavor a process in scheduling decisions.
@@ -1761,7 +1774,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 171 total entries out of which 115 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

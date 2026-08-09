@@ -1524,6 +1524,64 @@ void restart_ftl(const char *reason)
 	kill(main_pid(), SIGTERM);
 }
 
+// Restart requested by a configuration change, not yet carried out. Written by
+// the webserver worker threads, read by the housekeeping thread, hence the lock.
+static pthread_mutex_t restart_lock = PTHREAD_MUTEX_INITIALIZER;
+static time_t restart_first_request = 0, restart_last_request = 0;
+static const char *restart_reason = NULL;
+
+// Ask for a restart once the configuration has settled. Clients writing many
+// settings one after another do not know which of their requests is the last
+// one, so we collect everything arriving within misc.restart_delay seconds and
+// tear the resolver down once instead of per request.
+void request_restart(const char *reason)
+{
+	if(config.misc.restart_delay.v.ui == 0)
+	{
+		restart_ftl(reason);
+		return;
+	}
+
+	pthread_mutex_lock(&restart_lock);
+	restart_last_request = time(NULL);
+	if(restart_first_request == 0)
+	{
+		restart_first_request = restart_last_request;
+		restart_reason = reason;
+	}
+	pthread_mutex_unlock(&restart_lock);
+
+	log_debug(DEBUG_CONFIG, "Restart requested (%s), waiting %u seconds for further changes",
+	          reason, config.misc.restart_delay.v.ui);
+}
+
+// Carry out a delayed restart once the requests have stopped coming in, or
+// after five times the delay so that a client writing continuously cannot
+// postpone the restart forever. Called once a second from the housekeeping
+// thread.
+void check_pending_restart(void)
+{
+	const time_t delay = config.misc.restart_delay.v.ui;
+	const char *reason = NULL;
+
+	pthread_mutex_lock(&restart_lock);
+	if(restart_first_request > 0)
+	{
+		const time_t now = time(NULL);
+		if(now - restart_last_request >= delay ||
+		   now - restart_first_request >= 5 * delay)
+		{
+			reason = restart_reason;
+			restart_first_request = restart_last_request = 0;
+			restart_reason = NULL;
+		}
+	}
+	pthread_mutex_unlock(&restart_lock);
+
+	if(reason != NULL)
+		restart_ftl(reason);
+}
+
 /**
  * @brief Checks if the current process is being debugged.
  *

@@ -1455,6 +1455,13 @@ void initConfig(struct config *conf)
 	conf->misc.delay_startup.d.ui = 0;
 	conf->misc.delay_startup.c = validate_stub; // Only type-based checking
 
+	conf->misc.restart_delay.k = "misc.restart_delay";
+	conf->misc.restart_delay.h = "Some configuration changes can only be applied by restarting the DNS resolver. When a client changes many settings one after another, restarting on each of them takes the resolver down repeatedly. With this setting, FTL waits the given number of seconds and applies everything arriving in the meantime in a single restart.\n\n This setting takes any integer value between 0 and 60 seconds, where 0 restarts immediately. Each further change extends the wait, but a restart is postponed by no more than five times this value (hard-coded).";
+	conf->misc.restart_delay.a = cJSON_CreateStringReference("A positive integer value between 0 and 60");
+	conf->misc.restart_delay.t = CONF_UINT;
+	conf->misc.restart_delay.d.ui = 0;
+	conf->misc.restart_delay.c = validate_restart_delay;
+
 	conf->misc.nice.k = "misc.nice";
 	conf->misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions.\n\n The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
 	conf->misc.nice.a = cJSON_CreateStringReference("A signed integer value between -20 and 19, or -999 to disable niceness");

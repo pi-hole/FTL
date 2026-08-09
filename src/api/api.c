@@ -271,9 +271,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		                      api.request->local_uri_raw);
 	}
 
-	// Restart FTL if requested
+	// Restart FTL if requested. Config changes go through the delay so that a
+	// burst of them results in a single restart, /api/action/restartdns is an
+	// explicit request and restarts right away.
 	if(api.ftl.restart)
-		restart_ftl(api.ftl.restart_reason);
+		request_restart(api.ftl.restart_reason);
 
 	return ret;
 }

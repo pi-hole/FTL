@@ -318,6 +318,7 @@ struct config {
 	struct {
 		struct conf_item privacylevel;
 		struct conf_item delay_startup;
+		struct conf_item restart_delay;
 		struct conf_item nice;
 		struct conf_item addr2line;
 		struct conf_item etc_dnsmasq_d;

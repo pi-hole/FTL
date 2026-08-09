@@ -727,6 +727,10 @@ void *GC_thread(void *val)
 		if(killed)
 			break;
 
+		// Check if a configuration change asked for a restart and enough
+		// time has passed for further changes to have arrived
+		check_pending_restart();
+
 		// Check if we need to terminate/restart FTL but this has been
 		// postponed because of an ongoing gravity run
 		check_if_want_terminate();
