@@ -171,6 +171,11 @@ int findQueryID(const int id)
 		}
 	}
 
+	// Nothing to scan - probing the array anyway would read an empty slot
+	// and log a spurious magic byte error
+	if(counters->queries == 0)
+		return -1;
+
 	// Fallback: reverse linear scan up to MAXITER queries
 	const unsigned int until = counters->queries > MAXITER ? counters->queries - MAXITER : 0;
 	const unsigned int start = counters->queries > 0 ? counters->queries - 1 : 0;
