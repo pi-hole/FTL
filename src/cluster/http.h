@@ -19,10 +19,23 @@
 bool cluster_http_init(void);
 void cluster_http_free(struct cluster_peer *peer);
 
+// Join a cluster: fetch the shared secret from a node that is already a member,
+// authenticated with that node's own password. The caller owns *members
+bool cluster_http_bootstrap(const char *url, const char *password, const char *self,
+                            const char *pin, char *secret, const size_t secretlen,
+                            cJSON **members, char *err, const size_t errlen);
+
 // Request a JSON document from a peer. The caller owns *json and has to free it
 // with cJSON_Delete(). Returns false and fills err on any error
+// signer, when not NULL, receives the identity the answer was signed under -
+// which is not the same thing as the identity the document claims
 bool cluster_http_json(struct cluster_peer *peer, const char *path, cJSON **json,
-                       char *err, const size_t errlen);
+                       char *err, const size_t errlen, char *signer, const size_t signerlen);
+
+// Hand a JSON document to a peer. The caller owns *json (which may be NULL if
+// the peer answered with an empty body) and has to free it with cJSON_Delete()
+bool cluster_http_patch(struct cluster_peer *peer, const char *path, const char *body,
+                        cJSON **json, char *err, const size_t errlen);
 
 // Request a binary document (e.g., a Teleporter archive) from a peer. The caller
 // owns *data and has to free() it

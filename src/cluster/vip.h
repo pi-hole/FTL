@@ -21,6 +21,12 @@ bool vip_present(const char *address);
 bool vip_claim(const char *address);
 bool vip_release(const char *address);
 
+// What an earlier FTL on this machine recorded having placed, so an address
+// already on the interface can be told from one somebody else configured
+void vip_note_placed(const char *address, const char *iface);
+bool vip_was_placed(const char *address);
+bool vip_placed_address(char *buf, const size_t size);
+
 // Did this process put the address there? Nothing else may be removed
 bool vip_claimed(void) __attribute__ ((pure));
 
