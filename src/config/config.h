@@ -413,6 +413,9 @@ void reread_config(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default
 void reset_config_default(struct conf_item *conf_item);
+void init_config_lock(void);
+void lock_config(void);
+void unlock_config(void);
 bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 
