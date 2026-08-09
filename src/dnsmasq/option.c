@@ -1691,7 +1691,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	  parse_hex(comma, new->val, digs, (flags & DHOPT_MATCH) ? &new->u.wildcard_mask : NULL, NULL);
 	  new->flags |= DHOPT_HEX;
 	}
-      else if (is_dec)
+      else if (is_dec && !(opt_len & OT_DHCP6_VENDOR))
 	{
 	  int i, val = atoi(comma);
 	  /* assume numeric arg is 1 byte except for
