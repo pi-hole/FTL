@@ -60,7 +60,7 @@ static bool build_webpaths(void)
 {
 	// Construct error_pages path
 	error_pages = append_to_path(config.webserver.paths.webroot.v.s, config.webserver.paths.webhome.v.s);
-	log_debug(DEBUG_API, "Error pages path: %s", error_pages);
+	log_web_debug(DEBUG_API, "Error pages path: %s", error_pages);
 	if(error_pages == NULL)
 	{
 		log_err("Failed to allocate memory for error_pages path!");
@@ -69,7 +69,7 @@ static bool build_webpaths(void)
 
 	// Construct prefix_webhome path
 	prefix_webhome = append_to_path(config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
-	log_debug(DEBUG_API, "Prefix webhome path: %s", prefix_webhome);
+	log_web_debug(DEBUG_API, "Prefix webhome path: %s", prefix_webhome);
 	if(prefix_webhome == NULL)
 	{
 		log_err("Failed to allocate memory for prefix_webhome path!");
@@ -78,7 +78,7 @@ static bool build_webpaths(void)
 
 	// Construct api_url path
 	api_uri = append_to_path(config.webserver.paths.prefix.v.s, "/api");
-	log_debug(DEBUG_API, "API URI path: %s", api_uri);
+	log_web_debug(DEBUG_API, "API URI path: %s", api_uri);
 	if(api_uri == NULL)
 	{
 		log_err("Failed to allocate memory for api_uri path!");
@@ -87,7 +87,7 @@ static bool build_webpaths(void)
 
 	// Construct admin_api_uri path
 	admin_api_uri = append_to_path(prefix_webhome, "api");
-	log_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
+	log_web_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
 	if(admin_api_uri == NULL)
 	{
 		log_err("Failed to allocate memory for admin_api_uri path!");
@@ -96,7 +96,7 @@ static bool build_webpaths(void)
 
 	// Construct login_uri path
 	login_uri = append_to_path(config.webserver.paths.webhome.v.s, "login");
-	log_debug(DEBUG_API, "Login URI path: %s", login_uri);
+	log_web_debug(DEBUG_API, "Login URI path: %s", login_uri);
 	if(login_uri == NULL)
 	{
 		log_err("Failed to allocate memory for login_uri path!");
@@ -148,7 +148,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			if (!pos)
 			{
 				// Malformed hostname starts with '[', but no ']' found
-				log_err("Host name format error: Found '[' without ']'");
+				log_web(LOG_ERR, "Host name format error: Found '[' without ']'");
 				return 0;
 			}
 			/* terminate after ']' */
@@ -177,8 +177,8 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// API debug logging
 	if(config.debug.api.v.b)
 	{
-		log_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
-		log_debug(DEBUG_API, "URI: %s", uri);
+		log_web_debug(DEBUG_API, "Host header: \"%s\", extracted host: \"%.*s\"", host, (int)host_len, host);
+		log_web_debug(DEBUG_API, "URI: %s", uri);
 	}
 
 	// Check if the requested host is the configured domain (defaulting to pi.hole).
@@ -193,7 +193,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
 		{
-			log_debug(DEBUG_API, "Redirecting / --308--> %s",
+			log_web_debug(DEBUG_API, "Redirecting / --308--> %s",
 			          prefix_webhome);
 			mg_send_http_redirect(conn, prefix_webhome, 308);
 			return 1;
@@ -203,7 +203,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// Host did not match webserver.domain — not redirecting. When deployed
 	// behind a reverse proxy, ensure webserver.domain matches the Host header
 	// the proxy forwards (configure via WEBSERVER_DOMAIN in pihole.toml).
-	log_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
+	log_web_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
 	          uri, (int)host_len, host ? host : "", config.webserver.domain.v.s);
 	return 0;
 }
@@ -216,7 +216,7 @@ static int redirect_admin_handler(struct mg_connection *conn, void *input)
 		const struct mg_request_info *request = mg_get_request_info(conn);
 		const char *uri = request->local_uri_raw;
 
-		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		log_web_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          uri, prefix_webhome);
 	}
 
@@ -245,7 +245,7 @@ static int begin_request_handler(struct mg_connection *conn)
 	{
 		if((unsigned char)*p < 0x20 || (unsigned char)*p == 0x7f)
 		{
-			log_debug(DEBUG_WEBSERVER, "Rejecting request with control character in URI");
+			log_web_debug(DEBUG_WEBSERVER, "Rejecting request with control character in URI");
 			mg_send_http_error(conn, 400, "Bad Request");
 			return 400;
 		}
@@ -253,6 +253,23 @@ static int begin_request_handler(struct mg_connection *conn)
 
 	// Let CivetWeb process the request normally
 	return 0;
+}
+
+// Guard on the CivetWeb /dns-query path. Inbound DoH is served natively by the
+// front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query that
+// reaches CivetWeb is either plaintext - refuse it with 426, DoH must be
+// encrypted or the client's "encrypted" queries would leak - or misdirected.
+static int dns_query_guard(struct mg_connection *conn, void *cbdata)
+{
+	(void)cbdata;
+	const struct mg_request_info *ri = mg_get_request_info(conn);
+	if(ri != NULL && !ri->is_ssl)
+	{
+		mg_send_http_error(conn, 426, "%s", "DoH requires HTTPS");
+		return 426;
+	}
+	mg_send_http_error(conn, 421, "%s", "misdirected DoH request");
+	return 421;
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
@@ -269,7 +286,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	if(!config.webserver.serve_all.v.b &&
 	   strncmp(uri, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
 	{
-		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
+		log_web_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
 		mg_send_http_error(conn, 404, "Not Found");
 		return 404;
 	}
@@ -305,7 +322,7 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	}
 
 	// Send a 301 redirect to the new URI
-	log_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
+	log_web_debug(DEBUG_API, "Redirecting %s?%s ==301==> %s",
 	          uri, query_string, new_uri);
 	mg_send_http_redirect(conn, new_uri, 301);
 	free(new_uri);
@@ -315,7 +332,10 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
-	log_web("%s", message);
+	// CivetWeb calls this callback through its mg_cry() error channel, so the
+	// messages are errors, not informational lines. The severity is what the
+	// web interface colors by.
+	log_web(LOG_ERR, "%s", message);
 	return 1;
 }
 
@@ -344,7 +364,7 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	char *escaped = escape_string(message);
 	if(escaped != NULL)
 	{
-		log_web("ACCESS: %s", escaped);
+		log_web(LOG_INFO, "ACCESS: %s", escaped);
 		free(escaped);
 	}
 
@@ -388,7 +408,7 @@ ftl_http_redirect(struct mg_connection *conn, const int code, const char *format
 	// Ensure null termination
 	buffer[size] = '\0';
 
-	log_debug(DEBUG_API, "Redirecting to %s", buffer);
+	log_web_debug(DEBUG_API, "Redirecting to %s", buffer);
 	mg_send_http_redirect(conn, buffer, code);
 	free(buffer);
 
@@ -439,7 +459,7 @@ static bool get_server_ports(void)
 	// Stop if no ports are configured
 	if(ports < 1)
 	{
-		log_warn("No web server ports configured!");
+		log_web(LOG_WARNING, "No web server ports configured!");
 		return false;
 	}
 
@@ -476,7 +496,7 @@ static bool get_server_ports(void)
 		}
 		else
 		{
-			log_warn("Unsupported protocol for port %d", mgports[i].port);
+			log_web(LOG_WARNING, "Unsupported protocol for port %d", mgports[i].port);
 			continue;
 		}
 
@@ -632,7 +652,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 		if(memmem(*buf, len, api_str, this_len) != NULL)
 		{
 			// This string is already present, so skip it
-			log_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
+			log_web_debug(DEBUG_API, "Skipping duplicate API URL: %s", api_str);
 			free(api_str);
 			continue;
 		}
@@ -679,10 +699,10 @@ static void print_webserver_opts(const bool debug, const size_t idx, const char 
 		{
 			if(i == idx)
 			{
-				log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
+				log_web_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: <END OF OPTIONS>", i, idx);
 				break;
 			}
-			log_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s",
+			log_web_debug(DEBUG_WEBSERVER, "Webserver option %zu/%zu: %s=%s",
 			          i, idx, escaped_key, escaped_value);
 		}
 		else
@@ -820,7 +840,7 @@ void http_init(void)
 	num_threads[sizeof(num_threads) - 1] = '\0';
 
 	/* Initialize the library */
-	log_web("Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
+	log_web(LOG_INFO, "Initializing HTTP server on ports \"%s\"", config.webserver.port.v.s);
 	// No MG_FEATURES_TLS: civetweb is built without TLS (NO_SSL) and only serves
 	// plain HTTP/1.1 on the loopback backend; the front terminator does TLS.
 	unsigned int features = MG_FEATURES_FILES |
@@ -829,7 +849,7 @@ void http_init(void)
 
 	if(mg_init_library(features) == 0)
 	{
-		log_web("Initializing HTTP library failed!");
+		log_err("Initializing HTTP library failed!");
 		return;
 	}
 
@@ -905,6 +925,11 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
+		// Disable Nagle: without it a small TLS response is split across segments
+		// and stalls ~40 ms on the client's delayed ACK, which dominates DoH
+		// (and UI/API) latency. Responses are normally sent in full, so Nagle
+		// buys nothing here.
+		"tcp_nodelay", "1",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
@@ -939,7 +964,7 @@ void http_init(void)
 		{
 			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s, config.webserver.tls.validity.v.ui))
 			{
-				log_info("Created SSL/TLS certificate for %s at %s",
+				log_web(LOG_INFO, "Created SSL/TLS certificate for %s at %s",
 				         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
 			}
 			else
@@ -998,7 +1023,7 @@ void http_init(void)
 	{
 		if(!cJSON_IsString(option))
 		{
-			log_err("Invalid option in webserver.advancedOpts!");
+			log_web(LOG_ERR, "Invalid option in webserver.advancedOpts!");
 			continue;
 		}
 
@@ -1009,7 +1034,7 @@ void http_init(void)
 		const char *equal_sign = strchr(opt, '=');
 		if(equal_sign == NULL)
 		{
-			log_err("Invalid option in webserver.advancedOpts: %s (missing '=')", opt);
+			log_web(LOG_ERR, "Invalid option in webserver.advancedOpts: %s (missing '=')", opt);
 			continue;
 		}
 
@@ -1032,7 +1057,7 @@ void http_init(void)
 		// script they control).
 		if(strncasecmp(key, "lua_", 4) == 0)
 		{
-			log_warn("Ignoring disallowed webserver.advancedOpts option \"%s\": lua_* options are not permitted", key);
+			log_web(LOG_WARNING, "Ignoring disallowed webserver.advancedOpts option \"%s\": lua_* options are not permitted", key);
 			free(key);
 			continue;
 		}
@@ -1100,9 +1125,15 @@ void http_init(void)
 	// prefix should be stripped away by the reverse proxy
 	mg_set_request_handler(ctx, "/api", api_handler, NULL);
 
+	// Inbound DoH (RFC 8484) is served natively by the front terminator on
+	// /dns-query for HTTP/1.1, HTTP/2 and HTTP/3 (see terminator.c). The only
+	// CivetWeb registration is a guard that refuses a plaintext /dns-query (426).
+	if(config.dns.doh.v.b)
+		mg_set_request_handler(ctx, "/dns-query", dns_query_guard, NULL);
+
 	if(strcmp(prefix_webhome, "/") == 0)
 	{
-		log_debug(DEBUG_API, "Not redirecting root since webhome is '%s'",
+		log_web_debug(DEBUG_API, "Not redirecting root since webhome is '%s'",
 			  prefix_webhome);
 	} else {
 		// Redirect requests to / to the webhome path.
@@ -1112,7 +1143,7 @@ void http_init(void)
 	if(strcmp(config.webserver.paths.webhome.v.s, "/") == 0 &&
 	   config.dns.blocking.mode.v.blocking_mode == MODE_IP)
 	{
-		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
+		log_web(LOG_WARNING, "Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
 	}
 
 	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
@@ -1122,7 +1153,7 @@ void http_init(void)
 		char *prefix_webhome_matcher = strdup(prefix_webhome);
 		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
 
-		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
+		log_web_debug(DEBUG_API, "Redirecting %s --308--> %s",
 		          prefix_webhome, config.webserver.paths.webhome.v.s);
 		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
 		// prefix_webhome_matcher is internally duplicated during
@@ -1177,7 +1208,7 @@ static char *append_to_path(char *path, const char *append)
 
 void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 {
-	log_debug(DEBUG_API, "Rewriting filename: %s", filename);
+	log_web_debug(DEBUG_API, "Rewriting filename: %s", filename);
 	const bool trailing_slash = filename[strlen(filename) - 1] == '/';
 	char *filename_lp = NULL;
 
@@ -1192,7 +1223,7 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 	// Check if the file exists. If so, rewrite the filename and return
 	if(filename_lp != NULL && file_readable(filename_lp))
 	{
-		log_debug(DEBUG_API, "Rewriting index page: %s ==> %s", filename, filename_lp);
+		log_web_debug(DEBUG_API, "Rewriting index page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
 		free(filename_lp);
 		return;
@@ -1214,7 +1245,7 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 	// Check if the file exists. If so, rewrite the filename and return
 	if(file_readable(filename_lp))
 	{
-		log_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
+		log_web_debug(DEBUG_API, "Rewriting Lua page: %s ==> %s", filename, filename_lp);
 		strncpy(filename, filename_lp, filename_buf_len);
 		free(filename_lp);
 		return;
@@ -1227,7 +1258,7 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 		*last_slash = '-';
 		if(file_readable(filename_lp))
 		{
-			log_debug(DEBUG_API, "Rewriting Lua page (settings page): %s ==> %s", filename, filename_lp);
+			log_web_debug(DEBUG_API, "Rewriting Lua page (settings page): %s ==> %s", filename, filename_lp);
 			strncpy(filename, filename_lp, filename_buf_len);
 			free(filename_lp);
 			return;
@@ -1352,16 +1383,16 @@ void *webserver_thread(void *val)
 		{
 			if(is_pihole_certificate(config.webserver.tls.cert.v.s))
 			{
-				log_info("TLS certificate at %s is about to expire soon, generating new one",
+				log_web(LOG_INFO, "TLS certificate at %s is about to expire soon, generating new one",
 				         config.webserver.tls.cert.v.s);
 				if(generate_certificate(config.webserver.tls.cert.v.s, false,
 				             config.webserver.domain.v.s,
 				             config.webserver.tls.validity.v.ui))
 				{
-					log_info("Restarting HTTP server");
+					log_web(LOG_INFO, "Restarting HTTP server");
 					restart_http();
 
-					log_info("Done. The new certificate is valid for %u days",
+					log_web(LOG_INFO, "Done. The new certificate is valid for %u days",
 					         config.webserver.tls.validity.v.ui);
 				}
 				else
@@ -1387,7 +1418,7 @@ void *webserver_thread(void *val)
 			thread_sleepms(WEBSERVER, 3600000);
 	}
 
-	log_info("Terminating webserver thread");
+	log_web(LOG_INFO, "Terminating webserver thread");
 	return NULL;
 }
 #endif /* HAVE_TLS */

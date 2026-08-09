@@ -178,6 +178,14 @@ if [ $DOTDOH_RET != 0 ]; then
   RET=$DOTDOH_RET
 fi
 
+# Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
+# queries add to the query statistics the API tests assert on.
+$BATS -p "test/dotdoh_server.bats"
+DOTDOH_SERVER_RET=$?
+if [ $DOTDOH_SERVER_RET != 0 ]; then
+  RET=$DOTDOH_SERVER_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.

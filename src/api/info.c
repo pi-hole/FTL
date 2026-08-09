@@ -283,7 +283,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	FILE *f_value = fopen(value_path, "r");
 	if(f_value == NULL)
 	{
-		log_warn("Cannot open %s: %s", value_path, strerror(errno));
+		log_web(LOG_WARNING, "Cannot open %s: %s", value_path, strerror(errno));
 		return 0;
 	}
 
@@ -391,7 +391,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 	if(hwmon_dir == NULL)
 	{
 		// Nothing to read here, leave array empty
-		log_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
+		log_web_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
 		return 0;
 	}
 
@@ -451,7 +451,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 		DIR *sensor_dir = opendir(dirpath);
 		if(sensor_dir == NULL)
 		{
-			log_warn("Cannot open %s: %s", dirpath, strerror(errno));
+			log_web(LOG_WARNING, "Cannot open %s: %s", dirpath, strerror(errno));
 			continue;
 		}
 		struct dirent *dircontent_sensor = NULL;
@@ -998,6 +998,14 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 	// Split ID at commas and validate every ID as a number
 	cJSON *ids = cJSON_CreateArray();
 	char *id = strdup(api->item);
+	if(id == NULL)
+	{
+		cJSON_Delete(ids);
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to allocate memory for the message IDs",
+		                       strerror(errno));
+	}
 	char *saveptr = NULL;
 	char *token = strtok_r(id, ",", &saveptr);
 	while(token != NULL)
@@ -1006,7 +1014,7 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 		char *endptr = NULL;
 		long int idval = strtol(token, &endptr, 10);
 		if(errno != 0 || endptr == token || *endptr != '\0' || idval < 0)
-			log_warn("API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
+			log_web(LOG_WARNING, "API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
 		else
 			cJSON_AddNumberToArray(ids, idval);
 
