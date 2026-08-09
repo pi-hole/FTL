@@ -80,7 +80,12 @@ int get_version_obj(struct ftl_conn *api, cJSON *version);
 // Config methods
 int api_config(struct ftl_conn *api);
 int api_config_properties(struct ftl_conn *api);
-int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed);
+// cluster selects the document a peer is handed. encrypted says whether the
+// connection it travels over hides it: the credentials are left out when it
+// does not, because a signature keeps them from being changed but not from
+// being read
+int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed, const bool cluster,
+                    const bool encrypted);
 cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val);
 
 // Log methods
@@ -143,6 +148,12 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api);
 
 // Cluster methods
 int api_cluster_status(struct ftl_conn *api);
+int api_cluster_discover(struct ftl_conn *api);
+int api_cluster_enroll(struct ftl_conn *api);
+int api_cluster_join(struct ftl_conn *api);
+int api_cluster_lists(struct ftl_conn *api);
+int api_cluster_leases(struct ftl_conn *api);
+int api_cluster_leave(struct ftl_conn *api);
 
 // PADD methods
 int api_padd(struct ftl_conn *api);

@@ -107,6 +107,18 @@ enum conf_type {
 #define FLAG_CONF_IMPORTED         (1 << 5)
 #define FLAG_READ_ONLY             (1 << 6)
 #define FLAG_FTL_LOG               (1 << 7)
+// Never leaves this node and is never taken from a peer. The nodes of a
+// cluster are meant to be interchangeable, so everything is synchronized
+// except what cannot be: a credential, something that is a configuration
+// language rather than a setting, something that names this machine only, and
+// what the cluster itself owns and every node holds a different view of. The
+// sender leaves these out and the receiver refuses them, so neither a mistake
+// on one node nor a peer with different ideas can move them
+#define FLAG_NO_CLUSTER            (1 << 8)
+// Travels between the nodes of a cluster only while cluster.sync.credentials is
+// set. These are the credentials themselves, so the choice is the
+// administrator's rather than ours - see cluster_syncable()
+#define FLAG_CREDENTIAL            (1 << 9)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -115,7 +127,7 @@ struct conf_item {
 	const char *h;        // Help text / description
 	cJSON *a;             // JSON array or object of Allowed values (where applicable)
 	enum conf_type t;     // variable Type
-	uint8_t f;            // additional Flags
+	uint16_t f;           // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
 	bool (*c)(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]); // Function pointer to validate the value
@@ -237,19 +249,16 @@ struct config {
 	struct {
 		struct conf_item enabled;
 		struct conf_item name;
-		struct conf_item priority;
-		struct conf_item peers;
+		struct conf_item members;
 		struct conf_item interval;
-		struct conf_item timeout;
 		struct {
-			struct conf_item verify;
 			struct conf_item ca;
 		} tls;
 		struct {
+			struct conf_item credentials;
+		} sync;
+		struct {
 			struct conf_item failover;
-			struct conf_item master;
-			struct conf_item activateAfter;
-			struct conf_item deactivateAfter;
 		} dhcp;
 		struct {
 			struct conf_item address;
@@ -417,11 +426,79 @@ unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
+bool cluster_syncable(const struct conf_item *item) __attribute__ ((pure));
+bool cluster_hashable_ignoring_transport(const struct conf_item *item) __attribute__ ((pure));
+bool cluster_syncable_ignoring_transport(const struct conf_item *item) __attribute__ ((pure));
+
+// Whether the credentials are part of what this node keeps in step at all. Not
+// a property of one item: it depends on the member list, so it can change
+// without anybody having configured this node
+bool cluster_credentials_syncable(void) __attribute__ ((pure));
+
+// Recompute what is answered from the configuration rather than read out of it
+// on every call. Called wherever a configuration becomes the live one
+void config_update_derived(struct config *conf);
 char **gen_config_path(const char *pathin, const char delim);
 void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
+
+// What applying a JSON configuration document to a copy of the configuration
+// came to. The caller installs the copy with config_install() afterwards
+// Why applying an item failed, so a caller can say the same thing it always did
+enum config_apply_error {
+	CONFIG_APPLY_OK = 0,
+	CONFIG_APPLY_INVALID,      // the value is not what the item holds
+	CONFIG_APPLY_VALIDATION,   // the value did not pass the item's validator
+	CONFIG_APPLY_READ_ONLY,    // the item can only be set in pihole.toml
+	CONFIG_APPLY_ENV_VAR       // the item is pinned through the environment
+};
+
+struct config_apply {
+	bool changed;              // at least one item took a new value
+	bool dnsmasq_changed;      // an item requiring a restart changed
+	bool rewrite_hosts;        // the custom HOSTS file has to be written again
+	bool privacy_decreased;    // hidden queries have to be read back in
+	bool invalidate_sessions;  // a password changed
+	const char *failed_key;    // the item that made this fail, NULL if none
+	enum config_apply_error failure;
+	char error[VALIDATOR_ERRBUF_LEN];
+};
+
+// Decide whether an item takes part in this document at all. NULL takes every
+// item the document carries
+typedef bool (*config_accept_fn)(const struct conf_item *item, void *ctx);
+
+// Apply the items of a JSON configuration document to newconf, which the caller
+// obtained from duplicate_config(). Values are judged on a copy first, so an
+// item this node refuses never reaches newconf - with strict set, one such item
+// fails the whole document, without it the item is left at its current value.
+// Returns false only when strict rejected something
+bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted, void *ctx,
+                       const bool strict, struct config_apply *result);
+
+// Install a configuration prepared by config_apply_json(): write the dnsmasq
+// configuration, replace the running one, persist it and rewrite what is
+// generated from it. from_cluster marks a configuration a peer handed us, which
+// is not a change made on this node: it carries the time it was changed at, on
+// whichever node that was. Returns false if the dnsmasq configuration is not
+// usable
+bool config_install(struct config *newconf, const struct config_apply *result,
+                    const bool from_cluster, const double changed, char *errbuf);
+
+// Bumped whenever the configuration is replaced, so a reader can tell that
+// something changed without comparing anything
+extern volatile unsigned long config_generation;
+
+// When the configuration this node holds was last changed - here, or on the
+// peer we took it from. This decides who catches up whom when two nodes were
+// out of touch and come back with different configurations. It starts at zero,
+// so a node nobody has ever configured yields to one somebody has, and it is
+// persisted, so a setting that asks FTL to restart does not lose it
+extern volatile double config_changed;
+void config_stamp_local_change(void);
+void config_stamp_cluster_change(const double when);
 void reread_config(void);
 bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);

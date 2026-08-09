@@ -511,6 +511,7 @@ int set_config_from_CLI(const char *key, const char *value)
 
 		// Install new configuration
 		replace_config(&newconf);
+		config_stamp_local_change();
 
 		// Print value
 		writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);

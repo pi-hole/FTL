@@ -266,73 +266,76 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
+// Can a DHCP server be run from this configuration at all? Asked before writing
+// the dnsmasq configuration, and asked by the cluster before it tells its peers
+// it could take DHCP over - a node that answers yes and then cannot write its
+// configuration leaves the network without a server
+bool __attribute__((nonnull(1,2))) dhcp_config_valid(struct config *conf, char errbuf[ERRBUF_SIZE])
+{
+	// Check if the addresses are valid
+	// The addresses should neither be 0.0.0.0 nor 255.255.255.255
+	if((ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0) ||
+	   (ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0xFFFFFFFF))
+	{
+		strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+	if((ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0) ||
+	   (ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0xFFFFFFFF))
+	{
+		strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+	if((ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0) ||
+	   (ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0xFFFFFFFF))
+	{
+		strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+	// The addresses should neither end in .0 or .255 in the last octet
+	if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
+	   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+	{
+		strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+	if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
+	   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+	{
+		strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+	if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
+	   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+	{
+		strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+		return false;
+	}
+
+	// Check if the DHCP range is valid (start needs to be smaller than end)
+	if(ntohl(conf->dhcp.start.v.in_addr.s_addr) > ntohl(conf->dhcp.end.v.in_addr.s_addr))
+	{
+		strncpy(errbuf, "DHCP range start address is larger than the end address", ERRBUF_SIZE);
+		return false;
+	}
+
+	// Check if the router address is within the DHCP range
+	if(ntohl(conf->dhcp.router.v.in_addr.s_addr) >= ntohl(conf->dhcp.start.v.in_addr.s_addr) &&
+	   ntohl(conf->dhcp.router.v.in_addr.s_addr) <= ntohl(conf->dhcp.end.v.in_addr.s_addr))
+	{
+		strncpy(errbuf, "DHCP router address should not be within DHCP range", ERRBUF_SIZE);
+		return false;
+	}
+	return true;
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
-	if(conf->dhcp.active.v.b)
+	if(conf->dhcp.active.v.b && !dhcp_config_valid(conf, errbuf))
 	{
-		// Check if the addresses are valid
-		// The addresses should neither be 0.0.0.0 nor 255.255.255.255
-		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0) ||
-		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) == 0xFFFFFFFF))
-		{
-			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0) ||
-		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) == 0xFFFFFFFF))
-		{
-			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0) ||
-		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) == 0xFFFFFFFF))
-		{
-			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-		// The addresses should neither end in .0 or .255 in the last octet
-		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
-		{
-			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
-		{
-			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
-		{
-			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-
-		// Check if the DHCP range is valid (start needs to be smaller than end)
-		if(ntohl(conf->dhcp.start.v.in_addr.s_addr) > ntohl(conf->dhcp.end.v.in_addr.s_addr))
-		{
-			strncpy(errbuf, "DHCP range start address is larger than the end address", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
-
-		// Check if the router address is within the DHCP range
-		if(ntohl(conf->dhcp.router.v.in_addr.s_addr) >= ntohl(conf->dhcp.start.v.in_addr.s_addr) &&
-		   ntohl(conf->dhcp.router.v.in_addr.s_addr) <= ntohl(conf->dhcp.end.v.in_addr.s_addr))
-		{
-			strncpy(errbuf, "DHCP router address should not be within DHCP range", ERRBUF_SIZE);
-			log_err("Unable to update dnsmasq configuration: %s", errbuf);
-			return false;
-		}
+		log_err("Unable to update dnsmasq configuration: %s", errbuf);
+		return false;
 	}
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
@@ -768,15 +771,24 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		{
 			fputs("# Cluster: the virtual IP address is the only address the\n", pihole_conf);
 			fputs("# clients need to know, it follows whichever node answers.\n", pihole_conf);
-			fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n",
-			        conf->cluster.vip.address.v.s);
+			// Named more than once when dhcp.multiDNS asks for it, as
+			// the two branches below do: some clients add a resolver
+			// of their own unless several are advertised
+			if(conf->dhcp.multiDNS.v.b)
+				fprintf(pihole_conf, "dhcp-option=option:dns-server,%s,%s,%s\n",
+				        conf->cluster.vip.address.v.s,
+				        conf->cluster.vip.address.v.s,
+				        conf->cluster.vip.address.v.s);
+			else
+				fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n",
+				        conf->cluster.vip.address.v.s);
 		}
 		else if(cluster_dhcp)
 		{
 			// Without a virtual IP address, every node is advertised
 			// individually so a client can fall back on its own
 			char servers[512] = "0.0.0.0";
-			cJSON *peers = conf->cluster.peers.v.json;
+			cJSON *peers = conf->cluster.members.v.json;
 			for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
 			{
 				char address[INET_ADDRSTRLEN] = "";
@@ -791,7 +803,16 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			}
 			fputs("# Cluster: advertise every node so the clients keep\n", pihole_conf);
 			fputs("# resolving when this one stops serving them.\n", pihole_conf);
-			fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n", servers);
+
+			// dhcp.multiDNS asks for the server to be named more than
+			// once, which some clients need before they stop adding
+			// one of their own. A cluster list is several servers but
+			// not several entries, so the repetition still applies
+			if(conf->dhcp.multiDNS.v.b && strlen(servers) * 3 + 3 < sizeof(servers) * 3)
+				fprintf(pihole_conf, "dhcp-option=option:dns-server,%s,%s,%s\n",
+				        servers, servers, servers);
+			else
+				fprintf(pihole_conf, "dhcp-option=option:dns-server,%s\n", servers);
 		}
 		else if(conf->dhcp.multiDNS.v.b)
 		{
@@ -812,7 +833,11 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			const bool cluster_vip6 = strlen(conf->cluster.vip.address.v.s) > 0 &&
 			                          inet_pton(AF_INET6, conf->cluster.vip.address.v.s, &vip6) == 1;
 			// Add dns-server option only if not already done above (dhcp.multiDNS)
-			if(cluster_dhcp && cluster_vip6)
+			if(cluster_dhcp && cluster_vip6 && conf->dhcp.multiDNS.v.b)
+				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s],[%s],[%s]\n",
+				        conf->cluster.vip.address.v.s, conf->cluster.vip.address.v.s,
+				        conf->cluster.vip.address.v.s);
+			else if(cluster_dhcp && cluster_vip6)
 				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s]\n",
 				        conf->cluster.vip.address.v.s);
 			else if(conf->dhcp.multiDNS.v.b)

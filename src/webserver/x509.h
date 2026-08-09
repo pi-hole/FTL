@@ -22,4 +22,8 @@ enum cert_check read_certificate(const char *certfile, const char *domain, const
 enum cert_check cert_currently_valid(const char *certfile, const time_t valid_for_at_least_days);
 bool is_pihole_certificate(const char *certfile);
 
+// The pin a peer of this node compares its certificate against, base64 of the
+// SHA-256 of the public key - what curl calls "sha256//..."
+bool certificate_pin(const char *certfile, char *out, const size_t outlen);
+
 #endif // X509_H

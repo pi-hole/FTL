@@ -347,6 +347,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 
 	// Install new configuration (takes ownership of teleporter_config)
 	replace_config(&teleporter_config);
+	config_stamp_local_change();
 
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
@@ -510,7 +511,14 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 		// has several triggers, e.g., immediately recreating the default group
 		// on (accidental) deletion. This would cause the import to fail due to
 		// a unique constraint violation.
-		snprintf(stmt, sizeof(stmt), "INSERT OR REPLACE INTO disk.\"%s\" SELECT * FROM \"%s\";", tables[i], tables[i]);
+		//
+		// The source is named with its database. Unqualified, SQLite looks in
+		// main and then in the attached one - so an archive that does not carry
+		// this table would read it back out of the destination, which the line
+		// above has just emptied, and the table would be silently wiped rather
+		// than the import failing. That archive arrives from another node
+		// without anybody looking at it
+		snprintf(stmt, sizeof(stmt), "INSERT OR REPLACE INTO disk.\"%s\" SELECT * FROM main.\"%s\";", tables[i], tables[i]);
 		if(sqlite3_exec(database, stmt, NULL, NULL, &err) != SQLITE_OK)
 		{
 			set_hint(hint, err);
@@ -549,7 +557,7 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	return NULL;
 }
 
-const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * const hint, cJSON *import, cJSON *imported_files)
+const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, const unsigned int max_entries, char * const hint, cJSON *import, cJSON *imported_files)
 {
 	// Initialize ZIP archive
 	mz_zip_archive zip = { 0 };
@@ -564,8 +572,24 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		return "Failed to parse received ZIP archive";
 	}
 
+	// An archive can be built to hold a hundred thousand entries, and each one
+	// that does not belong used to write a line with a name from it into the
+	// log. The caller says how many are plausible for the archive it is
+	// handing over - a cluster peer's holds one, an export from a Pi-hole with
+	// a large /etc/dnsmasq.d rather more
+	const mz_uint entries = mz_zip_reader_get_num_files(&zip);
+	if(max_entries > 0 && entries > max_entries)
+	{
+		mz_zip_reader_end(&zip);
+		set_hint(hint, "the archive holds more files than one of this kind can");
+		return "Received ZIP archive holds too many files";
+	}
+
+	// Counted rather than named one by one, for the same reason
+	unsigned int skipped = 0;
+
 	// Loop over all files in the ZIP archive
-	for(mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip); i++)
+	for(mz_uint i = 0; i < entries; i++)
 	{
 		// Get file information
 		mz_zip_archive_file_stat file_stat;
@@ -584,18 +608,25 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		};
 
 		// Check if this file is one of the files we want to extract and process
-		bool extract = false;
+		// Which of the wanted files is this? Matched by name as well as
+		// by path - the sender's files.gravity may sit somewhere else
+		// than ours - and the answer is remembered, because the dispatch
+		// below has to agree with it or the file is read and dropped
+		int matched = -1;
 		for(size_t j = 0; j < ArraySize(extract_files); j++)
 		{
-			if(strcmp(file_stat.m_filename, extract_files[j]) == 0)
+			const char *have = strrchr(file_stat.m_filename, '/');
+			const char *want = strrchr(extract_files[j], '/');
+			if(strcmp(file_stat.m_filename, extract_files[j]) == 0 ||
+			   (have != NULL && want != NULL && strcmp(have, want) == 0))
 			{
-				extract = true;
+				matched = (int)j;
 				break;
 			}
 		}
-		if(!extract)
+		if(matched < 0)
 		{
-			log_info("Skipping file %s in Teleporter archive", file_stat.m_filename);
+			skipped++;
 			continue;
 		}
 
@@ -633,7 +664,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		const char *import_tables[ArraySize(gravity_tables)] = { NULL };
 		size_t num_tables = 0u;
 		// Is this "etc/pihole/pihole.toml" ?
-		if(strcmp(file_stat.m_filename, extract_files[0]) == 0)
+		if(matched == 0)
 		{
 			// Check whether we should import this file
 			if(import != NULL && !JSON_KEY_TRUE(import, "config"))
@@ -649,12 +680,13 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported Pi-hole configuration: %s", file_stat.m_filename);
 		}
 		// Is this "etc/pihole/dhcp.leases"?
-		else if(strcmp(file_stat.m_filename, extract_files[1]) == 0)
+		else if(matched == 1)
 		{
 			// Check whether we should import this file
 			if(import != NULL && !JSON_KEY_TRUE(import, "dhcp_leases"))
@@ -670,12 +702,13 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported DHCP leases: %s", file_stat.m_filename);
 		}
 		// Is this "etc/pihole/gravity.db"?
-		else if(strcmp(file_stat.m_filename, extract_files[2]) == 0)
+		else if(matched == 2)
 		{
 			// Check whether we should import this file
 			if(import != NULL && !cJSON_HasObjectItem(import, "gravity"))
@@ -716,11 +749,21 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 
 			// Import gravity database
 			memset(hint, 0, ERRBUF_SIZE);
-			const char *err = test_and_import_database(ptr, file_stat.m_uncomp_size, config.files.gravity.v.s,
+			// Copied out: this runs on a thread that does not hold the
+			// configuration lock, and another one replaces the string
+			// while the import is still using it
+			char gravitydb[PATH_MAX] = "";
+			lock_shm();
+			strncpy(gravitydb, config.files.gravity.v.s, sizeof(gravitydb) - 1);
+			unlock_shm();
+			gravitydb[sizeof(gravitydb) - 1] = '\0';
+
+			const char *err = test_and_import_database(ptr, file_stat.m_uncomp_size, gravitydb,
 			                                           import_tables, num_tables, hint);
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported database: %s", file_stat.m_filename);
@@ -732,8 +775,10 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 				char *tablename = calloc(len, sizeof(char));
 				if(tablename == NULL)
 				{
+					// Only this name is missing. The buffer this loop
+					// runs inside is freed once, below it - freeing it
+					// here as well would free it twice
 					log_err("Failed to allocate memory for table name");
-					free(ptr);
 					continue;
 				}
 
@@ -753,7 +798,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		}
 		else
 		{
-			log_warn("Ignoring file %s in Teleporter archive", file_stat.m_filename);
+			skipped++;
 
 			// Free allocated memory and skip to next file
 			free(ptr);
@@ -767,6 +812,12 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 		// Free allocated memory
 		free(ptr);
 	}
+
+	// One line rather than one per file: the names come out of an archive
+	// somebody else built, and there can be a great many of them
+	if(skipped > 0)
+		log_info("Skipped %u file%s in Teleporter archive that do not belong in one",
+		         skipped, skipped == 1 ? "" : "s");
 
 	// Close ZIP archive
 	mz_zip_reader_end(&zip);
@@ -872,7 +923,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 		free(ptr);
 		return false;
 	}
-	const char *error = read_teleporter_zip(ptr, size, hint, NULL, imported_files);
+	const char *error = read_teleporter_zip(ptr, size, 0, hint, NULL, imported_files);
 
 	if(error != NULL)
 	{
@@ -890,3 +941,53 @@ bool read_teleporter_zip_from_disk(const char *filename)
 	return true;
 }
 
+// The list tables alone, for a cluster synchronizing them between its nodes.
+// Deliberately not the full Teleporter archive: that one carries pihole.toml
+// with the password hashes and the TOTP secret in it, which a peer has no
+// business reading
+const char *generate_cluster_zip(mz_zip_archive *zip, void **ptr, size_t *size)
+{
+	memset(zip, 0, sizeof(*zip));
+
+	if(!mz_zip_writer_init_heap(zip, 0, 64*1024))
+		return "Failed creating heap ZIP archive";
+
+	// Copied out rather than pointed at: this runs on a webserver thread
+	// answering a peer, and another thread replaces the configuration - and
+	// frees this string - while the archive is being built
+	char gravitydb[PATH_MAX] = "";
+	lock_shm();
+	strncpy(gravitydb, config.files.gravity.v.s, sizeof(gravitydb) - 1);
+	unlock_shm();
+	gravitydb[sizeof(gravitydb) - 1] = '\0';
+
+	void *dbbuf = NULL;
+	size_t dbsize = 0u;
+	if(!create_teleporter_database(gravitydb, gravity_tables,
+	                               ArraySize(gravity_tables), &dbbuf, &dbsize))
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to create gravity database for heap ZIP archive!";
+	}
+
+	const char *file_comment = "Pi-hole's gravity database";
+	const char *file_path = gravitydb;
+	if(file_path[0] == '/')
+		file_path++;
+	if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment,
+	                             (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
+	{
+		sqlite3_free(dbbuf);
+		mz_zip_writer_end(zip);
+		return "Failed to add gravity database to heap ZIP archive!";
+	}
+	sqlite3_free(dbbuf);
+
+	if(!mz_zip_writer_finalize_heap_archive(zip, ptr, size))
+	{
+		mz_zip_writer_end(zip);
+		return "Failed to finalize heap ZIP archive!";
+	}
+
+	return NULL;
+}

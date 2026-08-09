@@ -607,11 +607,21 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
         message(STATUS "Building FTL with cluster support: YES")
         target_compile_definitions(cluster PRIVATE HAVE_CURL)
         target_compile_definitions(api PRIVATE HAVE_CURL)
-        target_link_libraries(pihole-FTL ${LIBCURL})
+        # Inside a group with what it draws on: OpenSSL and nghttp2 are already
+        # on the link line, but ahead of libcurl, and a static archive only
+        # answers symbols that are still undefined when the linker reaches it.
+        # Whether that bites depends on what the archives happened to pull in
+        # earlier, which is not something to leave to chance
+        target_link_libraries(pihole-FTL
+            -Wl,--start-group ${LIBCURL} ${LIBSSL} ${LIBCRYPTO} ${LIBNGHTTP2} -Wl,--end-group)
         # Static libcurl pulls in zlib for the content encodings it offers
         find_library(LIBZ NAMES libz${LIBRARY_SUFFIX} z)
         if(LIBZ)
             target_link_libraries(pihole-FTL ${LIBZ})
+        endif()
+        # ...and libidn2 for the internationalized hostnames it accepts
+        if(LIBIDN2)
+            target_link_libraries(pihole-FTL ${LIBIDN2})
         endif()
     else()
         message(STATUS "Building FTL with cluster support: NO (libcurl not found)")

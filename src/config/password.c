@@ -54,8 +54,25 @@
 // password is generated on every start.
 #define CLI_PW_FILE "/etc/pihole/cli_pw"
 
-// Cached content of CLUSTER_SECRET_FILE
+// Cached content of CLUSTER_SECRET_FILE. Replaced from a webserver thread when
+// this node joins a cluster, while the cluster thread and the other webserver
+// threads are deriving keys from it
 static char *cluster_pw = NULL;
+static pthread_mutex_t cluster_pw_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Publish a secret that is ready to be used. Every assignment goes through here
+// so a reader never sees a pointer that is about to be freed
+static bool publish_cluster_secret(char *secret)
+{
+	pthread_mutex_lock(&cluster_pw_lock);
+	if(cluster_pw != NULL)
+		free(cluster_pw);
+	cluster_pw = secret;
+	const bool okay = cluster_pw != NULL;
+	pthread_mutex_unlock(&cluster_pw_lock);
+
+	return okay;
+}
 static char *cli_password = NULL;
 
 // Convert RAW data into hex representation
@@ -407,15 +424,6 @@ enum password_result verify_login(const char *password)
 	{
 		if(strcmp(cli_password, password) == 0)
 			return CLIPASSWORD_CORRECT;
-	}
-
-	// Check if this is another node of the cluster. Such a session is
-	// restricted to reading, just like a CLI session: a peer synchronizes
-	// *from* us and never has a reason to change anything here
-	if(cluster_pw != NULL && strcmp(cluster_pw, password) == 0)
-	{
-		log_debug(DEBUG_API, "Cluster secret correct");
-		return CLUSTERPASSWORD_CORRECT;
 	}
 
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
@@ -793,13 +801,60 @@ bool generate_password(char **password, char **pwhash)
 // Read the cluster secret, creating it if this node does not have one yet. All
 // nodes of a cluster share the same secret, so the file is copied to the other
 // nodes once - there is nothing per-peer to manage
+// Replace the secret with one handed over by a node we are joining. The file is
+// rewritten rather than merged: a node belongs to one cluster
+bool adopt_cluster_secret(const char *secret)
+{
+	if(secret == NULL || strlen(secret) < CLUSTER_SECRET_MINLEN)
+		return false;
+
+	// Written and renamed, so a node reading it while we write never sees
+	// half a secret and the mode is right before it is in place
+	char tmpfile[sizeof(CLUSTER_SECRET_FILE) + 32] = "";
+	snprintf(tmpfile, sizeof(tmpfile), "%s.%u.tmp", CLUSTER_SECRET_FILE, (unsigned int)getpid());
+	unlink(tmpfile);
+
+	const int fd = open(tmpfile, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+	                    S_IRUSR | S_IWUSR | S_IRGRP);
+	if(fd < 0)
+	{
+		log_err("Failed to create %s: %s", tmpfile, strerror(errno));
+		return false;
+	}
+
+	FILE *file = fdopen(fd, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open %s for writing: %s", tmpfile, strerror(errno));
+		close(fd);
+		unlink(tmpfile);
+		return false;
+	}
+
+	const bool written = fputs(secret, file) != EOF;
+	const bool flushed = fflush(file) == 0 && fsync(fileno(file)) == 0;
+	if(fclose(file) != 0 || !written || !flushed)
+	{
+		log_err("Failed to write the cluster secret: %s", strerror(errno));
+		unlink(tmpfile);
+		return false;
+	}
+
+	if(rename(tmpfile, CLUSTER_SECRET_FILE) != 0)
+	{
+		log_err("Failed to install %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		unlink(tmpfile);
+		return false;
+	}
+
+	log_info("Adopted the cluster secret of the node this one is joining");
+
+	return publish_cluster_secret(strdup(secret));
+}
+
 bool create_cluster_secret(void)
 {
-	if(cluster_pw != NULL)
-	{
-		free(cluster_pw);
-		cluster_pw = NULL;
-	}
+	publish_cluster_secret(NULL);
 
 	// An existing secret is used as it is
 	FILE *file = fopen(CLUSTER_SECRET_FILE, "r");
@@ -814,11 +869,15 @@ bool create_cluster_secret(void)
 		while(len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r'))
 			buffer[--len] = '\0';
 
+		// Long enough to be worth deriving a key from. A shorter one would
+		// be taken at startup and then refused on every single request,
+		// with nothing saying why
+		if(okay && len >= CLUSTER_SECRET_MINLEN)
+			return publish_cluster_secret(strdup(buffer));
+
 		if(okay && len > 0)
-		{
-			cluster_pw = strdup(buffer);
-			return cluster_pw != NULL;
-		}
+			log_warn("Cluster secret in %s is shorter than %d characters, replacing it",
+			         CLUSTER_SECRET_FILE, CLUSTER_SECRET_MINLEN);
 
 		// An empty or unreadable file would make the O_EXCL below fail
 		// forever, so it goes and a fresh secret takes its place
@@ -830,7 +889,8 @@ bool create_cluster_secret(void)
 		}
 	}
 
-	if(!generate_password(&cluster_pw, NULL))
+	char *generated = NULL;
+	if(!generate_password(&generated, NULL))
 	{
 		log_err("Failed to generate a cluster secret");
 		return false;
@@ -845,8 +905,7 @@ bool create_cluster_secret(void)
 	if(fd < 0)
 	{
 		log_err("Failed to create %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
-		free(cluster_pw);
-		cluster_pw = NULL;
+		free(generated);
 		return false;
 	}
 
@@ -855,31 +914,36 @@ bool create_cluster_secret(void)
 	{
 		log_err("Failed to open %s for writing: %s", CLUSTER_SECRET_FILE, strerror(errno));
 		close(fd);
-		free(cluster_pw);
-		cluster_pw = NULL;
+		free(generated);
 		return false;
 	}
 
 	// Both matter: a full disk shows up in either the write or the flush
-	const bool written = fputs(cluster_pw, file) != EOF;
+	const bool written = fputs(generated, file) != EOF;
 	if(fclose(file) != 0 || !written)
 	{
 		log_err("Failed to write the cluster secret: %s", strerror(errno));
 		unlink(CLUSTER_SECRET_FILE);
-		free(cluster_pw);
-		cluster_pw = NULL;
+		free(generated);
 		return false;
 	}
 
 	log_info("Generated a cluster secret in %s - copy this file to the other nodes",
 	         CLUSTER_SECRET_FILE);
 
-	return true;
+	return publish_cluster_secret(generated);
 }
 
-const char *cluster_secret(void)
+bool cluster_secret_copy(char *buf, const size_t buflen)
 {
-	return cluster_pw;
+	pthread_mutex_lock(&cluster_pw_lock);
+	const size_t len = cluster_pw != NULL ? strlen(cluster_pw) : 0;
+	const bool usable = len >= CLUSTER_SECRET_MINLEN && len < buflen;
+	if(usable)
+		memcpy(buf, cluster_pw, len + 1);
+	pthread_mutex_unlock(&cluster_pw_lock);
+
+	return usable;
 }
 
 bool create_cli_password(void)

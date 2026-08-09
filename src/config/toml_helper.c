@@ -410,8 +410,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 			cJSON *item = NULL;
 			cJSON_ArrayForEach(item, v->json)
 			{
-				// Skip empty elements
-				if(strlen(item->valuestring) == 0)
+				// Skip empty elements. Anything that is not a
+				// string has no valuestring to look at
+				if(!cJSON_IsString(item) || strlen(item->valuestring) == 0)
 					continue;
 
 				// Add indentation (if we are indenting)

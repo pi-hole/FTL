@@ -62,3 +62,6 @@ test/libs/
 # Local assistant tooling artifacts
 /.claude/settings.local.json
 /.claude/test-logs/
+
+# Cluster secret for the local test cluster
+test/cluster/cluster_secret

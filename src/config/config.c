@@ -10,6 +10,10 @@
 
 #include "FTL.h"
 #include "config/config.h"
+// cluster_state_save()
+#include "cluster/sync.h"
+// set_and_check_password()
+#include "config/password.h"
 #include "config/toml_reader.h"
 #include "config/toml_writer.h"
 #include "config/setupVars.h"
@@ -21,6 +25,8 @@
 #include "files.h"
 // write_dnsmasq_config()
 #include "config/dnsmasq_config.h"
+// INT_MIN, INT_MAX, UINT_MAX, LONG_MIN, LONG_MAX
+#include <limits.h>
 // lock_shm(), unlock_shm()
 #include "shmem.h"
 // dnsmasq_failed
@@ -301,6 +307,99 @@ void duplicate_config(struct config *dst, struct config *src)
 }
 
 // True = Identical, False = Different
+// Whether this item takes part in cluster synchronization at all. Flagged items
+// never do, and neither does one this node could not change if a peer asked it
+// to: publishing a value we do not hold would have us take our own value back
+// from whoever we told
+// Credentials leave a node over an encrypted connection only, so a cluster that
+// is not entirely https:// cannot keep them in step at all. Decided from the
+// member list rather than per peer: every node then leaves the same items out of
+// the fingerprint it publishes, and the nodes can still tell agreement from
+// disagreement
+// Answered from a flag rather than by walking the member list every time it is
+// asked: the list is a cJSON tree another thread replaces and frees, and this
+// question is asked once per configuration item on paths that hold no lock
+static volatile bool members_all_encrypted = false;
+
+// Recomputed wherever the configuration becomes the live one, under whatever
+// lock that path already holds
+void config_update_derived(struct config *conf)
+{
+	const cJSON *members = conf->cluster.members.v.json;
+	bool all = cJSON_IsArray(members) && cJSON_GetArraySize(members) > 0;
+
+	for(const cJSON *item = all ? members->child : NULL; item != NULL; item = item->next)
+		if(!cJSON_IsString(item) || strncmp(item->valuestring, "https://", 8) != 0)
+			all = false;
+
+	members_all_encrypted = all;
+}
+
+static bool encrypted_everywhere(void)
+{
+	return members_all_encrypted;
+}
+
+bool cluster_credentials_syncable(void)
+{
+	return config.cluster.sync.credentials.v.b && encrypted_everywhere();
+}
+
+// The same question with the transport left out of it. What may travel depends
+// on the member list, which is itself a setting somebody can change - so a
+// fingerprint meant to be compared with an earlier one has to be taken over a
+// set that does not move under it
+// What the fingerprints cover. FLAG_ENV_VAR is deliberately not part of this:
+// whether an item is pinned through the environment is a property of one node,
+// so counting it would have two nodes hash different sets of items and never
+// agree, however identical their configuration is
+// ...and the same for the two halves this node keeps for itself, which are
+// compared against this node's own past rather than against a peer - so a
+// member list that changes scheme must not move them
+bool cluster_hashable_ignoring_transport(const struct conf_item *item)
+{
+	if(item->f & FLAG_CREDENTIAL)
+		// ...and not of it here either. These two fingerprints are what
+		// this node compares against its own past to notice that somebody
+		// changed something, so a policy switch that moves no value must
+		// not move them: it would read as a configuration change and stamp
+		// this node as the most recently configured in the cluster
+		return !(item->f & (FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
+
+	return !(item->f & (FLAG_NO_CLUSTER | FLAG_READ_ONLY | FLAG_WRITE_ONLY |
+	                    FLAG_PSEUDO_ITEM));
+}
+
+bool cluster_syncable_ignoring_transport(const struct conf_item *item)
+{
+	if(item->f & FLAG_CREDENTIAL)
+		return config.cluster.sync.credentials.v.b &&
+		       !(item->f & (FLAG_ENV_VAR | FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
+
+	return !(item->f & (FLAG_NO_CLUSTER | FLAG_ENV_VAR | FLAG_READ_ONLY |
+	                    FLAG_WRITE_ONLY | FLAG_PSEUDO_ITEM));
+}
+
+bool cluster_syncable(const struct conf_item *item)
+{
+	// The credentials are the one group the administrator decides about. With
+	// them synchronized the nodes are interchangeable down to the password;
+	// with them local, the shared cluster secret cannot be turned into a
+	// login on every node
+	if(item->f & FLAG_CREDENTIAL)
+	{
+		// Write-only is not a reason to leave one out here: the second
+		// factor is write-only, and a cluster that synchronizes the
+		// password but not the second factor is a cluster where the
+		// second factor is skipped by opening the other node instead
+		return cluster_credentials_syncable() &&
+		       !(item->f & (FLAG_ENV_VAR | FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
+	}
+
+	return !(item->f & (FLAG_NO_CLUSTER | FLAG_ENV_VAR | FLAG_READ_ONLY |
+	                    FLAG_WRITE_ONLY | FLAG_PSEUDO_ITEM));
+}
+
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2)
 {
 	// Make a type-dependent copy of the value
@@ -529,7 +628,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.h = "Interface to use for DNS (see also dns.listeningMode) and DHCP (if enabled). Leave empty for auto-detection.";
 	conf->dns.interface.a = cJSON_CreateStringReference("a valid interface name");
 	conf->dns.interface.t = CONF_STRING;
-	conf->dns.interface.f = FLAG_RESTART_FTL;
+	conf->dns.interface.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
 
@@ -555,7 +654,7 @@ void initConfig(struct config *conf)
 		CONFIG_ADD_ENUM_OPTIONS(conf->dns.listeningMode.a, listeningMode);
 	}
 	conf->dns.listeningMode.t = CONF_ENUM_LISTENING_MODE;
-	conf->dns.listeningMode.f = FLAG_RESTART_FTL;
+	conf->dns.listeningMode.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dns.listeningMode.d.listeningMode = LISTEN_LOCAL;
 	conf->dns.listeningMode.c = validate_stub; // Only type-based checking
 
@@ -602,7 +701,7 @@ void initConfig(struct config *conf)
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
-	conf->dns.upstreamCA.f = FLAG_RESTART_FTL;
+	conf->dns.upstreamCA.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dns.upstreamCA.c = validate_filepath_empty;
 
 	conf->dns.doh.k = "dns.doh";
@@ -729,6 +828,7 @@ void initConfig(struct config *conf)
 	conf->dns.reply.host.force4.k = "dns.reply.host.force4";
 	conf->dns.reply.host.force4.h = "Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client.\n\n This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds to the following names:\n - \"pi.hole\"\n - \"<the device's hostname>\"\n - \"pi.hole.<local domain>\"\n - \"<the device's hostname>.<local domain>\"";
 	conf->dns.reply.host.force4.t = CONF_BOOL;
+	conf->dns.reply.host.force4.f = FLAG_NO_CLUSTER;
 	conf->dns.reply.host.force4.d.b = false;
 	conf->dns.reply.host.force4.c = validate_stub; // Only type-based checking
 
@@ -736,12 +836,14 @@ void initConfig(struct config *conf)
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
 	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
+	conf->dns.reply.host.v4.f = FLAG_NO_CLUSTER;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
 
 	conf->dns.reply.host.force6.k = "dns.reply.host.force6";
 	conf->dns.reply.host.force6.h = "Use a specific IPv6 address for the Pi-hole host? See description for the IPv4 variant above for further details.";
 	conf->dns.reply.host.force6.t = CONF_BOOL;
+	conf->dns.reply.host.force6.f = FLAG_NO_CLUSTER;
 	conf->dns.reply.host.force6.d.b = false;
 	conf->dns.reply.host.force6.c = validate_stub; // Only type-based checking
 
@@ -749,6 +851,7 @@ void initConfig(struct config *conf)
 	conf->dns.reply.host.v6.h = "Custom IPv6 address for the Pi-hole host";
 	conf->dns.reply.host.v6.a = cJSON_CreateStringReference("A valid IPv6 address or empty string (\"\")");
 	conf->dns.reply.host.v6.t = CONF_STRUCT_IN6_ADDR;
+	conf->dns.reply.host.v6.f = FLAG_NO_CLUSTER;
 	memset(&conf->dns.reply.host.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->dns.reply.host.v6.c = validate_stub; // Only type-based checking
 
@@ -756,6 +859,7 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.force4.k = "dns.reply.blocking.force4";
 	conf->dns.reply.blocking.force4.h = "Use a specific IPv4 address in IP blocking mode? By default, FTL determines the address of the interface a query arrived on and uses this address for replying to A queries with the most suitable address for the requesting client.\n\n This setting can be used to use a fixed, rather than the dynamically obtained, address when Pi-hole responds in the following cases:\n - IP blocking mode is used and this query is to be blocked\n - regular expressions with the ;reply=IP regex extension.";
 	conf->dns.reply.blocking.force4.t = CONF_BOOL;
+	conf->dns.reply.blocking.force4.f = FLAG_NO_CLUSTER;
 	conf->dns.reply.blocking.force4.d.b = false;
 	conf->dns.reply.blocking.force4.c = validate_stub; // Only type-based checking
 
@@ -763,12 +867,14 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.v4.h = "Custom IPv4 address for IP blocking mode";
 	conf->dns.reply.blocking.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.blocking.v4.t = CONF_STRUCT_IN_ADDR;
+	conf->dns.reply.blocking.v4.f = FLAG_NO_CLUSTER;
 	memset(&conf->dns.reply.blocking.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.blocking.v4.c = validate_stub; // Only type-based checking
 
 	conf->dns.reply.blocking.force6.k = "dns.reply.blocking.force6";
 	conf->dns.reply.blocking.force6.h = "Use a specific IPv6 address in IP blocking mode? See description for the IPv4 variant above for further details.";
 	conf->dns.reply.blocking.force6.t = CONF_BOOL;
+	conf->dns.reply.blocking.force6.f = FLAG_NO_CLUSTER;
 	conf->dns.reply.blocking.force6.d.b = false;
 	conf->dns.reply.blocking.force6.c = validate_stub; // Only type-based checking
 
@@ -776,6 +882,7 @@ void initConfig(struct config *conf)
 	conf->dns.reply.blocking.v6.h = "Custom IPv6 address for IP blocking mode";
 	conf->dns.reply.blocking.v6.a = cJSON_CreateStringReference("A valid IPv6 address or empty string (\"\")");
 	conf->dns.reply.blocking.v6.t = CONF_STRUCT_IN6_ADDR;
+	conf->dns.reply.blocking.v6.f = FLAG_NO_CLUSTER;
 	memset(&conf->dns.reply.blocking.v6.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->dns.reply.blocking.v6.c = validate_stub; // Only type-based checking
 
@@ -798,7 +905,12 @@ void initConfig(struct config *conf)
 	conf->dhcp.active.k = "dhcp.active";
 	conf->dhcp.active.h = "Is the embedded DHCP server enabled?";
 	conf->dhcp.active.t = CONF_BOOL;
-	conf->dhcp.active.f = FLAG_RESTART_FTL;
+	// The DHCP settings describe what this machine does on its network, and
+	// stay with it: a node that never had a lease range would otherwise hand
+	// its empty one to the node that is serving, which then has no valid
+	// dnsmasq configuration to write and refuses the whole document - every
+	// round, for good. With failover, set the same range on every node
+	conf->dhcp.active.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.active.d.b = false;
 	conf->dhcp.active.c = validate_stub; // Only type-based checking
 
@@ -806,7 +918,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.start.h = "Start address of the DHCP address pool\n\n Example: \"192.168.0.10\"";
 	conf->dhcp.start.a = cJSON_CreateStringReference("A valid IPv4 address, or empty string (\"\")");
 	conf->dhcp.start.t = CONF_STRUCT_IN_ADDR;
-	conf->dhcp.start.f = FLAG_RESTART_FTL;
+	conf->dhcp.start.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->dhcp.start.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dhcp.start.c = validate_stub; // Only type-based checking
 
@@ -814,7 +926,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.end.h = "End address of the DHCP address pool\n\n Example: \"192.168.0.250\"";
 	conf->dhcp.end.a = cJSON_CreateStringReference("A valid IPv4 address, or empty string (\"\")");
 	conf->dhcp.end.t = CONF_STRUCT_IN_ADDR;
-	conf->dhcp.end.f = FLAG_RESTART_FTL;
+	conf->dhcp.end.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->dhcp.end.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dhcp.end.c = validate_stub; // Only type-based checking
 
@@ -822,7 +934,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.router.h = "Address of the gateway to be used (typically the address of your router in a home installation)\n\n Example: \"192.168.0.1\"";
 	conf->dhcp.router.a = cJSON_CreateStringReference("A valid IPv4 address, or empty string (\"\")");
 	conf->dhcp.router.t = CONF_STRUCT_IN_ADDR;
-	conf->dhcp.router.f = FLAG_RESTART_FTL;
+	conf->dhcp.router.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->dhcp.router.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dhcp.router.c = validate_stub; // Only type-based checking
 
@@ -830,7 +942,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.netmask.h = "The netmask used by your Pi-hole. For directly connected networks (i.e., networks on which the machine running Pi-hole has an interface) the netmask is optional and may be set to an empty string (\"\"): it will then be determined from the interface configuration itself.\n\n For networks which receive DHCP service via a relay agent, we cannot determine the netmask itself, so it should explicitly be specified, otherwise Pi-hole guesses based on the class (A, B or C) of the network address.\n\n Example: \"255.255.255.0\"";
 	conf->dhcp.netmask.a = cJSON_CreateStringReference("Any valid netmask, or an empty string (\"\") for auto-discovery");
 	conf->dhcp.netmask.t = CONF_STRUCT_IN_ADDR;
-	conf->dhcp.netmask.f = FLAG_RESTART_FTL;
+	conf->dhcp.netmask.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->dhcp.netmask.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dhcp.netmask.c = validate_stub; // Only type-based checking
 
@@ -838,42 +950,42 @@ void initConfig(struct config *conf)
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
 	conf->dhcp.leaseTime.a = cJSON_CreateStringReference("The lease time can be in seconds, or minutes (e.g., \"45m\") or hours (e.g., \"1h\") or days (like \"2d\") or even weeks (\"1w\"). You may also use \"infinite\" as string but be aware of the drawbacks");
 	conf->dhcp.leaseTime.t = CONF_STRING;
-	conf->dhcp.leaseTime.f = FLAG_RESTART_FTL;
+	conf->dhcp.leaseTime.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.leaseTime.d.s = (char*)"";
 	conf->dhcp.leaseTime.c = validate_str_no_newline;
 
 	conf->dhcp.ipv6.k = "dhcp.ipv6";
 	conf->dhcp.ipv6.h = "Should Pi-hole make an attempt to also satisfy IPv6 address requests (be aware that IPv6 works a whole lot different than IPv4)";
 	conf->dhcp.ipv6.t = CONF_BOOL;
-	conf->dhcp.ipv6.f = FLAG_RESTART_FTL;
+	conf->dhcp.ipv6.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.ipv6.d.b = false;
 	conf->dhcp.ipv6.c = validate_stub; // Only type-based checking
 
 	conf->dhcp.multiDNS.k = "dhcp.multiDNS";
 	conf->dhcp.multiDNS.h = "Advertise DNS server multiple times to clients. Some devices will add their own proprietary DNS servers to the list of DNS servers, which can cause issues with Pi-hole. This option will advertise the Pi-hole DNS server multiple times to clients, which should prevent this from happening.";
 	conf->dhcp.multiDNS.t = CONF_BOOL;
-	conf->dhcp.multiDNS.f = FLAG_RESTART_FTL;
+	conf->dhcp.multiDNS.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.multiDNS.d.b = false;
 	conf->dhcp.multiDNS.c = validate_stub; // Only type-based checking
 
 	conf->dhcp.rapidCommit.k = "dhcp.rapidCommit";
 	conf->dhcp.rapidCommit.h = "Enable DHCPv4 Rapid Commit Option specified in RFC 4039. Should only be enabled if either the server is the only server for the subnet to avoid conflicts";
 	conf->dhcp.rapidCommit.t = CONF_BOOL;
-	conf->dhcp.rapidCommit.f = FLAG_RESTART_FTL;
+	conf->dhcp.rapidCommit.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.rapidCommit.d.b = false;
 	conf->dhcp.rapidCommit.c = validate_stub; // Only type-based checking
 
 	conf->dhcp.logging.k = "dhcp.logging";
 	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below.";
 	conf->dhcp.logging.t = CONF_BOOL;
-	conf->dhcp.logging.f = FLAG_RESTART_FTL;
+	conf->dhcp.logging.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.logging.d.b = false;
 	conf->dhcp.logging.c = validate_stub; // Only type-based checking
 
 	conf->dhcp.ignoreUnknownClients.k = "dhcp.ignoreUnknownClients";
 	conf->dhcp.ignoreUnknownClients.h = "Ignore unknown DHCP clients.\n If this option is set, Pi-hole ignores all clients which are not explicitly configured through dhcp.hosts. This can be useful to prevent unauthorized clients from getting an IP address from the DHCP server.\n\n It should be noted that this option is not a security feature, as clients can still assign themselves an IP address and use the network. It is merely a convenience feature to prevent unknown clients from getting a valid IP configuration assigned automatically.\n\n Note that you will need to configure new clients manually in dhcp.hosts before they can use the network when this feature is enabled.";
 	conf->dhcp.ignoreUnknownClients.t = CONF_BOOL;
-	conf->dhcp.ignoreUnknownClients.f = FLAG_RESTART_FTL;
+	conf->dhcp.ignoreUnknownClients.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.ignoreUnknownClients.d.b = false;
 	conf->dhcp.ignoreUnknownClients.c = validate_stub; // Only type-based checking
 
@@ -881,7 +993,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.hosts.h = "Per host parameters for the DHCP server. This allows a machine with a particular hardware address to be always allocated the same hostname, IP address and lease time or to specify static DHCP leases\n\n Example: [ \"00:20:e0:3b:13:af,192.168.0.123,laptop,24h\", \"00:20:e0:ab:cd:ef,192.168.0.124,desktop,24h\"]";
 	conf->dhcp.hosts.a = cJSON_CreateStringReference("Array of static leases each one in the following form: \"[<hwaddr>][,id:<client_id>|*][,set:<tag>][,tag:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]\"");
 	conf->dhcp.hosts.t = CONF_JSON_STRING_ARRAY;
-	conf->dhcp.hosts.f = FLAG_RESTART_FTL;
+	conf->dhcp.hosts.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.hosts.d.json = cJSON_CreateArray();
 	conf->dhcp.hosts.c = validate_array_no_newline;
 
@@ -890,7 +1002,7 @@ void initConfig(struct config *conf)
 	conf->ntp.ipv4.active.k = "ntp.ipv4.active";
 	conf->ntp.ipv4.active.h = "Should FTL act as network time protocol (NTP) server (IPv4)?";
 	conf->ntp.ipv4.active.t = CONF_BOOL;
-	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv4.active.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->ntp.ipv4.active.d.b = true;
 	conf->ntp.ipv4.active.c = validate_stub; // Only type-based checking
 
@@ -898,14 +1010,14 @@ void initConfig(struct config *conf)
 	conf->ntp.ipv4.address.h = "IPv4 address to listen on for NTP requests";
 	conf->ntp.ipv4.address.a = cJSON_CreateStringReference("A valid IPv4 address, or empty string (\"\"). For wildcard (0.0.0.0)");
 	conf->ntp.ipv4.address.t = CONF_STRUCT_IN_ADDR;
-	conf->ntp.ipv4.address.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv4.address.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->ntp.ipv4.address.d.in_addr, 0, sizeof(struct in_addr));
 	conf->ntp.ipv4.address.c = validate_stub; // Only type-based checking
 
 	conf->ntp.ipv6.active.k = "ntp.ipv6.active";
 	conf->ntp.ipv6.active.h = "Should FTL act as network time protocol (NTP) server (IPv6)?";
 	conf->ntp.ipv6.active.t = CONF_BOOL;
-	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv6.active.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->ntp.ipv6.active.d.b = true;
 	conf->ntp.ipv6.active.c = validate_stub; // Only type-based checking
 
@@ -913,14 +1025,14 @@ void initConfig(struct config *conf)
 	conf->ntp.ipv6.address.h = "IPv6 address to listen on for NTP requests";
 	conf->ntp.ipv6.address.a = cJSON_CreateStringReference("A valid IPv6 address, or empty string (\"\"). For wildcard (::)");
 	conf->ntp.ipv6.address.t = CONF_STRUCT_IN6_ADDR;
-	conf->ntp.ipv6.address.f = FLAG_RESTART_FTL;
+	conf->ntp.ipv6.address.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->ntp.ipv6.address.d.in6_addr, 0, sizeof(struct in6_addr));
 	conf->ntp.ipv6.address.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.active.k = "ntp.sync.active";
 	conf->ntp.sync.active.h = "Should FTL try to synchronize the system time with an upstream NTP server?";
 	conf->ntp.sync.active.t = CONF_BOOL;
-	conf->ntp.sync.active.f = FLAG_RESTART_FTL;
+	conf->ntp.sync.active.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->ntp.sync.active.d.b = true;
 	conf->ntp.sync.active.c = validate_stub; // Only type-based checking
 
@@ -928,6 +1040,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.server.h = "NTP upstream server to sync with, e.g., \"pool.ntp.org\". Note that the NTP server should be located as close as possible to you in order to minimize the time offset possibly introduced by different routing paths.";
 	conf->ntp.sync.server.a = cJSON_CreateStringReference("A valid NTP upstream server");
 	conf->ntp.sync.server.t = CONF_STRING;
+	conf->ntp.sync.server.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.server.d.s = (char*)"pool.ntp.org";
 	conf->ntp.sync.server.c = validate_dns_domain_or_ip;
 
@@ -935,6 +1048,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
 
@@ -942,12 +1056,14 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.h = "Number of NTP syncs to perform and average before updating the system time";
 	conf->ntp.sync.count.a = cJSON_CreateStringReference("A positive integer value");
 	conf->ntp.sync.count.t = CONF_UINT;
+	conf->ntp.sync.count.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.count.d.ui = 8;
 	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
 	conf->ntp.sync.rtc.set.t = CONF_BOOL;
+	conf->ntp.sync.rtc.set.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.rtc.set.d.b = false;
 	conf->ntp.sync.rtc.set.c = validate_stub; // Only type-based checking
 
@@ -955,99 +1071,78 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.rtc.device.h = "Path to the RTC device to update.\n\n Example: \"/dev/rtc0\"";
 	conf->ntp.sync.rtc.device.a = cJSON_CreateStringReference("A valid RTC device path, or empty string (\"\") for auto-discovery");
 	conf->ntp.sync.rtc.device.t = CONF_STRING;
+	conf->ntp.sync.rtc.device.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.rtc.device.d.s = (char*)"";
 	conf->ntp.sync.rtc.device.c = validate_stub; // Only type-based checking
 
 	conf->ntp.sync.rtc.utc.k = "ntp.sync.rtc.utc";
 	conf->ntp.sync.rtc.utc.h = "Should the RTC be set to UTC?";
 	conf->ntp.sync.rtc.utc.t = CONF_BOOL;
+	conf->ntp.sync.rtc.utc.f = FLAG_NO_CLUSTER;
 	conf->ntp.sync.rtc.utc.d.b = true;
 	conf->ntp.sync.rtc.utc.c = validate_stub; // Only type-based checking
 
 
 	// struct cluster
 	conf->cluster.enabled.k = "cluster.enabled";
-	conf->cluster.enabled.h = "Should this Pi-hole be part of a cluster? When enabled, FTL periodically contacts the peers configured in cluster.peers and keeps track of their health. Clustering itself does not change anything on this machine - the individual features (config synchronization, DHCP failover, virtual IP) are enabled separately below.";
+	conf->cluster.enabled.h = "Should this Pi-hole be part of a cluster? The nodes listed in cluster.members then keep each other's configuration and lists in step, and each of them knows which of the others are reachable. The two features that change what this machine does on the network - DHCP failover and the virtual IP address - are switched on separately below.";
 	conf->cluster.enabled.t = CONF_BOOL;
-	conf->cluster.enabled.f = FLAG_RESTART_FTL;
+	conf->cluster.enabled.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->cluster.enabled.d.b = false;
 	conf->cluster.enabled.c = validate_stub; // Only type-based checking
 
 	conf->cluster.name.k = "cluster.name";
-	conf->cluster.name.h = "Name of this node inside the cluster. If left empty, the system's hostname is used. The name is only used for display purposes and to break ties when two nodes have the same priority.";
+	conf->cluster.name.h = "Name of this node inside the cluster. If left empty, the system's hostname is used. It is what the logs and /api/cluster/status call this node, and nothing else: elections are settled by node identity, which is unique even where names collide - two Pi-holes imaged from the same card are both \"raspberrypi\".";
 	conf->cluster.name.a = cJSON_CreateStringReference("A name for this node, or an empty string to use the hostname");
 	conf->cluster.name.t = CONF_STRING;
+	conf->cluster.name.f = FLAG_NO_CLUSTER;
 	conf->cluster.name.d.s = (char*)"";
 	conf->cluster.name.c = validate_str_no_newline;
 
-	conf->cluster.priority.k = "cluster.priority";
-	conf->cluster.priority.h = "Priority of this node inside the cluster. The reachable node with the numerically lowest priority is the one publishing the configuration and, if enabled, serving DHCP. Ties are broken by node name. Give every node a distinct value.";
-	conf->cluster.priority.a = cJSON_CreateStringReference("A positive integer, lower values win");
-	conf->cluster.priority.t = CONF_UINT;
-	conf->cluster.priority.d.ui = 100;
-	conf->cluster.priority.c = validate_stub; // Only type-based checking
-
-	conf->cluster.peers.k = "cluster.peers";
-	conf->cluster.peers.h = "The other Pi-holes in this cluster, as the URLs of their web interfaces.\n\n The nodes authenticate to each other with a shared secret rather than with individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering is enabled, and that file is copied to every other node once. A peer session may only read, so a node can never change anything on its peers.\n\n Example: [ \"https://192.168.0.5\" ]";
-	conf->cluster.peers.a = cJSON_CreateStringReference("Array of http:// or https:// URLs, one per peer, e.g. \"https://192.168.0.5:443\"");
-	conf->cluster.peers.t = CONF_JSON_STRING_ARRAY;
-	conf->cluster.peers.f = FLAG_RESTART_FTL;
-	conf->cluster.peers.d.json = cJSON_CreateArray();
-	conf->cluster.peers.c = validate_cluster_peers;
+	conf->cluster.members.k = "cluster.members";
+	conf->cluster.members.h = "The Pi-holes forming this cluster, as the URLs of their web interfaces - all of them, including this one. FTL recognizes its own entry and skips it, so the same list can be used on every node, and it is synchronized like any other setting: a node added on one of them is known to all of them shortly afterwards.\n\n At most eight nodes: every node polls every other one, so what a round costs the network grows with the square of the size.\n\n The nodes authenticate to each other with a shared secret rather than with individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering is enabled, and that file is copied to every other node once.\n\n Example: [ \"https://192.168.0.5\", \"https://192.168.0.6\" ]";
+	conf->cluster.members.a = cJSON_CreateStringReference("Array of http:// or https:// URLs, one per node of the cluster, e.g. \"https://192.168.0.5:443\"");
+	conf->cluster.members.t = CONF_JSON_STRING_ARRAY;
+	// The cluster thread rebuilds its peer list from this before every
+	// round, so the list itself needs no restart - but the addresses reach
+	// dnsmasq as the DNS servers handed to DHCP clients, and that file is
+	// only rewritten for an item that says it must be
+	conf->cluster.members.f = FLAG_RESTART_FTL;
+	conf->cluster.members.d.json = cJSON_CreateArray();
+	conf->cluster.members.c = validate_cluster_members;
 
 	conf->cluster.interval.k = "cluster.interval";
 	conf->cluster.interval.h = "How often should the peers be contacted [seconds]? This is also the granularity of DHCP failover decisions.";
+	conf->cluster.interval.a = cJSON_CreateStringReference("A number of seconds between 1 and 3600");
 	conf->cluster.interval.t = CONF_UINT;
+	conf->cluster.interval.f = FLAG_NO_CLUSTER;
 	conf->cluster.interval.d.ui = 10;
-	conf->cluster.interval.c = validate_stub; // Only type-based checking
-
-	conf->cluster.timeout.k = "cluster.timeout";
-	conf->cluster.timeout.h = "Timeout for a single request to a peer [seconds]. A peer that does not answer within this time is considered unreachable for this round.";
-	conf->cluster.timeout.t = CONF_UINT;
-	conf->cluster.timeout.d.ui = 2;
-	conf->cluster.timeout.c = validate_stub; // Only type-based checking
-
-	conf->cluster.tls.verify.k = "cluster.tls.verify";
-	conf->cluster.tls.verify.h = "Verify the TLS certificate of https:// peers. Pi-hole's default certificate is self-signed and is not signed by any CA this machine knows, so point cluster.tls.ca at the peers' certificates instead of turning this off: a node that does not verify its peers hands the cluster secret to whoever answers, and applies the configuration it gets back.";
-	conf->cluster.tls.verify.t = CONF_BOOL;
-	conf->cluster.tls.verify.d.b = true;
-	conf->cluster.tls.verify.c = validate_stub; // Only type-based checking
+	conf->cluster.interval.c = validate_cluster_interval;
 
 	conf->cluster.tls.ca.k = "cluster.tls.ca";
-	conf->cluster.tls.ca.h = "Path to a certificate bundle the peers' TLS certificates are verified against. Pi-hole's own certificates are self-signed, so collecting the peers' certificates (/etc/pihole/tls.crt) in one file and pointing this at it is what makes https:// peers verifiable. If left empty, the system's trust store is used.";
-	conf->cluster.tls.ca.a = cJSON_CreateStringReference("A path to a PEM certificate bundle, or empty for the system trust store");
+	conf->cluster.tls.ca.h = "Path to a certificate bundle the peers' TLS certificates are verified against. This is only needed when the nodes use certificates of your own: with Pi-hole's self-signed ones, which name a machine rather than the address a peer reaches it at, a chain says nothing. What identifies a peer instead is the hash of its public key, which it publishes in an answer signed with the shared secret - so there is nothing to collect and nothing to copy between the nodes.";
+	conf->cluster.tls.ca.a = cJSON_CreateStringReference("A path to a PEM certificate bundle, or empty to identify the peers by their public keys");
 	conf->cluster.tls.ca.t = CONF_STRING;
+	conf->cluster.tls.ca.f = FLAG_NO_CLUSTER;
 	conf->cluster.tls.ca.d.s = (char*)"";
 	conf->cluster.tls.ca.c = validate_filepath_empty;
 
+	conf->cluster.sync.credentials.k = "cluster.sync.credentials";
+	conf->cluster.sync.credentials.h = "Should the web interface password travel with the rest of the configuration? With this enabled the nodes are interchangeable down to the password, which is what most people want from a cluster - a node that takes over is the same Pi-hole with the same login.\n\n It is worth knowing what it costs. The nodes authenticate to each other with the shared secret in /etc/pihole/cluster_secret, and with the password synchronized that file becomes as good as the password on every node: whoever holds it can set a password they know everywhere. With this disabled the secret can still change what the cluster keeps in step, but it cannot log in anywhere.\n\n The two-factor secret travels with it. A cluster that synchronized the password but not the second factor would be one where the second factor is skipped by opening a different node instead.\n\n Credentials only travel while every member is an https:// one, whatever this is set to: a signature keeps a peer from changing them, not from reading them. This setting is not synchronized - each node decides for itself what it accepts.";
+	conf->cluster.sync.credentials.t = CONF_BOOL;
+	conf->cluster.sync.credentials.f = FLAG_NO_CLUSTER;
+	conf->cluster.sync.credentials.d.b = true;
+	conf->cluster.sync.credentials.c = validate_stub; // Only type-based checking
+
 	conf->cluster.dhcp.failover.k = "cluster.dhcp.failover";
-	conf->cluster.dhcp.failover.h = "Hand DHCP over to another node when this one fails? The reachable node with the lowest priority serves DHCP, the others keep their DHCP server switched off until they are needed. Only enable this when Pi-hole is your DHCP server on all cluster nodes.";
+	conf->cluster.dhcp.failover.h = "Hand DHCP over to another node when this one fails? One node serves DHCP and the others keep their DHCP server switched off until they are needed - which node that is follows from the node identities, so every node reaches the same answer on its own and there is nothing to configure. Only enable this when Pi-hole is your DHCP server on all cluster nodes.";
 	conf->cluster.dhcp.failover.t = CONF_BOOL;
-	conf->cluster.dhcp.failover.f = FLAG_RESTART_FTL;
+	conf->cluster.dhcp.failover.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->cluster.dhcp.failover.d.b = false;
 	conf->cluster.dhcp.failover.c = validate_stub; // Only type-based checking
 
-	conf->cluster.dhcp.master.k = "cluster.dhcp.master";
-	conf->cluster.dhcp.master.h = "Force a specific node to be the DHCP server, identified by its name or URL as configured in cluster.peers. If the designated node is down, the remaining nodes fall back to priority order. An empty string selects fully automatic operation.";
-	conf->cluster.dhcp.master.a = cJSON_CreateStringReference("A node name, a peer URL, or an empty string for automatic operation");
-	conf->cluster.dhcp.master.t = CONF_STRING;
-	conf->cluster.dhcp.master.d.s = (char*)"";
-	conf->cluster.dhcp.master.c = validate_str_no_newline;
-
-	conf->cluster.dhcp.activateAfter.k = "cluster.dhcp.activateAfter";
-	conf->cluster.dhcp.activateAfter.h = "How many consecutive rounds a higher-priority node has to be unreachable before this node takes DHCP over. Together with cluster.interval this defines how quickly DHCP fails over. Higher values are more tolerant of a short blip.";
-	conf->cluster.dhcp.activateAfter.t = CONF_UINT;
-	conf->cluster.dhcp.activateAfter.d.ui = 2;
-	conf->cluster.dhcp.activateAfter.c = validate_stub; // Only type-based checking
-
-	conf->cluster.dhcp.deactivateAfter.k = "cluster.dhcp.deactivateAfter";
-	conf->cluster.dhcp.deactivateAfter.h = "How many consecutive rounds a higher-priority node has to be healthy again before this node yields DHCP back to it.";
-	conf->cluster.dhcp.deactivateAfter.t = CONF_UINT;
-	conf->cluster.dhcp.deactivateAfter.d.ui = 3;
-	conf->cluster.dhcp.deactivateAfter.c = validate_stub; // Only type-based checking
-
 	conf->cluster.vip.address.k = "cluster.vip.address";
-	conf->cluster.vip.address.h = "Virtual IP address floating between the cluster nodes. Whichever node is currently in charge adds this address to its interface and answers on it, so clients only ever need to know this one address. It is advertised to DHCP clients as their DNS server and DHCP server identifier. An empty string disables the virtual IP.";
+	conf->cluster.vip.address.h = "Virtual IP address floating between the cluster nodes. Whichever node is currently in charge adds this address to its interface and answers on it, so clients only ever need to know this one address. It is the same address on every node by definition, so it is synchronized like any other setting - set it once, anywhere. An IPv4 address here is also what the DHCP server advertises as the DNS server, in place of the individual nodes, while cluster.dhcp.failover is on. An empty string disables the virtual IP.";
 	conf->cluster.vip.address.a = cJSON_CreateStringReference("An unused IPv4 or IPv6 address in your local network, or an empty string to disable");
 	conf->cluster.vip.address.t = CONF_STRING;
 	conf->cluster.vip.address.f = FLAG_RESTART_FTL;
@@ -1055,9 +1150,10 @@ void initConfig(struct config *conf)
 	conf->cluster.vip.address.c = validate_cluster_vip;
 
 	conf->cluster.vip.interface.k = "cluster.vip.interface";
-	conf->cluster.vip.interface.h = "Interface the virtual IP address is added to. If left empty, the interface holding the route to the default gateway is used.";
+	conf->cluster.vip.interface.h = "Interface the virtual IP address is added to. If left empty, the interface holding the route to the default gateway is used, which is the right answer on almost every machine. Unlike the address, this stays local: the same interface is called something else on the next node.";
 	conf->cluster.vip.interface.a = cJSON_CreateStringReference("An interface name, or an empty string to use the interface of the default route");
 	conf->cluster.vip.interface.t = CONF_STRING;
+	conf->cluster.vip.interface.f = FLAG_NO_CLUSTER;
 	conf->cluster.vip.interface.d.s = (char*)"";
 	conf->cluster.vip.interface.c = validate_str_no_newline;
 
@@ -1171,14 +1267,14 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.h = "On which domain is the web interface served?";
 	conf->webserver.domain.a = cJSON_CreateStringReference("A valid domain");
 	conf->webserver.domain.t = CONF_STRING;
-	conf->webserver.domain.f = FLAG_RESTART_FTL;
+	conf->webserver.domain.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
-	conf->webserver.acl.f = FLAG_RESTART_FTL;
+	conf->webserver.acl.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.acl.t = CONF_STRING;
 	conf->webserver.acl.d.s = (char*)"";
 	conf->webserver.acl.c = validate_stub; // Type-based checking + civetweb syntax checking
@@ -1186,7 +1282,7 @@ void initConfig(struct config *conf)
 	conf->webserver.port.k = "webserver.port";
 	conf->webserver.port.h = "Ports to be used by the webserver.\n\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. \"[::]:80\" will bind to port 80 IPv6 only.\n\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The '+' notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n\n If the port is TLS/SSL, a letter 's' (secure) must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.\n\n When specifying 'o' (optional) behind a port, inability to use this port is not considered an error. For instance, specifying \"80o,8080o\" will allow the webserver to listen on either 80, 8080, both or even none of the two ports. This flag may be combined with 'r' and 's' like \"80or,443os,8080,4443s\" (80 redirecting to SSL if available, 443 encrypted if available, 8080 mandatory and unencrypted, 4443 mandatory and encrypted).\n\n If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
 	conf->webserver.port.a = cJSON_CreateStringReference("A comma-separated list of <[ip_address:]port>");
-	conf->webserver.port.f = FLAG_RESTART_FTL;
+	conf->webserver.port.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.port.t = CONF_STRING;
 	conf->webserver.port.d.s = (char*)"80o,443os,[::]:80o,[::]:443os";
 	conf->webserver.port.c = validate_stub; // Type-based checking + civetweb syntax checking
@@ -1203,7 +1299,7 @@ void initConfig(struct config *conf)
 	conf->webserver.headers.h = "Additional HTTP headers added to the web server responses.\n\n The headers are added to all responses, including those for the API.\n Note about the default additional headers:\n - X-DNS-Prefetch-Control: off: Usually browsers proactively perform domain name resolution on links that the user may choose to follow. We disable DNS prefetching here.\n - Content-Security-Policy: [...] 'unsafe-inline' is both required by Chart.js styling some elements directly, and index.html containing some inlined Javascript code.\n - X-Frame-Options: DENY: The page can not be displayed in a frame, regardless of the site attempting to do so.\n - X-Xss-Protection: 0: Disables XSS filtering in browsers that support it. This header is usually enabled by default in browsers, and is not recommended as it can hurt the security of the site. (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection).\n - X-Content-Type-Options: nosniff: Marker used by the server to indicate that the MIME types advertised in the  Content-Type headers should not be changed and be followed. This allows to opt-out of MIME type sniffing, or, in other words, it is a way to say that the webmasters knew what they were doing. Site security testers usually expect this header to be set.\n - Referrer-Policy: strict-origin-when-cross-origin: A referrer will be sent for same-site origins, but cross-origin requests will send no referrer information.\n The latter four headers are set as expected by https://securityheaders.io";
 	conf->webserver.headers.a = cJSON_CreateStringReference("An array of HTTP headers");
 	conf->webserver.headers.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.headers.f = FLAG_RESTART_FTL;
+	conf->webserver.headers.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.headers.d.json = cJSON_CreateArray();
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-DNS-Prefetch-Control: off"));
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"));
@@ -1216,6 +1312,7 @@ void initConfig(struct config *conf)
 	conf->webserver.serve_all.k = "webserver.serve_all";
 	conf->webserver.serve_all.h = "Should the web server serve all files in webserver.paths.webroot directory?\n\n If disabled, only files within the path defined through webserver.paths.webhome and /api will be served.";
 	conf->webserver.serve_all.t = CONF_BOOL;
+	conf->webserver.serve_all.f = FLAG_NO_CLUSTER;
 	conf->webserver.serve_all.d.b = false;
 	conf->webserver.serve_all.c = validate_stub;
 
@@ -1223,13 +1320,14 @@ void initConfig(struct config *conf)
 	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). See the CivetWeb documentation for a list of supported options. The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". Be aware that this is an advanced option and that setting options here may break the web server if invalid or conflicting with other settings applied based on other settings in this file. The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last values is used when a config option is specified multiple times). Use with caution.\n\n Example: [ \"ssl_protocol_version=4\", \"ssl_cipher_list=AES128:!MD5\" ]";
 	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of valid CivetWeb options");
 	conf->webserver.advancedOpts.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL;
+	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.advancedOpts.d.json = cJSON_CreateArray();
 	conf->webserver.advancedOpts.c = validate_stub; // Only type-based checking
 
 	conf->webserver.tls.validity.k = "webserver.tls.validity";
 	conf->webserver.tls.validity.h = "Number of days the automatically generated self-signed TLS/SSL certificate will be valid for.\n\n Defaults to 47 days. A minimum of 7 days is enforced.\n Some devices may enforce shorter validity ranges. Note that defining a lower validity range may require you to accept the self-signed certificate more often in your browser.\n Pi-hole will regenerate certificates it created itself two days prior to expiration. If you are using your own certificate, you need to regenerate it yourself. In this case, it is advised to set the validity range to 0 days, so that Pi-hole does not try to regenerate your certificate. If you set the validity range to 0 days and still try to generate a certificate, Pi-hole will set a fixed validity range of roughly 30 years for the certificate.";
 	conf->webserver.tls.validity.t = CONF_UINT;
+	conf->webserver.tls.validity.f = FLAG_NO_CLUSTER;
 	conf->webserver.tls.validity.d.ui = 47; // 47 days
 	conf->webserver.tls.validity.c = validate_ui_min_7_or_0;
 
@@ -1250,7 +1348,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.k = "webserver.tls.cert";
 	conf->webserver.tls.cert.h = "Path to the TLS (SSL) certificate file.\n\n All directories along the path must be readable and accessible by the user running FTL (typically 'pihole'). This option is only required when at least one of webserver.port is TLS. The file must be in PEM format, and it must have both, private key and certificate (the *.pem file created must contain a 'CERTIFICATE' section as well as a 'PRIVATE KEY' section).\n\n The *.pem file can be created using `cp server.crt server.pem && cat server.key >> server.pem` if you have these files instead";
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("A valid TLS certificate file (*.pem)");
-	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
+	conf->webserver.tls.cert.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
 	conf->webserver.tls.cert.c = validate_filepath;
@@ -1260,7 +1358,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webroot.h = "Server root on the host";
 	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid path");
 	conf->webserver.paths.webroot.t = CONF_STRING;
-	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
 	conf->webserver.paths.webroot.c = validate_filepath;
 
@@ -1268,7 +1366,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
 	conf->webserver.paths.webhome.a = cJSON_CreateStringReference("A valid subpath, both slashes are needed!");
 	conf->webserver.paths.webhome.t = CONF_STRING;
-	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
 	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
 
@@ -1276,7 +1374,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!";
 	conf->webserver.paths.prefix.a = cJSON_CreateStringReference("A valid URL prefix or empty");
 	conf->webserver.paths.prefix.t = CONF_STRING;
-	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.paths.prefix.d.s = (char*)"";
 	conf->webserver.paths.prefix.c = validate_filepath_empty;
 
@@ -1321,7 +1419,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.pwhash.h = "API password hash";
 	conf->webserver.api.pwhash.a = cJSON_CreateStringReference("A valid Pi-hole password hash");
 	conf->webserver.api.pwhash.t = CONF_STRING;
-	conf->webserver.api.pwhash.f = FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.pwhash.f = FLAG_INVALIDATE_SESSIONS | FLAG_CREDENTIAL;
 	conf->webserver.api.pwhash.d.s = (char*)"";
 	conf->webserver.api.pwhash.c = validate_stub; // Only type-based checking
 
@@ -1329,7 +1427,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.password.h = "Pi-hole web interface and API password. When set to something different than \""PASSWORD_VALUE"\", this property will compute the corresponding password hash to set webserver.api.pwhash";
 	conf->webserver.api.password.a = cJSON_CreateStringReference("A valid Pi-hole password");
 	conf->webserver.api.password.t = CONF_PASSWORD;
-	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM | FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.password.f = FLAG_PSEUDO_ITEM | FLAG_INVALIDATE_SESSIONS | FLAG_NO_CLUSTER;
 	conf->webserver.api.password.d.s = (char*)"";
 	conf->webserver.api.password.c = validate_stub; // Only type-based checking
 
@@ -1337,7 +1435,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.totp_secret.h = "Pi-hole 2FA TOTP secret. When set to something different than an empty string, 2FA authentication will be enforced for the API and the web interface. This setting is write-only, the secret itself cannot be read back, but the CLI will show \"" PASSWORD_VALUE "\" to indicate that 2FA is configured.";
 	conf->webserver.api.totp_secret.a = cJSON_CreateStringReference("A valid TOTP secret (20 Bytes in Base32 encoding)");
 	conf->webserver.api.totp_secret.t = CONF_STRING;
-	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS | FLAG_CREDENTIAL;
 	conf->webserver.api.totp_secret.d.s = (char*)"";
 	conf->webserver.api.totp_secret.c = validate_stub; // Only type-based checking
 
@@ -1345,20 +1443,21 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_pwhash.h = "Pi-hole application password.\n\n After you turn on two-factor (2FA) verification and set up an Authenticator app, you may run into issues if you use apps or other services that don't support two-step verification. In this case, you can create and use an app password to sign in.\n\n An app password is a long, randomly generated password that can be used instead of your regular password + TOTP token when signing in to the API. The app password can be generated through the API and will be shown only once.\n\n You can revoke the app password at any time. If you revoke the app password, be sure to generate a new one and update your app with the new password.";
 	conf->webserver.api.app_pwhash.a = cJSON_CreateStringReference("A valid Pi-hole password hash");
 	conf->webserver.api.app_pwhash.t = CONF_STRING;
-	conf->webserver.api.app_pwhash.f = FLAG_INVALIDATE_SESSIONS;
+	conf->webserver.api.app_pwhash.f = FLAG_INVALIDATE_SESSIONS | FLAG_CREDENTIAL;
 	conf->webserver.api.app_pwhash.d.s = (char*)"";
 	conf->webserver.api.app_pwhash.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.app_sudo.k = "webserver.api.app_sudo";
 	conf->webserver.api.app_sudo.h = "Should application password API sessions be allowed to modify config settings?\n\n Setting this to true allows third-party applications using the application password to modify settings, e.g., the upstream DNS servers, DHCP server settings, or changing passwords. This setting should only be enabled if really needed and only if you trust the applications using the application password.";
 	conf->webserver.api.app_sudo.t = CONF_BOOL;
+	conf->webserver.api.app_sudo.f = FLAG_NO_CLUSTER;
 	conf->webserver.api.app_sudo.d.b = false;
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
 	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
 	conf->webserver.api.cli_pw.t = CONF_BOOL;
-	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL;
+	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.api.cli_pw.d.b = true;
 	conf->webserver.api.cli_pw.c = validate_stub; // Only type-based checking
 
@@ -1400,6 +1499,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.allow_destructive.k = "webserver.api.allow_destructive";
 	conf->webserver.api.allow_destructive.h = "Allow destructive API calls (e.g. restart DNS server, flush logs, ...)";
 	conf->webserver.api.allow_destructive.t = CONF_BOOL;
+	conf->webserver.api.allow_destructive.f = FLAG_NO_CLUSTER;
 	conf->webserver.api.allow_destructive.d.b = true;
 	conf->webserver.api.allow_destructive.c = validate_stub; // Only type-based checking
 
@@ -1432,7 +1532,7 @@ void initConfig(struct config *conf)
 	conf->files.database.h = "The location of FTL's long-term database";
 	conf->files.database.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.database.t = CONF_STRING;
-	conf->files.database.f = FLAG_RESTART_FTL;
+	conf->files.database.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
 	conf->files.database.c = validate_filepath;
 
@@ -1440,7 +1540,7 @@ void initConfig(struct config *conf)
 	conf->files.tmp_db.h = "The location of FTL's short-term temporary database (only used when database.forceDisk is true)";
 	conf->files.tmp_db.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.tmp_db.t = CONF_STRING;
-	conf->files.tmp_db.f = FLAG_RESTART_FTL;
+	conf->files.tmp_db.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.tmp_db.d.s = (char*)"/etc/pihole/pihole-tmp.db";
 	conf->files.tmp_db.c = validate_filepath;
 
@@ -1448,7 +1548,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
 	conf->files.gravity.a = cJSON_CreateStringReference("Any Pi-hole gravity database");
 	conf->files.gravity.t = CONF_STRING;
-	conf->files.gravity.f = FLAG_RESTART_FTL;
+	conf->files.gravity.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
 	conf->files.gravity.c = validate_filepath;
 
@@ -1456,7 +1556,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity_tmp.h = "A temporary directory where Pi-hole can store files during gravity updates. This directory must be writable by the user running gravity (typically pihole).";
 	conf->files.gravity_tmp.a = cJSON_CreateStringReference("Any existing world-writable writable directory");
 	conf->files.gravity_tmp.t = CONF_STRING;
-	conf->files.gravity_tmp.f = FLAG_RESTART_FTL;
+	conf->files.gravity_tmp.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.gravity_tmp.d.s = (char*)"/tmp";
 	conf->files.gravity_tmp.c = validate_stub; // Only type-based checking
 
@@ -1464,6 +1564,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
 	conf->files.macvendor.a = cJSON_CreateStringReference("Any Pi-hole macvendor database");
 	conf->files.macvendor.t = CONF_STRING;
+	conf->files.macvendor.f = FLAG_NO_CLUSTER;
 	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
 	conf->files.macvendor.c = validate_filepath;
 
@@ -1471,7 +1572,7 @@ void initConfig(struct config *conf)
 	conf->files.pcap.h = "An optional file containing a pcap capture of the network traffic. This file is used for debugging purposes only. If you don't know what this is, you don't need it.\n\n Setting this to an empty string disables pcap recording. The file must be writable by the user running FTL (typically pihole). Failure to write to this file will prevent the DNS resolver from starting. The file is appended to if it already exists.";
 	conf->files.pcap.a = cJSON_CreateStringReference("Any writable pcap file");
 	conf->files.pcap.t = CONF_STRING;
-	conf->files.pcap.f = FLAG_RESTART_FTL;
+	conf->files.pcap.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.pcap.d.s = (char*)"";
 	conf->files.pcap.c = validate_filepath_empty;
 
@@ -1482,7 +1583,7 @@ void initConfig(struct config *conf)
 	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
 	conf->files.log.dnsmasq.a = cJSON_CreateStringReference("Any writable file");
 	conf->files.log.dnsmasq.t = CONF_STRING;
-	conf->files.log.dnsmasq.f = FLAG_RESTART_FTL;
+	conf->files.log.dnsmasq.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
 	conf->files.log.dnsmasq.c = validate_filepath_dash;
 
@@ -1490,7 +1591,7 @@ void initConfig(struct config *conf)
 	conf->files.log.webserver.h = "The log file used by the webserver";
 	conf->files.log.webserver.a = cJSON_CreateStringReference("Any writable file");
 	conf->files.log.webserver.t = CONF_STRING;
-	conf->files.log.webserver.f = FLAG_RESTART_FTL;
+	conf->files.log.webserver.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
 	conf->files.log.webserver.c = validate_webserver_logfile;
 
@@ -1535,7 +1636,7 @@ void initConfig(struct config *conf)
 	conf->misc.etc_dnsmasq_d.k = "misc.etc_dnsmasq_d";
 	conf->misc.etc_dnsmasq_d.h = "Should FTL load additional dnsmasq configuration files from /etc/dnsmasq.d/?\n\n Warning: This is an advanced setting and should only be used with care.\n Incorrectly formatted or config files specifying options which can only be defined once can result in conflicts with the automatic configuration of Pi-hole (see "DNSMASQ_PH_CONFIG") and may stop DNS resolution from working.";
 	conf->misc.etc_dnsmasq_d.t = CONF_BOOL;
-	conf->misc.etc_dnsmasq_d.f = FLAG_RESTART_FTL;
+	conf->misc.etc_dnsmasq_d.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->misc.etc_dnsmasq_d.d.b = false;
 	conf->misc.etc_dnsmasq_d.c = validate_stub; // Only type-based checking
 
@@ -1543,7 +1644,7 @@ void initConfig(struct config *conf)
 	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n\n Use this option with extra care.\n\n Example: [ \"address=/example.com/192.168.0.1\", \"address=/example.org/192.168.0.2\", \"address=/example.net/192.168.0.3\" ]";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("Array of valid dnsmasq config line options");
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
-	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
+	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 	conf->misc.dnsmasq_lines.c = validate_array_no_newline;
 
@@ -1605,204 +1706,238 @@ void initConfig(struct config *conf)
 	conf->debug.database.k = "debug.database";
 	conf->debug.database.h = "Print debugging information about database actions. This prints performed SQL statements as well as some general information such as the time it took to store the queries and how many have been saved to the database.";
 	conf->debug.database.t = CONF_BOOL;
+	conf->debug.database.f = FLAG_NO_CLUSTER;
 	conf->debug.database.d.b = false;
 	conf->debug.database.c = validate_stub; // Only type-based checking
 
 	conf->debug.networking.k = "debug.networking";
 	conf->debug.networking.h = "Prints a list of the detected interfaces on the startup of pihole-FTL. Also, prints whether these interfaces are IPv4 or IPv6 interfaces.";
 	conf->debug.networking.t = CONF_BOOL;
+	conf->debug.networking.f = FLAG_NO_CLUSTER;
 	conf->debug.networking.d.b = false;
 	conf->debug.networking.c = validate_stub; // Only type-based checking
 
 	conf->debug.locks.k = "debug.locks";
 	conf->debug.locks.h = "Print information about shared memory locks. Messages will be generated when waiting, obtaining, and releasing a lock.";
 	conf->debug.locks.t = CONF_BOOL;
+	conf->debug.locks.f = FLAG_NO_CLUSTER;
 	conf->debug.locks.d.b = false;
 	conf->debug.locks.c = validate_stub; // Only type-based checking
 
 	conf->debug.queries.k = "debug.queries";
 	conf->debug.queries.h = "Print extensive query information (domains, types, replies, etc.). This has always been part of the legacy debug mode of pihole-FTL.";
 	conf->debug.queries.t = CONF_BOOL;
+	conf->debug.queries.f = FLAG_NO_CLUSTER;
 	conf->debug.queries.d.b = false;
 	conf->debug.queries.c = validate_stub; // Only type-based checking
 
 	conf->debug.flags.k = "debug.flags";
 	conf->debug.flags.h = "Print flags of queries received by the DNS hooks. Only effective when DEBUG_QUERIES is enabled as well.";
 	conf->debug.flags.t = CONF_BOOL;
+	conf->debug.flags.f = FLAG_NO_CLUSTER;
 	conf->debug.flags.d.b = false;
 	conf->debug.flags.c = validate_stub; // Only type-based checking
 
 	conf->debug.shmem.k = "debug.shmem";
 	conf->debug.shmem.h = "Print information about shared memory buffers. Messages are either about creating or enlarging shmem objects or string injections.";
 	conf->debug.shmem.t = CONF_BOOL;
+	conf->debug.shmem.f = FLAG_NO_CLUSTER;
 	conf->debug.shmem.d.b = false;
 	conf->debug.shmem.c = validate_stub; // Only type-based checking
 
 	conf->debug.gc.k = "debug.gc";
 	conf->debug.gc.h = "Print information about garbage collection (GC): What is to be removed, how many have been removed and how long did GC take.";
 	conf->debug.gc.t = CONF_BOOL;
+	conf->debug.gc.f = FLAG_NO_CLUSTER;
 	conf->debug.gc.d.b = false;
 	conf->debug.gc.c = validate_stub; // Only type-based checking
 
 	conf->debug.arp.k = "debug.arp";
 	conf->debug.arp.h = "Print information about ARP table processing: How long did parsing take, whether read MAC addresses are valid, and if the macvendor.db file exists.";
 	conf->debug.arp.t = CONF_BOOL;
+	conf->debug.arp.f = FLAG_NO_CLUSTER;
 	conf->debug.arp.d.b = false;
 	conf->debug.arp.c = validate_stub; // Only type-based checking
 
 	conf->debug.regex.k = "debug.regex";
 	conf->debug.regex.h = "Controls if FTLDNS should print extended details about regex matching into FTL.log.";
 	conf->debug.regex.t = CONF_BOOL;
+	conf->debug.regex.f = FLAG_NO_CLUSTER;
 	conf->debug.regex.d.b = false;
 	conf->debug.regex.c = validate_stub; // Only type-based checking
 
 	conf->debug.api.k = "debug.api";
 	conf->debug.api.h = "Print extra debugging information concerning API calls. This includes the request, the request parameters, and the internal details about how the algorithms decide which data to present and in what form. This very verbose output should only be used when debugging specific API issues and can be helpful, e.g., when a client cannot connect due to an obscure API error. Furthermore, this setting enables logging of all API requests (auth log) and details about user authentication attempts.";
 	conf->debug.api.t = CONF_BOOL;
+	conf->debug.api.f = FLAG_NO_CLUSTER;
 	conf->debug.api.d.b = false;
 	conf->debug.api.c = validate_stub; // Only type-based checking
 
 	conf->debug.tls.k = "debug.tls";
 	conf->debug.tls.h = "Print extra debugging information about TLS connections. This includes the TLS version, the cipher suite, the certificate chain and much more. This very verbose output should only be used when debugging specific TLS issues and can be helpful, e.g., when a client cannot connect due to an obscure TLS error as modern browsers do not provide much information about the underlying TLS connection and most often give only very generic error messages without much/any underlying technical information.";
 	conf->debug.tls.t = CONF_BOOL;
+	conf->debug.tls.f = FLAG_NO_CLUSTER;
 	conf->debug.tls.d.b = false;
 	conf->debug.tls.c = validate_stub; // Only type-based checking
 
 	conf->debug.overtime.k = "debug.overtime";
 	conf->debug.overtime.h = "Print information about overTime memory operations, such as initializing or moving overTime slots.";
 	conf->debug.overtime.t = CONF_BOOL;
+	conf->debug.overtime.f = FLAG_NO_CLUSTER;
 	conf->debug.overtime.d.b = false;
 	conf->debug.overtime.c = validate_stub; // Only type-based checking
 
 	conf->debug.status.k = "debug.status";
 	conf->debug.status.h = "Print information about status changes for individual queries. This can be useful to identify unexpected unknown queries.";
 	conf->debug.status.t = CONF_BOOL;
+	conf->debug.status.f = FLAG_NO_CLUSTER;
 	conf->debug.status.d.b = false;
 	conf->debug.status.c = validate_stub; // Only type-based checking
 
 	conf->debug.caps.k = "debug.caps";
 	conf->debug.caps.h = "Print information about capabilities granted to the pihole-FTL process. The current capabilities are printed on receipt of SIGHUP, i.e., the current set of capabilities can be queried without restarting pihole-FTL (by setting DEBUG_CAPS=true and thereafter sending killall -HUP pihole-FTL).";
 	conf->debug.caps.t = CONF_BOOL;
+	conf->debug.caps.f = FLAG_NO_CLUSTER;
 	conf->debug.caps.d.b = false;
 	conf->debug.caps.c = validate_stub; // Only type-based checking
 
 	conf->debug.dnssec.k = "debug.dnssec";
 	conf->debug.dnssec.h = "Print information about DNSSEC activity";
 	conf->debug.dnssec.t = CONF_BOOL;
+	conf->debug.dnssec.f = FLAG_NO_CLUSTER;
 	conf->debug.dnssec.d.b = false;
 	conf->debug.dnssec.c = validate_stub; // Only type-based checking
 
 	conf->debug.vectors.k = "debug.vectors";
 	conf->debug.vectors.h = "FTL uses dynamically allocated vectors for various tasks. This config option enables extensive debugging information such as information about allocation, referencing, deletion, and appending.";
 	conf->debug.vectors.t = CONF_BOOL;
+	conf->debug.vectors.f = FLAG_NO_CLUSTER;
 	conf->debug.vectors.d.b = false;
 	conf->debug.vectors.c = validate_stub; // Only type-based checking
 
 	conf->debug.resolver.k = "debug.resolver";
 	conf->debug.resolver.h = "Extensive information about hostname resolution like which DNS servers are used in the first and second hostname resolving tries (only affecting internally generated PTR queries).";
 	conf->debug.resolver.t = CONF_BOOL;
+	conf->debug.resolver.f = FLAG_NO_CLUSTER;
 	conf->debug.resolver.d.b = false;
 	conf->debug.resolver.c = validate_stub; // Only type-based checking
 
 	conf->debug.edns0.k = "debug.edns0";
 	conf->debug.edns0.h = "Print debugging information about received EDNS(0) data.";
 	conf->debug.edns0.t = CONF_BOOL;
+	conf->debug.edns0.f = FLAG_NO_CLUSTER;
 	conf->debug.edns0.d.b = false;
 	conf->debug.edns0.c = validate_stub; // Only type-based checking
 
 	conf->debug.clients.k = "debug.clients";
 	conf->debug.clients.h = "Log various important client events such as change of interface (e.g., client switching from WiFi to wired or VPN connection), as well as extensive reporting about how clients were assigned to its groups.";
 	conf->debug.clients.t = CONF_BOOL;
+	conf->debug.clients.f = FLAG_NO_CLUSTER;
 	conf->debug.clients.d.b = false;
 	conf->debug.clients.c = validate_stub; // Only type-based checking
 
 	conf->debug.aliasclients.k = "debug.aliasclients";
 	conf->debug.aliasclients.h = "Log information related to alias-client processing.";
 	conf->debug.aliasclients.t = CONF_BOOL;
+	conf->debug.aliasclients.f = FLAG_NO_CLUSTER;
 	conf->debug.aliasclients.d.b = false;
 	conf->debug.aliasclients.c = validate_stub; // Only type-based checking
 
 	conf->debug.events.k = "debug.events";
 	conf->debug.events.h = "Log information regarding FTL's embedded event handling queue.";
 	conf->debug.events.t = CONF_BOOL;
+	conf->debug.events.f = FLAG_NO_CLUSTER;
 	conf->debug.events.d.b = false;
 	conf->debug.events.c = validate_stub; // Only type-based checking
 
 	conf->debug.helper.k = "debug.helper";
 	conf->debug.helper.h = "Log information about script helpers, e.g., due to dhcp-script.";
 	conf->debug.helper.t = CONF_BOOL;
+	conf->debug.helper.f = FLAG_NO_CLUSTER;
 	conf->debug.helper.d.b = false;
 	conf->debug.helper.c = validate_stub; // Only type-based checking
 
 	conf->debug.config.k = "debug.config";
 	conf->debug.config.h = "Print config parsing details";
 	conf->debug.config.t = CONF_BOOL;
+	conf->debug.config.f = FLAG_NO_CLUSTER;
 	conf->debug.config.d.b = false;
 	conf->debug.config.c = validate_stub; // Only type-based checking
 
 	conf->debug.inotify.k = "debug.inotify";
 	conf->debug.inotify.h = "Debug monitoring of /etc/pihole filesystem events";
 	conf->debug.inotify.t = CONF_BOOL;
+	conf->debug.inotify.f = FLAG_NO_CLUSTER;
 	conf->debug.inotify.d.b = false;
 	conf->debug.inotify.c = validate_stub; // Only type-based checking
 
 	conf->debug.webserver.k = "debug.webserver";
 	conf->debug.webserver.h = "Debug monitoring of the webserver (CivetWeb) events";
 	conf->debug.webserver.t = CONF_BOOL;
+	conf->debug.webserver.f = FLAG_NO_CLUSTER;
 	conf->debug.webserver.d.b = false;
 	conf->debug.webserver.c = validate_stub; // Only type-based checking
 
 	conf->debug.extra.k = "debug.extra";
 	conf->debug.extra.h = "Temporary flag that may print additional information. This debug flag is meant to be used whenever needed for temporary investigations. The logged content may change without further notice at any time.";
 	conf->debug.extra.t = CONF_BOOL;
+	conf->debug.extra.f = FLAG_NO_CLUSTER;
 	conf->debug.extra.d.b = false;
 	conf->debug.extra.c = validate_stub; // Only type-based checking
 
 	conf->debug.reserved.k = "debug.reserved";
 	conf->debug.reserved.h = "Reserved debug flag";
 	conf->debug.reserved.t = CONF_BOOL;
+	conf->debug.reserved.f = FLAG_NO_CLUSTER;
 	conf->debug.reserved.d.b = false;
 	conf->debug.reserved.c = validate_stub; // Only type-based checking
 
 	conf->debug.ntp.k = "debug.ntp";
 	conf->debug.ntp.h = "Print information about NTP synchronization";
 	conf->debug.ntp.t = CONF_BOOL;
+	conf->debug.ntp.f = FLAG_NO_CLUSTER;
 	conf->debug.ntp.d.b = false;
 	conf->debug.ntp.c = validate_stub; // Only type-based checking
 
 	conf->debug.netlink.k = "debug.netlink";
 	conf->debug.netlink.h = "Print information about netlink communication and parsing";
 	conf->debug.netlink.t = CONF_BOOL;
+	conf->debug.netlink.f = FLAG_NO_CLUSTER;
 	conf->debug.netlink.d.b = false;
 	conf->debug.netlink.c = validate_stub; // Only type-based checking
 
 	conf->debug.timing.k = "debug.timing";
 	conf->debug.timing.h = "Print timing information from various parts of FTL";
 	conf->debug.timing.t = CONF_BOOL;
+	conf->debug.timing.f = FLAG_NO_CLUSTER;
 	conf->debug.timing.d.b = false;
 	conf->debug.timing.c = validate_stub; // Only type-based checking
 
 	conf->debug.performance.k = "debug.performance";
 	conf->debug.performance.h = "Log gravity lookup and FTL DNS cache performance statistics every 5 minutes. For each operation type (gravity, antigravity, denylist, allowlist), reports the call count, average and maximum latency, and percentage of slow queries (>1 ms). Also reports the FTL cache hit/miss ratio, indicating how often gravity.db is queried at all.";
 	conf->debug.performance.t = CONF_BOOL;
+	conf->debug.performance.f = FLAG_NO_CLUSTER;
 	conf->debug.performance.d.b = false;
 	conf->debug.performance.c = validate_stub; // Only type-based checking
 
 	conf->debug.dotdoh.k = "debug.dotdoh";
 	conf->debug.dotdoh.h = "Print periodic per-upstream statistics for the encrypted-upstream (DoT/DoH) proxy: query throughput, connection reuse depth, TLS session resumption and how often a full handshake was needed. Useful for assessing keep-alive effectiveness against real upstream resolvers.";
 	conf->debug.dotdoh.t = CONF_BOOL;
+	conf->debug.dotdoh.f = FLAG_NO_CLUSTER;
 	conf->debug.dotdoh.d.b = false;
 	conf->debug.dotdoh.c = validate_stub; // Only type-based checking
 
 	conf->debug.cluster.k = "debug.cluster";
 	conf->debug.cluster.h = "Print debugging information about the cluster: every request sent to a peer, the answer it gave, and how the DHCP election and configuration synchronization decided.";
 	conf->debug.cluster.t = CONF_BOOL;
+	conf->debug.cluster.f = FLAG_NO_CLUSTER;
 	conf->debug.cluster.d.b = false;
 	conf->debug.cluster.c = validate_stub; // Only type-based checking
 
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
 	conf->debug.all.t = CONF_ALL_DEBUG_BOOL;
+	conf->debug.all.f = FLAG_NO_CLUSTER;
 	conf->debug.all.d.b = false;
 	conf->debug.all.c = validate_stub; // Only type-based checking
 
@@ -2031,6 +2166,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		toml_datum_t toml = { 0 };
 		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false))
 		{
+			// What is derived from the configuration rather than
+			// read out of it on every call
+			config_update_derived(conf);
+
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
 			// about options deviating from the default are present
@@ -2113,7 +2252,7 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 	config.files.log.ftl.c = validate_filepath;
-	config.files.log.ftl.f = FLAG_FTL_LOG;
+	config.files.log.ftl.f = FLAG_FTL_LOG | FLAG_NO_CLUSTER;
 
 	// Try sources in priority order: ENV > TOML > legacy
 	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
@@ -2185,10 +2324,360 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 	}
 }
 
+// Counts how often the configuration was replaced. A cluster node looks at this
+// to find out whether anything changed since it last told its peers, which is
+// cheaper by far than comparing every item on a timer
+volatile unsigned long config_generation = 0;
+volatile double config_changed = 0.0;
+
+static void stamp(const double when)
+{
+	// Never ahead of the present. A stamp from the future outranks every
+	// change anybody makes until wall time catches up with it, and the node
+	// holding it can push to nobody, because every peer refuses a stamp it
+	// considers impossible
+	const double now = double_time();
+	config_changed = when > now ? now : when;
+
+	// On disk straight away rather than at the next cluster round: a setting
+	// that asks FTL to restart takes the daemon down within the second, and
+	// a stamp still in memory would be gone with it - the node would come
+	// back looking as though nobody had ever configured it, and take an
+	// older configuration from a peer
+	cluster_state_save(NULL);
+}
+
+void config_stamp_local_change(void)
+{
+	// Before the cluster has read its state this node does not know who it
+	// is yet, and what FTL writes while starting up is not a change anybody
+	// made
+	if(!cluster_state_known() || !cluster_config_moved())
+		return;
+
+	stamp(double_time());
+}
+
+// A configuration taken from a peer was changed when that peer says it was, not
+// now: this node holds that configuration from now on, and says so to the rest
+// of the cluster. Stamping it with the present would make every node that took
+// a change look newer than the node that made it
+void config_stamp_cluster_change(const double when)
+{
+	if(!cluster_state_known() || !cluster_config_moved())
+		return;
+
+	stamp(when);
+}
+
+static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct config *newconf)
+{
+	if(conf_item == NULL || elem == NULL)
+	{
+		log_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
+		          conf_item, elem);
+		return "invalid arguments";
+	}
+	switch(conf_item->t)
+	{
+		case CONF_BOOL:
+		{
+			// Check type
+			if(!cJSON_IsBool(elem))
+				return "not of type bool";
+			// Set item
+			conf_item->v.b = elem->valueint;
+			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
+			break;
+		}
+		case CONF_ALL_DEBUG_BOOL:
+		{
+			// Check type
+			if(!cJSON_IsBool(elem))
+				return "not of type bool";
+			// Set item
+			conf_item->v.b = elem->valueint;
+			set_all_debug(newconf, elem->valueint);
+			log_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
+			break;
+		}
+		case CONF_INT:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < INT_MIN || elem->valuedouble > INT_MAX)
+				return "not of type integer";
+			// Set item
+			conf_item->v.i = elem->valueint;
+			log_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
+			break;
+		}
+		case CONF_UINT:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < 0 || elem->valuedouble > UINT_MAX)
+				return "not of type unsigned integer";
+			// Set item
+			conf_item->v.ui = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			break;
+		}
+		case CONF_UINT16:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
+				return "not of type unsigned integer (16bit)";
+			// Set item
+			conf_item->v.u16 = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
+			break;
+		}
+		case CONF_LONG:
+		{
+			// 1. Check it is a number
+			// 2. Check the number is within the allowed range for the given data type
+			if(!cJSON_IsNumber(elem) ||
+			   elem->valuedouble < (double)LONG_MIN || elem->valuedouble > (double)LONG_MAX)
+				return "not of type long";
+			// Set item
+			conf_item->v.l = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
+			break;
+		}
+		case CONF_DOUBLE:
+		{
+			// Check it is a number
+			if(!cJSON_IsNumber(elem))
+				return "not a number";
+			// Set item
+			conf_item->v.d = elem->valuedouble;
+			log_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
+			break;
+		}
+		case CONF_STRING:
+		case CONF_STRING_ALLOCATED:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			// Free previously allocated memory (if applicable)
+			if(conf_item->t == CONF_STRING_ALLOCATED)
+				free(conf_item->v.s);
+			// Set item
+			conf_item->v.s = strdup(elem->valuestring);
+			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
+			break;
+		}
+		case CONF_PASSWORD:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
+			{
+				// Check if password is unchanged (default value set by PASSWORD_VALUE)
+				log_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
+				break;
+			}
+
+			if(!set_and_check_password(conf_item, elem->valuestring))
+				return "password hash verification failed";
+
+			break;
+		}
+		case CONF_ENUM_PTR_TYPE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int ptr_type = get_ptr_type_val(elem->valuestring);
+			if(ptr_type == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.ptr_type = ptr_type;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
+			break;
+		}
+		case CONF_ENUM_BUSY_TYPE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int busy_reply = get_busy_reply_val(elem->valuestring);
+			if(busy_reply == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.busy_reply = busy_reply;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
+			break;
+		}
+		case CONF_ENUM_BLOCKING_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int blocking_mode = get_blocking_mode_val(elem->valuestring);
+			if(blocking_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.blocking_mode = blocking_mode;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
+			break;
+		}
+		case CONF_ENUM_REFRESH_HOSTNAMES:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int refresh_hostnames = get_refresh_hostnames_val(elem->valuestring);
+			if(refresh_hostnames == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.refresh_hostnames = refresh_hostnames;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
+			break;
+		}
+		case CONF_ENUM_LISTENING_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int listeningMode = get_listeningMode_val(elem->valuestring);
+			if(listeningMode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.listeningMode = listeningMode;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
+			break;
+		}
+		case CONF_ENUM_WEB_THEME:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int web_theme = get_web_theme_val(elem->valuestring);
+			if(web_theme == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.web_theme = web_theme;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
+			break;
+		}
+		case CONF_ENUM_TEMP_UNIT:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int temp_unit = get_temp_unit_val(elem->valuestring);
+			if(temp_unit == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.temp_unit = temp_unit;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
+			break;
+		}
+		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int edns_mode = get_edns_mode_val(elem->valuestring);
+			if(edns_mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.edns_mode = edns_mode;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
+			break;
+		}
+		case CONF_ENUM_PRIVACY_LEVEL:
+		{
+			// Check type
+			int value;
+			if(cJSON_IsNumber(elem))
+				value = elem->valueint;
+			else if(cJSON_IsString(elem) && sscanf(elem->valuestring, "%i", &value) == 1)
+				; // value imported into variable
+			else
+				return "not of type integer";
+			// Check allowed interval
+			if(value < PRIVACY_SHOW_ALL || value > PRIVACY_MAXIMUM)
+				return "not within valid range";
+			// Set item
+			conf_item->v.i = value;
+			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
+			break;
+		}
+		case CONF_STRUCT_IN_ADDR:
+		{
+			struct in_addr addr4 = { 0 };
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> 0.0.0.0
+				conf_item->v.in_addr.s_addr = INADDR_ANY;
+			}
+			else if(inet_pton(AF_INET, elem->valuestring, &addr4))
+			{
+				// Set item
+				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
+			}
+			else
+				return "not a valid IPv4 address";
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			break;
+		}
+		case CONF_STRUCT_IN6_ADDR:
+		{
+			struct in6_addr addr6 = { 0 };
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			if(strlen(elem->valuestring) == 0)
+			{
+				// Special case: empty string -> ::
+				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+			}
+			else if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
+				return "not a valid IPv6 address";
+			// Set item
+			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			break;
+		}
+		case CONF_JSON_STRING_ARRAY:
+		{
+			if(!cJSON_IsArray(elem))
+				return "not of type array";
+			unsigned int i = 0;
+			for(const cJSON *item = elem != NULL ? elem->child : NULL; item != NULL; item = item->next, i++)
+			{
+				if(!cJSON_IsString(item))
+					return "array has invalid elements";
+				log_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
+			}
+			// If we reach this point, all elements are valid. Free the
+			// previous array (duplicated by duplicate_config into newconf)
+			// before overwriting it, otherwise it leaks.
+			if(conf_item->v.json != NULL)
+				cJSON_Delete(conf_item->v.json);
+			conf_item->v.json = cJSON_Duplicate(elem, true);
+		}
+	}
+	return NULL;
+}
+
 void replace_config(struct config *newconf)
 {
 	// Lock shared memory
 	lock_shm();
+
+	config_generation++;
 
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
@@ -2196,6 +2685,10 @@ void replace_config(struct config *newconf)
 
 	// Replace old config struct by changed one atomically
 	memcpy(&config, newconf, sizeof(struct config));
+
+	// Anything derived from the new configuration is derived here, while the
+	// lock is held and the tree it is read from is the live one
+	config_update_derived(&config);
 
 	// Free old backup struct
 	free_config(&old_conf, false);
@@ -2223,6 +2716,13 @@ void reread_config(void)
 	}
 
 	log_info("Reloading config due to pihole.toml change");
+
+	// Held across the whole read-modify-write, the way every other writer
+	// holds it: a peer's push landing between the copy taken here and the
+	// install below would be overwritten by values read before it arrived,
+	// and the stamp that follows would then hand that revert to the cluster
+	cluster_sync_lock();
+
 	struct config conf_copy;
 	duplicate_config(&conf_copy, &config);
 
@@ -2253,6 +2753,7 @@ void reread_config(void)
 		// configuration. This swaps the pointers and frees
 		// the old config structure altogether
 		replace_config(&conf_copy);
+		config_stamp_local_change();
 	}
 	else
 	{
@@ -2271,6 +2772,8 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	cluster_sync_unlock();
 
 	// If we need to restart FTL, we do so now
 	if(restart)
@@ -2369,5 +2872,228 @@ bool create_default_config(const char *filename)
 
 	fclose(fp);
 	log_info("Default configuration written to %s", filename);
+	return true;
+}
+
+// Walk down a JSON configuration document to the element one item lives in
+static cJSON *json_item(cJSON *conf, struct conf_item *item)
+{
+	cJSON *elem = conf;
+	const unsigned int level = config_path_depth(item->p);
+	for(unsigned int j = 0; j < level && elem != NULL; j++)
+		elem = cJSON_GetObjectItem(elem, item->p[j]);
+
+	return elem;
+}
+
+bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted, void *ctx,
+                       const bool strict, struct config_apply *result)
+{
+	memset(result, 0, sizeof(*result));
+
+	// Judged on a copy first: getJSONvalue() writes a value in before it can
+	// be judged, so an item that turns out to be unusable has to be
+	// discarded with the copy it landed in rather than left behind in the
+	// configuration we are about to install
+	struct config trial;
+	duplicate_config(&trial, &config);
+
+	bool usable[CONFIG_ELEMENTS] = { false };
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *item = get_conf_item(&config, i);
+		struct conf_item *trial_item = get_conf_item(&trial, i);
+
+		if(wanted != NULL && !wanted(item, ctx))
+			continue;
+
+		cJSON *elem = json_item(conf, trial_item);
+		if(elem == NULL)
+			continue; // not in the document, which is allowed
+
+		// An item that can only be set in pihole.toml, and one that is
+		// never handed out, are not taken from a document
+		if(item->f & FLAG_READ_ONLY)
+		{
+			if(!cJSON_IsBool(elem) || elem->valueint != 1)
+				continue;
+
+			result->failed_key = item->k;
+			result->failure = CONFIG_APPLY_READ_ONLY;
+			if(strict)
+			{
+				free_config(&trial, false);
+				return false;
+			}
+			continue;
+		}
+		if(item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
+		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
+			continue; // the placeholder means "leave it alone"
+
+		// Judging a password means hashing it, and the hash is meant to
+		// be expensive - a tenth of a second on the hardware this runs
+		// on. Nothing can be learned here that the two checks above have
+		// not already settled, so it is hashed once, in the pass whose
+		// result is kept
+		if(item->t == CONF_PASSWORD)
+		{
+			// What a human is shown in place of a password. Applying
+			// it changes nothing but would still count as a change -
+			// and this item invalidates every session when it does
+			if(cJSON_IsString(elem) && strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
+				continue;
+
+			if(!cJSON_IsString(elem))
+			{
+				result->failed_key = item->k;
+				result->failure = CONFIG_APPLY_INVALID;
+				snprintf(result->error, sizeof(result->error), "not a string");
+				if(strict)
+				{
+					free_config(&trial, false);
+					return false;
+				}
+				continue;
+			}
+
+			if(item->f & FLAG_ENV_VAR)
+			{
+				result->failed_key = item->k;
+				result->failure = CONFIG_APPLY_ENV_VAR;
+				if(strict)
+				{
+					free_config(&trial, false);
+					return false;
+				}
+				continue;
+			}
+
+			usable[i] = true;
+			continue;
+		}
+
+		const char *response = getJSONvalue(trial_item, elem, &trial);
+		if(response != NULL)
+		{
+			result->failed_key = item->k;
+			result->failure = CONFIG_APPLY_INVALID;
+			snprintf(result->error, sizeof(result->error), "%s", response);
+			if(strict)
+			{
+				free_config(&trial, false);
+				return false;
+			}
+			continue;
+		}
+
+		// Unchanged items are not "applied", and comparing here keeps
+		// the validator from running over values that were never touched
+		if((item->t != CONF_PASSWORD && compare_config_item(item->t, &trial_item->v, &item->v)) ||
+		   (item->t == CONF_PASSWORD && cJSON_IsString(elem) &&
+		    strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
+			continue;
+
+		// An item pinned through the environment cannot be changed
+		if(item->f & FLAG_ENV_VAR)
+		{
+			result->failed_key = item->k;
+			result->failure = CONFIG_APPLY_ENV_VAR;
+			if(strict)
+			{
+				free_config(&trial, false);
+				return false;
+			}
+			continue;
+		}
+
+		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!item->c(&trial_item->v, item->k, errbuf))
+		{
+			result->failed_key = item->k;
+			result->failure = CONFIG_APPLY_VALIDATION;
+			snprintf(result->error, sizeof(result->error), "%s", errbuf);
+			if(strict)
+			{
+				free_config(&trial, false);
+				return false;
+			}
+			continue;
+		}
+
+		usable[i] = true;
+	}
+
+	free_config(&trial, false);
+
+	// Second pass, on the configuration the caller will install: only the
+	// items that came through the first one
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		if(!usable[i])
+			continue;
+
+		struct conf_item *item = get_conf_item(&config, i);
+		struct conf_item *new_item = get_conf_item(newconf, i);
+		cJSON *elem = json_item(conf, new_item);
+		if(elem == NULL || getJSONvalue(new_item, elem, newconf) != NULL)
+			continue;
+
+		log_debug(DEBUG_CONFIG, "Config item %s: Changed", item->k);
+
+		result->changed = true;
+
+		if(item->f & FLAG_RESTART_FTL)
+			result->dnsmasq_changed = true;
+		if(item->f & FLAG_INVALIDATE_SESSIONS)
+			result->invalidate_sessions = true;
+
+		// The custom HOSTS file is generated from this item rather than
+		// read from the configuration when a query arrives
+		if(item == &config.dns.hosts)
+			result->rewrite_hosts = true;
+
+		// A lowered privacy level only takes effect once the queries
+		// hidden until now are read back in
+		if(item == &config.misc.privacylevel &&
+		   new_item->v.privacy_level < item->v.privacy_level)
+			result->privacy_decreased = true;
+	}
+
+	return true;
+}
+
+bool config_install(struct config *newconf, const struct config_apply *result,
+                    const bool from_cluster, const double changed, char *errbuf)
+{
+	if(!result->changed)
+	{
+		free_config(newconf, false);
+		return true;
+	}
+
+	if(result->dnsmasq_changed && !write_dnsmasq_config(newconf, true, errbuf))
+	{
+		free_config(newconf, false);
+		return false;
+	}
+
+	replace_config(newconf);
+
+	// Stamped before anything slow: replace_config() is what makes the new
+	// configuration visible to the cluster thread, and a push in the window
+	// between the two would hand the peers the new document under the
+	// previous change's timestamp
+	if(from_cluster)
+		config_stamp_cluster_change(changed);
+	else
+		config_stamp_local_change();
+
+	set_debug_flags(&config);
+	writeFTLtoml(true, NULL);
+
+	if(result->rewrite_hosts)
+		write_custom_list();
+
 	return true;
 }

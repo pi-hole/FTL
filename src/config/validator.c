@@ -11,6 +11,8 @@
 #include "validator.h"
 // CLUSTER_SECRET_FILE
 #include "config/password.h"
+// CLUSTER_MAX_PEERS, CLUSTER_URLLEN
+#include "cluster/cluster.h"
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -893,7 +895,21 @@ bool validate_array_no_newline(union conf_value *val, const char *key, char err[
 	return true;
 }
 
-bool validate_cluster_peers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+// A round scheduled further ahead than this is a clock that moved rather than
+// an interval somebody chose, and the thread treats it as one - so a number
+// above it would have the cluster deciding it had travelled in time every tick
+bool validate_cluster_interval(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui >= 1 && val->ui <= CLUSTER_MAX_INTERVAL)
+		return true;
+
+	snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not between 1 and %u seconds",
+	         key, (unsigned int)CLUSTER_MAX_INTERVAL);
+
+	return false;
+}
+
+bool validate_cluster_members(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's an array
 	if(!cJSON_IsArray(val->json))
@@ -956,6 +972,32 @@ bool validate_cluster_peers(union conf_value *val, const char *key, char err[VAL
 				return false;
 			}
 		}
+
+		// The endpoint paths are appended to this as it stands, so a
+		// trailing slash asks the peer for //api/cluster/status, which
+		// no route matches - and a browser address bar produces one
+		if(url[urllen - 1] == '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> ends in a slash", key, i);
+			return false;
+		}
+
+		// A longer entry would be cut down to a different host
+		if(urllen >= CLUSTER_URLLEN)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> is longer than %d characters",
+			         key, i, CLUSTER_URLLEN - 1);
+			return false;
+		}
+	}
+
+	// Beyond this the last entries would be dropped - the same ones on every
+	// node, which takes that node out of the cluster in both directions
+	if(i > CLUSTER_MAX_PEERS)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: a cluster holds at most %d nodes",
+		         key, CLUSTER_MAX_PEERS);
+		return false;
 	}
 
 	return true;

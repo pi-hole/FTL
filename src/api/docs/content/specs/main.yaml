@@ -262,6 +262,18 @@ paths:
     $ref: 'teleporter.yaml#/components/paths/teleporter'
   /cluster/status:
     $ref: 'cluster.yaml#/components/paths/status'
+  /cluster/lists:
+    $ref: 'cluster.yaml#/components/paths/lists'
+  /cluster/leases:
+    $ref: 'cluster.yaml#/components/paths/leases'
+  /cluster/discover:
+    $ref: 'cluster.yaml#/components/paths/discover'
+  /cluster/enroll:
+    $ref: 'cluster.yaml#/components/paths/enroll'
+  /cluster/join:
+    $ref: 'cluster.yaml#/components/paths/join'
+  /cluster/leave:
+    $ref: 'cluster.yaml#/components/paths/leave'
 
   /action/gravity:
     $ref: 'action.yaml#/components/paths/gravity'
