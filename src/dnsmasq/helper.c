@@ -733,13 +733,7 @@ static unsigned char *grab_extradata(unsigned char *buf, unsigned char *end,  ch
 	  break;
 
       if (next && (next != buf))
-	{
-	  char *p;
-	  /* No "=" in value */
-	  if ((p = strchr((char *)buf, '=')))
-	    *p = 0;
-	  val = (char *)buf;
-	}
+	val = (char *)buf;
     }
   
   my_setenv(env, val, err);
