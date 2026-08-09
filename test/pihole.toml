@@ -54,7 +54,9 @@
   #     true or false
   EDNS0ECS = true
 
-  # Should FTL hide queries made by localhost?
+  # Should FTL hide queries made by localhost? Such queries are analyzed and filtered
+  # like any other query, they are only left out of the statistics, the query log and
+  # the long-term database.
   #
   # Allowed values are:
   #     true or false

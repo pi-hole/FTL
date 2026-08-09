@@ -511,7 +511,7 @@ void FTL_log_dnsmasq_fatal(const char *format, ...)
 
 void log_counter_info(void)
 {
-	log_info(" -> Total DNS queries: %u", counters->queries);
+	log_info(" -> Total DNS queries: %u", get_visible_query_count());
 	log_info(" -> Cached DNS queries: %u", get_cached_count());
 	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
 	log_info(" -> Blocked DNS queries: %u", get_blocked_count());

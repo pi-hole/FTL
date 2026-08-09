@@ -1557,8 +1557,8 @@ void DB_read_queries(void)
 
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
-		const int domainID = findDomainID(domainname, true);
-		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
+		const int domainID = findDomainID(domainname, true, false);
+		const int clientID = findClientID(clientIP, true, false, queryTimeStamp, false);
 
 		// Store this query in memory
 		queriesData *query = getQuery(queryIndex, false);
@@ -1614,7 +1614,7 @@ void DB_read_queries(void)
 		client->lastQuery = queryTimeStamp;
 
 		// Update client's overTime data structure
-		change_clientcount(client, 0, 0, timeidx, 1);
+		change_clientcount(client, 0, 0, timeidx, 1, false);
 
 		// Get domain pointer
 		domainsData *domain = getDomain(domainID, true);
@@ -1633,7 +1633,7 @@ void DB_read_queries(void)
 				// Add domain to FTL's memory but do not count it. Seeing a
 				// domain in the middle of a CNAME trajectory does not mean
 				// it was queried intentionally.
-				const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
+				const int CNAMEdomainID = findDomainID(CNAMEdomain, false, false);
 				query->CNAME_domainID = CNAMEdomainID;
 
 				// Get domain pointer and update lastQuery timer
@@ -1687,7 +1687,7 @@ void DB_read_queries(void)
 				query->flags.blocked = true;
 				// Get domain pointer
 				domain->blockedcount++;
-				change_clientcount(client, 0, 1, -1, 0);
+				change_clientcount(client, 0, 1, -1, 0, false);
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
@@ -1927,6 +1927,12 @@ bool queries_to_database(void)
 			phase1_error = true;
 			break;
 		}
+
+		// Never store a hidden query (dns.ignoreLocalhost). Keeping it out
+		// of the in-memory database also keeps it out of the query log and
+		// of the long-term database, which is fed from there
+		if(query->flags.hidden)
+			continue;
 
 		// Skip queries which have not changed since the last iteration
 		if(!query->flags.database.changed)

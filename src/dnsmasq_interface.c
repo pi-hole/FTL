@@ -989,10 +989,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		strcpy(clientIP, "::");
 	}
 
-	// Check if user wants to skip queries coming from localhost
-	if(config.dns.ignoreLocalhost.v.b &&
-	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
-		return false;
+	// Check if the user wants queries coming from localhost to be hidden.
+	// Such a query is analyzed and filtered like any other, it is only kept
+	// out of the statistics, the query log and the database.
+	const bool hidden = config.dns.ignoreLocalhost.v.b &&
+	                    (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0);
 
 	// Lock shared memory
 	lock_shm();
@@ -1001,7 +1002,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Find client IP
 	PERF_START(_pfc);
-	const int clientID = findClientID(clientIP, true, false, querytimestamp);
+	const int clientID = findClientID(clientIP, true, false, querytimestamp, hidden);
 	PERF_END(_pfc, PERF_STAT_FIND_CLIENT);
 
 	// Get client pointer
@@ -1048,7 +1049,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// no query record is created for rate-limited queries, so GC
 		// will never decrement this counter — leaving it permanently
 		// inflated for the lifetime of the process.
-		change_clientcount(client, -1, 0, -1, 0);
+		change_clientcount(client, -1, 0, -1, 0, hidden);
 		unlock_shm();
 		return true;
 	}
@@ -1095,7 +1096,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Go through already knows domains and see if it is one of them
 	PERF_START(_pfd);
-	const int domainID = findDomainID(domainString, true);
+	const int domainID = findDomainID(domainString, true, hidden);
 	PERF_END(_pfd, PERF_STAT_FIND_DOMAIN);
 
 	// Save everything
@@ -1113,8 +1114,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->magic = MAGICBYTE;
 	query->timestamp = querytimestamp;
 	query->type = querytype;
-	counters->querytype[querytype]++;
-	log_debug(DEBUG_STATUS, "query type %d set (new query), ID = %d, new count = %u", query->type, id, counters->querytype[query->type]);
+	query->flags.hidden = hidden;
+	if(!hidden)
+	{
+		counters->querytype[querytype]++;
+		log_debug(DEBUG_STATUS, "query type %d set (new query), ID = %d, new count = %u", query->type, id, counters->querytype[query->type]);
+	}
 	query->qtype = qtype;
 	query->id = id; // Has to be set before calling query_set_status()
 	queryIDMap_insert(id, queryID);
@@ -1133,8 +1138,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.response_calculated = false;
 	// Initialize reply type
 	query->reply = REPLY_UNKNOWN;
-	counters->reply[REPLY_UNKNOWN]++;
-	log_debug(DEBUG_STATUS, "reply type %u set (new query), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
+	if(!hidden)
+	{
+		counters->reply[REPLY_UNKNOWN]++;
+		log_debug(DEBUG_STATUS, "reply type %u set (new query), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
+	}
 	// Store DNSSEC result for this domain
 	query->dnssec = DNSSEC_UNKNOWN;
 	query->CNAME_domainID = -1;
@@ -1163,13 +1171,17 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Increase DNS queries counter
 	counters->queries++;
+	if(hidden)
+		counters->hidden_queries++;
 
 	// Update overTime data structure with the new client
-	change_clientcount(client, 0, 0, timeidx, 1);
+	change_clientcount(client, 0, 0, timeidx, 1, hidden);
 
-	// Set lastQuery timer and add one query for network table
+	// Set lastQuery timer and add one query for network table. The counter
+	// ends up in the network overview, so hidden queries stay out of it.
 	client->lastQuery = querytimestamp;
-	client->numQueriesARP++;
+	if(!hidden)
+		client->numQueriesARP++;
 
 	// Update domain's last query time
 	domainsData *domain = getDomain(domainID, false);
@@ -2253,7 +2265,7 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	// This is the domain which was queried later in this chain
 	char child_domain[MAXDOMAINLEN];
 	strcpy_tolower(child_domain, dst, sizeof(child_domain));
-	const int child_domainID = findDomainID(child_domain, false);
+	const int child_domainID = findDomainID(child_domain, false, false);
 
 	// Set child domains's last query time
 	if(child_domainID >= 0)
@@ -2299,7 +2311,8 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 			unlock_shm();
 			return false;
 		}
-		parent_domain->blockedcount++;
+		if(!query->flags.hidden)
+			parent_domain->blockedcount++;
 
 		// Store query response as CNAME type
 		query_set_reply(F_CNAME, 0, NULL, query, now);
@@ -2439,7 +2452,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	upstreamsData *upstream = getUpstream(upstreamID, true);
 	if(upstream != NULL)
 	{
-		upstream->count++;
+		if(!query->flags.hidden)
+			upstream->count++;
 		upstream->lastQuery = now;
 	}
 
@@ -3106,11 +3120,14 @@ static void query_blocked(queriesData *query, domainsData *domain, clientsData *
 
 	if(is_blocked(new_status))
 	{
-		// Count as blocked query
-		if(domain != NULL)
-			domain->blockedcount++;
-		if(client != NULL)
-			change_clientcount(client, 0, 1, -1, 0);
+		// Count as blocked query, unless this query is hidden
+		if(!query->flags.hidden)
+		{
+			if(domain != NULL)
+				domain->blockedcount++;
+			if(client != NULL)
+				change_clientcount(client, 0, 1, -1, 0, false);
+		}
 
 		query->flags.blocked = true;
 	}
@@ -3629,11 +3646,14 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 			          get_query_reply_str(query->reply), get_query_reply_str(new_reply));
 	}
 
-	// Subtract from old reply counter
-	counters->reply[query->reply]--;
-	log_debug(DEBUG_STATUS, "reply type %u removed (set_reply), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
-	// Add to new reply counter
-	counters->reply[new_reply]++;
+	if(!query->flags.hidden)
+	{
+		// Subtract from old reply counter
+		counters->reply[query->reply]--;
+		log_debug(DEBUG_STATUS, "reply type %u removed (set_reply), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
+		// Add to new reply counter
+		counters->reply[new_reply]++;
+	}
 	// Store reply type
 	query->reply = new_reply;
 	log_debug(DEBUG_STATUS, "reply type %u added (set_reply), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);

@@ -1154,6 +1154,38 @@ setup() {
 
 # NOTE: HTTP 404 tests moved to pytest (test/api/test_api.py)
 
+@test "dns.ignoreLocalhost hides localhost queries but still filters them" {
+  before=$(curl -s 127.0.0.1/api/stats/summary | jq .queries.total)
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":true}}}"'
+  run bash -c "./pihole-FTL wait-for 'INFO: Config file written to /etc/pihole/pihole.toml' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Collect first and assert further down so a failing check cannot leave
+  # dns.ignoreLocalhost enabled for all tests coming after this one
+  reply_denied=$(dig +short A denied.ftl @127.0.0.1)
+  reply_gravity=$(dig +short A gravity.ftl @127.0.0.1)
+  reply_cname=$(dig +short A cname-1.ftl @127.0.0.1)
+  reply_cname_deep=$(dig +short A cname-7.ftl @127.0.0.1)
+  after=$(curl -s 127.0.0.1/api/stats/summary | jq .queries.total)
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":false}}}"'
+  run bash -c "./pihole-FTL wait-for 'INFO: Config file written to /etc/pihole/pihole.toml' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Blocking still applies to queries coming from localhost, including the
+  # CNAME chain inspection that only happens once the reply comes back ...
+  [[ "${reply_denied}" == "0.0.0.0" ]]
+  [[ "${reply_gravity}" == "0.0.0.0" ]]
+  [[ "${reply_cname}" == "0.0.0.0" ]]
+  [[ "${reply_cname_deep}" == "0.0.0.0" ]]
+
+  # ... but none of them has been recorded
+  [[ "${before}" == "${after}" ]]
+}
+
 @test "LUA: Interpreter returns FTL version" {
   run bash -c './pihole-FTL lua -e "print(pihole.ftl_version())"'
   assert_line --partial --index 0 "v"
