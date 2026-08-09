@@ -33,7 +33,8 @@ bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[
 bool validate_str_no_newline(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_array_no_newline(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
-bool validate_cluster_peers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_cluster_members(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_cluster_interval(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 
 #endif // CONFIG_VALIDATOR_H

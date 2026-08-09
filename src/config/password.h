@@ -29,15 +29,26 @@ bool remove_cli_password(void);
 // is stored in its own file instead of in pihole.toml so it is neither
 // world-readable nor served by the API
 #define CLUSTER_SECRET_FILE "/etc/pihole/cluster_secret"
+
+// Shorter than this and the derived keys are not worth having. FTL generates
+// 256 bits; this only bounds what a hand-written file may be
+#define CLUSTER_SECRET_MINLEN 8
+// Long enough for the generated secret and for anything an administrator writes
+// into the file by hand - create_cluster_secret() reads at most this much
+#define CLUSTER_SECRET_LEN 256
 bool create_cluster_secret(void);
-const char *cluster_secret(void) __attribute__ ((pure));
+
+// Take over the secret of the cluster this node is joining
+bool adopt_cluster_secret(const char *secret);
+// Copied out rather than handed out: a node joining a cluster replaces the
+// secret from a webserver thread while the cluster thread is signing with it
+bool cluster_secret_copy(char *buf, const size_t buflen);
 
 enum password_result {
 	PASSWORD_INCORRECT = 0,
 	PASSWORD_CORRECT = 1,
 	APPPASSWORD_CORRECT = 2,
 	CLIPASSWORD_CORRECT = 3,
-	CLUSTERPASSWORD_CORRECT = 5,
 	NO_PASSWORD_SET = 4,
 	PASSWORD_RATE_LIMITED = -1
 } __attribute__((packed));
