@@ -12,6 +12,8 @@
 #include "log.h"
 #include "config/config.h"
 #include "cluster/vip.h"
+// cluster_state_save()
+#include "cluster/sync.h"
 // get_gateway_name()
 #include "tools/netlink.h"
 // check_capability()
@@ -82,7 +84,36 @@ static bool parse_address(const char *address, int *family, void *buf)
 // Which interface the address is on, when it is on one at all. An address left
 // behind by an earlier FTL is not necessarily on the interface this node would
 // choose for it, and giving it back needs the one it is really on
-static bool vip_present_on(const char *address, char iface[IF_NAMESIZE])
+// How many bits of the netmask are set, so a host address can be told from one
+// that is part of a subnet
+static unsigned int prefix_bits(const struct sockaddr *mask, const int family)
+{
+	if(mask == NULL)
+		return 0;
+
+	const unsigned char *bytes = NULL;
+	size_t len = 0;
+	if(family == AF_INET)
+	{
+		bytes = (const unsigned char *)&((const struct sockaddr_in *)(const void *)mask)->sin_addr;
+		len = sizeof(struct in_addr);
+	}
+	else
+	{
+		bytes = (const unsigned char *)&((const struct sockaddr_in6 *)(const void *)mask)->sin6_addr;
+		len = sizeof(struct in6_addr);
+	}
+
+	unsigned int bits = 0;
+	for(size_t i = 0; i < len; i++)
+		for(unsigned int b = 0; b < 8; b++)
+			if(bytes[i] & (1u << (7 - b)))
+				bits++;
+
+	return bits;
+}
+
+static bool vip_present_on(const char *address, char iface[IF_NAMESIZE], unsigned int *bits)
 {
 	int family = 0;
 	unsigned char want[sizeof(struct in6_addr)] = { 0 };
@@ -118,6 +149,9 @@ static bool vip_present_on(const char *address, char iface[IF_NAMESIZE])
 			strncpy(iface, ifa->ifa_name, IF_NAMESIZE - 1);
 			iface[IF_NAMESIZE - 1] = '\0';
 		}
+
+		if(found && bits != NULL)
+			*bits = prefix_bits(ifa->ifa_netmask, family);
 	}
 
 	freeifaddrs(ifap);
@@ -127,7 +161,7 @@ static bool vip_present_on(const char *address, char iface[IF_NAMESIZE])
 
 bool vip_present(const char *address)
 {
-	return vip_present_on(address, NULL);
+	return vip_present_on(address, NULL, NULL);
 }
 
 // Add or remove the address through netlink. This is what "ip addr add" does,
@@ -274,8 +308,9 @@ static bool interface_mac(const int fd, const char *iface, unsigned char mac[ETH
 
 // The ones-complement sum ICMPv6 is checked with, taken over the pseudo-header
 // and the message together
-static uint16_t icmp6_checksum(const struct in6_addr *src, const struct in6_addr *dst,
-                               const unsigned char *msg, const size_t len)
+static uint16_t __attribute__((pure)) icmp6_checksum(const struct in6_addr *src,
+                                                     const struct in6_addr *dst,
+                                                     const unsigned char *msg, const size_t len)
 {
 	uint32_t sum = 0;
 
@@ -451,6 +486,37 @@ static bool claimed = false;
 static char claimed_address[CLUSTER_STRLEN] = "";
 static char claimed_iface[IF_NAMESIZE] = "";
 
+// The address this machine last recorded having placed. Written to the state
+// file so that an FTL which was killed - and left the address behind - can tell
+// its own address from one the administrator configured, which no netmask can:
+// a machine's own IPv6 address is a /128 as often as not, and taking that away
+// takes the machine with it
+static char placed_address[CLUSTER_STRLEN] = "";
+
+void vip_note_placed(const char *address, const char *iface)
+{
+	(void)iface;
+	strncpy(placed_address, address != NULL ? address : "", sizeof(placed_address) - 1);
+	placed_address[sizeof(placed_address) - 1] = '\0';
+}
+
+bool vip_placed_address(char *buf, const size_t size)
+{
+	if(strlen(placed_address) == 0)
+		return false;
+
+	strncpy(buf, placed_address, size - 1);
+	buf[size - 1] = '\0';
+
+	return true;
+}
+
+bool vip_was_placed(const char *address)
+{
+	return address != NULL && strlen(placed_address) > 0 &&
+	       strcmp(placed_address, address) == 0;
+}
+
 bool vip_claimed(void)
 {
 	return claimed;
@@ -469,6 +535,10 @@ bool vip_claimed_address(char *buf, const size_t size)
 
 
 
+// Said once: a machine whose own address is the virtual one is a decision
+// somebody made, not a fault to repeat every round
+static bool warned_borrowed = false;
+
 bool vip_claim(const char *address)
 {
 	// An address somebody changed cluster.vip.address away from is still on
@@ -482,13 +552,34 @@ bool vip_claim(const char *address)
 	}
 
 	char present_on[IF_NAMESIZE] = "";
-	if(vip_present_on(address, present_on))
+	unsigned int bits = 0;
+	if(vip_present_on(address, present_on, &bits))
 	{
-		// Already there. Ours if we put it there, and ours to keep
-		// either way while we are the node the clients should reach
+		// Already there, and the question is by whose hand. Two things say
+		// it was not ours, and both have to be asked: a prefix covering a
+		// whole subnet is never one FTL placed, and an address this machine
+		// has no record of placing is not ours to remove even when the
+		// prefix matches - a machine's own IPv6 address is a /128 as often
+		// as not, and the release at the other end of a hand-over would
+		// take it away along with the machine's reachability
+		const unsigned int host_bits = strchr(address, ':') != NULL ? 128 : 32;
+		if((bits != 0 && bits != host_bits) || !vip_was_placed(address))
+		{
+			if(!warned_borrowed)
+				log_warn("cluster: %s was already on %s and this node did not put it there, so it stays whoever serves",
+				         address, present_on);
+			warned_borrowed = true;
+			return true;
+		}
+		warned_borrowed = false;
+
+		// Left behind by an FTL that was killed, and the switches still
+		// send it to whoever answered for it last. Taking it over silently
+		// would leave them doing that
 		if(!claimed)
 		{
 			strncpy(claimed_address, address, sizeof(claimed_address) - 1);
+			claimed_address[sizeof(claimed_address) - 1] = '\0';
 
 			// The interface it is on, not the one we would have
 			// picked: giving it back later goes through the same
@@ -498,14 +589,10 @@ bool vip_claim(const char *address)
 			claimed_iface[sizeof(claimed_iface) - 1] = '\0';
 			claimed = true;
 
-			// Left behind by an FTL that was killed, and the switches
-			// still send it to whoever answered for it last. Taking
-			// it over silently would leave them doing that
 			log_info("cluster: %s was already on %s, taking it over",
 			         address, claimed_iface);
 			gratuitous_arp(address, claimed_iface);
 		}
-		claimed = true;
 		return true;
 	}
 
@@ -521,6 +608,8 @@ bool vip_claim(const char *address)
 	claimed_address[sizeof(claimed_address) - 1] = '\0';
 	strncpy(claimed_iface, iface, sizeof(claimed_iface) - 1);
 	claimed_iface[sizeof(claimed_iface) - 1] = '\0';
+	vip_note_placed(address, iface);
+	cluster_state_save(NULL);
 	log_info("cluster: claimed %s on %s", address, iface);
 	gratuitous_arp(address, iface);
 
@@ -531,20 +620,45 @@ bool vip_release(const char *address)
 {
 	// Never an address this node did not place. Deleting one that was
 	// already on the interface takes its subnet route with it, and with it
-	// this machine's own reachability
-	if(!claimed)
-		return true;
-
-	// ...and exactly the one that was placed, on the interface it went on,
-	// whatever the configuration says today
-	(void)address;
+	// this machine's own reachability.
+	//
+	// Two things make it ours: this process put it there, or the record on
+	// disk says an earlier FTL on this machine did and was killed before it
+	// could give it back. Without the second, an address left behind by a
+	// process that never ran its shutdown stays on the interface for good,
+	// answering for a node that no longer holds the role
 	char iface[IF_NAMESIZE] = { 0 };
-	strncpy(iface, claimed_iface, sizeof(iface) - 1);
-	address = claimed_address;
+	if(claimed)
+	{
+		// Exactly the one that was placed, on the interface it went on,
+		// whatever the configuration says today
+		strncpy(iface, claimed_iface, sizeof(iface) - 1);
+		address = claimed_address;
+	}
+	else if(vip_was_placed(address))
+	{
+		// Left behind by an FTL that was killed. The interface is
+		// whichever one it is on now, which is what the removal needs
+		unsigned int bits = 0;
+		if(!vip_present_on(address, iface, &bits))
+		{
+			// Gone already - somebody rebooted, or removed it by hand
+			vip_note_placed("", "");
+			cluster_state_save(NULL);
+			return true;
+		}
+
+		log_info("cluster: %s was left on %s by an earlier run, giving it back",
+		         address, iface);
+	}
+	else
+		return true;
 
 	if(!vip_present(address))
 	{
 		claimed = false;
+		vip_note_placed("", "");
+		cluster_state_save(NULL);
 		return true;
 	}
 
@@ -562,7 +676,12 @@ bool vip_release(const char *address)
 		return false;
 	}
 
+	// Recorded as gone only now that it is: clearing it while the removal is
+	// still failing would leave an address on this machine that no later run
+	// knows to take back
 	claimed = false;
+	vip_note_placed("", "");
+	cluster_state_save(NULL);
 	log_info("cluster: released %s on %s", address, iface);
 
 	return true;
