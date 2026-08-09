@@ -10,6 +10,8 @@
 
 #include "FTL.h"
 #include "api/auth.h"
+// cluster_verify_request()
+#include "cluster/auth.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api/api.h"
@@ -100,6 +102,15 @@ void free_api(void)
 // Returns >= 0 for any valid authentication
 int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
+	// A peer of our cluster signs every request with the shared secret
+	// instead of holding a session. This is checked before anything else so
+	// it works the same whether or not a web password is set here - but only
+	// for the API, as the pages of the web interface are not what the
+	// cluster secret unlocks and they are served without the confinement
+	// that keeps a peer to the two endpoints it needs
+	if(is_api && cluster_verify_request(api))
+		return API_AUTH_CLUSTER;
+
 	// When the pwhash is unset, authentication is disabled
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
 	{
@@ -584,8 +595,7 @@ int api_auth(struct ftl_conn *api)
 
 	if(result == PASSWORD_CORRECT ||
 	   result == APPPASSWORD_CORRECT ||
-	   result == CLIPASSWORD_CORRECT ||
-	   result == CLUSTERPASSWORD_CORRECT)
+	   result == CLIPASSWORD_CORRECT)
 	{
 		// Accepted
 
@@ -688,7 +698,6 @@ int api_auth(struct ftl_conn *api)
 				auth_data[i].tls.mixed = false;
 				auth_data[i].app = result == APPPASSWORD_CORRECT;
 				auth_data[i].cli = result == CLIPASSWORD_CORRECT;
-				auth_data[i].cluster = result == CLUSTERPASSWORD_CORRECT;
 
 				// Generate new SID and CSRF token. On RNG failure,
 				// release the slot we just claimed so no session with

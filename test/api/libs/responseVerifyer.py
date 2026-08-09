@@ -177,21 +177,28 @@ class ResponseVerifyer():
 				bad_filename = zipfile_obj.testzip()
 				if bad_filename is not None:
 					self.errors.append("File " + bad_filename + " in received archive is corrupt.")
-				# Try to read pihole.toml and see if it starts with the expected
-				# header block
-				try:
-					# Check if all expected files are present
-					for expected_file in self.TELEPORTER_FILES_EXPORT:
-						if expected_file not in zipfile_obj.namelist():
-							self.errors.append("File " + expected_file + " is missing in received archive.")
-					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
-					if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
-						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
-				except Exception as err:
-					self.errors.append("Error during ZIP analysis: " + str(err))
+				# Only the Teleporter archive carries the whole of
+				# Pi-hole. The cluster ships the list tables alone,
+				# deliberately without pihole.toml, so the expectations
+				# below apply to the Teleporter endpoint only
+				if endpoint == "/teleporter":
+					# Try to read pihole.toml and see if it starts with
+					# the expected header block
+					try:
+						# Check if all expected files are present
+						for expected_file in self.TELEPORTER_FILES_EXPORT:
+							if expected_file not in zipfile_obj.namelist():
+								self.errors.append("File " + expected_file + " is missing in received archive.")
+						pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
+						if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
+							self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
+					except Exception as err:
+						self.errors.append("Error during ZIP analysis: " + str(err))
 
-				# Store Teleporter archive for later use
-				self.teleporter_archive = FTLresponse
+					# Store Teleporter archive for later use
+					self.teleporter_archive = FTLresponse
+				elif len(zipfile_obj.namelist()) == 0:
+					self.errors.append("Received ZIP file is empty")
 		elif expected_mimetype == "text/html":
 			# Decode the response if it is bytes
 			if type(FTLresponse) is bytes:
