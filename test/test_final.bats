@@ -30,6 +30,7 @@ load 'bats_helper.bash'
 
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
+  # BATS:   2x pihole.toml writes (dns.ignoreLocalhost API PATCH on + off)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
@@ -52,9 +53,9 @@ load 'bats_helper.bash'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "10"
+      assert_line --index 0 "12"
   else
-    [[ ${lines[0]} == "44" ]]
+    [[ ${lines[0]} == "46" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
