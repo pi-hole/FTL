@@ -30,6 +30,7 @@ load 'bats_helper.bash'
 
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
+  # BATS:   2x pihole.toml writes (dns.ignoreLocalhost API PATCH on + off)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
@@ -57,9 +58,9 @@ load 'bats_helper.bash'
   # config already matches, so they log "pihole.toml unchanged" - which the
   # next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "6"
+    assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "45" ]]
+    [[ ${lines[0]} == "47" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
