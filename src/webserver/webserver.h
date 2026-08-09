@@ -32,6 +32,7 @@ int ftl_http_redirect(struct mg_connection *conn, const int code, const char *fo
 in_port_t get_https_port(void) __attribute__((pure));
 // Whether webserver.acl admits the client address sa (true when no ACL is set)
 bool webserver_acl_allows(const struct sockaddr_storage *sa);
+in_port_t get_bound_https_port(void) __attribute__((pure));
 unsigned short get_api_string(char **buf, const bool domain);
 char *get_prefix_webhome(void) __attribute__((pure));
 char *get_api_uri(void) __attribute__((pure));

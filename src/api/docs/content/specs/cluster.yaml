@@ -10,8 +10,8 @@ components:
         description: |
           Returns this node's identity and its view of every configured peer.
           The other nodes of a cluster poll exactly this endpoint, which is why
-          it also carries the fingerprints used to decide whether a node has to
-          pull the configuration from the publishing node.
+          it also carries the fingerprints and timestamps they compare to decide
+          which of them has to catch the other up.
         responses:
           '200':
             description: OK
@@ -29,6 +29,322 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+    leases:
+      get:
+        summary: The DHCP leases of this node
+        tags:
+          - "Cluster"
+        operationId: "get_cluster_leases"
+        description: |
+          The lease file as it is on disk, verbatim. Only the node handing out
+          addresses has anything worth reading here; its peers keep a copy so
+          that whichever of them takes DHCP over knows which client holds which
+          address, and the clients keep the addresses they already have.
+
+          Signed like every other answer between nodes, and refused unless the
+          request is signed with the shared cluster secret.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/octet-stream:
+                schema:
+                  type: string
+                  format: binary
+          '404':
+            description: This node has no DHCP leases
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/not_found'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    lists:
+      get:
+        summary: Get the list tables of this node
+        tags:
+          - "Cluster"
+        operationId: "get_cluster_lists"
+        description: |
+          The groups, clients, adlists and domain lists of this node as a ZIP
+          archive holding a reduced gravity database - the same shape a
+          Teleporter archive carries them in, without the configuration file
+          that archive also holds.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/zip:
+                schema:
+                  type: string
+                  format: binary
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    discover:
+      get:
+        summary: Find other Pi-holes on the local network
+        tags:
+          - "Cluster"
+        operationId: "get_cluster_discover"
+        description: |
+          Asks the local network segment which other Pi-holes are there and
+          waits a moment for the answers. Only nodes that have clustering
+          enabled answer, and they answer with nothing but the port they speak
+          HTTPS on - the address is the one the answer came from.
+
+          Joining still needs the password of the node that is picked, so this
+          is a convenience rather than a way in.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - type: object
+                      properties:
+                        nodes:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              address:
+                                type: string
+                                example: "192.168.0.6"
+                              port:
+                                type: integer
+                                description: The port that node speaks HTTPS on, zero if it has none
+                                example: 443
+                              url:
+                                type: string
+                                nullable: true
+                                description: |
+                                  The URL this node would be joined through, or
+                                  null when that node has no encrypted port
+                                example: "https://192.168.0.6:443"
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    enroll:
+      post:
+        summary: Take another Pi-hole into this cluster
+        tags:
+          - "Cluster"
+        operationId: "post_cluster_enroll"
+        description: |
+          Adds the given node to this node's member list and hands it the shared
+          secret. The member list is an ordinary synchronized setting, so the
+          rest of the cluster learns about the new node by itself.
+
+          The caller has proven it knows this Pi-hole's password, which is the
+          stronger of the two credentials. Refused unless the connection is
+          encrypted, and refused for application passwords, for the CLI password
+          and for the other nodes of the cluster: those exist so a script can
+          read data, not so it can take a cluster over.
+
+          This is what `POST /api/cluster/join` calls on the node it was pointed
+          at - it is not normally called by hand.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - self
+                properties:
+                  self:
+                    type: string
+                    description: The URL the joining node is reached at
+                    example: "https://192.168.0.6"
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - type: object
+                      properties:
+                        secret:
+                          type: string
+                          example: "aGVsbG8gd29ybGQgdGhpcyBpcyBhIHNlY3JldA=="
+                        members:
+                          type: array
+                          items:
+                            type: string
+                          example: ["https://192.168.0.5", "https://192.168.0.6"]
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: The node could not be enrolled
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+    join:
+      post:
+        summary: Join the cluster of another Pi-hole
+        tags:
+          - "Cluster"
+        operationId: "post_cluster_join"
+        description: |
+          Logs in to the given node with the password supplied and asks it to
+          enroll this one. What comes back is the cluster secret and the member
+          list, now naming this node as well. Clustering is switched on and FTL
+          restarts afterwards.
+
+          The configuration and the lists then come from the cluster: this node
+          arrives as one nobody has configured yet, so its own settings are
+          replaced rather than pushed to the others.
+
+          The connection to the other node has to be an encrypted one, as the
+          password and the secret both cross it.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - url
+                  - password
+                  - self
+                properties:
+                  url:
+                    type: string
+                    description: A node that is already in the cluster
+                    example: "https://192.168.0.5"
+                  password:
+                    type: string
+                    description: The web interface password of that node
+                    example: "correct horse battery staple"
+                  self:
+                    type: string
+                    description: |
+                      How the other nodes reach this one. This is what is added
+                      to the member list, so it has to be an address they can
+                      resolve rather than a loopback one
+                    example: "https://192.168.0.6"
+                  pin:
+                    type: string
+                    description: |
+                      Optional. The certificate pin of the node being joined,
+                      read off its own status. This is the one connection a
+                      cluster cannot authenticate for itself - the joining node
+                      holds no shared secret yet - so passing it here is what
+                      keeps the password from being readable by anybody on the
+                      path.
+                    example: "aKG1khSEO0G+KcSunqhLo3cVFCTGSH81QfvtIH8h13s="
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - type: object
+                      properties:
+                        joined:
+                          type: boolean
+                          example: true
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: The other node could not be joined
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+    leave:
+      post:
+        summary: Leave the cluster
+        tags:
+          - "Cluster"
+        operationId: "post_cluster_leave"
+        description: |
+          Takes this node out of the cluster. The other nodes are handed the
+          member list without this one first, so they stop polling an address
+          that is about to stop answering, and clustering is switched off here
+          only afterwards. FTL restarts at the end of it.
+
+          The shared secret is left in place, so the node can be taken back in
+          later without copying it again.
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - type: object
+                      properties:
+                        leaving:
+                          type: boolean
+                          example: true
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: This Pi-hole is not part of a cluster
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+
+  errors:
+    forbidden:
+      description: |
+        The request was valid, but the server is refusing it.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "forbidden"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "This needs an encrypted connection"
+            hint:
+              type: string
+              nullable: true
+              example: null
 
   schemas:
     status:
@@ -44,10 +360,10 @@ components:
             leader:
               type: string
               description: |
-                Highest-priority reachable node. It anchors the virtual IP
-                address when DHCP failover does not; it does not decide what
-                the cluster's configuration is - every node may publish a
-                change, and the newest one wins.
+                The reachable node with the lowest identity. It anchors the
+                virtual IP address when DHCP failover does not; it does not
+                decide what the cluster's configuration is - every node may
+                publish a change, and the newest one wins.
               example: "pi-hole-1"
             dhcp_owner:
               type: string
@@ -82,12 +398,22 @@ components:
             from the same card are both called "raspberrypi" - so this is what
             the nodes compare when an election has to pick one of two.
           example: "aB3dEf7hJ9kLmN2p"
-        priority:
-          type: integer
-          example: 100
+        pin:
+          type: string
+          description: |
+            What a peer's TLS connection to this node has to present: the
+            base64 SHA-256 of the certificate's public key. Published here
+            rather than distributed - this answer is signed with the shared
+            secret, so a certificate is authenticated by what authenticates
+            everything else.
+          example: "aKG1khSEO0G+KcSunqhLo3cVFCTGSH81QfvtIH8h13s="
         version:
           type: string
           example: "v6.5"
+        time:
+          type: number
+          description: What time this node thinks it is, as a Unix timestamp
+          example: 1735689600.5
         dhcp:
           type: object
           properties:
@@ -106,6 +432,27 @@ components:
                 one never wins the DHCP election, as taking over would leave the
                 network without a server.
               example: false
+            configured:
+              type: boolean
+              description: |
+                Is this node set up to serve DHCP at all - a range it could hand
+                out, a configuration it may write, nothing pinning `dhcp.active`
+                where the cluster cannot move it? `capable` is this minus the
+                wait a failed takeover leaves behind, so a node that answers
+                `capable: false` with `configured: true` is one that will pick
+                DHCP up again shortly, and one that answers false to both never
+                will. A node leaving the cluster needs that difference to know
+                whether handing DHCP over leaves anybody holding it.
+              example: true
+            leases:
+              type: string
+              description: |
+                Fingerprint of this node's DHCP lease file. Only the node
+                handing out addresses writes that file; the others keep a copy
+                and compare it against this, so whichever of them takes over
+                already knows which client holds which address. Absent on a
+                node whose lease file cannot be read.
+              example: "3fa2b1c7080bbad1"
         vip:
           type: object
           properties:
@@ -117,6 +464,8 @@ components:
               type: boolean
               description: Does this node currently hold the virtual IP address?
               example: false
+        sync:
+          $ref: 'cluster.yaml#/components/schemas/sync_state'
     peer:
       type: object
       properties:
@@ -132,12 +481,63 @@ components:
         version:
           type: string
           example: "v6.5"
-        priority:
-          type: integer
-          example: 200
         reachable:
           type: boolean
           example: true
+        self:
+          type: boolean
+          description: |
+            Whether this member turned out to be the node answering. The member
+            list is the same on every node, so exactly one entry is.
+          example: false
+        address:
+          type: string
+          description: |
+            Where this member was last reached. Learned from the connection
+            rather than configured, so the name in the member list is resolved
+            once instead of every time a connection has to be built again, and
+            a node that cannot resolve it at all can be told this address by
+            another node. Empty until the member has answered once.
+          example: "192.168.0.5"
+        branch:
+          type: string
+          description: |
+            The branch this member's FTL was built from, empty when that is
+            `master`. A cluster of released Pi-holes says nothing here.
+          example: ""
+        sees:
+          type: array
+          maxItems: 8
+          description: |
+            The identities this member reports as reachable. Every node polls
+            every other one, so reachability is a matrix rather than a list -
+            this is the row this member published, and it is empty for a member
+            that did not answer.
+          items:
+            type: string
+          example: ["Tc4uBXKmUvtbgf5x"]
+        knows_us:
+          type: boolean
+          description: |
+            Whether this member lists the node answering among its own members.
+            Configuration and lists travel from whoever holds the newer document
+            to the nodes behind it, so a member that does not know this node
+            never sends it anything, however healthy it looks.
+          example: true
+        clock:
+          type: object
+          description: |
+            Which of two changes is the newer one is decided by the clock, so
+            the nodes check that they agree on what time it is. A node whose
+            clock is too far from ours is not synchronized with.
+          properties:
+            agrees:
+              type: boolean
+              example: true
+            offset:
+              type: number
+              description: How far the peer's clock is from ours, in seconds
+              example: 0.02
         last_seen:
           type: number
           nullable: true
@@ -166,52 +566,61 @@ components:
             held:
               type: boolean
               example: false
-    peer:
+        sync:
+          $ref: 'cluster.yaml#/components/schemas/sync_state'
+    sync_state:
       type: object
+      description: |
+        What the node holds, and since when. A peer compares the fingerprints
+        against its own to see whether the two are apart at all, and the
+        timestamps say which of them holds what the other should take.
       properties:
-        url:
-          type: string
-          example: "https://192.168.0.5"
-        name:
-          type: string
-          example: "pi-hole-2"
-        id:
-          type: string
-          example: "qR5tUv8wX1yZ3aB4"
-        version:
-          type: string
-          example: "v6.5"
-        priority:
-          type: integer
-          example: 200
-        reachable:
-          type: boolean
-          example: true
-        last_seen:
-          type: number
-          nullable: true
-          description: Unix timestamp of the last successful contact
-          example: 1735689600.0
-        error:
-          type: string
-          nullable: true
-          description: Why the last contact failed, null if it did not
-          example: null
-        dhcp:
+        config:
           type: object
           properties:
-            active:
+            changed:
+              type: number
+              description: |
+                When somebody last configured this node, as a Unix timestamp.
+                Zero on a node nobody has configured yet, which is what keeps a
+                fresh node from overwriting the cluster it joins
+              example: 1735689600.5
+            hash:
+              type: string
+              description: |
+                Fingerprint of everything that travels between the nodes
+                unconditionally. Computed over the same set of items on every
+                node, so two nodes holding the same configuration always agree.
+                What may not decide that set is anything a single node settles
+                for itself - whether an item is pinned through the environment,
+                or whether this node accepts credentials - because two nodes
+                hashing different sets never agree however identical they are.
+                An item pinned through the environment is therefore covered like
+                any other; if its value differs from the cluster's, the nodes
+                differ, which is the truth.
+              example: "75f2b4c7080bbad1"
+            credentials:
+              type: string
+              description: |
+                Fingerprint of the credentials on their own, which are not part
+                of `hash`. Whether they travel between two particular nodes
+                depends on what each of them accepts, so a single fingerprint
+                covering them would have two nodes compare values that can never
+                converge and report a difference that never resolves.
+              example: "1cd1749329f8b359"
+            accepts_credentials:
               type: boolean
-              example: false
-            failover:
-              type: boolean
-              example: false
-            capable:
-              type: boolean
-              example: false
-        vip:
+              description: |
+                Whether this node takes credentials from the cluster. Comparing
+                `credentials` is only meaningful where both nodes do.
+              example: true
+        gravity:
           type: object
           properties:
-            held:
-              type: boolean
-              example: false
+            changed:
+              type: number
+              description: When the lists last changed, as a Unix timestamp
+              example: 1735689600.5
+            hash:
+              type: string
+              example: "f77f8a2bcd508924"
