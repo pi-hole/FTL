@@ -43,9 +43,44 @@ struct config config = { 0 };
 static bool config_initialized = false;
 uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
+// Serializes config modifications against each other. duplicate_config() and
+// replace_config() each take the SHM lock only for themselves, so two writers
+// can both snapshot the config, both change their own copy and both install it
+// - whichever installs last silently drops the other's change. The same lock
+// also keeps the write-back (pihole.toml rotation, dnsmasq test file, HOSTS
+// file) of two writers from interleaving.
+// It is recursive because a config change can nest: setting webserver.api.password
+// runs the legacy password upgrade, which writes the config out on its own.
+static pthread_mutex_t config_write_lock;
+
 // Private prototypes
 static bool port_in_use(const in_port_t port);
 static void reset_config_default(struct conf_item *conf_item);
+
+void init_config_lock(void)
+{
+	pthread_mutexattr_t lock_attr;
+	pthread_mutexattr_init(&lock_attr);
+	pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&config_write_lock, &lock_attr);
+	pthread_mutexattr_destroy(&lock_attr);
+}
+
+void lock_config(void)
+{
+	const int ret = pthread_mutex_lock(&config_write_lock);
+	if(ret != 0)
+		log_err("Error when obtaining config lock: %s", strerror(ret));
+	log_debug(DEBUG_LOCKS, "Obtained config write lock");
+}
+
+void unlock_config(void)
+{
+	const int ret = pthread_mutex_unlock(&config_write_lock);
+	if(ret != 0)
+		log_err("Error when releasing config lock: %s", strerror(ret));
+	log_debug(DEBUG_LOCKS, "Released config write lock");
+}
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -2102,12 +2137,17 @@ void replace_config(struct config *newconf)
 
 void reread_config(void)
 {
+	// Serialize against API config changes: the file we are about to read
+	// is only authoritative as long as no other thread is in the middle of
+	// changing the config in memory and writing it back
+	lock_config();
 
 	// Create checksum of config file
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!sha256sum(GLOBALTOMLPATH, checksum, false))
 	{
 		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2115,6 +2155,7 @@ void reread_config(void)
 	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
 	{
 		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2167,6 +2208,8 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	unlock_config();
 
 	// If we need to restart FTL, we do so now
 	if(restart)

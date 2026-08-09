@@ -741,7 +741,7 @@ static int api_config_get(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int api_config_patch(struct ftl_conn *api)
+static int config_patch(struct ftl_conn *api)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -950,13 +950,21 @@ static int api_config_patch(struct ftl_conn *api)
 	return api_config_get(api);
 }
 
+static int api_config_patch(struct ftl_conn *api)
+{
+	lock_config();
+	const int ret = config_patch(api);
+	unlock_config();
+	return ret;
+}
+
 // Inspired by https://stackoverflow.com/a/32496721
 //static void replace_char(char* str, char find, char replace)
 //{
 //	for (char *current_pos = strchr(str, find); (current_pos = strchr(str+1, find)) != NULL; *current_pos = replace);
 //}
 
-static int api_config_put_delete(struct ftl_conn *api)
+static int config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
@@ -1175,6 +1183,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 		send_http_code(api, NULL, 204, "");
 		return 204;
 	}
+}
+
+static int api_config_put_delete(struct ftl_conn *api)
+{
+	lock_config();
+	const int ret = config_put_delete(api);
+	unlock_config();
+	return ret;
 }
 
 // Endpoint /api/config router
