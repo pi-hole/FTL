@@ -2058,9 +2058,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   struct in_addr netmask;
   int pipefd[2];
   struct iovec tcpbuff;
-#ifdef HAVE_LINUX_NETWORK
   unsigned char a = 0;
-#endif
   netmask.s_addr = 0;
   
   while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
@@ -2305,9 +2303,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
     {
       pid_t p;
       int i, pipefd[2];
-#ifdef HAVE_LINUX_NETWORK
       unsigned char a = 0;
-#endif
       
       /* check to see if we have a free tcp process slot. */
       for (i = daemon->max_procs - 1; i >= 0; i--)
