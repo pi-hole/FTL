@@ -1458,12 +1458,13 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 void logg_warn_dnsmasq_message(char *message)
 {
-	// Create message
-	char buf[2048];
-	format_dnsmasq_warn_message(buf, sizeof(buf), NULL, 0, message);
-
-	// Log to FTL.log
-	log_warn("%s", buf);
+	// Log to FTL.log (unless the user asked us to hide these warnings)
+	if(!config.misc.hide_dnsmasq_warn.v.b)
+	{
+		char buf[2048];
+		format_dnsmasq_warn_message(buf, sizeof(buf), NULL, 0, message);
+		log_warn("%s", buf);
+	}
 
 	// Log to database
 	add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
@@ -1569,12 +1570,13 @@ void log_certificate_domain_mismatch(const char *certfile, const char *domain)
 
 void log_connection_error(const char *server, const char *reason, const char *error)
 {
-	// Create message
-	char buf[2048];
-	format_connection_error(buf, sizeof(buf), NULL, 0, server, reason, error);
-
-	// Log to FTL.log
-	log_warn("%s", buf);
+	// Log to FTL.log (unless the user asked us to hide these warnings)
+	if(!config.misc.hide_connection_error.v.b)
+	{
+		char buf[2048];
+		format_connection_error(buf, sizeof(buf), NULL, 0, server, reason, error);
+		log_warn("%s", buf);
+	}
 
 	// Log to database
 	add_message(CONNECTION_ERROR_MESSAGE, server, reason, error);
