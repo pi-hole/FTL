@@ -2184,7 +2184,7 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	     
 	     To avoid the race, the parent blocks here until a 
 	     single byte comes back up the pipe, which
-	     is sent by the child has finshed the close. */
+	     is sent when the child has finished the close. */
 	  read_write(pipefd[0], &a, 1, RW_READ);
 	  
 	  daemon->tcp_pids[slot] = p;
@@ -2334,7 +2334,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	     
 	     To avoid the race, the parent blocks here until a 
 	     single byte comes back up the pipe, which
-	     is sent by the child has finshed the close. */
+	     is sent when the child has finished the close. */
 	  read_write(pipefd[0], &a, 1, RW_READ);
 	  
 	  /* i holds index of free slot */
