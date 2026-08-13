@@ -608,6 +608,7 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 	  int do_slaac = 0;
 	  int deprecate  = 0;
 	  int constructed = 0;
+	  int have_lease = 0;
 	  int adv_router = 0;
 	  int off_link = 0;
 	  unsigned int time = 0xffffffff;
@@ -660,6 +661,8 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 		    if (time < ((unsigned int)(3 * param->adv_interval)))
 		      time = 3 * param->adv_interval;
 		  }
+		if (context->flags & CONTEXT_SETLEASE)
+		  have_lease = 1;
 
 		if (context->flags & CONTEXT_DEPRECATE)
 		  deprecate = 1;
@@ -697,7 +700,19 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 	  /* configured time is ceiling */
 	  if (!constructed || valid > time)
 	    valid = time;
-	  
+
+	  /* For CONSTRUCTED prefixes an explicitly configured lease time is
+	     also a floor: an upstream delegating with very short lifetimes
+	     (mobile links) would otherwise churn the addresses of any client
+	     that sleeps through a few RAs. Deprecation still wins below. */
+	  if (constructed && have_lease && !deprecate && !(flags & IFACE_DEPRECATED))
+	    {
+	      if (valid < time)
+		valid = time;
+	      if (preferred < time)
+		preferred = time;
+	    }
+
 	  if (flags & IFACE_DEPRECATED)
 	    preferred = 0;
 	  
