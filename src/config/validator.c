@@ -828,8 +828,9 @@ bool validate_str_no_newline(union conf_value *val, const char *key, char err[VA
 
 // Validator for dns.upstreams. Enforces the same array/string/newline rules as
 // validate_array_no_newline() and, in addition, requires every encrypted entry
-// (tls://, https://, h3:// or doq://) to parse as a valid encrypted-upstream
-// URI. Plaintext entries are left untouched - dnsmasq validates those itself.
+// (tls://, https://, h3://, doq:// or quic://) to parse as a valid encrypted-
+// upstream URI. Plaintext entries are left untouched - dnsmasq validates those
+// itself.
 bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(!validate_array_no_newline(val, key, err))
@@ -843,11 +844,12 @@ bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDAT
 			continue;
 
 		// Anything carrying a URI scheme ("://") must be a supported encrypted
-		// upstream (tls://, https://, h3:// or doq://) that parses cleanly. A
-		// plaintext server specification handled downstream by dnsmasq never
-		// contains "://", so an entry that does but is not a valid encrypted URI
-		// (e.g. http://, ftp:// or a malformed tls://) is rejected here rather
-		// than being written into dnsmasq.conf and breaking DNS startup.
+		// upstream (tls://, https://, h3://, doq:// or quic://) that parses
+		// cleanly. A plaintext server specification handled downstream by
+		// dnsmasq never contains "://", so an entry that does but is not a valid
+		// encrypted URI (e.g. http://, ftp:// or a malformed tls://) is rejected
+		// here rather than being written into dnsmasq.conf and breaking DNS
+		// startup.
 		if(strstr(s, "://") != NULL)
 		{
 			struct upstream_uri u;

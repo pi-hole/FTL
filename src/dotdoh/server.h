@@ -55,6 +55,10 @@ bool dotdoh_source_allowed(const char *client_ip);
 int dotdoh_loopback_take(void);
 void dotdoh_loopback_give(int fd);
 
+// Release a socket that must not be reused (a failed or half-written exchange),
+// closing it and freeing the in-flight slot dotdoh_loopback_take() reserved.
+void dotdoh_loopback_drop(int fd);
+
 // Whether inbound DoH is enabled (config.dns.doh). Lets the h2/h3 terminator gate
 // its native /dns-query handling without pulling in the config headers.
 bool dotdoh_doh_enabled(void) __attribute__((pure));

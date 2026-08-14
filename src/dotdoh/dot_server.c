@@ -60,7 +60,7 @@
 // then pooled across connections (freed only at thread shutdown), so the cap
 // bounds the worst-case footprint while a connection flood costs no per-
 // connection allocation. The event loop itself scales far higher.
-#define DOT_MAX_CONNS 64
+#define DOT_MAX_CONNS 32
 // Cap concurrent connections from a single source IP so one client cannot hold
 // every slot (a drip of one query per connection re-arms the per-query deadline,
 // so the slow-loris sweep never fires; this is what bounds a single source).
@@ -259,7 +259,7 @@ static void conn_free(struct dot_conn *c)
 		if(c->up_idle)
 			dotdoh_loopback_give(c->upfd);
 		else
-			close(c->upfd);
+			dotdoh_loopback_drop(c->upfd);
 	}
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
@@ -344,9 +344,18 @@ static int conn_start_resolve(struct dot_conn *c)
 		c->st = DS_UP_WRITE;
 		return 0;
 	}
+	if(c->upfd == -2)
+	{
+		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s refused, concurrency limit reached",
+		          c->client);
+		return -1;
+	}
 	c->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(c->upfd < 0)
+	{
+		dotdoh_loopback_drop(-1);
 		return -1;
+	}
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;
@@ -375,7 +384,7 @@ static int conn_start_resolve(struct dot_conn *c)
 // (advanced, keep driving), 0 (reconnect in flight, yield), -1 (give up).
 static int conn_retry_upstream(struct dot_conn *c)
 {
-	close(c->upfd);
+	dotdoh_loopback_drop(c->upfd);
 	c->upfd = -1;
 	c->up_reused = false;
 	c->up_retried = true;
@@ -522,6 +531,24 @@ static int drive_up_read(struct dot_conn *c)
 	// reuses it instead of forking a fresh dnsmasq child - and it is now back at
 	// a message boundary, so conn_free() may return it to the shared pool.
 	c->up_idle = true;
+
+	// Hand the loopback socket back now that the exchange is complete, rather
+	// than holding it until the connection closes. It stays warm in the pool for
+	// whoever needs it next - including this connection's next query - but an
+	// idle keep-alive client no longer occupies one of the shared admission
+	// slots, which would otherwise let a handful of idle DoT connections starve
+	// DoQ and DoH.
+	if(c->upfd >= 0)
+	{
+		dotdoh_loopback_give(c->upfd);
+		c->upfd = -1;
+		// Clear the boundary flag with the fd it described: the next query takes a
+		// fresh socket, and leaving it set would let conn_free() pool that one
+		// while it is still connecting.
+		c->up_idle = false;
+		c->up_reused = false;
+		c->up_retried = false;
+	}
 
 	// RFC 8467 Sec. 4: pad the answer only if the query asked for it.
 	if(c->client_padded)

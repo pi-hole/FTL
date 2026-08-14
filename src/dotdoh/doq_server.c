@@ -80,7 +80,7 @@
 // Cap in-flight queries across all connections. Each holds ~192 KiB of pooled
 // I/O buffers plus one loopback socket to dnsmasq, so this - not the connection
 // count - is what bounds the listener's footprint and its load on dnsmasq.
-#define DOQ_MAX_STREAMS 64
+#define DOQ_MAX_STREAMS 32
 // Most concurrent streams a single connection may hold. Together with
 // DOQ_MAX_CONNS_PER_IP this bounds what one connection costs; the global
 // DOQ_MAX_STREAMS above is what actually caps total in-flight queries.
@@ -173,12 +173,12 @@ static int g_nstreams = 0;
 // Human-readable text for the most recent OpenSSL error. The certificate reload
 // path calls this from the DoQ thread while other threads use OpenSSL too, so it
 // renders into thread-local storage rather than ERR_error_string()'s process-wide
-// buffer, and drains the rest of the queue so a later message cannot report a
-// stale error.
+// buffer. Reads the most recent entry, not the oldest still queued, and drains
+// the queue afterwards so a later message cannot report a stale error.
 static const char *ossl_err(void)
 {
 	static _Thread_local char buf[256];
-	const unsigned long e = ERR_get_error();
+	const unsigned long e = ERR_peek_last_error();
 	if(e == 0)
 		return "no error";
 	ERR_error_string_n(e, buf, sizeof(buf));
@@ -287,8 +287,10 @@ static int doq_bind_socket(int family)
 		          family == AF_INET ? "IPv4" : "IPv6", strerror(errno));
 		return -1;
 	}
+	// No SO_REUSEADDR here: UDP has no TIME_WAIT to work around, and with the flag
+	// a second daemon binds the same port successfully while the kernel delivers
+	// the datagrams to only one of us. Without it the clash surfaces as EADDRINUSE.
 	const int one = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 	if(family == AF_INET6)
 		setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, sizeof(one));
 
@@ -441,7 +443,7 @@ static void stream_free(struct doq_stream *s)
 	if(s->ssl != NULL)
 		SSL_free(s->ssl);
 	if(s->upfd >= 0)
-		close(s->upfd);
+		dotdoh_loopback_drop(s->upfd);
 	if(s->conn != NULL)
 		s->conn->nstreams--;
 	// Keep the pooled I/O buffers attached to the slot for the next stream (they
@@ -691,10 +693,25 @@ static int stream_start_resolve(struct doq_stream *s)
 		s->up_ev = POLLOUT;
 		return 0;
 	}
+	if(s->upfd == -2)
+	{
+		// At the concurrency limit; server.c has already logged the summary. Tell
+		// the client why, as the stream-cap path does - a bare teardown reads as
+		// DOQ_NO_ERROR and gives it no reason to back off.
+		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s refused, concurrency limit reached",
+		          s->conn->client);
+		doq_reset_stream(s->ssl, DOQ_EXCESSIVE_LOAD);
+		return -1;
+	}
 	s->up_pooled = false;
 	s->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(s->upfd < 0)
+	{
+		// take() reserved an in-flight slot even though the pool was empty; give
+		// it back or the count never recovers.
+		dotdoh_loopback_drop(-1);
 		return -1;
+	}
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;
@@ -721,7 +738,7 @@ static int stream_start_resolve(struct doq_stream *s)
 // the drive contract: 1 keep driving, 0 yield, -1 give up.
 static int stream_retry_upstream(struct doq_stream *s)
 {
-	close(s->upfd);
+	dotdoh_loopback_drop(s->upfd);
 	s->upfd = -1;
 	s->up_pooled = false;
 	s->up_retried = true;
@@ -791,7 +808,17 @@ static int drive_read(struct doq_stream *s)
 	s->wlen = (size_t)flen;
 	s->woff = 0;
 
-	// One query per stream (RFC 9250 Sec. 4.2): anything after it is ignored.
+	// One query per stream (RFC 9250 Sec. 4.2). Bytes beyond that one message are
+	// a protocol violation, so fail the stream instead of silently dropping them:
+	// quietly ignoring them would let a non-conformant client smuggle a second
+	// message past us.
+	if(s->have > off + (size_t)qlen)
+	{
+		log_debug(DEBUG_TLS, "dotdoh: DoQ stream from %s carried %zu trailing bytes, "
+		          "resetting it", s->conn->client, s->have - off - (size_t)qlen);
+		doq_reset_stream(s->ssl, DOQ_PROTOCOL_ERROR);
+		return -1;
+	}
 	s->have = 0;
 
 	if(stream_start_resolve(s) != 0)
@@ -810,6 +837,10 @@ static int drive_up_write(struct doq_stream *s)
 		if(w > 0) { s->woff += (size_t)w; continue; }
 		if(w < 0 && errno == EINTR) continue;
 		if(w < 0 && errno == EAGAIN) { s->up_ev = POLLOUT; return 0; }
+		// A pooled socket the peer closed between the checkout probe and this
+		// write fails here; resend once on a fresh one, as the DoT path does.
+		if(s->up_pooled && !s->up_retried)
+			return stream_retry_upstream(s);
 		return -1;
 	}
 	s->alen = 0; s->agot = 0; s->up_lengot = 0;
