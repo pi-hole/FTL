@@ -598,7 +598,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3:// or doq://).";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or quic://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";

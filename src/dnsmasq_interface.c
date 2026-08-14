@@ -4385,6 +4385,16 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
  *
  * @return true if the debug option is enabled, false otherwise.
  */
+unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
+{
+	// Read when the listeners start, i.e. after the config is parsed. Fall back to
+	// dnsmasq's own default if that ordering ever changes, so the derived cap can
+	// never come out as zero and refuse everything.
+	if(daemon != NULL && daemon->max_procs > 0)
+		return (unsigned int)daemon->max_procs;
+	return MAX_PROCS;
+}
+
 bool __attribute__ ((pure)) get_dnsmasq_debug(void)
 {
 	return option_bool(OPT_DEBUG);
