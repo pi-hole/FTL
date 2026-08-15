@@ -178,7 +178,7 @@ static ssize_t nlgetmsg(int fd, struct sockaddr_nl *sa, void *buf, size_t len)
 
 static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *routes, const bool detailed)
 {
-	char ifname[IF_NAMESIZE];
+	char ifname[IF_NAMESIZE] = { 0 };
 	cJSON *route = cJSON_CreateObject();
 	cJSON_AddNumberToObject(route, "table", rt->rtm_table);
 	cJSON_AddStringReferenceToObject(route, "family", family_name(rt->rtm_family));
@@ -252,7 +252,12 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				if(!rta_payload_ok(rta, sizeof(uint32_t), rtaTypeToString(rta->rta_type)))
 					break;
 				const uint32_t ifidx = *(uint32_t*)RTA_DATA(rta);
-				if_indextoname(ifidx, ifname);
+				if(if_indextoname(ifidx, ifname) == NULL)
+				{
+					log_debug(DEBUG_NETLINK, "%s refers to unknown interface %u, skipping",
+					          rtaTypeToString(rta->rta_type), ifidx);
+					break;
+				}
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ifname);
 				break;
 			}
@@ -342,8 +347,9 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddNumberToObject(route, "imflags", rtnh->rtnh_flags);
 
 				cJSON_AddNumberToObject(multipath, "hops", rtnh->rtnh_hops); // Nexthop priority
-				if_indextoname(rtnh->rtnh_ifindex, ifname);
-				cJSON_AddStringToObject(multipath, "if", ifname); // Interface for this nexthop
+				// Only report the nexthop interface if the index resolves
+				if(if_indextoname(rtnh->rtnh_ifindex, ifname) != NULL)
+					cJSON_AddStringToObject(multipath, "if", ifname); // Interface for this nexthop
 				cJSON_AddItemToObject(route, rtaTypeToString(rta->rta_type), multipath);
 				break;
 			}
@@ -1179,6 +1185,15 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 				if (vfinfo->rta_type != IFLA_VF_INFO)
 					break;
 
+				// The nested attribute carries its own length, so it
+				// must not claim more than the outer payload holds
+				if(RTA_PAYLOAD(rta) < vfinfo->rta_len)
+				{
+					log_debug(DEBUG_NETLINK, "IFLA_VF_INFO claims %u byte(s) of %zu, skipping",
+					          (unsigned int)vfinfo->rta_len, (size_t)RTA_PAYLOAD(rta));
+					break;
+				}
+
 				struct rtattr *vf[IFLA_VF_MAX + 1] = {};
 
 				parse_rtattr_nested(vf, IFLA_VF_MAX, vfinfo);
@@ -1244,8 +1259,9 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
-				struct rtattr *af_spec = RTA_DATA(rta);
-				struct rtattr *inet6_attr = parse_rtattr_one_nested(AF_INET6, af_spec);
+				// The payload of IFLA_AF_SPEC is the list of per-family
+				// containers, so the lookup runs on the attribute itself
+				struct rtattr *inet6_attr = parse_rtattr_one_nested(AF_INET6, rta);
 				if(!inet6_attr)
 					break;
 
