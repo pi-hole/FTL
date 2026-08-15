@@ -229,8 +229,6 @@ components:
                     type: string
                 CNAMEdeepInspect:
                   type: boolean
-                blockESNI:
-                  type: boolean
                 EDNS0ECS:
                   type: boolean
                 ignoreLocalhost:
@@ -776,7 +774,6 @@ components:
             doh: true
             dot: true
             CNAMEdeepInspect: true
-            blockESNI: true
             EDNS0ECS: true
             ignoreLocalhost: false
             showDNSSEC: true
