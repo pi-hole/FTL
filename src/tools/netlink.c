@@ -74,7 +74,7 @@ static bool rta_address(const struct rtattr *rta, const int family, const char *
 static bool rta_string(const struct rtattr *rta, char *dst, const size_t dstlen)
 {
 	const size_t len = RTA_PAYLOAD(rta);
-	if(len == 0)
+	if(len == 0 || dstlen == 0)
 		return false;
 
 	const size_t copy = len < dstlen ? len : dstlen - 1;
@@ -1259,8 +1259,6 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
-				// The payload of IFLA_AF_SPEC is the list of per-family
-				// containers, so the lookup runs on the attribute itself
 				struct rtattr *inet6_attr = parse_rtattr_one_nested(AF_INET6, rta);
 				if(!inet6_attr)
 					break;
