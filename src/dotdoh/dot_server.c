@@ -230,6 +230,8 @@ struct dot_conn {
 
 	uint8_t *rbuf; size_t have;              // client read accumulation
 	uint8_t *abuf; size_t alen, agot;        // answer from dnsmasq
+	size_t qsave;                            // bytes of the query kept in abuf, so a
+	                                         // refusal can still be answered
 	uint8_t  lenbuf[2]; size_t up_lengot;    // answer length prefix
 	uint8_t *wbuf; size_t wlen, woff;        // framed bytes being written
 };
@@ -329,8 +331,86 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 	return c;
 }
 
+// Build a SERVFAIL reply to the query `q` in `out`. The question is echoed when
+// it parses, else the reply carries an empty question section. Returns its
+// length, or -1 if it does not fit.
+static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t outcap)
+{
+	if(qlen < 12 || outcap < 12)
+		return -1;
+
+	// Walk the QNAME. A compression pointer cannot legitimately appear in a
+	// question, so anything that is not a plain label ends the attempt.
+	size_t n = 12;
+	while(n < qlen && q[n] != 0)
+	{
+		if(q[n] > 63)
+			break;
+		n += 1u + q[n];
+	}
+	// RFC 1035 Sec. 4.1.2: the response's question mirrors the request's. Trust
+	// QDCOUNT for that, not the byte layout - a QDCOUNT=0 message (an EDNS-only
+	// probe, or a DSO request whose OPCODE we now preserve) would otherwise have
+	// bytes from its OPT echoed back as a fabricated question.
+	const bool has_qd = ((q[4] << 8) | q[5]) == 1;
+	// RFC 1035 Sec. 2.3.4 caps a name at 255 octets. Mirroring a longer one would
+	// emit an illegal question, and make each refusal copy up to 64 KiB about
+	// while we are already shedding load.
+	const bool have_q = has_qd && n < qlen && q[n] == 0 && n + 5 <= qlen &&
+	                    n - 11 <= 255;
+	const size_t len = have_q ? n + 5 : 12;
+	if(len > outcap)
+		return -1;
+
+	memmove(out, q, len); // may be called in place (out == q)
+	// RFC 1035 Sec. 4.1.1: OPCODE is copied into the response; RFC 4035 Sec. 3.2.2
+	// does the same for CD. AA and TC are ours to clear.
+	out[2] = 0x80 | (q[2] & 0x79);          // QR=1, OPCODE and RD from the query
+	out[3] = 0x80 | (q[3] & 0x10) | 0x02;   // RA=1, CD from the query, RCODE=SERVFAIL
+	out[4] = 0; out[5] = have_q ? 1 : 0;
+	out[6] = 0; out[7] = 0;         // ANCOUNT
+	out[8] = 0; out[9] = 0;         // NSCOUNT
+	out[10] = 0; out[11] = 0;       // ARCOUNT
+	return (ssize_t)len;
+}
+
+// Answer the query kept in c->abuf with SERVFAIL and arm the write, leaving the
+// connection up. Returns 1 to keep driving, or -1 if the reply cannot be built.
+static int conn_answer_servfail(struct dot_conn *c)
+{
+	c->upfd = -1; // clear the sentinel dotdoh_loopback_take() left behind
+	// Sample the query's EDNS state before dot_servfail() overwrites the buffer
+	// it sits in.
+	bool query_do = false;
+	const bool query_edns = edns_query_opt(c->abuf, c->qsave, &query_do);
+
+	ssize_t slen = dot_servfail(c->abuf, c->qsave, c->abuf, ABUF_SZ);
+	if(slen < 0)
+		return -1;
+	// RFC 6891 Sec. 6.1.1: answer an EDNS query with an OPT, whether or not it
+	// padded - replying without one marks us EDNS-lame. RFC 8467 Sec. 4: only
+	// pad when it asked, as the resolved answer does, or the refusal leaks the
+	// query length the client paid to hide. The synthesised OPT copies the
+	// query's DO bit (RFC 3225 Sec. 3).
+	if(query_edns)
+		slen = (ssize_t)edns_pad_response_synth(c->abuf, (size_t)slen, ABUF_SZ,
+		                                        query_do, c->client_padded);
+	const ssize_t flen = dot_frame(c->abuf, (size_t)slen, c->wbuf, WBUF_SZ);
+	if(flen < 0)
+		return -1;
+	c->wlen = (size_t)flen;
+	c->woff = 0;
+	c->alen = 0; c->agot = 0; c->up_lengot = 0;
+	c->up_reused = false;
+	c->up_idle = false;
+	c->st = DS_WRITE;
+	return 1;
+}
+
 // Open a non-blocking loopback socket to dnsmasq's own DNS listener and begin
-// connecting. Returns 0 and sets c->upfd + the wait state, or -1 on failure.
+// connecting. Returns 0 and sets c->upfd + the wait state; -2 when the shared
+// concurrency limit refuses the query, which the caller answers with SERVFAIL
+// rather than dropping the connection; -1 on failure.
 static int conn_start_resolve(struct dot_conn *c)
 {
 	// Prefer a pooled loopback socket: a client that opens a fresh DoT
@@ -348,7 +428,7 @@ static int conn_start_resolve(struct dot_conn *c)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s refused, concurrency limit reached",
 		          c->client);
-		return -1;
+		return -2; // distinct from -1: answer this query, keep the connection
 	}
 	c->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(c->upfd < 0)
@@ -390,7 +470,10 @@ static int conn_retry_upstream(struct dot_conn *c)
 	c->up_retried = true;
 	c->woff = 0;                     // resend the framed query from the start
 	c->alen = 0; c->agot = 0; c->up_lengot = 0;
-	if(conn_start_resolve(c) != 0)   // sets DS_UP_WRITE or DS_UP_CONNECT
+	const int rs = conn_start_resolve(c);   // sets DS_UP_WRITE or DS_UP_CONNECT
+	if(rs == -2)
+		return conn_answer_servfail(c); // the slot went elsewhere while we retried
+	if(rs != 0)
 		return -1;
 	return c->st == DS_UP_CONNECT ? 0 : 1;
 }
@@ -430,13 +513,30 @@ static int drive_read(struct dot_conn *c)
 	// the memmove below drops the consumed bytes, and stays intact for any
 	// pipelined query queued behind this one.
 	c->client_padded = edns_has_padding_option(c->rbuf + off, (size_t)qlen);
+
+	// Keep the query itself before anything can fail: whenever we cannot resolve
+	// it - refused below, or unattributable here - we answer it rather than
+	// dropping the connection, and the deframe further down discards it.
+	c->qsave = (size_t)qlen < ABUF_SZ ? (size_t)qlen : ABUF_SZ;
+	memcpy(c->abuf, c->rbuf + off, c->qsave);
+
 	const ssize_t flen = dotdoh_prepare_query(c->rbuf + off, (size_t)qlen, c->client,
 	                                          c->dest[0] != '\0' ? c->dest : NULL,
 	                                          c->wbuf, WBUF_SZ);
 	if(flen < 0)
-		return -1;
+	{
+		// Attribution failed - an OPT we cannot safely rewrite, or no room for the
+		// client option. That is this one query's problem, not the session's.
+		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s could not be attributed, answering SERVFAIL",
+		          c->client);
+		const size_t consumed_bad = off + (size_t)qlen;
+		memmove(c->rbuf, c->rbuf + consumed_bad, c->have - consumed_bad);
+		c->have -= consumed_bad;
+		return conn_answer_servfail(c);
+	}
 	c->wlen = (size_t)flen;
 	c->woff = 0;
+
 	const size_t consumed = off + (size_t)qlen;
 	memmove(c->rbuf, c->rbuf + consumed, c->have - consumed);
 	c->have -= consumed;
@@ -453,7 +553,15 @@ static int drive_read(struct dot_conn *c)
 		return 1;
 	}
 	c->up_reused = false;
-	if(conn_start_resolve(c) != 0)
+	const int rs = conn_start_resolve(c);
+	if(rs == -2)
+	{
+		// At the concurrency limit. Answer SERVFAIL so the client backs off and
+		// keeps its session; tearing the connection down would cost it a fresh
+		// TLS handshake exactly when we are already overloaded.
+		return conn_answer_servfail(c);
+	}
+	if(rs != 0)
 		return -1;
 	// If the non-blocking connect is still in flight it set DS_UP_CONNECT and a
 	// POLLOUT wait; yield so the SO_ERROR check runs only once the socket is

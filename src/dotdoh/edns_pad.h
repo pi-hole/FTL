@@ -46,6 +46,14 @@ uint16_t edns_query_udp_size(const uint8_t *buf, size_t len) __attribute__((pure
 // edns_has_padding_option().
 size_t edns_pad_response(uint8_t *buf, size_t len, size_t bufsz);
 
+// As above, but for a response we built ourselves and which therefore has no OPT
+// yet; only valid when the query carried one.
+size_t edns_pad_response_synth(uint8_t *buf, size_t len, size_t bufsz, bool set_do,
+                               bool pad);
+
+// Whether `buf` carries an OPT RR; *do_bit reports its DO flag when it does.
+bool edns_query_opt(const uint8_t *buf, size_t len, bool *do_bit);
+
 // Whether the DNS message msg carries the given EDNS(0) option code in its OPT
 // RR. Fail-safe: returns false on any malformed input.
 bool edns_has_option(const uint8_t *msg, size_t len, uint16_t code) __attribute__((pure));
