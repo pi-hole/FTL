@@ -605,7 +605,7 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 				if(!rta_payload_ok(rta, sizeof(uint32_t), ifaTypeToString(rta->rta_type)))
 					break;
 				const uint32_t prio = *(uint32_t*)RTA_DATA(rta);
-				cJSON_AddStringToObject(addr, rtaTypeToString(rta->rta_type), rt_priority(prio));
+				cJSON_AddNumberToObject(addr, ifaTypeToString(rta->rta_type), prio);
 				break;
 			}
 
