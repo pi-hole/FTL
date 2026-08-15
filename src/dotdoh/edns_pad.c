@@ -260,7 +260,7 @@ size_t edns_remove_option(uint8_t *buf, size_t len, uint16_t code)
 // Padding option is returned unchanged) and fail-open (any malformed or
 // would-not-fit case returns len unchanged).
 static size_t edns_pad_msg(uint8_t *buf, size_t len, size_t bufsz, size_t block,
-                           bool create_opt)
+                           bool create_opt, bool set_do)
 {
 	size_t opt_rdlen_off = 0, opt_rdata_off = 0, opt_rdlen = 0;
 	bool is_last = false;
@@ -321,8 +321,10 @@ static size_t edns_pad_msg(uint8_t *buf, size_t len, size_t bufsz, size_t block,
 		buf[w++] = 0x00; buf[w++] = DNS_TYPE_OPT;     // TYPE = OPT (41)
 		buf[w++] = (uint8_t)(EDNS_UDP_SIZE >> 8);     // CLASS = UDP payload size
 		buf[w++] = (uint8_t)(EDNS_UDP_SIZE & 0xff);
-		buf[w++] = 0x00; buf[w++] = 0x00;             // TTL: ext-rcode, version,
-		buf[w++] = 0x00; buf[w++] = 0x00;             //      flags (DO=0) all zero
+		// TTL: extended RCODE and version stay 0; the DO bit is copied from the
+		// query, which RFC 3225 Sec. 3 requires of a response.
+		buf[w++] = 0x00; buf[w++] = 0x00;
+		buf[w++] = set_do ? 0x80 : 0x00; buf[w++] = 0x00;
 		const size_t rdlen = 4 + pad;
 		buf[w++] = (uint8_t)(rdlen >> 8);             // RDLENGTH
 		buf[w++] = (uint8_t)(rdlen & 0xff);
@@ -338,12 +340,56 @@ static size_t edns_pad_msg(uint8_t *buf, size_t len, size_t bufsz, size_t block,
 	return new_len;
 }
 
+// Whether the message carries an OPT RR, and if so whether its DO bit is set.
+// Lets a synthesised reply mirror the query's EDNS-ness, which "does it pad"
+// cannot answer.
+bool edns_query_opt(const uint8_t *buf, size_t len, bool *do_bit)
+{
+	size_t rdlen_off = 0, rdata_off = 0, rdlen = 0;
+	bool is_last = false;
+	if(find_opt(buf, len, &rdlen_off, &rdata_off, &rdlen, &is_last) != 1)
+		return false;
+	// TTL sits 4 bytes ahead of RDLENGTH: ext-rcode, version, then the flags
+	// whose top bit is DO.
+	if(do_bit != NULL)
+		*do_bit = rdlen_off >= 2 && (buf[rdlen_off - 2] & 0x80) != 0;
+	return true;
+}
+
 size_t edns_pad_query(uint8_t *buf, size_t len, size_t bufsz)
 {
-	return edns_pad_msg(buf, len, bufsz, EDNS_PAD_QUERY_BLOCK, true);
+	return edns_pad_msg(buf, len, bufsz, EDNS_PAD_QUERY_BLOCK, true, false);
+}
+
+// Pad a response we synthesised ourselves, which carries no OPT of its own.
+// Fabricating one is right here and wrong for a forwarded answer: we only ever
+// call this when the query carried an OPT, and RFC 6891
+// Sec. 6.1.1 has an EDNS-aware responder answer such a query with an OPT.
+size_t edns_pad_response_synth(uint8_t *buf, size_t len, size_t bufsz, bool set_do,
+                               bool pad)
+{
+	if(pad)
+		return edns_pad_msg(buf, len, bufsz, EDNS_PAD_RESPONSE_BLOCK, true, set_do);
+
+	// The query was EDNS but did not pad: it still needs an OPT in the reply
+	// (RFC 6891 Sec. 6.1.1), just an empty one.
+	if(len + 11 > bufsz)
+		return len;
+	const uint16_t arcount = (uint16_t)((buf[10] << 8) | buf[11]);
+	size_t w = len;
+	buf[w++] = 0x00;                              // root name
+	buf[w++] = 0x00; buf[w++] = DNS_TYPE_OPT;     // TYPE = OPT (41)
+	buf[w++] = (uint8_t)(EDNS_UDP_SIZE >> 8);     // CLASS = payload size
+	buf[w++] = (uint8_t)(EDNS_UDP_SIZE & 0xff);
+	buf[w++] = 0x00; buf[w++] = 0x00;             // TTL: ext-rcode, version
+	buf[w++] = set_do ? 0x80 : 0x00; buf[w++] = 0x00; // flags: DO from the query
+	buf[w++] = 0x00; buf[w++] = 0x00;             // RDLENGTH = 0
+	buf[10] = (uint8_t)((arcount + 1) >> 8);
+	buf[11] = (uint8_t)((arcount + 1) & 0xff);
+	return w;
 }
 
 size_t edns_pad_response(uint8_t *buf, size_t len, size_t bufsz)
 {
-	return edns_pad_msg(buf, len, bufsz, EDNS_PAD_RESPONSE_BLOCK, false);
+	return edns_pad_msg(buf, len, bufsz, EDNS_PAD_RESPONSE_BLOCK, false, false);
 }
