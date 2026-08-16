@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.5-156-g043326cc-dirty) on branch tweak/performance
+# Pi-hole configuration file (v6.7-195-g74be960d) on branch new/cluster
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2026-03-21 11:13:18 UTC
+# Last updated on 2026-08-31 07:36:52 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -775,6 +775,9 @@
   # be used on every node, and it is synchronized like any other setting: a node added
   # on one of them is known to all of them shortly afterwards.
   #
+  # At most eight nodes: every node polls every other one, so what a round costs the
+  # network grows with the square of the size.
+  #
   # The nodes authenticate to each other with a shared secret rather than with
   # individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering
   # is enabled, and that file is copied to every other node once.
@@ -844,9 +847,11 @@
   [cluster.vip]
     # Virtual IP address floating between the cluster nodes. Whichever node is currently in
     # charge adds this address to its interface and answers on it, so clients only ever
-    # need to know this one address. An IPv4 address here is also what the DHCP server
-    # advertises as the DNS server, in place of the individual nodes, while
-    # cluster.dhcp.failover is on. An empty string disables the virtual IP.
+    # need to know this one address. It is the same address on every node by definition,
+    # so it is synchronized like any other setting - set it once, anywhere. An IPv4
+    # address here is also what the DHCP server advertises as the DNS server, in place of
+    # the individual nodes, while cluster.dhcp.failover is on. An empty string disables
+    # the virtual IP.
     #
     # Allowed values are:
     #     An unused IPv4 or IPv6 address in your local network, or an empty string to
@@ -854,7 +859,9 @@
     address = ""
 
     # Interface the virtual IP address is added to. If left empty, the interface holding
-    # the route to the default gateway is used.
+    # the route to the default gateway is used, which is the right answer on almost every
+    # machine. Unlike the address, this stays local: the same interface is called
+    # something else on the next node.
     #
     # Allowed values are:
     #     An interface name, or an empty string to use the interface of the default route

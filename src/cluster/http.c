@@ -30,6 +30,7 @@
 #ifdef HAVE_CURL
 
 #include <curl/curl.h>
+#include <math.h>
 #include <arpa/inet.h>
 
 // A peer's answer is a status document or a Teleporter archive, both of which
@@ -88,6 +89,7 @@ static void free_buffer(struct buffer *buf)
 struct answer {
 	char sig[CLUSTER_SIGLEN];
 	char by[CLUSTER_SIGLEN];
+	char date[64];
 };
 
 static bool header_value(const char *buffer, const size_t len, const char *name,
@@ -121,8 +123,9 @@ static size_t header_cb(char *buffer, size_t size, size_t nitems, void *userp)
 	struct answer *answer = (struct answer *)userp;
 	const size_t len = size * nitems;
 
-	if(!header_value(buffer, len, CLUSTER_HDR_SIG, answer->sig, sizeof(answer->sig)))
-		header_value(buffer, len, CLUSTER_HDR_BY, answer->by, sizeof(answer->by));
+	if(!header_value(buffer, len, CLUSTER_HDR_SIG, answer->sig, sizeof(answer->sig)) &&
+	   !header_value(buffer, len, CLUSTER_HDR_BY, answer->by, sizeof(answer->by)))
+		header_value(buffer, len, "Date", answer->date, sizeof(answer->date));
 
 	return len;
 }
@@ -287,7 +290,7 @@ static bool request(struct cluster_peer *peer, const char *method, const char *p
 
 	peer->answered = false;
 
-	struct answer answer = { { 0 }, { 0 } };
+	struct answer answer = { { 0 }, { 0 }, { 0 } };
 
 	char url[512] = "";
 	snprintf(url, sizeof(url), "%s%s", peer->url, path);
@@ -460,6 +463,20 @@ static bool request(struct cluster_peer *peer, const char *method, const char *p
 	log_debug(DEBUG_CLUSTER, "cluster: %s %s -> %ld (%zu bytes)",
 	          method, url, *code, buf->size);
 
+	// Every HTTP answer is dated, refused ones included, so the one thing a
+	// peer tells us even when it will not talk to us is what time it thinks
+	// it is. A signature is judged against a window, and a clock far enough
+	// out fails it exactly as a wrong secret does - this is what lets the
+	// two be told apart without needing the peer to say anything else
+	peer->header_skew = 0.0;
+	if(strlen(answer.date) > 0)
+	{
+		const time_t theirs = curl_getdate(answer.date, NULL);
+		if(theirs != -1)
+			peer->header_skew = difftime(theirs,
+			                             (time_t)((peer->asked_at + peer->answered_at) / 2));
+	}
+
 	// Whatever it says, something answered on that address
 	peer->answered = true;
 
@@ -613,9 +630,10 @@ static bool plain_request(const char *url, const char *method, const char *path,
 // Fetch the cluster secret from a node that is already a member, using that
 // node's own password. This is the whole of joining: everything else follows
 // from holding the secret
-bool cluster_http_bootstrap(const char *url, const char *password, const char *self,
-                            const char *pin, char *secret, const size_t secretlen,
-                            cJSON **membersout, char *err, const size_t errlen)
+bool cluster_http_bootstrap(const char *url, const char *password, const char *totp,
+                            const char *self, const char *pin, char *secret,
+                            const size_t secretlen, cJSON **membersout, char *err,
+                            const size_t errlen)
 {
 	*membersout = NULL;
 
@@ -629,6 +647,12 @@ bool cluster_http_bootstrap(const char *url, const char *password, const char *s
 
 	cJSON *body = cJSON_CreateObject();
 	cJSON_AddStringToObject(body, "password", password);
+	// A node with a second factor answers a password on its own with 400 and
+	// no session, which is indistinguishable here from any other refusal.
+	// Added as a number: that end reads the token out of `valueint`, and a
+	// string arrives there as zero
+	if(totp != NULL && strlen(totp) > 0)
+		cJSON_AddNumberToObject(body, "totp", strtol(totp, NULL, 10));
 	char *postdata = cJSON_PrintUnformatted(body);
 	cJSON_Delete(body);
 	if(postdata == NULL)
@@ -659,10 +683,34 @@ bool cluster_http_bootstrap(const char *url, const char *password, const char *s
 
 	if(!okay || code != 200 || (!cJSON_IsString(sid) && !open_api))
 	{
-		cJSON_Delete(answer);
+		// What that node said about it, where it said anything: a refusal
+		// this end cannot explain sends somebody to check a password that
+		// is perfectly good. The two-factor case is the one that reaches
+		// here with a correct password, so it is named
+		const cJSON *error = answer != NULL ? cJSON_GetObjectItem(answer, "error") : NULL;
+		const cJSON *message = error != NULL ? cJSON_GetObjectItem(error, "message") : NULL;
+		// Asked for one and did not get one, rather than got one it did not
+		// like - which is the difference between "fill this field in" and
+		// "that token is wrong", and the two are not the same instruction
+		const bool needs_totp = cJSON_IsString(message) &&
+		                        strstr(message->valuestring, "2FA") != NULL &&
+		                        (totp == NULL || strlen(totp) == 0);
+
 		if(strlen(err) == 0)
-			strncpy(err, code == 401 ? "The password was refused" :
-			             "That node did not answer with a session", errlen - 1);
+		{
+			if(needs_totp)
+				strncpy(err, "That node asks for a two-factor token as well as the password",
+				        errlen - 1);
+			else if(code == 401)
+				strncpy(err, "The password was refused", errlen - 1);
+			else if(cJSON_IsString(message))
+				snprintf(err, errlen, "That node refused the login: %s",
+				         message->valuestring);
+			else
+				strncpy(err, "That node did not answer with a session", errlen - 1);
+		}
+
+		cJSON_Delete(answer);
 		return false;
 	}
 
@@ -749,8 +797,23 @@ static bool cluster_get(struct cluster_peer *peer, const char *path,
 		// Nothing here is authenticated by a session: the peer refused
 		// the signature, so the two do not hold the same secret
 		else if(code == 401 || code == 403)
-			snprintf(err, errlen, "not accepted - check %s on both nodes",
-			         CLUSTER_SECRET_FILE);
+		{
+			if(fabs(peer->header_skew) > CLUSTER_SIG_WINDOW)
+				snprintf(err, errlen,
+				         "not accepted - the clocks are %.0f s apart, they need to be within %d s",
+				         fabs(peer->header_skew), CLUSTER_SIG_WINDOW);
+			else
+				// A peer with clustering switched off refuses in
+				// exactly the same way, before it ever looks at
+				// the signature - and it cannot say so, because
+				// without a cluster it holds no secret to sign
+				// an answer with. Naming one of the two causes
+				// sends the administrator to replace a secret
+				// that is perfectly fine
+				snprintf(err, errlen,
+				         "not accepted - clustering off there, or %s differs",
+				         CLUSTER_SECRET_FILE);
+		}
 		else
 			snprintf(err, errlen, "HTTP %ld", code);
 		free_buffer(buf);
@@ -838,9 +901,10 @@ void cluster_http_free(struct cluster_peer *peer)
 	(void)peer;
 }
 
-bool cluster_http_bootstrap(const char *url, const char *password, const char *self,
-                            const char *pin, char *secret, const size_t secretlen,
-                            cJSON **members, char *err, const size_t errlen)
+bool cluster_http_bootstrap(const char *url, const char *password, const char *totp,
+                            const char *self, const char *pin, char *secret,
+                            const size_t secretlen, cJSON **members, char *err,
+                            const size_t errlen)
 {
 	(void)url; (void)password; (void)self; (void)pin; (void)secret; (void)secretlen;
 	*members = NULL;

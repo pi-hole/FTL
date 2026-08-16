@@ -47,7 +47,6 @@ bool cluster_leases_read(uint8_t **data, size_t *size);
 bool cluster_leases_hash(char out[CLUSTER_HASHLEN]);
 void cluster_leases_hash_bytes(const uint8_t *data, const size_t size, char out[CLUSTER_HASHLEN]);
 bool cluster_leases_write(const uint8_t *data, const size_t size);
-void cluster_settings_hash(char out[CLUSTER_HASHLEN]);
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN]);
 
 // Whether the last configuration change touched anything that is synchronized,
@@ -103,6 +102,7 @@ bool cluster_run_gravity(void);
 // this node's once they were actually built: the blocking database is not part
 // of the fingerprint, so a node whose rebuild never ran would otherwise report
 // the newest lists while blocking nothing
+bool cluster_state_same_build(void) __attribute__ ((pure));
 bool cluster_gravity_pending(void) __attribute__ ((pure));
 bool cluster_gravity_succeeded(void) __attribute__ ((pure));
 
