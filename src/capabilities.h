@@ -16,5 +16,6 @@
 bool check_capability(const unsigned int cap);
 bool check_capabilities(void);
 bool drop_capability(const unsigned int cap);
+bool deny_capability_to_children(const unsigned int cap);
 
 #endif //CAPABILITIES_H

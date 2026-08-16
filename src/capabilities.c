@@ -136,6 +136,46 @@ bool drop_capability(const unsigned int cap)
 }
 
 /**
+ * @brief Keeps a capability for FTL itself but denies it to any child.
+ *
+ * Leaves the capability in the permitted and effective sets so FTL can still
+ * use it, but clears it from the inheritable set and lowers it in the ambient
+ * set. A capability may sit in the ambient set only while it is both permitted
+ * and inheritable, so clearing inheritable also bars it from the ambient set.
+ * An exec()ed child - a DHCP script, a program a Lua page spawns - receives
+ * capabilities through the ambient set, so this is what stops the capability
+ * leaking out of the process while FTL retains it.
+ *
+ * @param cap The capability to withhold from children.
+ * @return true if the sets were updated, false otherwise.
+ */
+bool deny_capability_to_children(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	// Keep effective and permitted, drop inheritable
+	data[0].inheritable &= ~(1U << cap);
+
+	const bool success = capset(hdr, data) == 0;
+	if(!success)
+		log_warn("Failed to restrict capability: %s", strerror(errno));
+
+	// Clearing inheritable already removes the capability from the ambient set,
+	// but lower it explicitly: the ambient set is what an exec()ed child would
+	// inherit.
+	if(success && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, cap, 0, 0) != 0 && errno != EINVAL)
+		log_debug(DEBUG_CAPS, "Could not lower ambient capability: %s", strerror(errno));
+
+	free(hdr);
+	free(data);
+
+	return success;
+}
+
+/**
  * @brief Checks if a specific capability is available.
  *
  * This function retrieves the current capabilities of the process and checks if
