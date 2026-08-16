@@ -14,8 +14,6 @@
 #include "webserver/cJSON/cJSON.h"
 #include "webserver/json_macros.h"
 
-// ICMPV6_PREF_LOW, etc.
-#include <linux/icmpv6.h>
 #include <linux/rtnetlink.h>
 // IFF_UP, etc.
 #include <net/if.h>
