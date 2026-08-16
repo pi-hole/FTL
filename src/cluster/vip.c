@@ -248,8 +248,13 @@ static bool netlink_address(const bool add, const char *address, const char *ifa
 
 	if(sendto(fd, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&sa, sizeof(sa)) < 0)
 	{
-		log_debug(DEBUG_CLUSTER, "cluster: cannot %s the virtual IP: %s",
-		        add ? "add" : "remove", strerror(errno));
+		// Said out loud rather than at debug level: "cannot claim" on its
+		// own leaves an administrator with a virtual IP that is simply
+		// not there and no reason for it. The two that actually happen -
+		// no CAP_NET_ADMIN, and an interface name that does not exist -
+		// are both fixed in a second once they are named
+		log_warn("cluster: cannot %s the virtual IP: %s",
+		         add ? "add" : "remove", strerror(errno));
 		close(fd);
 		return false;
 	}
@@ -282,8 +287,8 @@ static bool netlink_address(const bool add, const char *address, const char *ifa
 		if((add && err->error == -EEXIST) || (!add && err->error == -EADDRNOTAVAIL))
 			return true;
 
-		log_debug(DEBUG_CLUSTER, "cluster: cannot %s %s on %s: %s",
-		        add ? "add" : "remove", address, iface, strerror(-err->error));
+		log_warn("cluster: cannot %s %s on %s: %s",
+		         add ? "add" : "remove", address, iface, strerror(-err->error));
 		return false;
 	}
 

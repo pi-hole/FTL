@@ -17,6 +17,8 @@
 // cluster_plain_id()
 #include "cluster/auth.h"
 #include "cluster/http.h"
+// git_version()
+#include "version.h"
 #include "cluster/sync.h"
 // vip_note_placed()
 #include "cluster/vip.h"
@@ -112,7 +114,19 @@ static void hash_str(const uint64_t hash, char out[CLUSTER_HASHLEN])
 // values that can never converge, and report a difference that never resolves
 enum hash_scope { SCOPE_SETTINGS, SCOPE_CREDENTIALS };
 
-static void config_hash_scope(const enum hash_scope scope, char out[CLUSTER_HASHLEN])
+// `pinned` says whether items forced through the environment are part of the
+// fingerprint, and the answer depends on what the fingerprint is for.
+//
+// A fingerprint a peer compares against must include them: the two nodes have to
+// hash the same set of items or they never agree, and neither can know what the
+// other pins. A fingerprint this node compares against its own past must not:
+// nothing here can change those items, so a difference in one is not evidence
+// that somebody configured anything - and one of them moves on its own.
+// `webserver.api.pwhash` is derived from FTLCONF_webserver_api_password with a
+// fresh random salt at every start, so on the Docker image the credential half
+// is a different string after every restart while the password is identical
+static void config_hash_scope(const enum hash_scope scope, const bool pinned,
+                              char out[CLUSTER_HASHLEN])
 {
 	uint64_t hash = 0xcbf29ce484222325ULL;
 
@@ -124,6 +138,9 @@ static void config_hash_scope(const enum hash_scope scope, char out[CLUSTER_HASH
 	{
 		struct conf_item *item = get_conf_item(&config, i);
 		const bool credential = item->f & FLAG_CREDENTIAL;
+
+		if(!pinned && config_env_pinned(item))
+			continue;
 
 		switch(scope)
 		{
@@ -154,19 +171,14 @@ static void config_hash_scope(const enum hash_scope scope, char out[CLUSTER_HASH
 	hash_str(hash, out);
 }
 
-void cluster_settings_hash(char out[CLUSTER_HASHLEN])
-{
-	config_hash_scope(SCOPE_SETTINGS, out);
-}
-
 void cluster_config_hash(char out[CLUSTER_HASHLEN])
 {
-	config_hash_scope(SCOPE_SETTINGS, out);
+	config_hash_scope(SCOPE_SETTINGS, true, out);
 }
 
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN])
 {
-	config_hash_scope(SCOPE_CREDENTIALS, out);
+	config_hash_scope(SCOPE_CREDENTIALS, true, out);
 }
 
 static bool is_run_column(const char *name)
@@ -290,8 +302,8 @@ static pthread_mutex_t stamped_lock = PTHREAD_MUTEX_INITIALIZER;
 bool cluster_config_moved(void)
 {
 	char hash[CLUSTER_HASHLEN] = "", credhash[CLUSTER_HASHLEN] = "";
-	config_hash_scope(SCOPE_SETTINGS, hash);
-	config_hash_scope(SCOPE_CREDENTIALS, credhash);
+	config_hash_scope(SCOPE_SETTINGS, false, hash);
+	config_hash_scope(SCOPE_CREDENTIALS, false, credhash);
 
 	pthread_mutex_lock(&stamped_lock);
 	const bool moved = strcmp(hash, stamped_hash) != 0 ||
@@ -720,6 +732,16 @@ bool cluster_run_gravity(void)
 				dup2(fd, STDERR_FILENO);
 				close(fd);
 			}
+			// Deliberately not shielded from SIGTERM, though the
+			// API's own gravity path is (src/api/action.c). That
+			// shield does not work under the KillMode its comment
+			// names: setsid does not leave the cgroup, and systemd's
+			// stop is not done until the cgroup is empty - so a stop
+			// landing in a rebuild waits out TimeoutStopSec (60 s in
+			// pihole-FTL.service, answering no DNS meanwhile) and
+			// SIGKILLs the run at the end of it anyway. Taking the
+			// SIGTERM promptly costs the rebuild, which is owed and
+			// retried, rather than a minute of the whole node
 			execl(PIHOLE_BINARY, "pihole", "-g", (char *)NULL);
 			// Only reached if exec failed
 			_exit(EXIT_FAILURE);
@@ -809,10 +831,6 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	// pihole.toml and DHCP leases, neither of which we want here
 	cJSON *import = cJSON_CreateObject();
 	cJSON *gravity = cJSON_CreateObject();
-	for(size_t i = 0; i < ArraySize(gravity_tables); i++)
-		cJSON_AddTrueToObject(gravity, gravity_tables[i]);
-	cJSON_AddItemToObject(import, "gravity", gravity);
-
 	char hint[ERRBUF_SIZE] = { 0 };
 	cJSON *files = cJSON_CreateArray();
 
@@ -820,14 +838,23 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	// DHCP leases out of this node: read_teleporter_zip() takes no filter to
 	// mean no restriction. An allocation that failed would hand it none, and
 	// this node would take the peer's pihole.toml along with its lists
+	//
+	// Judged before the two are joined: adding to a parent that does not exist
+	// does not hand the child over either, and cleaning up after the fact would
+	// have to know which of the two happened
 	if(import == NULL || gravity == NULL || files == NULL)
 	{
 		log_err("cluster: cannot build the import filter, not taking the lists of %s", peer->url);
 		cJSON_Delete(import);
+		cJSON_Delete(gravity);
 		cJSON_Delete(files);
 		free(data);
 		return false;
 	}
+
+	for(size_t i = 0; i < ArraySize(gravity_tables); i++)
+		cJSON_AddTrueToObject(gravity, gravity_tables[i]);
+	cJSON_AddItemToObject(import, "gravity", gravity);
 	// A peer's archive holds the one table dump generate_cluster_zip() puts in
 	// it, so anything beyond a handful is not an archive but a way to make
 	// this node walk a hundred thousand entries
@@ -906,6 +933,16 @@ const char *cluster_node_id(void)
 // Set once the versions and the identity have been read from disk
 static bool state_loaded = false;
 
+// Whether the state file was written by the build that is now reading it. The
+// fingerprints cover the shape of the data as well as its content, so across an
+// upgrade a difference says nothing about whether anybody changed anything
+static bool same_build_state = false;
+
+bool cluster_state_same_build(void)
+{
+	return same_build_state;
+}
+
 // Set when this node joined a cluster and has to arrive as a new member
 static bool state_forgotten = false;
 
@@ -922,6 +959,7 @@ void cluster_state_load(struct cluster_sync_state *state)
 	// it holds now becomes the baseline instead
 	char stored_hash[CLUSTER_HASHLEN] = "";
 	char stored_credhash[CLUSTER_HASHLEN] = "";
+	char stored_version[64] = "";
 	memset(state, 0, sizeof(*state));
 	node_id[0] = '\0';
 
@@ -936,6 +974,7 @@ void cluster_state_load(struct cluster_sync_state *state)
 			char phash[CLUSTER_HASHLEN] = "";
 			char key[64] = "";
 			char vip[64] = "";
+			char built[64] = "";
 
 			// Checked like every other field read from this file: a
 			// value the peers cannot accept would have this node
@@ -972,6 +1011,11 @@ void cluster_state_load(struct cluster_sync_state *state)
 			{
 				strncpy(stored_hash, hash, sizeof(stored_hash) - 1);
 				strncpy(stored_credhash, credhash, sizeof(stored_credhash) - 1);
+			}
+			else if(sscanf(line, "version %63s", built) == 1)
+			{
+				strncpy(stored_version, built, sizeof(stored_version) - 1);
+				stored_version[sizeof(stored_version) - 1] = '\0';
 			}
 			else if(sscanf(line, "vip %63s", vip) == 1)
 				vip_note_placed(vip, "");
@@ -1044,10 +1088,21 @@ void cluster_state_load(struct cluster_sync_state *state)
 	// the cluster synchronizes, look like somebody configuring this node,
 	// and that node then outranks the cluster it was about to take from
 	char now_settings[CLUSTER_HASHLEN] = "", now_credentials[CLUSTER_HASHLEN] = "";
-	config_hash_scope(SCOPE_SETTINGS, now_settings);
-	config_hash_scope(SCOPE_CREDENTIALS, now_credentials);
+	config_hash_scope(SCOPE_SETTINGS, false, now_settings);
+	config_hash_scope(SCOPE_CREDENTIALS, false, now_credentials);
 
-	const bool comparable = strlen(stored_hash) > 0 && strlen(stored_credhash) > 0;
+	// The fingerprint covers item keys as well as item values, so a release
+	// that adds, removes or renames a synchronized item moves it without
+	// anybody having configured anything. Comparing across an upgrade would
+	// read that as an edit, stamp this node as the most recently configured
+	// one in the cluster, and hand its months-old document to every peer
+	same_build_state = strcmp(stored_version, git_version()) == 0;
+	const bool same_build = same_build_state;
+	const bool comparable = strlen(stored_hash) > 0 && strlen(stored_credhash) > 0 && same_build;
+
+	if(strlen(stored_version) > 0 && !same_build)
+		log_info("cluster: FTL was upgraded from %s, keeping this node's configuration timestamp",
+		         stored_version);
 
 	pthread_mutex_lock(&stamped_lock);
 	strncpy(stamped_hash, comparable ? stored_hash : now_settings, sizeof(stamped_hash) - 1);
@@ -1061,7 +1116,13 @@ void cluster_state_load(struct cluster_sync_state *state)
 	// never stamps a configuration and never runs gravity, so nothing else
 	// would ever write the identity out, and the node would mint a new one
 	// at every restart - which its peers have pinned the old one for
-	if(generated_id)
+	//
+	// ...and written after an upgrade for the same reason: the build that
+	// wrote the fingerprints is what says whether they can be compared, so
+	// leaving the old one in the file would refuse the comparison at every
+	// start from now on, and an edit made while this node was down would
+	// never be noticed again
+	if(generated_id || !same_build)
 		cluster_state_save(state);
 	// ...and the same two halves say whether somebody configured this node
 	// while it was down
@@ -1146,6 +1207,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 	// Both halves: what may travel depends on the member list, so a single
 	// fingerprint would stop being comparable the moment somebody edits it
 	fprintf(file, "hash %s %s\n", stamped_hash, stamped_credhash);
+	fprintf(file, "version %s\n", git_version());
 	pthread_mutex_unlock(&stamped_lock);
 
 	// This file decides what this node believes the cluster holds, so it is
