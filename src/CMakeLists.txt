@@ -623,6 +623,35 @@ int main(void) { return 0; }
     else()
         message(STATUS "Building FTL with HTTP/3 support: NO (nghttp3 not found)")
     endif()
+
+    # libcurl backs pihole.download(). It sits inside this block because the
+    # bundled libcurl is built against OpenSSL, so it can only be linked where
+    # libssl/libcrypto are. Optional: without it pihole.download() reports that
+    # this build has no HTTP client.
+    find_library(LIBCURL NAMES libcurl${LIBRARY_SUFFIX} curl)
+    find_library(LIBZ NAMES libz${LIBRARY_SUFFIX} z)
+    if(LIBCURL)
+        message(STATUS "Building FTL with HTTP client support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_CURL)
+        # Everything libcurl draws on has to be repeated after it: the linker
+        # only searches archives that follow the object needing them. OpenSSL,
+        # nghttp2 and libidn2 appear earlier too, which is harmless - naming a
+        # static archive twice costs nothing.
+        target_link_libraries(pihole-FTL ${LIBCURL} ${LIBSSL} ${LIBCRYPTO})
+        if(LIBNGHTTP2)
+            target_link_libraries(pihole-FTL ${LIBNGHTTP2})
+        endif()
+        if(LIBIDN2 AND LIBUNISTRING)
+            target_link_libraries(pihole-FTL ${LIBIDN2} ${LIBUNISTRING})
+        endif()
+        # zlib is libcurl's alone - FTL itself deflates through the vendored
+        # miniz, which also provides the ZIP container the Teleporter needs.
+        if(LIBZ)
+            target_link_libraries(pihole-FTL ${LIBZ})
+        endif()
+    else()
+        message(STATUS "Building FTL with HTTP client support: NO (libcurl not found)")
+    endif()
 else()
     message(STATUS "Building FTL with TLS support: NO")
 endif()

@@ -11,6 +11,8 @@
 set(sources
         http-common.c
         http-common.h
+        http-client.c
+        http-client.h
         json_macros.h
         lua_web.c
         lua_web.h

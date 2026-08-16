@@ -1165,6 +1165,118 @@ setup() {
   assert_line --partial '_VERSION = "inspect.lua 3.1.0"'
 }
 
+@test "LUA: pihole.download() fetches http:// into a string" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1/api/auth\"); print(b or (\"ERR: \"..e))"'
+  assert_success
+  assert_line --partial '"valid"'
+}
+
+@test "LUA: pihole.download() fetches https:// and verifies the certificate" {
+  run bash -c 'SSL_CERT_FILE=test/test_ca.crt ./pihole-FTL lua -e "local b,e = pihole.download(\"https://pi.hole/api/auth\"); print(b or (\"ERR: \"..e))"'
+  assert_success
+  assert_line --partial '"valid"'
+}
+
+@test "LUA: pihole.download() fails closed when the certificate cannot be verified" {
+  run bash -c 'SSL_CERT_FILE=test/test_ca.crt ./pihole-FTL lua -e "local b,e = pihole.download(\"https://127.0.0.1/api/auth\"); print(b == nil, e)"'
+  assert_success
+  assert_line --index 0 --partial "true"
+}
+
+@test "LUA: pihole.download() writes the file atomically and leaves no temporary behind" {
+  rm -f /tmp/dl_test.json /tmp/dl_test.json.*
+  run bash -c './pihole-FTL lua -e "print(pihole.download(\"http://127.0.0.1/api/auth\", \"/tmp/dl_test.json\"))"'
+  assert_success
+  assert_line --partial "true"
+  run bash -c 'cat /tmp/dl_test.json'
+  assert_line --partial '"valid"'
+  run bash -c 'ls /tmp/dl_test.json.* 2>/dev/null | wc -l'
+  assert_line --index 0 "0"
+  run bash -c 'stat -c "%a" /tmp/dl_test.json'
+  assert_line --index 0 "640"
+}
+
+@test "LUA: pihole.download() streams a 1 MiB body byte-exactly" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1/admin/small.bin\"); print(b and #b or (\"ERR: \"..e))"'
+  assert_line --index 0 "1048576"
+}
+
+@test "LUA: pihole.download() refuses a response above the size cap" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1/admin/big.bin\"); print(b == nil, e)"'
+  assert_success
+  assert_line --partial "larger than"
+}
+
+# No Content-Length here, so CURLOPT_MAXFILESIZE_LARGE cannot catch it and the
+# write callback has to
+@test "LUA: pihole.download() caps a chunked response with no Content-Length" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1:8099/chunked-huge\"); print(b == nil, e)"'
+  assert_success
+  assert_line --partial "larger than"
+}
+
+@test "LUA: pihole.download() decodes a chunked body" {
+  run bash -c './pihole-FTL lua -e "print(pihole.download(\"http://127.0.0.1:8099/chunked\"))"'
+  assert_line --index 0 "AAABBBCCC"
+}
+
+@test "LUA: pihole.download() follows redirects" {
+  run bash -c './pihole-FTL lua -e "print(pihole.download(\"http://127.0.0.1:8099/redirect\"))"'
+  assert_line --index 0 "FINAL"
+  run bash -c './pihole-FTL lua -e "print(pihole.download(\"http://127.0.0.1:8099/redirect-relative\"))"'
+  assert_line --index 0 "FINAL"
+}
+
+@test "LUA: pihole.download() gives up on a redirect loop" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1:8099/redirect-loop\"); print(b == nil, e)"'
+  assert_success
+  assert_line --partial "edirect"
+}
+
+@test "LUA: pihole.download() refuses an https -> http redirect" {
+  run bash -c 'SSL_CERT_FILE=test/test_ca.crt ./pihole-FTL lua -e "local b,e = pihole.download(\"https://pi.hole:8098/downgrade\"); print(b == nil, e)"'
+  assert_success
+  assert_line --index 0 --partial "true"
+}
+
+@test "LUA: pihole.download() reads a local file:// path" {
+  echo "hello-from-disk" > /tmp/dl_local.txt
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"file:///tmp/dl_local.txt\"); print(b or (\"ERR: \"..e))"'
+  assert_line --index 0 "hello-from-disk"
+}
+
+# A server must not be able to talk the downloader into reading a local file
+@test "LUA: pihole.download() refuses a redirect to file://" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1:8099/to-file\"); print(b == nil, e)"'
+  assert_success
+  assert_line --index 0 --partial "true"
+}
+
+@test "LUA: pihole.download() transparently decompresses gzip" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1:8099/gzip\"); print(b and #b or (\"ERR: \"..e))"'
+  assert_line --index 0 "7000"
+}
+
+# The cap counts decompressed bytes, so a small body that inflates past it fails
+@test "LUA: pihole.download() survives a gzip bomb" {
+  run bash -c './pihole-FTL lua -e "local b,e = pihole.download(\"http://127.0.0.1:8099/gzip-bomb\"); print(b == nil, e)"'
+  assert_success
+  assert_line --partial "larger than"
+}
+
+@test "LUA: pihole.download() rejects unsupported schemes and bad destinations" {
+  for url in 'gopher://example.com/' 'smb://example.com/x' 'not a url'; do
+    run bash -c "./pihole-FTL lua -e 'local b,e = pihole.download(\"${url}\"); print(b == nil, e)'"
+    assert_success
+    assert_line --index 0 --partial "true"
+  done
+  for path in 'relative.bin' '/tmp/../etc/evil'; do
+    run bash -c "./pihole-FTL lua -e 'local b,e = pihole.download(\"http://127.0.0.1/api/auth\", \"${path}\"); print(b == nil, e)'"
+    assert_success
+    assert_line --index 0 --partial "true"
+  done
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"

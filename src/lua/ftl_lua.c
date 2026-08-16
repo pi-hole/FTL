@@ -25,6 +25,8 @@
 #include "scripts/scripts.h"
 // get_prefix_webhome(), get_api_uri()
 #include "webserver/webserver.h"
+// http_get()
+#include "webserver/http-client.h"
 
 // prototype for luaopen_pihole()
 #include "lualib.h"
@@ -311,6 +313,63 @@ static int pihole_format_path(lua_State *L) {
 	return 1; // number of results
 }
 
+// lua_Alloc-shaped callback releasing a buffer handed over with
+// lua_pushexternalstring(); Lua calls it with nsize == 0 when collecting it.
+static void *pihole_download_free(void *ud, void *ptr, size_t osize, size_t nsize)
+{
+	if(ptr != NULL)
+		free(ptr);
+	return NULL;
+}
+
+// pihole.download(<url:str> [, <path:str>])
+//   without path: returns the body as a string, or nil plus an error message
+//   with path:    writes the body to that file and returns true plus the number
+//                 of bytes, or nil plus an error message
+static int pihole_download(lua_State *L) {
+	size_t urllen = 0, pathlen = 0;
+	const char *url = luaL_checklstring(L, 1, &urllen);
+	const char *path = luaL_optlstring(L, 2, NULL, &pathlen);
+
+	// Lua strings may embed NUL bytes, which a C string API cannot see past
+	if(strlen(url) != urllen || (path != NULL && strlen(path) != pathlen))
+	{
+		lua_pushnil(L);
+		lua_pushliteral(L, "embedded NUL byte in argument");
+		return 2; // number of results
+	}
+
+	struct http_result res = { 0 };
+	if(!http_get(url, path, &res))
+	{
+		// Debug level only: a failed download is handed back to the caller to
+		// deal with, and warning about it would let a page that retries a bad
+		// URL inflate the log file
+		log_debug(DEBUG_WEBSERVER, "pihole.download() failed: %s", res.err);
+		lua_pushnil(L);
+		lua_pushstring(L, res.err);
+		http_result_free(&res);
+		return 2; // number of results
+	}
+
+	if(path != NULL)
+	{
+		const size_t len = res.len;
+		http_result_free(&res);
+		lua_pushboolean(L, true);
+		lua_pushinteger(L, (lua_Integer)len);
+		return 2; // number of results
+	}
+
+	// Hand the buffer over instead of copying it. luaS_newextlstr() takes
+	// ownership unconditionally and calls the free callback even if it then
+	// hits a memory error, so this cannot leak.
+	char *body = res.body;
+	res.body = NULL;
+	lua_pushexternalstring(L, body, res.len, pihole_download_free, NULL);
+	return 1; // number of results
+}
+
 static const luaL_Reg piholelib[] = {
 	{"ftl_version", pihole_ftl_version},
 	{"hostname", pihole_hostname},
@@ -322,6 +381,7 @@ static const luaL_Reg piholelib[] = {
 	{"needLogin", pihole_needLogin},
 	{"api_url", pihole_api_url},
 	{"format_path", pihole_format_path},
+	{"download", pihole_download},
 	{NULL, NULL}
 };
 

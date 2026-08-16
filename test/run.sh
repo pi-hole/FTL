@@ -67,6 +67,17 @@ cp test/versions /etc/pihole/versions
 cp test/broken_lua.lp /var/www/html/broken_lua.lp
 cp test/broken_lua_2.lp /var/www/html/broken_lua_2.lp
 
+# Fixtures for pihole.download(). They live under webhome because
+# webserver.serve_all is false, and their names carry a dot so the request
+# falls through to CivetWeb instead of being redirected to the login page.
+# libcurl resolves through the system resolver rather than through FTL, so
+# pi.hole has to be pinned for the https test the way http2_test.sh does with
+# curl --resolve.
+mkdir -p /var/www/html/admin
+truncate -s 17M /var/www/html/admin/big.bin
+truncate -s 1M /var/www/html/admin/small.bin
+grep -q "pi.hole" /etc/hosts || echo "127.0.0.1 pi.hole" >> /etc/hosts
+
 # Prepare local powerDNS resolver
 bash test/pdns/setup.sh
 
@@ -91,9 +102,20 @@ export SHIM_LOG="/tmp/dotdoh_shim.log"
 rm -f "${SHIM_LOG}"
 python3 test/dotdoh_shim.py >"${SHIM_LOG}" 2>&1 &
 DOTDOH_SHIM_PID=$!
-# Stop the shim even if the script exits early (e.g. FTL fails to start below),
-# so a leftover process cannot hold ports 8853/8443 and make the next run flaky.
-trap 'kill "${DOTDOH_SHIM_PID}" 2>/dev/null; pkill -f "${SHIM_PATTERN}" 2>/dev/null' EXIT
+
+# Start the pihole.download() test shim, which serves the response shapes FTL's
+# own web server cannot produce on demand (chunked, redirects, a body that never
+# ends). Same pkill-by-exact-invocation reasoning as above.
+HTTP_SHIM_PATTERN="python3 test/http_shim.py"
+pkill -f "${HTTP_SHIM_PATTERN}" 2>/dev/null || true
+export HTTP_SHIM_LOG="/tmp/http_shim.log"
+rm -f "${HTTP_SHIM_LOG}"
+python3 test/http_shim.py >"${HTTP_SHIM_LOG}" 2>&1 &
+HTTP_SHIM_PID=$!
+
+# Stop the shims even if the script exits early (e.g. FTL fails to start below),
+# so a leftover process cannot hold their ports and make the next run flaky.
+trap 'kill "${DOTDOH_SHIM_PID}" "${HTTP_SHIM_PID}" 2>/dev/null; pkill -f "${SHIM_PATTERN}" 2>/dev/null; pkill -f "${HTTP_SHIM_PATTERN}" 2>/dev/null' EXIT
 
 # Set restrictive umask
 OLDUMASK=$(umask)
@@ -236,9 +258,11 @@ rm /home/pihole/pihole-FTL
 killall pdns_server
 killall pdns_recursor
 
-# Stop the DoT/DoH test shim (same narrow pattern as at startup)
+# Stop the test shims (same narrow patterns as at startup)
 [ -n "${DOTDOH_SHIM_PID}" ] && kill "${DOTDOH_SHIM_PID}" 2>/dev/null
 pkill -f "${SHIM_PATTERN}" 2>/dev/null || true
+[ -n "${HTTP_SHIM_PID}" ] && kill "${HTTP_SHIM_PID}" 2>/dev/null
+pkill -f "${HTTP_SHIM_PATTERN}" 2>/dev/null || true
 
 # Exit with return code of bats tests
 exit $RET
