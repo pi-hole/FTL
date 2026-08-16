@@ -233,8 +233,23 @@ static void set_dhcp_active(const bool active, const char *reason)
 	takeover_failures = 0;
 
 	replace_config(&newconf);
-	writeFTLtoml(true, NULL);
+	const bool written = writeFTLtoml(true, NULL);
 	cluster_sync_unlock();
+
+	// The restart is two statements away and it reads this file, so a write
+	// that did not land is a node about to come back on the value it just
+	// changed - still serving after handing over, which is the second DHCP
+	// server this whole file exists to prevent, or not serving after taking
+	// over and elected again next round with nothing to break the loop.
+	// The guards above already refuse to make a change that will not persist;
+	// this is the same refusal, one signal later
+	if(!written)
+	{
+		log_err("cluster: cannot %s DHCP: the configuration could not be written, so a restart would come back on the old value",
+		        active ? "take over" : "hand over");
+		takeover_failed();
+		return;
+	}
 
 	log_info("cluster: %s DHCP (%s)", active ? "taking over" : "handing over", reason);
 
@@ -267,6 +282,33 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		// Only what the cluster switched on does the cluster switch off.
 		// Without failover, dhcp.active is the administrator's setting
 		// and leaving the member list is no reason to touch it
+		bool somebody_takes_over = false;
+		for(unsigned int i = 0; i < num_peers; i++)
+		{
+			if(peers[i].is_self || !peers[i].reachable || !peers[i].failover)
+				continue;
+
+			// Capable now, or merely waiting out a failed takeover:
+			// both pick DHCP up. This is the same question do_leave()
+			// asks, and for the same reason - stopping is only right
+			// if stopping leaves somebody serving
+			if(peers[i].dhcp_capable || peers[i].dhcp_configured)
+			{
+				somebody_takes_over = true;
+				break;
+			}
+		}
+
+		// Nobody to hand it to. Being dropped from a member list is a
+		// reason to stop competing, not a reason to leave the network
+		// without a DHCP server - and this node is the one that has it
+		if(!somebody_takes_over && serving)
+		{
+			intent->serve = serving;
+			intent->change_dhcp = false;
+			return;
+		}
+
 		intent->serve = config.cluster.dhcp.failover.v.b ? false : serving;
 		intent->change_dhcp = intent->serve != serving;
 		return;
@@ -324,7 +366,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	if(refusing && !any_reachable)
 	{
 		if(!warned_refused)
-			log_warn("cluster: the other nodes answer but do not accept this one, so DHCP and the virtual IP are left as they are - check %s",
+			log_warn("cluster: the other nodes answer but do not accept this one, so DHCP and the virtual IP are left as they are - check that clustering is on there and that %s matches",
 			         CLUSTER_SECRET_FILE);
 		warned_refused = true;
 
