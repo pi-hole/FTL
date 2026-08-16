@@ -50,7 +50,7 @@ static size_t __attribute__ ((const)) family_addrlen(const int family)
 }
 
 // Convert an address attribute into its string representation. Returns false
-// if the family is none we can render or the payload is too short for it.
+// if the family is not one we can render or the payload is too short for it.
 static bool rta_address(const struct rtattr *rta, const int family, const char *name,
                         char *ip, const size_t iplen)
 {
@@ -1186,8 +1186,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					break;
 
 				// The nested attribute carries its own length, so it
-				// must not claim more than the outer payload holds
-				if(RTA_PAYLOAD(rta) < vfinfo->rta_len)
+				// must cover its header and must not claim more than
+				// the outer payload holds
+				if(vfinfo->rta_len < sizeof(struct rtattr) ||
+				   RTA_PAYLOAD(rta) < vfinfo->rta_len)
 				{
 					log_debug(DEBUG_NETLINK, "IFLA_VF_INFO claims %u byte(s) of %zu, skipping",
 					          (unsigned int)vfinfo->rta_len, (size_t)RTA_PAYLOAD(rta));
