@@ -21,9 +21,10 @@ void cluster_http_free(struct cluster_peer *peer);
 
 // Join a cluster: fetch the shared secret from a node that is already a member,
 // authenticated with that node's own password. The caller owns *members
-bool cluster_http_bootstrap(const char *url, const char *password, const char *self,
-                            const char *pin, char *secret, const size_t secretlen,
-                            cJSON **members, char *err, const size_t errlen);
+bool cluster_http_bootstrap(const char *url, const char *password, const char *totp,
+                            const char *self, const char *pin, char *secret,
+                            const size_t secretlen, cJSON **members, char *err,
+                            const size_t errlen);
 
 // Request a JSON document from a peer. The caller owns *json and has to free it
 // with cJSON_Delete(). Returns false and fills err on any error

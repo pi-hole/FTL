@@ -41,8 +41,9 @@ components:
           that whichever of them takes DHCP over knows which client holds which
           address, and the clients keep the addresses they already have.
 
-          Signed like every other answer between nodes, and refused unless the
-          request is signed with the shared cluster secret.
+          Signed like every other answer between nodes when a peer asks. It is
+          not confined to peers, though: any authenticated session may read it,
+          the same as the lease list everywhere else in the API.
         responses:
           '200':
             description: OK
@@ -163,13 +164,27 @@ components:
             application/json:
               schema:
                 type: object
-                required:
-                  - self
+                description: |
+                  One of the two is needed. `port` is what a joining node
+                  normally sends: the address is taken from the connection,
+                  which demonstrably reaches it, and the port is the one thing
+                  that connection cannot say. A node behind a port forward knows
+                  better and sends `self` instead, which is then used as it is.
                 properties:
                   self:
                     type: string
-                    description: The URL the joining node is reached at
+                    description: |
+                      The whole URL the joining node is reached at, scheme
+                      included. Overrides the address this request came from.
                     example: "https://192.168.0.6"
+                  port:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                    description: |
+                      The port the joining node serves HTTPS on, combined with
+                      the address this request came from.
+                    example: 443
         responses:
           '200':
             description: OK
@@ -231,7 +246,6 @@ components:
                 required:
                   - url
                   - password
-                  - self
                 properties:
                   url:
                     type: string
@@ -241,12 +255,23 @@ components:
                     type: string
                     description: The web interface password of that node
                     example: "correct horse battery staple"
+                  totp:
+                    type: string
+                    description: |
+                      Optional, and needed only where the node being joined has
+                      two-factor authentication switched on. Without it that
+                      node answers the password on its own with no session at
+                      all, and the refusal cannot say which of the two was
+                      missing.
+                    example: "123456"
                   self:
                     type: string
                     description: |
-                      How the other nodes reach this one. This is what is added
-                      to the member list, so it has to be an address they can
-                      resolve rather than a loopback one
+                      Optional. How the other nodes reach this one, which is
+                      what goes into the member list - so it has to be an
+                      address they can resolve rather than a loopback one.
+                      Left out, the node that is joined uses the address this
+                      request arrives from.
                     example: "https://192.168.0.6"
                   pin:
                     type: string
@@ -298,7 +323,9 @@ components:
           Takes this node out of the cluster. The other nodes are handed the
           member list without this one first, so they stop polling an address
           that is about to stop answering, and clustering is switched off here
-          only afterwards. FTL restarts at the end of it.
+          only afterwards. FTL restarts at the end of it - unless clustering
+          was switched on here but never started, in which case there is
+          nobody to tell and nothing to restart, and `restarting` says so.
 
           The shared secret is left in place, so the node can be taken back in
           later without copying it again.
@@ -314,6 +341,25 @@ components:
                         leaving:
                           type: boolean
                           example: true
+                        peers_told:
+                          type: boolean
+                          description: |
+                            Present, and `false`, only where clustering was
+                            switched on here but never started: the member list
+                            is still there and every node on it still lists this
+                            one, so they have to be edited by hand. Absent
+                            otherwise - the cluster thread tells them a round
+                            from now, and the log records how many it reached.
+                          example: false
+                        restarting:
+                          type: boolean
+                          description: |
+                            Whether FTL restarts here as part of leaving. It
+                            does whenever clustering was running; on a node
+                            where it was switched on but never started there is
+                            nothing to stop, so the setting is written and no
+                            restart follows.
+                          example: true
                     - $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: This Pi-hole is not part of a cluster
@@ -322,6 +368,19 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: |
+              Refused. Leaving needs a session made with the web interface
+              password - an application password, the command line and a peer
+              are all turned away - and it cannot be done at all while the
+              configuration is read-only or `cluster.enabled` is pinned through
+              the environment.
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
 
   errors:
@@ -356,6 +415,16 @@ components:
             enabled:
               type: boolean
               description: Is this Pi-hole part of a cluster?
+              example: true
+            running:
+              type: boolean
+              description: |
+                Is clustering actually running here? `enabled` is what the
+                administrator asked for; this is what FTL was able to do with
+                it. It is `false` when clustering is switched on but could not
+                be started - with an empty member list, or without a readable
+                shared secret - in which case this node keeps no configuration
+                in step, answers no peer and elects nobody.
               example: true
             leader:
               type: string
@@ -407,9 +476,17 @@ components:
             secret, so a certificate is authenticated by what authenticates
             everything else.
           example: "aKG1khSEO0G+KcSunqhLo3cVFCTGSH81QfvtIH8h13s="
+          nullable: true
         version:
           type: string
           example: "v6.5"
+        branch:
+          type: string
+          description: |
+            The branch this FTL was built from, present only when that is not
+            `master`. A cluster of stock Pi-holes has nothing to say here; one
+            with a node built from a branch has all the more.
+          example: "development"
         time:
           type: number
           description: What time this node thinks it is, as a Unix timestamp
@@ -428,9 +505,10 @@ components:
             capable:
               type: boolean
               description: |
-                Does this node have a lease range to serve from? A node without
-                one never wins the DHCP election, as taking over would leave the
-                network without a server.
+                Whether this node could start a DHCP server at this moment. It
+                is `configured` minus the passing reasons not to: a rebuild of
+                the lists in progress, and the wait a failed takeover leaves
+                behind. A node that could not is never elected to serve.
               example: false
             configured:
               type: boolean
@@ -559,6 +637,17 @@ components:
               example: false
             capable:
               type: boolean
+              description: |
+                Whether this node could start a DHCP server right now. A node
+                that could not is never elected to serve.
+              example: false
+            configured:
+              type: boolean
+              description: |
+                Whether this node has a usable DHCP configuration at all, as
+                opposed to being able to serve just now. A node leaving the
+                cluster needs the difference: it says whether handing DHCP over
+                leaves anybody holding it.
               example: false
         vip:
           type: object
@@ -582,8 +671,16 @@ components:
               type: number
               description: |
                 When somebody last configured this node, as a Unix timestamp.
-                Zero on a node nobody has configured yet, which is what keeps a
-                fresh node from overwriting the cluster it joins
+
+                Two values are not moments. Zero means nobody has configured this
+                node, which is what keeps a fresh one from overwriting the cluster
+                it joins. One means the node offered what it holds as the
+                cluster's starting point, because no member had a version at all -
+                a cluster built entirely from the command line reaches that state
+                without anybody changing anything. Both sort below every real
+                change on purpose, so a node that was away while the others
+                decided still wins with whatever it actually holds. Anything below
+                1000000000 is one of these rather than a time.
               example: 1735689600.5
             hash:
               type: string
@@ -614,13 +711,56 @@ components:
                 Whether this node takes credentials from the cluster. Comparing
                 `credentials` is only meaningful where both nodes do.
               example: true
+            wants_credentials:
+              type: boolean
+              description: |
+                Whether this node is set to synchronize credentials, which is not
+                the same as doing it: they travel only while every member is an
+                `https://` one. The two differing is the whole answer to why the
+                passwords are not the same yet.
+              example: true
+            pinned_credentials:
+              type: string
+              description: |
+                The same, for the items covered by `credentials` rather than by
+                `hash` - `webserver.api.pwhash` when the password is given as an
+                environment variable, which is what the Docker image does. Kept
+                apart because the two fingerprints are compared apart, and an
+                item named beside the wrong one explains a difference it has no
+                part in.
+              example: "webserver.api.pwhash"
+            pinned:
+              type: string
+              description: |
+                The settings this node pins through the environment, comma
+                separated, empty on a node that pins none. They are covered by
+                `hash` like any other setting but no push can move them, so two
+                nodes differing only here differ for good - naming them is what
+                turns that from an unexplained mismatch into something to act
+                on. Credentials are not here: they are fingerprinted apart from
+                the rest and listed in `pinned_credentials`. Truncated with
+                `...` when there are too many to fit.
+              example: "dns.upstreams, webserver.api.pwhash"
         gravity:
           type: object
           properties:
             changed:
               type: number
-              description: When the lists last changed, as a Unix timestamp
+              description: |
+                When the lists last changed, as a Unix timestamp. Zero and one
+                are not moments - see `config.changed` above for what they mean.
               example: 1735689600.5
             hash:
               type: string
               example: "f77f8a2bcd508924"
+            owed:
+              type: boolean
+              description: |
+                This node holds lists it has not rebuilt from. Usually those
+                came from a peer, in which case `hash` cannot say so - it names
+                the tables on disk, and those are the peer's, so a node whose
+                `pihole -g` keeps failing would otherwise read as fully in step
+                while its blocking database is stale. It is also set for a list
+                edited here while FTL was not running, and for as long as a
+                rebuild is actually running.
+              example: false

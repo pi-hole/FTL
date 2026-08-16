@@ -27,6 +27,24 @@
 #define CLUSTER_STRLEN 128
 #define CLUSTER_URLLEN 256
 #define CLUSTER_HASHLEN 65
+
+// What a node stamps when it declares its own configuration or lists as the one
+// the cluster should start from, rather than because somebody changed something.
+//
+// Not the current time. A declaration has to lose to every real change, whenever
+// that change was made: a member holding one can be out of touch for a single
+// round while the others decide nobody has a version, and stamping the
+// declaration `now` would make it outrank the very thing it should defer to -
+// the node returns, finds itself older, and its lists and settings are replaced.
+// A value below every real timestamp says "this is a starting point" in the one
+// field every comparison already reads, and it travels with the version through
+// a pull without anything having to carry it separately. Two declarations tie
+// and are settled by identity, as any two equal stamps are
+#define CLUSTER_BASELINE_STAMP 1.0
+
+// ...and what tells the two apart afterwards. Any real change is a Unix
+// timestamp, so anything below this is a declaration and not a moment
+#define CLUSTER_BASELINE_MAX 1000000000.0
 // Base64 of a SHA-256, plus room for the "sha256//" curl wants in front of it
 #define CLUSTER_PINLEN 64
 // Long enough for any address in text form, brackets and zone id included
@@ -85,9 +103,15 @@ struct cluster_peer {
 	double asked_at;                   // when the last request went out...
 	double answered_at;                // ...and when its answer was in hand
 	double clock_offset;               // how far the peer's clock is from ours [s]
+	double header_skew;                // the same, from the HTTP date of any answer, refusals included [s]
+	bool gravity_owed;                 // it took lists from somebody and has not rebuilt over them yet
+	char pinned[256];                  // settings it hashes but pins through the environment, so no push moves them
+	char pinned_credentials[256];      // the same, for the credential fingerprint
+	bool wants_credentials;            // it is set to synchronize credentials, whether or not that is happening
 	bool clock_agrees;                 // ...and whether that is close enough to synchronize
 	bool clock_warned;                 // ...which is said when it changes, not when a poll is missed
 	bool is_self;                      // this member turned out to be this node
+	bool answered_as_other;            // ...or answered as another node at some point, so it is not
 	char confhash[CLUSTER_HASHLEN];    // fingerprint of the peer's synchronized config
 	char credhash[CLUSTER_HASHLEN];    // ...and of its credentials, which travel only
 	bool accepts_credentials;          // ...between two nodes that both accept them
@@ -147,9 +171,13 @@ struct cluster_peer_status {
 	char confhash[CLUSTER_HASHLEN];
 	char credhash[CLUSTER_HASHLEN];
 	bool accepts_credentials;
+	bool wants_credentials;
+	char pinned[256];
+	char pinned_credentials[256];
 	double config_changed;
 	char gravityhash[CLUSTER_HASHLEN];
 	double gravity_changed;
+	bool gravity_owed;
 	double last_seen;
 	bool reachable;
 	bool failover;
@@ -200,6 +228,11 @@ void cluster_restart_later(const char *reason);
 // Take this node out of the cluster: the others are told, then clustering
 // stops here. Acted on by the cluster thread at its next round
 void cluster_leave(void);
+bool cluster_leave_now(char *errbuf, bool *peers_told);
+
+// Whether the cluster thread is actually there. `cluster.enabled` says what the
+// administrator asked for, this says what happened
+bool cluster_running(void);
 
 // Say that the lists of this node were last touched now, but only if this node
 // never knew. Called when somebody joins, so the cluster can hand them over

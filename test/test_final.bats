@@ -50,6 +50,15 @@ load 'bats_helper.bash'
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 4x pihole.toml writes (three ACLs + restore)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
+  # test_y_cluster.py: 4x pihole.toml writes. That file needs a node with a web
+  #   password (an empty pwhash makes FTL serve every request, so its refusal
+  #   tests would assert nothing) and with clustering switched on, and it puts
+  #   both back afterwards: password set + cleared, clustering enabled + disabled.
+  #   Measured over two consecutive runs against the same node.
+  #
+  #   This count also depends on test/pihole.toml being what this build writes:
+  #   FTL rewrites the file at startup when it is not, which is one more write
+  #   before any test has run.
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
@@ -60,7 +69,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "51" ]]
+    [[ ${lines[0]} == "55" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

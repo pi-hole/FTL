@@ -425,6 +425,8 @@ static void poll_peer(struct cluster_peer *peer)
 		if(self && !peer->is_self)
 			log_info("cluster: %s is this node, skipped", peer->url);
 		peer->is_self = self;
+		if(!self)
+			peer->answered_as_other = true;
 	}
 
 	// How far apart the two clocks are. The peer stamped its answer somewhere
@@ -605,7 +607,19 @@ static void poll_peer(struct cluster_peer *peer)
 	        sizeof(peer->credhash) - 1);
 	peer->credhash[sizeof(peer->credhash) - 1] = '\0';
 	peer->accepts_credentials = cJSON_IsTrue(cJSON_GetObjectItem(theirconf, "accepts_credentials"));
-	read_domain(cJSON_GetObjectItem(sync, "gravity"), peer->gravityhash, &peer->gravity_changed);
+	peer->wants_credentials = cJSON_IsTrue(cJSON_GetObjectItem(theirconf, "wants_credentials"));
+	const cJSON *theirpinned = cJSON_GetObjectItem(theirconf, "pinned");
+	strncpy(peer->pinned, cJSON_IsString(theirpinned) ? theirpinned->valuestring : "",
+	        sizeof(peer->pinned) - 1);
+	peer->pinned[sizeof(peer->pinned) - 1] = '\0';
+	const cJSON *theirpinnedcreds = cJSON_GetObjectItem(theirconf, "pinned_credentials");
+	strncpy(peer->pinned_credentials,
+	        cJSON_IsString(theirpinnedcreds) ? theirpinnedcreds->valuestring : "",
+	        sizeof(peer->pinned_credentials) - 1);
+	peer->pinned_credentials[sizeof(peer->pinned_credentials) - 1] = '\0';
+	const cJSON *theirlists = cJSON_GetObjectItem(sync, "gravity");
+	read_domain(theirlists, peer->gravityhash, &peer->gravity_changed);
+	peer->gravity_owed = cJSON_IsTrue(cJSON_GetObjectItem(theirlists, "owed"));
 
 	cJSON_Delete(json);
 
@@ -810,9 +824,70 @@ static volatile bool leaving = false;
 // right one
 static bool left = false;
 
+// Enabled and running are not the same thing: an empty member list, or a
+// secret that cannot be read, leaves the switch on and the thread unstarted.
+// Everything that reads the switch alone then reports a cluster that is not
+// there - and waits for a thread that will never read what it was told
+static volatile bool running = false;
+
+bool cluster_running(void)
+{
+	return running;
+}
+
 void cluster_leave(void)
 {
 	leaving = true;
+}
+
+// Leaving on a node whose thread never started. No round has run, so there is
+// no peer state and nobody to tell - what is left is the local half of
+// do_leave(). DHCP is not touched here: what the cluster never took over,
+// leaving it cannot hand back
+bool cluster_leave_now(char *errbuf, bool *peers_told)
+{
+	cluster_sync_lock();
+
+	// Read here rather than before the lock: `replace_config()` swaps the
+	// whole tree and frees the old one, this array included
+	const bool listed = config.cluster.members.v.json != NULL &&
+	                    cJSON_GetArraySize(config.cluster.members.v.json) > 0;
+	*peers_told = !listed;
+
+	struct config newconf;
+	duplicate_config(&newconf, &config);
+	cJSON_Delete(newconf.cluster.members.v.json);
+	newconf.cluster.members.v.json = cJSON_CreateArray();
+	newconf.cluster.enabled.v.b = false;
+
+	struct config_apply applied = { 0 };
+	applied.changed = true;
+	// The member list is what DHCP hands out as the resolvers to use
+	applied.dnsmasq_changed = true;
+
+	const bool written = config_install(&newconf, &applied, false, 0.0, errbuf);
+	cluster_sync_unlock();
+
+	if(!written)
+	{
+		log_err("cluster: cannot leave the cluster: %s", errbuf);
+		return false;
+	}
+
+	// No restart: `restart_due()` is the cluster thread's, and there is none
+	// here. Nothing needs one either - the thread that would have to be
+	// stopped never started
+	//
+	// ...and the peers were not told, which is worth saying rather than
+	// glossing. A thread that never started is not the same as a node with
+	// no peers: an unreadable secret leaves the member list exactly where it
+	// was, and every node on it still lists this one
+	if(listed)
+		log_warn("cluster: left the cluster - it was not running here, so the other nodes were not told: remove this node from their member lists");
+	else
+		log_info("cluster: left the cluster - it was never running here, so there was nobody to tell");
+
+	return true;
 }
 
 // The member list without this node, which is what the others should hold
@@ -996,19 +1071,27 @@ void cluster_restart_later(const char *reason)
 	// thread's own array: this runs on a webserver thread, and update_peers()
 	// rebuilds those entries while it does
 	unsigned int slot = 0, members = 1;
-	bool holds_vip = false;
+	bool holds_vip = false, know_slot = false;
 	cluster_lock();
 	for(unsigned int i = 0; i < state.num_peers; i++)
 		if(state.peers[i].is_self)
+		{
 			slot = i;
+			know_slot = true;
+		}
 	members = state.num_peers > 0 ? state.num_peers : 1;
 	holds_vip = state.vip_held;
 	cluster_unlock();
 
 	// Each node takes its own place in the member list, so no two pick the
 	// same moment - and whoever the clients are actually talking to goes
-	// last, once the others are answering again
-	const double order = holds_vip ? members : slot;
+	// last, once the others are answering again.
+	//
+	// A node that has not recognized its own entry yet has no place to take.
+	// Falling back on the first one would put it on top of whoever genuinely
+	// holds it, and the two would restart together - which is the outage the
+	// spacing is here to avoid. It waits behind everybody instead
+	const double order = holds_vip ? members : know_slot ? slot : members + 1;
 	const double delay = (order + 1) * CLUSTER_RESTART_STAGGER;
 
 	restart_at = double_time() + delay;
@@ -1026,9 +1109,13 @@ static void restart_due(void)
 	// Nothing schedules a restart further ahead than the whole cluster's
 	// stagger, so anything beyond that is the wall clock having moved
 	// backwards under us - and waiting it out would hold a restart the
-	// configuration asked for for as long as the step was
+	// configuration asked for for as long as the step was.
+	//
+	// The furthest is a node that has not recognized its own entry, which
+	// waits behind every member and behind the one holding the virtual IP -
+	// two places past the last slot, not one
 	const double ahead = restart_at - double_time();
-	if(ahead > (CLUSTER_MAX_PEERS + 1) * CLUSTER_RESTART_STAGGER + 1.0)
+	if(ahead > (CLUSTER_MAX_PEERS + 2) * CLUSTER_RESTART_STAGGER + 1.0)
 	{
 		log_info("cluster: clock moved, restarting now");
 		restart_at = 0.0;
@@ -1245,12 +1332,21 @@ static void note_local_changes(void)
 	if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) != 0)
 	{
 		// A node that has never recorded anything is not "changed", it is
-		// new - it starts at version zero and adopts what the cluster has
+		// new - it starts at version zero and adopts what the cluster has.
+		// Neither is a fingerprint that moved because the build did: a
+		// schema migration moves it with nobody having touched a list, and
+		// resume_gravity() returns before its own build guard when a rebuild
+		// is still owed from before the upgrade. Asked before publishing,
+		// which is what settles the question
 		const bool first_time = strlen(sync_state.gravity_hash) == 0;
+		const bool moved_by_build = !first_time && !cluster_state_same_build();
 		const double now = double_time();
-		if(!first_time)
+		if(moved_by_build)
+			log_info("cluster: FTL was upgraded, keeping this node's list version");
+		else if(!first_time)
 			log_info("cluster: lists changed here");
-		publish_gravity_state(first_time ? sync_state.gravity_changed : now, gravityhash);
+		publish_gravity_state(first_time || moved_by_build ? sync_state.gravity_changed : now,
+		                      gravityhash);
 
 		// The blocking database is built from the adlists, so an allow or
 		// deny entry, a group or a client needs nothing further - those
@@ -1263,8 +1359,8 @@ static void note_local_changes(void)
 		// rebuild from them by themselves, so the node the edit was made on
 		// would be the only one in the cluster not blocking its own list
 		char adlists[CLUSTER_HASHLEN] = "";
-		if(!first_time && cluster_adlist_hash(adlists) && strlen(built_adlists) > 0 &&
-		   strcmp(adlists, built_adlists) != 0)
+		if(!first_time && !moved_by_build && cluster_adlist_hash(adlists) &&
+		   strlen(built_adlists) > 0 && strcmp(adlists, built_adlists) != 0)
 		{
 			remember_adlists();
 			owe_gravity(now, cluster_node_id(), gravityhash);
@@ -1295,6 +1391,13 @@ static void note_local_changes(void)
 // array under us
 static struct cluster_peer *pending_source(void)
 {
+	// Nobody is not somebody: a peer that has not identified itself yet
+	// carries an empty identity too, and matching one against the other
+	// would hand back an arbitrary stranger as the node these lists came
+	// from
+	if(strlen(pending_gravity_id) == 0)
+		return NULL;
+
 	for(unsigned int i = 0; i < num_peers; i++)
 		if(strcmp(peers[i].id, pending_gravity_id) == 0)
 			return &peers[i];
@@ -1376,7 +1479,28 @@ static void settle_gravity(void)
 		const bool theirs = strlen(pending_hash) == 0 ||
 		                    strcmp(gravityhash, pending_hash) == 0;
 
-		finish_pull(theirs ? changed : double_time(), gravityhash);
+		// ...and neither the peer's nor different from what this node
+		// held before it asked for them means the import never landed at
+		// all. FTL stopped between recording the pull and committing it -
+		// a crash, but an ordinary restart or upgrade inside that window
+		// does it too - and the transaction took the tables back on the
+		// way down. Nothing changed here, so nothing here is newer:
+		// dating it now publishes this node's own pre-pull lists over the
+		// edit it set out to fetch, and no retry recovers it because the
+		// stale copy then wins every later comparison
+		// ...and a fingerprint written by another build answers a
+		// different question than the one being asked. The tables' columns
+		// are part of it, so a gravity.db migration moves it with nobody
+		// having touched a list - and `resume_gravity()` returns before
+		// the build guard on exactly this path, so an interrupted pull
+		// whose restart is an upgrade arrives here comparing across it.
+		// Nothing here is newer in either case
+		const bool unchanged = strcmp(gravityhash, sync_state.gravity_hash) == 0 ||
+		                       !cluster_state_same_build();
+
+		finish_pull(theirs ? changed :
+		            unchanged ? sync_state.gravity_changed : double_time(),
+		            gravityhash);
 		if(source != NULL)
 			source->stuck_valid = false;
 		return;
@@ -1564,8 +1688,11 @@ static void take_gravity(const bool member)
 	if(cluster_waiting(peer->retry_lists_at, double_time(), CLUSTER_BACKOFF_MAX))
 		return;
 
-	// A node that never knew when its lists changed has nothing to subtract
-	if(sync_state.gravity_changed > 0.0)
+	// A node that never knew when its lists changed has nothing to subtract,
+	// and neither has one holding a declaration rather than a moment -
+	// subtracting that from a real timestamp gives the age of the epoch
+	if(sync_state.gravity_changed > CLUSTER_BASELINE_MAX &&
+	   peer->gravity_changed > CLUSTER_BASELINE_MAX)
 		log_info("cluster: taking lists of %s (%.0f s newer)",
 		         peer->url, peer->gravity_changed - sync_state.gravity_changed);
 	else
@@ -1590,24 +1717,24 @@ static void take_gravity(const bool member)
 	bool rebuilding = false;
 	if(!cluster_pull_gravity(peer, sync_state.gravity_hash, &rebuilding))
 	{
-		// Only taken back if nothing landed. An import that failed part
-		// way through has already replaced tables, and forgetting that
-		// is the very thing the record is written early for
-		char confhash[CLUSTER_HASHLEN] = "", gravityhash[CLUSTER_HASHLEN] = "";
-		const bool untouched = cluster_sync_hashes(confhash, gravityhash) &&
-		                       strcmp(gravityhash, sync_state.gravity_hash) == 0;
-
+		// Nothing landed. The import replaces the seven tables inside one
+		// transaction, so a failure anywhere in it leaves the tables this
+		// node already had - and the download failing never reaches them.
+		//
+		// Read out of a fingerprint before, which got it backwards exactly
+		// when it mattered: a database that is locked or unreadable is what
+		// made the import fail, and a fingerprint that cannot be read was
+		// taken for a difference. The node then owed a rebuild it did not
+		// need, ran gravity over its own untouched tables, found they were
+		// not the peer's - and published its own pre-pull lists stamped
+		// now, which outranks and undoes the edit it had set out to fetch
 		cluster_lock();
-		gravity_state = untouched ? GRAVITY_IDLE : GRAVITY_OWED;
+		gravity_state = GRAVITY_IDLE;
+		pending_gravity = 0.0;
+		pending_gravity_id[0] = '\0';
+		pending_gravity_hash[0] = '\0';
 		cluster_unlock();
-
-		if(untouched)
-		{
-			pending_gravity = 0.0;
-			pending_gravity_id[0] = '\0';
-			pending_gravity_hash[0] = '\0';
-			publish_pending_gravity(0.0, "", "");
-		}
+		publish_pending_gravity(0.0, "", "");
 
 		// Doubling from one round to at most an hour
 		peer->retry_backoff = peer->retry_backoff > 0.0 ?
@@ -1620,8 +1747,13 @@ static void take_gravity(const bool member)
 	peer->retry_lists_at = 0.0;
 
 	// The adlists changed, so a rebuild is owed before this node may say it
-	// holds the peer's lists. Recorded rather than started here: whether it
-	// could start is settle_gravity()'s business, and it keeps asking
+	// holds the peer's lists. Whether it can start is settle_gravity()'s
+	// business, so it is asked here rather than left to the next round: the
+	// blocking database still holds domains under this node's own adlist ids,
+	// and the table those ids lived in has just been replaced with the peer's.
+	// Where the two do not overlap the node blocks nothing at all until the
+	// rebuild lands, and waiting a whole cluster.interval before even starting
+	// adds that interval to a gap nobody asked for
 	if(rebuilding)
 	{
 		// Already recorded above, with the peer's fingerprint as it was
@@ -1631,6 +1763,7 @@ static void take_gravity(const bool member)
 		cluster_lock();
 		gravity_state = GRAVITY_OWED;
 		cluster_unlock();
+		settle_gravity();
 		return;
 	}
 
@@ -1693,7 +1826,10 @@ void cluster_stamp_lists(void)
 	if(!cluster_sync_hashes(confhash, gravityhash))
 		return;
 
-	publish_gravity_state(double_time(), gravityhash);
+	// Deliberately not now - see CLUSTER_BASELINE_STAMP. This says "start
+	// from these", and a node that comes back holding a real edit has to
+	// win against it however long ago that edit was made
+	publish_gravity_state(CLUSTER_BASELINE_STAMP, gravityhash);
 }
 
 static void resume_gravity(void)
@@ -1727,6 +1863,18 @@ static void resume_gravity(void)
 	   strcmp(gravityhash, sync_state.gravity_hash) == 0)
 		return;
 
+	// The list fingerprint is taken over the whole of each table, so a
+	// release that migrates the database moves it with nobody having touched
+	// a list. What is on disk is recorded, under the version this node
+	// already had - dating it to now would make an upgraded node the newest
+	// holder of lists it was simply handed by its own schema
+	if(!cluster_state_same_build())
+	{
+		log_info("cluster: FTL was upgraded, keeping this node's list version");
+		publish_gravity_state(sync_state.gravity_changed, gravityhash);
+		return;
+	}
+
 	// The tables on disk are not the ones this node last recorded, and no
 	// pull was in flight - so somebody edited a list here and FTL stopped
 	// before the round that would have recorded it. That is a change made on
@@ -1744,6 +1892,77 @@ static void resume_gravity(void)
 	// across a restart, so the answer that cannot be wrong is taken
 	owe_gravity(now, cluster_node_id(), gravityhash);
 	publish_pending_gravity(now, cluster_node_id(), gravityhash);
+}
+
+// A node that has never recorded a list version is never taken from, and a
+// cluster where that is true of everybody never synchronizes its lists at all -
+// which is what a cluster assembled from the command line looks like, since
+// nothing there goes through the enrolment that stamps them.
+//
+// So the moment this node can see that nobody else can say either, it says it
+// for them: these lists, as of now. Only then - a node that joined a cluster
+// which already holds a version has to keep its zero, or it would arrive as the
+// newest holder of lists it was about to be given
+static void baseline_lists(void)
+{
+	cluster_lock();
+	const bool known = sync_state.gravity_changed > 0.0;
+	cluster_unlock();
+
+	if(known)
+		return;
+
+	bool somebody_answers = false;
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		if(peers[i].is_self || !peers[i].reachable)
+			continue;
+
+		// Somebody holds a version, so it is theirs we converge on
+		if(peers[i].gravity_changed > 0.0)
+			return;
+
+		somebody_answers = true;
+	}
+
+	// On our own there is nothing to converge with, and stamping would only
+	// decide a question nobody has asked yet
+	if(!somebody_answers)
+		return;
+
+	log_info("cluster: no node holds a list version yet, offering this node's as the one to start from");
+	cluster_stamp_lists();
+}
+
+// ...and the same for the configuration, which has the same hole: a cluster
+// built from the command line moves nobody's configuration timestamp, because
+// none of the settings that recipe touches is one the cluster hashes, and what
+// FTL writes at startup is not a change anybody made. Every node then sits at
+// zero, no node is newer than any other, and the settings never converge - the
+// manual says they do
+static void baseline_config(void)
+{
+	if(our_changed() > 0.0)
+		return;
+
+	bool somebody_answers = false;
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		if(peers[i].is_self || !peers[i].reachable)
+			continue;
+
+		// Somebody has a version, so it is theirs we converge on
+		if(peers[i].config_changed > 0.0)
+			return;
+
+		somebody_answers = true;
+	}
+
+	if(!somebody_answers)
+		return;
+
+	log_info("cluster: no node holds a configuration version yet, offering this node's as the one to start from");
+	config_stamp_baseline();
 }
 
 // Take the newest configuration and the newest lists, wherever they were made.
@@ -1765,6 +1984,12 @@ static void sync_round(void)
 		log_info("cluster: this node is a member again");
 		left_cluster = false;
 	}
+
+	// After the membership gate, never before it: a node the others do not
+	// list is a node whose lists are nobody's baseline, and stamping them
+	// here would have it arrive as the newest holder the moment it is added
+	baseline_lists();
+	baseline_config();
 
 	catch_up();
 }
@@ -1805,6 +2030,11 @@ static void publish_state(void)
 		status->accepts_credentials = peer->accepts_credentials;
 		status->config_changed = peer->config_changed;
 		memcpy(status->gravityhash, peer->gravityhash, sizeof(status->gravityhash));
+		status->gravity_owed = peer->gravity_owed;
+		memcpy(status->pinned, peer->pinned, sizeof(status->pinned));
+		memcpy(status->pinned_credentials, peer->pinned_credentials,
+		       sizeof(status->pinned_credentials));
+		status->wants_credentials = peer->wants_credentials;
 		status->gravity_changed = peer->gravity_changed;
 		status->clock_offset = peer->clock_offset;
 		status->clock_agrees = peer->clock_agrees;
@@ -1872,6 +2102,18 @@ void cluster_local_status(cJSON *node)
 	const struct cluster_sync_state published = sync_state;
 	char confhash[CLUSTER_HASHLEN] = "";
 	memcpy(confhash, published_confhash, sizeof(confhash));
+	// Lists were taken from a peer and the rebuild over them has not run.
+	// The fingerprint cannot say this: it names the tables on disk, and
+	// after a failed rebuild those are exactly the peer's - so a node whose
+	// `pihole -g` keeps failing would read as one in step.
+	//
+	// A rebuild that is running counts too: the tables are already the ones
+	// this node published and the blocking database is not, so reporting it as
+	// in step for the minutes the run takes says the opposite of the thing
+	// this flag exists to say. A pull that has not imported yet does not - the
+	// tables there are still this node's own, and consistent with them
+	const bool gravity_owed = gravity_state == GRAVITY_OWED ||
+	                          gravity_state == GRAVITY_RUNNING;
 	cluster_unlock();
 
 	char address[CLUSTER_STRLEN] = "";
@@ -1896,10 +2138,25 @@ void cluster_local_status(cJSON *node)
 	cJSON_AddStringToObject(conf, "hash", confhash);
 	cJSON_AddStringToObject(conf, "credentials", credhash);
 	cJSON_AddBoolToObject(conf, "accepts_credentials", cluster_credentials_syncable());
+	// What was asked for, next to what is happening. The two differ when a
+	// member is reached over http, and the difference is the whole answer to
+	// "why are the passwords not the same yet"
+	cJSON_AddBoolToObject(conf, "wants_credentials", config.cluster.sync.credentials.v.b);
+	// Hashed here but unmovable by any push, so a peer differing only in
+	// these differs for good. Named so the difference can be acted on
+	char pinned[256] = "";
+	cluster_pinned_items(false, pinned, sizeof(pinned));
+	cJSON_AddStringToObject(conf, "pinned", pinned);
+	// ...and the ones in the credential fingerprint, which is compared apart
+	// from the rest and so has to be explained apart from it
+	char pinned_credentials[256] = "";
+	cluster_pinned_items(true, pinned_credentials, sizeof(pinned_credentials));
+	cJSON_AddStringToObject(conf, "pinned_credentials", pinned_credentials);
 	cJSON_AddItemToObject(sync, "config", conf);
 	cJSON *lists = cJSON_CreateObject();
 	cJSON_AddNumberToObject(lists, "changed", published.gravity_changed);
 	cJSON_AddStringToObject(lists, "hash", published.gravity_hash);
+	cJSON_AddBoolToObject(lists, "owed", gravity_owed);
 	cJSON_AddItemToObject(sync, "gravity", lists);
 	cJSON_AddItemToObject(node, "sync", sync);
 }
@@ -1944,18 +2201,32 @@ static bool a_member(void)
 	// would otherwise flap between member and not, and each flap moves DHCP
 	static bool decided = false;
 
+	// Whether this node has ever recognized itself in the member list. Kept
+	// across rounds because it is the difference between two situations this
+	// node cannot otherwise tell apart: one where the cluster has removed it,
+	// and one where it simply cannot reach the address it is listed under
+	static bool ever_identified = false;
+	static bool warned_unreachable = false;
+
 	bool reached_all = true;
+	// ...and whether any entry that does not answer could still be this node:
+	// one that has never answered as anybody else
+	bool unknown_entry = false;
 	unsigned int answered = 0, list_us = 0, sure_not = 0;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		if(peers[i].is_self)
 		{
 			decided = false;
+			ever_identified = true;
+			warned_unreachable = false;
 			return true;
 		}
 		if(!peers[i].reachable)
 		{
 			reached_all = false;
+			if(!peers[i].answered_as_other)
+				unknown_entry = true;
 			continue;
 		}
 
@@ -1993,6 +2264,30 @@ static bool a_member(void)
 		decided = false;
 	else if(answered > 0 && sure_not == answered)
 		decided = true;
+
+	// A node that has never once recognized itself in the member list is not
+	// entitled to this conclusion. From here the two cases look identical -
+	// the cluster removed it, or its own entry names an address nothing can
+	// reach - and only one of them is a reason to give DHCP away. Acting on
+	// the wrong one costs a restart, and the restart clears the state that
+	// would have damped it, so it happens again, and again.
+	//
+	// Its own address failing is a misconfiguration to be told about, not a
+	// membership to resign.
+	//
+	// Only where an entry that could be this node exists: one that does not
+	// answer and has never answered as somebody else. A list every entry of
+	// which has answered as another node does not name this node, before and
+	// after a restart alike - and the hand-over a removal triggers restarts
+	// FTL, which would otherwise turn "removed" into "member" on the same
+	// evidence the moment one of those nodes went quiet
+	if(decided && !ever_identified && unknown_entry)
+	{
+		if(!warned_unreachable)
+			log_warn("cluster: none of the member addresses answers as this node - check that one of them is this Pi-hole and that it is reachable there");
+		warned_unreachable = true;
+		return true;
+	}
 
 	// Until every entry has answered once, the one that is us may still be
 	// among those that have not
@@ -2271,7 +2566,7 @@ static void cluster_round(void)
 	take_gravity(member);
 }
 
-static void *cluster_thread(void *val)
+static void *run_cluster_thread(void *val)
 {
 	(void)val;
 
@@ -2363,6 +2658,17 @@ static void *cluster_thread(void *val)
 	return NULL;
 }
 
+// Cleared where the thread ends rather than before each `return`: one of those
+// returns is `cluster_http_init()` failing, and a flag left standing there says
+// a cluster is running on a node that has none - and sends everything that asks
+// to the thread that is not there
+static void *cluster_thread(void *val)
+{
+	void *ret = run_cluster_thread(val);
+	running = false;
+	return ret;
+}
+
 bool cluster_start_thread(pthread_attr_t *attr)
 {
 	if(!config.cluster.enabled.v.b)
@@ -2385,8 +2691,10 @@ bool cluster_start_thread(pthread_attr_t *attr)
 		return false;
 	}
 
+	running = true;
 	if(pthread_create(&threads[CLUSTER], attr, cluster_thread, NULL) != 0)
 	{
+		running = false;
 		log_err("Unable to create cluster thread");
 		return false;
 	}

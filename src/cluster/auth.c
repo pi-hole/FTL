@@ -306,6 +306,22 @@ bool cluster_verify_request(struct ftl_conn *api)
 	if(!config.cluster.enabled.v.b)
 	{
 		log_web_debug(DEBUG_API, "Cluster request refused: this node is not in a cluster");
+
+		// The node on the other end cannot be told why - answering a
+		// cluster request needs the secret this node does not hold with
+		// clustering off - so it reports a refusal it cannot explain and
+		// its administrator goes looking at the wrong machine. Said here
+		// instead, once per run and only where a member list says this
+		// node was meant to be in a cluster, so a stray header on a
+		// Pi-hole that never clustered stays quiet
+		static bool warned = false;
+		if(!warned && config.cluster.members.v.json != NULL &&
+		   cJSON_GetArraySize(config.cluster.members.v.json) > 0)
+		{
+			log_warn("cluster: another node is trying to reach this one, but clustering is switched off here");
+			warned = true;
+		}
+
 		return false;
 	}
 
