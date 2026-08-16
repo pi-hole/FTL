@@ -428,12 +428,13 @@ void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
 bool cluster_syncable(const struct conf_item *item) __attribute__ ((pure));
 bool cluster_hashable_ignoring_transport(const struct conf_item *item) __attribute__ ((pure));
-bool cluster_syncable_ignoring_transport(const struct conf_item *item) __attribute__ ((pure));
 
 // Whether the credentials are part of what this node keeps in step at all. Not
 // a property of one item: it depends on the member list, so it can change
 // without anybody having configured this node
 bool cluster_credentials_syncable(void) __attribute__ ((pure));
+void cluster_pinned_items(const bool credentials, char *out, const size_t outlen);
+bool config_env_pinned(const struct conf_item *item) __attribute__ ((pure));
 
 // Recompute what is answered from the configuration rather than read out of it
 // on every call. Called wherever a configuration becomes the live one
@@ -498,6 +499,10 @@ extern volatile unsigned long config_generation;
 // persisted, so a setting that asks FTL to restart does not lose it
 extern volatile double config_changed;
 void config_stamp_local_change(void);
+
+// Write the running configuration out, complaining if the file did not take it
+bool config_write(void);
+void config_stamp_baseline(void);
 void config_stamp_cluster_change(const double when);
 void reread_config(void);
 bool create_migration_target_v6(void);

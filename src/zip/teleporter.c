@@ -105,6 +105,20 @@ static bool create_teleporter_database(const char *filename, const char **tables
 		return false;
 	}
 
+	// One read transaction over all of them, not one per table. The tables
+	// reference each other - a domain and the groups it belongs to live in
+	// two of them - and every writer here spans several statements of its
+	// own, so seven separate reads can catch an edit half way through and
+	// produce an archive whose halves disagree. The cluster hands this
+	// archive to its peers unattended, which is how such a copy would spread
+	if(sqlite3_exec(db, "BEGIN DEFERRED;", NULL, NULL, &err) != SQLITE_OK)
+	{
+		log_warn("Failed to start the export transaction: %s", err);
+		sqlite3_free(err);
+		sqlite3_close(db);
+		return false;
+	}
+
 	// Loop over the tables and copy them to the in-memory database
 	for(unsigned int i = 0; i < num_tables; i++)
 	{
@@ -116,9 +130,19 @@ static bool create_teleporter_database(const char *filename, const char **tables
 		{
 			log_warn("Failed to create %s in in-memory database: %s", tables[i], err);
 			sqlite3_free(err);
+			sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
 			sqlite3_close(db);
 			return false;
 		}
+	}
+
+	if(sqlite3_exec(db, "COMMIT;", NULL, NULL, &err) != SQLITE_OK)
+	{
+		log_warn("Failed to finish the export transaction: %s", err);
+		sqlite3_free(err);
+		sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+		sqlite3_close(db);
+		return false;
 	}
 
 	// Detach the FTL database from the in-memory database
@@ -352,7 +376,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
 	rotate_files(GLOBALTOMLPATH, NULL);
-	writeFTLtoml(true, NULL);
+	config_write();
 	write_custom_list();
 
 	toml_free(toml);
@@ -386,6 +410,54 @@ static const char *import_dhcp_leases(const void *ptr, size_t size, char * const
 	fclose(fp);
 
 	return NULL;
+}
+
+// The columns a table has in both databases, quoted and comma-separated. False
+// when the two share none, or the list does not fit.
+//
+// The archive can come from a Pi-hole that is not on this version, and a column
+// added, dropped or reordered between the two lines the values up against the
+// wrong columns whenever the counts still happen to match. Naming what both
+// sides hold leaves anything only this node knows at its default, and drops
+// anything only the archive carries
+static bool shared_columns(sqlite3 *db, const char *table, char *out, const size_t outlen)
+{
+	sqlite3_stmt *stmt = NULL;
+	const char *query = "SELECT s.name FROM pragma_table_info(?1, 'main') AS s "
+	                    "JOIN pragma_table_info(?1, 'disk') AS d ON d.name = s.name "
+	                    "ORDER BY s.cid;";
+
+	if(sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, table, -1, SQLITE_STATIC);
+
+	size_t used = 0;
+	bool ok = true;
+	out[0] = '\0';
+	while(sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		const char *name = (const char *)sqlite3_column_text(stmt, 0);
+		// Nothing in a gravity database has a quote in its name, and
+		// one that did could not be written into this list safely
+		if(name == NULL || strchr(name, '"') != NULL)
+		{
+			ok = false;
+			break;
+		}
+
+		if(used + strlen(name) + 4 >= outlen)
+		{
+			ok = false;
+			break;
+		}
+
+		used += (size_t)snprintf(out + used, outlen - used, "%s\"%s\"",
+		                         used > 0 ? "," : "", name);
+	}
+	sqlite3_finalize(stmt);
+
+	return ok && used > 0;
 }
 
 static const char *test_and_import_database(void *ptr, size_t size, const char *destination,
@@ -518,8 +590,29 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 		// above has just emptied, and the table would be silently wiped rather
 		// than the import failing. That archive arrives from another node
 		// without anybody looking at it
-		snprintf(stmt, sizeof(stmt), "INSERT OR REPLACE INTO disk.\"%s\" SELECT * FROM main.\"%s\";", tables[i], tables[i]);
-		if(sqlite3_exec(database, stmt, NULL, NULL, &err) != SQLITE_OK)
+		//
+		// The columns are named rather than taken as they come: the two
+		// databases can be of different Pi-hole versions, and SELECT *
+		// lines the values up by position
+		char columns[1024] = "";
+		if(!shared_columns(database, tables[i], columns, sizeof(columns)))
+		{
+			set_hint(hint, "no columns in common with this Pi-hole");
+			sqlite3_close(database);
+			return "Failed to insert into disk database table";
+		}
+
+		char *insert = sqlite3_mprintf("INSERT OR REPLACE INTO disk.\"%w\" (%s) SELECT %s FROM main.\"%w\";",
+		                               tables[i], columns, columns, tables[i]);
+		if(insert == NULL)
+		{
+			sqlite3_close(database);
+			return "Failed to insert into disk database table";
+		}
+
+		const int rc = sqlite3_exec(database, insert, NULL, NULL, &err);
+		sqlite3_free(insert);
+		if(rc != SQLITE_OK)
 		{
 			set_hint(hint, err);
 			sqlite3_free(err);
@@ -588,6 +681,17 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, const unsi
 	// Counted rather than named one by one, for the same reason
 	unsigned int skipped = 0;
 
+	// Copied once, under the lock: this is a configuration item another
+	// thread can replace while this loop runs - a peer's PATCH of
+	// files.gravity frees the string the entries below would still be
+	// pointing at. The cluster reaches this path by itself, so the two
+	// really do run at the same time
+	char gravityname[PATH_MAX] = "";
+	lock_shm();
+	strncpy(gravityname, config.files.gravity.v.s, sizeof(gravityname) - 1);
+	gravityname[sizeof(gravityname) - 1] = '\0';
+	unlock_shm();
+
 	// Loop over all files in the ZIP archive
 	for(mz_uint i = 0; i < entries; i++)
 	{
@@ -604,7 +708,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, const unsi
 		const char *extract_files[] = {
 			"etc/pihole/pihole.toml",
 			"etc/pihole/dhcp.leases",
-			config.files.gravity.v.s[0] == '/' ? config.files.gravity.v.s + 1 : config.files.gravity.v.s
+			gravityname[0] == '/' ? gravityname + 1 : gravityname
 		};
 
 		// Check if this file is one of the files we want to extract and process
@@ -814,9 +918,12 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, const unsi
 	}
 
 	// One line rather than one per file: the names come out of an archive
-	// somebody else built, and there can be a great many of them
+	// somebody else built, and there can be a great many of them. Not that
+	// they do not belong there - Pi-hole's own export writes /etc/hosts, the
+	// query database and every /etc/dnsmasq.d file into the archive, and the
+	// import restores none of them
 	if(skipped > 0)
-		log_info("Skipped %u file%s in Teleporter archive that do not belong in one",
+		log_info("Skipped %u file%s in Teleporter archive that Pi-hole does not restore",
 		         skipped, skipped == 1 ? "" : "s");
 
 	// Close ZIP archive

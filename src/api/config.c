@@ -554,7 +554,7 @@ static int api_config_patch(struct ftl_conn *api)
 		log_web_debug(DEBUG_API, "Cluster push is older than what this node holds, keeping ours");
 
 		cJSON *json = JSON_NEW_OBJECT();
-		get_json_config(api, json, false, true, api->request->is_ssl);
+		get_json_config(api, json, false, true, false);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -642,10 +642,19 @@ static int api_config_patch(struct ftl_conn *api)
 	// which is answered with the same document it is allowed to read
 	// elsewhere. The full one carries this node's password hashes, and
 	// handing them back to whoever just pushed to us would give away exactly
-	// what confining a cluster request to this endpoint is meant to protect
-	cJSON *json = JSON_NEW_OBJECT();
-	get_json_config(api, json, false, from_cluster, api->request->is_ssl);
-	JSON_SEND_OBJECT(json);
+	// what confining a cluster request to this endpoint is meant to protect.
+	// Credentials ride on the encrypted flag, and nothing here needs them:
+	// the answer is read by nobody, the push travelled the other way
+	if(from_cluster)
+	{
+		cJSON *json = JSON_NEW_OBJECT();
+		get_json_config(api, json, false, true, false);
+		JSON_SEND_OBJECT(json);
+	}
+
+	// Everybody else is answered exactly as before this endpoint learned
+	// about peers, `?detailed=true` included
+	return api_config_get(api);
 }
 
 // Inspired by https://stackoverflow.com/a/32496721
@@ -879,7 +888,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	set_debug_flags(&config);
 
 	// Store changed configuration to disk
-	writeFTLtoml(true, NULL);
+	config_write();
 	cluster_sync_unlock();
 
 	// Rewrite HOSTS file if required

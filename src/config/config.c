@@ -327,10 +327,28 @@ void config_update_derived(struct config *conf)
 {
 	const cJSON *members = conf->cluster.members.v.json;
 	bool all = cJSON_IsArray(members) && cJSON_GetArraySize(members) > 0;
+	const char *plain = NULL;
 
 	for(const cJSON *item = all ? members->child : NULL; item != NULL; item = item->next)
 		if(!cJSON_IsString(item) || strncmp(item->valuestring, "https://", 8) != 0)
+		{
 			all = false;
+			if(plain == NULL && cJSON_IsString(item))
+				plain = item->valuestring;
+		}
+
+	// Asked for and not happening. A password would cross an unencrypted
+	// connection to reach that member, so it stays where it is - and saying
+	// nothing leaves an administrator believing the nodes share a login
+	static bool told = false;
+	if(conf->cluster.sync.credentials.v.b && !all && plain != NULL && !told)
+	{
+		log_warn("cluster: not synchronizing credentials, %s is not https - every member has to be before a password travels",
+		         plain);
+		told = true;
+	}
+	else if(all)
+		told = false;
 
 	members_all_encrypted = all;
 }
@@ -370,14 +388,71 @@ bool cluster_hashable_ignoring_transport(const struct conf_item *item)
 	                    FLAG_PSEUDO_ITEM));
 }
 
-bool cluster_syncable_ignoring_transport(const struct conf_item *item)
+// The items this node holds that the cluster hashes but can never move: pinned
+// through the environment, so no push in either direction changes them. Two
+// nodes differing only here disagree forever, and without naming them the
+// administrator is left with a fingerprint mismatch and nothing to act on.
+//
+// Asked for one fingerprint at a time. The settings and the credentials are
+// hashed separately and compared separately, and an item named beside the wrong
+// one of them is an explanation for a difference it has no part in
+//
+// Written as "a.b, c.d", truncated with an ellipsis rather than cut short: this
+// travels to the peers and ends up on their screens
+void cluster_pinned_items(const bool credentials, char *out, const size_t outlen)
 {
-	if(item->f & FLAG_CREDENTIAL)
-		return config.cluster.sync.credentials.v.b &&
-		       !(item->f & (FLAG_ENV_VAR | FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
+	size_t used = 0;
+	out[0] = '\0';
 
-	return !(item->f & (FLAG_NO_CLUSTER | FLAG_ENV_VAR | FLAG_READ_ONLY |
-	                    FLAG_WRITE_ONLY | FLAG_PSEUDO_ITEM));
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *item = get_conf_item(&config, i);
+		if(!config_env_pinned(item) || !cluster_hashable_ignoring_transport(item))
+			continue;
+
+		// The two fingerprints are taken over disjoint sets, so an item
+		// belongs to whichever of them it is actually in. Naming a
+		// credential next to a settings difference explains it with
+		// something that is not part of it
+		if(!(item->f & FLAG_CREDENTIAL) != !credentials)
+			continue;
+
+		// Six bytes are always kept back, so the ellipsis below always
+		// has somewhere to go
+		const size_t need = strlen(item->k) + (used > 0 ? 2 : 0);
+		if(used + need + 6 > outlen)
+		{
+			strcpy(out + used, used > 0 ? ", ..." : "...");
+			return;
+		}
+
+		if(used > 0)
+		{
+			memcpy(out + used, ", ", 2);
+			used += 2;
+		}
+		memcpy(out + used, item->k, strlen(item->k));
+		used += strlen(item->k);
+		out[used] = '\0';
+	}
+}
+
+// Is this item forced from outside, so that nothing here or anywhere else can
+// move it?
+//
+// Almost always that is the item's own FLAG_ENV_VAR. The exception is
+// `webserver.api.pwhash`, which has no environment variable of its own: it is
+// derived from `webserver.api.password` and re-derived at every start, so it is
+// as forced as the password is. It must not carry FLAG_ENV_VAR itself - the
+// reload path resets any item marked that way whose variable it cannot find,
+// which would leave the node with no password at all - so the question is asked
+// of the password instead
+bool config_env_pinned(const struct conf_item *item)
+{
+	if(item == &config.webserver.api.pwhash)
+		return config.webserver.api.password.f & FLAG_ENV_VAR;
+
+	return item->f & FLAG_ENV_VAR;
 }
 
 bool cluster_syncable(const struct conf_item *item)
@@ -392,11 +467,12 @@ bool cluster_syncable(const struct conf_item *item)
 		// factor is write-only, and a cluster that synchronizes the
 		// password but not the second factor is a cluster where the
 		// second factor is skipped by opening the other node instead
-		return cluster_credentials_syncable() &&
-		       !(item->f & (FLAG_ENV_VAR | FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
+		return cluster_credentials_syncable() && !config_env_pinned(item) &&
+		       !(item->f & (FLAG_READ_ONLY | FLAG_PSEUDO_ITEM));
 	}
 
-	return !(item->f & (FLAG_NO_CLUSTER | FLAG_ENV_VAR | FLAG_READ_ONLY |
+	return !config_env_pinned(item) &&
+	       !(item->f & (FLAG_NO_CLUSTER | FLAG_READ_ONLY |
 	                    FLAG_WRITE_ONLY | FLAG_PSEUDO_ITEM));
 }
 
@@ -770,6 +846,13 @@ void initConfig(struct config *conf)
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
 	conf->dns.blocking.active.t = CONF_BOOL;
+	// Not configuration but runtime state, and each node's own: it is what
+	// "Disable blocking for five minutes" writes, and the timer that puts it
+	// back lives in this node's memory rather than in the file. Synchronized,
+	// it would take blocking off machines nobody paused - with no timer to
+	// bring it back - and set_blockingstatus() stamps no change, so the node
+	// the user clicked on is as likely to have the pause pushed back off it
+	conf->dns.blocking.active.f = FLAG_NO_CLUSTER;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
 
@@ -2347,6 +2430,45 @@ static void stamp(const double when)
 	cluster_state_save(NULL);
 }
 
+// This node's configuration, as of now, whether or not anybody has changed it.
+//
+// Nodes compare configurations by when they were last changed, and a cluster
+// where nobody has changed anything since it was built has every node at zero -
+// so no node is ever newer than another and no configuration travels, in either
+// direction, for good. That is what a cluster assembled from the command line
+// looks like: none of the settings that recipe touches moves the timestamp.
+// One node saying "mine, as of now" is what gets them talking
+void config_stamp_baseline(void)
+{
+	if(!cluster_state_known())
+		return;
+
+	// Deliberately not now - see CLUSTER_BASELINE_STAMP. A member holding a
+	// real configuration can be out of touch for a single round while the
+	// others decide that nobody has one, and a declaration stamped now would
+	// outrank the thing it exists to defer to
+	stamp(CLUSTER_BASELINE_STAMP);
+}
+
+// Writing the running configuration out, and saying so when it does not land.
+//
+// Every writer that has already replaced the live configuration is in the same
+// position when the file refuses it: the node keeps running on something no disk
+// records, and the next start reads the old file, computes a fingerprint that
+// matches neither, calls the difference a change made while it was down - dating
+// this node newer than the edit it has just lost - and hands the stale document
+// to every peer. Nothing here can put that right, so it is said as loudly as it
+// can be said, in one place rather than four
+bool config_write(void)
+{
+	if(writeFTLtoml(true, NULL))
+		return true;
+
+	log_err("The configuration was applied but could not be written to %s - this node will lose it when it restarts, and may hand the older one to the rest of the cluster",
+	        GLOBALTOMLPATH);
+	return false;
+}
+
 void config_stamp_local_change(void)
 {
 	// Before the cluster has read its state this node does not know who it
@@ -2957,7 +3079,7 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 				continue;
 			}
 
-			if(item->f & FLAG_ENV_VAR)
+			if(config_env_pinned(item))
 			{
 				result->failed_key = item->k;
 				result->failure = CONFIG_APPLY_ENV_VAR;
@@ -2994,8 +3116,11 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 		    strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
 			continue;
 
-		// An item pinned through the environment cannot be changed
-		if(item->f & FLAG_ENV_VAR)
+		// An item pinned through the environment cannot be changed - asked
+		// of config_env_pinned() rather than of the flag, because the
+		// password hash is pinned by the password rather than by a
+		// variable of its own
+		if(config_env_pinned(item))
 		{
 			result->failed_key = item->k;
 			result->failure = CONFIG_APPLY_ENV_VAR;
@@ -3090,7 +3215,7 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 		config_stamp_local_change();
 
 	set_debug_flags(&config);
-	writeFTLtoml(true, NULL);
+	config_write();
 
 	if(result->rewrite_hosts)
 		write_custom_list();

@@ -53,6 +53,26 @@ components:
               nullable: true
               description: "No additional data available"
               example: null
+    not_found:
+      type: object
+      description: Not found
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "not_found"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Not found"
+            hint:
+              type: string
+              nullable: true
+              description: "Further details"
+              example: null
     too_many_requests:
       type: object
       description: "Too many requests (rate limiting)"

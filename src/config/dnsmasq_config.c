@@ -788,12 +788,21 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			// Without a virtual IP address, every node is advertised
 			// individually so a client can fall back on its own
 			char servers[512] = "0.0.0.0";
+			unsigned int unnamed = 0;
 			cJSON *peers = conf->cluster.members.v.json;
 			for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
 			{
 				char address[INET_ADDRSTRLEN] = "";
 				if(!cJSON_IsString(item) || !cluster_peer_ipv4(item->valuestring, address, sizeof(address)))
+				{
+					// A DHCP option carries an address, so a
+					// member written as a name cannot go into
+					// one. Saying so matters: the clients would
+					// otherwise be handed this node alone, which
+					// is the outage failing over exists to avoid
+					unnamed++;
 					continue;
+				}
 
 				if(strlen(servers) + strlen(address) + 2 > sizeof(servers))
 					break;
@@ -803,6 +812,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			}
 			fputs("# Cluster: advertise every node so the clients keep\n", pihole_conf);
 			fputs("# resolving when this one stops serving them.\n", pihole_conf);
+
+			// The count includes this node's own entry, which the clients
+			// do learn about through the 0.0.0.0 above - so this says what
+			// cannot go into the option rather than how many resolvers are
+			// lost, which would be one too many
+			if(unnamed > 0)
+				log_warn("cluster: %u member%s written as %s and cannot go into a DHCP option - set cluster.vip.address, or write the member list with IP addresses",
+				         unnamed, unnamed == 1 ? " is" : "s are",
+				         unnamed == 1 ? "a name" : "names");
 
 			// dhcp.multiDNS asks for the server to be named more than
 			// once, which some clients need before they stop adding

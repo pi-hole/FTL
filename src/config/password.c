@@ -525,7 +525,19 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 					free(config.webserver.api.pwhash.v.s);
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-				writeFTLtoml(true, NULL);
+				// The stored hash really changed, and a cluster
+				// decides whose credentials are the newest by the
+				// stamp. Without moving it this node publishes a
+				// credential fingerprint nothing accounts for, has
+				// the upgrade pushed back off it by whichever peer
+				// happens to rank newer, and does it again at the
+				// next login.
+				//
+				// ...and only where the file took it: a stamp for
+				// a hash that is not on disk is the same difference
+				// pointed the other way
+				if(config_write())
+					config_stamp_local_change();
 			}
 
 			// Successful logins do not count against rate-limiting

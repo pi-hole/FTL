@@ -100,6 +100,15 @@ class ResponseVerifyer():
 				jsonData = content[expected_mimetype]
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
+			elif 'application/octet-stream' in content:
+				# A file as it is on disk, with no schema to check it
+				# against - the DHCP lease file the cluster hands its
+				# peers is one
+				expected_mimetype = 'application/octet-stream'
+				jsonData = content[expected_mimetype]
+				authentication_method = AuthenticationMethods.HEADER
+				YAMLresponseSchema = None
+				YAMLresponseExamples = None
 		else:
 			# No response defined
 			return self.errors
@@ -210,8 +219,14 @@ class ResponseVerifyer():
 			r = FTLresponse.lower()
 			if not r.startswith("<!doctype html>") and not r.startswith("<html>"):
 				self.errors.append("FTL's response does not start with <!DOCTYPE html> or <html>")
+		elif expected_mimetype == "application/octet-stream":
+			# A file verbatim. There is nothing to check beyond having
+			# received bytes at all - a DHCP lease file is empty on a node
+			# that has handed out no addresses, which is a valid answer
+			if type(FTLresponse) is not bytes and type(FTLresponse) is not str:
+				self.errors.append("FTL's response is neither bytes nor string")
 		else:
-			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
+			self.errors.append("Checker script does not know how to check for mimetype \"" + str(expected_mimetype) + "\"")
 
 		# Return all errors
 		return self.errors

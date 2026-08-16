@@ -1519,6 +1519,17 @@ int sigrtmin(void)
 
 void restart_ftl(const char *reason)
 {
+	// Somebody has already asked this process to stop and is waiting for it -
+	// a SIGTERM parked because a gravity run is in the way, which is a window
+	// of minutes. Turning that into a re-exec brings back a daemon the
+	// operator just took out of service, and a cluster asks for restarts on
+	// its own, with nobody at the keyboard
+	if(want_terminate)
+	{
+		log_info("Not restarting FTL (%s): a stop is already pending", reason);
+		return;
+	}
+
 	log_info("Restarting FTL: %s", reason);
 	exit_code = RESTART_FTL_CODE;
 	// Send SIGTERM to FTL

@@ -1110,8 +1110,10 @@ components:
       in: query
       description: |
         When the configuration in this request was changed, as a Unix
-        timestamp. Only another node of the cluster may set it, and only over a
-        signed request: it says how old the configuration being handed over is.
+        timestamp - or `1`, which a node sends when it is offering what it holds
+        as the cluster's starting point rather than a change anybody made. Only
+        another node of the cluster may set it, and only over a signed request:
+        it says how old the configuration being handed over is.
         A push older than what the receiving node holds changes nothing there,
         so a node that was away cannot overwrite a newer configuration with
         what it still held, and two pushes crossing in flight settle the same

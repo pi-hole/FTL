@@ -100,10 +100,15 @@ int api_cluster_status(struct ftl_conn *api)
 		JSON_COPY_STR_TO_OBJECT(peerconf, "hash", peer->confhash);
 		JSON_COPY_STR_TO_OBJECT(peerconf, "credentials", peer->credhash);
 		JSON_ADD_BOOL_TO_OBJECT(peerconf, "accepts_credentials", peer->accepts_credentials);
+		JSON_ADD_BOOL_TO_OBJECT(peerconf, "wants_credentials", peer->wants_credentials);
+		JSON_COPY_STR_TO_OBJECT(peerconf, "pinned", peer->pinned);
+		JSON_COPY_STR_TO_OBJECT(peerconf, "pinned_credentials", peer->pinned_credentials);
 		JSON_ADD_ITEM_TO_OBJECT(sync, "config", peerconf);
+
 		cJSON *peergravity = JSON_NEW_OBJECT();
 		JSON_ADD_NUMBER_TO_OBJECT(peergravity, "changed", peer->gravity_changed);
 		JSON_COPY_STR_TO_OBJECT(peergravity, "hash", peer->gravityhash);
+		JSON_ADD_BOOL_TO_OBJECT(peergravity, "owed", peer->gravity_owed);
 		JSON_ADD_ITEM_TO_OBJECT(sync, "gravity", peergravity);
 		JSON_ADD_ITEM_TO_OBJECT(item, "sync", sync);
 
@@ -112,6 +117,10 @@ int api_cluster_status(struct ftl_conn *api)
 
 	cJSON *cluster = JSON_NEW_OBJECT();
 	JSON_ADD_BOOL_TO_OBJECT(cluster, "enabled", config.cluster.enabled.v.b);
+	// Switched on and actually running are two different answers, and a page
+	// that only ever sees the first one draws a healthy cluster for a node
+	// where the thread never started
+	JSON_ADD_BOOL_TO_OBJECT(cluster, "running", cluster_running());
 	JSON_COPY_STR_TO_OBJECT(cluster, "leader", state.leader);
 	JSON_COPY_STR_TO_OBJECT(cluster, "dhcp_owner", state.dhcp_owner);
 	if(state.last_round > 0.0)
@@ -470,6 +479,10 @@ int api_cluster_join(struct ftl_conn *api)
 	const cJSON *password = cJSON_GetObjectItem(api->payload.json, "password");
 	const cJSON *self = cJSON_GetObjectItem(api->payload.json, "self");
 	const cJSON *pin = cJSON_GetObjectItem(api->payload.json, "pin");
+	// Only where the node being joined has a second factor. Without it that
+	// node answers the password alone with 400 and no session, and there is
+	// no way through the web interface at all
+	const cJSON *totp = cJSON_GetObjectItem(api->payload.json, "totp");
 	if(!cJSON_IsString(url) || !cJSON_IsString(password))
 		return send_json_error(api, 400, "bad_request",
 		                       "url and password are required", NULL);
@@ -505,7 +518,11 @@ int api_cluster_join(struct ftl_conn *api)
 	if(fingerprint != NULL && strlen(fingerprint) >= CLUSTER_PINLEN)
 		return send_json_error(api, 400, "bad_request", "pin is not a certificate pin", NULL);
 
-	if(!cluster_http_bootstrap(url->valuestring, password->valuestring, me,
+	const char *token = cJSON_IsString(totp) ? totp->valuestring : NULL;
+	if(token != NULL && strlen(token) >= CLUSTER_STRLEN)
+		return send_json_error(api, 400, "bad_request", "totp is not a token", NULL);
+
+	if(!cluster_http_bootstrap(url->valuestring, password->valuestring, token, me,
 	                           fingerprint, secret, sizeof(secret), &members, err, sizeof(err)))
 	{
 		return send_json_error_free(api, 400, "bad_request",
@@ -587,10 +604,38 @@ int api_cluster_leave(struct ftl_conn *api)
 		return send_json_error(api, 403, "forbidden",
 		                       "cluster.enabled is set through the environment, so it cannot be switched off here", NULL);
 
+	// Leaving is the cluster thread's work - the others have to be told
+	// first. On a node where that thread never started nothing would ever
+	// read the flag, and there is nobody to tell either, so the leave
+	// happens right here instead of being reported and not done
+	if(!cluster_running())
+	{
+		char errbuf[ERRBUF_SIZE] = "";
+		bool peers_told = false;
+		if(!cluster_leave_now(errbuf, &peers_told))
+			return send_json_error(api, 500, "internal_error",
+			                       "Could not write the configuration", errbuf);
+
+		// ...and no restart follows it, so the page has to be told not
+		// to wait for one - nor for peers that were never told, which is
+		// something only the administrator can now put right
+		cJSON *left = JSON_NEW_OBJECT();
+		JSON_ADD_BOOL_TO_OBJECT(left, "leaving", true);
+		JSON_ADD_BOOL_TO_OBJECT(left, "restarting", false);
+		JSON_ADD_BOOL_TO_OBJECT(left, "peers_told", peers_told);
+		JSON_SEND_OBJECT(left);
+	}
+
 	cluster_leave();
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_BOOL_TO_OBJECT(json, "leaving", true);
+	JSON_ADD_BOOL_TO_OBJECT(json, "restarting", true);
+	// No `peers_told` here: the cluster thread does the telling a round from
+	// now, and how many of them it reached goes in the log. Answering `true`
+	// before anything has been attempted said the opposite of what happens
+	// when a peer is down - "0 of 1 nodes told"
+
 	JSON_SEND_OBJECT(json);
 }
 

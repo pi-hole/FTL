@@ -195,15 +195,6 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		if(!teleporter && readEnvValue(new_conf_item, newconf, env_vars, &reset))
 		{
 			new_conf_item->f |= FLAG_ENV_VAR;
-
-			// webserver.api.password writes the hash next to it rather
-			// than a value of its own. That hash is as forced by the
-			// environment as the password is - it is recomputed from it
-			// at every start - so a cluster must neither hand it around
-			// nor read the recomputation as somebody setting a password
-			if(new_conf_item->t == CONF_PASSWORD)
-				get_conf_item(newconf, i - 1)->f |= FLAG_ENV_VAR;
-
 			continue;
 		}
 
