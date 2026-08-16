@@ -1914,8 +1914,14 @@ bool queries_to_database(void)
 	bool phase1_error = false;
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
-	// mostly skipped due to in_database caching)
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	// mostly skipped due to in_database caching). SQL_bool() cannot be used
+	// while we hold the SHM lock, as its early return would leave the lock
+	// taken for good
+	if(dbquery(memdb, "BEGIN TRANSACTION") != SQLITE_OK)
+	{
+		log_err("queries_to_database(): Failed to start linking table transaction");
+		goto unlock_fail;
+	}
 
 	for(unsigned int queryID = last_query; queryID < counters->queries; queryID++)
 	{
@@ -2166,7 +2172,11 @@ bool queries_to_database(void)
 	}
 
 	// Commit linking table transaction
-	SQL_bool(memdb, "END");
+	if(dbquery(memdb, "END") != SQLITE_OK)
+	{
+		log_err("queries_to_database(): Failed to commit linking table transaction");
+		goto rollback_unlock_fail;
+	}
 
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
@@ -2184,7 +2194,11 @@ bool queries_to_database(void)
 	// the DNS processing or API threads.
 	// ===================================================================
 
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	if(dbquery(memdb, "BEGIN TRANSACTION") != SQLITE_OK)
+	{
+		log_err("queries_to_database(): Failed to start query transaction");
+		goto fail;
+	}
 
 	unsigned int succeeded = 0;
 	for(unsigned int i = 0; i < snap_count; i++)
@@ -2236,7 +2250,11 @@ bool queries_to_database(void)
 		succeeded++;
 	}
 
-	SQL_bool(memdb, "END");
+	if(dbquery(memdb, "END") != SQLITE_OK)
+	{
+		log_err("queries_to_database(): Failed to commit query transaction");
+		goto rollback_fail;
+	}
 
 	// ===================================================================
 	// PHASE 3: Brief SHM lock — write back db indices and clear changed
@@ -2293,4 +2311,18 @@ bool queries_to_database(void)
 	}
 
 	return true;
+
+	// Common cleanup for the transaction failures above. `SQL_bool()` is not
+	// usable there: its early return would skip the unlock and leave the SHM
+	// lock taken for good
+rollback_unlock_fail:
+	dbquery(memdb, "ROLLBACK");
+unlock_fail:
+	unlock_shm();
+	goto fail;
+rollback_fail:
+	dbquery(memdb, "ROLLBACK");
+fail:
+	free(snaps);
+	return false;
 }
