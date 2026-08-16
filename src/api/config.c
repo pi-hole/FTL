@@ -460,11 +460,15 @@ static int api_config_get(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "detailed", &detailed);
 	}
 
-	// A peer gets the document it may read, never this node's password
-	// hashes - also as the answer to its own PATCH
+	// A peer is answered with the document it may read elsewhere, also after
+	// its own PATCH. The full one carries this node's password hashes, and
+	// credentials stay out as well: the answer is read by nobody
 	const bool from_cluster = api->session.used && api->session.cluster;
 	cJSON *json = JSON_NEW_OBJECT();
-	get_json_config(api, json, detailed && !from_cluster, from_cluster, api->request->is_ssl);
+	if(from_cluster)
+		get_json_config(api, json, false, true, false);
+	else
+		get_json_config(api, json, detailed, false, false);
 
 	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
@@ -563,7 +567,7 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config)
 		log_web_debug(DEBUG_API, "Cluster push is older than what this node holds, keeping ours");
 
 		cJSON *json = JSON_NEW_OBJECT();
-		get_json_config(api, json, false, true, api->request->is_ssl);
+		get_json_config(api, json, false, true, false);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -994,7 +998,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	set_debug_flags(&config);
 
 	// Store changed configuration to disk
-	writeFTLtoml(true, NULL);
+	config_write();
 	cluster_sync_unlock();
 
 	// Rewrite HOSTS file if required
