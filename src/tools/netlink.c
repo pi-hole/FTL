@@ -50,7 +50,7 @@ static size_t __attribute__ ((const)) family_addrlen(const int family)
 }
 
 // Convert an address attribute into its string representation. Returns false
-// if the family is none we can render or the payload is too short for it.
+// if the family is not one we can render or the payload is too short for it.
 static bool rta_address(const struct rtattr *rta, const int family, const char *name,
                         char *ip, const size_t iplen)
 {
