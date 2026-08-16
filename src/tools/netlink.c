@@ -1186,8 +1186,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					break;
 
 				// The nested attribute carries its own length, so it
-				// must not claim more than the outer payload holds
-				if(RTA_PAYLOAD(rta) < vfinfo->rta_len)
+				// must cover its header and must not claim more than
+				// the outer payload holds
+				if(vfinfo->rta_len < sizeof(struct rtattr) ||
+				   RTA_PAYLOAD(rta) < vfinfo->rta_len)
 				{
 					log_debug(DEBUG_NETLINK, "IFLA_VF_INFO claims %u byte(s) of %zu, skipping",
 					          (unsigned int)vfinfo->rta_len, (size_t)RTA_PAYLOAD(rta));
