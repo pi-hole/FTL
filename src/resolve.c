@@ -33,6 +33,8 @@
 #include "regex_r.h"
 // statis_assert()
 #include <assert.h>
+#include <poll.h>
+#include <time.h>
 // TCP_MAX_QUERIES
 #include "dnsmasq/config.h"
 // get_secure_randomness()
@@ -287,13 +289,98 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 // Helper macro to reduce code duplication
 #define log_resolve_info(host, port, tcp) { log_info("Tried to resolve PTR \"%s\" on 127.0.0.1#%u (%s)", host, port, tcp ? "TCP" : "UDP"); }
 
+static int64_t resolver_monotonic_msec(void)
+{
+	struct timespec now = { 0 };
+	if(clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+		return -1;
+
+	return (int64_t)now.tv_sec * 1000LL + now.tv_nsec / 1000000LL;
+}
+
+static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
+                                      const uint16_t request_id, const char *host,
+                                      struct DNS_HEADER *dns, uint8_t **answer)
+{
+	if(response_len < sizeof(struct DNS_HEADER))
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding short UDP DNS reply while resolving PTR \"%s\" (%zu bytes)",
+		          host, response_len);
+		return false;
+	}
+
+	struct DNS_HEADER response = { 0 };
+	memcpy(&response, buf, sizeof(response));
+
+	if(response.id != request_id || response.qr != 1 || response.opcode != 0 ||
+	   ntohs(response.q_count) != 1)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding unrelated UDP DNS reply while resolving PTR \"%s\" "
+		          "(id %u, expected %u, qr %u, opcode %u, questions %u)",
+		          host, (unsigned int)ntohs(response.id),
+		          (unsigned int)ntohs(request_id), (unsigned int)response.qr,
+		          (unsigned int)response.opcode,
+		          (unsigned int)ntohs(response.q_count));
+		return false;
+	}
+
+	const unsigned char *bufend = buf + response_len;
+	uint8_t *reader = buf + sizeof(struct DNS_HEADER);
+	uint16_t consumed = 0;
+	unsigned char *question_name = nameFromDNS(reader, buf, bufend, &consumed);
+	if(question_name == NULL)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding malformed UDP DNS question while resolving PTR \"%s\"",
+		          host);
+		return false;
+	}
+
+	if(consumed > (size_t)(bufend - reader) ||
+	   sizeof(struct QUESTION) > (size_t)(bufend - reader - consumed))
+	{
+		free(question_name);
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding truncated UDP DNS question while resolving PTR \"%s\"",
+		          host);
+		return false;
+	}
+
+	reader += consumed;
+	struct QUESTION question = { 0 };
+	memcpy(&question, reader, sizeof(question));
+
+	const bool matches =
+	    strcasecmp((const char *)question_name, host) == 0 &&
+	    ntohs(question.qtype) == T_PTR &&
+	    ntohs(question.qclass) == 1;
+
+	if(!matches)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding UDP DNS reply with mismatched question while resolving "
+		          "PTR \"%s\" (received \"%s\", type %u, class %u)",
+		          host, (const char *)question_name,
+		          (unsigned int)ntohs(question.qtype),
+		          (unsigned int)ntohs(question.qclass));
+		free(question_name);
+		return false;
+	}
+
+	free(question_name);
+	*dns = response;
+	*answer = reader + sizeof(struct QUESTION);
+	return true;
+}
+
 // Perform a name lookup by sending a packet to ourselves
 static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
                            char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
 {	
 	// Initialize request DNS header
 	struct DNS_HEADER dns = { 0 };
-
 	// Random query ID. This has to be unpredictable, as an off-path
 	// attacker who can guess it may forge a reply
 	uint16_t query_id = 0;
@@ -303,6 +390,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		return false;
 	}
 	dns.id = htons(query_id);
+	const uint16_t request_id = dns.id;
 	dns.qr = 0; // This is a query
 	dns.opcode = 0; // This is a standard query
 	dns.aa = 0; // Not Authoritative
@@ -325,7 +413,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	if(hname == NULL)
 	{
 		log_err("Unable to allocate memory for hname");
-		return NULL;
+		return false;
 	}
 	strncpy(hname, host, hnamelen);
 	strncat(hname, ".", hnamelen - strlen(hname));
@@ -353,6 +441,10 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u (%s)",
 	          host, config.dns.port.v.u16, tcp ? "TCP" : "UDP");
 
+	ssize_t response_len = sizeof(buf);
+	uint8_t *reader = NULL;
+	uint16_t prefix = 0;
+
 	// Send the query and receive the answer
 	if(!tcp)
 	{
@@ -363,15 +455,92 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		{
 			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 
-		// Receive the answer
-		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
+		const int64_t start = resolver_monotonic_msec();
+		if(start < 0)
 		{
-			log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
+		}
+		const int64_t deadline = start + 2000;
+
+		while(true)
+		{
+			const int64_t now = resolver_monotonic_msec();
+			if(now < 0)
+			{
+				log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			const int64_t remaining = deadline - now;
+			if(remaining <= 0)
+			{
+				log_err("Cannot receive UDP DNS reply: Timed out after 2000 ms");
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			struct pollfd pfd = {
+				.fd = sock,
+				.events = POLLIN,
+				.revents = 0,
+			};
+
+			const int ready = poll(&pfd, 1, (int)remaining);
+			if(ready < 0)
+			{
+				if(errno == EINTR)
+					continue;
+
+				log_err("Cannot wait for UDP DNS reply: %s", strsockerr(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+			if(ready == 0)
+			{
+				log_err("Cannot receive UDP DNS reply: Timed out after 2000 ms");
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			struct sockaddr_in source = { 0 };
+			socklen_t source_len = sizeof(source);
+			response_len = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT,
+			                        (struct sockaddr *)&source, &source_len);
+			if(response_len < 0)
+			{
+				if(errno == EAGAIN || errno == EINTR)
+					continue;
+
+				log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			if(source_len < (socklen_t)sizeof(source) ||
+			   source.sin_family != dest->sin_family ||
+			   source.sin_addr.s_addr != dest->sin_addr.s_addr ||
+			   source.sin_port != dest->sin_port)
+			{
+				log_debug(DEBUG_RESOLVER,
+				          "Discarding UDP DNS reply from unexpected source while "
+				          "resolving PTR \"%s\"",
+				          host);
+				continue;
+			}
+
+			if(!validate_udp_ptr_response(buf, (size_t)response_len,
+			                              request_id, host, &dns, &reader))
+				continue;
+
+			// Unrelated datagrams may keep the loop active until this request's
+			// deadline, but they cannot extend the original two-second wait.
+			break;
 		}
 	}
 	else
@@ -383,7 +552,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		// not sending messages (datagrams) but a continuous stream of
 		// bytes. We therefore need a way to tell the receiver about
 		// this length of the message.
-		uint16_t prefix = htons(len & 0xffffu);
+		prefix = htons(len & 0xffffu);
 		if(send(sock, &prefix, sizeof(prefix), 0) < 0 ||
 		   send(sock, buf, len, 0) < 0)
 		{
@@ -412,19 +581,39 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			return false;
 		}
 		bzero(buf, prefix + 1);
-		// ... then the message itself
-		if(recv(sock, buf, sizeof(buf), 0) < 0)
-		{
-			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
-			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return false;
-		}
-	}
 
-	// Parse the reply
-	memcpy(&dns, buf, sizeof(struct DNS_HEADER));
-	// Move ahead of the dns header and the query field
-	uint8_t *reader = &buf[len];
+		// ... then the message itself. recv() on a stream socket may
+		// return fewer bytes than requested, so keep reading until the
+		// complete DNS message announced by prefix has arrived.
+		response_len = 0;
+		while((size_t)response_len < prefix)
+		{
+			const ssize_t received =
+			    recv(sock, buf + (size_t)response_len,
+			         prefix - (size_t)response_len, 0);
+			if(received < 0)
+			{
+				if(errno == EINTR)
+					continue;
+
+				log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+			if(received == 0)
+			{
+				log_err("Cannot receive TCP DNS reply (2): connection closed after "
+				        "%zd of %u bytes", response_len, prefix);
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			response_len += received;
+		}
+
+		memcpy(&dns, buf, sizeof(struct DNS_HEADER));
+		reader = &buf[len];
+	}
 
 	// Log the status of the query
 	log_debug(DEBUG_RESOLVER, "DNS query for PTR \"%s\" returned status %s (%i)",
@@ -436,14 +625,14 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		log_debug(DEBUG_RESOLVER, " --> DNS response truncated");
 		if(truncated != NULL)
 			*truncated = true;
-		return NULL;
+		return false;
 	}
 
 	// Start reading answers
 	uint16_t stop = 0;
 	bool have_name = false;
 	struct RES_RECORD answers[20] = { 0 };
-	const unsigned char *bufend = buf + sizeof(buf);
+	const unsigned char *bufend = buf + (size_t)response_len;
 	for(uint16_t i = 0; i < min(ntohs(dns.ans_count), ArraySize(answers)); i++)
 	{
 		// Ensure the read pointer still points within the receive

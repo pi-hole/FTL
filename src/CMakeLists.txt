@@ -445,6 +445,16 @@ endif()
 #
 # Only built on request: `./build.sh test` enables it for local runs and the
 # CI Dockerfile passes -DBUILD_DOTDOH_REGRESSION=ON at build time.
+option(BUILD_PTR_RESPONSE_REGRESSION "Build the PTR response regression test harness" OFF)
+if(BUILD_PTR_RESPONSE_REGRESSION)
+    add_executable(ptr_response_regression
+            ${PROJECT_SOURCE_DIR}/test/ptr_response_regression.c
+            ${PROJECT_SOURCE_DIR}/src/resolve.c)
+    target_include_directories(ptr_response_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_compile_options(ptr_response_regression PRIVATE -fvisibility=hidden)
+    target_link_libraries(ptr_response_regression Threads::Threads)
+endif()
+
 option(BUILD_DOTDOH_REGRESSION "Build the dotdoh regression test harness" OFF)
 if(BUILD_DOTDOH_REGRESSION)
     add_executable(dotdoh_regression
