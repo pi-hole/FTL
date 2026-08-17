@@ -866,7 +866,19 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			// thread after we release the lock below, which would
 			// leave a dangling pointer if we used
 			// JSON_REF_STR_IN_ARRAY here (see #2786)
-			JSON_COPY_STR_TO_ARRAY(blocked, domain);
+			// The JSON_* macros cannot be used while we hold the
+			// lock, as their early return would leave it taken for
+			// good
+			cJSON *item = cJSON_CreateString(domain);
+			if(item == NULL)
+			{
+				log_err("api_stats_recentblocked(): Failed to allocate JSON string");
+				cJSON_Delete(blocked);
+				unlock_shm();
+				send_http_internal_error(api);
+				return 500;
+			}
+			cJSON_AddItemToArray(blocked, item);
 
 			// Only count when added successfully
 			found++;
