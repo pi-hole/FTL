@@ -378,7 +378,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		{
 			log_err("Cannot send TCP DNS query: %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 
 		// Receive the answer, first the length of the message ...
@@ -387,7 +387,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		{
 			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 		prefix = ntohs(prefix);
 
@@ -398,7 +398,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		{
 			log_err("Received TCP DNS reply is too long (%u bytes)", prefix);
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 		bzero(buf, prefix + 1);
 		// ... then the message itself
@@ -406,7 +406,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		{
 			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 	}
 
