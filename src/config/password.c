@@ -99,6 +99,8 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 	return strdup(response);
 }
 
+// Thread-safe: getrandom() is a syscall and the /dev/urandom fallback opens
+// its own stream per call, so this keeps no state shared between callers
 bool get_secure_randomness(uint8_t *buffer, const size_t length)
 {
 	ssize_t result = -1;
@@ -112,8 +114,6 @@ bool get_secure_randomness(uint8_t *buffer, const size_t length)
 	if (result < 0 && errno == EAGAIN)
 	{
 		log_warn("Not enough entropy available right now for generating secure randomness, retrying in blocking mode");
-		// Sleep for 1 second to give the kernel some time to gather entropy
-		sleepms(1000);
 	}
 	else
 	{

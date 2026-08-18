@@ -37,6 +37,8 @@
 
 // strncpy()
 #include <string.h>
+// get_secure_randomness()
+#include "config/password.h"
 
 // IP4STR() formats into a single static buffer shared by all callers, so
 // concurrent interface threads would overwrite each other's address. Format
@@ -713,9 +715,13 @@ static void *dhcp_discover_iface_v4(void *args)
 	unsigned char mac[MAX_DHCP_CHADDR_LENGTH] = { 0 };
 	get_hardware_address(dhcp_socket, tdata->iface, mac);
 
-	// Generate pseudo-random transaction ID
-	srand((unsigned int)time(NULL) + getpid());
-	const uint32_t xid = (uint32_t)random();
+	// Random transaction ID identifying this exchange
+	uint32_t xid = 0;
+	if(!get_secure_randomness((uint8_t *)&xid, sizeof(xid)))
+	{
+		log_err("Unable to generate a random DHCP transaction ID");
+		goto end_dhcp_discover_iface_v4;
+	}
 
 	// Probe servers on this interface
 	if(!send_dhcp_discover(dhcp_socket, xid, tdata->iface, mac))
