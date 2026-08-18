@@ -1872,4 +1872,26 @@ setup() {
   assert_success
 }
 
+@test "Gravity: API write is not refused while another connection reads" {
+  # gravity_updated() opens its own read-only connection to gravity.db once per
+  # second. The gravity connection carries no busy handler so DNS lookups never
+  # wait, and a write committing inside that window used to fail outright with
+  # "database is locked", losing the edit. Hold a read transaction here and
+  # write through the API while it is held.
+  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell sleep 0.4\nCOMMIT;\n' | \
+    ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db > /dev/null 2>&1 &
+  reader=$!
+  sleep 0.1
+
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}"'
+  assert_success
+  assert_output --regexp '^20[01]$'
+
+  wait "${reader}"
+
+  # Remove it again so the following tests see the list they expect
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
+  assert_output "204"
+}
+
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
