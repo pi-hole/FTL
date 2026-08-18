@@ -1827,8 +1827,24 @@ bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int n
 	return true;
 }
 
-bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
-                          const char **message, const enum http_method method)
+// The gravity connection deliberately runs without a busy handler so that a DNS
+// lookup never waits for the database (see gravityDB_open()). Writes need the
+// opposite: gravity_updated() opens its own read connection once per second, and
+// a COMMIT landing in that window fails outright without one. Arm it for the
+// duration of a write and take it off again afterwards
+static void gravity_write_wait(const bool wait)
+{
+	if(gravity_db == NULL)
+		return;
+
+	const int rc = sqlite3_busy_handler(gravity_db, wait ? sqliteBusyCallback : NULL, NULL);
+	if(rc != SQLITE_OK)
+		log_err("gravity_write_wait(%s) - Cannot set busy handler: %s",
+		        wait ? "true" : "false", sqlite3_errstr(rc));
+}
+
+static bool addToTable(const enum gravity_list_type listtype, tablerow *row,
+                       const char **message, const enum http_method method)
 {
 	if(gravity_db == NULL)
 	{
@@ -2091,7 +2107,16 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	return okay;
 }
 
-bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
+bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
+                          const char **message, const enum http_method method)
+{
+	gravity_write_wait(true);
+	const bool ret = addToTable(listtype, row, message, method);
+	gravity_write_wait(false);
+	return ret;
+}
+
+static bool delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
 {
 	// Return early if database is not available
 	if(gravity_db == NULL)
@@ -2353,6 +2378,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	}
 
 	return true;
+}
+
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
+{
+	gravity_write_wait(true);
+	const bool ret = delFromTable(listtype, array, deleted, message);
+	gravity_write_wait(false);
+	return ret;
 }
 
 bool gravityDB_readTable(const enum gravity_list_type listtype,
@@ -2738,8 +2771,8 @@ void gravityDB_readTableFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
-bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
-                           const tablerow *row, const char **message)
+static bool edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+                        const tablerow *row, const char **message)
 {
 	if(gravity_db == NULL)
 	{
@@ -2948,6 +2981,15 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	sqlite3_finalize(stmt);
 
 	return okay;
+}
+
+bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+                           const tablerow *row, const char **message)
+{
+	gravity_write_wait(true);
+	const bool ret = edit_groups(listtype, groups, row, message);
+	gravity_write_wait(false);
+	return ret;
 }
 
 void check_inaccessible_adlists(void)
