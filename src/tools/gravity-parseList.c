@@ -370,7 +370,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			continue;
 
 		// Split by whitespace and tabs and look over the tokens
-		char *token = strtok(line, " \t");
+		char *saveptr = NULL;
+		char *token = strtok_r(line, " \t", &saveptr);
 		while(token != NULL)
 		{
 			// Skip empty tokens
@@ -542,7 +543,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				}
 			}
 next_domain:
-			token = strtok(NULL, " \t");
+			token = strtok_r(NULL, " \t", &saveptr);
 		}
 
 		// Print progress if the file is large enough every 100 lines
