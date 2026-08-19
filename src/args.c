@@ -641,8 +641,8 @@ void parse_args(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		// Valid fields: must start with an uppercase ASCII letter and may contain
-		// only uppercase ASCII letters, digits, and underscores.
+		// Valid fields: key must contain only printable ASCII (0x20-0x7E),
+		// must not be empty, and must not start with '_'.
 		for(int i = 2; i < argc; i++)
 		{
 			const char *eq = strchr(argv[i], '=');
@@ -652,20 +652,22 @@ void parse_args(int argc, char *argv[])
 				exit(EXIT_FAILURE);
 			}
 
-			// Validate key: must start with A-Z, rest A-Z/0-9/_
-			const char *key = argv[i];
-			if(key[0] < 'A' || key[0] > 'Z')
+			// Key must not start with underscore
+			if(argv[i][0] == '_')
 			{
-				printf("Error: Field key in '%s' must start with an uppercase letter.\n", argv[i]);
+				printf("Error: Field key in '%s' must not start with an underscore.\n", argv[i]);
 				exit(EXIT_FAILURE);
 			}
-			for(const char *p = key + 1; p < eq; p++)
+
+			// Validate key: all characters must be printable ASCII (0x20-0x7E)
+			const char *key = argv[i];
+			for(const char *p = key; p < eq; p++)
 			{
-				const char c = *p;
-				if(!(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '_')
+				const unsigned char c = *p;
+				if(c < 0x20 || c > 0x7E)
 				{
 					printf("Error: Field key in '%s' contains invalid character '%c'. "
-					       "Keys may only contain uppercase letters, digits, or underscores.\n",
+					       "Keys may only contain printable ASCII characters.\n",
 					       argv[i], c);
 					exit(EXIT_FAILURE);
 				}
