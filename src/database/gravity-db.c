@@ -1827,10 +1827,34 @@ bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int n
 	return true;
 }
 
-bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
-                          const char **message, const enum http_method method)
+// Writes get their own connection. sqlite3_busy_handler() is a property of the
+// connection, and the shared one is deliberately left without one so a DNS
+// lookup never waits for the database (see gravityDB_open()). A write does want
+// to wait: the database thread reads gravity.db once per second in
+// gravity_updated(), and a COMMIT meeting that reader fails outright otherwise
+static sqlite3 *gravity_write_open(const char **message)
 {
-	if(gravity_db == NULL)
+	sqlite3 *db = NULL;
+	const int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READWRITE, NULL);
+	if(rc != SQLITE_OK || db == NULL)
+	{
+		log_err("gravity_write_open() - SQL error open: %s", sqlite3_errstr(rc));
+		if(message != NULL)
+			*message = "Cannot open gravity database for writing";
+		sqlite3_close(db);
+		return NULL;
+	}
+
+	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
+		log_err("gravity_write_open() - Cannot set busy handler: %s", sqlite3_errmsg(db));
+
+	return db;
+}
+
+static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, tablerow *row,
+                       const char **message, const enum http_method method)
+{
+	if(db == NULL)
 	{
 		*message = "Database not available";
 		return false;
@@ -1927,10 +1951,10 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s) - SQL error prepare (%i): %s",
 		        row->type_int, row->item, rc, *message);
 		return false;
@@ -1940,7 +1964,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const int item_idx = sqlite3_bind_parameter_index(stmt, ":item");
 	if(item_idx > 0 && (rc = sqlite3_bind_text(stmt, item_idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind item (error %d) - %s",
 		        row->type_int, row->item, rc, *message);
 		sqlite3_finalize(stmt);
@@ -1951,7 +1975,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const int name_idx = sqlite3_bind_parameter_index(stmt, ":name");
 	if(name_idx > 0 && (rc = sqlite3_bind_text(stmt, name_idx, row->name, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind name (error %d) - %s",
 		        row->type_int, row->item, rc, *message);
 		sqlite3_finalize(stmt);
@@ -1962,7 +1986,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
 	if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, row->type_int)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind type (error %d) - %s",
 		        row->type_int, row->item, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2024,7 +2048,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		// Bind oldtype to database statement
 		if((rc = sqlite3_bind_int(stmt, oldtype_idx, oldtype)) != SQLITE_OK)
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_addToTable(%d, %s): Failed to bind oldtype (error %d) - %s",
 			        row->type_int, row->item, rc, *message);
 			sqlite3_finalize(stmt);
@@ -2036,7 +2060,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const int enabled_idx = sqlite3_bind_parameter_index(stmt, ":enabled");
 	if(enabled_idx > 0 && (rc = sqlite3_bind_int(stmt, enabled_idx, row->enabled ? 1 : 0)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind enabled (error %d) - %s",
 		        row->type_int, row->item, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2047,7 +2071,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	const int comment_idx = sqlite3_bind_parameter_index(stmt, ":comment");
 	if(comment_idx > 0 && (rc = sqlite3_bind_text(stmt, comment_idx, row->comment, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_addToTable(%d, %s): Failed to bind comment (error %d) - %s",
 		        row->type_int, row->item, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2066,7 +2090,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		if(rc == SQLITE_CONSTRAINT)
 			*message = "The item is already present";
 		else
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 	}
 
 	// Finalize statement and close database handle
@@ -2091,10 +2115,22 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 	return okay;
 }
 
-bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
+bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
+                          const char **message, const enum http_method method)
+{
+	sqlite3 *db = gravity_write_open(message);
+	if(db == NULL)
+		return false;
+
+	const bool ret = addToTable(db, listtype, row, message, method);
+	sqlite3_close(db);
+	return ret;
+}
+
+static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
 {
 	// Return early if database is not available
-	if(gravity_db == NULL)
+	if(db == NULL)
 	{
 		*message = "Database not available";
 		return false;
@@ -2120,10 +2156,10 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 
 	// Begin transaction
 	const char *querystr = "BEGIN TRANSACTION;";
-	int rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	int rc = sqlite3_exec(db, querystr, NULL, NULL, NULL);
 	if(rc != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
 		return false;
@@ -2137,16 +2173,16 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		querystr = "CREATE TEMPORARY TABLE deltable (item TEXT);";
 
 	sqlite3_stmt* stmt = NULL;
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d) - SQL error prepare(\"%s\"): %s",
 		        listtype, querystr, *message);
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
-		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+		sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 		return false;
 	}
@@ -2154,14 +2190,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	// Execute statement
 	if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d) - SQL error step(\"%s\"): %s",
 		        listtype, querystr, *message);
 		sqlite3_finalize(stmt);
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
-		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+		sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 		return false;
 	}
@@ -2175,16 +2211,16 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	else
 		querystr = "INSERT INTO deltable (item) VALUES (:item);";
 
-	rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d) - SQL error prepare(\"%s\"): %s",
 		        listtype, querystr, *message);
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
-		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+		sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 		return false;
 	}
@@ -2210,14 +2246,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		const int type_idx = sqlite3_bind_parameter_index(stmt, ":type");
 		if(type_idx > 0 && (rc = sqlite3_bind_int(stmt, type_idx, type_int)) != SQLITE_OK)
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_delFromTable(%d): Failed to bind type (error %d) - %s",
 			        type_int, rc, *message);
 			sqlite3_finalize(stmt);
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
-			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+			sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 			return false;
 		}
@@ -2227,14 +2263,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		const int item_idx = sqlite3_bind_parameter_index(stmt, ":item");
 		if(item_idx > 0 && (!cJSON_IsString(item) || (rc = sqlite3_bind_text(stmt, item_idx, item->valuestring, -1, SQLITE_STATIC)) != SQLITE_OK))
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_delFromTable(%d): Failed to bind item (error %d) - %s",
 			        listtype, rc, *message);
 			sqlite3_finalize(stmt);
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
-			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+			sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 			return false;
 		}
@@ -2242,14 +2278,14 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		// Execute statement
 		if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_delFromTable(%d) - SQL error step(\"%s\"): %s",
 			        listtype, querystr, *message);
 			sqlite3_finalize(stmt);
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
-			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+			sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 			return false;
 		}
@@ -2302,57 +2338,68 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 			break;
 
 		// Execute statement
-		rc = sqlite3_exec(gravity_db, querystrs[i], NULL, NULL, NULL);
+		rc = sqlite3_exec(db, querystrs[i], NULL, NULL, NULL);
 		if(rc != SQLITE_OK)
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 			        listtype, querystrs[i], *message);
 
 			// Rollback transaction
 			querystr = "ROLLBACK TRANSACTION;";
-			sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+			sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 			return false;
 		}
 
 		// Add number of deleted rows
-		*deleted += sqlite3_changes(gravity_db);
+		*deleted += sqlite3_changes(db);
 	}
 
 	// Drop temporary table
 	querystr = "DROP TABLE deltable;";
-	rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	rc = sqlite3_exec(db, querystr, NULL, NULL, NULL);
 	if(rc != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
-		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+		sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 		return false;
 	}
 
 	// Commit transaction
 	querystr = "COMMIT TRANSACTION;";
-	rc = sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+	rc = sqlite3_exec(db, querystr, NULL, NULL, NULL);
 	if(rc != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_delFromTable(%d): SQL error exec(\"%s\"): %s",
 		        listtype, querystr, *message);
 
 		// Rollback transaction
 		querystr = "ROLLBACK TRANSACTION;";
-		sqlite3_exec(gravity_db, querystr, NULL, NULL, NULL);
+		sqlite3_exec(db, querystr, NULL, NULL, NULL);
 
 		return false;
 	}
 
 	return true;
+}
+
+bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
+{
+	sqlite3 *db = gravity_write_open(message);
+	if(db == NULL)
+		return false;
+
+	const bool ret = delFromTable(db, listtype, array, deleted, message);
+	sqlite3_close(db);
+	return ret;
 }
 
 bool gravityDB_readTable(const enum gravity_list_type listtype,
@@ -2738,10 +2785,10 @@ void gravityDB_readTableFinalize(sqlite3_stmt *read_stmt)
 	sqlite3_finalize(read_stmt);
 }
 
-bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
-                           const tablerow *row, const char **message)
+static bool edit_groups(sqlite3 *db, const enum gravity_list_type listtype, cJSON *groups,
+                        const tablerow *row, const char **message)
 {
-	if(gravity_db == NULL)
+	if(db == NULL)
 	{
 		*message = "Database not available";
 		return false;
@@ -2777,10 +2824,10 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 
 	// First step: Get ID of the item to modify
 	sqlite3_stmt* stmt = NULL;
-	int rc = sqlite3_prepare_v2(gravity_db, get_querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, get_querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare SELECT (%i): %s",
 		        listtype, rc, *message);
 		return false;
@@ -2790,7 +2837,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	int idx = sqlite3_bind_parameter_index(stmt, ":item");
 	if(idx > 0 && (rc = sqlite3_bind_text(stmt, idx, row->item, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind item SELECT (error %d) - %s",
 		        listtype, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2801,7 +2848,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	idx = sqlite3_bind_parameter_index(stmt, ":type");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, row->type_int)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind type SELECT (error %d) - %s",
 		        listtype, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2819,7 +2866,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	}
 	else
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 	}
 
 	// Debug output
@@ -2838,10 +2885,10 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	// Second step: Delete all existing group associations for this item
-	rc = sqlite3_prepare_v2(gravity_db, del_querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, del_querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare DELETE (%i): %s",
 		        listtype, rc, *message);
 		return false;
@@ -2851,7 +2898,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	idx = sqlite3_bind_parameter_index(stmt, ":id");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, id)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind id DELETE (error %d) - %s",
 		        listtype, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2866,7 +2913,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	else
 	{
 		okay = false;
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 	}
 
 	// Debug output
@@ -2884,10 +2931,10 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	// Third step: Create new group associations for this item
-	rc = sqlite3_prepare_v2(gravity_db, add_querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, add_querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d) - SQL error prepare INSERT (%i): %s",
 		        listtype, rc, *message);
 		return false;
@@ -2897,7 +2944,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	idx = sqlite3_bind_parameter_index(stmt, ":id");
 	if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, id)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_edit_groups(%d): Failed to bind id INSERT (error %d) - %s",
 		        listtype, rc, *message);
 		sqlite3_finalize(stmt);
@@ -2916,7 +2963,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		idx = sqlite3_bind_parameter_index(stmt, ":gid");
 		if(idx > 0 && (rc = sqlite3_bind_int(stmt, idx, group->valueint)) != SQLITE_OK)
 		{
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			log_err("gravityDB_edit_groups(%d): Failed to bind gid INSERT (error %d) - %s",
 			listtype, rc, *message);
 			sqlite3_finalize(stmt);
@@ -2927,7 +2974,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		if((rc = sqlite3_step(stmt)) != SQLITE_DONE)
 		{
 			okay = false;
-			*message = sqlite3_errmsg(gravity_db);
+			*message = sqlite3_errmsg(db);
 			break;
 		}
 
@@ -2948,6 +2995,18 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 	sqlite3_finalize(stmt);
 
 	return okay;
+}
+
+bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+                           const tablerow *row, const char **message)
+{
+	sqlite3 *db = gravity_write_open(message);
+	if(db == NULL)
+		return false;
+
+	const bool ret = edit_groups(db, listtype, groups, row, message);
+	sqlite3_close(db);
+	return ret;
 }
 
 void check_inaccessible_adlists(void)
