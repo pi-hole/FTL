@@ -603,10 +603,41 @@ void parse_args(int argc, char *argv[])
 	if(argc > 1 && strcmp(argv[1], "journal-send") == 0)
 	{
 #ifdef HAVE_LIBJOURNAL
-		if(argc < 3)
+		// Check if MESSAGE is provided as an argument
+		bool has_message = false;
+		for(int i = 2; i < argc; i++)
+		{
+			if(strncmp(argv[i], "MESSAGE=", 9) == 0)
+			{
+				has_message = true;
+				break;
+			}
+		}
+
+		// If MESSAGE is not provided, read it from stdin
+		char *stdin_message = NULL;
+		if(!has_message)
+		{
+			size_t buf_size = 0;
+			ssize_t len = getline(&stdin_message, &buf_size, stdin);
+			if(len > 0)
+			{
+				// Remove trailing newline
+				if(stdin_message[len - 1] == '\n')
+					stdin_message[len - 1] = '\0';
+			}
+			else
+			{
+				free(stdin_message);
+				stdin_message = NULL;
+			}
+		}
+
+		if(argc < 3 && stdin_message == NULL)
 		{
 			printf("Usage: %s journal-send FIELD=VALUE [FIELD=VALUE ...]\n", argv[0]);
 			printf("Example: %s journal-send MESSAGE=\"hello world\" PRIORITY=5\n", argv[0]);
+			printf("       echo \"hello\" | %s journal-send PRIORITY=5\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 
@@ -651,16 +682,17 @@ void parse_args(int argc, char *argv[])
 
 		// Build iovec array for journal_sendv()
 		// Each field must be in "KEY=value\n" format per the journald wire protocol
-		const int nfields = argc - 2;
+		const int nfields = (argc - 2) + (stdin_message != NULL ? 1 : 0);
 		struct iovec *iov = malloc(nfields * sizeof(struct iovec));
 		if(iov == NULL)
 		{
 			printf("Error: Memory allocation failed.\n");
 			exit(EXIT_FAILURE);
 		}
-		for(int i = 0; i < nfields; i++)
+		int idx = 0;
+		for(int i = 2; i < argc; i++)
 		{
-			const char *arg = argv[2 + i];
+			const char *arg = argv[i];
 			const size_t len = strlen(arg);
 			char *field = malloc(len + 1);
 			if(field == NULL)
@@ -670,8 +702,28 @@ void parse_args(int argc, char *argv[])
 			}
 			memcpy(field, arg, len);
 			field[len] = '\n';
-			iov[i].iov_base = field;
-			iov[i].iov_len = len + 1;
+			iov[idx].iov_base = field;
+			iov[idx].iov_len = len + 1;
+			idx++;
+		}
+
+		// Append MESSAGE from stdin if it was not provided as an argument
+		if(stdin_message != NULL)
+		{
+			const size_t msg_len = strlen(stdin_message);
+			const size_t field_len = 8 + msg_len; // "MESSAGE=" + content
+			char *field = malloc(field_len + 1);
+			if(field == NULL)
+			{
+				printf("Error: Memory allocation failed.\n");
+				exit(EXIT_FAILURE);
+			}
+			memcpy(field, "MESSAGE=", 8);
+			memcpy(field + 8, stdin_message, msg_len);
+			field[field_len] = '\n';
+			iov[idx].iov_base = field;
+			iov[idx].iov_len = field_len + 1;
+			free(stdin_message);
 		}
 
 		const int rc2 = journal_sendv(iov, nfields);
@@ -1514,8 +1566,11 @@ void parse_args(int argc, char *argv[])
 			printf("%sJournal:%s\n", yellow, normal);
 			printf("    Send fields to the systemd journal (journald). Each argument\n");
 			printf("    must be in %sFIELD=VALUE%s format.\n\n", cyan, normal);
+			printf("    If no %sMESSAGE%s argument is provided, it is read from\n", cyan, normal);
+			printf("    stdin (one line, trailing newline stripped).\n\n");
 			printf("    Usage: %s%s journal-send %sFIELD=VALUE%s [%sFIELD=VALUE%s ...]\n", green, argv[0], cyan, normal, cyan, normal);
-			printf("    Example: %s%s journal-send %sMESSAGE=\"hello world\" PRIORITY=5%s\n\n", green, argv[0], cyan, normal);
+			printf("    Example: %s%s journal-send %sMESSAGE=\"hello world\" PRIORITY=5%s\n", green, argv[0], cyan, normal);
+			printf("    Example: %s%secho \"hello\" | %s%s journal-send %sPRIORITY=5%s\n\n", normal, green, argv[0], normal, cyan, normal);
 
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
