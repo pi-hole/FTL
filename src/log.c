@@ -30,8 +30,6 @@
 #include "gc.h"
 // open(), O_WRONLY, O_CREAT, O_APPEND, O_CLOEXEC
 #include <fcntl.h>
-// cJSON_CreateObject(), ...
-#include "webserver/cJSON/cJSON.h"
 
 static bool print_log = true, print_stdout = true;
 bool debug_flags[DEBUG_MAX] = { false };
@@ -312,27 +310,86 @@ static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t time
 	timestring[TIMESTR_SIZE - 1] = '\0';
 }
 
+// Escape a string into a caller-supplied buffer for JSON output.
+// Never splits an escape sequence, so a short buffer truncates to valid JSON.
+static size_t json_escape(char *out, const size_t outlen, const char *in)
+{
+	static const char hex[] = "0123456789abcdef";
+	size_t o = 0;
+
+	for(const unsigned char *p = (const unsigned char *)in; *p != '\0'; p++)
+	{
+		// Widest form is \u00XX, and every escape starts with a backslash
+		char esc[6] = { '\\' };
+		size_t len = 2;
+
+		switch(*p)
+		{
+			case '"':  esc[1] = '"';  break;
+			case '\\': esc[1] = '\\'; break;
+			case '\b': esc[1] = 'b';  break;
+			case '\f': esc[1] = 'f';  break;
+			case '\n': esc[1] = 'n';  break;
+			case '\r': esc[1] = 'r';  break;
+			case '\t': esc[1] = 't';  break;
+
+			default:
+				// Printable and UTF-8 bytes pass through
+				if(*p >= 0x20)
+				{
+					esc[0] = (char)*p;
+					len = 1;
+					break;
+				}
+
+				// Other control characters have no short form
+				esc[1] = 'u';
+				esc[2] = '0';
+				esc[3] = '0';
+				esc[4] = hex[*p >> 4];
+				esc[5] = hex[*p & 0x0f];
+				len = 6;
+				break;
+		}
+
+		// Stop on the last character that fits, keeping room for the NUL
+		if(o + len >= outlen)
+			break;
+
+		memcpy(out + o, esc, len);
+		o += len;
+	}
+
+	out[o] = '\0';
+	return o;
+}
+
+// Emit a structured JSON log line directly into a stack buffer and
+// write it to stdout.  Only the message field needs escaping; the
+// other five are controlled by the caller.  Uses write() instead of
+// printf() to avoid stdio buffering.
 void log_to_json(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
 {
 	char timestring_iso8601[TIMESTR_SIZE];
 	get_timestr_iso8601(timestring_iso8601, now);
 
-	cJSON *root = cJSON_CreateObject();
-	if (!root) return;
+	// Escape the message into a temporary buffer - only msg needs escaping
+	// as the other fields are controlled by the code
+	char escaped_msg[8192];
+	json_escape(escaped_msg, sizeof(escaped_msg), msg ? msg : "");
 
-	cJSON_AddStringToObject(root, "timestamp", timestring_iso8601);
-	cJSON_AddStringToObject(root, "log_level", log_level);
-	cJSON_AddStringToObject(root, "service", "pihole-FTL");
-	cJSON_AddStringToObject(root, "component", component);
-	cJSON_AddStringToObject(root, "pid", pid);
-	cJSON_AddStringToObject(root, "message", msg);
+	// Build JSON directly into a stack buffer - zero allocation
+	char line[8192];
+	int off = snprintf(line, sizeof(line),
+		"{\"timestamp\":\"%s\",\"log_level\":\"%s\",\"service\":\"pihole-FTL\","
+		"\"component\":\"%s\",\"pid\":\"%s\",\"message\":\"%s\"}\n",
+		timestring_iso8601, log_level, component, pid, escaped_msg);
 
-	char *out = cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
+	if(off < 0 || off >= (int)sizeof(line))
+		off = sizeof(line) - 1;
 
-	if (!out) return;
-	printf("%s\n", out);
-	free(out);
+	// Use write() to avoid stdio buffering
+	write(STDOUT_FILENO, line, off);
 }
 
 void get_idstr(char *idstr, size_t size)
