@@ -62,7 +62,19 @@ int api_padd(struct ftl_conn *api)
 				if(domain == NULL)
 					continue;
 
-				JSON_COPY_STR_TO_OBJECT(json, "recent_blocked", domain);
+				// The JSON_* macros cannot be used while we hold
+				// the lock, as their early return would leave it
+				// taken for good
+				cJSON *item = cJSON_CreateString(domain);
+				if(item == NULL)
+				{
+					log_err("api_padd(): Failed to allocate JSON string");
+					cJSON_Delete(json);
+					unlock_shm();
+					send_http_internal_error(api);
+					return 500;
+				}
+				cJSON_AddItemToObject(json, "recent_blocked", item);
 				break;
 			}
 		}

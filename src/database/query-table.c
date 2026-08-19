@@ -1787,6 +1787,23 @@ static void init_disk_db_idx(sqlite3 *memdb)
 	log_debug(DEBUG_DATABASE, "Last long-term idx is %"PRId64, memdb_queries_maxid);
 }
 
+// Run one of the transaction statements of queries_to_database(). SQL_bool()
+// cannot be used there, as its early return would skip the cleanup, but its
+// logging is worth keeping: a busy database is transient and only warned about
+static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
+{
+	const int rc = dbquery(memdb, "%s", sql);
+	if(rc == SQLITE_OK)
+		return true;
+
+	if(rc == SQLITE_BUSY)
+		log_warn("queries_to_database(): Database busy when trying to %s", what);
+	else
+		log_err("queries_to_database(): Failed to %s", what);
+
+	return false;
+}
+
 bool queries_to_database(void)
 {
 	int rc;
@@ -1914,8 +1931,11 @@ bool queries_to_database(void)
 	bool phase1_error = false;
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
-	// mostly skipped due to in_database caching)
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	// mostly skipped due to in_database caching). SQL_bool() cannot be used
+	// while we hold the SHM lock, as its early return would leave the lock
+	// taken for good
+	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the linking table transaction"))
+		goto unlock_fail;
 
 	for(unsigned int queryID = last_query; queryID < counters->queries; queryID++)
 	{
@@ -2166,7 +2186,8 @@ bool queries_to_database(void)
 	}
 
 	// Commit linking table transaction
-	SQL_bool(memdb, "END");
+	if(!memdb_exec(memdb, "END", "commit the linking table transaction"))
+		goto rollback_unlock_fail;
 
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
@@ -2184,7 +2205,8 @@ bool queries_to_database(void)
 	// the DNS processing or API threads.
 	// ===================================================================
 
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the query transaction"))
+		goto fail;
 
 	unsigned int succeeded = 0;
 	for(unsigned int i = 0; i < snap_count; i++)
@@ -2236,7 +2258,8 @@ bool queries_to_database(void)
 		succeeded++;
 	}
 
-	SQL_bool(memdb, "END");
+	if(!memdb_exec(memdb, "END", "commit the query transaction"))
+		goto rollback_fail;
 
 	// ===================================================================
 	// PHASE 3: Brief SHM lock — write back db indices and clear changed
@@ -2293,4 +2316,18 @@ bool queries_to_database(void)
 	}
 
 	return true;
+
+	// Common cleanup for the transaction failures above. `SQL_bool()` is not
+	// usable there: its early return would skip the unlock and leave the SHM
+	// lock taken for good
+rollback_unlock_fail:
+	dbquery(memdb, "ROLLBACK");
+unlock_fail:
+	unlock_shm();
+	goto fail;
+rollback_fail:
+	dbquery(memdb, "ROLLBACK");
+fail:
+	free(snaps);
+	return false;
 }
