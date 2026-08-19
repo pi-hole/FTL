@@ -4259,7 +4259,7 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 		char idstr[42];
 		get_idstr(idstr, sizeof(idstr));
 
-		log_to_json(time(NULL), prio, "dnsmasq", idstr, payload);
+		write_json_log(time(NULL), prio, "dnsmasq", idstr, payload);
 	}
 
 	// Write to pihole.log via shared writer (FTL owns this file now).

@@ -368,7 +368,7 @@ static size_t json_escape(char *out, const size_t outlen, const char *in)
 // write it to stdout.  Only the message field needs escaping; the
 // other five are controlled by the caller.  Uses write() instead of
 // printf() to avoid stdio buffering.
-void log_to_json(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
+void write_json_log(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
 {
 	char timestring_iso8601[TIMESTR_SIZE];
 	get_timestr_iso8601(timestring_iso8601, now);
@@ -622,7 +622,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
 			va_end(args);
 
-			log_to_json(now, prio, "FTL", idstr, json_buffer);
+			write_json_log(now, prio, "FTL", idstr, json_buffer);
 		}
 
 		// Write to log file only when file logging is explicitly selected
@@ -708,7 +708,7 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
 			va_end(args);
 
-			log_to_json(now, prio, "webserver", idstr, json_buffer);
+			write_json_log(now, prio, "webserver", idstr, json_buffer);
 		}
 
 		// Write to log file only when file logging is explicitly selected
