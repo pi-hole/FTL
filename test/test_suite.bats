@@ -1872,22 +1872,31 @@ setup() {
   assert_success
 }
 
-@test "Gravity: API write is not refused while another connection reads" {
-  # gravity_updated() opens its own read-only connection to gravity.db once per
-  # second. The gravity connection carries no busy handler so DNS lookups never
-  # wait, and a write committing inside that window used to fail outright with
-  # "database is locked", losing the edit. Hold a read transaction here and
-  # write through the API while it is held.
-  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell sleep 0.4\nCOMMIT;\n' | \
+@test "Gravity: API write waits for a concurrent reader instead of failing" {
+  # gravity_updated() reads gravity.db from its own connection once per second.
+  # A write meeting that reader used to fail with "database is locked" instead
+  # of waiting for it. Hold a read transaction here, wait until it is really
+  # held, and write through the API while it is
+  rm -f /tmp/gravity_reader_ready
+  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell touch /tmp/gravity_reader_ready\n.shell sleep 0.4\nCOMMIT;\n' | \
     ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db > /dev/null 2>&1 &
   reader=$!
-  sleep 0.1
 
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}"'
+  # Do not guess how long the reader needs to take its lock
+  for _ in $(seq 1 100); do
+    [ -f /tmp/gravity_reader_ready ] && break
+    sleep 0.05
+  done
+  run bash -c '[ -f /tmp/gravity_reader_ready ]'
   assert_success
-  assert_output --regexp '^20[01]$'
+
+  # The write has to succeed AND to have waited: if it returns immediately the
+  # reader was already gone and this test proved nothing
+  run bash -c 'out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}")"; echo "${out}"; code="${out%% *}"; secs="${out##* }"; case "${code}" in 200|201) ;; *) exit 1;; esac; awk -v t="${secs}" "BEGIN{exit !(t>0.1)}"'
+  assert_success
 
   wait "${reader}"
+  rm -f /tmp/gravity_reader_ready
 
   # Remove it again so the following tests see the list they expect
   run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
