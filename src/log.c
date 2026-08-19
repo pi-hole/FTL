@@ -50,13 +50,6 @@ static struct log_fd ftl_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd webserver_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 
-static void log_atfork_child(void)
-{
-	pthread_mutex_unlock(&ftl_log.lock);
-	pthread_mutex_unlock(&webserver_log.lock);
-	pthread_mutex_unlock(&dnsmasq_log.lock);
-}
-
 // dnsmasq forks per TCP query while FTL threads may be mid-write.  Without
 // atfork handling the child would inherit one of the per-file mutexes locked
 // and the first my_syslog() there would block forever, hanging that query.
