@@ -593,7 +593,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			// Parse envvar array and generate a JSON array (env var
 			// arrays are ; or \n-delimited)
 			const char delim[] =";\n";
-			const char *elem = strtok(envvar_copy, delim);
+			char *saveptr = NULL;
+			const char *elem = strtok_r(envvar_copy, delim, &saveptr);
 			while(elem != NULL)
 			{
 				// Only import non-empty entries
@@ -605,7 +606,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 				}
 
 				// Search for the next element
-				elem = strtok(NULL, delim);
+				elem = strtok_r(NULL, delim, &saveptr);
 			}
 			free(envvar_copy);
 			item->valid = true;

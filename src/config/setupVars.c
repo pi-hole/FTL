@@ -754,7 +754,8 @@ char *read_setupVarsconf(const char *key)
 // setupVarsArray[3] = NULL
 void getSetupVarsArray(const char * input)
 {
-	char * p = strtok((char*)input, ",");
+	char *saveptr = NULL;
+	char * p = strtok_r((char*)input, ",", &saveptr);
 
 	/* split string and append tokens to 'res' */
 
@@ -768,7 +769,7 @@ void getSetupVarsArray(const char * input)
 		}
 		setupVarsArray = tmp;
 		setupVarsArray[setupVarsElements-1] = p;
-		p = strtok(NULL, ",");
+		p = strtok_r(NULL, ",", &saveptr);
 	}
 
 	/* realloc one extra element for the last NULL */

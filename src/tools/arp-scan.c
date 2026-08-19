@@ -89,6 +89,15 @@ enum status {
 	STATUS_COMPLETE
 } __attribute__ ((packed));
 
+// IP4STR() formats into a single static buffer shared by all callers, so
+// concurrent interface threads would overwrite each other's address. Format
+// into a caller-provided buffer instead.
+static const char *ip4str(const struct in_addr addr, char *buf)
+{
+	return inet_ntop(AF_INET, &addr, buf, INET_ADDRSTRLEN) != NULL ? buf : "?";
+}
+#define IP4STR(a) ip4str((a), (char[INET_ADDRSTRLEN]){ 0 })
+
 struct thread_data {
 	bool scan_all :1;
 	bool extreme :1;
@@ -168,7 +177,7 @@ static int send_arps(const int fd, const int ifindex, struct thread_data *thread
 		memcpy(arp_req->target_ip, &dst_ip.s_addr, sizeof(dst_ip.s_addr));
 
 #ifdef DEBUG
-		printf("Sending ARP request for %s@%s\n", inet_ntoa(*dst_ip), iface);
+		printf("Sending ARP request for %s@%s\n", IP4STR(*dst_ip), iface);
 #endif
 
 		// Send ARP request
@@ -245,7 +254,7 @@ static void add_result(struct in_addr *rcv_ip, unsigned char *sender_mac,
 	if(i >= thread_data->result_size)
 	{
 		printf("Received IP address %s out of range for interface %s (%u >= %zu)\n",
-		       inet_ntoa(*rcv_ip), thread_data->iface, i, thread_data->result_size);
+		       IP4STR(*rcv_ip), thread_data->iface, i, thread_data->result_size);
 		return;
 	}
 
@@ -335,7 +344,7 @@ static ssize_t read_arp(const int fd, struct thread_data *thread_data)
 
 #ifdef DEBUG
 		printf("%-16s %-20s\t%02x:%02x:%02x:%02x:%02x:%02x",
-		     thread_data->iface, inet_ntoa(sender_a),
+		     thread_data->iface, IP4STR(sender_a),
 		     arp_resp->sender_mac[0],
 		     arp_resp->sender_mac[1],
 		     arp_resp->sender_mac[2],
