@@ -497,6 +497,13 @@ void initConfig(struct config *conf)
 	conf->dns.hosts.d.json = cJSON_CreateArray();
 	conf->dns.hosts.c = validate_dns_hosts;
 
+	conf->dns.hostsLocal.k = "dns.hostsLocal";
+	conf->dns.hostsLocal.h = "If set, the names defined in dns.hosts are considered local and queries for them are never forwarded upstream.\n\n If unset, a query for a record type that has no local answer (e.g., AAAA when only an A address is defined) is forwarded and a public answer for the same name can shadow your local address. Note that this setting also covers subdomains of the configured names.";
+	conf->dns.hostsLocal.t = CONF_BOOL;
+	conf->dns.hostsLocal.f = FLAG_RESTART_FTL;
+	conf->dns.hostsLocal.d.b = true;
+	conf->dns.hostsLocal.c = validate_stub;
+
 	conf->dns.domainNeeded.k = "dns.domainNeeded";
 	conf->dns.domainNeeded.h = "If set, queries for plain names, without dots or domain parts, are never forwarded to upstream nameservers";
 	conf->dns.domainNeeded.t = CONF_BOOL;
@@ -2142,6 +2149,15 @@ void reread_config(void)
 		{
 			log_info("Privacy level was reduced, restarting FTL");
 			// We need to restart FTL
+			restart = true;
+		}
+
+		// The local= lines are derived from dns.hosts. They are
+		// written on startup, so changed records need a restart
+		if(conf_copy.dns.hostsLocal.v.b &&
+		   !compare_config_item(conf_copy.dns.hosts.t, &conf_copy.dns.hosts.v, &config.dns.hosts.v))
+		{
+			log_info("Custom DNS records changed, restarting FTL");
 			restart = true;
 		}
 

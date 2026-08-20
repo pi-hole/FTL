@@ -247,6 +247,8 @@ components:
                   type: array
                   items:
                     type: string
+                hostsLocal:
+                  type: boolean
                 domainNeeded:
                   type: boolean
                 expandHosts:
@@ -783,6 +785,7 @@ components:
             blockTTL: 2
             hosts:
               - "192.168.2.123 mymusicbox"
+            hostsLocal: true
             domainNeeded: true
             expandHosts: true
             domain:

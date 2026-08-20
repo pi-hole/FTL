@@ -491,7 +491,10 @@ int set_config_from_CLI(const char *key, const char *value)
 		}
 
 		// Is this a dnsmasq option we need to check?
-		if(conf_item->f & FLAG_RESTART_FTL)
+		// The local= lines are derived from dns.hosts, so a record
+		// change needs a new dnsmasq config as well when they are used
+		if((conf_item->f & FLAG_RESTART_FTL) ||
+		   (conf_item == &config.dns.hosts && newconf.dns.hostsLocal.v.b))
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
 			if(!write_dnsmasq_config(&newconf, true, errbuf))
@@ -502,15 +505,14 @@ int set_config_from_CLI(const char *key, const char *value)
 				return DNSMASQ_TEST_FAILED;
 			}
 		}
-		else if(conf_item == &config.dns.hosts)
-		{
-			// We need to rewrite the custom.list file but do not
-			// need to restart dnsmasq
-			write_custom_list();
-		}
 
 		// Install new configuration
 		replace_config(&newconf);
+
+		// Rewrite the custom.list file, this reads the records from the
+		// config we have just installed
+		if(conf_item == &config.dns.hosts)
+			write_custom_list();
 
 		// Print value
 		writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);

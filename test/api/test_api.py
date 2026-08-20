@@ -28,7 +28,7 @@ FTL_URL = "http://127.0.0.1"
 # DNSSEC-dependent counters below flaky.  If you add or remove queries in
 # test_suite.bats, update these.
 
-TOTAL       = 131
+TOTAL       = 133
 FORWARDED   = 41
 DNSKEY      = 4
 TOP_DOMAIN  = "localhost"
@@ -594,17 +594,17 @@ class TestStatsSummary:
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
         assert q["blocked"] == 49
         assert q["forwarded"] == FORWARDED
-        assert q["cached"] == 41
-        assert q["unique_domains"] == 77
+        assert q["cached"] == 43
+        assert q["unique_domains"] == 71
         assert q["status"]["UNKNOWN"] == 0
         assert q["status"]["GRAVITY"] == 7
         assert q["status"]["FORWARDED"] == FORWARDED
-        assert q["status"]["CACHE"] == 41
+        assert q["status"]["CACHE"] == 43
         assert q["status"]["REGEX"] == 21
         assert q["status"]["DENYLIST"] == 4
         assert q["status"]["SPECIAL_DOMAIN"] == 2
-        assert q["types"]["A"] == 69
-        assert q["types"]["AAAA"] == 19
+        assert q["types"]["A"] == 70
+        assert q["types"]["AAAA"] == 20
 
         assert data["clients"]["active"] == 11
         assert data["clients"]["total"] == 11
@@ -727,7 +727,7 @@ class TestStatsUpstreams:
         assert blocklist["port"] == -1
 
         cache = next(u for u in upstreams if u["ip"] == "cache")
-        assert cache["count"] == 41
+        assert cache["count"] == 43
         assert cache["port"] == -1
 
 
@@ -740,7 +740,7 @@ class TestStatsQueryTypes:
     def test_query_types(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
-            "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
+            "A": 70, "AAAA": 20, "ANY": 3, "SRV": 1, "SOA": 0,
             "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
@@ -995,7 +995,9 @@ class TestPADD:
         assert data["gravity_size"] == 8
         assert data["active_clients"] == 11
         assert data["top_domain"] == TOP_DOMAIN
-        assert data["top_blocked"] == "gravity.ftl"
+        # gravity.ftl and denied.ftl are blocked four times each, the tie is
+        # broken by the order of the domain table
+        assert data["top_blocked"] == "denied.ftl"
         assert data["top_client"] == "127.0.0.1"
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
