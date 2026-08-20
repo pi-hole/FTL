@@ -378,8 +378,13 @@ void write_json_log(const time_t now, const char *log_level, const char *compone
 	char escaped_msg[8192];
 	json_escape(escaped_msg, sizeof(escaped_msg), msg ? msg : "");
 
-	// Build JSON directly into a stack buffer - zero allocation
-	char line[8192];
+	// Build JSON directly into a stack buffer - zero allocation.
+	// line must hold escaped_msg plus the JSON framing overhead (key
+	// names, punctuation, timestamp, level, component, pid, trailing
+	// brace and newline - roughly 90 bytes).  Using the same size as
+	// escaped_msg would truncate a near-maximum message mid-JSON-string.
+	// sizeof(escaped_msg) + 128 leaves ample headroom for any field length.
+	char line[sizeof(escaped_msg) + 128];
 	int off = snprintf(line, sizeof(line),
 		"{\"timestamp\":\"%s\",\"log_level\":\"%s\",\"service\":\"pihole-FTL\","
 		"\"component\":\"%s\",\"pid\":\"%s\",\"message\":\"%s\"}\n",
