@@ -2064,7 +2064,20 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   while ((confd = accept(listener->tcpfd, NULL, NULL)) == -1 && errno == EINTR);
   
   if (confd == -1)
-    return;
+    {
+      /* Transient errors: just return and retry on next poll cycle. */
+      if (errno == EAGAIN || errno == ECONNABORTED ||
+          errno == EMFILE || errno == ENFILE ||
+          errno == ENOMEM || errno == ENOBUFS)
+        return;
+
+      /* Fatal error (EINVAL, EBADF, etc): socket is permanently broken.
+         Close it so poll() no longer selects it.  In --bind-dynamic mode
+         the listener will be rebuilt on the next address change event. */
+      close(listener->tcpfd);
+      listener->tcpfd = -1;
+      return;
+    }
   
   if (getsockname(confd, (struct sockaddr *)&tcp_addr, &tcp_len) == -1)
     {
