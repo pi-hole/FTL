@@ -1184,7 +1184,9 @@ void gravityDB_close(void)
 
 	// Close table
 	log_debug(DEBUG_ANY, "Closing gravity database");
-	sqlite3_close(gravity_db);
+	const int rc = sqlite3_close(gravity_db);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close() - Cannot close gravity database: %s", sqlite3_errstr(rc));
 	gravity_db = NULL;
 	gravityDB_opened = false;
 }
