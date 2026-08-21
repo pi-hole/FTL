@@ -61,13 +61,9 @@ bool checkFTLDBrc(const int rc)
 	return atomic_load_explicit(&DBerror, memory_order_relaxed);
 }
 
-// Close a connection owned by the caller. A statement that outlives its
-// connection keeps the database file locked and any transaction it is part of
-// open, and sqlite3_close() refuses with SQLITE_BUSY while one exists - it then
-// does nothing at all, so a caller dropping its pointer afterwards can never
-// release the file again. Finalize what was left behind, naming it as it is a
-// bug either way, and hand the connection over with the _v2 variant, which also
-// takes over blob handles and backups still in flight
+// Close a connection owned by the caller. sqlite3_close() refuses while a
+// statement of that connection is still alive, so finalize what was left behind
+// - naming it, as it is a bug - before handing the connection over
 int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file)
 {
 	if(db == NULL)
@@ -98,7 +94,9 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 
 	// The shared in-memory connection is owned by close_memory_database() and
 	// its prepared statements live as long as FTL does. Closing it here would
-	// finalize them behind the back of whoever cached them
+	// finalize them behind the back of whoever cached them, so return before
+	// both the NULL assignment and the counter below: the handle stays valid
+	// for its owner, and it never went through dbopen() to be counted
 	if(db != NULL && is_memdb(*db))
 	{
 		log_err("dbclose() called on the in-memory database in %s() (%s:%i)",
@@ -1204,9 +1202,10 @@ const char *get_sqlite3_version(void)
 /**
  * get_row_count - Get the row count of an in-memory SQLite table.
  *
- * Opens a transient SQLite connection (dbopen(false, false)), prepares and
- * executes a "SELECT COUNT(*) FROM <table>;" query for the given table name,
- * and returns the number of rows in that table.
+ * Uses the shared in-memory connection or opens a transient read-only one
+ * (dbopen(true, false)), prepares and executes a "SELECT COUNT(*) FROM
+ * <table>;" query for the given table name, and returns the number of rows in
+ * that table. Only a connection opened here is closed again.
  * 
  * @param table_name The name of the table to get the size of.
  * @param memory If true, use the in-memory database; if false, use the on-disk database.
