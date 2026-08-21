@@ -1829,7 +1829,7 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 	if(rc != SQLITE_OK)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
-		sqlite3_close(macvendor_db);
+		dbclose_handle(macvendor_db);
 		return false;
 	}
 
@@ -1887,7 +1887,7 @@ getMACVendor_end:
 	// Finalize statement and close database
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
-	sqlite3_close(macvendor_db);
+	dbclose_handle(macvendor_db);
 
 	log_debug(DEBUG_ARP, "MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 
