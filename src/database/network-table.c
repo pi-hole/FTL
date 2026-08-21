@@ -1881,8 +1881,8 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 
 getMACVendor_end:
 
-	if(!success)
-		checkFTLDBrc(rc);
+	// No checkFTLDBrc() here: this is macvendor.db, a broken one says
+	// nothing about the FTL database and must not take it out of service
 
 	// Finalize statement and close database
 	if(stmt != NULL)

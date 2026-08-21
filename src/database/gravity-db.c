@@ -360,7 +360,10 @@ static bool gravityDB_open(void)
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
-		gravityDB_close();
+		// gravityDB_close() returns early while gravityDB_opened is false,
+		// so release the handle sqlite3_open_v2() allocated ourselves
+		sqlite3_close_v2(gravity_db);
+		gravity_db = NULL;
 		return false;
 	}
 
@@ -1184,7 +1187,12 @@ void gravityDB_close(void)
 
 	// Close table
 	log_debug(DEBUG_ANY, "Closing gravity database");
-	const int rc = sqlite3_close(gravity_db);
+	// Only the shared statements are finalized above, a table cursor handed to
+	// an API thread by gravityDB_readTable() may still be open. dbclose_handle()
+	// would finalize it under that thread's feet, and sqlite3_close() would
+	// refuse and leave us with a connection - and its mmap - nobody can release.
+	// _v2 hands the connection over: it goes away once that cursor is finalized
+	const int rc = sqlite3_close_v2(gravity_db);
 	if(rc != SQLITE_OK)
 		log_err("gravityDB_close() - Cannot close gravity database: %s", sqlite3_errstr(rc));
 	gravity_db = NULL;
