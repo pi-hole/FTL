@@ -360,7 +360,10 @@ static bool gravityDB_open(void)
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
-		gravityDB_close();
+		// gravityDB_close() returns early while gravityDB_opened is false,
+		// so release the handle sqlite3_open_v2() allocated ourselves
+		sqlite3_close_v2(gravity_db);
+		gravity_db = NULL;
 		return false;
 	}
 
@@ -1184,7 +1187,14 @@ void gravityDB_close(void)
 
 	// Close table
 	log_debug(DEBUG_ANY, "Closing gravity database");
-	sqlite3_close(gravity_db);
+	// Only the shared statements are finalized above, a table cursor handed to
+	// an API thread by gravityDB_readTable() may still be open. dbclose_handle()
+	// would finalize it under that thread's feet, and sqlite3_close() would
+	// refuse and leave us with a connection - and its mmap - nobody can release.
+	// _v2 hands the connection over: it goes away once that cursor is finalized
+	const int rc = sqlite3_close_v2(gravity_db);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close() - Cannot close gravity database: %s", sqlite3_errstr(rc));
 	gravity_db = NULL;
 	gravityDB_opened = false;
 }
@@ -2123,7 +2133,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		return false;
 
 	const bool ret = addToTable(db, listtype, row, message, method);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
@@ -2398,7 +2408,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		return false;
 
 	const bool ret = delFromTable(db, listtype, array, deleted, message);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
@@ -3005,7 +3015,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	const bool ret = edit_groups(db, listtype, groups, row, message);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
