@@ -2125,7 +2125,7 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		return false;
 
 	const bool ret = addToTable(db, listtype, row, message, method);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
@@ -2400,7 +2400,7 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		return false;
 
 	const bool ret = delFromTable(db, listtype, array, deleted, message);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
@@ -3007,7 +3007,7 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	const bool ret = edit_groups(db, listtype, groups, row, message);
-	sqlite3_close(db);
+	dbclose_handle(db);
 	return ret;
 }
 
