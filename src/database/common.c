@@ -61,6 +61,34 @@ bool checkFTLDBrc(const int rc)
 	return atomic_load_explicit(&DBerror, memory_order_relaxed);
 }
 
+// Close a connection owned by the caller. A statement that outlives its
+// connection keeps the database file locked and any transaction it is part of
+// open, and sqlite3_close() refuses with SQLITE_BUSY while one exists - it then
+// does nothing at all, so a caller dropping its pointer afterwards can never
+// release the file again. Finalize what was left behind, naming it as it is a
+// bug either way, and hand the connection over with the _v2 variant, which also
+// takes over blob handles and backups still in flight
+int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file)
+{
+	if(db == NULL)
+		return SQLITE_OK;
+
+	sqlite3_stmt *stmt = NULL;
+	while((stmt = sqlite3_next_stmt(db, NULL)) != NULL)
+	{
+		log_err("Statement not finalized when closing database in %s() (%s:%i): %s",
+		        func, short_path(file), line, sqlite3_sql(stmt));
+		sqlite3_finalize(stmt);
+	}
+
+	const int rc = sqlite3_close_v2(db);
+	if(rc != SQLITE_OK)
+		log_err("Error while trying to close database in %s() (%s:%i): %s",
+		        func, short_path(file), line, sqlite3_errstr(rc));
+
+	return rc;
+}
+
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
 	// Silently return if the database is known to be broken. It may not be
@@ -84,28 +112,9 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	// Only try to close an existing database connection
 	if(db != NULL && *db != NULL)
 	{
-		// A statement that outlives its connection keeps the database
-		// file locked and any transaction it is part of open, and
-		// sqlite3_close() refuses with SQLITE_BUSY while one exists -
-		// which would leave the connection open behind the pointer we
-		// drop below, with no way left to release the file. Finalize
-		// what the caller forgot and name it, it is a bug either way
-		sqlite3_stmt *stmt = NULL;
-		while((stmt = sqlite3_next_stmt(*db, NULL)) != NULL)
-		{
-			log_err("Statement not finalized when closing database in %s() (%s:%i): %s",
-			        func, short_path(file), line, sqlite3_sql(stmt));
-			sqlite3_finalize(stmt);
-		}
-
-		// _v2 also takes over blob handles and backups still in flight
-		const int rc = sqlite3_close_v2(*db);
+		const int rc = _dbclose_handle(*db, func, line, file);
 		if(rc != SQLITE_OK)
-		{
-			log_err("Error while trying to close database: %s",
-			        sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
-		}
 	}
 
 	// Always set database pointer to NULL, even when closing failed
