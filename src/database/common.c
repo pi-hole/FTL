@@ -68,6 +68,16 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 	if(FTLDBerror())
 		return;
 
+	// The shared in-memory connection is owned by close_memory_database() and
+	// its prepared statements live as long as FTL does. Closing it here would
+	// finalize them behind the back of whoever cached them
+	if(db != NULL && is_memdb(*db))
+	{
+		log_err("dbclose() called on the in-memory database in %s() (%s:%i)",
+		        func, short_path(file), line);
+		return;
+	}
+
 	if(config.debug.database.v.b)
 		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, short_path(file), line);
 
@@ -1208,7 +1218,8 @@ int64_t get_row_count(const char *table_name, const bool memory)
 		log_err("Failed to prepare statement to get size of in-memory table %s: %s",
 		        table_name, sqlite3_errmsg(db));
 		sqlite3_free(query);
-		dbclose(&db);
+		if(!memory)
+			dbclose(&db);
 		return -3;
 	}
 	sqlite3_free(query);

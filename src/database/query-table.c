@@ -503,6 +503,13 @@ void close_memory_database(void)
 	_memdb = NULL;
 }
 
+// Is this the shared in-memory connection? Used to keep dbclose() away from a
+// handle it does not own
+bool __attribute__((pure)) is_memdb(const sqlite3 *db)
+{
+	return db != NULL && db == _memdb;
+}
+
 sqlite3 *__attribute__((pure)) _get_memdb(const int line, const char *func, const char *file)
 {
 	log_debug(DEBUG_DATABASE, "Accessing in-memory database in %s() (%s:%i)", func, file, line);
