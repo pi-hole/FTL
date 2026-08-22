@@ -2427,7 +2427,7 @@ const char *edestr(int ede)
     }
 }
 
-static int error_occured(unsigned int flags) {
+static int error_occurred(unsigned int flags) {
   if (flags & F_RCODE)
     return 1;
   else if (flags & F_NEG)
@@ -2451,10 +2451,10 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   if (!option_bool(OPT_LOG))
     return;
 
-  if(option_bool(OPT_LOG_ONLY_FAILED) && !error_occured(flags))
+  if(option_bool(OPT_LOG_ONLY_FAILED) && !error_occurred(flags))
     return;
 
-  /* F_NOERR is reused here to indicate logs arrising from auth queries */ 
+  /* F_NOERR is reused here to indicate logs arising from auth queries */ 
   if (!(flags & F_NOERR) && option_bool(OPT_AUTH_LOG))
     return;
 

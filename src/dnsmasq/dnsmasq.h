@@ -738,7 +738,7 @@ struct resolvc {
 #endif
 };
 
-/* adn-hosts parms from command-line (also dhcp-hostsfile and dhcp-optsfile and dhcp-hostsdir*/
+/* addn-hosts parms from command-line (also dhcp-hostsfile and dhcp-optsfile and dhcp-hostsdir*/
 #define AH_DIR      1
 #define AH_INACTIVE 2
 #define AH_WD_DONE  4
@@ -849,6 +849,7 @@ struct frec {
 #define OT_CSTRING      0x0800
 #define OT_DEC          0x0400 
 #define OT_TIME         0x0200
+#define OT_DHCP6_VENDOR 0x0100
 
 /* actions in the daemon->helper RPC */
 #define ACTION_DEL           1
@@ -1185,7 +1186,7 @@ struct dhcp_relay {
 };
 
 extern struct daemon {
-  /* datastuctures representing the command-line and 
+  /* datastructures representing the command-line and 
      config file arguments. All set (including defaults)
      in option.c */
 

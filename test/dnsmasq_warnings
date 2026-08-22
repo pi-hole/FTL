@@ -132,9 +132,9 @@ src/dnsmasq/log.c
 src/dnsmasq/network.c
 	    my_syslog(LOG_WARNING, s, daemon->addrbuff, strerror(errno));
 src/dnsmasq/network.c
-		my_syslog(LOG_WARNING, 
-			  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
-			  daemon->addrbuff, iface->name);
+	my_syslog(LOG_WARNING, 
+		  _("LOUD WARNING: listening on %s may accept requests via interfaces other than %s"),
+		  daemon->addrbuff, iface->name);
 src/dnsmasq/network.c
     my_syslog(LOG_WARNING, _("LOUD WARNING: use --bind-dynamic rather than --bind-interfaces to avoid DNS amplification attacks via these interface(s)")); 
 src/dnsmasq/network.c

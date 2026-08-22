@@ -527,7 +527,7 @@ void lease_update_slaac(time_t now)
 
 /* Find interfaces associated with leases at start-up. This gets updated as
    we do DHCP transactions, but information about directly-connected subnets
-   is useful from scrips and necessary for determining SLAAC addresses from
+   is useful from scripts and necessary for determining SLAAC addresses from
    start-time. */
 void lease_find_interfaces(time_t now)
 {

@@ -251,15 +251,14 @@ static void tftp_request(char *packet, ssize_t plen, struct listener *listen, ti
 
       for (tftp_cnt = 0, transfer = daemon->tftp_trans, up = &daemon->tftp_trans; transfer; up = &transfer->next, transfer = transfer->next)
 	{
-	  tftp_cnt++;
-
 	  if (sockaddr_isequal(&peer, &transfer->peer))
 	    {
 	      if (ntohs(*((unsigned short *)packet)) == OP_RRQ)
 		{
 		  /* Handle repeated RRQ or abandoned transfer from same host and port 
-		     by unlinking and reusing the struct transfer. */
+		     by abandoning old transfer. */
 		  *up = transfer->next;
+		  free_transfer(transfer);
 		  break;
 		}
 	      else
@@ -268,12 +267,14 @@ static void tftp_request(char *packet, ssize_t plen, struct listener *listen, ti
 		  return;
 		}
 	    }
+
+	  tftp_cnt++;
 	}
       
       /* Enforce simultaneous transfer limit. In non-single-port mode
 	 this is done by not listening on the server socket when
 	 too many transfers are in progress. */
-      if (!transfer && tftp_cnt >= daemon->tftp_max)
+      if (tftp_cnt >= daemon->tftp_max)
 	return;
     }
   
@@ -302,12 +303,9 @@ static void tftp_request(char *packet, ssize_t plen, struct listener *listen, ti
 #endif
     }
 
-  /* May reuse struct transfer from abandoned transfer in single port mode. */
-  if (!transfer && !(transfer = whine_malloc(sizeof(struct tftp_transfer))))
+  if (!(transfer = whine_malloc(sizeof(struct tftp_transfer))))
     return;
 
-  memset(transfer, 0, sizeof(struct tftp_transfer));
-	 
   if (option_bool(OPT_SINGLE_PORT))
     transfer->sockfd = listen->tftpfd;
   else if ((transfer->sockfd = socket(family, SOCK_DGRAM, 0)) == -1)
@@ -857,7 +855,7 @@ static char *next(char **p, char *end)
   return ret;
 }
 
-/* If we don't do anything, don't write the the input/ouptut
+/* If we don't do anything, don't write the input/output
    buffer. This allows us to pass in safe read-only strings constants. */
 static void sanitise(char *buf)
 {
