@@ -2412,12 +2412,50 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 	return ret;
 }
 
-bool gravityDB_readTable(const enum gravity_list_type listtype,
+// A read-only connection of its own, for reads too long to run on the shared
+// one. Holding the SHM lock across such a read would stall DNS for its whole
+// duration, and without the lock a reload could close the shared connection
+// underneath it
+sqlite3 *gravityDB_open_RO(void)
+{
+	sqlite3 *db = NULL;
+	const int rc = sqlite3_open_v2(config.files.gravity.v.s, &db,
+	                               SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, NULL);
+	if(rc != SQLITE_OK || db == NULL)
+	{
+		log_err("gravityDB_open_RO() - SQL error open: %s", sqlite3_errstr(rc));
+		sqlite3_close_v2(db);
+		return NULL;
+	}
+
+	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
+		log_err("gravityDB_open_RO() - Cannot set busy handler: %s", sqlite3_errmsg(db));
+
+	return db;
+}
+
+void gravityDB_close_RO(sqlite3 *db)
+{
+	if(db == NULL)
+		return;
+
+	const int rc = sqlite3_close_v2(db);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close_RO() - Cannot close gravity database: %s", sqlite3_errstr(rc));
+}
+
+bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
                          const char *item, const char **message,
                          const bool exact, const char *ids,
                          sqlite3_stmt **read_stmt_p)
 {
-	if(gravity_db == NULL)
+	// NULL means the shared connection. A long-running read - the search scans
+	// the whole gravity table - passes its own instead, so a gravity reload
+	// closing the shared one cannot pull the cursor away mid-walk
+	if(db == NULL)
+		db = gravity_db;
+
+	if(db == NULL)
 	{
 		*message = "Database not available";
 		return false;
@@ -2578,9 +2616,9 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 
 	// Prepare SQLite statement
 	*read_stmt_p = NULL;
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, read_stmt_p, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt_p, NULL);
 	if( rc != SQLITE_OK ){
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
 		        listtype, type, rc, querystr, *message);
 		if(!exact)
@@ -2593,7 +2631,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	int idx = sqlite3_bind_parameter_index(*read_stmt_p, ":item");
 	if(idx > 0 && (rc = sqlite3_bind_text(*read_stmt_p, idx, like_name, -1, SQLITE_TRANSIENT)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
@@ -2608,7 +2646,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	idx = sqlite3_bind_parameter_index(*read_stmt_p, ":ids");
 	if(idx > 0 && (rc = sqlite3_bind_text(*read_stmt_p, idx, ids, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind ids (error %d) - %s",
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
@@ -2778,7 +2816,7 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(sqlite3_db_handle(read_stmt));
 		log_err("gravityDB_readTableGetRow() - SQL error step (%i): %s",
 		        rc, *message);
 		return false;
