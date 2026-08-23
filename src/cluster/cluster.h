@@ -121,6 +121,7 @@ struct cluster_peer {
 	unsigned long pushed_generation;   // configuration we last handed to this peer
 	char pushed_confhash[CLUSTER_HASHLEN]; // what the peer held when we last caught it up
 	char pushed_ourhash[CLUSTER_HASHLEN];  // ...and what we held ourselves at the time
+	char pushed_credhash[CLUSTER_HASHLEN]; // ...and our credentials, which neither of those covers
 	bool stuck_valid;                  // ...and the same for its lists
 	double stuck_changed;
 	double retry_leases_at;            // when to try a failed lease download again
@@ -144,6 +145,8 @@ struct cluster_peer {
 	bool answered;
 	bool failover;                   // peer participates in DHCP failover
 	bool dhcp_capable;               // peer has a lease range and could serve
+	bool resolving;                  // peer's dnsmasq came up and answers DNS
+	bool vip_capable;                // ...and would answer on an address placed later
 	bool dhcp_configured;            // ...and whether that is "not now" or "not ever"
 	bool dhcp_active;                // peer is currently serving DHCP
 	char leaseshash[CLUSTER_HASHLEN];// ...and what its DHCP lease file hashes to
@@ -182,6 +185,8 @@ struct cluster_peer_status {
 	bool reachable;
 	bool failover;
 	bool dhcp_capable;
+	bool resolving;                  // ...and whether it answers DNS at all
+	bool vip_capable;                // ...and would answer on an address placed later
 	bool dhcp_configured;
 	bool dhcp_active;
 	bool vip_held;

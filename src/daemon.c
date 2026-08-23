@@ -415,6 +415,13 @@ void cleanup(const int ret)
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
 
+	// The virtual IP address is the cluster's, not the resolver's, and this is
+	// the only thing that gives it back - the cluster thread is cancelled in
+	// its sleep and never joined. A node whose dnsmasq never came up is
+	// exactly the one that should be handing it over, so it cannot sit behind
+	// a flag that says the resolver started
+	cluster_vip_shutdown();
+
 	// Do proper cleanup only if FTL started successfully
 	if(resolver_ready)
 	{
@@ -428,11 +435,6 @@ void cleanup(const int ret)
 		// clean exit, so it does not surface as a leak under valgrind.
 		log_debug(DEBUG_ANY, "Terminating: Stopping encrypted-upstream proxy");
 		dotdoh_cleanup();
-
-		// Give the virtual IP address back while the configuration
-		// holding it is still there. The cluster thread cannot do this
-		// itself: it is cancelled in its sleep and never joined
-		cluster_vip_shutdown();
 
 		// Close database connection
 		lock_shm();
