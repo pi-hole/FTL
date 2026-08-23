@@ -249,6 +249,8 @@ static void mark_unreachable(struct cluster_peer *peer, const char *err)
 
 	peer->dhcp_active = false;
 	peer->dhcp_capable = false;
+	peer->resolving = true;
+	peer->vip_capable = true;
 	peer->sees_dhcp = false;
 	peer->vip_held = false;
 	peer->clock_agrees = false;
@@ -475,6 +477,15 @@ static void poll_peer(struct cluster_peer *peer)
 	const cJSON *configured = status_item(node, "dhcp", "configured");
 	peer->dhcp_configured = cJSON_IsBool(configured) ? cJSON_IsTrue(configured)
 	                                                 : peer->dhcp_capable;
+	// A node too old to say is assumed to resolve: that is what this node had
+	// to assume before the field existed, and refusing to lead to it would
+	// split a mixed-version cluster over a question it cannot answer
+	const cJSON *resolving = cJSON_GetObjectItem(node, "resolving");
+	peer->resolving = cJSON_IsBool(resolving) ? cJSON_IsTrue(resolving) : true;
+	const cJSON *vip_capable = cJSON_GetObjectItem(node, "vip_capable");
+	peer->vip_capable = cJSON_IsBool(vip_capable) ? cJSON_IsTrue(vip_capable)
+	                                              : peer->resolving;
+
 	const cJSON *vip_held = status_item(node, "vip", "held");
 	peer->vip_held = cJSON_IsTrue(vip_held);
 
@@ -1139,8 +1150,34 @@ static void elect_leader(void)
 {
 	char myname[CLUSTER_STRLEN] = "";
 	cluster_name(myname);
+
+	// The leader anchors the address the clients resolve at, so a node that
+	// answers no DNS is the worst possible one to put it on - whatever its
+	// identity says. Skipped only while somebody else can answer: if nobody
+	// resolves there is nothing better to choose and the ordinary rule stands,
+	// which also keeps a whole cluster restarting at once from having no
+	// anchor at all
+	bool anybody_resolves = cluster_vip_capable();
+	for(unsigned int i = 0; i < num_peers && !anybody_resolves; i++)
+		if(peers[i].reachable && !peers[i].is_self &&
+		   peers[i].resolving && peers[i].vip_capable)
+			anybody_resolves = true;
+
+	// ...and a node that has failed to place the address does not take it off
+	// one that is holding it. The capability check catches the reasons it can
+	// see; for the rest, re-offering the moment a backoff expires costs the
+	// working node the address for as long as it takes this one to fail again,
+	// once per backoff, forever
+	bool somebody_holds_it = false;
+	for(unsigned int i = 0; i < num_peers && !somebody_holds_it; i++)
+		if(peers[i].reachable && !peers[i].is_self && peers[i].vip_held)
+			somebody_holds_it = true;
+
+	const bool i_qualify = (!anybody_resolves || cluster_vip_capable()) &&
+	                       !(somebody_holds_it && cluster_vip_failed_before());
 	const char *best_name = myname;
 	const char *best_id = cluster_node_id();
+	bool have_best = i_qualify;
 
 	int best_idx = -1;
 
@@ -1150,12 +1187,16 @@ static void elect_leader(void)
 		if(!peer->reachable || peer->is_self)
 			continue;
 
+		if(anybody_resolves && !(peer->resolving && peer->vip_capable))
+			continue;
+
 		const char *name = strlen(peer->name) > 0 ? peer->name : peer->url;
-		if(strcmp(peer->id, best_id) < 0)
+		if(!have_best || strcmp(peer->id, best_id) < 0)
 		{
 			best_name = name;
 			best_id = peer->id;
 			best_idx = (int)i;
+			have_best = true;
 		}
 	}
 
@@ -2046,6 +2087,8 @@ static void publish_state(void)
 		status->reachable = peer->reachable;
 		status->failover = peer->failover;
 		status->dhcp_capable = peer->dhcp_capable;
+		status->resolving = peer->resolving;
+		status->vip_capable = peer->vip_capable;
 		status->dhcp_configured = peer->dhcp_configured;
 		status->dhcp_active = peer->dhcp_active;
 		status->vip_held = peer->vip_held;
@@ -2077,8 +2120,22 @@ void cluster_local_status(cJSON *node)
 	// so they check that they agree on what time it is
 	cJSON_AddNumberToObject(node, "time", double_time());
 
+	// Whether this node answers DNS at all. A dnsmasq that did not start
+	// leaves FTL up and the cluster thread running, so without this the peers
+	// see a node that is reachable, healthy and eligible to anchor the address
+	// its clients resolve at - and elect it
+	cJSON_AddBoolToObject(node, "resolving", !dnsmasq_failed);
+	// ...and whether it would answer on an address the cluster places on it,
+	// which BIND mode makes a different question - see cluster_vip_capable()
+	cJSON_AddBoolToObject(node, "vip_capable", cluster_vip_capable());
+
 	cJSON *dhcp = cJSON_CreateObject();
-	cJSON_AddBoolToObject(dhcp, "active", config.dhcp.active.v.b);
+	// ...and the same gate as its three neighbours below. A dead dnsmasq hands
+	// out no leases whatever the setting says, and a peer reads this one field
+	// as "somebody is still serving": it then refuses to take DHCP over and
+	// leaves the virtual address on nobody, which for a client is the outage
+	// this node giving the address back was supposed to end
+	cJSON_AddBoolToObject(dhcp, "active", config.dhcp.active.v.b && !dnsmasq_failed);
 	cJSON_AddBoolToObject(dhcp, "failover", config.cluster.dhcp.failover.v.b);
 	// The same question this node asks itself before taking over, so a peer
 	// never elects a node that would then fail to start a server
@@ -2339,8 +2396,16 @@ static void catch_up(void)
 		// to the same answer again would repeat that every round,
 		// forever. Both sides are remembered: once either of them moves
 		// on there is something new to say
+		//
+		// The credentials are remembered with them. They are not in either
+		// fingerprint - that is why creds_apart is computed at all - so
+		// without this a password changed while the peer was away is
+		// silenced by a latch that armed over an unrelated setting, and
+		// nothing retries it: the two never converge and only an unrelated
+		// change or a restart here would ever say anything again
 		if(strcmp(peer->confhash, peer->pushed_confhash) == 0 &&
-		   strcmp(published_confhash, peer->pushed_ourhash) == 0)
+		   strcmp(published_confhash, peer->pushed_ourhash) == 0 &&
+		   strcmp(ourcreds, peer->pushed_credhash) == 0)
 		{
 			// ...with one exception: a peer that refused the document
 			// outright may not refuse it forever - a node is not
@@ -2378,6 +2443,9 @@ static void catch_up(void)
 			strncpy(peer->pushed_ourhash, published_confhash,
 			        sizeof(peer->pushed_ourhash) - 1);
 			peer->pushed_ourhash[sizeof(peer->pushed_ourhash) - 1] = '\0';
+			strncpy(peer->pushed_credhash, ourcreds,
+			        sizeof(peer->pushed_credhash) - 1);
+			peer->pushed_credhash[sizeof(peer->pushed_credhash) - 1] = '\0';
 
 			if(cluster_push_possible(body))
 			{
@@ -2398,6 +2466,8 @@ static void catch_up(void)
 		peer->pushed_confhash[sizeof(peer->pushed_confhash) - 1] = '\0';
 		strncpy(peer->pushed_ourhash, published_confhash, sizeof(peer->pushed_ourhash) - 1);
 		peer->pushed_ourhash[sizeof(peer->pushed_ourhash) - 1] = '\0';
+		strncpy(peer->pushed_credhash, ourcreds, sizeof(peer->pushed_credhash) - 1);
+		peer->pushed_credhash[sizeof(peer->pushed_credhash) - 1] = '\0';
 		peer->pushed_generation = config_generation;
 		peer->push_backoff = 0.0;
 		peer->retry_push_at = 0.0;

@@ -83,6 +83,12 @@ int api_cluster_status(struct ftl_conn *api)
 		else
 			JSON_ADD_NULL_TO_OBJECT(item, "error");
 
+		// What the cluster elects on, for the peers as well as for this node -
+		// otherwise a node that answers no DNS is drawn as a healthy member
+		// and only its own page says otherwise
+		JSON_ADD_BOOL_TO_OBJECT(item, "resolving", peer->resolving);
+		JSON_ADD_BOOL_TO_OBJECT(item, "vip_capable", peer->vip_capable);
+
 		cJSON *dhcp = JSON_NEW_OBJECT();
 		JSON_ADD_BOOL_TO_OBJECT(dhcp, "active", peer->dhcp_active);
 		JSON_ADD_BOOL_TO_OBJECT(dhcp, "failover", peer->failover);
