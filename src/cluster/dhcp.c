@@ -25,6 +25,10 @@
 #include <math.h>
 // restart_ftl()
 #include "signals.h"
+// check_capability()
+#include "capabilities.h"
+// if_nametoindex()
+#include <net/if.h>
 // lock_shm()
 #include "shmem.h"
 
@@ -59,12 +63,49 @@ bool cluster_dhcp_restarting(void)
 static double takeover_failed_until = 0.0;
 static unsigned int takeover_failures = 0;
 #define CLUSTER_TAKEOVER_BACKOFF 300.0
+// Shorter than the DHCP one on purpose. Taking DHCP over restarts FTL, so
+// trying again every few minutes is right; placing an address costs a netlink
+// message, and the usual reason it failed - an interface that flapped, no
+// default route for a moment, a typo somebody has since corrected - is over in
+// seconds. Five minutes of the address on nobody is a long outage to sit out
+#define CLUSTER_VIP_BACKOFF 30.0
 #define CLUSTER_TAKEOVER_BACKOFF_MAX 3600.0
 
 // Doubling with every failure. A fault that is not going to clear - a static
 // lease dnsmasq refuses, a full disk - would otherwise put this node back into
 // the election every five minutes, and each attempt restarts the node that is
 // currently serving
+// When placing the address failed, and until when this node stops offering to.
+// A deadline rather than a flag: a claim fails for reasons that pass - no
+// default-route interface during a network blip, an interface that has just
+// flapped, a netlink call that timed out - and a node that answered "no" to
+// them once must still be able to answer "yes" later.
+//
+// The first version of this was a plain latch, and the flag gated the only code
+// that could clear it: one transient failure sidelined the node until FTL was
+// restarted, which on the last node standing means the address is on nobody for
+// good. This mirrors takeover_failed() instead, which DHCP has used all along
+static double vip_failed_until = 0.0;
+static unsigned int vip_failures = 0;
+
+// Whether placing the address has ever failed here. Read by the election: a
+// node that has failed once should not take the address off a node that is
+// holding it, however the identities compare
+bool cluster_vip_failed_before(void)
+{
+	return vip_failures > 0;
+}
+
+static void vip_claim_failed(void)
+{
+	double wait = CLUSTER_VIP_BACKOFF;
+	for(unsigned int i = 0; i < vip_failures && wait < CLUSTER_TAKEOVER_BACKOFF_MAX; i++)
+		wait *= 2.0;
+
+	vip_failures++;
+	vip_failed_until = double_time() + fmin(wait, CLUSTER_TAKEOVER_BACKOFF_MAX);
+}
+
 static void takeover_failed(void)
 {
 	double wait = CLUSTER_TAKEOVER_BACKOFF;
@@ -88,8 +129,50 @@ static void takeover_failed(void)
 // minutes and then is again; a node with no lease range never will be. Both say
 // "no" to capability, and a peer that has to decide whether anybody will pick
 // DHCP up needs to tell them apart
+// Can this node answer on an address the cluster puts on it? Not the same
+// question as "does DNS work here": in BIND mode dnsmasq binds the addresses it
+// finds at start-up, so one that arrives afterwards is not one it answers on -
+// the node resolves perfectly well on its own address and not at all on the
+// cluster's. Holding it there is the same outage as holding it with no dnsmasq
+bool cluster_vip_capable(void)
+{
+	// Placing an address needs CAP_NET_ADMIN, which a container does not have
+	// unless somebody asked for it - the Docker default is without. FTL has
+	// checked for it since before this branch, and said so only under
+	// debug.caps
+	if(!check_capability(CAP_NET_ADMIN))
+		return false;
+
+	// An interface that is not there is the commonest reason a claim fails,
+	// and it is a question that can be answered rather than waited out. Asked
+	// here so a typo makes this node stop offering for as long as it lasts -
+	// and stop offering again the moment it is corrected, without a restart
+	// and without the retry below re-offering on a promise it cannot keep
+	char configured[CLUSTER_STRLEN] = "";
+	lock_shm();
+	strncpy(configured, config.cluster.vip.interface.v.s, sizeof(configured) - 1);
+	unlock_shm();
+	configured[sizeof(configured) - 1] = '\0';
+	if(strlen(configured) > 0 && if_nametoindex(configured) == 0)
+		return false;
+
+	// ...and a claim that has been failing for a reason nothing here can see.
+	// Only while the wait lasts, so whatever it was can pass
+	if(cluster_waiting(vip_failed_until, double_time(), CLUSTER_TAKEOVER_BACKOFF_MAX))
+		return false;
+
+	return !dnsmasq_failed &&
+	       config.dns.listeningMode.v.listeningMode != LISTEN_BIND;
+}
+
 bool cluster_dhcp_configured(void)
 {
+	// A node whose dnsmasq did not start is not a node that will serve DHCP,
+	// however good its lease range looks: FTL is up and this thread is running,
+	// so nothing else here would notice
+	if(dnsmasq_failed)
+		return false;
+
 	if(config.misc.readOnly.v.b || (config.dhcp.active.f & FLAG_ENV_VAR))
 		return false;
 
@@ -245,6 +328,16 @@ static void set_dhcp_active(const bool active, const char *reason)
 	// this is the same refusal, one signal later
 	if(!written)
 	{
+		// ...and the value goes back where it was. `replace_config()` has
+		// already installed it, and it is what this node publishes and
+		// what the next round reads to decide whether it is where it
+		// belongs - left standing, the node advertises a DHCP state its
+		// dnsmasq is not in and never tries again, because it believes it
+		// has already arrived
+		cluster_sync_lock();
+		config.dhcp.active.v.b = !active;
+		cluster_sync_unlock();
+
 		log_err("cluster: cannot %s DHCP: the configuration could not be written, so a restart would come back on the old value",
 		        active ? "take over" : "hand over");
 		takeover_failed();
@@ -269,6 +362,57 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	memset(intent, 0, sizeof(*intent));
 
 	const bool serving = config.dhcp.active.v.b;
+
+	// A node whose dnsmasq did not start answers no DNS and hands out no
+	// leases, whatever its configuration says it is doing. Holding the address
+	// the clients were told to resolve at is then the worst thing it can do -
+	// worse than the per-node addresses the virtual one replaced, because
+	// those at least stop answering when the node does. It gives the address
+	// back and takes no part in DHCP; the election skips it too, so a peer
+	// that can answer takes both over
+	if(dnsmasq_failed)
+	{
+		intent->owner[0] = '\0';
+		intent->serve = false;
+		intent->hold_vip = false;
+
+		// ...and where the cluster is what switched DHCP on, it stops saying
+		// so in its own configuration and not only to the peers: on the way
+		// back up a node starts serving from that file before any round has
+		// run, beside whichever node took DHCP over meanwhile. Written here
+		// rather than through cluster_dhcp_apply(), which asks
+		// cluster_dhcp_capable() first and gets "no" for exactly the reason
+		// we are in this branch.
+		//
+		// Only where the cluster switched it on. Without failover
+		// `dhcp.active` is the administrator's setting, nobody else is going
+		// to take DHCP over, and nothing would ever switch it back - so a
+		// resolver that is down for a minute would cost them their DHCP
+		// server for good.
+		//
+		// The dnsmasq configuration is deliberately left alone: there is no
+		// dnsmasq to write it for, and testing it is what fails on a node
+		// whose interface is the problem
+		if(serving && config.cluster.dhcp.failover.v.b)
+		{
+			cluster_sync_lock();
+			struct config newconf;
+			duplicate_config(&newconf, &config);
+			newconf.dhcp.active.v.b = false;
+			struct config_apply applied = { 0 };
+			applied.changed = true;
+			char errbuf[ERRBUF_SIZE] = "";
+			// The result is not checked because it cannot be false here:
+			// `config_install()` only fails where it writes the dnsmasq
+			// configuration, which this deliberately does not. A write
+			// that does not land says so itself, in config_write()
+			config_install(&newconf, &applied, false, 0.0, errbuf);
+			cluster_sync_unlock();
+
+			log_warn("cluster: dnsmasq is not running here, so this node stops serving DHCP - another node takes it over");
+		}
+		return;
+	}
 
 	// A node the cluster no longer lists is on its own. It gives the address
 	// back and stops handing out leases: the remaining nodes have elected
@@ -319,7 +463,19 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// would place the address twice, or not at all. One node running it is
 	// enough for the DHCP server to anchor the address everywhere
 	bool failover_anywhere = config.cluster.dhcp.failover.v.b;
-	bool peer_serving = false, owner_serving = false, peer_capable = false;
+	// ...and, separately, whether the peer that is serving would answer on the
+	// virtual address. The address follows whoever hands out leases, which is
+	// right while that node can answer on it and leaves the address on nobody
+	// when it cannot - this node declines to hold what it would not answer on,
+	// and the serving peer's claim is what keeps everybody else from taking it
+	bool peer_serving = false, owner_serving = false;
+	// Whether any peer that is about to serve DHCP could also hold the
+	// address. The rule below defers to such a peer rather than taking the
+	// address from under it - and asking only whether one exists waits forever
+	// when it would not answer on the address either, which leaves the address
+	// on nobody
+	bool peer_capable_anchors = false;
+	bool serving_peer_anchors = false;
 
 	// A peer that answers and then refuses us is a peer that is running - so
 	// if none of them will talk to us and at least one of them is up, the
@@ -345,8 +501,16 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		// wait, even when we cannot see that node ourselves
 		if(peers[i].dhcp_active || peers[i].sees_dhcp)
 			peer_serving = true;
-		if(peer_competes(&peers[i]))
-			peer_capable = true;
+
+		// Asked of the node that is actually handing out leases, not of one
+		// that merely sees it: a healthy bystander's ability to hold the
+		// address said nothing about the server's, and credited it with one
+		// it did not have. In a cluster of two there is no bystander, which
+		// is why this worked when it was written
+		if(peers[i].dhcp_active && peers[i].resolving && peers[i].vip_capable)
+			serving_peer_anchors = true;
+		if(peer_competes(&peers[i]) && peers[i].resolving && peers[i].vip_capable)
+			peer_capable_anchors = true;
 	}
 
 	if(failover_anywhere && !config.cluster.dhcp.failover.v.b && !warned_failover)
@@ -386,7 +550,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		intent->serve = serving;
 		intent->hold_vip = failover_anywhere ?
 		                   (serving && !peer_serving) ||
-		                   (!serving && !peer_serving && !peer_capable && leader_is_us) :
+		                   (!serving && !serving_peer_anchors && !peer_capable_anchors && leader_is_us) :
 		                   leader_is_us;
 		return;
 	}
@@ -402,7 +566,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		// With nobody serving and nobody able to, the address follows the
 		// leader instead, or it sits on no node at all
 		intent->serve = serving;
-		intent->hold_vip = serving || (!peer_serving && !peer_capable && leader_is_us);
+		intent->hold_vip = serving || (!serving_peer_anchors && !peer_capable_anchors && leader_is_us);
 		return;
 	}
 	warned_incapable = false;
@@ -423,7 +587,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// follows the node that is about to, so it is never on nothing
 	intent->serve = serving;
 	intent->hold_vip = serving || (mine && !peer_serving) ||
-	                   (!peer_serving && !peer_capable && leader_is_us);
+	                   (!serving_peer_anchors && !peer_capable_anchors && leader_is_us);
 
 	if(mine == serving)
 	{
@@ -503,10 +667,25 @@ bool cluster_dhcp_apply(const struct cluster_intent *intent)
 
 void cluster_vip_round(bool mine)
 {
+	// Not while this node is on its way out. `cleanup()` gives the address
+	// back before the threads are stopped - it has to, because a node whose
+	// resolver never came up has no other chance to - and this thread only
+	// looks at `killed` at the top of its loop, so a round already in flight
+	// would put the address straight back on an interface nobody is left to
+	// answer on, while the surviving node claims it too
+	if(killed)
+		return;
+
 	char address[CLUSTER_STRLEN] = "";
 	cluster_vip_address(address);
 	if(strlen(address) == 0)
 		return;
+
+	// ...and not onto a node that would not answer on it. The election prefers
+	// a node that can, so this only bites when none of them can - and then the
+	// address being absent is the truth rather than a second failure
+	if(!cluster_vip_capable())
+		mine = false;
 
 	// Taking the address over is damped the way taking DHCP over is: one
 	// missed answer makes a node the leader for a round, and placing the
@@ -562,6 +741,26 @@ void cluster_vip_round(bool mine)
 			log_warn("cluster: cannot %s %s", mine ? "claim" : "release", address);
 		last_ok = okay;
 		last_mine = mine;
+	}
+
+	// ...and a claim that failed is remembered rather than only logged. The
+	// election has no other way to learn it: this node keeps winning on
+	// identity, keeps failing to place the address, and the node that could
+	// place it never gets a turn - so the address the clients resolve at sits
+	// on nobody. DHCP has had this feedback since the beginning, in
+	// takeover_failed(); this is the same thing for the address.
+	//
+	// Cleared as soon as one succeeds, so a claim that failed because
+	// somebody else still held the address does not sideline this node for good
+	if(mine)
+	{
+		if(okay)
+		{
+			vip_failed_until = 0.0;
+			vip_failures = 0;
+		}
+		else
+			vip_claim_failed();
 	}
 }
 
