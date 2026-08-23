@@ -43,6 +43,13 @@ bool cluster_dhcp_apply(const struct cluster_intent *intent);
 // configuration has just been replaced and the daemon is on its way out
 bool cluster_dhcp_capable(void);
 bool cluster_dhcp_configured(void);
+
+// Whether this node would answer on an address the cluster places on it. Not
+// pure: it takes the configuration lock and asks the kernel about the interface
+bool cluster_vip_capable(void);
+
+// Whether placing the address has ever failed on this node
+bool cluster_vip_failed_before(void) __attribute__ ((pure));
 bool cluster_dhcp_restarting(void) __attribute__ ((pure));
 
 // Claim or release the virtual IP address depending on whether this node is
