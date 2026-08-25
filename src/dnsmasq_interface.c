@@ -42,6 +42,12 @@
 // Eventqueue routines
 #include "events.h"
 #include <netinet/in.h>
+// pi.hole multi-homed address selection: interface prefix snapshot
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <linux/if_addr.h>
+#include <pthread.h>
+#include <time.h>
 // offsetof()
 #include <stddef.h>
 // logg_rate_limit_message()
@@ -89,13 +95,14 @@ static bool aabit = false, adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static enum query_status cacheStatus = QUERY_UNKNOWN;
-// pi.hole/<hostname> answer over encrypted DNS: the address the client connected
-// to, carried by our own DoT/DoH server in a MAC-verified, loopback-only private
-// EDNS option. Set per query in FTL_new_query and consumed in FTL_make_answer so
-// the answer is the address the client reached, not the loopback forward's.
-static bool pihole_dest_v4_set = false, pihole_dest_v6_set = false;
-static struct in_addr pihole_dest_v4;
-static struct in6_addr pihole_dest_v6;
+// pi.hole/<hostname> answers over encrypted DNS: the kernel interface index of
+// the interface the client connected to, conveyed by our own DoT/DoH server in
+// a MAC-verified, loopback-only private EDNS option. Set per query in
+// FTL_new_query and consumed in FTL_make_answer so encrypted queries select
+// addresses from that very interface - the same interface-driven policy as for
+// plain DNS - rather than from the loopback forward.
+static bool pihole_dest_set = false;
+static int pihole_dest_if = -1;
 // dnsmasq log id this hint belongs to. FTL_CNAME is also called while parsing an
 // upstream reply (a later event-loop iteration), so the CNAME cache path only
 // trusts the hint when it is for the query currently being answered.
@@ -115,20 +122,17 @@ static inline bool mysockaddr_is_loopback(const union mysockaddr *addr)
 	        IN6_IS_ADDR_LOOPBACK(&addr->in6.sin6_addr));
 }
 
-// Capture this query's pi.hole connected-address hint from its EDNS. Called at the
-// existing getEDNS() sites in FTL_new_query (getEDNS is consume-once), trusted only
-// from a loopback source (our own DoT/DoH server injected it). Only the connected
-// family is known.
+// Capture this query's pi.hole connected-interface hint. Called at the existing
+// getEDNS() sites in FTL_new_query (getEDNS is consume-once), trusted only from
+// a loopback source: the private option is injected by our own DoT/DoH server
+// over the loopback handoff. Encrypted queries only.
 static void capture_pihole_dest(const ednsData *edns, const union mysockaddr *addr, const int id)
 {
 	if(edns == NULL || !edns->private_dest_set || !mysockaddr_is_loopback(addr))
 		return;
-	if(inet_pton(AF_INET, edns->private_dest, &pihole_dest_v4) == 1)
-		pihole_dest_v4_set = true;
-	else if(inet_pton(AF_INET6, edns->private_dest, &pihole_dest_v6) == 1)
-		pihole_dest_v6_set = true;
-	if(pihole_dest_v4_set || pihole_dest_v6_set)
-		pihole_dest_id = id;
+	pihole_dest_if = edns->private_dest_if;
+	pihole_dest_set = true;
+	pihole_dest_id = id;
 }
 static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
@@ -211,13 +215,341 @@ static struct {
 static struct {
 	bool haveIPv4;
 	bool haveIPv6;
+	// ifindex of the receiving interface, -1 while unknown. Lets the pi.hole/
+	// <hostname> reply enumerate ALL addresses of this interface instead of a
+	// single pre-picked one (see pihole_select_addrs()).
+	int index;
 	char name[IFNAMSIZ];
 	union all_addr addr4;
 	union all_addr addr6;
-} next_iface = {false, false, "", {}, {}};
+} next_iface = {false, false, -1, "", {}, {}};
 
 // Fork-private copy of the server data the most recent reply came from
 static union mysockaddr last_server = {};
+
+// ****************************************************************************
+// pi.hole/<hostname> address selection (multi-homed hosts)
+//
+// dnsmasq's interface list (daemon->interfaces) carries every address of every
+// interface, but only a single pre-picked "best" address per family used to be
+// answered for pi.hole/<hostname> - an arbitrary pick on multi-homed hosts that
+// may be unusable for the asking client, and, since the inbound DoT/DoH server,
+// one that differed between plain and encrypted DNS. The policy implemented by
+// pihole_select_addrs() below is, per requested family (#2996):
+//
+//   1. dns.reply.host.force4/force6 keep overriding everything (positive).
+//   2. Otherwise ALL usable addresses of the *arriving* interface are answered,
+//      in enumeration order. Plain queries arrive directly, so this is
+//      next_iface. Encrypted queries are handed over on loopback, so our DoT/
+//      DoH server conveys the kernel interface index of the address the client
+//      connected to through its private EDNS option and that very interface
+//      stands in - no address-to-interface inference anywhere (the loopback
+//      forward's addresses must never leak into a reply). Routing decisions
+//      and fallbacks are the client's job - the server simply publishes every
+//      address it wishes to be reached at.
+//   3. For IPv6, unusable addresses are excluded: link-local (clients cannot
+//      use them without a zone/interface identifier, which DNS cannot convey),
+//      deprecated (unwanted for new connections), temporary privacy (outbound
+//      only) and tentative (duplicate-detection ongoing) addresses.
+//
+// Cross-family queries are answered with all usable addresses of the requested
+// family on the arriving interface as well: we cannot know where a v4-only
+// client would reach a v6 address (and vice versa), but staying on the one
+// interface the query arrived on bounds any leakage and keeps both transports
+// consistent. An empty selection turns into NODATA further up.
+// ****************************************************************************
+
+// Upper bound of addresses answered per family. Far above any realistic number
+// of addresses on one interface; also bounds the reply size added per family.
+#define PIHOLE_MAX_ADDRS 16
+
+// Short-lived snapshot of locally configured interface addresses. dnsmasq's
+// struct irec carries neither per-address state (deprecated/temporary/...)
+// nor a complete view usable from our worker threads, so the entries come
+// straight from the kernel through a netlink RTM_GETADDR dump. Refreshed at
+// most every few seconds. On refresh failure the previous snapshot is kept
+// rather than discarded — a slightly stale table is better than none, and
+// avoids a window where pi.hole/<hostname> goes NODATA until the next dump
+// succeeds.
+#define PIHOLE_IF_MAX 256
+#define PIHOLE_IF_TTL 5 // seconds
+struct pihole_ifentry {
+	sa_family_t family;
+	int index;              // kernel interface index
+	unsigned char addr[16]; // network byte order
+	bool filtered;          // excluded from answers (see policy item 3)
+};
+static pthread_mutex_t pihole_if_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct pihole_ifentry pihole_if[PIHOLE_IF_MAX];
+static size_t pihole_if_n;
+static time_t pihole_if_at; // last refresh (0 = never)
+
+// Rebuild the interface-address snapshot from a netlink RTM_GETADDR dump.
+// Caller holds pihole_if_lock.
+static void pihole_if_refresh(void)
+{
+	const int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+	if(fd < 0)
+		return; // keep the previous snapshot until the next refresh
+
+	struct
+	{
+		struct nlmsghdr nlh;
+		struct ifaddrmsg ifa;
+	} req;
+	memset(&req, 0, sizeof(req));
+	req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifa));
+	req.nlh.nlmsg_type = RTM_GETADDR;
+	req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+	req.nlh.nlmsg_seq = 1;
+	req.ifa.ifa_family = AF_UNSPEC;
+
+	if(send(fd, &req, sizeof(req), 0) < 0)
+	{
+		close(fd);
+		return; // keep the previous snapshot until the next refresh
+	}
+
+	size_t n = 0;
+	// Union to keep the receive buffer suitably aligned for the netlink
+	// message headers parsed out of it
+	union
+	{
+		char buf[8192];
+		struct nlmsghdr align;
+	} u;
+	ssize_t blen;
+	while(n < PIHOLE_IF_MAX && (blen = recv(fd, u.buf, sizeof(u.buf), 0)) > 0)
+	{
+		ssize_t rem = blen;
+		struct nlmsghdr *nh;
+		for(nh = &u.align; NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem))
+		{
+			// The dump terminates with NLMSG_DONE (or reports an error)
+			if(nh->nlmsg_type == NLMSG_DONE || nh->nlmsg_type == NLMSG_ERROR)
+			{
+				close(fd);
+				pihole_if_n = n;
+				return;
+			}
+			if(nh->nlmsg_type != RTM_NEWADDR)
+				continue;
+
+			const struct ifaddrmsg *ifa = NLMSG_DATA(nh);
+			const sa_family_t fam = ifa->ifa_family;
+			if(fam != AF_INET && fam != AF_INET6)
+				continue;
+			const size_t len = (fam == AF_INET) ? 4 : 16;
+
+			// Attribute walk within this single netlink message
+			const unsigned char *addr = NULL;
+			uint32_t aflags = ifa->ifa_flags; // legacy low-order bits
+			size_t alen = NLMSG_PAYLOAD(nh, sizeof(*ifa));
+			for(struct rtattr *rta = IFA_RTA(ifa); RTA_OK(rta, alen); rta = RTA_NEXT(rta, alen))
+			{
+				switch(rta->rta_type)
+				{
+					case IFA_LOCAL: // preferred over IFA_ADDRESS (point-to-point)
+						if(RTA_PAYLOAD(rta) >= len)
+							addr = RTA_DATA(rta);
+						break;
+					case IFA_ADDRESS:
+						if(addr == NULL && RTA_PAYLOAD(rta) >= len)
+							addr = RTA_DATA(rta);
+						break;
+					case IFA_FLAGS: // full 32-bit flag set
+						if(RTA_PAYLOAD(rta) >= sizeof(aflags))
+							memcpy(&aflags, RTA_DATA(rta), sizeof(aflags));
+						break;
+					default:
+						break;
+				}
+			}
+			if(addr == NULL)
+				continue;
+
+			struct pihole_ifentry *e = &pihole_if[n++];
+			memset(e, 0, sizeof(*e));
+			e->family = fam;
+			e->index = ifa->ifa_index;
+			memcpy(e->addr, addr, len);
+
+			// Addresses not suited as destinations for new connections are
+			// excluded from pi.hole/<hostname> answers (policy item 3).
+			// Link-local test done on the raw bytes (fe80::/10) to avoid an
+			// alignment-unsafe cast.
+			if(fam == AF_INET6 &&
+			   ((aflags & (IFA_F_TEMPORARY | IFA_F_DEPRECATED | IFA_F_TENTATIVE)) != 0 ||
+			    (e->addr[0] == 0xFE && (e->addr[1] & 0xC0) == 0x80)))
+				e->filtered = true;
+		}
+	}
+	close(fd);
+	pihole_if_n = n;
+}
+
+// Refresh the snapshot when it has gone stale. Caller holds pihole_if_lock.
+static void pihole_if_maybe_refresh(void)
+{
+	const time_t now = time(NULL);
+	if(pihole_if_at == 0 || now < pihole_if_at || now - pihole_if_at >= PIHOLE_IF_TTL)
+	{
+		pihole_if_refresh();
+		pihole_if_at = now;
+	}
+}
+
+// Collect the addresses pi.hole/<hostname> should be answered with for one
+// family, following the policy described above. Fills out[] (up to maxout)
+// and returns the number of addresses found (which may exceed maxout; the
+// overflow is simply not emitted).
+static unsigned int pihole_select_addrs(const sa_family_t family,
+                                        union all_addr *out, const unsigned int maxout)
+{
+	union all_addr cands[PIHOLE_MAX_ADDRS];
+	unsigned int ncands = 0;
+
+	// Which interface does this query "arrive" on? Plain queries arrive
+	// directly, so next_iface describes the receiving interface. Encrypted
+	// queries are handed over on loopback, so the interface index conveyed by
+	// our DoT/DoH server stands in; without it there is nothing sensible to
+	// answer from (the loopback forward must not leak into replies).
+	const bool encrypted = pihole_dest_set;
+	const int ifindex = encrypted ? pihole_dest_if : next_iface.index;
+
+	// Without a known arriving interface there is nothing sensible to answer
+	// from: enumerating ALL interfaces would leak addresses the client cannot
+	// reach (or must not see, e.g. loopback), so answer nothing (NODATA).
+	if(ifindex < 0)
+		return 0;
+
+	pthread_mutex_lock(&pihole_if_lock);
+	pihole_if_maybe_refresh();
+
+	// Enumerate all usable addresses of the arriving interface in this family,
+	// keeping any duplicates out (dnsmasq lists some addresses more than once,
+	// e.g. once per label). Enumeration order is kept - no special ordering.
+	for(size_t k = 0; k < pihole_if_n && ncands < PIHOLE_MAX_ADDRS; k++)
+	{
+		const struct pihole_ifentry *e = &pihole_if[k];
+		if(e->family != family || e->filtered || e->index != ifindex)
+			continue;
+
+		bool dup = false;
+		for(unsigned int i = 0; i < ncands && !dup; i++)
+			if(memcmp(&cands[i], e->addr,
+			          family == AF_INET ? sizeof(struct in_addr) :
+			                              sizeof(struct in6_addr)) == 0)
+				dup = true;
+		if(!dup)
+			memcpy(&cands[ncands++], e->addr,
+			       family == AF_INET ? sizeof(struct in_addr) :
+			                           sizeof(struct in6_addr));
+	}
+	pthread_mutex_unlock(&pihole_if_lock);
+
+	// Copy out up to maxout addresses
+	const unsigned int nout = (ncands > maxout) ? maxout : ncands;
+	for(unsigned int i = 0; i < nout; i++)
+		out[i] = cands[i];
+	return ncands;
+}
+
+// Kernel interface index owning the given local address, resolved against the
+// netlink snapshot by exact match. The one special case is loopback: the
+// kernel delivers any 127.x.y.z (and ::1) to lo without those addresses being
+// assigned and thus enumerated individually, so an unlisted loopback address
+// maps to the interface carrying 127.0.0.1/::1. This is a protocol fact, not
+// subnet matching. Used by our DoT/DoH server to convey the connected-to
+// interface through its private EDNS option.
+bool FTL_pihole_ifindex_for_addr(const char *ipaddr, int *ifindex, int *family)
+{
+	struct in_addr v4;
+	struct in6_addr v6;
+	sa_family_t fam;
+	unsigned char bytes[16];
+	size_t len;
+	bool is_loopback = false;
+	if(inet_pton(AF_INET, ipaddr, &v4) == 1)
+	{
+		fam = AF_INET;
+		len = sizeof(v4.s_addr);
+		memcpy(bytes, &v4.s_addr, len);
+		is_loopback = (ntohl(v4.s_addr) & 0xFF000000) == 0x7F000000;
+	}
+	else if(inet_pton(AF_INET6, ipaddr, &v6) == 1)
+	{
+		if(IN6_IS_ADDR_V4MAPPED(&v6))
+		{
+			fam = AF_INET;
+			len = 4;
+			memcpy(bytes, v6.s6_addr + 12, len);
+			is_loopback = v6.s6_addr[12] == 127;
+		}
+		else
+		{
+			fam = AF_INET6;
+			len = sizeof(v6.s6_addr);
+			memcpy(bytes, v6.s6_addr, len);
+			is_loopback = IN6_IS_ADDR_LOOPBACK(&v6);
+		}
+	}
+	else
+		return false;
+
+	bool found = false;
+	pthread_mutex_lock(&pihole_if_lock);
+	pihole_if_maybe_refresh();
+	for(size_t k = 0; k < pihole_if_n && !found; k++)
+	{
+		const struct pihole_ifentry *e = &pihole_if[k];
+		if(e->family != fam)
+			continue;
+		// Unlisted loopback address: any entry of lo's 127.0.0.0/8 stands for
+		// the whole range; IPv6 loopback is exactly ::1 and always enumerated
+		const bool hit = fam == AF_INET ?
+		                 (is_loopback ? e->addr[0] == 127 :
+		                                memcmp(e->addr, bytes, 4) == 0) :
+		                 memcmp(e->addr, bytes, 16) == 0;
+		if(hit)
+		{
+			*ifindex = e->index;
+			found = true;
+		}
+	}
+	pthread_mutex_unlock(&pihole_if_lock);
+
+	if(found && family != NULL)
+		*family = fam == AF_INET ? 4 : 6;
+	return found;
+}
+
+// First usable (non-filtered) address of one family on the given interface,
+// read from the netlink snapshot. Used to mirror a sensible single address of
+// the conveyed interface into dnsmasq's single-address pi.hole CNAME record.
+static bool pihole_first_usable(const int ifindex, const sa_family_t family,
+                                union all_addr *out)
+{
+	if(ifindex < 0)
+		return false;
+
+	const size_t len = (family == AF_INET) ? sizeof(struct in_addr) :
+	                                           sizeof(struct in6_addr);
+	bool found = false;
+	pthread_mutex_lock(&pihole_if_lock);
+	pihole_if_maybe_refresh();
+	for(size_t k = 0; k < pihole_if_n && !found; k++)
+	{
+		const struct pihole_ifentry *e = &pihole_if[k];
+		if(e->family == family && !e->filtered && e->index == ifindex)
+		{
+			memcpy(out, e->addr, len);
+			found = true;
+		}
+	}
+	pthread_mutex_unlock(&pihole_if_lock);
+	return found;
+}
 
 void FTL_dump_cache_stats(void)
 {
@@ -360,6 +692,44 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
+// Add the A (is4) or AAAA (!is4) resource records of a pi.hole/<hostname>
+// reply, one per address in addr[0..n). Each record is logged so the debug
+// log shows every address handed out; a record that no longer fits into the
+// reply buffer stops the loop (dnsmasq flags truncation via *trunc).
+static void add_hostn_rrs(struct dns_header *header, char *limit, unsigned char **p,
+                          int *trunc, const bool is4,
+                          union all_addr *addr, unsigned int n,
+                          unsigned int flags, char *name)
+{
+	const unsigned int qtype = is4 ? T_A : T_AAAA;
+	for(unsigned int i = 0; i < n; i++)
+	{
+		// Debug logging
+		if(config.debug.queries.v.b)
+		{
+			char ip[ADDRSTRLEN+1] = { 0 };
+			alladdr_extract_ip(&addr[i], is4 ? AF_INET : AF_INET6, ip);
+			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s %s %s\"", name,
+			          is4 ? "A" : "AAAA", ip);
+		}
+
+		// Add A/AAAA resource record
+		header->ancount = htons(ntohs(header->ancount) + 1);
+		if(add_resource_record(header, limit, trunc, sizeof(struct dns_header),
+		                       p, daemon->local_ttl, NULL, qtype, C_IN,
+		                       is4 ? (char*)"4" : (char*)"6",
+		                       is4 ? (void *)&addr[i].addr4 : (void *)&addr[i].addr6))
+			log_query(flags & (is4 ? ~F_IPV6 : ~F_IPV4), name, &addr[i],
+			          (char*)blockingreason, 0);
+		else
+		{
+			// Did not fit anymore: roll back the answer count and stop
+			header->ancount = htons(ntohs(header->ancount) - 1);
+			break;
+		}
+	}
+}
+
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len,
                         unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len,
@@ -431,26 +801,6 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// We do not need to change the flags here,
 		// they are already properly set (F_IPV4 and/or F_IPV6)
 		forced_ip = true;
-
-		// A pi.hole/<hostname> ANY query over our encrypted server must return
-		// only the family the client actually connected over. The whole-query
-		// REPLY_NODATA guard in _FTL_new_query cannot express per-family
-		// suppression for ANY, so drop the non-connected family here: otherwise
-		// its record falls back to next_iface (the loopback forward) and leaks
-		// 127.0.0.1/::1. A forced host address (force4/force6) still fills it.
-		// Only the pi.hole/<hostname> reply is affected - a regex IP-redirect also
-		// forces REPLY_IP but fills from redirect_addrX (no leak), and the dest hint
-		// is set for every encrypted query, so gate on the HOSTNAME reason.
-		if(strcmp(blockingreason, HOSTNAME) == 0 &&
-		   (flags & F_IPV4) && (flags & F_IPV6) &&
-		   pihole_dest_id == (int)daemon->log_display_id &&
-		   (pihole_dest_v4_set || pihole_dest_v6_set))
-		{
-			if(!pihole_dest_v4_set && !config.dns.reply.host.force4.v.b)
-				flags &= ~F_IPV4;
-			if(!pihole_dest_v6_set && !config.dns.reply.host.force6.v.b)
-				flags &= ~F_IPV6;
-		}
 
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
@@ -653,9 +1003,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		                       &p, daemon->local_ttl, NULL,
 		                       T_CNAME, C_IN, (char*)"d", cname_target))
 			log_query(flags, name, NULL, (char*)blockingreason, 0);
+		else
+			header->ancount = htons(ntohs(header->ancount) - 1);
 	}
 
-	// Add A answer record if requested
+	// Add A answer record(s) if requested
 	if(flags & F_IPV4)
 	{
 		union all_addr addr = {};
@@ -665,57 +1017,100 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			log_debug(DEBUG_QUERIES, "Using regex redirected A address");
 			memcpy(&addr, &redirect_addr4, sizeof(addr));
+
+			// Debug logging
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				alladdr_extract_ip(&addr, AF_INET, ip);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
+			}
+
+			// Add A resource record
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+			                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
+				log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
+			else
+				header->ancount = htons(ntohs(header->ancount) - 1);
 		}
-		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
-		        config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
-		        forced_ip)
+		else if(hostn && (config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+		                  config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
+		                  forced_ip))
 		{
-			if(hostn && config.dns.reply.host.force4.v.b)
+			if(config.dns.reply.host.force4.v.b)
 			{
+				// The static, non-localized forced host reply keeps overriding
+				// everything and stays positive, as before
 				log_debug(DEBUG_QUERIES, "Using dns.reply.host.force4");
-				memcpy(&addr, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
-			}
-			else if(!hostn && config.dns.reply.blocking.force4.v.b)
-			{
-				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force4");
-				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
-			}
-			else if(hostn && pihole_dest_v4_set &&
-			        pihole_dest_id == (int)daemon->log_display_id)
-			{
-				// pi.hole/<hostname> over encrypted DNS: use the address the client
-				// connected to (conveyed by our DoT/DoH server) instead of the
-				// loopback forward's interface address. Tie the hint to the query
-				// being answered (as update_pihole_cache_record does), so a stale
-				// hint from an earlier query is never used. An explicit forced-host
-				// reply (dns.reply.host.force4, handled above) still takes precedence.
-				log_debug(DEBUG_QUERIES, "Using DoT/DoH connected-address for pi.hole A");
-				memcpy(&addr.addr4, &pihole_dest_v4, sizeof(addr.addr4));
+				memcpy(&addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(addr.addr4));
+
+				// Debug logging
+				if(config.debug.queries.v.b)
+				{
+					char ip[ADDRSTRLEN+1] = { 0 };
+					alladdr_extract_ip(&addr, AF_INET, ip);
+					log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
+				}
+
+				// Add A resource record
+				header->ancount = htons(ntohs(header->ancount) + 1);
+				if(!add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+				                        &p, daemon->local_ttl, NULL,
+				                        T_A, C_IN, (char*)"4", &addr.addr4))
+					header->ancount = htons(ntohs(header->ancount) - 1);
 			}
 			else
 			{
-				log_debug(DEBUG_QUERIES, "Using next_iface A address");
-				memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
+				// pi.hole/<hostname>: answer with all usable addresses of the
+				// arriving interface (see pihole_select_addrs() for the policy)
+				union all_addr addrs[PIHOLE_MAX_ADDRS];
+				const unsigned int n = pihole_select_addrs(AF_INET, addrs, PIHOLE_MAX_ADDRS);
+				log_debug(DEBUG_QUERIES, "Selected %u A address%s for %s",
+				          n, n == 1 ? "" : "es", name);
+				add_hostn_rrs(header, limit, &p, &trunc, true,
+				              addrs, n, flags, name);
 			}
 		}
-
-		// Debug logging
-		if(config.debug.queries.v.b)
+		else
 		{
-			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(&addr, AF_INET, ip);
-			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
-		}
+			if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+			   config.dns.blocking.mode.v.blocking_mode == MODE_IP_NODATA_AAAA ||
+			   forced_ip)
+			{
+				if(!hostn && config.dns.reply.blocking.force4.v.b)
+				{
+					log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force4");
+					memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
+				}
+				else
+				{
+					log_debug(DEBUG_QUERIES, "Using next_iface A address");
+					memcpy(&addr, &next_iface.addr4, sizeof(addr.addr4));
+				}
+			}
 
-		// Add A resource record
-		header->ancount = htons(ntohs(header->ancount) + 1);
-		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
-		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
-			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
+			// Debug logging
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				alladdr_extract_ip(&addr, AF_INET, ip);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
+			}
+
+			// Add A resource record
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+			                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
+				log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
+			else
+				header->ancount = htons(ntohs(header->ancount) - 1);
+		}
 	}
 
-	// Add AAAA answer record if requested
+	// Add AAAA answer record(s) if requested
 	if(flags & F_IPV6)
 	{
 		union all_addr addr = {};
@@ -725,48 +1120,95 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		{
 			log_debug(DEBUG_QUERIES, "Using regex redirected AAAA address");
 			memcpy(&addr, &redirect_addr6, sizeof(addr));
+
+			// Debug logging
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				alladdr_extract_ip(&addr, AF_INET6, ip);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
+			}
+
+			// Add AAAA resource record
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+			                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
+				log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
+			else
+				header->ancount = htons(ntohs(header->ancount) - 1);
 		}
-		else if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
-		        forced_ip)
+		else if(hostn && (config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+		                  forced_ip))
 		{
-			if(hostn && config.dns.reply.host.force6.v.b)
+			if(config.dns.reply.host.force6.v.b)
 			{
+				// The static, non-localized forced host reply keeps overriding
+				// everything and stays positive, as before
 				log_debug(DEBUG_QUERIES, "Using dns.reply.host.force6");
-				memcpy(&addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
-			}
-			else if(!hostn && config.dns.reply.blocking.force6.v.b)
-			{
-				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force6");
-				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
-			}
-			else if(hostn && pihole_dest_v6_set &&
-			        pihole_dest_id == (int)daemon->log_display_id)
-			{
-				// pi.hole/<hostname> over encrypted DNS: connected address (see IPv4).
-				log_debug(DEBUG_QUERIES, "Using DoT/DoH connected-address for pi.hole AAAA");
-				memcpy(&addr.addr6, &pihole_dest_v6, sizeof(addr.addr6));
+				memcpy(&addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(addr.addr6));
+
+				// Debug logging
+				if(config.debug.queries.v.b)
+				{
+					char ip[ADDRSTRLEN+1] = { 0 };
+					alladdr_extract_ip(&addr, AF_INET6, ip);
+					log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
+				}
+
+				// Add AAAA resource record
+				header->ancount = htons(ntohs(header->ancount) + 1);
+				if(!add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+				                        &p, daemon->local_ttl, NULL,
+				                        T_AAAA, C_IN, (char*)"6", &addr.addr6))
+					header->ancount = htons(ntohs(header->ancount) - 1);
 			}
 			else
 			{
-				log_debug(DEBUG_QUERIES, "Using next_iface AAAA address");
-				memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
+				// pi.hole/<hostname>: answer with all suitable addresses of the
+				// arriving interface (see IPv4 above and pihole_select_addrs())
+				union all_addr addrs[PIHOLE_MAX_ADDRS];
+				const unsigned int n = pihole_select_addrs(AF_INET6, addrs, PIHOLE_MAX_ADDRS);
+				log_debug(DEBUG_QUERIES, "Selected %u AAAA address%s for %s",
+				          n, n == 1 ? "" : "es", name);
+				add_hostn_rrs(header, limit, &p, &trunc, false,
+				              addrs, n, flags, name);
 			}
 		}
-
-		// Debug logging
-		if(config.debug.queries.v.b)
+		else
 		{
-			char ip[ADDRSTRLEN+1] = { 0 };
-			alladdr_extract_ip(&addr, AF_INET6, ip);
-			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
-		}
+			if(config.dns.blocking.mode.v.blocking_mode == MODE_IP ||
+			   forced_ip)
+			{
+				if(!hostn && config.dns.reply.blocking.force6.v.b)
+				{
+					log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force6");
+					memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
+				}
+				else
+				{
+					log_debug(DEBUG_QUERIES, "Using next_iface AAAA address");
+					memcpy(&addr, &next_iface.addr6, sizeof(addr.addr6));
+				}
+			}
 
-		// Add AAAA resource record
-		header->ancount = htons(ntohs(header->ancount) + 1);
-		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
-		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
-			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
+			// Debug logging
+			if(config.debug.queries.v.b)
+			{
+				char ip[ADDRSTRLEN+1] = { 0 };
+				alladdr_extract_ip(&addr, AF_INET6, ip);
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
+			}
+
+			// Add AAAA resource record
+			header->ancount = htons(ntohs(header->ancount) + 1);
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
+			                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
+				log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
+			else
+				header->ancount = htons(ntohs(header->ancount) - 1);
+		}
 	}
 
 	// Log empty replies
@@ -880,12 +1322,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
-	// Reset this query's pi.hole connected-address hint. It is populated from the
-	// SINGLE getEDNS() read further down (getEDNS() is consume-once: reading the
-	// EDNS data here would starve the client-attribution/ECS parsing of it), and
-	// used so a pi.hole/<hostname> answer over encrypted DNS returns the address the
-	// client actually connected to rather than the loopback forward's.
-	pihole_dest_v4_set = pihole_dest_v6_set = false;
+	// Reset this query's pi.hole connected-interface hint. It is populated from
+	// the SINGLE getEDNS() read further down (getEDNS() is consume-once:
+	// reading the EDNS data here would starve the client-attribution/ECS
+	// parsing of it), and used so a pi.hole/<hostname> answer over encrypted
+	// DNS selects addresses from the interface the client actually connected
+	// to rather than from the loopback forward.
+	pihole_dest_set = false;
+	pihole_dest_if = -1;
 	pihole_dest_id = -1;
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
@@ -899,22 +1343,24 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// up our DoT/DoH server's connected-address hint for the reply.
 			capture_pihole_dest(getEDNS(), addr, id);
 
-			// "Block" this query by sending the interface IP address.
-			// Send NODATA when we have no sensible address of the
-			// requested family. Two cases: (1) the current interface
-			// lacks it (e.g., AAAA on a v4-only virtual interface), or
-			// (2) the query arrived over our encrypted server and a
-			// connected address was conveyed, but not for this family -
-			// the interface is then the loopback forward, so answering
-			// from it would leak 127.0.0.1/::1. A forced fixed reply
-			// (dns.reply.host.forceX) always wins and stays positive.
-			const bool encrypted = pihole_dest_v4_set || pihole_dest_v6_set;
-			if((querytype == TYPE_A &&
-			    (encrypted ? !pihole_dest_v4_set : !next_iface.haveIPv4) &&
-			    !config.dns.reply.host.force4.v.b) ||
-			   (querytype == TYPE_AAAA &&
-			    (encrypted ? !pihole_dest_v6_set : !next_iface.haveIPv6) &&
-			    !config.dns.reply.host.force6.v.b))
+			// "Block" this query by sending interface-local IP address(es).
+			// Send NODATA when the selection (arriving interface, connected
+			// address for encrypted queries) yields no usable address of
+			// the requested family - e.g., AAAA on a v4-only interface. A
+			// forced fixed reply (dns.reply.host.forceX) always wins and
+			// stays positive.
+			bool have_v4 = false, have_v6 = false;
+			if(querytype == TYPE_A || querytype == TYPE_ANY)
+				have_v4 = config.dns.reply.host.force4.v.b ||
+				          pihole_select_addrs(AF_INET, NULL, 0) > 0;
+			if(querytype == TYPE_AAAA || querytype == TYPE_ANY)
+				have_v6 = config.dns.reply.host.force6.v.b ||
+				          pihole_select_addrs(AF_INET6, NULL, 0) > 0;
+
+			const bool have_family = querytype == TYPE_A ? have_v4 :
+			                         querytype == TYPE_AAAA ? have_v6 :
+			                         have_v4 || have_v6;
+			if(!have_family)
 				force_next_DNS_reply = REPLY_NODATA;
 			else
 				force_next_DNS_reply = REPLY_IP;
@@ -955,9 +1401,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	ednsData *edns = getEDNS();
-	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
-	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
-	// query name) can use it in update_pihole_cache_record.
+	// Also capture our DoT/DoH server's connected-address hint from the same
+	// EDNS read, so a pi.hole answer reached via a CNAME (resolved under this
+	// non-pi.hole query name) can use it in update_pihole_cache_record.
 	capture_pihole_dest(edns, addr, id);
 	if(edns && edns->private_client_set && mysockaddr_is_loopback(addr))
 	{
@@ -1375,6 +1821,7 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 		memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
 		next_iface.haveIPv4 = next_iface.haveIPv6 = false;
+		next_iface.index = -1;
 		next_iface.name[0] = '-';
 		next_iface.name[1] = '\0';
 		return;
@@ -1395,8 +1842,13 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
 	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
+	next_iface.index = -1;
 	next_iface.name[0] = '-';
 	next_iface.name[1] = '\0';
+
+	// Store the ifindex of the receiving interface so pi.hole/<hostname>
+	// answers can enumerate all addresses of this interface
+	next_iface.index = recviface->index;
 
 	// Determine addresses of this interface, we have to loop over all interfaces as
 	// recviface will always only contain *either* IPv4 or IPv6 information
@@ -2118,20 +2570,27 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
  */
 static void update_pihole_cache_record(const int id)
 {
-	// A CNAME chain reaching pi.hole over encrypted DNS: prefer the address the
-	// client connected to (conveyed by our DoT/DoH server) over the interface
-	// address, mirroring the else-branch of FTL_make_answer. An explicit forced-host
-	// reply still takes precedence, and the hint is only trusted when it belongs to
-	// the query currently being answered (FTL_CNAME also fires while parsing an
-	// upstream reply, a later event-loop iteration, where the static would be stale).
-	const bool use_dest_v4 = pihole_dest_v4_set && pihole_dest_id == id;
-	const bool use_dest_v6 = pihole_dest_v6_set && pihole_dest_id == id;
-	// An encrypted query where the client did not connect over this family: the
-	// interface (next_iface) is then the loopback handoff, so writing it would
-	// poison the shared record with 127.0.0.1/::1. Skip it and keep the value the
-	// matching-family / real-interface updates leave, mirroring the direct path's
-	// refusal to answer the non-connected family from the loopback forward.
-	const bool encrypted = (pihole_dest_v4_set || pihole_dest_v6_set) && pihole_dest_id == id;
+	// A CNAME chain reaching pi.hole over encrypted DNS: mirror the conveyed
+	// arriving interface (its first usable address, the same one a direct
+	// pi.hole/<hostname> answer leads with) instead of an address of the
+	// loopback handoff. An explicit forced-host reply still takes precedence,
+	// and the hint is only trusted when it belongs to the query currently
+	// being answered (FTL_CNAME also fires while parsing an upstream reply, a
+	// later event-loop iteration, where the static would be stale).
+	// Note this shared cache record holds a single address per family (it backs
+	// dnsmasq's CNAME resolution), so it cannot carry the full multi-address
+	// selection of pihole_select_addrs(); the first usable address of the
+	// arriving interface is the most sensible single choice here.
+	const bool encrypted = pihole_dest_set && pihole_dest_id == id;
+	union all_addr dest_v4 = {}, dest_v6 = {};
+	const bool use_dest_v4 = encrypted && pihole_first_usable(pihole_dest_if, AF_INET, &dest_v4);
+	const bool use_dest_v6 = encrypted && pihole_first_usable(pihole_dest_if, AF_INET6, &dest_v6);
+	// An encrypted query whose conveyed interface yields no usable address in
+	// this family (e.g. v4-only interface): writing next_iface would then
+	// poison the shared record with 127.0.0.1/::1. Skip it and keep the value
+	// the matching-family / real-interface updates leave, mirroring the direct
+	// path's refusal to answer the non-connected family from the loopback
+	// forward.
 	struct crec *lookup = NULL;
 	while ((lookup = cache_find_by_name(lookup, (char*)"pi.hole", 0, F_IPV4 | F_IPV6)))
 	{
@@ -2142,8 +2601,8 @@ static void update_pihole_cache_record(const int id)
 			if(config.dns.reply.host.force4.v.b)
 				memcpy(&lookup->addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(lookup->addr.addr4));
 			else if(use_dest_v4)
-				memcpy(&lookup->addr.addr4, &pihole_dest_v4, sizeof(lookup->addr.addr4));
-			else if(!(encrypted && !pihole_dest_v4_set))
+				memcpy(&lookup->addr.addr4, &dest_v4, sizeof(lookup->addr.addr4));
+			else if(!encrypted)
 				memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(lookup->addr.addr4));
 			log_debug(DEBUG_NETWORKING, "Updating IPv4 address in cache");
 		}
@@ -2152,8 +2611,8 @@ static void update_pihole_cache_record(const int id)
 			if(config.dns.reply.host.force6.v.b)
 				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
 			else if(use_dest_v6)
-				memcpy(&lookup->addr.addr6, &pihole_dest_v6, sizeof(lookup->addr.addr6));
-			else if(!(encrypted && !pihole_dest_v6_set))
+				memcpy(&lookup->addr.addr6, &dest_v6, sizeof(lookup->addr.addr6));
+			else if(!encrypted)
 				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(lookup->addr.addr6));
 			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
 		}
@@ -4002,7 +4461,7 @@ void FTL_TCP_worker_created(const int confd)
 		char local_ip[ADDRSTRLEN] = { 0 };
 		union mysockaddr iface_sockaddr = {};
 		socklen_t iface_len = sizeof(union mysockaddr);
-		if(getsockname(confd, (struct sockaddr *)&iface_sockaddr, &iface_len) != -1)
+		if (getsockname(confd, (struct sockaddr *)&iface_sockaddr, &iface_len) != -1)
 		{
 			union all_addr iface_addr = {};
 			if (iface_sockaddr.sa.sa_family == AF_INET6)

@@ -40,6 +40,12 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 bool FTL_CNAME(const char *dst, const char *src, const int id);
 
+// Kernel interface index owning the given local address (exact match against
+// the netlink snapshot). *family receives 4 or 6 when non-NULL. False when the
+// address is not a currently assigned local address. Used by our DoT/DoH
+// server to convey the connected-to interface through its private EDNS option.
+bool FTL_pihole_ifindex_for_addr(const char *ipaddr, int *ifindex, int *family);
+
 void FTL_query_in_progress(const int id);
 void FTL_multiple_replies(const int id, int *firstID);
 

@@ -298,58 +298,79 @@ setup_file() {
   assert_failure
 }
 
-# The next two tests verify pi.hole/<hostname> over encrypted DNS answers with the
-# address the client actually connected to (conveyed as a MAC-verified private
-# EDNS option), not the loopback address of our internal forward. They connect to
-# 127.0.0.3 - a DIFFERENT loopback address than the 127.0.0.1 forward - so the
-# expected answer (127.0.0.3) can only come from the conveyed destination. Without
-# the fix pi.hole would resolve to 127.0.0.1 here and both would fail.
+# The next tests verify that pi.hole/<hostname> over encrypted DNS follows the
+# same interface-driven policy as plain DNS (#2996): the inbound DoT/DoH server
+# conveys the kernel interface index of its listening socket (MAC-verified
+# private EDNS option) and FTL answers with ALL usable addresses of exactly that
+# interface, never with an address of the loopback forward's handoff.
 
-@test "dotdoh-server: pi.hole over DoT resolves to the address the client connected to" {
+@test "dotdoh-server: pi.hole over DoT resolves from the interface the client connected to" {
   local ca; ca="$(pwd)/test/test_ca.crt"
-  run python3 test/dotdoh_query.py dot 127.0.0.3 853 pi.hole "$CLIENT" "$ca" 127.0.0.3
+  # Dial a global (non-loopback) address when one exists: the answer must then
+  # come from that interface - a leaked loopback forward (127.0.0.1) fails this.
+  local line dst
+  line="$(ip -o -4 addr show scope global | head -1)"
+  dst="$(awk '{print $4}' <<< "$line")"; dst="${dst%%/*}"
+  if [[ -n "$dst" ]]; then
+    run python3 test/dotdoh_query.py dot "$dst" 853 pi.hole "$CLIENT" "$ca" "$dst"
+    assert_output "OK"
+  else
+    skip "no global IPv4 address to dial"
+  fi
+}
+
+@test "dotdoh-server: pi.hole over DoT on loopback answers with loopback's published address" {
+  local ca; ca="$(pwd)/test/test_ca.crt"
+  # Connecting to 127.0.0.3 (any 127/8 address reaches lo): lo publishes
+  # 127.0.0.1, which is what the answer must carry.
+  run python3 test/dotdoh_query.py dot 127.0.0.3 853 pi.hole "$CLIENT" "$ca" 127.0.0.1
   assert_output "OK"
 }
 
-@test "dotdoh-server: pi.hole over DoH resolves to the address the client connected to" {
+@test "dotdoh-server: pi.hole over DoH on loopback answers with loopback's published address" {
   local ca a; ca="$(pwd)/test/test_ca.crt"; a="${BATS_FILE_TMPDIR}/pihole_doh.bin"
   local q="${BATS_FILE_TMPDIR}/pihole_q.bin"
   python3 test/dotdoh_query.py emit pi.hole "$q"
   # --resolve maps pi.hole:443 to 127.0.0.3, so curl connects there; the terminator
-  # conveys 127.0.0.3 as the PROXY v2 destination.
+  # conveys the connection as the PROXY v2 destination and lo's answer is 127.0.0.1.
   run curl -s --cacert "$ca" --resolve "pi.hole:443:127.0.0.3" \
            --interface "$CLIENT" -H 'content-type: application/dns-message' \
            --data-binary "@$q" "https://pi.hole/dns-query" --output "$a"
   assert_success
-  run python3 test/dotdoh_query.py check "$a" 127.0.0.3
+  run python3 test/dotdoh_query.py check "$a" 127.0.0.1
   assert_output "OK"
 }
 
-# A cross-family query (AAAA over a v4 transport) has no conveyed address of the
-# requested family. The internal forward is the loopback, so the only alternative
-# would be 127.0.0.1 - which must NOT leak as a AAAA/A answer. We return NODATA
-# instead of the wrong loopback address (the wider multi-address pi.hole design is
-# a separate topic that also affects plain DNS).
+# A cross-family query (AAAA over a v4 transport) has no usable IPv6 of its own
+# to convey: the conveyed interface (loopback here) still decides where the
+# cross-family answer comes from - never from the internal forward's handoff.
+# With IPv6 available this is ::1 (the same answer plain DNS from loopback
+# gives); without IPv6 there is nothing to answer with and we return NODATA.
 
-@test "dotdoh-server: pi.hole AAAA over a v4 DoT transport returns NODATA, not loopback" {
+@test "dotdoh-server: pi.hole AAAA over a v4 DoT transport answers from the hinted interface, not the forward" {
   local ca; ca="$(pwd)/test/test_ca.crt"
-  run python3 test/dotdoh_query.py dotnodata 127.0.0.3 853 pi.hole "$CLIENT" "$ca"
-  assert_output "OK"
+  if ipv6_loopback_available; then
+    run python3 test/dotdoh_query.py dot 127.0.0.3 853 pi.hole "$CLIENT" "$ca" ::1 28
+    assert_output "OK"
+  else
+    run python3 test/dotdoh_query.py dotnodata 127.0.0.3 853 pi.hole "$CLIENT" "$ca"
+    assert_output "OK"
+  fi
 }
 
 # A CNAME targeting pi.hole (cnameRecords has "pihole.mydomain.net,pi.hole") must
 # localise the same way as a direct query: the synthesised pi.hole A in the chain
-# also uses the connected address, not the loopback forward's. It is reached under
-# the original, non-pi.hole query name, so it exercises the separate cache-record
-# path (FTL_CNAME -> update_pihole_cache_record).
+# also uses the connected-to interface, not the loopback forward's. It is reached
+# under the original, non-pi.hole query name, so it exercises the separate
+# cache-record path (FTL_CNAME -> update_pihole_cache_record).
 
-@test "dotdoh-server: a CNAME to pi.hole over DoT localises to the connected address" {
+@test "dotdoh-server: a CNAME to pi.hole over DoT localises via the conveyed interface" {
   local ca; ca="$(pwd)/test/test_ca.crt"
-  run python3 test/dotdoh_query.py dot 127.0.0.3 853 pihole.mydomain.net "$CLIENT" "$ca" 127.0.0.3
+  run python3 test/dotdoh_query.py dot 127.0.0.3 853 pihole.mydomain.net "$CLIENT" "$ca" 127.0.0.1
   assert_output "OK"
 }
 
-@test "dotdoh-server: a CNAME to pi.hole over DoH localises to the connected address" {
+@test "dotdoh-server: a CNAME to pi.hole over DoH localises via the conveyed interface" {
   local ca a q; ca="$(pwd)/test/test_ca.crt"
   a="${BATS_FILE_TMPDIR}/cname_doh.bin"; q="${BATS_FILE_TMPDIR}/cname_q.bin"
   python3 test/dotdoh_query.py emit pihole.mydomain.net "$q"
@@ -357,6 +378,6 @@ setup_file() {
            --interface "$CLIENT" -H 'content-type: application/dns-message' \
            --data-binary "@$q" "https://pi.hole/dns-query" --output "$a"
   assert_success
-  run python3 test/dotdoh_query.py check "$a" 127.0.0.3
+  run python3 test/dotdoh_query.py check "$a" 127.0.0.1
   assert_output "OK"
 }

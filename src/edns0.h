@@ -16,10 +16,11 @@
 // range (RFC 6891) that dnsmasq does not already use for another option: avoid
 // 65001 (EDNS0_OPTION_MAC), 65073/65074 (Nominum), 20292 (Umbrella).
 #define EDNS0_OPTION_PIHOLE_CLIENT 65432
-// Companion option carrying the local address the downstream client connected to
-// (the DoT/DoH listener socket). Lets pi.hole/<hostname> answers over encrypted
-// DNS return the address the client actually reached instead of the loopback
-// address of our internal forward. Same loopback+MAC trust as the client option.
+// Companion option carrying the kernel interface index of the local address the
+// downstream client connected to (the DoT/DoH listener socket). Lets pi.hole/
+// <hostname> answers over encrypted DNS use the very same interface-driven
+// policy as plain DNS instead of the loopback address of our internal forward.
+// Same loopback+MAC trust as the client option.
 #define EDNS0_OPTION_PIHOLE_DEST 65431
 
 typedef struct {
@@ -27,13 +28,13 @@ typedef struct {
 	bool mac_set :1;
 	bool valid :1;
 	bool private_client_set :1; // real client from EDNS0_OPTION_PIHOLE_CLIENT
-	bool private_dest_set :1;   // client-facing local address from EDNS0_OPTION_PIHOLE_DEST
+	bool private_dest_set :1;   // interface index from EDNS0_OPTION_PIHOLE_DEST
 	char client[ADDRSTRLEN];
 	// Deliberately separate from client[] (which the ECS parser writes): an
 	// external client could otherwise inject this option to overwrite the ECS
 	// client and bypass the ECS anti-loopback guard.
 	char private_client[ADDRSTRLEN];
-	char private_dest[ADDRSTRLEN];
+	int private_dest_if; // kernel ifindex of the connected-to interface
 	char mac_byte[6];
 	char mac_text[18];
 	int ede;

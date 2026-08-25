@@ -186,6 +186,14 @@ if [ $DOTDOH_SERVER_RET != 0 ]; then
   RET=$DOTDOH_SERVER_RET
 fi
 
+# Multi-homed pi.hole/<hostname> reply tests. Needs CAP_NET_ADMIN for the dummy
+# interfaces; skips cleanly when unavailable.
+$BATS -p "test/pihole_hostname.bats"
+PIHOLE_HOSTNAME_RET=$?
+if [ $PIHOLE_HOSTNAME_RET != 0 ]; then
+  RET=$PIHOLE_HOSTNAME_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.

@@ -14,6 +14,7 @@
 #include "FTL.h"
 #include "log.h"
 #include "edns0.h"
+#include "dnsmasq_interface.h"
 // dotdoh_inject_client() prototype (declared in the dnsmasq-free server header)
 #include "dotdoh/server.h"
 #include "config/config.h"
@@ -204,8 +205,8 @@ static bool dotdoh_opt_rrfilter_safe(unsigned char *buf, size_t plen)
 
 // Build [family][address][MAC] for ip and add it (replace=1, overwriting any
 // instance a client injected itself) as the given private option code. The MAC
-// over (code || address || question) binds it to this exact query. Returns the new
-// packet length, unchanged if ip does not parse.
+// over (code || address || question) binds it to this exact query. Returns the
+// new packet length, unchanged if ip does not parse.
 static size_t dotdoh_inject_addr(unsigned char *buf, size_t plen, size_t cap,
                                  const unsigned short code, const char *ip)
 {
@@ -218,6 +219,27 @@ static size_t dotdoh_inject_addr(unsigned char *buf, size_t plen, size_t cap,
 	optlen += DOTDOH_MAC_LEN;
 	return add_pseudoheader((struct dns_header *)(void *)buf, plen, cap,
 	                        code, payload, optlen, 0, 1);
+}
+
+// Build [family][interface index][MAC] and inject it as the given private
+// option code. The interface index is what the pi.hole/<hostname> answer
+// selection consumes (the arriving interface for encrypted queries); the
+// family byte only records which address family the connection used.
+static size_t dotdoh_inject_ifindex(unsigned char *buf, size_t plen, size_t cap,
+                                    const unsigned short code,
+                                    const unsigned char pfam, const int ifindex)
+{
+	unsigned char payload[1 + 4 + DOTDOH_MAC_LEN];
+	payload[0] = pfam;
+	// Interface index in network byte order, matching the address encoding style
+	payload[1] = (unsigned char)(ifindex >> 24);
+	payload[2] = (unsigned char)(ifindex >> 16);
+	payload[3] = (unsigned char)(ifindex >> 8);
+	payload[4] = (unsigned char)ifindex;
+	dotdoh_addr_mac(code, payload + 1, 4, buf + 12,
+	                dotdoh_question_len(buf, plen), payload + 5);
+	return add_pseudoheader((struct dns_header *)(void *)buf, plen, cap,
+	                        code, payload, 5 + DOTDOH_MAC_LEN, 0, 1);
 }
 
 size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
@@ -239,7 +261,15 @@ size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
 	// verifies (see below). Both hash the same (unchanged) question section.
 	plen = dotdoh_inject_addr(buf, plen, cap, EDNS0_OPTION_PIHOLE_CLIENT, client_ip);
 	if(dest_ip != NULL)
-		plen = dotdoh_inject_addr(buf, plen, cap, EDNS0_OPTION_PIHOLE_DEST, dest_ip);
+	{
+		// Resolve the connected-to address to its owning interface here, once,
+		// so the query itself carries the interface index and the answer
+		// selection needs no address-to-interface inference at all.
+		int dest_if = -1, dest_fam = 0;
+		if(FTL_pihole_ifindex_for_addr(dest_ip, &dest_if, &dest_fam))
+			plen = dotdoh_inject_ifindex(buf, plen, cap, EDNS0_OPTION_PIHOLE_DEST,
+			                             dest_fam == 6 ? 6 : 4, dest_if);
+	}
 	return plen;
 }
 
@@ -456,31 +486,40 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 				          ipaddr, source_netmask, family == 1 ? 4u : 6u);
 			}
 		}
-		else if((code == EDNS0_OPTION_PIHOLE_CLIENT || code == EDNS0_OPTION_PIHOLE_DEST) &&
-		        (optlen == 5 + DOTDOH_MAC_LEN || optlen == 17 + DOTDOH_MAC_LEN))
+		else if((code == EDNS0_OPTION_PIHOLE_CLIENT &&
+		         (optlen == 5 + DOTDOH_MAC_LEN || optlen == 17 + DOTDOH_MAC_LEN)) ||
+		        (code == EDNS0_OPTION_PIHOLE_DEST && optlen == 5 + DOTDOH_MAC_LEN))
 		{
-			// Pi-hole-private hint injected by our own inbound DoT/DoH server:
-			// [family(1B): 4 or 6][address(4 or 16B)][MAC]. PIHOLE_CLIENT carries
-			// the real downstream client, PIHOLE_DEST the address it connected to.
-			// Trusted only when the MAC verifies (proving it came from our own
-			// process) AND later when the query source is loopback (FTL_new_query).
+			// Pi-hole-private hints injected by our own inbound DoT/DoH server:
+			// [family(1B): 4 or 6][payload][MAC]. PIHOLE_CLIENT carries the real
+			// downstream client address (4 or 16 bytes), PIHOLE_DEST the kernel
+			// interface index (4 bytes, network byte order) of the interface the
+			// client connected to. Trusted only when the MAC verifies (proving
+			// it came from our own process) AND later when the query source is
+			// loopback (FTL_new_query).
 			const unsigned char pfam = *p;
 			union all_addr paddr = {};
 			int af = 0;
 			size_t addrlen = 0;
-			if(pfam == 4 && optlen == 5 + DOTDOH_MAC_LEN)
+			if(code == EDNS0_OPTION_PIHOLE_CLIENT && pfam == 4 && optlen == 5 + DOTDOH_MAC_LEN)
 			{
 				af = AF_INET;
 				addrlen = 4;
 				memcpy(&paddr.addr4.s_addr, p + 1, 4);
 			}
-			else if(pfam == 6 && optlen == 17 + DOTDOH_MAC_LEN)
+			else if(code == EDNS0_OPTION_PIHOLE_CLIENT && pfam == 6 && optlen == 17 + DOTDOH_MAC_LEN)
 			{
 				af = AF_INET6;
 				addrlen = 16;
 				memcpy(paddr.addr6.s6_addr, p + 1, 16);
 			}
-			// Recompute the MAC over (address || question of this message) and
+			else if(code == EDNS0_OPTION_PIHOLE_DEST && (pfam == 4 || pfam == 6))
+			{
+				af = pfam == 4 ? AF_INET : AF_INET6; // family of the connection only
+				addrlen = 4;                         // MAC covers the ifindex bytes
+				memcpy(&paddr.addr4.s_addr, p + 1, 4);
+			}
+			// Recompute the MAC over (payload || question of this message) and
 			// constant-time compare it to the one carried in the option.
 			pthread_once(&dotdoh_mac_key_once, dotdoh_mac_key_init);
 			unsigned char tdiff = 0;
@@ -501,12 +540,12 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 			}
 			if(af != 0 && tdiff == 0)
 			{
-				char ipaddr[ADDRSTRLEN] = { 0 };
-				inet_ntop(af, &paddr, ipaddr, sizeof(ipaddr));
-				// Store in a dedicated field, NOT the shared client[] the ECS
-				// parser uses, so this option cannot influence ECS attribution.
+				// Store in dedicated fields, NOT the shared client[] the ECS
+				// parser uses, so these options cannot influence ECS attribution.
 				if(code == EDNS0_OPTION_PIHOLE_CLIENT)
 				{
+					char ipaddr[ADDRSTRLEN] = { 0 };
+					inet_ntop(af, &paddr, ipaddr, sizeof(ipaddr));
 					strncpy(edns.private_client, ipaddr, ADDRSTRLEN);
 					edns.private_client[ADDRSTRLEN - 1] = '\0';
 					edns.private_client_set = true;
@@ -514,10 +553,11 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 				}
 				else
 				{
-					strncpy(edns.private_dest, ipaddr, ADDRSTRLEN);
-					edns.private_dest[ADDRSTRLEN - 1] = '\0';
+					memcpy(&edns.private_dest_if, p + 1, sizeof(edns.private_dest_if));
+					edns.private_dest_if = ntohl(edns.private_dest_if);
 					edns.private_dest_set = true;
-					log_debug(DEBUG_EDNS0, "PIHOLE DEST: %s (IPv%u)", ipaddr, pfam);
+					log_debug(DEBUG_EDNS0, "PIHOLE DEST: ifindex %d (IPv%u)",
+					          edns.private_dest_if, pfam);
 				}
 			}
 			// Neutralise the option in place so the real downstream client IP is

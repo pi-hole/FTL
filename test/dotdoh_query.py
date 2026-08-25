@@ -80,7 +80,8 @@ def dns_udp(host, port, packet, source):
 
 
 def validate(answer, expected_ip):
-    """Fail (raise SystemExit) unless answer is a positive reply for expected_ip."""
+    """Fail (raise SystemExit) unless answer is a positive reply containing
+    expected_ip among its answer records (A or AAAA, per address family)."""
     if len(answer) < 12:
         sys.exit("answer too short (%d bytes)" % len(answer))
     flags, _, ancount = struct.unpack("!HHH", answer[2:8])
@@ -91,8 +92,10 @@ def validate(answer, expected_ip):
         sys.exit("non-zero RCODE %d" % rcode)
     if ancount < 1:
         sys.exit("no answer records")
-    if socket.inet_aton(expected_ip) not in answer:
-        sys.exit("expected A record %s not found in answer" % expected_ip)
+    af = socket.AF_INET6 if ":" in expected_ip else socket.AF_INET
+    if socket.inet_pton(af, expected_ip) not in answer:
+        sys.exit("expected %s record %s not found in answer"
+                 % ("AAAA" if af == socket.AF_INET6 else "A", expected_ip))
 
 
 def validate_nodata(answer):
@@ -322,8 +325,11 @@ def main():
             validate(f.read(), expected_ip)
         print("OK")
     elif cmd == "dot":
+        # Optional trailing qtype (default 1 = A) so cross-family cases can be
+        # driven through the same code path.
         _, _, host, port, domain, source, cafile, expected_ip = sys.argv[:8]
-        answer = dot_exchange(host, int(port), domain, source, cafile)
+        qtype = int(sys.argv[8]) if len(sys.argv) > 8 else 1
+        answer = dot_exchange(host, int(port), domain, source, cafile, qtype=qtype)
         validate(answer, expected_ip)
         print("OK")
     elif cmd == "dotnodata":
