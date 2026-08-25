@@ -105,3 +105,38 @@ teardown() {
   assert_line --regexp "IN[[:space:]]+A[[:space:]]+192\.168\.249\.2"
   assert_line --regexp "IN[[:space:]]+A[[:space:]]+10\.99\.0\.1"
 }
+
+# ---------- CNAME -> pi.hole tests ----------
+
+@test "CNAME->pi.hole A: reply contains CNAME + all addresses of the queried interface" {
+  run bash -c "dig -b 192.168.249.77 @192.168.249.1 +short +time=2 +tries=1 A pihole.mydomain.net"
+  assert_success
+  # CNAME record first, then all A addresses of ftlsrv0
+  assert_line "pi.hole."
+  assert_line "192.168.249.1"
+  assert_line "192.168.249.2"
+  assert_line "10.99.0.1"
+}
+
+@test "CNAME->pi.hole AAAA: reply contains CNAME + all AAAA addresses of the queried interface" {
+  run bash -c "dig -b 192.168.249.77 @192.168.249.1 +short +time=2 +tries=1 AAAA pihole.mydomain.net"
+  assert_success
+  assert_line "pi.hole."
+  assert_line "fd43:998::1"
+  refute_line --regexp "^fe80:"
+}
+
+@test "CNAME->pi.hole A: identical reply no matter which server address is asked" {
+  run bash -c "dig -b 192.168.249.77 @10.99.0.1 +short +time=2 +tries=1 A pihole.mydomain.net"
+  assert_success
+  assert_line "pi.hole."
+  assert_line "192.168.249.1"
+  assert_line "192.168.249.2"
+  assert_line "10.99.0.1"
+}
+
+@test "CNAME->pi.hole A: loopback never leaks into multi-homed replies" {
+  run bash -c "dig -b 192.168.249.77 @192.168.249.1 +short +time=2 +tries=1 A pihole.mydomain.net"
+  assert_success
+  refute_line --regexp "^127\."
+}

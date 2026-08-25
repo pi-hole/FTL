@@ -2313,6 +2313,19 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	      } while ((crecp = cache_find_by_name(crecp, name, now, F_RR)));
 	}
       
+      /************ Pi-hole modification ************/
+      // When a CNAME target is a pi.hole domain, FTL_CNAME() broke out of
+      // the A/AAAA loop above so the single cached record was never emitted.
+      // Emit all usable addresses of the arriving interface instead, making
+      // CNAME->pi.hole behave identically to a direct pi.hole query.
+      if(FTL_pihole_cname_target())
+      {
+        if(FTL_pihole_CNAME_rr(header, limit, &ansp, &trunc, nameoffset,
+                               &anscount, name, qtype))
+          ans = 1;
+      }
+      /**********************************************/
+
       if (!ans && option_bool(OPT_FILTER) && (qtype == T_SRV || (qtype == T_ANY && strchr(name, '_'))))
 	{
 	  ans = 1;

@@ -40,6 +40,15 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 bool FTL_CNAME(const char *dst, const char *src, const int id);
 
+// Returns true when the current CNAME chain's target is a pi.hole domain.
+// Set by FTL_CNAME(), consumed by answer_request() to emit all addresses.
+bool FTL_pihole_cname_target(void);
+
+bool FTL_pihole_CNAME_rr(struct dns_header *header, char *limit,
+                          unsigned char **ansp, int *trunc,
+                          int nameoffset, int *anscount,
+                          const char *name, int qtype);
+
 // Kernel interface index owning the given local address (exact match against
 // the netlink snapshot). *family receives 4 or 6 when non-NULL. False when the
 // address is not a currently assigned local address. Used by our DoT/DoH

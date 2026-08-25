@@ -72,6 +72,7 @@ void FTL_dump_cache_stats(void);
 
 // Private prototypes
 static void print_flags(const unsigned int flags);
+static bool is_pihole_domain(const char *domain);
 #define query_set_reply(flags, reply, addr, query, now) _query_set_reply(flags, reply, addr, query, now, __FILE__, __LINE__)
 static void _query_set_reply(const unsigned int flags, const enum reply_type reply, const union all_addr *addr, queriesData *query,
                              const double now, const char *file, const int line);
@@ -95,6 +96,17 @@ static bool aabit = false, adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static enum query_status cacheStatus = QUERY_UNKNOWN;
+// True when the current CNAME chain target is a pi.hole domain. Set by
+// FTL_CNAME() and consumed by answer_request() (to emit all interface-local
+// addresses instead of the single cached one) and by FTL_make_answer() (for
+// the upstream path where the reply is rebuilt).
+static bool pihole_cname_target = false;
+
+// Accessor for pihole_cname_target, callable from rfc1035.c
+bool __attribute__((pure)) FTL_pihole_cname_target(void)
+{
+	return pihole_cname_target;
+}
 // pi.hole/<hostname> answers over encrypted DNS: the kernel interface index of
 // the interface the client connected to, conveyed by our own DoT/DoH server in
 // a MAC-verified, loopback-only private EDNS option. Set per query in
@@ -730,6 +742,86 @@ static void add_hostn_rrs(struct dns_header *header, char *limit, unsigned char 
 	}
 }
 
+// Fill the address list for a pi.hole-family reply, honoring the same policy
+// as a direct pi.hole/<hostname> query (see pihole_select_addrs()): a forced
+// static reply (dns.reply.host.force4/force6) always overrides everything and
+// stays positive as the single answer, otherwise all usable addresses of the
+// arriving interface are used. Returns the number of addresses written.
+static unsigned int pihole_host_addrs(const sa_family_t family,
+                                      union all_addr *addrs,
+                                      const unsigned int maxout)
+{
+	// The static, non-localized forced host reply keeps overriding everything
+	if(family == AF_INET && config.dns.reply.host.force4.v.b)
+	{
+		addrs[0].addr4 = config.dns.reply.host.v4.v.in_addr;
+		return 1;
+	}
+	if(family == AF_INET6 && config.dns.reply.host.force6.v.b)
+	{
+		memcpy(&addrs[0].addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(addrs[0].addr6));
+		return 1;
+	}
+
+	return pihole_select_addrs(family, addrs, maxout);
+}
+
+// Emit pi.hole address records for a CNAME whose target is a pi.hole domain.
+// Called from answer_request() after the CNAME walk; pihole_cname_target was
+// set by FTL_CNAME() and the A/AAAA loop was broken so that the single cached
+// record was never emitted.  For A/AAAA/ANY we add all usable addresses of
+// the arriving interface (pihole_select_addrs + add_hostn_rrs), honoring the
+// dns.reply.host.force4/force6 override, exactly as a direct pi.hole/<hostname>
+// query does.
+//
+// Returns true if at least one record was added.
+bool FTL_pihole_CNAME_rr(struct dns_header *header, char *limit,
+                                unsigned char **ansp, int *trunc,
+                                int nameoffset, int *anscount,
+                                const char *name, int qtype)
+{
+	bool added = false;
+
+	// A / AAAA / ANY: emit all usable (or, if forced, the single) addresses
+	if(qtype == T_A || qtype == T_AAAA || qtype == T_ANY)
+	{
+		// IPv4
+		if(qtype == T_A || qtype == T_ANY)
+		{
+			union all_addr addrs[PIHOLE_MAX_ADDRS];
+			const unsigned int n = pihole_host_addrs(AF_INET, addrs, PIHOLE_MAX_ADDRS);
+			log_debug(DEBUG_QUERIES, "Selected %u A address%s for CNAME target %s",
+			          n, n == 1 ? "" : "es", name);
+			const unsigned short old_hdr = ntohs(header->ancount);
+			add_hostn_rrs(header, limit, ansp, trunc, true,
+			              addrs, n, F_IPV4, (char *)name);
+			// add_hostn_rrs() updates header->ancount directly but
+			// answer_request() will overwrite it with the local
+			// anscount at the end, so sync the two here.
+			*anscount += ntohs(header->ancount) - old_hdr;
+			if(ntohs(header->ancount) > old_hdr)
+				added = true;
+		}
+
+		// IPv6
+		if(qtype == T_AAAA || qtype == T_ANY)
+		{
+			union all_addr addrs[PIHOLE_MAX_ADDRS];
+			const unsigned int n = pihole_host_addrs(AF_INET6, addrs, PIHOLE_MAX_ADDRS);
+			log_debug(DEBUG_QUERIES, "Selected %u AAAA address%s for CNAME target %s",
+			          n, n == 1 ? "" : "es", name);
+			const unsigned short old_hdr = ntohs(header->ancount);
+			add_hostn_rrs(header, limit, ansp, trunc, false,
+			              addrs, n, F_IPV6, (char *)name);
+			*anscount += ntohs(header->ancount) - old_hdr;
+			if(ntohs(header->ancount) > old_hdr)
+				added = true;
+		}
+	}
+
+	return added;
+}
+
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len,
                         unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len,
@@ -987,7 +1079,11 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		return 0;
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
-	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
+	// Also true when a CNAME targets a pi.hole domain (upstream path via
+	// extract_addresses -> return 99 -> FTL_make_answer), so the multi-record
+	// path is taken and all interface-local addresses are emitted.
+	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0 ||
+	                    is_pihole_domain(name);
 
 	int trunc = 0;
 	// Add CNAME answer record if requested
@@ -1331,6 +1427,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	pihole_dest_set = false;
 	pihole_dest_if = -1;
 	pihole_dest_id = -1;
+
+	// Reset pi.hole CNAME target flag for this query
+	pihole_cname_target = false;
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
@@ -2624,12 +2723,26 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	const double now = double_time();
 	log_debug(DEBUG_QUERIES, "FTL_CNAME called with: src = %s, dst = %s, id = %d", src, dst, id);
 
-	if((src != NULL && strcasecmp(src, "pi.hole") == 0) ||
-	   (dst != NULL && strcasecmp(dst, "pi.hole") == 0))
+	// If the CNAME target is a pi.hole domain (pi.hole, <hostname>,
+	// pi.hole.<local>, <hostname>.<local>), update the cache record to
+	// reflect the current interface addresses and return true to break out
+	// of the A/AAAA loop in answer_request(). This prevents the single
+	// cached record from being emitted; instead, our unified hook
+	// (FTL_pihole_CNAME_rr) will emit all interface-local addresses for
+	// the arriving interface, matching direct query behaviour.
+	if(dst != NULL && is_pihole_domain(dst))
 	{
-		// If "pi.hole" occurs in the CNAME chain we need to make sure
-		// the "pi.hole" cache record is up-to-date with the current
-		// interface addresses for interface-dependent replies
+		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is the CNAME target");
+		update_pihole_cache_record(id);
+		pihole_cname_target = true;
+		return true;
+	}
+
+	// If the CNAME source (not target) is a pi.hole domain, the chain
+	// passes through pi.hole on its way to another target. Keep the cache
+	// record up-to-date, but do not alter control flow.
+	if(src != NULL && is_pihole_domain(src))
+	{
 		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is part of the CNAME chain");
 		update_pihole_cache_record(id);
 	}
