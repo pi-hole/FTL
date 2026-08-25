@@ -1532,7 +1532,7 @@ void suggest_complete(const int argc, char *argv[])
 		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
-		    "--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
+		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
 		};
 
 		// Provide matching suggestions
