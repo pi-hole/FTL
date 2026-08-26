@@ -1211,6 +1211,8 @@ setup() {
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv4}#53 "
+  run grep -E "${ipv4}/[0-9]+ query\\[A\\] localhost from 127\\.0\\.0\\.1$" /var/log/pihole/pihole.log
+  assert_success
 
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
   run bash -c "dig localhost +short +subnet=${ipv6}/128 +ednsopt=65001:020000000001 @127.0.0.1"
@@ -1219,6 +1221,8 @@ setup() {
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv6}#53 "
+  run grep -F "${ipv6}/" /var/log/pihole/pihole.log
+  assert_line --partial " query[A] localhost from 127.0.0.1"
 
   kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
 
