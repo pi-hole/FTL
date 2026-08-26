@@ -40,6 +40,7 @@ typedef struct {
 } ednsData;
 
 ednsData *getEDNS(void);
+const char *peekEDNSClient(void) __attribute__ ((pure));
 void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
                              unsigned char *pheader, const size_t plen);
 
