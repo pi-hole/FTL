@@ -339,6 +339,48 @@ static void gravity_check_list_presence(void)
 }
 
 // Open gravity database
+// Connection settings every gravity connection gets. They live in one place
+// because a pragma added to one opener and forgotten in the other does not fail
+// anywhere, it just makes that connection slower - which is how the search
+// connection ended up without them
+static const struct gravity_pragma {
+	const char *sql;
+	bool required;
+} gravity_pragmas[] = {
+	// Temporary tables, indices and views are read from memory rather than disk
+	{ "PRAGMA temp_store = MEMORY", true },
+	// Read B-tree pages straight from the kernel page cache by virtual address
+	// instead of pread() plus a copy. gravity.db is effectively read-only at
+	// runtime (journal_mode = OFF, "pihole -g" swaps in a new file), 256 MiB
+	// covers every real-world gravity, and SQLite falls back to regular I/O
+	// where mmap is unavailable. The in-process page cache is raised globally
+	// via -DSQLITE_DEFAULT_CACHE_SIZE, so no cache_size pragma here
+	{ "PRAGMA mmap_size = 268435456", false },
+};
+
+// Returns false only when a required pragma failed
+static bool gravity_apply_pragmas(sqlite3 *db, const char *func)
+{
+	for(unsigned int i = 0; i < ArraySize(gravity_pragmas); i++)
+	{
+		const struct gravity_pragma *p = &gravity_pragmas[i];
+		char *zErrMsg = NULL;
+		if(sqlite3_exec(db, p->sql, NULL, NULL, &zErrMsg) == SQLITE_OK)
+			continue;
+
+		if(p->required)
+			log_err("%s(%s) - SQL error: %s", func, p->sql, zErrMsg);
+		else
+			log_warn("%s(%s) - SQL error: %s", func, p->sql, zErrMsg);
+		sqlite3_free(zErrMsg);
+
+		if(p->required)
+			return false;
+	}
+
+	return true;
+}
+
 static bool gravityDB_open(void)
 {
 	struct stat st;
@@ -370,44 +412,11 @@ static bool gravityDB_open(void)
 	// Database connection is now open
 	gravityDB_opened = true;
 
-	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
-	// temporary tables, indices, and views.
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting location for temporary object to MEMORY");
-	char *zErrMsg = NULL;
-	rc = sqlite3_exec(gravity_db, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK )
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Applying connection pragmas");
+	if(!gravity_apply_pragmas(gravity_db, "gravityDB_open"))
 	{
-		log_err("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
-		sqlite3_free(zErrMsg);
 		gravityDB_close();
 		return false;
-	}
-
-	// Enable memory-mapped I/O for the gravity database.
-	// gravity.db is effectively read-only at runtime (journal_mode = OFF;
-	// writes only happen during "pihole -g" which then swaps in a new
-	// file). With mmap enabled, SQLite reads B-tree pages directly from the
-	// kernel's page cache via virtual-address loads rather than going
-	// through pread() + a kernel-to-user copy. This eliminates syscall
-	// overhead for every domain lookup. 256 MiB covers all real-world
-	// gravity databases; SQLite falls back silently to regular I/O on
-	// systems where mmap is unavailable.
-	// Memory implications: Without mmap, SQLite reads pages via pread()
-	// which the kernel caches AND SQLite caches separately in its own page
-	// cache. Two copies. With mmap, SQLite reads directly from the kernel
-	// page cache via a virtual address mapping — one copy, shared. Process
-	// RSS (virtual) increases, but physical RAM usage stays the same or
-	// decreases.
-	// Note: the in-process page cache size is already raised globally via
-	// -DSQLITE_DEFAULT_CACHE_SIZE=16384 in src/CMakeLists.txt, so we do
-	// NOT issue a separate PRAGMA cache_size here.
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Enabling memory-mapped I/O (mmap_size = 256 MiB)");
-	rc = sqlite3_exec(gravity_db, "PRAGMA mmap_size = 268435456", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK )
-	{
-		log_warn("gravityDB_open(PRAGMA mmap_size) - SQL error (%i): %s", rc, zErrMsg);
-		sqlite3_free(zErrMsg);
-		// Non-fatal: gravity lookups continue with regular I/O
 	}
 
 	// Pre-warm: advise kernel to read gravity.db into page cache
@@ -2431,6 +2440,12 @@ sqlite3 *gravityDB_open_RO(void)
 	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
 		log_err("gravityDB_open_RO() - Cannot set busy handler: %s", sqlite3_errmsg(db));
 
+	if(!gravity_apply_pragmas(db, "gravityDB_open_RO"))
+	{
+		sqlite3_close_v2(db);
+		return NULL;
+	}
+
 	return db;
 }
 
@@ -2449,9 +2464,12 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
                          const bool exact, const char *ids,
                          sqlite3_stmt **read_stmt_p)
 {
-	// NULL means the shared connection. A long-running read - the search scans
-	// the whole gravity table - passes its own instead, so a gravity reload
-	// closing the shared one cannot pull the cursor away mid-walk
+	// NULL means the shared connection. Passing one in pins it for the whole
+	// read: we take the global here and only prepare on it further below, and a
+	// reload landing in that window frees the handle right there - an open
+	// cursor keeps it alive (see gravityDB_close()), but between two calls
+	// there is none. A caller making several calls also wants them to see one
+	// gravity, not one per reload
 	if(db == NULL)
 		db = gravity_db;
 
