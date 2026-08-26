@@ -403,10 +403,17 @@ if(BUILD_TAR_REGRESSION)
     endif()
 endif()
 
-# Standalone regression harness for the internal PTR resolver. It #includes
-# `resolve.c` directly, so no object dependencies are needed. The "PTR
-# stale-response regression harness" bats test runs the resulting binary.
-# Deliberately NOT given the strict EXTRAWARN/-Werror flags applied to FTL code.
+# Standalone regression harness for the internal PTR resolver. It compiles
+# src/resolve.c a second time and stubs the FTL wrappers that file needs, so a
+# scripted DNS server can replay a stale response against the real resolver.
+# The "PTR stale-response regression harness" bats test runs the resulting
+# binary. Deliberately NOT given the strict EXTRAWARN/-Werror flags applied to
+# FTL code.
+#
+# -fvisibility=hidden is load-bearing here: with default visibility the entry
+# points of resolve.c are GC roots for -Wl,--gc-sections, so the linker keeps
+# resolveClients() and DNSclient_thread() and then fails on their references
+# into shared memory, the event queue and the thread helpers.
 #
 # Only built on request: `./build.sh test` enables it for local runs and the
 # CI Dockerfile passes -DBUILD_PTR_RESPONSE_REGRESSION=ON at build time.
