@@ -278,6 +278,27 @@ const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD "
 
 void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line)
 {
+	static union mysockaddr ecs_log_source;
+	const char *ecs_client = peekEDNSClient();
+	if((flags & (F_QUERY | F_FORWARD)) == (F_QUERY | F_FORWARD) &&
+	   config.misc.extraLogging.v.b && ecs_client && daemon->log_source_addr)
+	{
+		const sa_family_t family = strchr(ecs_client, ':') ? AF_INET6 : AF_INET;
+		const in_port_t port = daemon->log_source_addr->sa.sa_family == AF_INET ?
+		                       daemon->log_source_addr->in.sin_port :
+		                       daemon->log_source_addr->in6.sin6_port;
+		memset(&ecs_log_source, 0, sizeof(ecs_log_source));
+		ecs_log_source.sa.sa_family = family;
+		if(family == AF_INET)
+			ecs_log_source.in.sin_port = port;
+		else
+			ecs_log_source.in6.sin6_port = port;
+		if(inet_pton(family, ecs_client, family == AF_INET ?
+		             (void *)&ecs_log_source.in.sin_addr :
+		             (void *)&ecs_log_source.in6.sin6_addr) == 1)
+			daemon->log_source_addr = &ecs_log_source;
+	}
+
 	// Extract filename from path
 	const char *path = short_path(file);
 	if(config.debug.flags.v.b)
