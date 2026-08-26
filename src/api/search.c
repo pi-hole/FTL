@@ -231,10 +231,11 @@ int api_search(struct ftl_conn *api)
 	for(unsigned int i = 0u; i < strlen(punycode); i++)
 		punycode[i] = tolower((unsigned char)punycode[i]);
 
-	// Search through all exact domains. This runs on a connection of its own:
-	// a partial search is a LIKE '%term%' over the whole gravity table, far too
-	// long to hold the SHM lock for, and the shared connection can be closed by
-	// a gravity reload while we walk our cursor
+	// Search through all exact domains. The six searches below run on a
+	// connection of their own: a partial search is a LIKE '%term%' over the
+	// whole gravity table, far too long to hold the SHM lock for, and on the
+	// shared connection a reload between two of them shows up as a spurious
+	// 400 or as an answer assembled from two different gravities
 	sqlite3 *db = gravityDB_open_RO();
 	if(db == NULL)
 	{
