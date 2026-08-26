@@ -40,6 +40,10 @@
 // get_secure_randomness()
 #include "config/password.h"
 
+// Wall-clock budget for a single PTR lookup, used both as the socket-level
+// receive timeout and as the deadline bounding the receive loops below
+#define RESOLVER_TIMEOUT_MS 2000
+
 // Function Prototypes
 static size_t nameToDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
 static unsigned char *nameFromDNS(unsigned char *reader, unsigned char *buffer, const unsigned char *end, uint16_t *count) __attribute__((malloc)) __attribute__((nonnull(1,2,3,4)));
@@ -257,10 +261,10 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 		return -1;
 	}
 
-	// Set timeout for socket (2 seconds)
+	// Set timeout for socket
 	struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
+	tv.tv_sec = RESOLVER_TIMEOUT_MS / 1000;
+	tv.tv_usec = (RESOLVER_TIMEOUT_MS % 1000) * 1000;
 	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
 		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
@@ -296,6 +300,72 @@ static int64_t resolver_monotonic_msec(void)
 		return -1;
 
 	return (int64_t)now.tv_sec * 1000LL + now.tv_nsec / 1000000LL;
+}
+
+// Receive exactly len bytes from a stream socket. recv() may return fewer
+// bytes than requested, so keep reading until the full amount has arrived,
+// bounded by one absolute deadline for the entire lookup.
+static bool recv_all(const int sock, void *target, const size_t len,
+                     const int64_t deadline, const char *what)
+{
+	size_t received = 0;
+	while(received < len)
+	{
+		const int64_t now = resolver_monotonic_msec();
+		if(now < 0)
+		{
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+			return false;
+		}
+
+		const int64_t remaining = deadline - now;
+		if(remaining <= 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): Timed out after %d ms",
+			        what, RESOLVER_TIMEOUT_MS);
+			return false;
+		}
+
+		struct pollfd pfd = {
+			.fd = sock,
+			.events = POLLIN,
+			.revents = 0,
+		};
+
+		const int ready = poll(&pfd, 1, (int)remaining);
+		if(ready < 0)
+		{
+			if(errno == EINTR)
+				continue;
+
+			log_err("Cannot wait for TCP DNS reply (%s): %s", what, strsockerr(errno));
+			return false;
+		}
+		if(ready == 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): Timed out after %d ms",
+			        what, RESOLVER_TIMEOUT_MS);
+			return false;
+		}
+
+		const ssize_t bytes = recv(sock, (uint8_t *)target + received,
+		                           len - received, 0);
+		if(bytes < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): %s", what, strsockerr(errno));
+			return false;
+		}
+		if(bytes == 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): connection closed after "
+			        "%zu of %zu bytes", what, received, len);
+			return false;
+		}
+
+		received += (size_t)bytes;
+	}
+
+	return true;
 }
 
 static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
@@ -441,7 +511,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u (%s)",
 	          host, config.dns.port.v.u16, tcp ? "TCP" : "UDP");
 
-	ssize_t response_len = sizeof(buf);
+	ssize_t response_len = 0;
 	uint8_t *reader = NULL;
 	uint16_t prefix = 0;
 
@@ -465,7 +535,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return false;
 		}
-		const int64_t deadline = start + 2000;
+		const int64_t deadline = start + RESOLVER_TIMEOUT_MS;
 
 		while(true)
 		{
@@ -480,7 +550,8 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			const int64_t remaining = deadline - now;
 			if(remaining <= 0)
 			{
-				log_err("Cannot receive UDP DNS reply: Timed out after 2000 ms");
+				log_err("Cannot receive UDP DNS reply: Timed out after %d ms",
+				        RESOLVER_TIMEOUT_MS);
 				log_resolve_info(host, config.dns.port.v.u16, tcp);
 				return false;
 			}
@@ -503,7 +574,8 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			}
 			if(ready == 0)
 			{
-				log_err("Cannot receive UDP DNS reply: Timed out after 2000 ms");
+				log_err("Cannot receive UDP DNS reply: Timed out after %d ms",
+				        RESOLVER_TIMEOUT_MS);
 				log_resolve_info(host, config.dns.port.v.u16, tcp);
 				return false;
 			}
@@ -514,7 +586,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			                        (struct sockaddr *)&source, &source_len);
 			if(response_len < 0)
 			{
-				if(errno == EAGAIN || errno == EINTR)
+				if(errno == EAGAIN)
 					continue;
 
 				log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
@@ -561,11 +633,19 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			return false;
 		}
 
+		const int64_t start = resolver_monotonic_msec();
+		if(start < 0)
+		{
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return false;
+		}
+		const int64_t deadline = start + RESOLVER_TIMEOUT_MS;
+
 		// Receive the answer, first the length of the message ...
 		prefix = 0;
-		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
+		if(!recv_all(sock, &prefix, sizeof(prefix), deadline, "length prefix"))
 		{
-			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return false;
 		}
@@ -582,34 +662,13 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		}
 		bzero(buf, prefix + 1);
 
-		// ... then the message itself. recv() on a stream socket may
-		// return fewer bytes than requested, so keep reading until the
-		// complete DNS message announced by prefix has arrived.
-		response_len = 0;
-		while((size_t)response_len < prefix)
+		// ... then the message itself
+		if(!recv_all(sock, buf, prefix, deadline, "message"))
 		{
-			const ssize_t received =
-			    recv(sock, buf + (size_t)response_len,
-			         prefix - (size_t)response_len, 0);
-			if(received < 0)
-			{
-				if(errno == EINTR)
-					continue;
-
-				log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
-				log_resolve_info(host, config.dns.port.v.u16, tcp);
-				return false;
-			}
-			if(received == 0)
-			{
-				log_err("Cannot receive TCP DNS reply (2): connection closed after "
-				        "%zd of %u bytes", response_len, prefix);
-				log_resolve_info(host, config.dns.port.v.u16, tcp);
-				return false;
-			}
-
-			response_len += received;
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return false;
 		}
+		response_len = prefix;
 
 		memcpy(&dns, buf, sizeof(struct DNS_HEADER));
 		reader = &buf[len];
