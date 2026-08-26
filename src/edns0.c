@@ -51,6 +51,11 @@
 
 static ednsData edns = { 0 };
 
+const char * __attribute__ ((pure)) peekEDNSClient(void)
+{
+	return config.dns.EDNS0ECS.v.b && edns.valid && edns.client_set ? edns.client : NULL;
+}
+
 ednsData *getEDNS(void)
 {
 	if(edns.valid)
