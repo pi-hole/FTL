@@ -595,7 +595,10 @@ class TestStatsSummary:
         assert q["blocked"] == 49
         assert q["forwarded"] == FORWARDED
         assert q["cached"] == 41
-        assert q["unique_domains"] == 77
+        # Serving CNAME->pi.hole with all interface addresses (instead of the
+        # single cached record) no longer registers the internal "pi.hole"
+        # pseudo-domain as a separate entry during CNAME inspection.
+        assert q["unique_domains"] == 76
         assert q["status"]["UNKNOWN"] == 0
         assert q["status"]["GRAVITY"] == 7
         assert q["status"]["FORWARDED"] == FORWARDED
