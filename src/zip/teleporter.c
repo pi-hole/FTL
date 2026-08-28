@@ -11,8 +11,6 @@
 #include "FTL.h"
 #include "zip/teleporter.h"
 #include "config/config.h"
-// validate_config_paths()
-#include "config/validator.h"
 // hostname()
 #include "daemon.h"
 // get_timestr(), TIMESTR_SIZE
@@ -327,48 +325,24 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true))
+	// readFTLtoml() holds every value in the archive to the validator its config
+	// item declares. An import is not a lesser path than PATCH /api/config: it
+	// is reachable by anyone holding an admin session and installs a complete
+	// configuration, so a value the API refuses must not get in this way either.
+	char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true, valerr))
 	{
 		free_config(&teleporter_config, false);
 		toml_free(toml);
-		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
-	}
 
-	// Hold every value in the archive to the validator its config item declares.
-	//
-	// readFTLtoml() only parses - the API, the CLI and environment variables all
-	// run the validators, so without this the import is the one way in that does
-	// not. That is not a lesser path: it is how a value the API refuses reaches
-	// the running configuration, including the embedded newlines that the checks
-	// on dns.hostRecord, dhcp.hosts, dhcp.leaseTime and the other dnsmasq-bound
-	// options exist to reject.
-	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
-	{
-		struct conf_item *conf_item = get_conf_item(&teleporter_config, i);
-		if(conf_item->c == NULL)
-			continue;
+		// The buffer names the offending item when a value was refused, and
+		// stays empty when the file could not be read at all
+		if(valerr[0] == '\0')
+			return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
 
-		char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!conf_item->c(&conf_item->v, conf_item->k, valerr))
-		{
-			log_err("Teleporter: %s", valerr);
-			set_hint(hint, valerr);
-			free_config(&teleporter_config, false);
-			toml_free(toml);
-			return "File etc/pihole/pihole.toml in ZIP archive contains an invalid value";
-		}
-	}
-
-	// The per-item validators above see one value at a time, so the rules
-	// spanning several of them are checked on the assembled configuration
-	char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
-	if(!validate_config_paths(&teleporter_config, patherr))
-	{
-		log_err("Teleporter: %s", patherr);
-		set_hint(hint, patherr);
-		free_config(&teleporter_config, false);
-		toml_free(toml);
-		return "File etc/pihole/pihole.toml in ZIP archive contains an invalid path configuration";
+		log_err("Teleporter: %s", valerr);
+		set_hint(hint, valerr);
+		return "File etc/pihole/pihole.toml in ZIP archive contains an invalid value";
 	}
 
 	// Test dnsmasq config in the imported configuration

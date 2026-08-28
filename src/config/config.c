@@ -1804,6 +1804,63 @@ static void reset_config_default(struct conf_item *conf_item)
 
 
 /**
+ * @brief Hold a configuration to the same rules every way of setting it obeys.
+ *
+ * Runs the validator each config item declares, then the rules spanning several
+ * items, which a validator seeing one value at a time cannot express.
+ *
+ * @param conf Configuration to check
+ * @param reset If true, an offending item is reset to its default and the check
+ *              continues; if false, the first rejection ends it
+ * @param err Buffer receiving the rejection, may be NULL when \p reset is true
+ * @return Whether the configuration is acceptable
+ */
+bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(conf, i);
+		if(conf_item->c == NULL)
+			continue;
+
+		char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(conf_item->c(&conf_item->v, conf_item->k, valerr))
+			continue;
+
+		if(!reset)
+		{
+			if(err != NULL)
+				strncpy(err, valerr, VALIDATOR_ERRBUF_LEN - 1);
+			return false;
+		}
+
+		// The validator's message opens with the key, so it is not repeated
+		log_err("Invalid value: %s", valerr);
+		log_err("----> %s has been reset to its default value", conf_item->k);
+		reset_config_default(conf_item);
+	}
+
+	char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_config_paths(conf, patherr))
+	{
+		if(!reset)
+		{
+			if(err != NULL)
+				strncpy(err, patherr, VALIDATOR_ERRBUF_LEN - 1);
+			return false;
+		}
+
+		log_err("Inconsistent configuration: %s", patherr);
+		log_err("----> %s has been reset to its default value",
+		        conf->webserver.paths.webroot.k);
+		reset_config_default(&conf->webserver.paths.webroot);
+	}
+
+	return true;
+}
+
+
+/**
  * @brief Determine and set default webserver ports if not imported from setupVars.conf.
  *
  * @param conf Pointer to the configuration structure.
@@ -1898,31 +1955,7 @@ bool migrate_config_v6(void)
 	// configuration that would otherwise run no validator at all. Migrating
 	// must not fail outright, though - it also runs for genuine upgrades - so
 	// an offending value is reset to its default and the reason is logged.
-	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
-	{
-		struct conf_item *conf_item = get_conf_item(&config, i);
-		if(conf_item->c == NULL)
-			continue;
-
-		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!conf_item->c(&conf_item->v, conf_item->k, errbuf))
-		{
-			log_err("Invalid value migrated for %s: %s", conf_item->k, errbuf);
-			log_err("----> %s has been reset to its default value", conf_item->k);
-			reset_config_default(conf_item);
-		}
-	}
-
-	// The rules spanning several items cannot be expressed by a validator that
-	// sees one value at a time, so check the assembled configuration as well
-	char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
-	if(!validate_config_paths(&config, patherr))
-	{
-		log_err("Migrated configuration is inconsistent: %s", patherr);
-		log_err("----> %s has been reset to its default value",
-		        config.webserver.paths.webroot.k);
-		reset_config_default(&config.webserver.paths.webroot);
-	}
+	validate_config(&config, true, NULL);
 
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
@@ -1948,7 +1981,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
 		toml_datum_t toml = { 0 };
-		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false))
+		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false, NULL))
 		{
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
@@ -2128,7 +2161,7 @@ void reread_config(void)
 	// Read TOML config file
 	bool restart = false;
 	toml_datum_t toml = { 0 };
-	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false))
+	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false, NULL))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");

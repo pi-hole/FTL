@@ -148,6 +148,32 @@ def test_invalid_value_is_refused(ftl, key, value, expected_item):
 
 
 
+def test_migrated_value_is_validated(ftl):
+    """A value a migration produces is checked like any other.
+
+    The migrations run once the whole file has been read, so a check sitting
+    with the config items would not see what they assign. dns.revServer is the
+    legacy form of dns.revServers[0] and is built by joining four strings.
+    """
+    before = _current_toml()
+    archive = _replace(before, "hosts", "[]") + (
+        "\n[dns.revServer]\n"
+        "active = true\n"
+        'cidr = "192.168.0.0/24"\n'
+        'target = "192.168.0.1"\n'
+        'domain = "local\\nlog-queries"\n'
+    )
+
+    response = _import(ftl, archive)
+
+    assert "error" in response, f"the migrated value was accepted: {response}"
+    hint = str(response["error"].get("hint", ""))
+    assert "dns.revServers" in hint, f"not named in the rejection, hint was: {hint}"
+
+    assert _current_toml() == before, \
+        "configuration was modified by a refused import"
+
+
 # Items the API may not set are not settable by uploading a file through the
 # API either, otherwise the archive would be the way around that restriction.
 LOCKED_ITEMS = [

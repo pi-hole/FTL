@@ -148,7 +148,8 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_datum_t toml, const bool verbose, bool *restart,
-                 const unsigned int version, const bool teleporter)
+                 const unsigned int version, const bool teleporter,
+                 char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
@@ -312,11 +313,25 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	// Print FTL environment variables (if used)
 	printFTLenv();
 
-	// Free memory allocated by the TOML parser and return success
+	// Hold what we just read to the same rules the API, the CLI and environment
+	// variables obey. readTOMLvalue() only parses, so this is what stops a value
+	// no other path accepts - an embedded newline carrying a second dnsmasq
+	// directive, say - from reaching the running configuration through a file.
+	//
+	// It runs here rather than per item above because the migrations assign
+	// values of their own after the loop, and because the rules spanning
+	// several items need the whole file read first.
+	//
+	// An archive is refused outright, naming the offending item. Doing the same
+	// for the config file would take DNS down for the entire network over a
+	// single bad value, so there the item goes back to its default instead.
+	const bool valid = validate_config(newconf, !teleporter, err);
+
+	// Free memory allocated by the TOML parser and return
 	if(!teleporter)
 		toml_free(result);
 	cJSON_Delete(env_vars);
-	return true;
+	return valid;
 }
 
 // Parse TOML config file
