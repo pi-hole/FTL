@@ -338,7 +338,6 @@ static void gravity_check_list_presence(void)
 	log_debug(DEBUG_DATABASE, "Exact denylist has entries: %s", gravity_has_exact_denylist ? "yes" : "no");
 }
 
-// Open gravity database
 // Connection settings every gravity connection gets. They live in one place
 // because a pragma added to one opener and forgotten in the other does not fail
 // anywhere, it just makes that connection slower - which is how the search
@@ -381,6 +380,7 @@ static bool gravity_apply_pragmas(sqlite3 *db, const char *func)
 	return true;
 }
 
+// Open gravity database (read-write mode)
 static bool gravityDB_open(void)
 {
 	struct stat st;
@@ -397,7 +397,7 @@ static bool gravityDB_open(void)
 		return true;
 	}
 
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity.v.s);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-write mode", config.files.gravity.v.s);
 	int rc = sqlite3_open_v2(config.files.gravity.v.s, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
