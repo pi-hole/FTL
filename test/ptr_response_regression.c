@@ -25,7 +25,7 @@
 #define DNS_TYPE_PTR 12
 #define DNS_CLASS_IN 1
 
-bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
+bool resolveHostname(const int sock, const bool tcp,
                      char hostn[TEST_MAXDOMAINLEN], const char *addr,
                      const bool force, bool *truncated);
 
@@ -170,9 +170,10 @@ int FTLsnprintf(const char *file, const char *func, const int line,
 }
 
 ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags,
-                  const struct sockaddr *dest_addr, socklen_t addrlen,
+                  const struct sockaddr *dest_addr, socklen_t addrlen, const bool warn,
                   const char *file, const char *func, const int line)
 {
+	(void)warn;
 	(void)file;
 	(void)func;
 	(void)line;
@@ -391,6 +392,24 @@ int main(void)
 		return EXIT_FAILURE;
 	}
 
+	// FTL connects its resolver sockets, see create_socket(). That is what
+	// makes the kernel filter foreign sources and deliver ICMP errors, so
+	// the harness has to do the same to exercise the code path FTL uses.
+	//
+	// Note this one socket is deliberately reused for both lookups below,
+	// which the resolver itself no longer does - it creates one per lookup.
+	// Reuse is what puts the delayed reply to the first query in the way of
+	// the second, so it is the shape this test needs. Do not "align" it with
+	// production: a fresh source port per lookup would have the kernel drop
+	// the stale reply and the correlation under test would never be reached
+	if(connect(client_sock, (const struct sockaddr *)&server, sizeof(server)) != 0)
+	{
+		perror("client connect");
+		close(client_sock);
+		close(server_sock);
+		return EXIT_FAILURE;
+	}
+
 	config.dns.port.v.u16 = ntohs(server.sin_port);
 	struct server_context ctx = {
 		.sock = server_sock,
@@ -411,13 +430,13 @@ int main(void)
 	char host_a[TEST_MAXDOMAINLEN] = { 0 };
 	char host_b[TEST_MAXDOMAINLEN] = { 0 };
 	bool truncated = false;
-	const bool first_ok = resolveHostname(client_sock, false, &server, host_a,
+	const bool first_ok = resolveHostname(client_sock, false, host_a,
 	                                      "192.0.2.10", true, &truncated);
 	pthread_mutex_lock(&ctx.mutex);
 	ctx.release_delayed_a = true;
 	pthread_cond_signal(&ctx.condition);
 	pthread_mutex_unlock(&ctx.mutex);
-	const bool second_ok = resolveHostname(client_sock, false, &server, host_b,
+	const bool second_ok = resolveHostname(client_sock, false, host_b,
 	                                       "192.0.2.11", true, &truncated);
 
 	pthread_join(thread, NULL);

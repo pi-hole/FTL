@@ -251,7 +251,7 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 	return true;
 }
 
-int create_socket(bool tcp, struct sockaddr_in *dest)
+int create_socket(bool tcp)
 {
 	// Create a UDP (datagram) or TCP (stream) socket
 	const int sock = socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? IPPROTO_TCP : IPPROTO_UDP);
@@ -272,15 +272,18 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 		return -1;
 	}
 
-	// Create socket destination structure
-	memset(dest, 0, sizeof(*dest));
-	dest->sin_family = AF_INET; // IPv4
-	dest->sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
-	dest->sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+	// The DNS server we talk to is always the local dnsmasq
+	struct sockaddr_in dest = { 0 };
+	dest.sin_family = AF_INET; // IPv4
+	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+	dest.sin_port = htons(config.dns.port.v.u16); // Configured DNS port
 
-	// Connect to the DNS server (only done for TCP as UDP is
-	// connectionless)
-	if(tcp && connect(sock, (struct sockaddr*)dest, sizeof(*dest)) < 0)
+	// Connect to the DNS server. This is done for UDP as well: connecting
+	// fixes the peer, so the kernel drops datagrams from foreign sources
+	// for us and, more importantly, reports ICMP errors on this socket. A
+	// dnsmasq that is not listening then fails with ECONNREFUSED right
+	// away instead of making us wait out the receive timeout
+	if(connect(sock, (struct sockaddr*)&dest, sizeof(dest)) < 0)
 	{
 		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
 		close(sock);
@@ -448,7 +451,7 @@ static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
 }
 
 // Perform a name lookup by sending a packet to ourselves
-static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
+static bool ngethostbyname(const int sock, const bool tcp,
                            char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
 {	
 	// Initialize request DNS header
@@ -521,9 +524,10 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	if(!tcp)
 	{
 		// **** UDP ****
-		// Send the query
-		socklen_t addrlen = sizeof(*dest);
-		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
+		// Send the query. The socket is connected, so the destination
+		// is implicit. _nowarn: the error is logged right below, with
+		// the context the generic wrapper does not have
+		if(sendto_nowarn(sock, buf, len, 0, NULL, 0) < 0)
 		{
 			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
@@ -582,10 +586,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 				return false;
 			}
 
-			struct sockaddr_in source = { 0 };
-			socklen_t source_len = sizeof(source);
-			response_len = recvfrom(sock, buf, sizeof(buf), MSG_DONTWAIT,
-			                        (struct sockaddr *)&source, &source_len);
+			response_len = recv_nowarn(sock, buf, sizeof(buf), MSG_DONTWAIT);
 			if(response_len < 0)
 			{
 				if(errno == EAGAIN)
@@ -594,18 +595,6 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 				log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
 				log_resolve_info(host, config.dns.port.v.u16, tcp);
 				return false;
-			}
-
-			if(source_len < (socklen_t)sizeof(source) ||
-			   source.sin_family != dest->sin_family ||
-			   source.sin_addr.s_addr != dest->sin_addr.s_addr ||
-			   source.sin_port != dest->sin_port)
-			{
-				log_debug(DEBUG_RESOLVER,
-				          "Discarding UDP DNS reply from unexpected source while "
-				          "resolving PTR \"%s\"",
-				          host);
-				continue;
 			}
 
 			if(!validate_udp_ptr_response(buf, (size_t)response_len,
@@ -940,7 +929,7 @@ static size_t __attribute__((nonnull(1,3))) nameToDNS(unsigned char *dns, const 
 	return dns - dns_start;
 }
 
-bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
+bool resolveHostname(const int sock, const bool tcp,
                      char hostn[MAXDOMAINLEN], const char *addr, const bool force, bool *truncated)
 {
 	// Check if we want to resolve host names
@@ -1052,12 +1041,25 @@ bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
 	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
 	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
 	// nameserver we configured in /etc/resolv.conf
-	return ngethostbyname(sock, tcp, dest, hostn, inaddr, addr, truncated);
+	return ngethostbyname(sock, tcp, hostn, inaddr, addr, truncated);
 }
 
+// Outcome of a single host name lookup
+enum resolve_result
+{
+	// A name was obtained, or resolution is switched off for this address,
+	// which is not a failure. *newnamepos is what to store
+	RESOLVE_OK,
+	// Nothing resolved. The caller keeps the old name and retries later
+	RESOLVE_NO_NAME,
+	// No socket. Nothing will resolve until that changes, so the caller
+	// gives up on the rest of the sweep rather than repeating the failure
+	RESOLVE_NO_SOCKET,
+};
+
 // Resolve upstream destination host names
-static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest,
-                                    size_t ippos, size_t oldnamepos, bool *success)
+static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos,
+                                                 size_t *newnamepos)
 {
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
@@ -1076,28 +1078,46 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	{
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (configured to not resolve host name)");
 
-		// Not resolving names is intentional, not a failure
-		if(success != NULL)
-			*success = true;
-
-		// Return fixed position of empty string
-		return 0;
+		// Not resolving names is intentional, not a failure. Fixed
+		// position of the empty string
+		*newnamepos = 0;
+		return RESOLVE_OK;
 	}
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	bool truncated = false;
 	char newname[MAXDOMAINLEN] = { 0 };
-	bool resolved = resolveHostname(udp_sock, false, dest, newname, ipaddr, false, &truncated);
+	bool resolved = false;
+
+	// One socket per lookup. A connected UDP socket queues ICMP errors on
+	// itself and delivers them on the next call, so a socket shared by the
+	// whole sweep could report one client's port-unreachable on the next
+	// client's lookup. A fresh socket also means a fresh source port, so a
+	// late reply to the previous query is dropped by the kernel rather than
+	// having to be recognized as stale
+	const int udp_sock = create_socket(false);
+	if(udp_sock < 0)
+	{
+		// create_socket() has already logged the reason. Return before the
+		// database fallback below, so nothing is added to shared memory for
+		// a name the caller is about to discard
+		*newnamepos = oldnamepos;
+		return RESOLVE_NO_SOCKET;
+	}
+
+	resolved = resolveHostname(udp_sock, false, newname, ipaddr, false, &truncated);
+	close(udp_sock);
+
 	if(!resolved && truncated)
 	{
 		// Retry with TCP if UDP failed due to truncation (RFC 7766)
-		const int tcp_sock = create_socket(true, dest);
-		if(tcp_sock > 0)
+		const int tcp_sock = create_socket(true);
+		if(tcp_sock >= 0)
 		{
 			// Only attempt to resolve the hostname if we have a
 			// valid socket
-			resolved = resolveHostname(tcp_sock, true, dest, newname, ipaddr, false, NULL);
+			resolved = resolveHostname(tcp_sock, true, newname, ipaddr, false, NULL);
 			close(tcp_sock);
 		}
 		else
@@ -1112,29 +1132,30 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (provided by database)", newname);
 	}
 
-	// Report whether we actually obtained a host name so the caller can
-	// keep the old name and retry later when resolution failed
-	if(success != NULL)
-		*success = newname[0] != '\0';
+	// Nothing resolved: the caller keeps the old name and retries later
+	if(newname[0] == '\0')
+	{
+		*newnamepos = oldnamepos;
+		return RESOLVE_NO_NAME;
+	}
 
-	// Only store new newname if it is valid and differs from oldname
-	// We do not need to check for oldname == NULL as names are
-	// always initialized with an empty string at position 0
-	if(newname[0] != '\0' && strcmp(oldname, newname) != 0)
+	// Only store the new name if it differs from oldname. We do not need to
+	// check for oldname == NULL as names are always initialized with an
+	// empty string at position 0
+	if(strcmp(oldname, newname) != 0)
 	{
 		lock_shm();
-		const size_t newnamepos = addstr(newname);
+		*newnamepos = addstr(newname);
 		unlock_shm();
-		return newnamepos;
-	}
-	else
-	{
-		// Debugging output
-		log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
+		return RESOLVE_OK;
 	}
 
-	// Not changed, return old namepos
-	return oldnamepos;
+	// Debugging output
+	log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
+
+	// Not changed, keep the old namepos
+	*newnamepos = oldnamepos;
+	return RESOLVE_OK;
 }
 
 // Resolve client host names
@@ -1145,15 +1166,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	lock_shm();
 	const unsigned int clientscount = counters->clients;
 	unlock_shm();
-
-	// Create DNS client socket
-	struct sockaddr_in dest = { 0 };
-	const int udp_sock = create_socket(false, &dest);
-	if(udp_sock < 0)
-	{
-		log_err("Unable to create DNS resolver socket, client host name resolution failed");
-		return;
-	}
 
 	unsigned int skipped = 0;
 	for(unsigned int clientID = 0; clientID < clientscount; clientID++)
@@ -1266,8 +1278,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		}
 
 		// Obtain/update hostname of this client
-		bool success = true;
-		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
+		size_t newnamepos = 0;
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		if(res == RESOLVE_NO_SOCKET)
+		{
+			log_err("Unable to create DNS resolver socket, client host name resolution failed");
+			return;
+		}
 
 		lock_shm();
 		// Get client pointer for the second time (writing data)
@@ -1283,7 +1300,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		if(!success)
+		if(res != RESOLVE_OK)
 		{
 			// We could not resolve the hostname, so we keep the old one
 			// and mark the entry as not new - it will be retried later
@@ -1321,9 +1338,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		unlock_shm();
 	}
 
-	// Close socket
-	close(udp_sock);
-
 	log_debug(DEBUG_RESOLVER, "%u / %u client host names resolved",
 	          clientscount - skipped, clientscount);
 }
@@ -1336,15 +1350,6 @@ static void resolveUpstreams(const bool onlynew)
 	lock_shm();
 	const int upstreams = counters->upstreams;
 	unlock_shm();
-
-	// Create socket
-	struct sockaddr_in dest = { 0 };
-	const int udp_sock = create_socket(false, &dest);
-	if(udp_sock < 0)
-	{
-		log_err("Unable to create DNS resolver socket, client host name resolution failed");
-		return;
-	}
 
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
@@ -1403,8 +1408,13 @@ static void resolveUpstreams(const bool onlynew)
 		}
 
 		// Obtain/update hostname of this client
-		bool success = true;
-		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
+		size_t newnamepos = 0;
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		if(res == RESOLVE_NO_SOCKET)
+		{
+			log_err("Unable to create DNS resolver socket, upstream host name resolution failed");
+			return;
+		}
 
 		lock_shm();
 		// Get upstream pointer for the second time (writing data)
@@ -1420,7 +1430,7 @@ static void resolveUpstreams(const bool onlynew)
 			continue;
 		}
 
-		if(!success)
+		if(res != RESOLVE_OK)
 		{
 			// We could not resolve the hostname, so we keep the old one
 			// and mark the entry as not new - it will be retried later
@@ -1442,9 +1452,6 @@ static void resolveUpstreams(const bool onlynew)
 
 		unlock_shm();
 	}
-
-	// Close socket
-	close(udp_sock);
 
 	log_debug(DEBUG_RESOLVER, "%i / %i upstream server host names resolved",
 	          upstreams-skipped, upstreams);
