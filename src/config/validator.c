@@ -117,7 +117,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 			if(host[0] == '#')
 				break;
 
-			if(!valid_domain(host, strlen(host), false))
+			if(!valid_domain(host, strlen(host), false, true))
 			{
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
 				         key, i, host);
@@ -216,7 +216,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
+	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false, true))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -304,7 +304,7 @@ bool validate_netmask(union conf_value *val, const char *key, char err[VALIDATOR
 bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(!valid_domain(val->s, strlen(val->s), false))
+	if(!valid_domain(val->s, strlen(val->s), false, true))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -460,36 +460,6 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
 	&(conf).files.gravity_tmp, &(conf).files.pcap }
 
-// Reject a path that is inside (or is) the currently configured document root.
-//
-// This is one half of keeping the two apart; validate_webroot() rejects the
-// other direction, a document root moved on top of an existing file. Checking
-// only here would leave that ordering open.
-static bool reject_inside_webroot(const char *path, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	const char *webroot = config.webserver.paths.webroot.v.s;
-	if(webroot == NULL || webroot[0] == '\0' || path == NULL || path[0] != '/')
-		return true;
-
-	char wnorm[NORMALIZED_PATH_LEN], pnorm[NORMALIZED_PATH_LEN];
-	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
-	if(normalize_path(path, pnorm, sizeof(pnorm)) == 0)
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a usable absolute path", key);
-		return false;
-	}
-
-	if(wlen > 0 && paths_overlap(wnorm, wlen, pnorm))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be inside the web server document root (webserver.paths.webroot = \"%s\")",
-		         key, webroot);
-		return false;
-	}
-
-	return true;
-}
-
 // Check the path relationships of a complete configuration.
 //
 // The per-item validators can only compare a new value against the values
@@ -499,8 +469,12 @@ static bool reject_inside_webroot(const char *path, const char *key, char err[VA
 // parses a whole file at once and never ran the per-item validators at all. This
 // runs over the resulting configuration instead and is the authoritative check -
 // call it before putting a new configuration in place.
-bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_LEN])
+bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
+                           struct conf_item **offender)
 {
+	if(offender != NULL)
+		*offender = &conf->webserver.paths.webroot;
+
 	const char *webroot = conf->webserver.paths.webroot.v.s;
 	if(webroot == NULL || webroot[0] != '/')
 	{
@@ -519,7 +493,7 @@ bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_
 		return false;
 	}
 
-	const struct conf_item *written[] = WRITTEN_FILES(*conf);
+	struct conf_item *written[] = WRITTEN_FILES(*conf);
 	for(size_t i = 0; i < ArraySize(written); i++)
 	{
 		const char *path = written[i]->v.s;
@@ -533,6 +507,8 @@ bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s (\"%s\") must not be inside %s (\"%s\")",
 			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
+			if(offender != NULL)
+				*offender = written[i];
 			return false;
 		}
 	}
@@ -540,38 +516,6 @@ bool validate_config_paths(const struct config *conf, char err[VALIDATOR_ERRBUF_
 	return true;
 }
 
-// Validate a file path Pi-hole writes to (logs, databases, captures)
-bool validate_filepath_written(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	if(!validate_filepath(val, key, err))
-		return false;
-
-	return reject_inside_webroot(val->s, key, err);
-}
-
-// As above, but an empty path is allowed (e.g., to disable PCAP)
-bool validate_filepath_written_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	if(!validate_filepath_empty(val, key, err))
-		return false;
-
-	return reject_inside_webroot(val->s, key, err);
-}
-
-// As above, but a single dash is allowed (printing to stderr)
-bool validate_filepath_written_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	if(!validate_filepath_dash(val, key, err))
-		return false;
-
-	return reject_inside_webroot(val->s, key, err);
-}
-
-// Kept for the web server log, which is the case that first made this necessary
-bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	return validate_filepath_written(val, key, err);
-}
 
 // Validate the web server's document root.
 //
@@ -579,8 +523,10 @@ bool validate_webserver_logfile(union conf_value *val, const char *key, char err
 // webserver.serve_all is enabled, and files outside the web home are served
 // without authentication. A document root spanning Pi-hole's own configuration
 // would therefore hand out the API password hash, the TLS private key and the
-// databases; "/" would hand out everything the pihole user can open. It must
-// equally not come to span a file Pi-hole writes, see reject_inside_webroot().
+// databases; "/" would hand out everything the pihole user can open.
+//
+// Whether it comes to span a file Pi-hole writes depends on a second item, so
+// that half is checked in validate_config_paths() on the assembled config.
 bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Regular file-path validation first
@@ -602,24 +548,6 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
 		         key, CONFIG_DIR);
 		return false;
-	}
-
-	// Reject a document root that would come to contain a file Pi-hole writes
-	const struct conf_item *written[] = WRITTEN_FILES(config);
-	for(size_t i = 0; i < ArraySize(written); i++)
-	{
-		const char *path = written[i]->v.s;
-		if(path == NULL || path[0] != '/')
-			continue;
-
-		char pnorm[NORMALIZED_PATH_LEN];
-		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
-		   paths_overlap(norm, len, pnorm))
-		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN,
-			         "%s: would contain %s (\"%s\")", key, written[i]->k, path);
-			return false;
-		}
 	}
 
 	return true;
@@ -795,7 +723,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				struct in6_addr addr6 = { 0 };
 				const bool server_ipv4 = inet_pton(AF_INET, server, &addr) == 1;
 				const bool server_ipv6 = inet_pton(AF_INET6, server, &addr6) == 1;
-				const bool server_domain = valid_domain(server, strlen(server), false);
+				const bool server_domain = valid_domain(server, strlen(server), false, true);
 
 				// Check if server is valid
 				if(!server_ipv4 && !server_ipv6 && !server_domain)
@@ -826,7 +754,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			// Check if the third element is a valid domain
 			else if(e == 3)
 			{
-				if(!valid_domain(s, strlen(s), false))
+				if(!valid_domain(s, strlen(s), false, true))
 				{
 					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
 					free(str);
@@ -1009,7 +937,7 @@ void sanitize_dns_hosts(union conf_value *val)
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's a valid domain
-	if(valid_domain(val->s, strlen(val->s), false))
+	if(valid_domain(val->s, strlen(val->s), false, true))
 	{
 		return true;
 	}
@@ -1094,4 +1022,25 @@ bool validate_array_no_newline(union conf_value *val, const char *key, char err[
 	}
 
 	return true;
+}
+
+// Reset offending items until the path rules hold.
+//
+// Resetting one item can expose a conflict with another, so a single pass is
+// not enough. Each pass returns the item the check names to its default, and
+// the defaults do not conflict, so every item is reset at most once.
+void resolve_config_paths(struct config *conf)
+{
+	struct conf_item *written[] = WRITTEN_FILES(*conf);
+	for(size_t pass = 0; pass <= ArraySize(written); pass++)
+	{
+		struct conf_item *offender = NULL;
+		char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(validate_config_paths(conf, err, &offender))
+			return;
+
+		log_err("Inconsistent configuration: %s", err);
+		log_err("----> %s has been reset to its default value", offender->k);
+		reset_config_default(offender);
+	}
 }

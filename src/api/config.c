@@ -739,7 +739,6 @@ static int api_config_patch(struct ftl_conn *api)
 			                            key, true, true);
 		}
 
-
 		// Check if this is a write-only config item with the placeholder value
 		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
 		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
@@ -854,6 +853,23 @@ static int api_config_patch(struct ftl_conn *api)
 	// Process new config only when at least one value changed
 	if(config_changed)
 	{
+		// Reject a configuration whose paths conflict with each other. The
+		// per-item validators above only see one value at a time, so a request
+		// changing several of them at once has to be checked as a whole. This
+		// runs before the dnsmasq config is generated, as that installs the
+		// generated file as a side effect of testing it.
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!validate_config_paths(&newconf, errbuf, NULL))
+			{
+				free_config(&newconf, false);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid configuration",
+				                       errbuf);
+			}
+		}
+
 		// Request restart of FTL
 		if(dnsmasq_changed)
 		{
@@ -864,21 +880,6 @@ static int api_config_patch(struct ftl_conn *api)
 				api->ftl.restart = restart;
 			}
 			else
-			{
-				free_config(&newconf, false);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Invalid configuration",
-				                       errbuf);
-			}
-		}
-
-// Reject a configuration whose paths conflict with each other. The
-		// per-item validators above only see one value at a time, so a request
-		// changing several of them at once has to be checked as a whole.
-		{
-			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-			if(!validate_config_paths(&newconf, errbuf))
 			{
 				free_config(&newconf, false);
 				return send_json_error(api, 400,
@@ -1179,6 +1180,21 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
+	// Reject a configuration whose paths conflict with each other. This runs
+	// before the dnsmasq config is generated, as that installs the generated
+	// file as a side effect of testing it.
+	{
+		char pathbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(&newconf, pathbuf, NULL))
+		{
+			free_config(&newconf, false);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid configuration",
+			                       pathbuf);
+		}
+	}
+
 	// We need to build a new config (and carefully test it!) whenever dnsmasq
 	// options have changed that need a restart of the resolver
 	if(dnsmasq_changed)
@@ -1199,19 +1215,6 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                       "bad_request",
 			                       "Invalid configuration",
 			                       errbuf);
-		}
-	}
-
-	// Reject a configuration whose paths conflict with each other
-	{
-		char pathbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!validate_config_paths(&newconf, pathbuf))
-		{
-			free_config(&newconf, false);
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Invalid configuration",
-			                       pathbuf);
 		}
 	}
 

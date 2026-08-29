@@ -105,7 +105,14 @@ static inline unsigned int __attribute__((pure)) utf8_sequence_len(const unsigne
 }
 
 // Validate domain name
-inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only)
+//
+// allow_utf8 accepts an internationalized name in its UTF-8 form. Only pass it
+// where the value is handed to dnsmasq, which is built with libidn2 and converts
+// such a name itself. Pi-hole's own lists are matched byte-wise against the
+// query name, which always arrives as an A-label, so a UTF-8 entry there would
+// be stored and never match anything.
+inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len,
+                                               const bool fqdn_only, const bool allow_utf8)
 {
 	// Domain must not be NULL or empty, and they should not be longer than
 	// 255 characters
@@ -121,6 +128,9 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 		unsigned char c = (unsigned char)domain[i];
 		if(c > 0x7f)
 		{
+			if(!allow_utf8)
+				return false;
+
 			// Skip over the sequence at once, none of its bytes is a dot
 			const unsigned int seq = utf8_sequence_len((const unsigned char *)domain + i, len - i);
 			if(seq == 0)
@@ -198,7 +208,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+4, len-5, false);
+		return valid_domain(line+4, len-5, false, false);
 	}
 	else
 	{
@@ -215,7 +225,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+2, len-3, false);
+		return valid_domain(line+2, len-3, false, false);
 	}
 }
 
@@ -481,7 +491,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Validate line
 			if(line[0] != (antigravity ? '@' : '|') &&  // <- Not an ABP-style match
-			   valid_domain(token, token_len, true))
+			   valid_domain(token, token_len, true, false))
 			{
 				// Exact match found
 				if(checkOnly)
