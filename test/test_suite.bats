@@ -673,6 +673,19 @@ setup() {
   rm -f "${DB}"
 }
 
+@test "Internal PTR resolver reports a refused connection, not a timeout" {
+  # Nothing listens on port 5399, so the kernel answers the query with an
+  # ICMP port-unreachable. The resolver socket is connected, so that is
+  # delivered as ECONNREFUSED. On an unconnected socket the kernel discards
+  # it and the poll() deadline expires instead, which is what the refuted
+  # message is, so the two are told apart without timing anything
+  # Its own log file, so the deliberate error does not land in FTL.log and
+  # weaken the "no unexpected ERROR messages" check in test_final.bats
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/ptr_refused.log FTLCONF_dns_port=5399 ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "Connection refused by upstream DNS server"
+  refute_output --partial "Timed out after"
+}
+
 @test "Test fail on invalid CLI argument" {
   run bash -c './pihole-FTL abc'
   assert_line --index 0 "pihole-FTL: invalid option -- 'abc'"
