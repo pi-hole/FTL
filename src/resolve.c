@@ -348,8 +348,10 @@ static bool recv_all(const int sock, void *target, const size_t len,
 			return false;
 		}
 
-		const ssize_t bytes = recv(sock, (uint8_t *)target + received,
-		                           len - received, 0);
+		// recv_nowarn() as the error is logged below with the name of
+		// the part we were reading
+		const ssize_t bytes = recv_nowarn(sock, (uint8_t *)target + received,
+		                                  len - received, 0);
 		if(bytes < 0)
 		{
 			log_err("Cannot receive TCP DNS reply (%s): %s", what, strsockerr(errno));
