@@ -1000,30 +1000,22 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 bool flush_dnsmasq_log(void)
 {
 	const double mintime = double_time();
+	int trunc_err = 0;
 
 	// Lock shared memory
 	lock_shm();
 
-	// Open file in write mode to truncate it
-	FILE *logfile = fopen(dnsmasq_log.path, "w");
-	if(!logfile)
-	{
-		log_err("Could not open log file %s for truncation: %s\n", dnsmasq_log.path, strerror(errno));
-		unlock_shm();
-		return false;
-	}
-	fclose(logfile);
-
-	// Reopen the cached fd to point at the new empty file
+	// Truncate pihole.log via its cached fd; O_APPEND appends future writes
+	// to the empty file.  Lock order stays SHM first, then the per-file lock.
 	pthread_mutex_lock(&dnsmasq_log.lock);
-	if(dnsmasq_log.fd != -1)
-		close(dnsmasq_log.fd);
-	dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
 	if(dnsmasq_log.fd == -1)
-		log_warn("pihole.log reopen failed after flush (%s)", strerror(errno));
+		trunc_err = -1;          // no log file open
+	else if(ftruncate(dnsmasq_log.fd, 0) == -1)
+		trunc_err = errno;       // the fd stays usable for future writes
 	pthread_mutex_unlock(&dnsmasq_log.lock);
 
-	// Flush dnsmasq FIFO logs
+	// Flush the FIFO, in-memory datastructure and database even if the
+	// truncation above failed; the log file is then just left non-empty
 	if(fifo_log)
 		memset(&fifo_log->logs[FIFO_DNSMASQ], 0, sizeof(fifo_log->logs[FIFO_DNSMASQ]));
 
@@ -1033,12 +1025,21 @@ bool flush_dnsmasq_log(void)
 	// Unlock shared memory
 	unlock_shm();
 
+	// Report a failed truncation now that the SHM lock is released
+	if(trunc_err == -1)
+		log_warn("Could not truncate pihole.log: no log file is open");
+	else if(trunc_err > 0)
+		log_err("Could not truncate log file %s: %s", dnsmasq_log.path, strerror(trunc_err));
+
 	// Flush last 24 hours of on-disk database
 	if(!delete_old_queries_from_db(false, mintime))
 	{
 		log_err("Could not flush on-disk database");
 		return false;
 	}
+
+	if(trunc_err != 0)
+		return false;
 
 	log_info("Log has been flushed due to API request");
 
