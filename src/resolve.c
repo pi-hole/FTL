@@ -651,6 +651,15 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		}
 		prefix = ntohs(prefix);
 
+		// A reply shorter than the DNS header cannot be parsed, and the
+		// header copy below would otherwise take bytes that never arrived
+		if(prefix < sizeof(struct DNS_HEADER))
+		{
+			log_err("Received TCP DNS reply is too short (%u bytes)", prefix);
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return false;
+		}
+
 		// Sanity check the length of the message. Reject prefix == sizeof(buf)
 		// as well, otherwise the bzero(buf, prefix + 1) below writes one byte
 		// past the end of the buffer.
