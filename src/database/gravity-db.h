@@ -76,7 +76,9 @@ enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clients
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
                                        const unsigned char type, const char* table);
 
-bool gravityDB_readTable(const enum gravity_list_type listtype, const char *filter,
+sqlite3 *gravityDB_open_RO(void);
+void gravityDB_close_RO(sqlite3 *db);
+bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype, const char *filter,
                          const char **message, const bool exact, const char *ids,
                          sqlite3_stmt **stmt);
 bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *row, const char **message,
