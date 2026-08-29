@@ -482,6 +482,14 @@ if(BUILD_PTR_RESPONSE_REGRESSION)
     target_include_directories(ptr_response_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_compile_options(ptr_response_regression PRIVATE -fvisibility=hidden)
     target_link_libraries(ptr_response_regression Threads::Threads)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DPTR_RESPONSE_REGRESSION_SANITIZE=ON" test
+    option(PTR_RESPONSE_REGRESSION_SANITIZE "Build the PTR response regression test with ASan/UBSan" OFF)
+    if(PTR_RESPONSE_REGRESSION_SANITIZE)
+        target_compile_options(ptr_response_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(ptr_response_regression PRIVATE -fsanitize=address,undefined)
+    endif()
 endif()
 
 # Standalone regression harness for the in-memory gzip parser (zip/gzip.c).
