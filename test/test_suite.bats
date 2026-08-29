@@ -1628,6 +1628,21 @@ setup() {
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
+
+  run bash -c './pihole-FTL --config dhcp.netmask 255.254.255.0'
+  assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dhcp.netmask 255.255.254.0'
+  assert_success
+
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_line --index 0 '255.255.254.0'
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface
+  run bash -c './pihole-FTL --config dhcp.netmask ""'
+  assert_success
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
