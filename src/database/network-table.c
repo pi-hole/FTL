@@ -1244,6 +1244,8 @@ static bool clean_network_table(sqlite3 *db)
  *
  * This function opens the database, deletes all entries from the
  * `network_addresses` and `network` tables, and then closes the database.
+ * The host names FTL holds in shared memory are dropped as well so the
+ * next ARP cycle cannot write them straight back.
  *
  * @return true if the operation was successful, false otherwise.
  */
@@ -1269,6 +1271,31 @@ bool flush_network_table(void)
 
 	// Close database
 	dbclose(&db);
+
+	// Drop the host names we hold in shared memory. They survive the
+	// two DELETEs above and would be mirrored back into the emptied
+	// table on the next ARP cycle, making the flush cosmetic.
+	lock_shm();
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+
+		client->namepos = 0;
+		client->flags.nameFromDB = false;
+
+		// The (ip, name) pair changed, so the client needs a new
+		// client_by_id record, and the name is one of the identities
+		// group assignment matches on
+		client->flags.in_database = false;
+		client->db_id = 0;
+		client->flags.found_group = false;
+
+		// Have the resolver look at this client again
+		client->flags.new = true;
+	}
+	unlock_shm();
 
 	return true;
 }
