@@ -69,11 +69,11 @@ foreach(INPUT_FILE ${COMPILED_RESOURCES})
     string(REPLACE "/" "_" VARIABLE_NAME ${INPUT_FILE})
     set(OUTPUT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/hex/${INPUT_FILE_MODIFIED}.h)
     add_custom_command(
-        OUTPUT hex/${INPUT_FILE_MODIFIED}.h
+        OUTPUT ${OUTPUT_FILE}
         COMMAND ${GZIP_COMPRESSOR} -9 -n -c ${IN} | ${RESOURCE_COMPILER} -iC -n ${VARIABLE_NAME} - | sed "s/unsigned /static const unsigned /" > ${OUTPUT_FILE}
+        DEPENDS ${IN}
         COMMENT "Compressing and compiling ${INPUT_FILE}"
         VERBATIM)
-    list(APPEND COMPILED_RESOURCES ${OUTPUT_FILE})
 endforeach()
 
 add_library(api_docs OBJECT ${sources})

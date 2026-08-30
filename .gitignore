@@ -4,6 +4,8 @@ pihole-FTL*
 # Generated standalone regression test binaries (built via ./build.sh test)
 /tar_regression
 /gzip_regression
+/dotdoh_regression
+/ptr_response_regression
 
 # Generated pihole.toml file
 pihole.toml

@@ -443,7 +443,7 @@ void parse_args(int argc, char *argv[])
 		else
 		{
 			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
-			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
+			printf("Example: %s --config dns.CNAMEdeepInspect true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -737,10 +737,15 @@ void parse_args(int argc, char *argv[])
 		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
 
 		// Create a socket
-		struct sockaddr_in dest;
-		const int sock = create_socket(tcp, &dest);
+		const int sock = create_socket(tcp);
+		if(sock < 0)
+		{
+			// create_socket() has already logged the reason
+			exit(EXIT_FAILURE);
+		}
+
 		char hostn[MAXDOMAINLEN] = { 0 };
-		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		if(!resolveHostname(sock, tcp, hostn, argv[2], true, NULL))
 		{
 			// Close the socket
 			close(sock);
@@ -1532,7 +1537,7 @@ void suggest_complete(const int argc, char *argv[])
 		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
-		    "--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
+		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
 		};
 
 		// Provide matching suggestions

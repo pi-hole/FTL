@@ -284,6 +284,24 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	return true;
 }
 
+// Validate a netmask
+// The one-bits have to be contiguous and leading, anything else describes no
+// subnet and has neither a network nor a broadcast address. 0.0.0.0 is allowed
+// and means the netmask is determined from the interface
+bool validate_netmask(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	const uint32_t hostmask = ~ntohl(val->in_addr.s_addr);
+	if((hostmask & (hostmask + 1)) != 0)
+	{
+		char addr[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &val->in_addr, addr, sizeof(addr));
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid netmask (\"%s\"), the one-bits are not contiguous", key, addr);
+		return false;
+	}
+
+	return true;
+}
+
 // Validate domain
 bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {

@@ -673,6 +673,19 @@ setup() {
   rm -f "${DB}"
 }
 
+@test "Internal PTR resolver reports a refused connection, not a timeout" {
+  # Nothing listens on port 5399, so the kernel answers the query with an
+  # ICMP port-unreachable. The resolver socket is connected, so that is
+  # delivered as ECONNREFUSED. On an unconnected socket the kernel discards
+  # it and the poll() deadline expires instead, which is what the refuted
+  # message is, so the two are told apart without timing anything
+  # Its own log file, so the deliberate error does not land in FTL.log and
+  # weaken the "no unexpected ERROR messages" check in test_final.bats
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/ptr_refused.log FTLCONF_dns_port=5399 ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "Connection refused by upstream DNS server"
+  refute_output --partial "Timed out after"
+}
+
 @test "Test fail on invalid CLI argument" {
   run bash -c './pihole-FTL abc'
   assert_line --index 0 "pihole-FTL: invalid option -- 'abc'"
@@ -1628,6 +1641,21 @@ setup() {
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
+
+  run bash -c './pihole-FTL --config dhcp.netmask 255.254.255.0'
+  assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dhcp.netmask 255.255.254.0'
+  assert_success
+
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_line --index 0 '255.255.254.0'
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface
+  run bash -c './pihole-FTL --config dhcp.netmask ""'
+  assert_success
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
@@ -1774,6 +1802,12 @@ setup() {
   assert_success
 }
 
+@test "PTR stale-response regression harness" {
+  run ./ptr_response_regression
+  assert_success
+  assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
+}
+
 @test "SHA256 checksum working" {
   run bash -c './pihole-FTL sha256sum test/test.pem'
   assert_line --index 0 "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem"
@@ -1870,6 +1904,37 @@ setup() {
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
   run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
+}
+
+@test "Gravity: API write waits for a concurrent reader instead of failing" {
+  # gravity_updated() reads gravity.db from its own connection once per second.
+  # A write meeting that reader used to fail with "database is locked" instead
+  # of waiting for it. Hold a read transaction here, wait until it is really
+  # held, and write through the API while it is
+  rm -f /tmp/gravity_reader_ready
+  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell touch /tmp/gravity_reader_ready\n.shell sleep 0.4\nCOMMIT;\n' | \
+    ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db > /dev/null 2>&1 &
+  reader=$!
+
+  # Do not guess how long the reader needs to take its lock
+  for _ in $(seq 1 100); do
+    [ -f /tmp/gravity_reader_ready ] && break
+    sleep 0.05
+  done
+  run bash -c '[ -f /tmp/gravity_reader_ready ]'
+  assert_success
+
+  # The write has to succeed AND to have waited: if it returns immediately the
+  # reader was already gone and this test proved nothing
+  run bash -c 'out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}")"; echo "${out}"; code="${out%% *}"; secs="${out##* }"; case "${code}" in 200|201) ;; *) exit 1;; esac; awk -v t="${secs}" "BEGIN{exit !(t>0.1)}"'
+  assert_success
+
+  wait "${reader}"
+  rm -f /tmp/gravity_reader_ready
+
+  # Remove it again so the following tests see the list they expect
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
+  assert_output "204"
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)

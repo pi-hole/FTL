@@ -1829,7 +1829,7 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 	if(rc != SQLITE_OK)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
-		sqlite3_close(macvendor_db);
+		dbclose_handle(macvendor_db);
 		return false;
 	}
 
@@ -1881,13 +1881,13 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 
 getMACVendor_end:
 
-	if(!success)
-		checkFTLDBrc(rc);
+	// No checkFTLDBrc() here: this is macvendor.db, a broken one says
+	// nothing about the FTL database and must not take it out of service
 
 	// Finalize statement and close database
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
-	sqlite3_close(macvendor_db);
+	dbclose_handle(macvendor_db);
 
 	log_debug(DEBUG_ARP, "MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 

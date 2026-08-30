@@ -2076,37 +2076,6 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay));
 	PERF_END(_pcb_deny, PERF_STAT_CB_DENYLIST);
 
-	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
-	// (defaulting to true). Timed into the same slot as the primary call above
-	// so the rollup reflects total denylist/gravity work per query, regardless
-	// of whether the _esni fallback ran.
-	if(config.dns.blockESNI.v.b &&
-	   !query->flags.allowed && !blockDomain &&
-	   domainstr[0] == '_' &&
-	   strncmp(domainstr, "_esni.", 6u) == 0 && domainstr[6] != '\0')
-	{
-		PERF_START(_pcb_deny_esni);
-		TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay));
-		PERF_END(_pcb_deny_esni, PERF_STAT_CB_DENYLIST);
-
-		// Update DNS cache status
-		cacheStatus = dns_cache->blocking_status;
-
-		if(blockDomain)
-		{
-			// Truncate "_esni." from queried domain if the parenting domain was
-			// the reason for blocking this query
-			blockedDomain = domainstr + 6u;
-			// Force next DNS reply to be NXDOMAIN for _esni.* queries
-			force_next_DNS_reply = REPLY_NXDOMAIN;
-
-			// Store this in the DNS cache only if the database is available at
-			// this point
-			if(db_okay)
-				dns_cache->force_reply = REPLY_NXDOMAIN;
-		}
-	}
-
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
 	{

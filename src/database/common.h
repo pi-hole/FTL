@@ -42,6 +42,8 @@ int sqliteBusyCallback(void *ptr, int count);
 sqlite3 *_dbopen(const bool readonly, const bool create, const char *func, const int line, const char *file) __attribute__((warn_unused_result));
 #define dbclose(db) _dbclose(db, __FUNCTION__, __LINE__, __FILE__)
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file);
+#define dbclose_handle(db) _dbclose_handle(db, __FUNCTION__, __LINE__, __FILE__)
+int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file);
 
 void piholeFTLDB_reopen(void);
 int db_query_int(sqlite3 *db, const char *querystr);

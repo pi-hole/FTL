@@ -31,7 +31,7 @@ static int api_list_read(struct ftl_conn *api,
 {
 	const char *sql_msg = NULL;
 	sqlite3_stmt *stmt = NULL;
-	if(!gravityDB_readTable(listtype, item, &sql_msg, true, NULL, &stmt))
+	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
 	{
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",

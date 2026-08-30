@@ -33,8 +33,16 @@
 #include "regex_r.h"
 // statis_assert()
 #include <assert.h>
+#include <poll.h>
+#include <time.h>
 // TCP_MAX_QUERIES
 #include "dnsmasq/config.h"
+// get_secure_randomness()
+#include "config/password.h"
+
+// Wall-clock budget for a single PTR lookup, used both as the socket-level
+// receive timeout and as the deadline bounding the receive loops below
+#define RESOLVER_TIMEOUT_MS 2000
 
 // Function Prototypes
 static size_t nameToDNS(unsigned char *dns, const size_t dnslen, const char *host, const size_t hostlen) __attribute__((nonnull(1,3)));
@@ -243,7 +251,7 @@ bool __attribute__((pure)) resolve_this_name(const char *ipaddr)
 	return true;
 }
 
-int create_socket(bool tcp, struct sockaddr_in *dest)
+int create_socket(bool tcp)
 {
 	// Create a UDP (datagram) or TCP (stream) socket
 	const int sock = socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? IPPROTO_TCP : IPPROTO_UDP);
@@ -253,10 +261,10 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 		return -1;
 	}
 
-	// Set timeout for socket (2 seconds)
+	// Set timeout for socket
 	struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
+	tv.tv_sec = RESOLVER_TIMEOUT_MS / 1000;
+	tv.tv_usec = (RESOLVER_TIMEOUT_MS % 1000) * 1000;
 	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
 		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
@@ -264,15 +272,18 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 		return -1;
 	}
 
-	// Create socket destination structure
-	memset(dest, 0, sizeof(*dest));
-	dest->sin_family = AF_INET; // IPv4
-	dest->sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
-	dest->sin_port = htons(config.dns.port.v.u16); // Configured DNS port
+	// The DNS server we talk to is always the local dnsmasq
+	struct sockaddr_in dest = { 0 };
+	dest.sin_family = AF_INET; // IPv4
+	dest.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+	dest.sin_port = htons(config.dns.port.v.u16); // Configured DNS port
 
-	// Connect to the DNS server (only done for TCP as UDP is
-	// connectionless)
-	if(tcp && connect(sock, (struct sockaddr*)dest, sizeof(*dest)) < 0)
+	// Connect to the DNS server. This is done for UDP as well: connecting
+	// fixes the peer, so the kernel drops datagrams from foreign sources
+	// for us and, more importantly, reports ICMP errors on this socket. A
+	// dnsmasq that is not listening then fails with ECONNREFUSED right
+	// away instead of making us wait out the receive timeout
+	if(connect(sock, (struct sockaddr*)&dest, sizeof(dest)) < 0)
 	{
 		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
 		close(sock);
@@ -285,13 +296,176 @@ int create_socket(bool tcp, struct sockaddr_in *dest)
 // Helper macro to reduce code duplication
 #define log_resolve_info(host, port, tcp) { log_info("Tried to resolve PTR \"%s\" on 127.0.0.1#%u (%s)", host, port, tcp ? "TCP" : "UDP"); }
 
+static int64_t resolver_monotonic_msec(void)
+{
+	struct timespec now = { 0 };
+	if(clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+		return -1;
+
+	return (int64_t)now.tv_sec * 1000LL + now.tv_nsec / 1000000LL;
+}
+
+// Receive exactly len bytes from a stream socket. recv() may return fewer
+// bytes than requested, so keep reading until the full amount has arrived,
+// bounded by one absolute deadline for the entire lookup.
+static bool recv_all(const int sock, void *target, const size_t len,
+                     const int64_t deadline, const char *what)
+{
+	size_t received = 0;
+	while(received < len)
+	{
+		const int64_t now = resolver_monotonic_msec();
+		if(now < 0)
+		{
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+			return false;
+		}
+
+		const int64_t remaining = deadline - now;
+		if(remaining <= 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): Timed out after %d ms",
+			        what, RESOLVER_TIMEOUT_MS);
+			return false;
+		}
+
+		struct pollfd pfd = {
+			.fd = sock,
+			.events = POLLIN,
+			.revents = 0,
+		};
+
+		const int ready = poll(&pfd, 1, (int)remaining);
+		if(ready < 0)
+		{
+			if(errno == EINTR)
+				continue;
+
+			log_err("Cannot wait for TCP DNS reply (%s): %s", what, strsockerr(errno));
+			return false;
+		}
+		if(ready == 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): Timed out after %d ms",
+			        what, RESOLVER_TIMEOUT_MS);
+			return false;
+		}
+
+		// recv_nowarn() as the error is logged below with the name of
+		// the part we were reading
+		const ssize_t bytes = recv_nowarn(sock, (uint8_t *)target + received,
+		                                  len - received, 0);
+		if(bytes < 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): %s", what, strsockerr(errno));
+			return false;
+		}
+		if(bytes == 0)
+		{
+			log_err("Cannot receive TCP DNS reply (%s): connection closed after "
+			        "%zu of %zu bytes", what, received, len);
+			return false;
+		}
+
+		received += (size_t)bytes;
+	}
+
+	return true;
+}
+
+static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
+                                      const uint16_t request_id, const char *host,
+                                      struct DNS_HEADER *dns, uint8_t **answer)
+{
+	if(response_len < sizeof(struct DNS_HEADER))
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding short UDP DNS reply while resolving PTR \"%s\" (%zu bytes)",
+		          host, response_len);
+		return false;
+	}
+
+	struct DNS_HEADER response = { 0 };
+	memcpy(&response, buf, sizeof(response));
+
+	if(response.id != request_id || response.qr != 1 || response.opcode != 0 ||
+	   ntohs(response.q_count) != 1)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding unrelated UDP DNS reply while resolving PTR \"%s\" "
+		          "(id %u, expected %u, qr %u, opcode %u, questions %u)",
+		          host, (unsigned int)ntohs(response.id),
+		          (unsigned int)ntohs(request_id), (unsigned int)response.qr,
+		          (unsigned int)response.opcode,
+		          (unsigned int)ntohs(response.q_count));
+		return false;
+	}
+
+	const unsigned char *bufend = buf + response_len;
+	uint8_t *reader = buf + sizeof(struct DNS_HEADER);
+	uint16_t consumed = 0;
+	unsigned char *question_name = nameFromDNS(reader, buf, bufend, &consumed);
+	if(question_name == NULL)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding malformed UDP DNS question while resolving PTR \"%s\"",
+		          host);
+		return false;
+	}
+
+	if(consumed > (size_t)(bufend - reader) ||
+	   sizeof(struct QUESTION) > (size_t)(bufend - reader - consumed))
+	{
+		free(question_name);
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding truncated UDP DNS question while resolving PTR \"%s\"",
+		          host);
+		return false;
+	}
+
+	reader += consumed;
+	struct QUESTION question = { 0 };
+	memcpy(&question, reader, sizeof(question));
+
+	const bool matches =
+	    strcasecmp((const char *)question_name, host) == 0 &&
+	    ntohs(question.qtype) == T_PTR &&
+	    ntohs(question.qclass) == 1;
+
+	if(!matches)
+	{
+		log_debug(DEBUG_RESOLVER,
+		          "Discarding UDP DNS reply with mismatched question while resolving "
+		          "PTR \"%s\" (received \"%s\", type %u, class %u)",
+		          host, (const char *)question_name,
+		          (unsigned int)ntohs(question.qtype),
+		          (unsigned int)ntohs(question.qclass));
+		free(question_name);
+		return false;
+	}
+
+	free(question_name);
+	*dns = response;
+	*answer = reader + sizeof(struct QUESTION);
+	return true;
+}
+
 // Perform a name lookup by sending a packet to ourselves
-static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *dest,
+static bool ngethostbyname(const int sock, const bool tcp,
                            char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
 {	
 	// Initialize request DNS header
 	struct DNS_HEADER dns = { 0 };
-	dns.id = (unsigned short) htons(random()); // random query ID
+	// Random query ID. This has to be unpredictable, as an off-path
+	// attacker who can guess it may forge a reply
+	uint16_t query_id = 0;
+	if(!get_secure_randomness((uint8_t *)&query_id, sizeof(query_id)))
+	{
+		log_err("Unable to generate a random DNS query ID");
+		return false;
+	}
+	dns.id = htons(query_id);
+	const uint16_t request_id = dns.id;
 	dns.qr = 0; // This is a query
 	dns.opcode = 0; // This is a standard query
 	dns.aa = 0; // Not Authoritative
@@ -314,7 +488,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	if(hname == NULL)
 	{
 		log_err("Unable to allocate memory for hname");
-		return NULL;
+		return false;
 	}
 	strncpy(hname, host, hnamelen);
 	strncat(hname, ".", hnamelen - strlen(hname));
@@ -342,25 +516,94 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 	log_debug(DEBUG_RESOLVER, "Resolving PTR \"%s\" on 127.0.0.1#%u (%s)",
 	          host, config.dns.port.v.u16, tcp ? "TCP" : "UDP");
 
+	ssize_t response_len = 0;
+	uint8_t *reader = NULL;
+	uint16_t prefix = 0;
+
 	// Send the query and receive the answer
 	if(!tcp)
 	{
 		// **** UDP ****
-		// Send the query
-		socklen_t addrlen = sizeof(*dest);
-		if(sendto(sock, buf, len, 0, (struct sockaddr*)dest, addrlen) < 0)
+		// Send the query. The socket is connected, so the destination
+		// is implicit. _nowarn: the error is logged right below, with
+		// the context the generic wrapper does not have
+		if(sendto_nowarn(sock, buf, len, 0, NULL, 0) < 0)
 		{
 			log_err("Cannot send UDP DNS query: %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
 		}
 
-		// Receive the answer
-		if(recvfrom (sock, buf, sizeof(buf), 0, (struct sockaddr*)dest, &addrlen) < 0)
+		const int64_t start = resolver_monotonic_msec();
+		if(start < 0)
 		{
-			log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
-			return NULL;
+			return false;
+		}
+		const int64_t deadline = start + RESOLVER_TIMEOUT_MS;
+
+		while(true)
+		{
+			const int64_t now = resolver_monotonic_msec();
+			if(now < 0)
+			{
+				log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			const int64_t remaining = deadline - now;
+			if(remaining <= 0)
+			{
+				log_err("Cannot receive UDP DNS reply: Timed out after %d ms",
+				        RESOLVER_TIMEOUT_MS);
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			struct pollfd pfd = {
+				.fd = sock,
+				.events = POLLIN,
+				.revents = 0,
+			};
+
+			const int ready = poll(&pfd, 1, (int)remaining);
+			if(ready < 0)
+			{
+				if(errno == EINTR)
+					continue;
+
+				log_err("Cannot wait for UDP DNS reply: %s", strsockerr(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+			if(ready == 0)
+			{
+				log_err("Cannot receive UDP DNS reply: Timed out after %d ms",
+				        RESOLVER_TIMEOUT_MS);
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			response_len = recv_nowarn(sock, buf, sizeof(buf), MSG_DONTWAIT);
+			if(response_len < 0)
+			{
+				if(errno == EAGAIN)
+					continue;
+
+				log_err("Cannot receive UDP DNS reply: %s", strsockerr(errno));
+				log_resolve_info(host, config.dns.port.v.u16, tcp);
+				return false;
+			}
+
+			if(!validate_udp_ptr_response(buf, (size_t)response_len,
+			                              request_id, host, &dns, &reader))
+				continue;
+
+			// Unrelated datagrams may keep the loop active until this request's
+			// deadline, but they cannot extend the original two-second wait.
+			break;
 		}
 	}
 	else
@@ -372,7 +615,7 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		// not sending messages (datagrams) but a continuous stream of
 		// bytes. We therefore need a way to tell the receiver about
 		// this length of the message.
-		uint16_t prefix = htons(len & 0xffffu);
+		prefix = htons(len & 0xffffu);
 		if(send(sock, &prefix, sizeof(prefix), 0) < 0 ||
 		   send(sock, buf, len, 0) < 0)
 		{
@@ -381,15 +624,32 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			return false;
 		}
 
+		const int64_t start = resolver_monotonic_msec();
+		if(start < 0)
+		{
+			log_err("Cannot read resolver monotonic clock: %s", strerror(errno));
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return false;
+		}
+		const int64_t deadline = start + RESOLVER_TIMEOUT_MS;
+
 		// Receive the answer, first the length of the message ...
 		prefix = 0;
-		if(recv(sock, &prefix, sizeof(prefix), 0) < 0)
+		if(!recv_all(sock, &prefix, sizeof(prefix), deadline, "length prefix"))
 		{
-			log_err("Cannot receive TCP DNS reply (1): %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return false;
 		}
 		prefix = ntohs(prefix);
+
+		// A reply shorter than the DNS header cannot be parsed, and the
+		// header copy below would otherwise take bytes that never arrived
+		if(prefix < sizeof(struct DNS_HEADER))
+		{
+			log_err("Received TCP DNS reply is too short (%u bytes)", prefix);
+			log_resolve_info(host, config.dns.port.v.u16, tcp);
+			return false;
+		}
 
 		// Sanity check the length of the message. Reject prefix == sizeof(buf)
 		// as well, otherwise the bzero(buf, prefix + 1) below writes one byte
@@ -401,19 +661,18 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 			return false;
 		}
 		bzero(buf, prefix + 1);
+
 		// ... then the message itself
-		if(recv(sock, buf, sizeof(buf), 0) < 0)
+		if(!recv_all(sock, buf, prefix, deadline, "message"))
 		{
-			log_err("Cannot receive TCP DNS reply (2): %s", strsockerr(errno));
 			log_resolve_info(host, config.dns.port.v.u16, tcp);
 			return false;
 		}
-	}
+		response_len = prefix;
 
-	// Parse the reply
-	memcpy(&dns, buf, sizeof(struct DNS_HEADER));
-	// Move ahead of the dns header and the query field
-	uint8_t *reader = &buf[len];
+		memcpy(&dns, buf, sizeof(struct DNS_HEADER));
+		reader = &buf[len];
+	}
 
 	// Log the status of the query
 	log_debug(DEBUG_RESOLVER, "DNS query for PTR \"%s\" returned status %s (%i)",
@@ -425,14 +684,14 @@ static bool ngethostbyname(const int sock, const bool tcp, struct sockaddr_in *d
 		log_debug(DEBUG_RESOLVER, " --> DNS response truncated");
 		if(truncated != NULL)
 			*truncated = true;
-		return NULL;
+		return false;
 	}
 
 	// Start reading answers
 	uint16_t stop = 0;
 	bool have_name = false;
 	struct RES_RECORD answers[20] = { 0 };
-	const unsigned char *bufend = buf + sizeof(buf);
+	const unsigned char *bufend = buf + (size_t)response_len;
 	for(uint16_t i = 0; i < min(ntohs(dns.ans_count), ArraySize(answers)); i++)
 	{
 		// Ensure the read pointer still points within the receive
@@ -670,7 +929,7 @@ static size_t __attribute__((nonnull(1,3))) nameToDNS(unsigned char *dns, const 
 	return dns - dns_start;
 }
 
-bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
+bool resolveHostname(const int sock, const bool tcp,
                      char hostn[MAXDOMAINLEN], const char *addr, const bool force, bool *truncated)
 {
 	// Check if we want to resolve host names
@@ -782,12 +1041,25 @@ bool resolveHostname(const int sock, const bool tcp, struct sockaddr_in *dest,
 	// Get host name by making a reverse lookup to ourselves (server at 127.0.0.1 with port 53)
 	// We implement a minimalistic resolver here as we cannot rely on the system resolver using whatever
 	// nameserver we configured in /etc/resolv.conf
-	return ngethostbyname(sock, tcp, dest, hostn, inaddr, addr, truncated);
+	return ngethostbyname(sock, tcp, hostn, inaddr, addr, truncated);
 }
 
+// Outcome of a single host name lookup
+enum resolve_result
+{
+	// A name was obtained, or resolution is switched off for this address,
+	// which is not a failure. *newnamepos is what to store
+	RESOLVE_OK,
+	// Nothing resolved. The caller keeps the old name and retries later
+	RESOLVE_NO_NAME,
+	// No socket. Nothing will resolve until that changes, so the caller
+	// gives up on the rest of the sweep rather than repeating the failure
+	RESOLVE_NO_SOCKET,
+};
+
 // Resolve upstream destination host names
-static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest,
-                                    size_t ippos, size_t oldnamepos, bool *success)
+static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos,
+                                                 size_t *newnamepos)
 {
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
@@ -806,28 +1078,46 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 	{
 		log_debug(DEBUG_RESOLVER, " ---> \"\" (configured to not resolve host name)");
 
-		// Not resolving names is intentional, not a failure
-		if(success != NULL)
-			*success = true;
-
-		// Return fixed position of empty string
-		return 0;
+		// Not resolving names is intentional, not a failure. Fixed
+		// position of the empty string
+		*newnamepos = 0;
+		return RESOLVE_OK;
 	}
 
 	// Important: Don't hold a lock while resolving as the main thread
 	// (dnsmasq) needs to be operable during the call to resolveHostname()
 	bool truncated = false;
 	char newname[MAXDOMAINLEN] = { 0 };
-	bool resolved = resolveHostname(udp_sock, false, dest, newname, ipaddr, false, &truncated);
+	bool resolved = false;
+
+	// One socket per lookup. A connected UDP socket queues ICMP errors on
+	// itself and delivers them on the next call, so a socket shared by the
+	// whole sweep could report one client's port-unreachable on the next
+	// client's lookup. A fresh socket also means a fresh source port, so a
+	// late reply to the previous query is dropped by the kernel rather than
+	// having to be recognized as stale
+	const int udp_sock = create_socket(false);
+	if(udp_sock < 0)
+	{
+		// create_socket() has already logged the reason. Return before the
+		// database fallback below, so nothing is added to shared memory for
+		// a name the caller is about to discard
+		*newnamepos = oldnamepos;
+		return RESOLVE_NO_SOCKET;
+	}
+
+	resolved = resolveHostname(udp_sock, false, newname, ipaddr, false, &truncated);
+	close(udp_sock);
+
 	if(!resolved && truncated)
 	{
 		// Retry with TCP if UDP failed due to truncation (RFC 7766)
-		const int tcp_sock = create_socket(true, dest);
-		if(tcp_sock > 0)
+		const int tcp_sock = create_socket(true);
+		if(tcp_sock >= 0)
 		{
 			// Only attempt to resolve the hostname if we have a
 			// valid socket
-			resolved = resolveHostname(tcp_sock, true, dest, newname, ipaddr, false, NULL);
+			resolved = resolveHostname(tcp_sock, true, newname, ipaddr, false, NULL);
 			close(tcp_sock);
 		}
 		else
@@ -842,29 +1132,30 @@ static size_t resolveAndAddHostname(const int udp_sock, struct sockaddr_in *dest
 			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (provided by database)", newname);
 	}
 
-	// Report whether we actually obtained a host name so the caller can
-	// keep the old name and retry later when resolution failed
-	if(success != NULL)
-		*success = newname[0] != '\0';
+	// Nothing resolved: the caller keeps the old name and retries later
+	if(newname[0] == '\0')
+	{
+		*newnamepos = oldnamepos;
+		return RESOLVE_NO_NAME;
+	}
 
-	// Only store new newname if it is valid and differs from oldname
-	// We do not need to check for oldname == NULL as names are
-	// always initialized with an empty string at position 0
-	if(newname[0] != '\0' && strcmp(oldname, newname) != 0)
+	// Only store the new name if it differs from oldname. We do not need to
+	// check for oldname == NULL as names are always initialized with an
+	// empty string at position 0
+	if(strcmp(oldname, newname) != 0)
 	{
 		lock_shm();
-		const size_t newnamepos = addstr(newname);
+		*newnamepos = addstr(newname);
 		unlock_shm();
-		return newnamepos;
-	}
-	else
-	{
-		// Debugging output
-		log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
+		return RESOLVE_OK;
 	}
 
-	// Not changed, return old namepos
-	return oldnamepos;
+	// Debugging output
+	log_debug(DEBUG_SHMEM, "Not adding \"%s\" to buffer (unchanged)", oldname);
+
+	// Not changed, keep the old namepos
+	*newnamepos = oldnamepos;
+	return RESOLVE_OK;
 }
 
 // Resolve client host names
@@ -875,15 +1166,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 	lock_shm();
 	const unsigned int clientscount = counters->clients;
 	unlock_shm();
-
-	// Create DNS client socket
-	struct sockaddr_in dest = { 0 };
-	const int udp_sock = create_socket(false, &dest);
-	if(udp_sock < 0)
-	{
-		log_err("Unable to create DNS resolver socket, client host name resolution failed");
-		return;
-	}
 
 	unsigned int skipped = 0;
 	for(unsigned int clientID = 0; clientID < clientscount; clientID++)
@@ -996,8 +1278,13 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		}
 
 		// Obtain/update hostname of this client
-		bool success = true;
-		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
+		size_t newnamepos = 0;
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		if(res == RESOLVE_NO_SOCKET)
+		{
+			log_err("Unable to create DNS resolver socket, client host name resolution failed");
+			return;
+		}
 
 		lock_shm();
 		// Get client pointer for the second time (writing data)
@@ -1013,7 +1300,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		if(!success)
+		if(res != RESOLVE_OK)
 		{
 			// We could not resolve the hostname, so we keep the old one
 			// and mark the entry as not new - it will be retried later
@@ -1051,9 +1338,6 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		unlock_shm();
 	}
 
-	// Close socket
-	close(udp_sock);
-
 	log_debug(DEBUG_RESOLVER, "%u / %u client host names resolved",
 	          clientscount - skipped, clientscount);
 }
@@ -1066,15 +1350,6 @@ static void resolveUpstreams(const bool onlynew)
 	lock_shm();
 	const int upstreams = counters->upstreams;
 	unlock_shm();
-
-	// Create socket
-	struct sockaddr_in dest = { 0 };
-	const int udp_sock = create_socket(false, &dest);
-	if(udp_sock < 0)
-	{
-		log_err("Unable to create DNS resolver socket, client host name resolution failed");
-		return;
-	}
 
 	int skipped = 0;
 	for(int upstreamID = 0; upstreamID < upstreams; upstreamID++)
@@ -1133,8 +1408,13 @@ static void resolveUpstreams(const bool onlynew)
 		}
 
 		// Obtain/update hostname of this client
-		bool success = true;
-		size_t newnamepos = resolveAndAddHostname(udp_sock, &dest, ippos, oldnamepos, &success);
+		size_t newnamepos = 0;
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		if(res == RESOLVE_NO_SOCKET)
+		{
+			log_err("Unable to create DNS resolver socket, upstream host name resolution failed");
+			return;
+		}
 
 		lock_shm();
 		// Get upstream pointer for the second time (writing data)
@@ -1150,7 +1430,7 @@ static void resolveUpstreams(const bool onlynew)
 			continue;
 		}
 
-		if(!success)
+		if(res != RESOLVE_OK)
 		{
 			// We could not resolve the hostname, so we keep the old one
 			// and mark the entry as not new - it will be retried later
@@ -1172,9 +1452,6 @@ static void resolveUpstreams(const bool onlynew)
 
 		unlock_shm();
 	}
-
-	// Close socket
-	close(udp_sock);
 
 	log_debug(DEBUG_RESOLVER, "%i / %i upstream server host names resolved",
 	          upstreams-skipped, upstreams);

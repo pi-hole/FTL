@@ -460,6 +460,38 @@ if(BUILD_DOTDOH_REGRESSION)
     endif()
 endif()
 
+# Standalone regression harness for the internal PTR resolver. It compiles
+# src/resolve.c a second time and stubs the FTL wrappers that file needs, so a
+# scripted DNS server can replay a stale response against the real resolver.
+# The "PTR stale-response regression harness" bats test runs the resulting
+# binary. Deliberately NOT given the strict EXTRAWARN/-Werror flags applied to
+# FTL code.
+#
+# -fvisibility=hidden is load-bearing here: with default visibility the entry
+# points of resolve.c are GC roots for -Wl,--gc-sections, so the linker keeps
+# resolveClients() and DNSclient_thread() and then fails on their references
+# into shared memory, the event queue and the thread helpers.
+#
+# Only built on request: `./build.sh test` enables it for local runs and the
+# CI Dockerfile passes -DBUILD_PTR_RESPONSE_REGRESSION=ON at build time.
+option(BUILD_PTR_RESPONSE_REGRESSION "Build the PTR response regression test harness" OFF)
+if(BUILD_PTR_RESPONSE_REGRESSION)
+    add_executable(ptr_response_regression
+            ${PROJECT_SOURCE_DIR}/test/ptr_response_regression.c
+            ${PROJECT_SOURCE_DIR}/src/resolve.c)
+    target_include_directories(ptr_response_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_compile_options(ptr_response_regression PRIVATE -fvisibility=hidden)
+    target_link_libraries(ptr_response_regression Threads::Threads)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DPTR_RESPONSE_REGRESSION_SANITIZE=ON" test
+    option(PTR_RESPONSE_REGRESSION_SANITIZE "Build the PTR response regression test with ASan/UBSan" OFF)
+    if(PTR_RESPONSE_REGRESSION_SANITIZE)
+        target_compile_options(ptr_response_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(ptr_response_regression PRIVATE -fsanitize=address,undefined)
+    endif()
+endif()
+
 # Standalone regression harness for the in-memory gzip parser (zip/gzip.c).
 # It #includes gzip.c directly to reuse implementation-private constants, stubs
 # the few FTL* wrappers gzip.c needs, and reuses the miniz object library. The
