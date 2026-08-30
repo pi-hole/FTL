@@ -66,11 +66,17 @@ void init_config_lock(void)
 	pthread_mutexattr_destroy(&lock_attr);
 }
 
+// Lock ordering: this lock is always taken before the SHM lock, never the
+// other way round
 void lock_config(void)
 {
 	const int ret = pthread_mutex_lock(&config_write_lock);
 	if(ret != 0)
+	{
 		log_err("Error when obtaining config lock: %s", strerror(ret));
+		return;
+	}
+
 	log_debug(DEBUG_LOCKS, "Obtained config write lock");
 }
 
@@ -78,7 +84,11 @@ void unlock_config(void)
 {
 	const int ret = pthread_mutex_unlock(&config_write_lock);
 	if(ret != 0)
+	{
 		log_err("Error when releasing config lock: %s", strerror(ret));
+		return;
+	}
+
 	log_debug(DEBUG_LOCKS, "Released config write lock");
 }
 
@@ -1456,10 +1466,10 @@ void initConfig(struct config *conf)
 	conf->misc.delay_startup.c = validate_stub; // Only type-based checking
 
 	conf->misc.restart_delay.k = "misc.restart_delay";
-	conf->misc.restart_delay.h = "Some configuration changes can only be applied by restarting the DNS resolver. When a client changes many settings one after another, restarting on each of them takes the resolver down repeatedly. With this setting, FTL waits the given number of seconds and applies everything arriving in the meantime in a single restart.\n\n This setting takes any integer value between 0 and 60 seconds, where 0 restarts immediately. Each further change extends the wait, but a restart is postponed by no more than five times this value (hard-coded).";
+	conf->misc.restart_delay.h = "Some configuration changes can only be applied by restarting the DNS resolver. When a client changes many settings one after another, restarting on each of them takes the resolver down repeatedly. With this setting, FTL waits the given number of seconds and applies everything arriving in the meantime in a single restart.\n\n This setting takes any integer value between 0 and 60 seconds, where 0 restarts immediately. Each further change extends the wait, but a restart is postponed by no more than five times this value (hard-coded). The wait is checked once a second, so the actual delay is rounded up accordingly. Deliberate one-off actions such as a Teleporter import or an explicit restart request are never delayed.";
 	conf->misc.restart_delay.a = cJSON_CreateStringReference("A positive integer value between 0 and 60");
 	conf->misc.restart_delay.t = CONF_UINT;
-	conf->misc.restart_delay.d.ui = 0;
+	conf->misc.restart_delay.d.ui = 1;
 	conf->misc.restart_delay.c = validate_restart_delay;
 
 	conf->misc.nice.k = "misc.nice";
@@ -2074,8 +2084,15 @@ void set_blockingstatus(bool enabled)
 	if(dnsmasq_failed)
 		return;
 
+	// Reached from the API worker threads and from the timer thread, so it
+	// needs the same lock as any other config change: without it the flip
+	// lands in the live config while another writer already holds a copy of
+	// it, and that writer's replace_config() drops it again
+	lock_config();
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true, NULL);
+	unlock_config();
+
 	raise(SIGHUP);
 }
 

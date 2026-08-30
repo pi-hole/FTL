@@ -1387,11 +1387,13 @@
   #
   # This setting takes any integer value between 0 and 60 seconds, where 0 restarts
   # immediately. Each further change extends the wait, but a restart is postponed by no
-  # more than five times this value (hard-coded).
+  # more than five times this value (hard-coded). The wait is checked once a second, so
+  # the actual delay is rounded up accordingly. Deliberate one-off actions such as a
+  # Teleporter import or an explicit restart request are never delayed.
   #
   # Allowed values are:
   #     A positive integer value between 0 and 60
-  restart_delay = 0
+  restart_delay = 1
 
   # Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting
   # a value of -999. The nice value is an attribute that can be used to influence the

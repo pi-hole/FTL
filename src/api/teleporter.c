@@ -362,9 +362,11 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 	// Free allocated memory
 	free_upload_data(data);
 
-	// Signal FTL we want to restart for re-import
+	// Signal FTL we want to restart for re-import. An import is a deliberate
+	// one-off, so it takes effect immediately instead of being collected
 	api->ftl.restart_reason = "Teleporter (ZIP) import";
 	api->ftl.restart = true;
+	api->ftl.restart_now = true;
 
 	// Send response
 	cJSON *json = JSON_NEW_OBJECT();
@@ -893,9 +895,11 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	// Migrate the config to v6
 	migrate_config_v6();
 
-	// Signal FTL we want to restart for re-import
+	// Signal FTL we want to restart for re-import. An import is a deliberate
+	// one-off, so it takes effect immediately instead of being collected
 	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";
 	api->ftl.restart = true;
+	api->ftl.restart_now = true;
 
 	// Send response
 	cJSON *json = JSON_NEW_OBJECT();

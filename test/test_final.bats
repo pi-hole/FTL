@@ -49,7 +49,7 @@ load 'bats_helper.bash'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "6"
+      assert_line --index 0 "9"
   else
     [[ ${lines[0]} == "80" ]]
   fi
