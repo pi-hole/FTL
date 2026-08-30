@@ -737,10 +737,15 @@ void parse_args(int argc, char *argv[])
 		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
 
 		// Create a socket
-		struct sockaddr_in dest;
-		const int sock = create_socket(tcp, &dest);
+		const int sock = create_socket(tcp);
+		if(sock < 0)
+		{
+			// create_socket() has already logged the reason
+			exit(EXIT_FAILURE);
+		}
+
 		char hostn[MAXDOMAINLEN] = { 0 };
-		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		if(!resolveHostname(sock, tcp, hostn, argv[2], true, NULL))
 		{
 			// Close the socket
 			close(sock);
