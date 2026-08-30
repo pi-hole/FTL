@@ -186,7 +186,7 @@ teardown_file() {
     echo "expected 1 restart for the two changes, got $restarts" >&2
   [ "$restarts" -eq 1 ]
 
-  api_patch_misc "{\"restart_delay\":0}"
+  api_patch_misc "{\"restart_delay\":1}"
 }
 
 @test "dotdoh-client: a malformed tls:// upstream is rejected by the validator" {
