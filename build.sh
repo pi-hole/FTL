@@ -143,29 +143,6 @@ if [[ -n "${clean}" ]]; then
     rm -rf "${builddir}"
 fi
 
-# Remove possibly outdated api/docs elements
-for filename in src/api/docs/hex/* src/api/docs/hex/**/*; do
-    # Skip if not a file
-    if [ ! -f "${filename}" ]; then
-        continue
-    fi
-
-    # Get the original filename
-    original_filename="${filename/"src/api/docs/hex/"/"src/api/docs/content/"}"
-
-    # Remove the file if it is outdated
-    if [ "${filename}" -ot "${original_filename}" ]; then
-        rm "${filename}"
-    fi
-done
-
-# Remove compiled LUA scripts if older than the plain ones
-for scriptname in src/lua/scripts/*.lua; do
-    if [ -f "${scriptname}.hex" ] && [ "${scriptname}.hex" -ot "${scriptname}" ]; then
-        rm "${scriptname}.hex"
-    fi
-done
-
 # If we are asked to NOT build, we exit here
 if [[ -n ${nobuild} ]]; then
     exit 0
