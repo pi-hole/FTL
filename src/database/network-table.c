@@ -820,11 +820,18 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		}
 
 		// Get hostname and IP address of this client
-		char hostname[MAXHOSTNAMELEN], ipaddr[INET6_ADDRSTRLEN], interface[MAXIFACESTRLEN];
+		// A name we only inherited from network_addresses is left out:
+		// writing it back would refresh the very timestamp
+		// clean_network_table() uses to expire it, so it could never age
+		// out. A DHCP lease name found below still fills this in.
+		char hostname[MAXHOSTNAMELEN] = { 0 }, ipaddr[INET6_ADDRSTRLEN], interface[MAXIFACESTRLEN];
 		strncpy(ipaddr, getstr(client->ippos), sizeof(ipaddr) - 1);
 		ipaddr[sizeof(ipaddr) - 1] = '\0';
-		strncpy(hostname, getstr(client->namepos), sizeof(hostname) - 1);
-		hostname[sizeof(hostname) - 1] = '\0';
+		if(!client->flags.nameFromDB)
+		{
+			strncpy(hostname, getstr(client->namepos), sizeof(hostname) - 1);
+			hostname[sizeof(hostname) - 1] = '\0';
+		}
 		strncpy(interface, getstr(client->ifacepos), sizeof(interface) - 1);
 		interface[sizeof(interface) - 1] = '\0';
 
@@ -1441,8 +1448,12 @@ void parse_neighbor_cache(sqlite3 *db)
 				// Client is known to Pi-hole, update properties
 				// with their real values
 				client_valid = true;
-				strncpy(hostname, getstr(client->namepos), sizeof(hostname) - 1);
-				hostname[sizeof(hostname) - 1] = '\0';
+				// See above: an inherited name is not written back
+				if(!client->flags.nameFromDB)
+				{
+					strncpy(hostname, getstr(client->namepos), sizeof(hostname) - 1);
+					hostname[sizeof(hostname) - 1] = '\0';
+				}
 				firstSeen = client->firstSeen;
 				lastQuery = client->lastQuery;
 				numQueries = client->numQueriesARP;

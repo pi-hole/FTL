@@ -1059,8 +1059,11 @@ enum resolve_result
 
 // Resolve upstream destination host names
 static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos,
-                                                 size_t *newnamepos)
+                                                 size_t *newnamepos, bool *from_database)
 {
+	if(from_database != NULL)
+		*from_database = false;
+
 	// Get IP and host name strings. They are cloned in case shared memory is
 	// resized before the next lock
 	lock_shm();
@@ -1129,7 +1132,12 @@ static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos
 	if(!resolved && config.resolver.networkNames.v.b)
 	{
 		if(getNameFromIP(NULL, newname, ipaddr))
+		{
 			log_debug(DEBUG_RESOLVER, " ---> \"%s\" (provided by database)", newname);
+
+			if(from_database != NULL)
+				*from_database = true;
+		}
 	}
 
 	// Nothing resolved: the caller keeps the old name and retries later
@@ -1279,7 +1287,9 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 
 		// Obtain/update hostname of this client
 		size_t newnamepos = 0;
-		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		bool from_database = false;
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos,
+		                                                      &newnamepos, &from_database);
 		if(res == RESOLVE_NO_SOCKET)
 		{
 			log_err("Unable to create DNS resolver socket, client host name resolution failed");
@@ -1330,6 +1340,10 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			// get_client_groupids()).
 			client->flags.found_group = false;
 		}
+		// Record where the name came from, also when the name itself did
+		// not change: a name we only read back from network_addresses
+		// must not be mirrored into that table again
+		client->flags.nameFromDB = from_database;
 		// Mark entry as not new
 		client->flags.new = false;
 
@@ -1409,7 +1423,7 @@ static void resolveUpstreams(const bool onlynew)
 
 		// Obtain/update hostname of this client
 		size_t newnamepos = 0;
-		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos);
+		const enum resolve_result res = resolveAndAddHostname(ippos, oldnamepos, &newnamepos, NULL);
 		if(res == RESOLVE_NO_SOCKET)
 		{
 			log_err("Unable to create DNS resolver socket, upstream host name resolution failed");
