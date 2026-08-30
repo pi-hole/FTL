@@ -518,9 +518,9 @@ void parse_args(int argc, char *argv[])
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
-			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
-			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
-			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
+			printf("Example:          %s --gen-x509 %s/tls.pem\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" with domain:     %s --gen-x509 %s/tls.pem pi.hole\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" RSA with domain: %s --gen-x509 %s/tls.pem nanopi.lan rsa\n", argv[0], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 		// Read config
@@ -549,8 +549,8 @@ void parse_args(int argc, char *argv[])
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
-			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
-			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			printf("Example: %s %s %s/tls.pem\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
+			printf(" with domain: %s %s %s/tls.pem pi.hole\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 
