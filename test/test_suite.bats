@@ -1618,6 +1618,17 @@ setup() {
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
   assert_failure 3
 
+  # No dot follows the last label, but its length is capped just the same
+  long_label="$(printf 'a%.0s' {1..64})"
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"test.${long_label}\")"
+  assert_failure 3
+
+  # A name that is one label and nothing else is measured just the same
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 ${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"${long_label}\")"
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
   assert_line --index 0 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")'
   assert_failure 3
