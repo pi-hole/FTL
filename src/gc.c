@@ -627,6 +627,11 @@ void *GC_thread(void *val)
 	// Create inotify watcher for pihole.toml config file
 	watch_config(true);
 
+	// The watcher above reports only what follows it, so compare the file
+	// against the loaded configuration once to pick up anything written
+	// during startup
+	reread_config();
+
 	// Run as long as this thread is not canceled
 	while(!killed)
 	{
