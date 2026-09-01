@@ -562,8 +562,15 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 	get_idstr(idstr, sizeof(idstr));
 	const char *prio = priostr(priority, flag);
 
+	// Relay severe messages through _FTL_log() when webserver.log is
+	// unavailable (no usable descriptor, e.g. failed open or unconfigured).
+	// _FTL_log() prints the line to stdout itself under the same conditions
+	// as the explicit print below, so skip that print when we are about to
+	// relay - otherwise the line appears twice on the console.
+	const bool relay = print_log && priority <= LOG_WARNING && webserver_log.fd == -1;
+
 	// Print to stdout before writing to file
-	if((!daemonmode || cli_mode) && print_stdout)
+	if(!relay && (!daemonmode || cli_mode) && print_stdout)
 	{
 		// Only print time/ID string when not in direct user interaction (CLI mode)
 		if(!cli_mode)
@@ -604,10 +611,15 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 
 		line[off++] = '\n';
 
-		if(!write_log_line(&webserver_log, line, off) && priority <= LOG_WARNING)
+		if(!write_log_line(&webserver_log, line, off))
 		{
-			// No web log available - keep severe messages durable
-			_FTL_log(priority, flag, "%s", buffer);
+			// No web log available - keep severe messages durable.
+			// Only relay when we did not already print the line to
+			// stdout above (relay matches fd == -1, which is also the
+			// condition under which write_log_line() cannot write),
+			// since _FTL_log() prints to stdout itself as well.
+			if(relay)
+				_FTL_log(priority, flag, "%s", buffer);
 		}
 	}
 }
