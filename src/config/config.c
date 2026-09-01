@@ -1923,7 +1923,16 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// silently lost.  open_log_fds(false) will be called again after the
 	// config parse in main() to pick up any path overrides from the TOML
 	// file or legacy config.
-	open_log_fds(false);
+	//
+	// Only the daemon-start path (rewrite == true) needs this early
+	// coverage: write_dnsmasq_config() is only invoked below when the
+	// config is being rewritten.  CLI invocations pass rewrite == false
+	// and must not create log files - e.g. `pihole-FTL --config` would
+	// otherwise O_CREAT both files on every invocation and warn when the
+	// directory is not writable, or leave them root-owned when running as
+	// root.
+	if(rewrite)
+		open_log_fds(false);
 
 	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
