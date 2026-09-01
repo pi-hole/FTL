@@ -14,6 +14,8 @@
 #include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
+// watch_config()
+#include "config/inotify.h"
 #include "main.h"
 // exit_code
 #include "signals.h"
@@ -141,7 +143,15 @@ int main (int argc, char *argv[])
 	// Skip it here if we jump back to this point from die()
 	const int jmpret = setjmp(exit_jmp);
 	if(jmpret == 0)
+	{
+		// main_dnsmasq() opens by closing every descriptor it
+		// inherited from us, a config watcher armed while the config
+		// was read included, and the numbers are reissued afterwards.
+		// Close it here, while it is still ours to close
+		watch_config(false);
+
 		main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
+	}
 	else
 	{
 		// We are jumping back to this point from dnsmasq's die()
