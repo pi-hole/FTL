@@ -35,7 +35,7 @@
 #include "config/env.h"
 // sha256sum()
 #include "files.h"
-// restart_ftl()
+// request_restart()
 #include "signals.h"
 
 // Global variables
@@ -2235,9 +2235,9 @@ void reread_config(void)
 
 	unlock_config();
 
-	// If we need to restart FTL, we do so now
+	// One event arrives per written setting, so collect these like API changes
 	if(restart)
-		restart_ftl("pihole.toml change");
+		request_restart("pihole.toml change");
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to
