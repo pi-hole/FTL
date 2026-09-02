@@ -397,6 +397,11 @@ void write_json_log(const time_t now, const char *log_level, const char *compone
 	write(STDOUT_FILENO, line, off);
 }
 
+bool __attribute__((pure)) FTL_want_stdout(void)
+{
+	return !daemonmode && config.files.log.destination.v.log_destination != LOG_DEST_JSON;
+}
+
 void get_idstr(char *idstr, size_t size)
 {
 	const int pid = getpid(); // Get the process ID of the calling process

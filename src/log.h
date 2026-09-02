@@ -55,6 +55,7 @@ void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible);
 void write_json_log(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg);
+bool FTL_want_stdout(void);
 void get_idstr(char *idstr, size_t size);
 const char *priostr(const int priority, const enum debug_flag flag)  __attribute__((const));
 const char *debugstr(const enum debug_flag flag) __attribute__((const));

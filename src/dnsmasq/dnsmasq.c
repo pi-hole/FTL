@@ -28,10 +28,8 @@
 #include "signals.h"
 // FTL_fork_and_bind_sockets()
 #include "main.h"
-// log_debug()
+// log_debug(), FTL_want_stdout()
 #include "log.h"
-// config.files.log.destination.v.log_destination
-#include "config/config.h"
 
 struct daemon *daemon;
 
@@ -723,8 +721,10 @@ int main_dnsmasq (int argc, char **argv)
        int nullfd = open("/dev/null", O_RDWR);
        if (nullfd != -1)
 	 {
-	   if (config.files.log.destination.v.log_destination != LOG_DEST_JSON)
+	    /**** Pi-hole modification ****/ 
+	   if (!FTL_want_stdout())
 	      dup2(nullfd, STDOUT_FILENO);
+		/******************************/
 	   dup2(nullfd, STDERR_FILENO);
 	   dup2(nullfd, STDIN_FILENO);
 	   close(nullfd);
