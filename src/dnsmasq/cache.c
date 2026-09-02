@@ -240,14 +240,18 @@ static char *store_name(unsigned int namelen, unsigned int index)
 {
   struct nameblock *block;
   char *ret = NULL;
+  int i;
 
   if (namelen > NAMEBLOCK_CHARS)
     return NULL;
-  
-  if (hostblocks && hostblocks->index == index && NAMEBLOCK_CHARS - hostblocks->last >= namelen)
+
+  /* Check the first few blocks for possible space. This allows efficient memory usage
+     without blowing up O(n^2) CPU usage  which the linked list gets long. */
+  for (i = 10, block = hostblocks; i != 0 && block; block = block->next, i--)
+    if (block->index == index && NAMEBLOCK_CHARS - block->last >= namelen)
     {
-      ret = &hostblocks->data[hostblocks->last];
-      hostblocks->last += namelen;
+      ret = &block->data[block->last];
+      block->last += namelen;
       return ret;
     }
 
