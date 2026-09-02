@@ -234,6 +234,8 @@ static void free_config_crec(struct crec *p)
   config_spare  = p;
 }
 
+static struct nameblock *nameblock_spare = NULL;
+
 static char *store_name(unsigned int namelen, unsigned int index)
 {
   struct nameblock *block;
@@ -242,21 +244,28 @@ static char *store_name(unsigned int namelen, unsigned int index)
   if (namelen > NAMEBLOCK_CHARS)
     return NULL;
   
-  for (block = hostblocks; block; block = block->next)
-    if (block->index == index && NAMEBLOCK_CHARS - block->last >= namelen)
-      break;
+  if (hostblocks && hostblocks->index == index && NAMEBLOCK_CHARS - hostblocks->last >= namelen)
+    {
+      ret = &hostblocks->data[hostblocks->last];
+      hostblocks->last += namelen;
+      return ret;
+    }
 
-  if (!block && ((block = whine_malloc(sizeof(struct nameblock)))))
+  if (nameblock_spare)
+    {
+      block = nameblock_spare;
+      nameblock_spare = nameblock_spare->next;
+    }
+  else
+    block = whine_malloc(sizeof(struct nameblock));
+
+  if (block)
     {
       block->next = hostblocks;
       block->index = index;
+      block->last = namelen;
       hostblocks = block;
-    }
-  
-  if (block && NAMEBLOCK_CHARS - block->last >= namelen)
-    {
-      ret = &block->data[block->last];
-      block->last += namelen;
+      ret = &block->data[0];
     }
 
   return ret;
@@ -264,11 +273,20 @@ static char *store_name(unsigned int namelen, unsigned int index)
 
 static void free_names(unsigned int index)
 {
-  struct nameblock *block;
+  struct nameblock *block, *tmp, **up;
 
-  for (block = hostblocks; block; block = block->next)
-    if (index == UID_NONE || block->index == index)
-      block->last = 0;
+  for (up = &hostblocks, block = hostblocks; block; block = tmp)
+    {
+      tmp = block->next;
+      if (index == UID_NONE || block->index == index)
+	{
+	  *up = tmp;
+	  block->next = nameblock_spare;
+	  nameblock_spare = block;
+	}
+      else
+	up = &block->next;
+    }
 }
 
 /* In most cases, we create the hash table once here by calling this with (hash_table == NULL)
