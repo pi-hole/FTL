@@ -413,7 +413,9 @@ endif()
 # -fvisibility=hidden is load-bearing here: with default visibility the entry
 # points of resolve.c are GC roots for -Wl,--gc-sections, so the linker keeps
 # resolveClients() and DNSclient_thread() and then fails on their references
-# into shared memory, the event queue and the thread helpers.
+# into shared memory, the event queue and the thread helpers. The section flags
+# are set on this target rather than inherited, so the harness links without
+# changing how the shipped binary is built.
 #
 # Only built on request: `./build.sh test` enables it for local runs and the
 # CI Dockerfile passes -DBUILD_PTR_RESPONSE_REGRESSION=ON at build time.
@@ -423,7 +425,8 @@ if(BUILD_PTR_RESPONSE_REGRESSION)
             ${PROJECT_SOURCE_DIR}/test/ptr_response_regression.c
             ${PROJECT_SOURCE_DIR}/src/resolve.c)
     target_include_directories(ptr_response_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
-    target_compile_options(ptr_response_regression PRIVATE -fvisibility=hidden)
+    target_compile_options(ptr_response_regression PRIVATE -fvisibility=hidden -ffunction-sections -fdata-sections)
+    target_link_options(ptr_response_regression PRIVATE -Wl,--gc-sections)
     target_link_libraries(ptr_response_regression Threads::Threads)
 
     # Optional ASan/UBSan instrumentation for local runs:
