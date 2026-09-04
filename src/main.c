@@ -117,9 +117,12 @@ int main (int argc, char *argv[])
 	// Initialize overTime datastructure
 	initOverTime();
 
-	// Check for availability of capabilities in debug mode
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Check for availability of capabilities. The per-capability table this
+	// prints is behind DEBUG_CAPS, but the warnings about the ones FTL needs
+	// and does not have are not, and they are the reason to run this at all:
+	// hiding them behind a debug flag means nobody sees them until they
+	// already suspect the problem
+	check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL) + getpid());
