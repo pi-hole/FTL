@@ -177,8 +177,11 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	sqlite3 *db = dbopen(true, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_GET()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	const char *sql_msg = NULL;
@@ -293,8 +296,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_DELETE()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	// Delete row from network table by ID
