@@ -2494,9 +2494,9 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Print current set of capabilities if requested via debug flag
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// which may have changed since the last check
+	check_capabilities();
 
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)

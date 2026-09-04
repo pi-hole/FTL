@@ -54,7 +54,6 @@
 #include <sys/prctl.h>
 #include <time.h>
 
-#define DOT_PORT 853
 // Cap concurrent DoT connections so a flood cannot exhaust memory. Each slot
 // holds a small state record plus ~192 KiB of I/O buffers, allocated once and
 // then pooled across connections (freed only at thread shutdown), so the cap
