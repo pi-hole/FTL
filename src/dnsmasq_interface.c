@@ -792,8 +792,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason
+	// Unset the blocking reason and the CNAME target that went with it, so
+	// neither travels into the next query
 	blockingreason = "<not set>";
+	cname_target = NULL;
 
 	return p - (unsigned char *)header;
 }
@@ -1085,10 +1087,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
 	if(config.dns.analyzeOnlyAandAAAA.v.b && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
-		// Don't process this query further here, we already counted it
+		// Don't process this query further here
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
+		// Undo the client count increment from findClientID() above:
+		// we return before the query record is created, so GC will
+		// never decrement this counter - leaving it permanently
+		// inflated for the lifetime of the process, exactly as for
+		// rate-limited queries above
+		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
 		return false;
 	}
@@ -1936,6 +1944,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
+				// The CNAME target lives in the cache entry too, and
+				// REPLY_CNAME above is worth nothing without it
+				cname_target = (dns_cache->cname_strpos > 0) ? getstr(dns_cache->cname_strpos) : NULL;
 				last_regex_idx = dns_cache->list_id;
 				query_blocked(query, domain, client, blocking_status);
 				if(blocking_status == QUERY_REGEX_CNAME)
@@ -2995,12 +3006,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv4)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv4)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3014,12 +3025,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv6)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv6)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3032,12 +3043,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
+		blockingreason = "blocked upstream with 0.0.0.0";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with 0.0.0.0";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3048,12 +3057,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
+		blockingreason = "blocked upstream with ::";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with ::";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
