@@ -210,9 +210,18 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
+
+		// sqlite3_open_v2() associates resources with the handle even
+		// when it fails. dbclose_handle() releases it without the
+		// decrement dbclose() carries, as it is not counted yet
+		dbclose_handle(db);
 		checkFTLDBrc(rc);
 		return NULL;
 	}
+
+	// Count the connection as soon as it exists. The failure paths below
+	// release it through dbclose(), which is the matching decrement
+	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	// If the database is opened in read-write mode, actually check if it is
 	// writable. If it is not, close the database and return an error
@@ -233,9 +242,6 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		checkFTLDBrc(rc);
 		return NULL;
 	}
-
-	// Increment the number of open database connections
-	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	return db;
 }
