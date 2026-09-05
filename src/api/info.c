@@ -58,7 +58,7 @@
 // timer_elapsed_msec()
 #include "timers.h"
 
-#define VERSIONS_FILE "/etc/pihole/versions"
+#define VERSIONS_FILE PIHOLE_INSTALL_DIR "/versions"
 
 int api_info_client(struct ftl_conn *api)
 {

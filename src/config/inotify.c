@@ -23,8 +23,10 @@
 #include <sys/time.h>
 // free()
 #include <stdlib.h>
+// PIHOLE_INSTALL_DIR
+#include "install_paths.h"
 
-#define WATCHDIR "/etc/pihole"
+#define WATCHDIR PIHOLE_INSTALL_DIR
 
 static int inotify_fd = -1;
 static int inotify_wd = -1;

@@ -893,7 +893,7 @@ components:
               timeout: 300
               restore: true
             tls:
-              cert: "/etc/pihole/tls.pem"
+              cert: "@PIHOLE_INSTALL_DIR@/tls.pem"
               validity: 47
             paths:
               webroot: "/var/www/html"
@@ -922,11 +922,11 @@ components:
                 unit: "C"
           files:
             pid: "/run/pihole-FTL.pid"
-            database: "/etc/pihole/pihole-FTL.db"
-            tmp_db: "/etc/pihole/pihole-tmp.db"
-            gravity: "/etc/pihole/gravity.db"
+            database: "@PIHOLE_INSTALL_DIR@/pihole-FTL.db"
+            tmp_db: "@PIHOLE_INSTALL_DIR@/pihole-tmp.db"
+            gravity: "@PIHOLE_INSTALL_DIR@/gravity.db"
             gravity_tmp: "/tmp"
-            macvendor: "/etc/pihole/macvendor.db"
+            macvendor: "@PIHOLE_INSTALL_DIR@/macvendor.db"
             pcap: ""
             log:
               ftl: "/var/log/pihole/FTL.log"
