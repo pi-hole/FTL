@@ -186,7 +186,19 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	// file pointer in which case we assume that the caller takes care of
 	// this
 	if(opened)
-		closeFTLtoml(fp, locked);
+	{
+		if(!closeFTLtoml(fp, locked))
+		{
+			// The temporary file is short or was never written.
+			// Rotating the good config away and renaming this over
+			// it would leave FTL starting from a file cut off
+			// mid-value next time
+			log_err("Not replacing "GLOBALTOMLPATH", the new config could not be written");
+			if(unlink(GLOBALTOMLPATH".tmp") != 0)
+				log_warn("Cannot remove temporary config file: %s", strerror(errno));
+			return false;
+		}
+	}
 	else
 		return true;
 

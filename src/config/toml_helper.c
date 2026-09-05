@@ -78,8 +78,10 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 }
 
 // Open the TOML file for reading or writing
-void closeFTLtoml(FILE *fp, const bool locked)
+bool closeFTLtoml(FILE *fp, const bool locked)
 {
+	bool okay = true;
+
 	// Release file lock
 	if(locked)
 		unlock_file(fp, NULL);
@@ -90,9 +92,29 @@ void closeFTLtoml(FILE *fp, const bool locked)
 	if (mode == -1)
 		log_err("Cannot get access mode for FTL's config file: %s", strerror(errno));
 
+	// A write error shows up here and nowhere else: fprintf() sets the
+	// error indicator and carries on, and the bytes are lost at the flush.
+	// The caller renames this file over the live config, so it has to know
+	if(mode != -1 && (mode & O_ACCMODE) != O_RDONLY)
+	{
+		if(fflush(fp) != 0 || ferror(fp))
+		{
+			log_err("Cannot write FTL's config file: %s", strerror(errno));
+			okay = false;
+		}
+		else if(fsync(fn) != 0)
+		{
+			log_err("Cannot flush FTL's config file to disk: %s", strerror(errno));
+			okay = false;
+		}
+	}
+
 	// Close file
 	if(fclose(fp) != 0)
+	{
 		log_err("Cannot close FTL's config file: %s", strerror(errno));
+		okay = false;
+	}
 
 	// Chown file if we are root
 	if(geteuid() == 0 && mode != -1)
@@ -105,7 +127,7 @@ void closeFTLtoml(FILE *fp, const bool locked)
 		chown_pihole(read_only ? GLOBALTOMLPATH : GLOBALTOMLPATH".tmp", NULL);
 	}
 
-	return;
+	return okay;
 }
 
 // Print a string to a TOML file, escaping special characters as necessary
@@ -445,6 +467,24 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 	}
 }
 
+// A key that is absent and a key holding the wrong type end up in the same
+// place below, but they are not the same thing: the second is something the
+// user wrote, and readFTLconf() rewrites pihole.toml with the compiled-in
+// default afterwards, so their edit disappears from the file with nothing said.
+// The environment and CLI paths both warn about this, so this one does too
+static void log_absent_or_wrong_type(const toml_datum_t val, const struct conf_item *conf_item,
+                                     const char *expected)
+{
+	if(val.type == TOML_UNKNOWN)
+	{
+		log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST", conf_item->k);
+	}
+	else
+	{
+		log_warn("Ignoring %s in pihole.toml: not a valid %s", conf_item->k, expected);
+	}
+}
+
 // Read a TOML value from a table depending on its type
 void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t toml, struct config *newconf)
 {
@@ -462,7 +502,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_BOOLEAN)
 				conf_item->v.b = val.u.boolean;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid bool", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "bool");
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
@@ -471,7 +511,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_BOOLEAN)
 				set_all_debug(newconf, val.u.boolean);
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid bool", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "bool");
 			break;
 		}
 		case CONF_INT:
@@ -480,7 +520,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_INT64)
 				conf_item->v.i = val.u.int64;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid integer", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "integer");
 			break;
 		}
 		case CONF_UINT:
@@ -489,7 +529,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_INT64 && val.u.int64 >= 0 && val.u.int64 <= UINT_MAX)
 				conf_item->v.ui = val.u.int64;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned integer", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "unsigned integer");
 			break;
 		}
 		case CONF_UINT16:
@@ -498,7 +538,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_INT64 && val.u.int64 >= 0 && val.u.int64 <= UINT16_MAX)
 				conf_item->v.u16 = val.u.int64;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid unsigned integer (16 bit)", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "unsigned integer (16 bit)");
 			break;
 		}
 		case CONF_LONG:
@@ -507,7 +547,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_INT64 && val.u.int64 <= LONG_MAX)
 				conf_item->v.l = val.u.int64;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid long integer", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "long integer");
 			break;
 		}
 		case CONF_DOUBLE:
@@ -516,7 +556,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			if(val.type == TOML_FP64)
 				conf_item->v.d = val.u.fp64;
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid double", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "double");
 			break;
 		}
 		case CONF_STRING:
@@ -535,7 +575,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 				}
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_PTR_TYPE:
@@ -550,7 +590,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -565,7 +605,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -580,7 +620,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a validstring", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -595,7 +635,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
@@ -610,7 +650,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -625,7 +665,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
@@ -640,7 +680,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
@@ -655,7 +695,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+				log_absent_or_wrong_type(val, conf_item, "string");
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -735,7 +775,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 				}
 			}
 			else
-				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid array", conf_item->k);
+				log_absent_or_wrong_type(array, conf_item, "array");
 			break;
 		}
 		case CONF_PASSWORD:
