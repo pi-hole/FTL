@@ -53,13 +53,23 @@ struct buffer {
 // How long a peer may take to answer, derived from the round it belongs to: a
 // round cannot wait for its own peers longer than it lasts. Never zero, which
 // libcurl reads as "wait forever" - one unresponsive peer away from a cluster
-// that stops
+// that stops.
+//
+// Two seconds at the least, whatever the interval. This is the whole budget for
+// the answer, not just for connecting, and it is what decides whether a peer is
+// reachable: a node measured at 5 ms across a LAN takes 150 to 400 ms over a
+// tunnel, so anything under a second calls a healthy peer dead on a link that
+// is merely slow - and a fresh TLS handshake is inside that budget every round,
+// because the web server closes an idle connection after five seconds and no
+// interval polls faster than that. Shortening the interval is how somebody asks
+// for a faster reaction to a node that is gone, and the integer division used to
+// halve the tolerance for one that is not the moment they went below ten
 static long connect_timeout(void)
 {
 	const long interval = config.cluster.interval.v.ui > 0 ?
 	                      (long)config.cluster.interval.v.ui : 10;
 
-	return interval / 5 < 1 ? 1 : interval / 5;
+	return interval / 5 < 2 ? 2 : interval / 5;
 }
 
 // A whole list database takes longer than an answer to a question - but the
@@ -489,6 +499,7 @@ static bool request(struct cluster_peer *peer, const char *method, const char *p
 	{
 		if(asked_unpinned)
 			strncpy(peer->pin, previous_pin, sizeof(peer->pin) - 1);
+
 		strncpy(err, "Answer is not signed by the peer we asked", errlen - 1);
 		return false;
 	}
