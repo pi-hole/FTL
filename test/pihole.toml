@@ -113,6 +113,18 @@
     "2.2.2.2 äste.com steä.com"
   ] ### CHANGED, default = []
 
+  # If set, the names defined in dns.hosts are considered local and queries for them are
+  # never forwarded upstream.
+  #
+  # If unset, a query for a record type that has no local answer (e.g., AAAA when only
+  # an A address is defined) is forwarded and a public answer for the same name can
+  # shadow your local address. Note that this setting also covers subdomains of the
+  # configured names.
+  #
+  # Allowed values are:
+  #     true or false
+  hostsLocal = true
+
   # If set, queries for plain names, without dots or domain parts, are never forwarded to
   # upstream nameservers
   #
@@ -1761,7 +1773,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 171 total entries out of which 115 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

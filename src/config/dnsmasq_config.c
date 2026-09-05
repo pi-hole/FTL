@@ -857,6 +857,33 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 	}
 
+	// Treat the names defined in dns.hosts as local. Without this, a query
+	// for a type we have no local record for (e.g., AAAA when only an A
+	// address is defined) is forwarded and a public answer for the same
+	// name shadows the local address
+	if(conf->dns.hostsLocal.v.b && cJSON_GetArraySize(conf->dns.hosts.v.json) > 0)
+	{
+		fputs("# Custom DNS records are local, never forward them upstream\n", pihole_conf);
+		cJSON *entry = NULL;
+		cJSON_ArrayForEach(entry, conf->dns.hosts.v.json)
+		{
+			if(!cJSON_IsString(entry))
+				continue;
+			char *line = strdup(entry->valuestring), *saveptr = NULL;
+			if(line == NULL)
+				continue;
+			// Skip the address, then emit one local= per hostname,
+			// stopping at a trailing comment
+			strtok_r(line, " \t", &saveptr);
+			for(const char *name = strtok_r(NULL, " \t", &saveptr);
+			    name != NULL && name[0] != '#';
+			    name = strtok_r(NULL, " \t", &saveptr))
+				fprintf(pihole_conf, "local=/%s/\n", name);
+			free(line);
+		}
+		fputs("\n", pihole_conf);
+	}
+
 	if(cJSON_GetArraySize(conf->dns.cnameRecords.v.json) > 0)
 	{
 		fputs("# User-defined custom CNAMEs\n", pihole_conf);
