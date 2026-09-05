@@ -122,6 +122,10 @@ int generateTOTP(struct ftl_conn *api);
 int printTOTP(void);
 int generateAppPw(struct ftl_conn *api);
 
+// Prometheus/OpenMetrics methods
+int generatePrometheusToken(struct ftl_conn *api);
+int api_metrics(struct ftl_conn *api);
+
 // Documentation methods
 int api_docs(struct ftl_conn *api);
 

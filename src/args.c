@@ -459,6 +459,24 @@ void parse_args(int argc, char *argv[])
 		exit(printTOTP());
 	}
 
+	// Generate or revoke the Prometheus scrape token through CLI
+	if(argc > 1 && strcmp(argv[1], "--prometheus-token") == 0)
+	{
+		const bool revoke = argc == 3 && strcmp(argv[2], "revoke") == 0;
+		if(argc > 3 || (argc == 3 && !revoke))
+		{
+			printf("Usage: %s --prometheus-token [revoke]\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+
+		cli_mode = true;
+		log_ctrl(false, false);
+		readFTLconf(&config, false);
+		log_ctrl(false, true);
+		clear_debug_flags(); // No debug printing wanted
+		exit(prometheus_token_from_CLI(revoke));
+	}
+
 	// Create teleporter archive through CLI
 	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
 	{
@@ -1430,6 +1448,10 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    interfaces and scan 10x more often\n");
 			printf("\t%s--totp%s              Generate valid TOTP token for 2FA\n", green, normal);
 			printf("\t                    authentication (if enabled)\n");
+			printf("\t%s--prometheus-token %s[revoke]%s\n", green, purple, normal);
+			printf("\t                    Generate a new token for scraping the\n");
+			printf("\t                    Prometheus endpoint at /api/metrics\n");
+			printf("\t                    Append %srevoke%s to disable the endpoint\n", purple, normal);
 			printf("\t%s--perf%s              Run performance-tests based on the\n", green, normal);
 			printf("\t                    BALLOON password-hashing algorithm\n");
 			printf("\t%s--default-gateway%s   Get default network interface's name\n", green, normal);
@@ -1534,7 +1556,7 @@ void suggest_complete(const int argc, char *argv[])
 		    "--default-gateway", "dhcp-discover", "dnsmasq-test", "-f",
 		    "--gen-x509", "gravity", "gzip", "help", "-h", "--help", "idn2",
 			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac", "lua",
-		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
+		    "luac", "ntp", "no-daemon", "--perf", "--prometheus-token", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
 		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
@@ -1548,6 +1570,16 @@ void suggest_complete(const int argc, char *argv[])
 		// pihole-FTL gravity ...
 		const char *options[] = {
 			"checkList"
+		};
+
+		// Provide matching suggestions
+		list_matches(last_word, options, ArraySize(options), true);
+	}
+	else if(argc == 5 && strEndsWith(argv[3], "--prometheus-token"))
+	{
+		// pihole-FTL --prometheus-token ...
+		const char *options[] = {
+			"revoke"
 		};
 
 		// Provide matching suggestions

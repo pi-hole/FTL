@@ -553,6 +553,17 @@ components:
                           type: number
                         unit:
                           type: string
+                    prometheus:
+                      type: object
+                      properties:
+                        token:
+                          type: string
+                        perEntityMetrics:
+                          type: boolean
+                        topN:
+                          type: integer
+                          minimum: 0
+                          maximum: 1000
             files:
               type: object
               properties:
@@ -920,6 +931,10 @@ components:
               temp:
                 limit: 60.0
                 unit: "C"
+              prometheus:
+                token: ''
+                perEntityMetrics: false
+                topN: 100
           files:
             pid: "/run/pihole-FTL.pid"
             database: "/etc/pihole/pihole-FTL.db"

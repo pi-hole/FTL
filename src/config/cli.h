@@ -12,5 +12,6 @@
 
 int set_config_from_CLI(const char *key, const char *value);
 int get_config_from_CLI(const char *key, const bool quiet);
+int prometheus_token_from_CLI(const bool revoke);
 
 #endif //CONFIG_CLI_H
