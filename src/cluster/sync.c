@@ -14,6 +14,8 @@
 #include "config/dnsmasq_config.h"
 #include "config/toml_writer.h"
 #include "cluster/cluster.h"
+// cluster_vip_shutdown()
+#include "cluster/dhcp.h"
 // cluster_plain_id()
 #include "cluster/auth.h"
 #include "cluster/http.h"
@@ -857,7 +859,15 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	cJSON_AddItemToObject(import, "gravity", gravity);
 	// A peer's archive holds the one table dump generate_cluster_zip() puts in
 	// it, so anything beyond a handful is not an archive but a way to make
-	// this node walk a hundred thousand entries
+	// this node walk a hundred thousand entries.
+	//
+	// Under the same lock a Teleporter restore takes (api/teleporter.c). It was
+	// the one writer of these tables that took none, so the restore's lock
+	// excluded nothing: an administrator's restore could be answered 200 and
+	// have a peer's lists written over it seconds later, with the pihole.toml
+	// half of the same archive left in place
+	cluster_sync_lock();
+
 	// The round decided to pull on the tables as they were when it began, and
 	// the download above took seconds. An entry added or removed here in
 	// between was answered 2xx and would go with the rest of the table: kept
@@ -866,6 +876,7 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	if(held != NULL && strlen(held) > 0 &&
 	   tables_hash(gravity_tables, ArraySize(gravity_tables), now) && strcmp(now, held) != 0)
 	{
+		cluster_sync_unlock();
 		cJSON_Delete(import);
 		cJSON_Delete(files);
 		free(data);
@@ -874,6 +885,7 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	}
 
 	const char *error = read_teleporter_zip(data, size, 4, hint, import, files);
+	cluster_sync_unlock();
 	cJSON_Delete(import);
 	cJSON_Delete(files);
 	free(data);
@@ -943,6 +955,17 @@ bool cluster_state_same_build(void)
 	return same_build_state;
 }
 
+// Said once the comparison it exists for has been made and this node's own
+// fingerprint has been recorded under the build now running. Read at start-up
+// and never cleared, it stayed false for the whole first session after an
+// upgrade - so a list edited on this node during that session was read as "the
+// schema moved underneath us" rather than as an edit, and the peers handed the
+// old lists back over it
+void cluster_state_build_settled(void)
+{
+	same_build_state = true;
+}
+
 // Set when this node joined a cluster and has to arrive as a new member
 static bool state_forgotten = false;
 
@@ -993,6 +1016,12 @@ void cluster_state_load(struct cluster_sync_state *state)
 					when = 0.0;
 				state->gravity_changed = fmin(when, double_time());
 				strncpy(state->gravity_hash, hash, sizeof(state->gravity_hash) - 1);
+			}
+			else if(sscanf(line, "prepull %64s", phash) == 1)
+			{
+				strncpy(state->pre_pull_hash, phash,
+				        sizeof(state->pre_pull_hash) - 1);
+				state->pre_pull_hash[sizeof(state->pre_pull_hash) - 1] = '\0';
 			}
 			else if(sscanf(line, "pending %lf %16s %64s", &when, hash, phash) >= 2)
 			{
@@ -1100,6 +1129,17 @@ void cluster_state_load(struct cluster_sync_state *state)
 	const bool same_build = same_build_state;
 	const bool comparable = strlen(stored_hash) > 0 && strlen(stored_credhash) > 0 && same_build;
 
+	// The baseline an interrupted pull is measured against is a fingerprint of
+	// the build that wrote it, and it outlives the guard: once a fingerprint is
+	// recorded under this build the comparison it feeds is no longer refused.
+	// Without one the pull is settled as "nothing here is newer", which is the
+	// only answer that is right whichever tables the interruption left behind
+	if(!same_build)
+	{
+		state->pre_pull_hash[0] = '\0';
+		saved_state.pre_pull_hash[0] = '\0';
+	}
+
 	if(strlen(stored_version) > 0 && !same_build)
 		log_info("cluster: FTL was upgraded from %s, keeping this node's configuration timestamp",
 		         stored_version);
@@ -1196,6 +1236,13 @@ static void write_state_file(const struct cluster_sync_state *state)
 		fprintf(file, "pending %.6f %s %s\n", saved_state.pending_changed,
 		        strlen(saved_state.pending_id) > 0 ? saved_state.pending_id : "-",
 		        strlen(saved_state.pending_hash) > 0 ? saved_state.pending_hash : "-");
+	// What this node's lists hashed to before it asked a peer for theirs. Kept
+	// beside the pull it belongs to: the fingerprint it would otherwise be
+	// compared against is republished every time a rebuild fails, so a pull
+	// resumed after a restart had no baseline left and a list edited during
+	// the retry was published under the pre-pull timestamp
+	if(saved_state.pending_changed > 0.0 && strlen(saved_state.pre_pull_hash) > 0)
+		fprintf(file, "prepull %s\n", saved_state.pre_pull_hash);
 	fprintf(file, "config %.6f\n", config_changed);
 	// The virtual address this node placed, if it holds one. Read back at
 	// start-up so an FTL that was killed can tell the address it left behind
@@ -1260,6 +1307,39 @@ void cluster_state_save(const struct cluster_sync_state *state)
 // timestamp and overwrite the cluster it just joined
 void cluster_state_forget(void)
 {
+	// The address this machine placed is recorded in the file about to be
+	// removed, and nothing else remembers it - so it would stay on the
+	// interface with this node still answering DNS on it, for a cluster it
+	// has just left. Given back first, while there is still a record of it.
+	//
+	// Read off the file rather than out of memory. A join refuses while
+	// clustering is switched on, so the cluster thread - the only caller of
+	// cluster_state_load() - has never run in this process, and both of
+	// vip.c's records are empty however long the address has been sitting on
+	// the interface. Asking cluster_vip_shutdown() got "nothing to do" every
+	// time, which is a fix that never fired on the case it was written for
+	cluster_vip_shutdown();
+
+	FILE *state = fopen(CLUSTER_STATE_FILE, "r");
+	if(state != NULL)
+	{
+		char line[512] = "";
+		while(fgets(line, sizeof(line), state) != NULL)
+		{
+			char vip[CLUSTER_STRLEN] = "";
+			if(sscanf(line, "vip %63s", vip) != 1 || strlen(vip) == 0)
+				continue;
+
+			// vip_release() removes it only where it is genuinely on an
+			// interface and this machine recorded placing it; anything
+			// else it leaves alone and says so
+			vip_note_placed(vip, "");
+			vip_release(vip);
+			break;
+		}
+		fclose(state);
+	}
+
 	state_forgotten = true;
 	config_changed = 0.0;
 
