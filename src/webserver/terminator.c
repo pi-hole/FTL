@@ -24,6 +24,8 @@
 #include "dotdoh/framing.h"
 // log_err(), log_info(), log_warn()
 #include "log.h"
+// config.webserver.proxySecret
+#include "config/config.h"
 
 // The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
 // the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
@@ -177,6 +179,34 @@ static bool ensure_proxy_token(void)
 {
 	if(g_proxy_token_ready)
 		return true;
+
+	// An operator-configured secret lets an external reverse proxy authenticate
+	// itself as well, so we must use exactly that value rather than a private
+	// one. Without it the token stays per-boot and only our own terminator can
+	// speak to the loopback backend.
+	const char *cfg = config.webserver.proxySecret.v.s;
+	if(cfg != NULL && cfg[0] != '\0')
+	{
+		if(strlen(cfg) != 2 * PROXY_TOKEN_LEN)
+		{
+			log_err("webserver.proxySecret must be %u hexadecimal characters, ignoring it",
+			        2 * PROXY_TOKEN_LEN);
+			return false;
+		}
+		for(unsigned i = 0; i < PROXY_TOKEN_LEN; i++)
+		{
+			unsigned v;
+			if(sscanf(cfg + 2 * i, "%2x", &v) != 1)
+			{
+				log_err("webserver.proxySecret is not valid hexadecimal, ignoring it");
+				return false;
+			}
+			g_proxy_token[i] = (unsigned char)v;
+		}
+		g_proxy_token_ready = true;
+		return true;
+	}
+
 	if(!get_secure_randomness(g_proxy_token, sizeof(g_proxy_token)))
 		return false;
 	g_proxy_token_ready = true;
@@ -219,7 +249,8 @@ static uint64_t mono_ms(void)
 // Terminator state. There is a single terminator instance for the whole
 // process, mirroring the single CivetWeb context in webserver.c.
 static SSL_CTX *ssl_ctx = NULL;
-static int listen_fd = -1;
+static int listen_fds[TERMINATOR_MAX_LISTENERS];
+static unsigned n_listen_fds = 0;
 static int backend_port = 0;
 static volatile bool running = false;
 static pthread_t accept_tid;
@@ -309,11 +340,11 @@ static SSL_CTX *create_server_ctx(const char *cert_path)
 	return c;
 }
 
-// Bind a dual-stack (IPv4 + IPv6) TCP listener on the given port, all
-// interfaces. Returns the fd or -1.
+// Bind a TCP listener for the given address and port: dual-stack for a bare
+// port, IPv6-only for an explicit IPv6 literal. Returns the fd or -1.
 // Fill a dual-stack sockaddr_in6 for the given bind address and port. addr may be
 // NULL or empty (bind all interfaces), an IPv6 literal, or an IPv4 literal (bound
-// as a v4-mapped address on the IPv6 socket, honouring IPV6_V6ONLY=off). Returns
+// as a v4-mapped address on the IPv6 socket). Returns
 // false on an unparsable address so the caller fails closed rather than silently
 // widening the scope to all interfaces.
 static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
@@ -339,6 +370,35 @@ static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
 	return false;
 }
 
+// EAGAIN and EWOULDBLOCK are the same value on Linux; test both only where they
+// actually differ so -Wlogical-op stays quiet.
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+#define WOULDBLOCK(e) ((e) == EAGAIN || (e) == EWOULDBLOCK)
+#else
+#define WOULDBLOCK(e) ((e) == EAGAIN)
+#endif
+
+// Whether addr is an explicit IPv6 literal. Such an entry is bound IPv6-only, so
+// "0.0.0.0:443" and "[::]:443" can coexist as the two halves of one port, while a
+// bare port (empty addr) stays dual-stack and covers both. This matches the
+// webserver.port semantics documented for CivetWeb, where "[::]:80" is IPv6 only.
+static bool addr_is_v6_literal(const char *addr)
+{
+	struct in6_addr tmp;
+	return addr != NULL && addr[0] != '\0' && inet_pton(AF_INET6, addr, &tmp) == 1;
+}
+
+// Put fd into non-blocking mode. Returns 0 or -1. Used by the TCP and QUIC
+// listeners as well as the HTTP/2 and HTTP/3 gateways, so it lives outside their
+// conditional blocks.
+static int set_nonblocking(int fd)
+{
+	const int fl = fcntl(fd, F_GETFL, 0);
+	if(fl < 0)
+		return -1;
+	return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+}
+
 static int bind_listener(const char *addr, int port)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
@@ -352,9 +412,10 @@ static int bind_listener(const char *addr, int port)
 
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	// Accept both IPv4 (as v4-mapped) and IPv6 on this single socket.
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	// A bare port accepts both IPv4 (as v4-mapped) and IPv6 on this one socket;
+	// an explicit IPv6 literal is bound IPv6-only.
+	const int v6only = addr_is_v6_literal(addr) ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
@@ -373,6 +434,14 @@ static int bind_listener(const char *addr, int port)
 	if(listen(fd, SOMAXCONN) != 0)
 	{
 		log_err("Terminator: listen() on port %d failed: %s", port, strerror(errno));
+		close(fd);
+		return -1;
+	}
+	// Non-blocking: the accept loop polls several listeners, so draining one must
+	// never block the others. Accepted sockets do not inherit this.
+	if(set_nonblocking(fd) != 0)
+	{
+		log_err("Terminator: set_nonblocking() on port %d failed: %s", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -1022,23 +1091,6 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 // a plain HTTP/1.1 request against the CivetWeb backend, so the non-blocking
 // backend socket, growing byte buffer, and hop-by-hop header filter are common.
 // ---------------------------------------------------------------------------
-
-// EAGAIN and EWOULDBLOCK are the same value on Linux; test both only where they
-// actually differ so -Wlogical-op stays quiet.
-#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
-#define WOULDBLOCK(e) ((e) == EAGAIN || (e) == EWOULDBLOCK)
-#else
-#define WOULDBLOCK(e) ((e) == EAGAIN)
-#endif
-
-// Put fd into non-blocking mode. Returns 0 or -1.
-static int set_nonblocking(int fd)
-{
-	const int fl = fcntl(fd, F_GETFL, 0);
-	if(fl < 0)
-		return -1;
-	return fcntl(fd, F_SETFL, fl | O_NONBLOCK);
-}
 
 // Open a non-blocking plaintext TCP socket to the CivetWeb backend on loopback.
 // Sets *connected to true if connect() completed immediately (common on
@@ -3935,8 +3987,9 @@ static int bind_udp(const char *addr, int port)
 	}
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	// Same IPv4/IPv6 scoping rule as the TCP listener above.
+	const int v6only = addr_is_v6_literal(addr) ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
@@ -4161,30 +4214,28 @@ cleanup:
 	return NULL;
 }
 
-// Accept loop thread: hand each accepted connection to a detached handler.
-static void *accept_loop(void *arg)
+// Accept everything pending on one ready listener, handing each connection to a
+// detached handler. Returns false if the listener is gone and we should stop.
+static bool accept_ready(int lfd, pthread_attr_t *attr)
 {
-	(void)arg;
-	prctl(PR_SET_NAME, "terminator", 0, 0, 0);
-
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	while(running)
+	for(;;)
 	{
 		struct sockaddr_storage peer;
 		socklen_t plen = sizeof(peer);
-		const int client_fd = accept4(listen_fd, (struct sockaddr *)&peer, &plen, SOCK_CLOEXEC);
+		const int client_fd = accept4(lfd, (struct sockaddr *)&peer, &plen, SOCK_CLOEXEC);
 		if(client_fd < 0)
 		{
 			if(errno == EINTR)
 				continue;
+			if(WOULDBLOCK(errno))
+				return running; // backlog drained
 			if(!running)
-				break; // listener shut down by terminator_stop()
-			// Transient error (e.g. EMFILE); avoid a tight spin.
+				return false; // listener shut down by terminator_stop()
+			// Transient error (e.g. EMFILE). A failed accept() leaves the
+			// connection queued, so poll() would report this listener ready
+			// again immediately; back off instead of spinning on it.
 			poll(NULL, 0, 100);
-			continue;
+			return true;
 		}
 
 		// Cap concurrent handlers so a connection flood cannot exhaust the
@@ -4225,7 +4276,7 @@ static void *accept_loop(void *arg)
 		ha->ctx = ssl_ctx;
 
 		pthread_t tid;
-		if(pthread_create(&tid, &attr, handle_conn, ha) != 0)
+		if(pthread_create(&tid, attr, handle_conn, ha) != 0)
 		{
 			log_err("Terminator: pthread_create() failed: %s", strerror(errno));
 			SSL_CTX_free(ha->ctx);
@@ -4235,20 +4286,61 @@ static void *accept_loop(void *arg)
 			close(client_fd);
 		}
 	}
+}
+
+// Accept loop thread: poll every public TLS listener and service whichever are
+// ready, draining each in turn.
+static void *accept_loop(void *arg)
+{
+	(void)arg;
+	prctl(PR_SET_NAME, "terminator", 0, 0, 0);
+
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	while(running)
+	{
+		struct pollfd pfds[TERMINATOR_MAX_LISTENERS];
+		for(unsigned i = 0; i < n_listen_fds; i++)
+		{
+			pfds[i].fd = listen_fds[i];
+			pfds[i].events = POLLIN;
+			pfds[i].revents = 0;
+		}
+		// Bounded wait so terminator_stop() is noticed even if no client connects.
+		const int pr = poll(pfds, n_listen_fds, 100);
+		if(pr <= 0)
+		{
+			if(pr < 0 && errno != EINTR)
+				poll(NULL, 0, 100); // transient error, avoid a tight spin
+			continue;
+		}
+		for(unsigned i = 0; i < n_listen_fds && running; i++)
+			if(pfds[i].revents != 0 && !accept_ready(pfds[i].fd, &attr))
+				break;
+	}
 
 	pthread_attr_destroy(&attr);
 	return NULL;
 }
 
-bool terminator_start(const char *bind_addr, int public_port, int be_port, const char *cert_path)
+bool terminator_start(const struct terminator_listener *listeners, unsigned n_listeners,
+                      int be_port, const char *cert_path)
 {
 	if(running)
 	{
 		log_warn("Terminator: already running");
 		return false;
 	}
-	if(cert_path == NULL || public_port <= 0 || be_port <= 0)
+	if(cert_path == NULL || listeners == NULL || n_listeners == 0 || be_port <= 0)
 		return false;
+	if(n_listeners > TERMINATOR_MAX_LISTENERS)
+	{
+		log_warn("Terminator: %u TLS ports configured, serving only the first %d",
+		         n_listeners, TERMINATOR_MAX_LISTENERS);
+		n_listeners = TERMINATOR_MAX_LISTENERS;
+	}
 
 	// Per-boot secret authenticating our PROXY headers to the loopback backend.
 	// Usually already generated by webserver.c (it passes the hex form to the
@@ -4264,8 +4356,19 @@ bool terminator_start(const char *bind_addr, int public_port, int be_port, const
 	if(ssl_ctx == NULL)
 		return false;
 
-	listen_fd = bind_listener(bind_addr, public_port);
-	if(listen_fd < 0)
+	// Bind every configured TLS port. A port that cannot be bound is reported and
+	// skipped rather than taking the others down with it.
+	n_listen_fds = 0;
+	unsigned bound[TERMINATOR_MAX_LISTENERS];
+	for(unsigned i = 0; i < n_listeners; i++)
+	{
+		const int fd = bind_listener(listeners[i].addr, listeners[i].port);
+		if(fd < 0)
+			continue; // bind_listener() already said why
+		bound[n_listen_fds] = i;
+		listen_fds[n_listen_fds++] = fd;
+	}
+	if(n_listen_fds == 0)
 	{
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
@@ -4278,21 +4381,29 @@ bool terminator_start(const char *bind_addr, int public_port, int be_port, const
 	{
 		log_err("Terminator: failed to start accept thread: %s", strerror(errno));
 		running = false;
-		close(listen_fd);
-		listen_fd = -1;
+		for(unsigned i = 0; i < n_listen_fds; i++)
+			close(listen_fds[i]);
+		n_listen_fds = 0;
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
 		return false;
 	}
 	accept_tid_valid = true;
 
-	log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
-	         (bind_addr && bind_addr[0]) ? bind_addr : "*", public_port, be_port);
+	for(unsigned i = 0; i < n_listen_fds; i++)
+	{
+		const struct terminator_listener *l = &listeners[bound[i]];
+		log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
+		         (l->addr && l->addr[0]) ? l->addr : "*", l->port, be_port);
+	}
 
 #ifdef HAVE_HTTP3
-	// Serve HTTP/3 over QUIC on the same public port (UDP). Optional: on failure
-	// the terminator keeps serving HTTP/1.1 and (if built) HTTP/2 over TCP.
-	terminator_quic_start(bind_addr, public_port, cert_path);
+	// Serve HTTP/3 over QUIC on the first port that actually bound (UDP) - never
+	// on one whose TCP bind failed. The QUIC listener is a single socket, so the
+	// remaining TLS ports are TCP-only; Alt-Svc names the HTTP/3 port explicitly,
+	// so pointing at it from any of them stays correct.
+	// Optional: on failure the terminator keeps serving HTTP/1.1 and HTTP/2.
+	terminator_quic_start(listeners[bound[0]].addr, listeners[bound[0]].port, cert_path);
 #endif
 	return true;
 }
@@ -4303,23 +4414,22 @@ void terminator_stop(void)
 	terminator_quic_stop();
 #endif
 
-	if(!running && listen_fd < 0 && ssl_ctx == NULL)
+	if(!running && n_listen_fds == 0 && ssl_ctx == NULL)
 		return;
 
 	running = false;
-	// Break the blocking accept4() so the accept thread can exit.
-	if(listen_fd >= 0)
-		shutdown(listen_fd, SHUT_RDWR);
+	// The accept loop polls with a bounded timeout, so clearing `running` is
+	// enough for it to exit; shutdown() only makes it prompt.
+	for(unsigned i = 0; i < n_listen_fds; i++)
+		shutdown(listen_fds[i], SHUT_RDWR);
 	if(accept_tid_valid)
 	{
 		pthread_join(accept_tid, NULL);
 		accept_tid_valid = false;
 	}
-	if(listen_fd >= 0)
-	{
-		close(listen_fd);
-		listen_fd = -1;
-	}
+	for(unsigned i = 0; i < n_listen_fds; i++)
+		close(listen_fds[i]);
+	n_listen_fds = 0;
 	if(ssl_ctx != NULL)
 	{
 		// Drops our reference only. Each in-flight handler holds its own ref
