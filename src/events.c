@@ -12,7 +12,7 @@
 #include "FTL.h"
 // public prototypes
 #include "events.h"
-// atomic_flag_test_and_set()
+// atomic_exchange()
 #include <stdatomic.h>
 // struct config
 #include "config/config.h"
@@ -23,7 +23,12 @@
 static const char *eventtext(const enum events event);
 
 // Queue containing all possible events
-static volatile atomic_flag eventqueue[EVENTS_MAX] = { ATOMIC_FLAG_INIT };
+// An atomic_bool rather than an atomic_flag: a flag cannot be read without
+// setting it, which is what used to lose events (see below). RELOAD_GRAVITY is
+// raised from the SIGRTMIN handler, so the type has to be lock-free for the
+// exchange to be async-signal-safe
+static _Atomic bool eventqueue[EVENTS_MAX];
+static_assert(ATOMIC_BOOL_LOCK_FREE == 2, "Event queue must be lock-free, it is used from a signal handler");
 
 // Set/Request event
 // We set the events atomically to ensure no race collisions can happen. If an
@@ -31,10 +36,8 @@ static volatile atomic_flag eventqueue[EVENTS_MAX] = { ATOMIC_FLAG_INIT };
 // added multiple times
 void _set_event(const enum events event, int line, const char *function, const char *file)
 {
-	bool is_set = false;
-	// Set eventqueue bit
-	if(atomic_flag_test_and_set(&eventqueue[event]))
-		is_set = true;
+	// Set eventqueue bit, learning what it was in the same operation
+	const bool is_set = atomic_exchange(&eventqueue[event], true);
 
 	// Possible debug logging
 	if(config.debug.events.v.b)
@@ -46,26 +49,32 @@ void _set_event(const enum events event, int line, const char *function, const c
 	}
 }
 
+// Raise an event from a signal handler
+// SIGRT_handler() already states that nothing async-signal-unsafe may run in
+// it, but set_event() reaches log_debug() and from there _FTL_log(), which
+// formats with printf and can take the SHM lock. Neither is allowed to happen
+// with a signal interrupting arbitrary code, so the signal path gets the
+// exchange on its own: the event is logged where it is processed anyway
+void set_event_from_signal(const enum events event)
+{
+	atomic_exchange(&eventqueue[event], true);
+}
+
 // Get and clear event
-// Unfortunately, we cannot read the value of an atomic_flag without setting it
-// either to true or false. This is by design. Hence, we implement testing by
-// first trying to set the the flag to true. If this "fails", we know the flag
-// has already been set.
-// On x86_64 and i686 CPUs, these atomic instrictions are implemented using the
-// XCHG asm instruction, which simply exchanges the content of two registers or,
-// in this case, a register and a memory location (the respective eventqueue
-// pointer). This is guaranteed to happen atomically by automatically
-// implementing the processor's locking protocol during the operation.
-// On other architecture, similar instructions are used to reassemble the same
-// effect (but typically with a few more instructions). ARM64, for instance,
-// uses LDAXRB (Load-aquire exclusive register byte) and STAXRB (Store-release
-// exclusive register byte) to implement the same thing with a few more
-// instructions.
+// Reading and clearing happen in one exchange, so there is no window in which
+// the queue holds a value neither side owns. This used to be an atomic_flag,
+// which cannot be read without setting it: the consumer set the flag to learn
+// its value and cleared it a few lines later, and any producer that ran in
+// between saw a flag that was already set, treated its own event as a duplicate
+// and dropped it. A lost RELOAD_GRAVITY means a list edit or `pihole reloaddns`
+// reports success and never takes effect. Debug logging sits inside that window
+// and widens it considerably.
+// The exchange compiles to XCHG on x86_64 and i686, and to the LDAXRB/STLXRB
+// pair on ARM64, the same instructions the flag used.
 bool _get_and_clear_event(const enum events event, int line, const char *function, const char *file)
 {
-	bool is_set = false;
-	if(atomic_flag_test_and_set(&eventqueue[event]))
-		is_set = true;
+	// Read the bit and clear it in the same operation
+	const bool is_set = atomic_exchange(&eventqueue[event], false);
 
 	// Possible debug logging only for SET status, to avoid log file flooding with NOT SET messages
 	if(is_set && config.debug.events.v.b)
@@ -74,10 +83,6 @@ bool _get_and_clear_event(const enum events event, int line, const char *functio
 		          eventtext(event), function, file, line);
 	}
 
-	// Clear eventqueue bit (we set it above) ...
-	atomic_flag_clear(&eventqueue[event]);
-
-	// ... and return status
 	return is_set;
 }
 
