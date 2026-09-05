@@ -1366,6 +1366,12 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		                            "    --> NO MATCH <--");
 	}
 
+	// Interface resolved by the last call, used to skip the address
+	// collection below when the same one is seen again. The pointer is
+	// stable within dnsmasq's daemon->interfaces list and is invalidated on
+	// SIGHUP/restart.
+	static struct irec *cached_recviface = NULL;
+
 	// Return early when there is no interface available at this point
 	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
@@ -1377,14 +1383,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 		next_iface.name[0] = '-';
 		next_iface.name[1] = '\0';
+		// Drop the cache too, so the next query on that interface
+		// collects its addresses again
+		cached_recviface = NULL;
 		return;
 	}
 
-	// Cache: if the resolved interface is the same as last time, skip the
-	// expensive second loop (which iterates all interfaces to collect IPv4
-	// and IPv6 addresses).  The pointer is stable within dnsmasq's
-	// daemon->interfaces list and is invalidated on SIGHUP/restart.
-	static struct irec *cached_recviface = NULL;
+	// Skip the expensive second loop (which iterates all interfaces to
+	// collect IPv4 and IPv6 addresses) when the interface is unchanged
 	if(recviface == cached_recviface)
 	{
 		log_debug(DEBUG_NETWORKING, "Interface unchanged, using cached result");
