@@ -46,7 +46,7 @@
 #include <stddef.h>
 // logg_rate_limit_message()
 #include "database/message-table.h"
-// http_init(), webserver_thread()
+// http_init(), webserver_thread(), get_https_port(), webserver_have_http2(), webserver_have_http3()
 #include "webserver/webserver.h"
 // init_memory_database()
 #include "database/query-table.h"
@@ -769,8 +769,132 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
-	// Log empty replies
-	if(!(flags & (F_IPV4 | F_IPV6)))
+	// Add HTTPS RR (RFC 9460 §9) for pi.hole / <hostname> if HTTPS is active
+	bool https_rr_added = false;
+	if(hostn && qtype == T_HTTPS)
+	{
+		const in_port_t https_port = get_https_port();
+		if(https_port > 0)
+		{
+			// Build SvcParams (RFC 9460 §2.2)
+			unsigned char svcparams[64];
+			unsigned char *sp = svcparams;
+
+			// "alpn" SvcParamKey (key=1, RFC 9460 §7.1): include "h2"/"h3" based on compile-time support.
+			// RFC 9460 §9 defines the default ALPN set as ["http/1.1"], so we do not emit
+			// "no-default-alpn" (key=2): http/1.1 is always available via the CivetWeb server.
+			unsigned char alpn[6];
+			unsigned char *ap = alpn;
+			if(webserver_have_http2())
+			{
+				*ap++ = 2; *ap++ = 'h'; *ap++ = '2';
+			}
+			if(webserver_have_http3())
+			{
+				*ap++ = 2; *ap++ = 'h'; *ap++ = '3';
+			}
+			const size_t alpn_len = ap - alpn;
+			if(alpn_len > 0)
+			{
+				PUTSHORT(1, sp); // SvcParamKey 1 = "alpn"
+				PUTSHORT(alpn_len, sp);
+				memcpy(sp, alpn, alpn_len);
+				sp += alpn_len;
+			}
+
+			// "port" SvcParamKey (key=3, RFC 9460 §7.2)
+			PUTSHORT(3, sp); // SvcParamKey 3 = "port"
+			PUTSHORT(2, sp); // value length: 2 octets, network byte order (RFC 9460 §7.2)
+			PUTSHORT(https_port, sp);
+
+			// "ipv4hint" SvcParamKey (key=4, RFC 9460 §7.3) — if available.
+			// Note: RFC 9460 §7.3 says server operators SHOULD NOT include these
+			// hints when TargetName is "." (owner name), but we include them here
+			// as they may save clients an additional A/AAAA lookup.
+			const bool have_v4 = next_iface.haveIPv4 || config.dns.reply.host.force4.v.b;
+			struct in_addr v4addr = {};
+			if(have_v4)
+			{
+				if(config.dns.reply.host.force4.v.b)
+					memcpy(&v4addr, &config.dns.reply.host.v4.v.in_addr, sizeof(v4addr));
+				else
+					memcpy(&v4addr, &next_iface.addr4.addr4, sizeof(v4addr));
+				PUTSHORT(4, sp); // SvcParamKey 4 = "ipv4hint"
+				PUTSHORT(4, sp); // length: 4 bytes
+				memcpy(sp, &v4addr, 4);
+				sp += 4;
+			}
+
+			// "ipv6hint" SvcParamKey (key=6, RFC 9460 §7.3) — if available
+			const bool have_v6 = next_iface.haveIPv6 || config.dns.reply.host.force6.v.b;
+			struct in6_addr v6addr = {};
+			if(have_v6)
+			{
+				if(config.dns.reply.host.force6.v.b)
+					memcpy(&v6addr, &config.dns.reply.host.v6.v.in6_addr, sizeof(v6addr));
+				else
+					memcpy(&v6addr, &next_iface.addr6.addr6, sizeof(v6addr));
+				PUTSHORT(6, sp); // SvcParamKey 6 = "ipv6hint"
+				PUTSHORT(16, sp); // length: 16 bytes
+				memcpy(sp, &v6addr, 16);
+				sp += 16;
+			}
+
+			const size_t svcparam_len = sp - svcparams;
+
+			// Debug logging — show all SvcParams in presentation format
+			if(config.debug.queries.v.b)
+			{
+				char alpn_buf[32] = "";
+				if(webserver_have_http2())
+					strcat(alpn_buf, "h2,");
+				if(webserver_have_http3())
+					strcat(alpn_buf, "h3,");
+				const size_t alpn_s = strlen(alpn_buf);
+				if(alpn_s > 0)
+					alpn_buf[alpn_s - 1] = '\0';
+
+				char v4_buf[INET6_ADDRSTRLEN + 16] = "";
+				if(have_v4)
+				{
+					char ip[INET6_ADDRSTRLEN];
+					inet_ntop(AF_INET, &v4addr, ip, sizeof(ip));
+					snprintf(v4_buf, sizeof(v4_buf), " ipv4hint=%s", ip);
+				}
+
+				char v6_buf[INET6_ADDRSTRLEN + 16] = "";
+				if(have_v6)
+				{
+					char ip[INET6_ADDRSTRLEN];
+					inet_ntop(AF_INET6, &v6addr, ip, sizeof(ip));
+					snprintf(v6_buf, sizeof(v6_buf), " ipv6hint=%s", ip);
+				}
+
+				log_debug(DEBUG_QUERIES, "  Adding RR: \"%s HTTPS 1 . alpn=%s port=%d%s%s\"",
+				          name, alpn_s > 0 ? alpn_buf : "-", https_port, v4_buf, v6_buf);
+			}
+
+			// Add HTTPS RR (ServiceMode, RFC 9460 §2.4.3): SvcPriority=1, TargetName="." (self, RFC 9460 §2.5.2)
+			if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL,
+			                       T_HTTPS, C_IN, (char*)"sbt",
+			                       1,                            // SvcPriority = 1 (ServiceMode)
+			                       0,                            // TargetName "." (zero-length label, RFC 9460 §2.5.2)
+			                       (int)svcparam_len, svcparams))
+			{
+				header->ancount = htons(ntohs(header->ancount) + 1);
+				// Set the Authoritative Answer flag to be consistent with the
+				// A/AAAA replies for pi.hole / <hostname> (setup_reply() above
+				// cleared it, see rfc1035.c)
+				header->hb3 |= HB3_AA;
+				log_query(flags, name, NULL, (char*)blockingreason, 0);
+				https_rr_added = true;
+			}
+		}
+	}
+
+	// Log empty replies (skip if we added an HTTPS RR above)
+	if(!(flags & (F_IPV4 | F_IPV6)) && !https_rr_added)
 	{
 		if(flags == 0)
 		{
@@ -926,6 +1050,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			            "interface-local IP address" :
 			            "NODATA due to missing iface address");
 
+			cacheStatus = QUERY_CACHE;
+			return true;
+		}
+		else if(querytype == TYPE_HTTPS)
+		{
+			// Reply with NODATA by default; _FTL_make_answer() will
+			// craft an HTTPS RR if HTTPS is actually active
+			force_next_DNS_reply = REPLY_NODATA;
+			blockingreason = HOSTNAME;
 			cacheStatus = QUERY_CACHE;
 			return true;
 		}
