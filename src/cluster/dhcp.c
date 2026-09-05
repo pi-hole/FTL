@@ -37,6 +37,23 @@
 static unsigned int rounds_wanting = 0;
 static unsigned int rounds_yielding = 0;
 
+// ...and which node those yielding rounds were counted against. Three rounds of
+// the same successor is evidence that it is ready; three rounds of a different
+// successor each time is an election that has not settled, and DHCP used to be
+// handed over having never seen one candidate twice
+static char yielding_to[CLUSTER_HASHLEN] = "";
+
+// Consecutive means what it says. A round this node spends standing down, off
+// the member list, refused by its peers or held back by a gravity run reaches
+// no election at all, and counting the rounds either side of it as consecutive
+// splices two unrelated missed answers into the two in a row that move DHCP
+static void forget_rounds(void)
+{
+	rounds_wanting = 0;
+	rounds_yielding = 0;
+	yielding_to[0] = '\0';
+}
+
 
 // Said once rather than once per round while the condition lasts
 static bool warned_incapable = false;
@@ -44,6 +61,13 @@ static bool warned_refused = false;
 
 // ...and the same for peers that run DHCP failover while this node does not
 static bool warned_failover = false;
+
+// ...and for a hand-over held up by a member that answers and refuses us, which
+// is a state the network notices long before the log does
+static bool warned_refused_holds = false;
+
+// ...and for the other half of the same guard, where nobody is serving at all
+static bool warned_refused_takes = false;
 
 // Set once we asked for a restart. The configuration has been replaced at that
 // point and FTL is shutting down, so the round has to end right here
@@ -88,12 +112,16 @@ static unsigned int takeover_failures = 0;
 static double vip_failed_until = 0.0;
 static unsigned int vip_failures = 0;
 
-// Whether placing the address has ever failed here. Read by the election: a
-// node that has failed once should not take the address off a node that is
-// holding it, however the identities compare
-bool cluster_vip_failed_before(void)
+// Set once per round: this node has failed to place the address and somebody
+// else is holding it, so it stands aside. Kept here rather than in the election
+// because cluster_vip_capable() is what the peers are told - an abstention only
+// this node knows about has every peer electing it and deferring to it while it
+// declines, which is the outage it was added to prevent, upside down
+static bool vip_stand_aside = false;
+
+void cluster_vip_note_holder(const bool somebody_else_holds_it)
 {
-	return vip_failures > 0;
+	vip_stand_aside = somebody_else_holds_it && vip_failures > 0;
 }
 
 static void vip_claim_failed(void)
@@ -143,6 +171,15 @@ bool cluster_vip_capable(void)
 	if(!check_capability(CAP_NET_ADMIN))
 		return false;
 
+	// ...and standing aside for a node that is holding the address, which is
+	// published with the rest so every node elects the same way
+	if(vip_stand_aside)
+		return false;
+
+	// ...and for a twin, for the same reason as DHCP: both would take it
+	if(duplicate_identity)
+		return false;
+
 	// An interface that is not there is the commonest reason a claim fails,
 	// and it is a question that can be answered rather than waited out. Asked
 	// here so a typo makes this node stop offering for as long as it lasts -
@@ -167,6 +204,11 @@ bool cluster_vip_capable(void)
 
 bool cluster_dhcp_configured(void)
 {
+	// Two machines carrying one identity read each other as themselves and
+	// would both serve. Neither can tell which is the original, so neither does
+	if(duplicate_identity)
+		return false;
+
 	// A node whose dnsmasq did not start is not a node that will serve DHCP,
 	// however good its lease range looks: FTL is up and this thread is running,
 	// so nothing else here would notice
@@ -208,7 +250,21 @@ bool cluster_dhcp_capable(void)
 // of our business
 static bool peer_competes(const struct cluster_peer *peer)
 {
-	return peer->reachable && peer->failover && peer->dhcp_capable && !peer->is_self;
+	if(peer->is_self)
+		return false;
+
+	// ...and only where there is an identity to rank it by
+	if(strlen(peer_identity(peer)) == 0)
+		return false;
+
+	if(peer->reachable)
+		return peer->failover && peer->dhcp_capable;
+
+	// Through a member that still reaches it. A node with one broken polling
+	// direction otherwise ranks over a smaller cluster than everybody else,
+	// elects a different winner, and starts a second DHCP server beside the one
+	// it cannot see
+	return peer->relayed_seen && peer->relayed_failover && peer->relayed_capable;
 }
 
 // Who should be serving DHCP? The reachable node with the lowest identity.
@@ -221,9 +277,18 @@ static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
 	char myname[CLUSTER_STRLEN] = "";
 	cluster_name(myname);
 
+	// ...and this node only stands where it competes, which is the same
+	// question peer_competes() asks of the others. It used to be assumed,
+	// soundly, because the one caller sat behind the two guards that make it
+	// true - and then a second caller was added in front of them, where a node
+	// that takes no part in DHCP failover elected itself if it held the lowest
+	// identity, and stopped deferring to the peer that was about to serve
+	const bool i_compete = config.cluster.dhcp.failover.v.b && cluster_dhcp_capable();
+
 	const char *best_name = myname;
 	const char *best_id = cluster_node_id();
-	bool best_is_me = true;
+	bool best_is_me = i_compete;
+	bool have_best = i_compete;
 
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
@@ -234,11 +299,17 @@ static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
 		// By identity, never by name: two Pi-holes imaged from the same
 		// card are both "raspberrypi", and a comparison neither of them
 		// wins is two DHCP servers on one network
-		if(strcmp(peer->id, best_id) < 0)
+		if(!have_best || strcmp(peer_identity(peer), best_id) < 0)
 		{
-			best_name = peer->name;
-			best_id = peer->id;
+			// A member known only through a bystander has never told
+			// this node its name, and an empty one reads as "nobody
+			// owns DHCP" on the page - during a hand-over, which is
+			// the one moment somebody is watching it
+			best_name = strlen(peer->name) > 0 ? peer->name :
+			            (peer->url != NULL ? peer->url : "");
+			best_id = peer_identity(peer);
 			best_is_me = false;
+			have_best = true;
 		}
 	}
 
@@ -252,7 +323,11 @@ static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
 
 // Switch the local DHCP server on or off. This is the same path a user takes
 // through the API, down to the restart the changed dnsmasq configuration needs
-static void set_dhcp_active(const bool active, const char *reason)
+// test_config is false on one path only: a node whose dnsmasq did not start.
+// Testing the configuration forks a dnsmasq over it, and on that node it fails
+// for the reason the node is standing down in the first place - so the test
+// answers a question already asked, and refusing on it leaves DHCP switched on
+static void set_dhcp_active(const bool active, const char *reason, const bool test_config)
 {
 	// The switch and the restart that applies it are one act. A gravity run
 	// holds the restart back until it finishes - minutes, and this node runs
@@ -298,7 +373,7 @@ static void set_dhcp_active(const bool active, const char *reason)
 	newconf.dhcp.active.v.b = active;
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	if(!write_dnsmasq_config(&newconf, true, errbuf))
+	if(!write_dnsmasq_config(&newconf, test_config, errbuf))
 	{
 		log_err("cluster: cannot %s DHCP: %s", active ? "enable" : "disable",
 		        strlen(errbuf) > 0 ? errbuf : "the configuration was refused");
@@ -370,46 +445,58 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// those at least stop answering when the node does. It gives the address
 	// back and takes no part in DHCP; the election skips it too, so a peer
 	// that can answer takes both over
+	// A machine sharing this node's identity is a different case from a dead
+	// dnsmasq, and folding the two together left the worse half undone. Here
+	// dnsmasq is healthy and *running*: writing `dhcp.active = false` without
+	// rewriting its configuration and restarting stops the node saying it
+	// serves without stopping it serving. The pair then hands out leases from
+	// two databases while the cluster reports one server - a broadcast on that
+	// range answers twice, which is exactly what standing down is for.
+	//
+	// set_dhcp_active() is the ordinary way to stop, and it does both. It is
+	// reached directly rather than through cluster_dhcp_apply(), which asks
+	// cluster_dhcp_capable() first and gets "no" for the reason we are here
+	if(duplicate_identity)
+	{
+		intent->owner[0] = '\0';
+		intent->serve = false;
+		intent->hold_vip = false;
+		forget_rounds();
+
+		if(serving && config.cluster.dhcp.failover.v.b)
+			set_dhcp_active(false, "another machine is using this node's identity", true);
+
+		return;
+	}
+
+	// A node that answers no DNS has to stop rather than merely not start too.
+	// `dnsmasq_failed` says the resolver did not come up, not that the daemon
+	// is absent: it can be running with its DHCP socket open, so writing the
+	// setting by hand stopped this node saying it served without stopping it
+	// serving, and the pair handed out leases from two databases while the
+	// cluster reported one server. Measured, on a node whose listening
+	// interface does not exist: dhcp.active false, and a socket on :67.
 	if(dnsmasq_failed)
 	{
 		intent->owner[0] = '\0';
 		intent->serve = false;
 		intent->hold_vip = false;
+		forget_rounds();
 
-		// ...and where the cluster is what switched DHCP on, it stops saying
-		// so in its own configuration and not only to the peers: on the way
-		// back up a node starts serving from that file before any round has
-		// run, beside whichever node took DHCP over meanwhile. Written here
-		// rather than through cluster_dhcp_apply(), which asks
-		// cluster_dhcp_capable() first and gets "no" for exactly the reason
-		// we are in this branch.
-		//
 		// Only where the cluster switched it on. Without failover
 		// `dhcp.active` is the administrator's setting, nobody else is going
 		// to take DHCP over, and nothing would ever switch it back - so a
 		// resolver that is down for a minute would cost them their DHCP
 		// server for good.
 		//
-		// The dnsmasq configuration is deliberately left alone: there is no
-		// dnsmasq to write it for, and testing it is what fails on a node
-		// whose interface is the problem
+		// Reached directly rather than through cluster_dhcp_apply(), which
+		// asks cluster_dhcp_capable() first and gets "no" for exactly the
+		// reason we are in this branch - and without the configuration test,
+		// which forks a dnsmasq that fails here for the same reason again
 		if(serving && config.cluster.dhcp.failover.v.b)
 		{
-			cluster_sync_lock();
-			struct config newconf;
-			duplicate_config(&newconf, &config);
-			newconf.dhcp.active.v.b = false;
-			struct config_apply applied = { 0 };
-			applied.changed = true;
-			char errbuf[ERRBUF_SIZE] = "";
-			// The result is not checked because it cannot be false here:
-			// `config_install()` only fails where it writes the dnsmasq
-			// configuration, which this deliberately does not. A write
-			// that does not land says so itself, in config_write()
-			config_install(&newconf, &applied, false, 0.0, errbuf);
-			cluster_sync_unlock();
-
 			log_warn("cluster: dnsmasq is not running here, so this node stops serving DHCP - another node takes it over");
+			set_dhcp_active(false, "this node's resolver did not start", false);
 		}
 		return;
 	}
@@ -422,6 +509,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	{
 		intent->owner[0] = '\0';
 		intent->hold_vip = false;
+		forget_rounds();
 
 		// Only what the cluster switched on does the cluster switch off.
 		// Without failover, dhcp.active is the administrator's setting
@@ -450,11 +538,18 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		{
 			intent->serve = serving;
 			intent->change_dhcp = false;
+			// ...and it is still the node handing out leases, which is
+			// what this field says. Left empty it reported that nobody
+			// serves DHCP while this node did, for as long as it stayed
+			// off the member list
+			cluster_name(intent->owner);
 			return;
 		}
 
 		intent->serve = config.cluster.dhcp.failover.v.b ? false : serving;
 		intent->change_dhcp = intent->serve != serving;
+		if(intent->serve)
+			cluster_name(intent->owner);
 		return;
 	}
 
@@ -475,6 +570,25 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// when it would not answer on the address either, which leaves the address
 	// on nobody
 	bool peer_capable_anchors = false;
+
+	// Whether another node is handing out leases, could hold the address too,
+	// and has the lower identity. A node serving DHCP holds the address without
+	// asking anybody, which is right while it is the only one - and two at once
+	// is the administrator's doing wherever the cluster may not touch
+	// `dhcp.active`: pinned through the environment, which is how the Docker
+	// image switches DHCP on, or a read-only configuration. The address is
+	// still the cluster's to place on exactly one machine, and comparing
+	// identities is how every node reaches the same answer without asking
+	bool beaten_by_anchor = false;
+
+	// Who would take DHCP, asked once and before anything reads it.
+	// elect_dhcp() only ranks what it is given, so it costs nothing to ask
+	// early - and tracking "the lowest-identity competing peer" separately got
+	// it wrong whenever the answer was this node, because a loop over peers
+	// cannot elect the node running it
+	char elected_owner[CLUSTER_STRLEN] = "", elected_id[CLUSTER_HASHLEN] = "";
+	const bool elected_is_me = elect_dhcp(peers, num_peers, elected_owner, elected_id);
+	bool elected_serving = false;
 	bool serving_peer_anchors = false;
 
 	// A peer that answers and then refuses us is a peer that is running - so
@@ -491,12 +605,19 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 			refusing = true;
 	}
 
+	// Whether anybody runs failover is asked of every member that answers
+	// somebody, not only of the ones this node polls itself. It decides which
+	// rule the address follows, so two nodes answering it differently place the
+	// address twice - and one broken polling direction was enough to make them
+	// differ, which is the fault the relay below was built to remove
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
-		if(peers[i].is_self || !peers[i].reachable)
+		if(peers[i].is_self || !peer_answers(&peers[i]))
 			continue;
-		if(peers[i].failover)
+		if(peers[i].reachable ? peers[i].failover : peers[i].relayed_failover)
 			failover_anywhere = true;
+		if(!peers[i].reachable)
+			continue;
 		// A peer that still sees somebody serving is reason enough to
 		// wait, even when we cannot see that node ourselves
 		if(peers[i].dhcp_active || peers[i].sees_dhcp)
@@ -506,12 +627,75 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		// that merely sees it: a healthy bystander's ability to hold the
 		// address said nothing about the server's, and credited it with one
 		// it did not have. In a cluster of two there is no bystander, which
-		// is why this worked when it was written
-		if(peers[i].dhcp_active && peers[i].resolving && peers[i].vip_capable)
+		// is why this worked when it was written.
+		//
+		// Through a bystander where this node cannot reach the server itself,
+		// the same way `sees_dhcp` carries "somebody is serving" one line up.
+		// One broken direction - a pin that no longer matches, a firewall rule,
+		// a poll that times out on one path and not another - left this node
+		// deferring to nobody while the server went on holding the address, and
+		// it claimed the address as well
+		if(strlen(peers[i].sees_anchor_id) > 0)
+		{
 			serving_peer_anchors = true;
-		if(peer_competes(&peers[i]) && peers[i].resolving && peers[i].vip_capable)
-			peer_capable_anchors = true;
+			// ...and by identity, relayed along with it. Comparing only the
+			// peers this node polls itself meant a node that knew - through a
+			// bystander - that a lower identity was anchoring kept the address
+			// anyway, and the node it should have yielded to kept it too
+			if(strcmp(peers[i].sees_anchor_id, cluster_node_id()) < 0)
+				beaten_by_anchor = true;
+		}
+		// The peer that would actually be elected, and only that one
+		if(!elected_is_me && strcmp(peers[i].id, elected_id) == 0)
+		{
+			if(peers[i].resolving && peers[i].vip_capable)
+				peer_capable_anchors = true;
+			if(peers[i].dhcp_active)
+				elected_serving = true;
+		}
 	}
+
+	// ...and only while that node is in a position to act on it. It takes the
+	// address by taking DHCP, and it cannot take DHCP while somebody else is
+	// still handing out leases - so a server that no candidate will ever
+	// displace (its own failover switched off, its dhcp.active pinned through
+	// the environment, or simply unreachable from here) leaves every other
+	// node deferring to one that is waiting for it, and the address on nobody
+	if(peer_serving && !elected_serving)
+		peer_capable_anchors = false;
+
+	// Losing sight of the anchor is damped like every other take-over. One
+	// missed poll of the node holding the address otherwise had a second
+	// serving node place it and announce it in that same round, then give it
+	// back a round later - and the holder announces nothing, so the clients
+	// kept the wrong machine for as long as their caches lasted. A node that
+	// already holds it, or has never been beaten in this process, is not made
+	// to wait
+	static unsigned int rounds_unbeaten = CLUSTER_DHCP_ACTIVATE_ROUNDS;
+	if(beaten_by_anchor)
+		rounds_unbeaten = 0;
+	else if(rounds_unbeaten < CLUSTER_DHCP_ACTIVATE_ROUNDS)
+		rounds_unbeaten++;
+	const bool mine_to_hold = serving && !beaten_by_anchor &&
+	                          (vip_claimed() || rounds_unbeaten >= CLUSTER_DHCP_ACTIVATE_ROUNDS);
+
+	// Who is actually handing out leases. The election's answer is the same
+	// thing only where the cluster is arbitrating, and the branches below that
+	// do not arbitrate - failover switched off here, a gravity run or a failed
+	// takeover holding this node back, nobody accepting this node - left the
+	// field empty. A node serving DHCP then published "nobody serves DHCP" about
+	// itself, every gravity run and for as long as a backoff lasted. The
+	// failover branch elects over this and overwrites it
+	if(serving)
+		cluster_name(intent->owner);
+	else
+		for(unsigned int i = 0; i < num_peers; i++)
+			if(!peers[i].is_self && peers[i].reachable && peers[i].dhcp_active)
+			{
+				strncpy(intent->owner, peers[i].name, CLUSTER_STRLEN - 1);
+				intent->owner[CLUSTER_STRLEN - 1] = '\0';
+				break;
+			}
 
 	if(failover_anywhere && !config.cluster.dhcp.failover.v.b && !warned_failover)
 	{
@@ -536,6 +720,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 
 		intent->serve = serving;
 		intent->hold_vip = vip_claimed();
+		forget_rounds();
 		return;
 	}
 	warned_refused = false;
@@ -544,14 +729,20 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// The address still follows whoever hands out leases, and falls back to
 	// the leader when nobody does - the same rule the failover branch below
 	// uses, so two nodes cannot answer it differently and place it twice or
-	// not at all
+	// not at all.
+	//
+	// A node serving DHCP stands aside for a peer that is serving *and* could
+	// hold the address, which is the question every other branch asks. Standing
+	// aside for any peer that serves gives the address to a node that cannot
+	// place it, and this node - which can - declines it as well
 	if(!config.cluster.dhcp.failover.v.b)
 	{
 		intent->serve = serving;
 		intent->hold_vip = failover_anywhere ?
-		                   (serving && !peer_serving) ||
+		                   mine_to_hold ||
 		                   (!serving && !serving_peer_anchors && !peer_capable_anchors && leader_is_us) :
 		                   leader_is_us;
+		forget_rounds();
 		return;
 	}
 
@@ -566,7 +757,8 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		// With nobody serving and nobody able to, the address follows the
 		// leader instead, or it sits on no node at all
 		intent->serve = serving;
-		intent->hold_vip = serving || (!serving_peer_anchors && !peer_capable_anchors && leader_is_us);
+		intent->hold_vip = mine_to_hold || (!serving_peer_anchors && !peer_capable_anchors && leader_is_us);
+		forget_rounds();
 		return;
 	}
 	warned_incapable = false;
@@ -586,7 +778,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	// is nobody - during a hand-over, or with no node able to serve - it
 	// follows the node that is about to, so it is never on nothing
 	intent->serve = serving;
-	intent->hold_vip = serving || (mine && !peer_serving) ||
+	intent->hold_vip = mine_to_hold || (mine && !peer_serving) ||
 	                   (!serving_peer_anchors && !peer_capable_anchors && leader_is_us);
 
 	if(mine == serving)
@@ -603,16 +795,42 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 
 		// Somebody else is still handing out leases from the same range
 		// with a lease database of its own. Their renewals and ours
-		// would fight; waiting is better than that
-		if(peer_serving)
+		// would fight; waiting is better than that.
+		//
+		// ...and the same for a member that answers and refuses us, which is
+		// a Pi-hole too old for clustering or one with clustering switched
+		// off - precisely a Pi-hole that may be handing out leases under its
+		// own settings, and one that publishes nothing to say whether it is.
+		// The freeze further up covers the case where no member accepts this
+		// node at all; halfway through a rolling upgrade some do, and starting
+		// a second server beside the old one is what that left open
+		if(peer_serving || refusing)
 		{
 			// intent->owner is this node here - the one still handing out
 			// leases is somebody else, and naming ourselves reads as a
 			// node waiting for itself
 			log_debug(DEBUG_CLUSTER, "cluster: waiting for the node still serving DHCP to stop");
+
+			// ...and where nobody is actually serving, the wait is not for a
+			// hand-over but for a member that answers and refuses this node -
+			// a mistyped member URL, or an address something else has taken.
+			// The network has no DHCP server for as long as that entry stands
+			// and the line above is debug-only, so nothing at default
+			// verbosity connected the two
+			if(refusing && !peer_serving)
+			{
+				if(!warned_refused_takes)
+					log_warn("cluster: no node is serving DHCP and a member answers but does not accept this one - check cluster.members, that clustering is on there, and that %s matches",
+					         CLUSTER_SECRET_FILE);
+				warned_refused_takes = true;
+			}
+			else
+				warned_refused_takes = false;
+
 			rounds_wanting = 0;
 			return;
 		}
+		warned_refused_takes = false;
 
 		if(++rounds_wanting < CLUSTER_DHCP_ACTIVATE_ROUNDS)
 		{
@@ -628,10 +846,37 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		return;
 	}
 
-	// Ours to give up. Immediately if the node taking over is already
-	// serving - the wait exists so one missed answer does not move DHCP,
-	// not to keep two servers on the network
+	// Ours to give up - but not while a member is refusing us. The node that
+	// would take it over is held back by that same member for as long as it
+	// refuses, so giving up here leaves the network with no DHCP server at
+	// all. Blocking only the taking-over half, which is what the guard did at
+	// first, turned a rolling upgrade from "a second server for a while" into
+	// "no server, permanently"
 	rounds_wanting = 0;
+	if(refusing && !owner_serving)
+	{
+		// Said out loud, once. A member that answers and refuses this node
+		// holds DHCP where it is in both directions, so a mistyped member URL
+		// - or a machine that answers on one - leaves the network without a
+		// DHCP server, and at debug level nothing connected the two
+		if(!warned_refused_holds)
+			log_warn("cluster: not moving DHCP while a member answers but does not accept this node - check that clustering is on there and that %s matches",
+			         CLUSTER_SECRET_FILE);
+		warned_refused_holds = true;
+
+		rounds_yielding = 0;
+		return;
+	}
+	warned_refused_holds = false;
+
+	// Immediately if the node taking over is already serving - the wait exists
+	// so one missed answer does not move DHCP, not to keep two servers running
+	if(strcmp(yielding_to, owner_id) != 0)
+	{
+		strncpy(yielding_to, owner_id, sizeof(yielding_to) - 1);
+		yielding_to[sizeof(yielding_to) - 1] = '\0';
+		rounds_yielding = 0;
+	}
 	if(!owner_serving && ++rounds_yielding < CLUSTER_DHCP_DEACTIVATE_ROUNDS)
 	{
 		log_debug(DEBUG_CLUSTER, "cluster: would hand DHCP over to %s (%u/%u rounds)",
@@ -658,7 +903,7 @@ bool cluster_dhcp_apply(const struct cluster_intent *intent)
 	// condition it complains about does not clear on its own
 	if(intent->change_dhcp && cluster_dhcp_capable())
 		set_dhcp_active(intent->serve, strlen(intent->owner) > 0 ? intent->owner :
-		                (intent->serve ? "no other node is serving" : "no longer a member"));
+		                (intent->serve ? "no other node is serving" : "no longer a member"), true);
 
 	// What this node does, not what the election said: a change that was
 	// refused leaves DHCP where it was

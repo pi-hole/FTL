@@ -24,6 +24,10 @@
 
 // writeFTLtoml()
 #include "config/toml_writer.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
+// lock_shm()
+#include "shmem.h"
 
 // crypto library
 #include <nettle/sha2.h>
@@ -417,6 +421,46 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
+// Replace a stored SHA256^2 hash with a BALLOON one. Called from the login path
+// only, which holds no lock: this frees the string the cluster thread reads to
+// build the credential fingerprint, so it needs the one the API writers take
+static void upgrade_stored_password(const char *password)
+{
+	char *new_hash = create_password(password);
+	if(new_hash == NULL)
+		return;
+
+	log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+
+	// lock_shm(), not the sync lock. The string being freed and replaced is a
+	// live configuration value, and the thread that walks those to build the
+	// credential fingerprint (cluster_config_hash) holds lock_shm while it
+	// does - so the sync lock excluded the wrong thread and the use-after-free
+	// it was added for was still there. The sync lock is held too, because the
+	// two API writers take it around exactly this kind of change; taken in
+	// that order because a webserver thread holding lock_shm cannot wait on a
+	// lock the cluster thread holds while it waits for lock_shm
+	cluster_sync_lock();
+	lock_shm();
+	if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
+		free(config.webserver.api.pwhash.v.s);
+	config.webserver.api.pwhash.v.s = new_hash;
+	config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
+	unlock_shm();
+
+	// The stored hash really changed, and a cluster decides whose credentials
+	// are the newest by the stamp. Without moving it this node publishes a
+	// credential fingerprint nothing accounts for, has the upgrade pushed back
+	// off it by whichever peer ranks newer, and does it again at the next
+	// login - and only where the file took it, since a stamp for a hash that
+	// is not on disk is the same difference pointed the other way
+	const bool saved = config_write();
+	cluster_sync_unlock();
+
+	if(saved)
+		config_stamp_local_change();
+}
+
 enum password_result verify_login(const char *password)
 {
 	// Check if this is the CLI password
@@ -426,13 +470,18 @@ enum password_result verify_login(const char *password)
 			return CLIPASSWORD_CORRECT;
 	}
 
-	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
+	bool legacy = false;
+	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true, &legacy);
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
+
+	// ...and the rewrite here, where no lock is held yet
+	if(legacy)
+		upgrade_stored_password(password);
 
 	// Check if an application password is set and if it matches
 	if(pw == PASSWORD_INCORRECT &&
 	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
-	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, true, NULL) == PASSWORD_CORRECT)
 	{
 		log_debug(DEBUG_API, "App password correct");
 		return APPPASSWORD_CORRECT;
@@ -442,7 +491,13 @@ enum password_result verify_login(const char *password)
 	return pw;
 }
 
-enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting)
+// legacy, where given, says the supplied password matched a stored SHA256^2
+// hash and that the caller should rewrite it. Never done here: `PATCH
+// /api/config` reaches this through set_and_check_password() while already
+// holding cluster_sync_lock(), and taking a non-recursive mutex twice wedges
+// the worker with the lock held - which is worse than the race it was for
+enum password_result verify_password(const char *password, const char *pwhash,
+                                     const bool rate_limiting, bool *legacy)
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
@@ -514,31 +569,14 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		const bool result = strcmp(pwhash, supplied) == 0;
 		free(supplied);
 
-		// Upgrade double-hashed password to BALLOON hash
+		// The hash is a legacy one, and rewriting it needs the lock the two
+		// API writers take - which one of this function's callers is already
+		// holding when it gets here. Reported to the caller instead, so the
+		// rewrite happens on the login path, which holds nothing
 		if(result)
 		{
-			char *new_hash = create_password(password);
-			if(new_hash != NULL)
-			{
-				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
-				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
-					free(config.webserver.api.pwhash.v.s);
-				config.webserver.api.pwhash.v.s = new_hash;
-				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-				// The stored hash really changed, and a cluster
-				// decides whose credentials are the newest by the
-				// stamp. Without moving it this node publishes a
-				// credential fingerprint nothing accounts for, has
-				// the upgrade pushed back off it by whichever peer
-				// happens to rank newer, and does it again at the
-				// next login.
-				//
-				// ...and only where the file took it: a stamp for
-				// a hash that is not on disk is the same difference
-				// pointed the other way
-				if(config_write())
-					config_stamp_local_change();
-			}
+			if(legacy != NULL)
+				*legacy = true;
 
 			// Successful logins do not count against rate-limiting
 			num_password_attempts--;
@@ -732,7 +770,7 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// already empty, or if the newly set password is the same as the old
 	// one
 	if((strlen(password) == 0 && strlen(config.webserver.api.pwhash.v.s) == 0) ||
-	   verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	   verify_password(password, config.webserver.api.pwhash.v.s, false, NULL) == PASSWORD_CORRECT)
 	{
 		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
 		return true;
@@ -742,7 +780,7 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
 	// Verify that the password hash is valid or that no password is set
-	const enum password_result status = verify_password(password, pwhash, false);
+	const enum password_result status = verify_password(password, pwhash, false, NULL);
 	if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 	{
 		free(pwhash);
@@ -797,7 +835,7 @@ bool generate_password(char **password, char **pwhash)
 	*pwhash = balloon_password(*password, salt, true);
 
 	// Verify that the password hash is valid
-	if(verify_password(*password, *pwhash, false) != PASSWORD_CORRECT)
+	if(verify_password(*password, *pwhash, false, NULL) != PASSWORD_CORRECT)
 	{
 		free(*password);
 		*password = NULL;

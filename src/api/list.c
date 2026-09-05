@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api.h"
@@ -561,6 +563,17 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON *success = JSON_NEW_ARRAY();
 	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_AddItemToObject(processed, "success", success);
+
+	// Under the same lock the cluster's own import of a peer's lists takes.
+	// These are the seven tables that travel between nodes, so an import that
+	// lands mid-batch replaces the rows already written and the answer still
+	// reports every item as added: forty domains accepted, twenty-eight on
+	// disk, no error anywhere. Nothing below re-enters it - the gravity
+	// database helpers take no cluster lock - and no shm lock is held here, so
+	// the sync-then-shm order the two API writers use is not inverted. Taken
+	// after the objects above: the JSON_* macros return from inside themselves
+	// on an allocation failure, past any unlock
+	cluster_sync_lock();
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
@@ -583,12 +596,28 @@ static int api_list_write(struct ftl_conn *api,
 			}
 		}
 
-		cJSON *details = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(details, "item", row.item);
-		if(!okay)
-			JSON_COPY_STR_TO_OBJECT(details, "error", sql_msg);
+		// Built by hand for the same reason: a macro that returns on a
+		// failed allocation would leave with the lock held
+		cJSON *details = cJSON_CreateObject();
+		if(details == NULL ||
+		   !cJSON_AddItemToObject(details, "item", row.item != NULL ?
+		                          cJSON_CreateString(row.item) : cJSON_CreateNull()) ||
+		   (!okay && !cJSON_AddItemToObject(details, "error", sql_msg != NULL ?
+		                                    cJSON_CreateString(sql_msg) : cJSON_CreateNull())))
+		{
+			cJSON_Delete(details);
+			cluster_sync_unlock();
+			cJSON_Delete(processed);
+			if(allocated_json)
+				cJSON_Delete(row.items);
+			return send_http_internal_error(api);
+		}
 		cJSON_AddItemToArray(okay ? success : errors, details);
 	}
+
+	// Only the writes: the answer below reads nothing the cluster touches, and
+	// holding it across a response would stall a round for no reason
+	cluster_sync_unlock();
 
 	// If all items failed, return a database error instead of
 	// a success response with an empty result set
@@ -812,9 +841,13 @@ static int api_list_remove(struct ftl_conn *api,
 		}
 	}
 
-	// From here on, we can assume the JSON payload is valid
+	// From here on, we can assume the JSON payload is valid. The removal is
+	// under the lock the cluster's import takes, as the additions are
 	unsigned int deleted = 0u;
-	if(gravityDB_delFromTable(listtype, array, &deleted, &sql_msg))
+	cluster_sync_lock();
+	const bool removed = gravityDB_delFromTable(listtype, array, &deleted, &sql_msg);
+	cluster_sync_unlock();
+	if(removed)
 	{
 		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);

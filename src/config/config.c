@@ -450,7 +450,14 @@ void cluster_pinned_items(const bool credentials, char *out, const size_t outlen
 bool config_env_pinned(const struct conf_item *item)
 {
 	if(item == &config.webserver.api.pwhash)
-		return config.webserver.api.password.f & FLAG_ENV_VAR;
+		// ...or of the hash, where somebody named it directly. FTL never
+		// marks this item itself, but `readEnvValue()` marks whatever the
+		// environment names - so `FTLCONF_webserver_api_pwhash` does carry
+		// the flag, and asking only about the password read a pinned hash as
+		// free to travel: a peer's password replaced it, and it went out to
+		// the peers in return
+		return (config.webserver.api.password.f & FLAG_ENV_VAR) ||
+		       (config.webserver.api.pwhash.f & FLAG_ENV_VAR);
 
 	return item->f & FLAG_ENV_VAR;
 }
@@ -1319,14 +1326,14 @@ void initConfig(struct config *conf)
 	// loss). The gravity database is also not affected as it is only written
 	// to on an individual basis (explicit API calls) and not continuously
 	// (like the query database).
-	conf->database.useWAL.f = FLAG_RESTART_FTL;
+	conf->database.useWAL.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->database.useWAL.d.b = true;
 	conf->database.useWAL.c = validate_stub; // Only type-based checking
 
 	conf->database.forceDisk.k = "database.forceDisk";
 	conf->database.forceDisk.h = "Should FTL force the use of disk storage for the history database? By default, FTL uses an in-memory database for much improved performance when browsing the history from the dashboard. However, on systems with very limited RAM and only occasional usage of the web interface, it may be useful to force the use of disk storage instead of holding everything in memory.\n\n Note that using disk storage *will* reduce performance, especially on systems with slow storage media (e.g., SD cards).";
 	conf->database.forceDisk.t = CONF_BOOL;
-	conf->database.forceDisk.f = FLAG_RESTART_FTL;
+	conf->database.forceDisk.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->database.forceDisk.d.b = false;
 	conf->database.forceDisk.c = validate_stub; // Only type-based checking
 
@@ -1706,7 +1713,7 @@ void initConfig(struct config *conf)
 	conf->misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions.\n\n The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
 	conf->misc.nice.a = cJSON_CreateStringReference("A signed integer value between -20 and 19, or -999 to disable niceness");
 	conf->misc.nice.t = CONF_INT;
-	conf->misc.nice.f = FLAG_RESTART_FTL;
+	conf->misc.nice.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->misc.nice.d.i = -10;
 	conf->misc.nice.c = validate_stub; // Only type-based checking
 
