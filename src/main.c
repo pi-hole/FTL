@@ -54,7 +54,7 @@ int main (int argc, char *argv[])
 	// it if needed
 	username = getUserName();
 
-	// Obtain log file location
+	// Obtain FTL.log file location
 	getLogFilePath(true);
 
 	// Store binary path and PIE load base address for crash-time backtrace.
@@ -67,8 +67,8 @@ int main (int argc, char *argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Initialize FTL log
-	init_FTL_log();
+	// Open FTL.log early (other logs opened after config parse)
+	open_log_fds(true);
 	// Try to open FTL log
 	init_config_mutex();
 	timer_start(EXIT_TIMER);
@@ -84,6 +84,10 @@ int main (int argc, char *argv[])
 	// settings are present and have a valid value
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
+
+	// Re-open webserver.log and pihole.log to pick up any path overrides
+	// from the TOML file or legacy config
+	open_log_fds(false);
 
 	// Check if another FTL process is already running
 	if(another_FTL())
