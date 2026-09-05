@@ -49,7 +49,11 @@ bool cluster_dhcp_configured(void);
 bool cluster_vip_capable(void);
 
 // Whether placing the address has ever failed on this node
-bool cluster_vip_failed_before(void) __attribute__ ((pure));
+
+// Tell the VIP code whether another node is holding the address, so a node that
+// has failed to place it can stand aside in what it publishes rather than only
+// in what it decides
+void cluster_vip_note_holder(const bool somebody_else_holds_it);
 bool cluster_dhcp_restarting(void) __attribute__ ((pure));
 
 // Claim or release the virtual IP address depending on whether this node is

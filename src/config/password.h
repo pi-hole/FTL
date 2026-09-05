@@ -18,7 +18,7 @@ void sha256_raw_to_hex(uint8_t *data, char *buffer);
 char *create_password(const char *password) __attribute__((malloc));
 bool get_secure_randomness(uint8_t *buffer, const size_t length);
 enum password_result verify_login(const char *password);
-enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting);
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting, bool *legacy);
 int run_performance_test(void);
 bool set_and_check_password(struct conf_item *conf_item, const char *password);
 bool generate_password(char **password, char **pwhash);

@@ -247,11 +247,24 @@ static void mark_unreachable(struct cluster_peer *peer, const char *err)
 		peer->is_self = false;
 	}
 
+	// Something answered at the address this peer was last reached on and it
+	// was not this peer - a machine that took the address over, or a service
+	// that has nothing to do with Pi-hole. Keeping the address sends every
+	// later round to the same stranger, the name is never resolved again, and
+	// the offer a member that CAN still reach it would make is refused
+	// because this node already has an address. Given up so both can recover.
+	// Only where something answered: a connection that simply failed says
+	// nothing about who owns the address, and the address is what this node
+	// offers the others as a way to reach the peer
+	if(peer->answered)
+		peer->address[0] = '\0';
+
 	peer->dhcp_active = false;
 	peer->dhcp_capable = false;
 	peer->resolving = true;
 	peer->vip_capable = true;
 	peer->sees_dhcp = false;
+	peer->sees_anchor_id[0] = '\0';
 	peer->vip_held = false;
 	peer->clock_agrees = false;
 	strncpy(peer->error, err, sizeof(peer->error) - 1);
@@ -260,6 +273,37 @@ static void mark_unreachable(struct cluster_peer *peer, const char *err)
 
 // Ask one peer how it is doing. This is the only request made per peer and
 // round: everything we need to know is in the answer
+// A token this run of FTL made up, published so two members answering with the
+// same identity can be told apart: the same token twice is one node listed
+// twice, two tokens are two machines. The certificate cannot answer that
+// question - it lives in /etc/pihole beside cluster.state, so every route that
+// clones a node copies both - while this exists only in the memory of one
+// running process
+static char own_run[CLUSTER_HASHLEN] = "";
+
+static void make_own_run(void)
+{
+	uint8_t raw[16] = { 0 };
+	if(!get_secure_randomness(raw, sizeof(raw)))
+	{
+		log_warn("cluster: no randomness for this run's token, so a node listed twice cannot be told from two machines sharing an identity");
+		return;
+	}
+
+	for(size_t i = 0; i < sizeof(raw); i++)
+		snprintf(own_run + 2u*i, 3u, "%02x", raw[i]);
+}
+
+// Made once per run, and asked for from both the cluster thread and whichever
+// web server thread is answering a peer
+static const char *cluster_run_token(void)
+{
+	static pthread_once_t once = PTHREAD_ONCE_INIT;
+	pthread_once(&once, make_own_run);
+
+	return own_run;
+}
+
 static void poll_peer(struct cluster_peer *peer)
 {
 	cJSON *json = NULL;
@@ -291,6 +335,17 @@ static void poll_peer(struct cluster_peer *peer)
 			if(isprint((unsigned char)*p))
 				peer->name[len++] = *p;
 		peer->name[len] = '\0';
+	}
+
+	// Cleared rather than kept when it is missing: a peer that stopped sending
+	// one has been downgraded to an FTL that does not, and last week's token
+	// would answer for it
+	const cJSON *run = cJSON_GetObjectItem(node, "run");
+	peer->run[0] = '\0';
+	if(cJSON_IsString(run) && strlen(run->valuestring) < sizeof(peer->run))
+	{
+		strncpy(peer->run, run->valuestring, sizeof(peer->run) - 1);
+		peer->run[sizeof(peer->run) - 1] = '\0';
 	}
 
 	// Only ever out of an answer whose signature checked out, which is what
@@ -482,6 +537,12 @@ static void poll_peer(struct cluster_peer *peer)
 	// split a mixed-version cluster over a question it cannot answer
 	const cJSON *resolving = cJSON_GetObjectItem(node, "resolving");
 	peer->resolving = cJSON_IsBool(resolving) ? cJSON_IsTrue(resolving) : true;
+	// A node standing down because another machine carries its identity takes
+	// no part in DHCP or the address. On every other node's page it was a
+	// healthy member with nothing to do, which is the one reading that leaves
+	// somebody with no idea anything is wrong
+	peer->identity_shared = cJSON_IsTrue(cJSON_GetObjectItem(node, "identity_shared"));
+
 	const cJSON *vip_capable = cJSON_GetObjectItem(node, "vip_capable");
 	peer->vip_capable = cJSON_IsBool(vip_capable) ? cJSON_IsTrue(vip_capable)
 	                                              : peer->resolving;
@@ -495,8 +556,15 @@ static void poll_peer(struct cluster_peer *peer)
 	const cJSON *their_peers = cJSON_GetObjectItem(json, "cluster");
 	their_peers = their_peers != NULL ? cJSON_GetObjectItem(their_peers, "peers") : NULL;
 	peer->sees_dhcp = peer->dhcp_active;
+	peer->sees_anchor_id[0] = '\0';
+	if(peer->dhcp_active && peer->resolving && peer->vip_capable)
+	{
+		strncpy(peer->sees_anchor_id, peer->id, sizeof(peer->sees_anchor_id) - 1);
+		peer->sees_anchor_id[sizeof(peer->sees_anchor_id) - 1] = '\0';
+	}
 	bool knows_us = peer->is_self;
 	uint8_t sees = 0;
+
 
 	// How this node appears in the member list, which is the same list the
 	// peer publishes back to us
@@ -530,10 +598,17 @@ static void poll_peer(struct cluster_peer *peer)
 		// Which members this one can reach, as a bit per entry of our own
 		// list. The list is the same on every node, so a bit means the
 		// same thing on both sides - and every node polls every other,
-		// so this is what says a partition apart from an outage
-		if(cJSON_IsString(pid) && cJSON_IsTrue(reachable))
+		// so this is what says a partition apart from an outage.
+		//
+		// By address, for the same reason the relay below is: an identity
+		// comes only from a successful poll and is dropped after a few
+		// missed rounds, so matching on it lost the member from the matrix
+		// exactly when the matrix is what an administrator is reading -
+		// during a one-sided cut that has lasted
+		if(cJSON_IsString(purl) && cJSON_IsTrue(reachable))
 			for(unsigned int k = 0; k < num_peers && k < CLUSTER_MAX_PEERS; k++)
-				if(strcmp(peers[k].id, pid->valuestring) == 0)
+				if(peers[k].url != NULL &&
+				   strcmp(peers[k].url, purl->valuestring) == 0)
 				{
 					sees |= (uint8_t)(1U << k);
 					break;
@@ -545,9 +620,97 @@ static void poll_peer(struct cluster_peer *peer)
 			continue;
 		}
 
+		// How old what this peer says about the member is, on its own clock:
+		// when it says it last reached it, against what time it says it is.
+		// Neither half is measured here, so the two clocks never have to agree
+		const cJSON *pseen = cJSON_GetObjectItem(p, "last_seen");
+		const cJSON *their_now = cJSON_GetObjectItem(node, "time");
+		// Measured against the cadence of the node that published it, which is
+		// the only number that says how old its facts should be - not against a
+		// constant, which stopped the relay dead on any cluster polling slower
+		// than the constant, and not against the reader's own interval, which
+		// had two readers disagree about the same fact
+		const cJSON *their_interval = cJSON_GetObjectItem(node, "interval");
+		const double allowed = cJSON_IsNumber(their_interval) && their_interval->valuedouble > 0.0 ?
+		                       their_interval->valuedouble * 3.0 : CLUSTER_RELAY_MAX_AGE;
+		const bool fresh = cJSON_IsNumber(pseen) && cJSON_IsNumber(their_now) &&
+		                   isfinite(pseen->valuedouble) && isfinite(their_now->valuedouble) &&
+		                   their_now->valuedouble - pseen->valuedouble <=
+		                       (allowed < CLUSTER_RELAY_MAX_AGE ? CLUSTER_RELAY_MAX_AGE : allowed);
+
 		const cJSON *active = status_item(p, "dhcp", "active");
-		if(cJSON_IsTrue(reachable) && cJSON_IsTrue(active))
+		if(fresh && cJSON_IsTrue(reachable) && cJSON_IsTrue(active))
 			peer->sees_dhcp = true;
+
+		// What this peer says about the member the entry belongs to, kept
+		// against that member rather than against the peer reporting it. Only
+		// from a peer that reaches it: an entry it marks unreachable says
+		// nothing about the node, only about the path.
+		//
+		// Matched by address rather than by identity. An identity is only ever
+		// learned from a successful poll, and mark_unreachable() drops it after
+		// a few missed rounds - so keying on it made the relay stop working
+		// after half a minute for exactly the member it exists for, and never
+		// work at all on a node that restarted while the link was down. The
+		// member list is the same document on every node, so the entry's URL
+		// says which member it is whether or not this node has ever reached it.
+		// It is the same match the address hint below uses, for the same reason
+		if(fresh && cJSON_IsTrue(reachable) && cJSON_IsString(purl) &&
+		   (self_url == NULL || strcmp(purl->valuestring, self_url) != 0))
+			for(unsigned int k = 0; k < num_peers; k++)
+			{
+				struct cluster_peer *about = &peers[k];
+				if(about->is_self || about->url == NULL ||
+				   strcmp(about->url, purl->valuestring) != 0)
+					continue;
+
+				about->relayed_seen = true;
+				// ...including the identity it answered with. Both elections
+				// rank on it, and an entry whose own identity this node has
+				// forgotten would otherwise sort before every real one and
+				// win them both
+				if(cJSON_IsString(pid) && strlen(pid->valuestring) > 0 &&
+				   strlen(pid->valuestring) < sizeof(about->relayed_id))
+				{
+					strncpy(about->relayed_id, pid->valuestring,
+					        sizeof(about->relayed_id) - 1);
+					about->relayed_id[sizeof(about->relayed_id) - 1] = '\0';
+				}
+				if(cJSON_IsTrue(status_item(p, "dhcp", "failover")))
+					about->relayed_failover = true;
+				if(cJSON_IsTrue(status_item(p, "dhcp", "capable")))
+					about->relayed_capable = true;
+				if(cJSON_IsTrue(cJSON_GetObjectItem(p, "resolving")))
+					about->relayed_resolving = true;
+				if(cJSON_IsTrue(cJSON_GetObjectItem(p, "vip_capable")))
+					about->relayed_vip_capable = true;
+				if(cJSON_IsTrue(status_item(p, "vip", "held")))
+					about->relayed_vip_held = true;
+				break;
+			}
+
+		// ...and which node would also answer on the virtual address. Relayed
+		// for the same reason the line above is: a node that cannot reach the
+		// DHCP server itself knows nothing about it, and deciding the address
+		// on "nobody I can see is serving and could hold it" put it on a second
+		// machine while the server went on holding it.
+		//
+		// The identity travels with it, not just the fact that one exists.
+		// Whichever of two nodes holds the address is settled by comparing
+		// identities, and a bare yes left a node unable to tell whether the
+		// anchor it was hearing about outranked it - so it kept the address and
+		// the node it should have yielded to kept it too. The lowest, because
+		// that is the one the comparison picks
+		if(fresh && cJSON_IsTrue(reachable) && cJSON_IsTrue(active) &&
+		   cJSON_IsString(pid) && strlen(pid->valuestring) > 0 &&
+		   cJSON_IsTrue(cJSON_GetObjectItem(p, "resolving")) &&
+		   cJSON_IsTrue(cJSON_GetObjectItem(p, "vip_capable")) &&
+		   (strlen(peer->sees_anchor_id) == 0 ||
+		    strcmp(pid->valuestring, peer->sees_anchor_id) < 0))
+		{
+			strncpy(peer->sees_anchor_id, pid->valuestring, sizeof(peer->sees_anchor_id) - 1);
+			peer->sees_anchor_id[sizeof(peer->sees_anchor_id) - 1] = '\0';
+		}
 
 		// Where this node reached somebody whose name we cannot resolve.
 		// The member list is the same everywhere, so the entry it belongs
@@ -654,8 +817,21 @@ static char dhcp_owner[CLUSTER_STRLEN] = "";
 // How often FTL had replaced its configuration when we last handed it around
 static unsigned long pushed_generation = 0;
 
+// The round length, clamped rather than trusted: pihole.toml is a file somebody
+// can edit, and a zero would spin. Published as well as used, so a peer bounds
+// this node's relayed facts by the rounds it actually runs
+static unsigned int cluster_interval(void)
+{
+	const unsigned int configured = config.cluster.interval.v.ui;
+
+	return configured < 1 ? 10 :
+	       configured > CLUSTER_MAX_INTERVAL ? (unsigned int)CLUSTER_MAX_INTERVAL :
+	       configured;
+}
+
 // What this node's own certificate hashes to
 static char own_pin[CLUSTER_PINLEN] = "";
+
 
 // Read again whenever the certificate file is replaced. FTL renews its own
 // certificate before it expires and restarts the web server rather than the
@@ -828,6 +1004,9 @@ static bool left_cluster = false;
 // a node that switched itself off first would leave its entry behind on all
 // of them
 static volatile bool leaving = false;
+
+// Set when something wants a round without waiting for the next one
+static volatile bool round_now = false;
 // ...and set once it has happened. Everything this thread does from here on
 // would talk about a cluster this node is no longer in - including the push
 // that runs between rounds, which would otherwise hand the peers the empty
@@ -841,6 +1020,9 @@ static bool left = false;
 // there - and waits for a thread that will never read what it was told
 static volatile bool running = false;
 
+// Two machines with one identity, which no election can tell apart
+bool duplicate_identity = false;
+
 bool cluster_running(void)
 {
 	return running;
@@ -849,6 +1031,13 @@ bool cluster_running(void)
 void cluster_leave(void)
 {
 	leaving = true;
+
+	// ...and acted on at the next tick rather than the next round. The round
+	// is what tells the peers and switches clustering off here, and at a long
+	// interval the wait for it is minutes - a restart inside that window drops
+	// the leave entirely, while the page has already said the node is going
+	// and a restart is coming
+	round_now = true;
 }
 
 // Leaving on a node whose thread never started. No round has run, so there is
@@ -1146,6 +1335,36 @@ static void restart_due(void)
 // with every node able to publish a change, there is no such thing as a
 // configuration master - but the virtual IP address needs an anchor when DHCP
 // failover is not what places it
+// A member this node reaches, or one a member it reaches still reaches. Both
+// elections have to rank over the same set on every node or two of them reach
+// different answers, and one broken polling direction is enough to shrink the
+// set on exactly one node
+bool peer_answers(const struct cluster_peer *peer)
+{
+	// ...and only where it has an identity to be ranked by. Both elections
+	// compare identities, and an empty one sorts before every real one
+	return (peer->reachable || peer->relayed_seen) && strlen(peer_identity(peer)) > 0;
+}
+
+// What to rank this member by: what it told us itself, or failing that what a
+// member that still reaches it says it answered with. A node this one cannot
+// poll has no identity of its own here - mark_unreachable() drops it after a
+// few missed rounds - and that is exactly the node the relay exists for
+const char *peer_identity(const struct cluster_peer *peer)
+{
+	return strlen(peer->id) > 0 ? peer->id : peer->relayed_id;
+}
+
+// ...and the facts they rank on, taken from the relay where this node has none
+// of its own
+bool peer_anchors(const struct cluster_peer *peer)
+{
+	if(peer->reachable)
+		return peer->resolving && peer->vip_capable;
+
+	return peer->relayed_resolving && peer->relayed_vip_capable;
+}
+
 static void elect_leader(void)
 {
 	char myname[CLUSTER_STRLEN] = "";
@@ -1159,22 +1378,28 @@ static void elect_leader(void)
 	// anchor at all
 	bool anybody_resolves = cluster_vip_capable();
 	for(unsigned int i = 0; i < num_peers && !anybody_resolves; i++)
-		if(peers[i].reachable && !peers[i].is_self &&
-		   peers[i].resolving && peers[i].vip_capable)
+		if(!peers[i].is_self && peer_answers(&peers[i]) && peer_anchors(&peers[i]))
 			anybody_resolves = true;
 
-	// ...and a node that has failed to place the address does not take it off
-	// one that is holding it. The capability check catches the reasons it can
-	// see; for the rest, re-offering the moment a backoff expires costs the
-	// working node the address for as long as it takes this one to fail again,
-	// once per backoff, forever
+	// A node that has failed to place the address stands aside for one that is
+	// holding it - told to the VIP code rather than applied here, so it reaches
+	// what this node publishes. Deciding it only locally had every peer still
+	// electing this node and deferring to it while it declined, which is the
+	// outage it was added to prevent with the sign flipped
 	bool somebody_holds_it = false;
 	for(unsigned int i = 0; i < num_peers && !somebody_holds_it; i++)
-		if(peers[i].reachable && !peers[i].is_self && peers[i].vip_held)
+		// Relayed like the rest: a node that has failed to place the address
+		// and cannot poll the node holding it went on trying, and the address
+		// left the holder for a few seconds at every backoff expiry. This is
+		// the one fact whose only reader makes this node *more* passive - it
+		// feeds the stand-aside, and only on a node that has already failed -
+		// so a wrong relayed value costs a claim that would have failed anyway
+		if(!peers[i].is_self &&
+		   (peers[i].reachable ? peers[i].vip_held : peers[i].relayed_vip_held))
 			somebody_holds_it = true;
+	cluster_vip_note_holder(somebody_holds_it);
 
-	const bool i_qualify = (!anybody_resolves || cluster_vip_capable()) &&
-	                       !(somebody_holds_it && cluster_vip_failed_before());
+	const bool i_qualify = !anybody_resolves || cluster_vip_capable();
 	const char *best_name = myname;
 	const char *best_id = cluster_node_id();
 	bool have_best = i_qualify;
@@ -1184,17 +1409,17 @@ static void elect_leader(void)
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		const struct cluster_peer *peer = &peers[i];
-		if(!peer->reachable || peer->is_self)
+		if(peer->is_self || !peer_answers(peer))
 			continue;
 
-		if(anybody_resolves && !(peer->resolving && peer->vip_capable))
+		if(anybody_resolves && !peer_anchors(peer))
 			continue;
 
 		const char *name = strlen(peer->name) > 0 ? peer->name : peer->url;
-		if(!have_best || strcmp(peer->id, best_id) < 0)
+		if(!have_best || strcmp(peer_identity(peer), best_id) < 0)
 		{
 			best_name = name;
-			best_id = peer->id;
+			best_id = peer_identity(peer);
 			best_idx = (int)i;
 			have_best = true;
 		}
@@ -1267,6 +1492,14 @@ static void publish_gravity_state(const double changed, const char *hash)
 	// and every peer copies it from us
 	const double now = double_time();
 
+	// Whatever is recorded here is recorded by the build now running, so the
+	// question "was this written by another build" has been answered and must
+	// stop answering. Said here rather than at the call sites: it was moved
+	// between them in four consecutive rounds and each placement missed a
+	// path, because the fact it stands for is about this write and not about
+	// which branch reached it
+	cluster_state_build_settled();
+
 	// Taken while the lock is still held: the writers hold it, and handing
 	// cluster_state_save() the live struct would have it copy one somebody
 	// is part way through changing - and write that to disk
@@ -1334,6 +1567,10 @@ static double gravity_backoff = 0.0;
 // The version to adopt once the rebuild succeeds, and who it came from
 static double pending_gravity = 0.0;
 static char pending_gravity_id[CLUSTER_HASHLEN] = "";
+// What this node's lists hashed to before it asked a peer for theirs. Held
+// separately because the fingerprint it is compared against is republished
+// every time a rebuild fails
+static char pre_pull_hash[CLUSTER_HASHLEN] = "";
 static char pending_gravity_hash[CLUSTER_HASHLEN] = "";
 
 // What this node holds, never dated later than the present. A stamp taken while
@@ -1367,8 +1604,17 @@ static void note_local_changes(void)
 	// ...and not while a pull is settling: the tables on disk are already the
 	// peer's, but the blocking database has not been built from them yet, so
 	// calling that a change made here would advertise lists this node does
-	// not block and cancel the wait for the rebuild
-	const bool settling = gravity_state != GRAVITY_IDLE;
+	// not block and cancel the wait for the rebuild.
+	//
+	// A rebuild this node owes itself is a different thing. The tables are
+	// ours, and a second edit made while the first one is still rebuilding -
+	// which takes minutes - is as much a local change as the first was.
+	// Suppressing it there meant the second edit was never stamped, and a
+	// rebuild that then failed folded it into the fingerprint under the
+	// timestamp from before it existed: the peer outranked this node on
+	// content it did not have, and pulled the edit back off it
+	const bool settling = gravity_state != GRAVITY_IDLE &&
+	                      strcmp(pending_gravity_id, cluster_node_id()) != 0;
 
 	if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) != 0)
 	{
@@ -1466,6 +1712,11 @@ static void finish_pull(const double changed, const char *hash)
 	pending_gravity = 0.0;
 	pending_gravity_id[0] = '\0';
 	pending_gravity_hash[0] = '\0';
+	// ...and the baseline the pull was measured against, so a later settle
+	// does not compare the disk to what this node held before a pull that has
+	// long since finished
+	pre_pull_hash[0] = '\0';
+	sync_state.pre_pull_hash[0] = '\0';
 	cluster_unlock();
 
 	publish_pending_gravity(0.0, "", "");
@@ -1536,7 +1787,9 @@ static void settle_gravity(void)
 		// the build guard on exactly this path, so an interrupted pull
 		// whose restart is an upgrade arrives here comparing across it.
 		// Nothing here is newer in either case
-		const bool unchanged = strcmp(gravityhash, sync_state.gravity_hash) == 0 ||
+		const bool unchanged = strcmp(gravityhash, strlen(pre_pull_hash) > 0 ?
+		                                           pre_pull_hash :
+		                                           sync_state.gravity_hash) == 0 ||
 		                       !cluster_state_same_build();
 
 		finish_pull(theirs ? changed :
@@ -1550,7 +1803,22 @@ static void settle_gravity(void)
 	// The tables are the peer's but nothing was built from them. The
 	// fingerprint has to say what is on disk, under the version we already
 	// had - otherwise the next round cannot explain the fingerprint, calls
-	// it an edit made here, and dates lists this node never built to now
+	// it an edit made here, and dates lists this node never built to now.
+	//
+	// The retry needs a baseline to measure an edit against, and this publish
+	// is what overwrites the one it would otherwise fall back on. Where none
+	// is held - the pull crossed a build, or the lists were unreadable at
+	// start-up - the disk as it stands is it: an edit moves it, nothing else
+	// does
+	if(strlen(pre_pull_hash) == 0)
+	{
+		cluster_lock();
+		strncpy(pre_pull_hash, gravityhash, sizeof(pre_pull_hash) - 1);
+		pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
+		strncpy(sync_state.pre_pull_hash, gravityhash, sizeof(sync_state.pre_pull_hash) - 1);
+		sync_state.pre_pull_hash[sizeof(sync_state.pre_pull_hash) - 1] = '\0';
+		cluster_unlock();
+	}
 	publish_gravity_state(sync_state.gravity_changed, gravityhash);
 
 	// Still owed. A blocking database built from lists this node no longer
@@ -1747,6 +2015,22 @@ static void take_gravity(const bool member)
 	// they are owed
 	cluster_lock();
 	gravity_state = GRAVITY_PULLING;
+	// What this node held before it asked. `unchanged` below means "the disk is
+	// still what we had before the pull", and it used to read that off
+	// sync_state.gravity_hash - which the retry publish overwrites with the
+	// disk as it is now. After one failed rebuild the test therefore meant
+	// "nothing has moved since the last attempt", and a list edited on this
+	// node during the retry was published under the pre-pull timestamp and
+	// pulled straight back off by the peer
+	strncpy(pre_pull_hash, sync_state.gravity_hash, sizeof(pre_pull_hash) - 1);
+	pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
+	// ...and written down with the pull it belongs to. Held only in memory it
+	// was gone after a restart, and the fingerprint it would otherwise fall
+	// back on has been republished by every failed rebuild since - so the
+	// resumed pull compared against the wrong thing and published a list
+	// edited here under the timestamp from before it existed
+	strncpy(sync_state.pre_pull_hash, pre_pull_hash, sizeof(sync_state.pre_pull_hash) - 1);
+	sync_state.pre_pull_hash[sizeof(sync_state.pre_pull_hash) - 1] = '\0';
 	pending_gravity = peer->gravity_changed;
 	strncpy(pending_gravity_id, peer->id, sizeof(pending_gravity_id) - 1);
 	pending_gravity_id[sizeof(pending_gravity_id) - 1] = '\0';
@@ -1756,7 +2040,7 @@ static void take_gravity(const bool member)
 	publish_pending_gravity(pending_gravity, pending_gravity_id, pending_gravity_hash);
 
 	bool rebuilding = false;
-	if(!cluster_pull_gravity(peer, sync_state.gravity_hash, &rebuilding))
+	if(!cluster_pull_gravity(peer, pre_pull_hash, &rebuilding))
 	{
 		// Nothing landed. The import replaces the seven tables inside one
 		// transaction, so a failure anywhere in it leaves the tables this
@@ -1774,6 +2058,8 @@ static void take_gravity(const bool member)
 		pending_gravity = 0.0;
 		pending_gravity_id[0] = '\0';
 		pending_gravity_hash[0] = '\0';
+		pre_pull_hash[0] = '\0';
+		sync_state.pre_pull_hash[0] = '\0';
 		cluster_unlock();
 		publish_pending_gravity(0.0, "", "");
 
@@ -1884,6 +2170,8 @@ static void resume_gravity(void)
 		if(sync_state.pending_changed > 0.0)
 		{
 			log_warn("cluster: cannot read the lists, rebuilding the interrupted synchronization");
+			strncpy(pre_pull_hash, sync_state.pre_pull_hash, sizeof(pre_pull_hash) - 1);
+			pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
 			owe_gravity(sync_state.pending_changed, sync_state.pending_id, sync_state.pending_hash);
 		}
 		return;
@@ -1896,13 +2184,22 @@ static void resume_gravity(void)
 	if(sync_state.pending_changed > 0.0)
 	{
 		log_info("cluster: a list synchronization was interrupted, rebuilding");
+		// The baseline that pull was measured against, back from the file
+		strncpy(pre_pull_hash, sync_state.pre_pull_hash, sizeof(pre_pull_hash) - 1);
+		pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
 		owe_gravity(sync_state.pending_changed, sync_state.pending_id, sync_state.pending_hash);
 		return;
 	}
 
 	if(strlen(sync_state.gravity_hash) == 0 ||
 	   strcmp(gravityhash, sync_state.gravity_hash) == 0)
+	{
+		// Asked and answered: the fingerprints agree, so nothing about this
+		// build moved them. The only comparison that records nothing, and so
+		// the only one that has to say this for itself
+		cluster_state_build_settled();
 		return;
+	}
 
 	// The list fingerprint is taken over the whole of each table, so a
 	// release that migrates the database moves it with nobody having touched
@@ -2077,6 +2374,8 @@ static void publish_state(void)
 		       sizeof(status->pinned_credentials));
 		status->wants_credentials = peer->wants_credentials;
 		status->gravity_changed = peer->gravity_changed;
+		memcpy(status->run, peer->run, sizeof(status->run));
+		status->identity_shared = peer->identity_shared;
 		status->clock_offset = peer->clock_offset;
 		status->clock_agrees = peer->clock_agrees;
 		status->is_self = peer->is_self;
@@ -2110,6 +2409,11 @@ void cluster_local_status(cJSON *node)
 	// authenticates everything else - and nobody has a file to copy
 	if(strlen(own_pin) > 0)
 		cJSON_AddStringToObject(node, "pin", own_pin);
+
+	// ...and which running FTL this answer came from, which is what tells a
+	// member listed twice from a second machine carrying this node's identity
+	if(strlen(cluster_run_token()) > 0)
+		cJSON_AddStringToObject(node, "run", cluster_run_token());
 	cJSON_AddStringToObject(node, "version", git_version());
 	// Only when it is not what a release is built from: a cluster of stock
 	// Pi-holes has nothing to say here, one with a node built from a branch
@@ -2120,6 +2424,12 @@ void cluster_local_status(cJSON *node)
 	// so they check that they agree on what time it is
 	cJSON_AddNumberToObject(node, "time", double_time());
 
+	// How often this node polls, so a reader can tell how old the facts it
+	// publishes about the other members are allowed to be. A fixed bound is
+	// either shorter than a legal interval - and then the relay stops working
+	// entirely on a slow cluster - or longer than a fast one needs
+	cJSON_AddNumberToObject(node, "interval", cluster_interval());
+
 	// Whether this node answers DNS at all. A dnsmasq that did not start
 	// leaves FTL up and the cluster thread running, so without this the peers
 	// see a node that is reachable, healthy and eligible to anchor the address
@@ -2128,6 +2438,12 @@ void cluster_local_status(cJSON *node)
 	// ...and whether it would answer on an address the cluster places on it,
 	// which BIND mode makes a different question - see cluster_vip_capable()
 	cJSON_AddBoolToObject(node, "vip_capable", cluster_vip_capable());
+
+	// A node standing down because another machine carries its identity looks
+	// from the outside like a node that simply has nothing to do. Said here as
+	// well as in the log, so the page a user opens can explain why the node it
+	// is showing serves nothing
+	cJSON_AddBoolToObject(node, "identity_shared", duplicate_identity);
 
 	cJSON *dhcp = cJSON_CreateObject();
 	// ...and the same gate as its three neighbours below. A dead dnsmasq hands
@@ -2581,8 +2897,95 @@ static void cluster_round(void)
 	// that costs is one request per round, and it means a single answer -
 	// one of ours handed back to us by somebody on the path - cannot take a
 	// live peer out of the cluster for good
+	// What the members say about each other is rebuilt every round: an entry
+	// kept from last round would answer for a node nobody has reached since
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		peers[i].relayed_seen = false;
+		peers[i].relayed_id[0] = '\0';
+		peers[i].relayed_failover = false;
+		peers[i].relayed_capable = false;
+		peers[i].relayed_resolving = false;
+		peers[i].relayed_vip_capable = false;
+		peers[i].relayed_vip_held = false;
+	}
+
 	for(unsigned int i = 0; i < num_peers; i++)
 		poll_peer(&peers[i]);
+
+	// Exactly one member entry answers with this node's identity - the one
+	// that is this node. Two mean two machines carrying the same
+	// cluster.state, which an SD card image, a virtual machine template or a
+	// restored /etc/pihole all produce. Each of them then reads the other as
+	// itself: they drop each other from every election, both elect themselves,
+	// and the network gets two DHCP servers and the same address on two
+	// machines - permanently, and with nothing said about it. The only trace
+	// today is an INFO line naming somebody else's URL as "this node".
+	//
+	// Neither twin can tell which of them is the original, so both stand down
+	// rather than both serve: a third node picks DHCP and the address up, and
+	// where there is no third node the warning is what the administrator needs
+	// Counted as machines rather than entries. One node listed twice - by name
+	// and by address, or a line duplicated by hand - answers with this node's
+	// identity at both URLs and is not a twin: it is this node, twice. Two
+	// machines are told apart by the token each running FTL makes up for itself,
+	// which is in the answer already; where a peer sends none the benefit of the
+	// doubt goes to the duplicate listing, because standing down a node that is
+	// the only one serving is a worse mistake than missing a clone.
+	//
+	// Compared against this node's own token first: a clone that runs at an
+	// address the member list does not name polls the original's entry, reads
+	// its own identity there and would otherwise take that entry for itself -
+	// one entry, one token, no twin - while serving beside the original
+	unsigned int mine = 0;
+	const char *first_run = strlen(cluster_run_token()) > 0 ? cluster_run_token() : NULL;
+	bool differing_runs = false;
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		// Only what this round saw. An entry that has gone quiet keeps the
+		// token it last sent, and a twin that has been switched off would
+		// otherwise hold this node out of DHCP and off the address for as
+		// long as FTL keeps running
+		if(!peers[i].is_self || !peers[i].reachable)
+			continue;
+		mine++;
+		if(strlen(peers[i].run) == 0)
+			continue;
+		if(first_run == NULL)
+			first_run = peers[i].run;
+		else if(strcmp(first_run, peers[i].run) != 0)
+			differing_runs = true;
+	}
+
+	static bool warned_twin = false;
+	static bool warned_listed_twice = false;
+
+	// Remembered for a while rather than read off this round. The loop above
+	// counts only members that answered, so a twin that goes quiet for one poll
+	// would otherwise put both machines straight back to serving DHCP and
+	// claiming the address - and the two of them losing sight of each other is
+	// the likeliest way this state is ever noticed at all
+	static double twin_seen_until = 0.0;
+	if(differing_runs)
+		twin_seen_until = double_time() + CLUSTER_TWIN_MEMORY;
+	duplicate_identity = cluster_waiting(twin_seen_until, double_time(), CLUSTER_TWIN_MEMORY);
+
+	if(mine > 1 && !differing_runs && !warned_listed_twice)
+	{
+		log_warn("cluster: %u entries in cluster.members are this node - the same Pi-hole listed more than once. Harmless, but one of them is doing nothing",
+		         mine);
+		warned_listed_twice = true;
+	}
+	if(mine <= 1)
+		warned_listed_twice = false;
+
+	if(duplicate_identity && !warned_twin)
+		log_err("cluster: %u member%s answer%s with this node's identity (%s) from a different running Pi-hole - two machines are carrying the same /etc/pihole/cluster.state, and one of them has to be given a new one. This node takes no part in DHCP or the virtual address until then",
+		        mine, mine == 1 ? "" : "s", mine == 1 ? "s" : "", cluster_node_id());
+	if(!duplicate_identity)
+		warned_twin = false;
+	else
+		warned_twin = true;
 
 	elect_leader();
 
@@ -2678,15 +3081,11 @@ static void *run_cluster_thread(void *val)
 	double next_round = 0.0;
 	while(!killed)
 	{
-		// Clamped rather than trusted: pihole.toml is a file somebody can
-		// edit, and a zero would spin
-		const unsigned int interval =
-			config.cluster.interval.v.ui < 1 ? 10 :
-			config.cluster.interval.v.ui > CLUSTER_MAX_INTERVAL ?
-			(unsigned int)CLUSTER_MAX_INTERVAL : config.cluster.interval.v.ui;
+		const unsigned int interval = cluster_interval();
 
-		if(double_time() >= next_round)
+		if(round_now || double_time() >= next_round)
 		{
+			round_now = false;
 			cluster_round();
 			next_round = double_time() + interval;
 		}

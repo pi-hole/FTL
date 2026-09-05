@@ -437,9 +437,11 @@ components:
             dhcp_owner:
               type: string
               description: |
-                Name of the node that should be serving DHCP. Empty when DHCP
-                failover is disabled, in which case every node keeps whatever
-                DHCP state it was configured with.
+                Name of the node handing out leases, or - during a hand-over
+                with DHCP failover on - of the node elected to take them over.
+                Empty when no node serves DHCP. With failover off everywhere it
+                simply names the node running an ordinary DHCP server, and
+                nothing moves.
               example: "pi-hole-1"
             last_round:
               type: number
@@ -477,6 +479,16 @@ components:
             everything else.
           example: "aKG1khSEO0G+KcSunqhLo3cVFCTGSH81QfvtIH8h13s="
           nullable: true
+        run:
+          type: string
+          description: |
+            A token this run of FTL made up for itself. Two members that answer
+            with the same identity are one node listed twice when they answer
+            with the same token, and two machines carrying the same
+            /etc/pihole/cluster.state when they do not. The certificate cannot
+            answer that question - it lives in /etc/pihole beside the identity,
+            so every route that clones a node copies both.
+          example: "9f2c1ab7e04d5386a1bc77e2d0934f15"
         version:
           type: string
           example: "v6.5"
@@ -491,6 +503,36 @@ components:
           type: number
           description: What time this node thinks it is, as a Unix timestamp
           example: 1735689600.5
+        interval:
+          type: number
+          description: |
+            How often this node polls its peers, in seconds. Published so that a
+            reader can tell how old the facts this node reports about the other
+            members are allowed to be.
+          example: 10
+        resolving:
+          type: boolean
+          description: |
+            Whether this node answers DNS at all. A dnsmasq that did not start
+            leaves FTL up and the cluster thread running, so without this the
+            peers see a node that is reachable, healthy and eligible to anchor
+            the address its clients resolve at - and elect it.
+          example: true
+        vip_capable:
+          type: boolean
+          description: |
+            Whether this node would answer on an address the cluster places on
+            it. Needs CAP_NET_ADMIN, an interface that exists, and a listening
+            mode other than `bind`.
+          example: true
+        identity_shared:
+          type: boolean
+          description: |
+            Whether another machine is answering with this node's identity,
+            which happens when /etc/pihole/cluster.state was copied along with
+            the rest of a disk image. Both machines then stand down from DHCP
+            and the virtual address until one of them is given a new identity.
+          example: false
         dhcp:
           type: object
           properties:
@@ -583,17 +625,37 @@ components:
             The branch this member's FTL was built from, empty when that is
             `master`. A cluster of released Pi-holes says nothing here.
           example: ""
+        run:
+          type: string
+          description: |
+            The token this member's running FTL made up for itself. Two members
+            answering with the same identity are one Pi-hole listed twice when
+            they answer with the same token, and two machines carrying one
+            /etc/pihole/cluster.state when they do not - and a third node is
+            where a pair that cannot poll each other is visible at all.
+          example: "9f2c1ab7e04d5386a1bc77e2d0934f15"
+        identity_shared:
+          type: boolean
+          description: |
+            Whether this member reports that another machine is answering with
+            its identity. Such a node takes no part in DHCP or the virtual
+            address, which from the outside looks like a healthy member with
+            nothing to do.
+          example: false
         sees:
           type: array
           maxItems: 8
           description: |
-            The identities this member reports as reachable. Every node polls
-            every other one, so reachability is a matrix rather than a list -
-            this is the row this member published, and it is empty for a member
-            that did not answer.
+            The member addresses this member reports as reachable. Every node
+            polls every other one, so reachability is a matrix rather than a
+            list - this is the row this member published, and it is empty for a
+            member that did not answer. Addresses rather than identities,
+            because an identity is only known from a successful poll and is
+            forgotten after a few missed rounds, while the member list is the
+            same document on every node.
           items:
             type: string
-          example: ["Tc4uBXKmUvtbgf5x"]
+          example: ["https://192.168.0.6"]
         knows_us:
           type: boolean
           description: |
@@ -626,6 +688,17 @@ components:
           nullable: true
           description: Why the last contact failed, null if it did not
           example: null
+        resolving:
+          type: boolean
+          description: |
+            Whether this peer answers DNS. A node whose dnsmasq did not start is
+            reachable and healthy from the outside, and would otherwise be
+            elected to anchor the address its clients resolve at.
+          example: true
+        vip_capable:
+          type: boolean
+          description: Whether this peer would answer on the virtual address
+          example: true
         dhcp:
           type: object
           properties:
