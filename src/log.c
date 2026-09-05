@@ -96,11 +96,16 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 	{
 		struct timeval tv;
 		gettimeofday(&tv, NULL);
-		const int millisec = tv.tv_usec/1000;
 
-		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
+		// debug.extra bumps the resolution to microseconds so events
+		// happening within the same millisecond can still be ordered
+		const bool micros = config.debug.extra.v.b;
+		const int subsec = micros ? (int)tv.tv_usec : (int)(tv.tv_usec/1000);
+
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%0*i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec, space, tm.tm_zone);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, micros ? 6 : 3, subsec,
+		        space, tm.tm_zone);
 	}
 	else
 	{
