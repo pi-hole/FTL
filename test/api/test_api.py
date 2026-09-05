@@ -100,6 +100,69 @@ class TestHTTPErrors:
 
 
 # ---------------------------------------------------------------------------
+# CORS headers for cross-origin web apps
+# ---------------------------------------------------------------------------
+
+class TestCORS:
+    """Cross-origin requests must work for all methods.
+
+    Browsers send a preflight OPTIONS request before "non-simple" cross-origin
+    requests (DELETE, PUT, PATCH, JSON POST) and only send the real request if
+    the preflight is answered with the matching Access-Control-Allow-* headers.
+    The actual response must carry Access-Control-Allow-Origin as well.
+    Regression test for https://github.com/pi-hole/FTL/issues/2261.
+    """
+
+    ORIGIN = "http://example.com"
+
+    def test_preflight_returns_cors_headers(self, api_session):
+        """OPTIONS preflight advertises the allowed origin and methods.
+
+        A valid cross-origin preflight (carrying both Origin and
+        Access-Control-Request-Method) is answered by civetweb's built-in CORS
+        handler with a 200 response and the matching Access-Control-Allow-*
+        headers, before the request reaches FTL's own OPTIONS branch.
+        """
+        r = api_session.options(
+            f"{FTL_URL}/api/auth",
+            headers={
+                "Origin": self.ORIGIN,
+                "Access-Control-Request-Method": "DELETE",
+            },
+            timeout=5,
+        )
+        assert r.status_code == 200
+        assert "Access-Control-Allow-Origin" in r.headers
+        assert "DELETE" in r.headers.get("Access-Control-Allow-Methods", "")
+
+    def test_preflight_without_origin_omits_cors_headers(self, api_session):
+        """A bare OPTIONS request (no Origin) is not a CORS preflight.
+
+        Like civetweb's send_cors_header(), we only emit Access-Control-Allow-*
+        when the request carries an Origin header, otherwise we answer with a
+        plain 204 and just the RFC 7231 Allow header.
+        """
+        r = api_session.options(f"{FTL_URL}/api/auth", timeout=5)
+        assert r.status_code == 204
+        assert "Allow" in r.headers
+        assert "Access-Control-Allow-Origin" not in r.headers
+
+    def test_error_response_carries_cors_header(self, api_session):
+        """Non-200 responses include Access-Control-Allow-Origin too.
+
+        DELETE endpoints answer with 204 No Content, which - like this 404 - is
+        sent via the same code path that previously omitted the CORS header.
+        """
+        r = api_session.get(
+            f"{FTL_URL}/api/undefined",
+            headers={"Origin": self.ORIGIN},
+            timeout=5,
+        )
+        assert r.status_code == 404
+        assert "Access-Control-Allow-Origin" in r.headers
+
+
+# ---------------------------------------------------------------------------
 # Config validation via API (type-based)
 # ---------------------------------------------------------------------------
 

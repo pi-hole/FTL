@@ -4718,6 +4718,11 @@ my_send_http_error_headers(struct mg_connection *conn,
 	mg_response_header_start(conn, status);
 	send_no_cache_header(conn);
 	send_additional_header(conn);
+	/* Pi-hole: also emit CORS headers here so that e.g. 204 No Content
+	 * responses (returned by DELETE endpoints) carry Access-Control-Allow-*
+	 * just like the 200 responses sent via mg_send_http_ok().
+	 * See https://github.com/pi-hole/FTL/issues/2261 */
+	send_cors_header(conn);
 	mg_response_header_add(conn, "Content-Type", mime_type, -1);
 	if (content_length < 0) {
 		/* Size not known. Use chunked encoding (HTTP/1.x) */
