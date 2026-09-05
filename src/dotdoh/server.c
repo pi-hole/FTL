@@ -21,12 +21,20 @@
 #include "framing.h"
 // config.dns.port for the loopback DNS connection
 #include "config/config.h"
+#include <time.h>
+
+// Defined in dnsmasq_interface.c. Declared here rather than including
+// dnsmasq_interface.h, which is not self-contained: its prototypes reference
+// dnsmasq types this module deliberately does not pull in.
+unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <poll.h>
+#include <fcntl.h>
 // dotdoh_source_allowed_mode()
 #include "source_filter.h"
 // edns_pad_response(), edns_has_padding_option()
@@ -180,10 +188,166 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 	return (ssize_t)alen;
 }
 
+// Shared pool of connected loopback sockets for the DoT and DoQ reactors.
+//
+// dnsmasq forks a child per TCP connection, so tying one loopback socket to each
+// inbound connection (DoT) or to each in-flight stream (DoQ) makes the number of
+// dnsmasq children scale with client behaviour: a client that opens a connection
+// per query forks one child per query, and a burst of them exhausts dnsmasq's
+// child slots, at which point queries are read but never answered. Pooling the
+// sockets decouples the two: a keep-alive socket is reused across unrelated
+// client connections and streams, so a client that opens a connection per query
+// no longer forks a child per query. Note this bounds the IDLE cache, not the
+// number of sockets in flight - concurrency is capped by the reactors' own
+// stream/connection limits, not by the pool size.
+//
+// The sockets are non-blocking because both reactors drive them from their poll
+// set. Both are single-threaded but they are two different threads, so the pool
+// is mutex-guarded; contention is a couple of pointer moves per query.
+// Upper bound on the array; the number actually retained follows the derived
+// concurrency cap (see pool_keep_max()). Keeping the pool as large as the cap
+// means a query at full concurrency always finds a warm socket, so no fork
+// churn: the children the cap allows are simply resident rather than being
+// created and destroyed.
+// Bound on a blocking loopback exchange, so a slow dnsmasq child cannot pin a
+// webserver worker (and a concurrency slot) for its full 300 s lifetime.
+#define LOOPBACK_IO_TIMEOUT_S 5
+#define LOOPBACK_POOL_SLOTS 64
+static pthread_mutex_t pool_lock = PTHREAD_MUTEX_INITIALIZER;
+static int pool_fds[LOOPBACK_POOL_SLOTS];
+static int pool_n = 0;
+
+// Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
+// draw on the same pool. Encrypted listeners get the rest.
+#define LOOPBACK_RESERVE 20
+// Queries currently handed to dnsmasq and not yet finished, across both reactors.
+static unsigned int inflight = 0;
+// Refusals since the last summary; logged at most once a minute so a sustained
+// overload cannot flood the log with one line per query.
+static unsigned int refused_total = 0;
+static time_t refused_since = 0;
+
+// Concurrent in-flight queries the encrypted listeners may hand to dnsmasq.
+// Derived rather than configured, so raising dnsmasq's --max-tcp-connections
+// raises this too, with no second setting to keep in step.
+static unsigned int loopback_cap(void)
+{
+	const unsigned int max = dnsmasq_max_tcp_children();
+	return max > LOOPBACK_RESERVE ? max - LOOPBACK_RESERVE : 1;
+}
+
+// How many idle sockets to keep warm. Matching the cap removes the churn window
+// a smaller pool would leave, and costs nothing extra: a warm socket and an
+// in-flight one each hold exactly one dnsmasq child, so both are already
+// accounted for by the cap.
+static unsigned int pool_keep_max(void)
+{
+	const unsigned int cap = loopback_cap();
+	return cap < LOOPBACK_POOL_SLOTS ? cap : LOOPBACK_POOL_SLOTS;
+}
+
+int dotdoh_loopback_take(void)
+{
+	int fd = -1;
+	pthread_mutex_lock(&pool_lock);
+
+	// Every in-flight query occupies one dnsmasq TCP child, pooled or freshly
+	// opened, so admission is counted here rather than at the pool boundary.
+	const unsigned int cap = loopback_cap();
+	if(inflight >= cap)
+	{
+		const time_t now = time(NULL);
+		refused_total++;
+		// Report the first refusal at once, then summarise per minute.
+		if(refused_since == 0 || now - refused_since >= 60)
+		{
+			log_warn("dotdoh: refused %u encrypted quer%s - concurrency limit %u of "
+			         "dnsmasq's %u TCP children reached",
+			         refused_total, refused_total == 1 ? "y" : "ies",
+			         cap, dnsmasq_max_tcp_children());
+			refused_since = now;
+			refused_total = 0;
+		}
+		pthread_mutex_unlock(&pool_lock);
+		return -2;
+	}
+	inflight++;
+	while(pool_n > 0)
+	{
+		fd = pool_fds[--pool_n];
+		// A quiescent socket has nothing to read: dnsmasq only ever writes an
+		// answer to a query we sent. So ANY readable byte means the previous
+		// borrower did not consume its answer and the byte stream is out of
+		// step - reusing it would hand that answer to the next caller as if it
+		// were their own. Readable, EOF and error are therefore all fatal here;
+		// only "nothing pending" is reusable. A poll() interrupted by a signal
+		// tells us nothing either way, so keep the socket rather than bin it.
+		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+		const int pr = poll(&pfd, 1, 0);
+		if(pr == 0 || (pr < 0 && errno == EINTR))
+			break; // nothing pending: still healthy as far as we can tell
+		close(fd);
+		fd = -1;
+	}
+	pthread_mutex_unlock(&pool_lock);
+	return fd;
+}
+
+void dotdoh_loopback_give(int fd)
+{
+	if(fd < 0)
+		return;
+	pthread_mutex_lock(&pool_lock);
+	if(inflight > 0)
+		inflight--;
+	if(pool_n < (int)pool_keep_max())
+		pool_fds[pool_n++] = fd;
+	else
+		close(fd);
+	pthread_mutex_unlock(&pool_lock);
+}
+
+// Release a socket that must not be reused - a failed or half-written exchange.
+// Pairs with dotdoh_loopback_take() exactly as give() does, so the in-flight
+// count is released on the error paths too.
+void dotdoh_loopback_drop(int fd)
+{
+	pthread_mutex_lock(&pool_lock);
+	if(inflight > 0)
+		inflight--;
+	pthread_mutex_unlock(&pool_lock);
+	if(fd >= 0)
+		close(fd);
+}
+
 // Open a blocking loopback TCP connection to dnsmasq's own DNS listener, with
 // send/recv timeouts so a stall cannot pin the worker (the loopback connect
 // itself is effectively instant, so no separate connect timeout is needed).
 // Returns the connected fd or -1.
+// Pooled sockets are non-blocking because the DoT and DoQ reactors drive them
+// from a poll() set. The DoH path below does a blocking exchange instead, so it
+// toggles the flag around its use and always hands the socket back non-blocking.
+static bool set_blocking(int fd, bool blocking)
+{
+	const int fl = fcntl(fd, F_GETFL, 0);
+	if(fl < 0)
+		return false;
+	const int want = blocking ? (fl & ~O_NONBLOCK) : (fl | O_NONBLOCK);
+	if(fcntl(fd, F_SETFL, want) != 0)
+		return false;
+	if(!blocking)
+		return true;
+
+	// Arm the stall timeouts here rather than trusting where the socket came
+	// from: the reactors create theirs without any, correctly, as they never
+	// block on them. A blocking exchange on such a socket would otherwise be
+	// bounded only by dnsmasq's 300 s child lifetime, pinning a webserver worker
+	// and one of the concurrency slots for that whole time.
+	const struct timeval tv = { .tv_sec = LOOPBACK_IO_TIMEOUT_S, .tv_usec = 0 };
+	return setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0 &&
+	       setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
+}
+
 static int loopback_connect(void)
 {
 	const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -196,7 +360,7 @@ static int loopback_connect(void)
 	sa.sin_port = htons(config.dns.port.v.u16);
 	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	const struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+	const struct timeval tv = { .tv_sec = LOOPBACK_IO_TIMEOUT_S, .tv_usec = 0 };
 	if(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0 ||
 	   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0 ||
 	   connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
@@ -212,19 +376,6 @@ static int loopback_connect(void)
 // the terminator's per-connection detached handler threads (and from restartable
 // h3 workers), neither of which lives for the whole life of the process, so
 // without this each such thread would leak its loopback fd.
-static _Thread_local int up_fd = -1;
-static pthread_key_t up_fd_key;
-static pthread_once_t up_fd_once = PTHREAD_ONCE_INIT;
-static void up_fd_close(void *arg)
-{
-	(void)arg;
-	if(up_fd >= 0) { close(up_fd); up_fd = -1; }
-}
-static void up_fd_key_init(void)
-{
-	pthread_key_create(&up_fd_key, up_fd_close);
-}
-
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS
 // listener over loopback TCP: dnsmasq accepts it as an ordinary TCP DNS query,
 // so nothing unsafe (a direct tcp_request()/fork) happens from the calling DoH
@@ -246,28 +397,48 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 	if(flen < 0)
 		return -1;
 
-	// Reuse a per-thread loopback connection so dnsmasq forks one child per thread
-	// rather than one per query. dnsmasq closes it after its keep-alive limit or an
-	// idle period; a stale connection makes the exchange fail, so drop it and retry
-	// once with a fresh one. The fd (up_fd) is thread-local and closed by a
-	// thread-exit destructor (see above).
+	// Borrow a loopback connection for the duration of this query, exactly as the
+	// DoT and DoQ reactors do, so all three share one accounted pool of dnsmasq
+	// children. Holding one per webserver thread instead would pin a child for the
+	// thread's whole life, outside that accounting. dnsmasq closes a connection
+	// after its keep-alive limit or an idle period; a stale one makes the exchange
+	// fail, so drop it and retry once with a fresh one.
 	ssize_t alen = -1;
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
-		if(up_fd < 0)
+		bool pooled = true;
+		int fd = dotdoh_loopback_take();
+		if(fd == -2)
+			return -1; // at the concurrency limit; server logs the summary
+		if(fd < 0)
 		{
-			up_fd = loopback_connect();
-			if(up_fd < 0)
+			// Pool empty; take() has still reserved our slot in the cap.
+			pooled = false;
+			fd = loopback_connect();
+			if(fd < 0)
+			{
+				dotdoh_loopback_drop(-1);
 				return -1;
-			// Arm the thread-exit close for this thread's fd (idempotent).
-			pthread_once(&up_fd_once, up_fd_key_init);
-			pthread_setspecific(up_fd_key, &up_fd);
+			}
 		}
-		alen = loopback_exchange(up_fd, framed, (size_t)flen, answer, answer_sz);
-		if(alen > 0)
-			break;
-		close(up_fd);
-		up_fd = -1;
+		// The exchange below blocks; a pooled socket arrives non-blocking.
+		if(pooled && !set_blocking(fd, true))
+		{
+			dotdoh_loopback_drop(fd);
+			continue;
+		}
+		alen = loopback_exchange(fd, framed, (size_t)flen, answer, answer_sz);
+		if(alen <= 0)
+		{
+			dotdoh_loopback_drop(fd);
+			continue; // stale or failed: retry once on a fresh connection
+		}
+		// Hand it back the way the reactors expect to find it.
+		if(set_blocking(fd, false))
+			dotdoh_loopback_give(fd);
+		else
+			dotdoh_loopback_drop(fd);
+		break;
 	}
 
 	// RFC 8467 Sec. 4: pad the answer to a 468-octet boundary so its ciphertext

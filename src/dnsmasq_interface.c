@@ -3721,6 +3721,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			log_crit("Unable to create dotdoh DoT thread. Exiting...");
 			exit(EXIT_FAILURE);
 		}
+
+		// Likewise for the inbound DoQ (DNS-over-QUIC) listener on UDP/853.
+		if(config.dns.doq.v.b &&
+		   pthread_create( &threads[DOTDOH_DOQ], &attr, dotdoh_doq_thread, NULL ) != 0)
+		{
+			log_crit("Unable to create dotdoh DoQ thread. Exiting...");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
@@ -4383,6 +4391,16 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
  *
  * @return true if the debug option is enabled, false otherwise.
  */
+unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
+{
+	// Read when the listeners start, i.e. after the config is parsed. Fall back to
+	// dnsmasq's own default if that ordering ever changes, so the derived cap can
+	// never come out as zero and refuse everything.
+	if(daemon != NULL && daemon->max_procs > 0)
+		return (unsigned int)daemon->max_procs;
+	return MAX_PROCS;
+}
+
 bool __attribute__ ((pure)) get_dnsmasq_debug(void)
 {
 	return option_bool(OPT_DEBUG);

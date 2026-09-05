@@ -643,6 +643,17 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
 #endif
 int main(void) { return 0; }
 " OPENSSL_HAS_QUIC_PEER_ADDR)
+
+    # DoQ (RFC 9250) rides on OpenSSL's QUIC alone - it carries DNS directly on
+    # QUIC streams, so unlike DoH3 it needs no HTTP/3 library. Gate it on the
+    # OpenSSL version only, so a build without nghttp3 still speaks DoQ.
+    if(OPENSSL_HAS_QUIC_PEER_ADDR)
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: YES")
+        target_compile_definitions(dotdoh PRIVATE HAVE_QUIC)
+    else()
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: NO (OpenSSL < 4.0)")
+    endif()
+
     find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
     if(LIBNGHTTP3 AND OPENSSL_HAS_QUIC_PEER_ADDR)
         message(STATUS "Building FTL with HTTP/3 support: YES")

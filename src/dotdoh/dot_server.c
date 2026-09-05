@@ -60,7 +60,7 @@
 // then pooled across connections (freed only at thread shutdown), so the cap
 // bounds the worst-case footprint while a connection flood costs no per-
 // connection allocation. The event loop itself scales far higher.
-#define DOT_MAX_CONNS 64
+#define DOT_MAX_CONNS 32
 // Cap concurrent connections from a single source IP so one client cannot hold
 // every slot (a drip of one query per connection re-arms the per-query deadline,
 // so the slow-loris sweep never fires; this is what bounds a single source).
@@ -215,6 +215,8 @@ struct dot_conn {
 	int upfd;                // loopback resolve socket, kept open across keep-alive
 	                         // queries for reuse; -1 when none is open
 	bool up_reused;          // upfd carried over from a previous query this conn
+	bool up_idle;            // upfd is at a clean message boundary (no exchange
+	                         // in flight), so it may go back into the pool
 	bool up_retried;         // already reconnected once for the current query
 	enum dot_state st;
 	int active_fd;           // fd this connection is currently waiting on
@@ -228,6 +230,8 @@ struct dot_conn {
 
 	uint8_t *rbuf; size_t have;              // client read accumulation
 	uint8_t *abuf; size_t alen, agot;        // answer from dnsmasq
+	size_t qsave;                            // bytes of the query kept in abuf, so a
+	                                         // refusal can still be answered
 	uint8_t  lenbuf[2]; size_t up_lengot;    // answer length prefix
 	uint8_t *wbuf; size_t wlen, woff;        // framed bytes being written
 };
@@ -247,8 +251,18 @@ static void conn_free(struct dot_conn *c)
 	}
 	if(c->cfd >= 0)
 		close(c->cfd);
+	// Hand the loopback socket back only when no exchange is in flight on it.
+	// conn_free() is also the deadline-sweep and shutdown path, which can fire
+	// with a query half-written or an answer not yet read; pooling such a socket
+	// would leave it out of step and serve the pending answer to whoever takes
+	// it next. Anything mid-exchange is closed instead.
 	if(c->upfd >= 0)
-		close(c->upfd);
+	{
+		if(c->up_idle)
+			dotdoh_loopback_give(c->upfd);
+		else
+			dotdoh_loopback_drop(c->upfd);
+	}
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
 	uint8_t *rbuf = c->rbuf, *abuf = c->abuf, *wbuf = c->wbuf;
@@ -317,13 +331,111 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 	return c;
 }
 
+// Build a SERVFAIL reply to the query `q` in `out`. The question is echoed when
+// it parses, else the reply carries an empty question section. Returns its
+// length, or -1 if it does not fit.
+static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t outcap)
+{
+	if(qlen < 12 || outcap < 12)
+		return -1;
+
+	// Walk the QNAME. A compression pointer cannot legitimately appear in a
+	// question, so anything that is not a plain label ends the attempt.
+	size_t n = 12;
+	while(n < qlen && q[n] != 0)
+	{
+		if(q[n] > 63)
+			break;
+		n += 1u + q[n];
+	}
+	// RFC 1035 Sec. 4.1.2: the response's question mirrors the request's. Trust
+	// QDCOUNT for that, not the byte layout - a QDCOUNT=0 message (an EDNS-only
+	// probe, or a DSO request whose OPCODE we now preserve) would otherwise have
+	// bytes from its OPT echoed back as a fabricated question.
+	const bool has_qd = ((q[4] << 8) | q[5]) == 1;
+	// RFC 1035 Sec. 2.3.4 caps a name at 255 octets. Mirroring a longer one would
+	// emit an illegal question, and make each refusal copy up to 64 KiB about
+	// while we are already shedding load.
+	const bool have_q = has_qd && n < qlen && q[n] == 0 && n + 5 <= qlen &&
+	                    n - 11 <= 255;
+	const size_t len = have_q ? n + 5 : 12;
+	if(len > outcap)
+		return -1;
+
+	memmove(out, q, len); // may be called in place (out == q)
+	// RFC 1035 Sec. 4.1.1: OPCODE is copied into the response; RFC 4035 Sec. 3.2.2
+	// does the same for CD. AA and TC are ours to clear.
+	out[2] = 0x80 | (q[2] & 0x79);          // QR=1, OPCODE and RD from the query
+	out[3] = 0x80 | (q[3] & 0x10) | 0x02;   // RA=1, CD from the query, RCODE=SERVFAIL
+	out[4] = 0; out[5] = have_q ? 1 : 0;
+	out[6] = 0; out[7] = 0;         // ANCOUNT
+	out[8] = 0; out[9] = 0;         // NSCOUNT
+	out[10] = 0; out[11] = 0;       // ARCOUNT
+	return (ssize_t)len;
+}
+
+// Answer the query kept in c->abuf with SERVFAIL and arm the write, leaving the
+// connection up. Returns 1 to keep driving, or -1 if the reply cannot be built.
+static int conn_answer_servfail(struct dot_conn *c)
+{
+	c->upfd = -1; // clear the sentinel dotdoh_loopback_take() left behind
+	// Sample the query's EDNS state before dot_servfail() overwrites the buffer
+	// it sits in.
+	bool query_do = false;
+	const bool query_edns = edns_query_opt(c->abuf, c->qsave, &query_do);
+
+	ssize_t slen = dot_servfail(c->abuf, c->qsave, c->abuf, ABUF_SZ);
+	if(slen < 0)
+		return -1;
+	// RFC 6891 Sec. 6.1.1: answer an EDNS query with an OPT, whether or not it
+	// padded - replying without one marks us EDNS-lame. RFC 8467 Sec. 4: only
+	// pad when it asked, as the resolved answer does, or the refusal leaks the
+	// query length the client paid to hide. The synthesised OPT copies the
+	// query's DO bit (RFC 3225 Sec. 3).
+	if(query_edns)
+		slen = (ssize_t)edns_pad_response_synth(c->abuf, (size_t)slen, ABUF_SZ,
+		                                        query_do, c->client_padded);
+	const ssize_t flen = dot_frame(c->abuf, (size_t)slen, c->wbuf, WBUF_SZ);
+	if(flen < 0)
+		return -1;
+	c->wlen = (size_t)flen;
+	c->woff = 0;
+	c->alen = 0; c->agot = 0; c->up_lengot = 0;
+	c->up_reused = false;
+	c->up_idle = false;
+	c->st = DS_WRITE;
+	return 1;
+}
+
 // Open a non-blocking loopback socket to dnsmasq's own DNS listener and begin
-// connecting. Returns 0 and sets c->upfd + the wait state, or -1 on failure.
+// connecting. Returns 0 and sets c->upfd + the wait state; -2 when the shared
+// concurrency limit refuses the query, which the caller answers with SERVFAIL
+// rather than dropping the connection; -1 on failure.
 static int conn_start_resolve(struct dot_conn *c)
 {
+	// Prefer a pooled loopback socket: a client that opens a fresh DoT
+	// connection per query would otherwise fork a dnsmasq child per query, and a
+	// burst of those exhausts dnsmasq's child slots - after which queries are
+	// read but never answered.
+	c->upfd = dotdoh_loopback_take();
+	if(c->upfd >= 0)
+	{
+		c->up_reused = true;
+		c->st = DS_UP_WRITE;
+		return 0;
+	}
+	if(c->upfd == -2)
+	{
+		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s refused, concurrency limit reached",
+		          c->client);
+		return -2; // distinct from -1: answer this query, keep the connection
+	}
 	c->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(c->upfd < 0)
+	{
+		dotdoh_loopback_drop(-1);
 		return -1;
+	}
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;
@@ -352,13 +464,16 @@ static int conn_start_resolve(struct dot_conn *c)
 // (advanced, keep driving), 0 (reconnect in flight, yield), -1 (give up).
 static int conn_retry_upstream(struct dot_conn *c)
 {
-	close(c->upfd);
+	dotdoh_loopback_drop(c->upfd);
 	c->upfd = -1;
 	c->up_reused = false;
 	c->up_retried = true;
 	c->woff = 0;                     // resend the framed query from the start
 	c->alen = 0; c->agot = 0; c->up_lengot = 0;
-	if(conn_start_resolve(c) != 0)   // sets DS_UP_WRITE or DS_UP_CONNECT
+	const int rs = conn_start_resolve(c);   // sets DS_UP_WRITE or DS_UP_CONNECT
+	if(rs == -2)
+		return conn_answer_servfail(c); // the slot went elsewhere while we retried
+	if(rs != 0)
 		return -1;
 	return c->st == DS_UP_CONNECT ? 0 : 1;
 }
@@ -398,13 +513,30 @@ static int drive_read(struct dot_conn *c)
 	// the memmove below drops the consumed bytes, and stays intact for any
 	// pipelined query queued behind this one.
 	c->client_padded = edns_has_padding_option(c->rbuf + off, (size_t)qlen);
+
+	// Keep the query itself before anything can fail: whenever we cannot resolve
+	// it - refused below, or unattributable here - we answer it rather than
+	// dropping the connection, and the deframe further down discards it.
+	c->qsave = (size_t)qlen < ABUF_SZ ? (size_t)qlen : ABUF_SZ;
+	memcpy(c->abuf, c->rbuf + off, c->qsave);
+
 	const ssize_t flen = dotdoh_prepare_query(c->rbuf + off, (size_t)qlen, c->client,
 	                                          c->dest[0] != '\0' ? c->dest : NULL,
 	                                          c->wbuf, WBUF_SZ);
 	if(flen < 0)
-		return -1;
+	{
+		// Attribution failed - an OPT we cannot safely rewrite, or no room for the
+		// client option. That is this one query's problem, not the session's.
+		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s could not be attributed, answering SERVFAIL",
+		          c->client);
+		const size_t consumed_bad = off + (size_t)qlen;
+		memmove(c->rbuf, c->rbuf + consumed_bad, c->have - consumed_bad);
+		c->have -= consumed_bad;
+		return conn_answer_servfail(c);
+	}
 	c->wlen = (size_t)flen;
 	c->woff = 0;
+
 	const size_t consumed = off + (size_t)qlen;
 	memmove(c->rbuf, c->rbuf + consumed, c->have - consumed);
 	c->have -= consumed;
@@ -421,7 +553,15 @@ static int drive_read(struct dot_conn *c)
 		return 1;
 	}
 	c->up_reused = false;
-	if(conn_start_resolve(c) != 0)
+	const int rs = conn_start_resolve(c);
+	if(rs == -2)
+	{
+		// At the concurrency limit. Answer SERVFAIL so the client backs off and
+		// keeps its session; tearing the connection down would cost it a fresh
+		// TLS handshake exactly when we are already overloaded.
+		return conn_answer_servfail(c);
+	}
+	if(rs != 0)
 		return -1;
 	// If the non-blocking connect is still in flight it set DS_UP_CONNECT and a
 	// POLLOUT wait; yield so the SO_ERROR check runs only once the socket is
@@ -436,6 +576,14 @@ static int drive_read(struct dot_conn *c)
 // reused connection means dnsmasq closed a kept-alive child; reconnect once.
 static int drive_up_write(struct dot_conn *c)
 {
+	// The socket stops being poolable the moment we start writing, not once the
+	// write finishes: a short write yields with the frame half sent, and a
+	// teardown in that window (either deadline sweep, or shutdown) would
+	// otherwise pool a socket carrying a partial query. dnsmasq is then blocked
+	// waiting for the rest, so nothing is readable and the checkout probe cannot
+	// tell the socket is unusable.
+	c->up_idle = false;
+
 	while(c->woff < c->wlen)
 	{
 		const ssize_t w = write(c->upfd, c->wbuf + c->woff, c->wlen - c->woff);
@@ -488,7 +636,27 @@ static int drive_up_read(struct dot_conn *c)
 		return -1;
 	}
 	// Answer complete. Keep the loopback socket open so the next keep-alive query
-	// reuses it instead of forking a fresh dnsmasq child.
+	// reuses it instead of forking a fresh dnsmasq child - and it is now back at
+	// a message boundary, so conn_free() may return it to the shared pool.
+	c->up_idle = true;
+
+	// Hand the loopback socket back now that the exchange is complete, rather
+	// than holding it until the connection closes. It stays warm in the pool for
+	// whoever needs it next - including this connection's next query - but an
+	// idle keep-alive client no longer occupies one of the shared admission
+	// slots, which would otherwise let a handful of idle DoT connections starve
+	// DoQ and DoH.
+	if(c->upfd >= 0)
+	{
+		dotdoh_loopback_give(c->upfd);
+		c->upfd = -1;
+		// Clear the boundary flag with the fd it described: the next query takes a
+		// fresh socket, and leaving it set would let conn_free() pool that one
+		// while it is still connecting.
+		c->up_idle = false;
+		c->up_reused = false;
+		c->up_retried = false;
+	}
 
 	// RFC 8467 Sec. 4: pad the answer only if the query asked for it.
 	if(c->client_padded)
@@ -841,10 +1009,21 @@ void *dotdoh_dot_thread(void *val)
 
 #else // !HAVE_TLS
 
+// Without TLS there is no DoT listener. dns.dot still starts this thread, which
+// returns immediately, so the setting is inert rather than fatal. The stub is a
+// const-folding candidate, so silence the GCC-only -Wsuggest-attribute
+// suggestion that -Werror would otherwise turn into a build failure.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
 void *dotdoh_dot_thread(void *val)
 {
 	(void)val;
 	return NULL;
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif // HAVE_TLS
