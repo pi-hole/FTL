@@ -1009,8 +1009,16 @@ bool export_queries_to_disk(const bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
-	// End transaction
-	SQL_bool(memdb, "END");
+	// End transaction. A bare SQL_bool() would return with the transaction
+	// still open on the shared in-memory connection, which every later
+	// caller inherits
+	if((rc = dbquery(memdb, "END")) != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): Cannot end transaction: %s",
+		        sqlite3_errstr(rc));
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
 		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
@@ -2199,12 +2207,11 @@ bool queries_to_database(void)
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
 
-	// If phase 1 encountered an error, skip phase 2 but still clean up
+	// If phase 1 encountered an error, skip phase 2. Everything it
+	// snapshotted had its changed flag cleared, so this goes out through
+	// the same restore as the transaction failures below
 	if(phase1_error)
-	{
-		free(snaps);
-		return false;
-	}
+		goto fail;
 
 	// ===================================================================
 	// PHASE 2: Without SHM lock — bind and step query_stmt for each
@@ -2274,6 +2281,21 @@ bool queries_to_database(void)
 	// ===================================================================
 	lock_shm();
 
+	// A step error in phase 2 left the rest of the snapshot uncommitted, so
+	// those queries get their changed flag back and are written next time
+	if(succeeded < snap_count)
+	{
+		for(unsigned int i = succeeded; i < snap_count; i++)
+		{
+			queriesData *query = getQuery(snaps[i].queryID, true);
+			if(query != NULL)
+				query->flags.database.changed = true;
+		}
+
+		log_err("Could not store %u queries, they are queued for the next run",
+		        snap_count - succeeded);
+	}
+
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
 	for(unsigned int i = 0; i < succeeded; i++)
@@ -2330,11 +2352,32 @@ bool queries_to_database(void)
 rollback_unlock_fail:
 	dbquery(memdb, "ROLLBACK");
 unlock_fail:
+	// Nothing was committed. Phase 1 cleared the changed flag under the
+	// lock, and only dnsmasq_interface.c ever sets it again, when the query
+	// itself changes, so without putting it back these queries are skipped
+	// by every later run and reach neither database. The lock is still ours
+	// here
+	for(unsigned int i = 0; i < snap_count; i++)
+	{
+		queriesData *query = getQuery(snaps[i].queryID, true);
+		if(query != NULL)
+			query->flags.database.changed = true;
+	}
 	unlock_shm();
-	goto fail;
+	goto fail_free;
 rollback_fail:
 	dbquery(memdb, "ROLLBACK");
 fail:
+	// Same restore as above, but phase 2 runs without the lock
+	lock_shm();
+	for(unsigned int i = 0; i < snap_count; i++)
+	{
+		queriesData *query = getQuery(snaps[i].queryID, true);
+		if(query != NULL)
+			query->flags.database.changed = true;
+	}
+	unlock_shm();
+fail_free:
 	free(snaps);
 	return false;
 }
