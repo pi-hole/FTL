@@ -433,7 +433,7 @@ void initConfig(struct config *conf)
 	conf->dns.EDNS0ECS.c = validate_stub; // Only type-based checking
 
 	conf->dns.ignoreLocalhost.k = "dns.ignoreLocalhost";
-	conf->dns.ignoreLocalhost.h = "Should FTL hide queries made by localhost?";
+	conf->dns.ignoreLocalhost.h = "Should FTL hide queries made by localhost? Such queries are analyzed and filtered like any other query, they are only left out of the statistics, the query log and the long-term database.";
 	conf->dns.ignoreLocalhost.t = CONF_BOOL;
 	conf->dns.ignoreLocalhost.d.b = false;
 	conf->dns.ignoreLocalhost.c = validate_stub; // Only type-based checking

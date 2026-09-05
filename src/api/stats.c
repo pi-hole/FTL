@@ -164,7 +164,7 @@ int api_stats_summary(struct ftl_conn *api)
 	const int blocked = get_blocked_count();
 	const int forwarded = get_forwarded_count();
 	const int cached = get_cached_count();
-	const int total = counters->queries;
+	const int total = get_visible_query_count();
 	const int num_gravity = counters->database.gravity;
 	const int num_clients = counters->clients;
 	const int num_domains = counters->domains;
@@ -254,7 +254,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	lock_shm();
 
 	const unsigned int domains = counters->domains;
-	const unsigned int total_queries = counters->queries;
+	const unsigned int total_queries = get_visible_query_count();
 	const unsigned int blocked_count = get_blocked_count();
 
 	// Heap-based top-K selection: allocate only for the top entries
@@ -444,7 +444,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	lock_shm();
 
 	const unsigned int clients = counters->clients;
-	const int total_queries = counters->queries;
+	const int total_queries = get_visible_query_count();
 	const int blocked_count = get_blocked_count();
 
 	// Heap-based top-K selection: allocate only for the top entries
@@ -639,7 +639,7 @@ cJSON *get_top_upstreams(struct ftl_conn *api, const bool upstreams_only)
 {
 	const int upstreams = counters->upstreams;
 	const int forwarded_count = get_forwarded_count();
-	const int total_queries = counters->queries;
+	const int total_queries = get_visible_query_count();
 	struct top_entries *top_upstreams = calloc(upstreams, sizeof(struct top_entries));
 	if(top_upstreams == NULL)
 	{
@@ -850,7 +850,7 @@ int api_stats_recentblocked(struct ftl_conn *api)
 	for(int queryID = counters->queries - 1; queryID >= 0 ; queryID--)
 	{
 		const queriesData *query = getQuery(queryID, true);
-		if(query == NULL)
+		if(query == NULL || query->flags.hidden)
 			continue;
 
 		if(query->flags.blocked)

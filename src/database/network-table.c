@@ -1380,7 +1380,7 @@ void parse_neighbor_cache(sqlite3 *db)
 					//              is unknown (only DNS requesting clients
 					//              do this), the now value is ignored
 					lock_shm();
-					int clientID = findClientID(ip, false, false, 0.0);
+					int clientID = findClientID(ip, false, false, 0.0, false);
 					unlock_shm();
 					if(clientID >= 0 && clientID < clients)
 						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
@@ -1417,7 +1417,7 @@ void parse_neighbor_cache(sqlite3 *db)
 			//              is unknown (only DNS requesting clients
 			//              do this), the now value is ignored
 			lock_shm();
-			const int clientID = findClientID(ip, false, false, 0.0);
+			const int clientID = findClientID(ip, false, false, 0.0, false);
 
 			// Set default values for a new device, may be updated
 			// below if the client is known to pihole-FTL

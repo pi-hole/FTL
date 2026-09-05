@@ -171,6 +171,11 @@ int findQueryID(const int id)
 		}
 	}
 
+	// Nothing to scan - probing the array anyway would read an empty slot
+	// and log a spurious magic byte error
+	if(counters->queries == 0)
+		return -1;
+
 	// Fallback: reverse linear scan up to MAXITER queries
 	const unsigned int until = counters->queries > MAXITER ? counters->queries - MAXITER : 0;
 	const unsigned int start = counters->queries > 0 ? counters->queries - 1 : 0;
@@ -285,7 +290,7 @@ static bool cmp_domain(const struct lookup_table *entry, const struct lookup_dat
 	return strcmp(getstr(domain->domainpos), lookup_data->domain) == 0;
 }
 
-int _findDomainID(const char *domainString, const bool count, int line, const char *func, const char *file)
+int _findDomainID(const char *domainString, const bool count, const bool hidden, int line, const char *func, const char *file)
 {
 	// Get domain hash
 	const uint32_t hash = hashStr(domainString);
@@ -303,7 +308,7 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 			return -1;
 
 		// Add one if count == true (do not add one, e.g., during CNAME inspection)
-		if(count) domain->count++;
+		if(count) { if(hidden) domain->hiddencount++; else domain->count++; }
 		return domainID;
 	}
 
@@ -332,7 +337,8 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	domain->id = domainID;
 	// Set its counter to 1 only if this domain is to be counted
 	// Domains only encountered during CNAME inspection are NOT counted here
-	domain->count = count ? 1 : 0;
+	domain->count = count && !hidden ? 1 : 0;
+	domain->hiddencount = count && hidden ? 1 : 0;
 	// Set blocked counter to zero
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
@@ -371,7 +377,7 @@ static bool cmp_client(const struct lookup_table *entry, const struct lookup_dat
 }
 
 int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
-                  const double now, int line, const char *func, const char *file)
+                  const double now, const bool hidden, int line, const char *func, const char *file)
 {
 	// Get client hash
 	const uint32_t hash = hashStr(clientIP);
@@ -389,7 +395,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 			return -1;
 
 		// Add one if count == true (do not add one, e.g., during ARP table processing)
-		if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0);
+		if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0, hidden);
 		return clientID;
 	}
 
@@ -418,7 +424,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Set magic byte
 	client->magic = MAGICBYTE;
 	// Set its counter to 1
-	client->count = (count && !aliasclient)? 1 : 0;
+	client->count = (count && !aliasclient && !hidden) ? 1 : 0;
+	client->hiddencount = (count && !aliasclient && hidden) ? 1 : 0;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -490,10 +497,18 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
  * @param overTimeIdx The index of the overtime slot to update. Must be between
  * 0 and OVERTIME_SLOTS - 1 or -1 to skip updating the overtime data.
  * @param overTimeMod The amount to add to the specified overtime slot.
+ * @param hidden Book the change on the client's hidden counter instead. Hidden
+ * queries are no statistic, so they never touch overTime data either.
  */
 void change_clientcount(clientsData *client, const int total, const int blocked,
-                        const int overTimeIdx, const int overTimeMod)
+                        const int overTimeIdx, const int overTimeMod, const bool hidden)
 {
+		if(hidden)
+		{
+			client->hiddencount += total;
+			return;
+		}
+
 		client->count += total;
 		client->blockedcount += blocked;
 		if(overTimeIdx > -1 && (unsigned int)overTimeIdx < OVERTIME_SLOTS)
@@ -1173,6 +1188,13 @@ const char * __attribute__ ((pure)) get_permitted_statuslist(void)
 	return permitted_list;
 }
 
+// counters->queries is the length of the query array, so it also counts the
+// queries hidden by dns.ignoreLocalhost. Those are no statistic.
+unsigned int __attribute__ ((pure)) get_visible_query_count(void)
+{
+	return counters->queries - counters->hidden_queries;
+}
+
 unsigned int __attribute__ ((pure)) get_blocked_count(void)
 {
 	int blocked = 0;
@@ -1363,6 +1385,15 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 				}
 			}
 		}
+	}
+
+	// Hidden queries stop here: the DNS cache above is a blocking decision
+	// cache and has to stay up to date, but the query itself is not recorded
+	// anywhere and must not move any counter
+	if(query->flags.hidden)
+	{
+		query->status = new_status;
+		return;
 	}
 
 	// else: update global counters, ...
