@@ -49,6 +49,17 @@ void _set_event(const enum events event, int line, const char *function, const c
 	}
 }
 
+// Raise an event from a signal handler
+// SIGRT_handler() already states that nothing async-signal-unsafe may run in
+// it, but set_event() reaches log_debug() and from there _FTL_log(), which
+// formats with printf and can take the SHM lock. Neither is allowed to happen
+// with a signal interrupting arbitrary code, so the signal path gets the
+// exchange on its own: the event is logged where it is processed anyway
+void set_event_from_signal(const enum events event)
+{
+	atomic_exchange(&eventqueue[event], true);
+}
+
 // Get and clear event
 // Reading and clearing happen in one exchange, so there is no window in which
 // the queue holds a value neither side owns. This used to be an atomic_flag,
