@@ -357,17 +357,6 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
-// Validate file path (dash allowed), used by files.log.dnsmasq
-bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	// Dash is allowed, this enabled printing to stderr
-	if(strlen(val->s) == 1 && val->s[0] == '-')
-		return true;
-
-	// else:
-	return validate_filepath(val, key, err);
-}
-
 // Validate the web server log file path. In addition to the regular file-path
 // checks, reject a path inside webserver.paths.webroot: a log file served from
 // the web server's document root can be read - and, if the path matches the

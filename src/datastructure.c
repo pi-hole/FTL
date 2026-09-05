@@ -1523,6 +1523,31 @@ int __attribute__ ((pure)) get_listeningMode_val(const char *listeningMode)
 	return -1;
 }
 
+const char * __attribute__ ((const)) get_log_destination_str(const enum log_destination dest)
+{
+	switch(dest)
+	{
+		case LOG_DEST_FILE:
+			return "FILE";
+		case LOG_DEST_JSON:
+			return "JSON";
+		case LOG_DEST_MAX:
+		default:
+			return NULL;
+	}
+}
+
+int __attribute__ ((pure)) get_log_destination_val(const char *dest)
+{
+	if(strcasecmp(dest, "FILE") == 0)
+		return LOG_DEST_FILE;
+	else if(strcasecmp(dest, "JSON") == 0)
+		return LOG_DEST_JSON;
+
+	// Invalid value
+	return -1;
+}
+
 const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp_unit)
 {
 	switch(temp_unit)

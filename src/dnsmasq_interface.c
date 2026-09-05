@@ -3739,6 +3739,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL log file
 			chown_pihole(config.files.log.ftl.v.s, ent_pw);
 
+			// Configured webserver log file
+			if(config.files.log.webserver.v.s != NULL)
+				chown_pihole(config.files.log.webserver.v.s, ent_pw);
+
+			// Configured dnsmasq log file (pihole.log)
+			if(config.files.log.dnsmasq.v.s != NULL)
+				chown_pihole(config.files.log.dnsmasq.v.s, ent_pw);
+
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
@@ -4236,18 +4244,42 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
+	// dnsmasq has no FTL debug flags, so its LOG_DEBUG is a plain "DEBUG"
+	// rather than the DEBUG_ANY catch-all priostr() maps to
+	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
+
 	// Lock SHM
 	lock_shm();
 
-	// Add to FIFO buffer. dnsmasq has no FTL debug flags, so its LOG_DEBUG is
-	// a plain "DEBUG" rather than the DEBUG_ANY catch-all priostr() maps to
-	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
+	// Add to FIFO buffer
 	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
 
 	// Unlock SHM
 	unlock_shm();
+
+	// Route to JSON output
+	if(config.files.log.destination.v.log_destination == LOG_DEST_JSON && !daemonmode)
+	{
+		char idstr[42];
+		get_idstr(idstr, sizeof(idstr));
+
+		write_json_log(time(NULL), prio, "dnsmasq", idstr, payload);
+	}
+
+	// Write to pihole.log via shared writer (FTL owns this file now).
+	// If pihole.log is unavailable, fall back to syslog for warnings and
+	// errors so they are not silently lost for the lifetime of the process.
+	if(config.files.log.destination.v.log_destination == LOG_DEST_FILE)
+	{
+		if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
+			syslog(priority, "%s", payload);
+	}
+
+	/* Pi-hole diagnosis system */
+	if(priority == LOG_WARNING)
+		dnsmasq_diagnosis_warning(payload);
 }
 
 static const char *check_dnsmasq_name(const char *name)
