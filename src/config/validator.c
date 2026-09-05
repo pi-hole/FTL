@@ -659,6 +659,17 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 	return true;
 }
 
+bool validate_restart_delay(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui > 60)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than 60", key);
+		return false;
+	}
+
+	return true;
+}
+
 // Sanitize the dns.hosts array
 // This function normalizes whitespace formatting in the dns.hosts entries
 // to ensure consistent formatting when saving to pihole.toml

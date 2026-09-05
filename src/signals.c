@@ -1524,6 +1524,84 @@ void restart_ftl(const char *reason)
 	kill(main_pid(), SIGTERM);
 }
 
+// Restart requested by a configuration change, not yet carried out. Written by
+// the webserver worker threads, read by the housekeeping thread, hence the lock.
+// The timestamps are monotonic milliseconds: seconds are too coarse to tell a
+// change that arrived just now from one a full delay ago, and a wall clock can
+// step (we restart on system time updates ourselves) which would either fire
+// the restart at once or defer it until the clock catches up again.
+static pthread_mutex_t restart_lock = PTHREAD_MUTEX_INITIALIZER;
+static int64_t restart_first_request = 0, restart_last_request = 0;
+static const char *restart_reason = NULL;
+
+// Monotonic milliseconds, or -1 if the clock cannot be read
+static int64_t restart_monotonic_msec(void)
+{
+	struct timespec now;
+	if(clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+		return -1;
+
+	return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+}
+
+// Ask for a restart once the configuration has settled. Clients writing many
+// settings one after another do not know which of their requests is the last
+// one, so we collect everything arriving within misc.restart_delay seconds and
+// tear the resolver down once instead of per request.
+void request_restart(const char *reason)
+{
+	const int64_t now = restart_monotonic_msec();
+	if(config.misc.restart_delay.v.ui == 0 || now < 0)
+	{
+		// Collecting is either disabled or impossible without a clock we
+		// can trust, so fall back to restarting right away
+		restart_ftl(reason);
+		return;
+	}
+
+	pthread_mutex_lock(&restart_lock);
+	restart_last_request = now;
+	if(restart_first_request == 0)
+	{
+		restart_first_request = now;
+		restart_reason = reason;
+	}
+	pthread_mutex_unlock(&restart_lock);
+
+	log_debug(DEBUG_CONFIG, "Restart requested (%s), waiting %u seconds for further changes",
+	          reason, config.misc.restart_delay.v.ui);
+}
+
+// Carry out a delayed restart once the requests have stopped coming in, or
+// after five times the delay so that a client writing continuously cannot
+// postpone the restart forever. Called once a second from the housekeeping
+// thread, so the wait is rounded up to the next full check.
+void check_pending_restart(void)
+{
+	const int64_t delay = (int64_t)config.misc.restart_delay.v.ui * 1000;
+	const char *reason = NULL;
+
+	pthread_mutex_lock(&restart_lock);
+	if(restart_first_request > 0)
+	{
+		const int64_t now = restart_monotonic_msec();
+		// Without a readable clock we cannot tell when the wait is over,
+		// so carry the restart out rather than defer it indefinitely
+		if(now < 0 ||
+		   now - restart_last_request >= delay ||
+		   now - restart_first_request >= 5 * delay)
+		{
+			reason = restart_reason;
+			restart_first_request = restart_last_request = 0;
+			restart_reason = NULL;
+		}
+	}
+	pthread_mutex_unlock(&restart_lock);
+
+	if(reason != NULL)
+		restart_ftl(reason);
+}
+
 /**
  * @brief Checks if the current process is being debugged.
  *

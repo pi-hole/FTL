@@ -513,11 +513,13 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 			if(new_hash != NULL)
 			{
 				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+				lock_config();
 				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
 					free(config.webserver.api.pwhash.v.s);
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
 				writeFTLtoml(true, NULL);
+				unlock_config();
 			}
 
 			// Successful logins do not count against rate-limiting

@@ -35,7 +35,7 @@
 #include "config/env.h"
 // sha256sum()
 #include "files.h"
-// restart_ftl()
+// request_restart()
 #include "signals.h"
 
 // Global variables
@@ -43,9 +43,54 @@ struct config config = { 0 };
 static bool config_initialized = false;
 uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
+// Serializes config modifications against each other. duplicate_config() and
+// replace_config() each take the SHM lock only for themselves, so two writers
+// can both snapshot the config, both change their own copy and both install it
+// - whichever installs last silently drops the other's change. The same lock
+// also keeps the write-back (pihole.toml rotation, dnsmasq test file, HOSTS
+// file) of two writers from interleaving.
+// It is recursive because a config change can nest: setting webserver.api.password
+// runs the legacy password upgrade, which writes the config out on its own.
+static pthread_mutex_t config_write_lock;
+
 // Private prototypes
 static bool port_in_use(const in_port_t port);
 static void reset_config_default(struct conf_item *conf_item);
+
+void init_config_lock(void)
+{
+	pthread_mutexattr_t lock_attr;
+	pthread_mutexattr_init(&lock_attr);
+	pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&config_write_lock, &lock_attr);
+	pthread_mutexattr_destroy(&lock_attr);
+}
+
+// Lock ordering: this lock is always taken before the SHM lock, never the
+// other way round
+void lock_config(void)
+{
+	const int ret = pthread_mutex_lock(&config_write_lock);
+	if(ret != 0)
+	{
+		log_err("Error when obtaining config lock: %s", strerror(ret));
+		return;
+	}
+
+	log_debug(DEBUG_LOCKS, "Obtained config write lock");
+}
+
+void unlock_config(void)
+{
+	const int ret = pthread_mutex_unlock(&config_write_lock);
+	if(ret != 0)
+	{
+		log_err("Error when releasing config lock: %s", strerror(ret));
+		return;
+	}
+
+	log_debug(DEBUG_LOCKS, "Released config write lock");
+}
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -1420,6 +1465,13 @@ void initConfig(struct config *conf)
 	conf->misc.delay_startup.d.ui = 0;
 	conf->misc.delay_startup.c = validate_stub; // Only type-based checking
 
+	conf->misc.restart_delay.k = "misc.restart_delay";
+	conf->misc.restart_delay.h = "Some configuration changes can only be applied by restarting the DNS resolver. When a client changes many settings one after another, restarting on each of them takes the resolver down repeatedly. With this setting, FTL waits the given number of seconds and applies everything arriving in the meantime in a single restart.\n\n This setting takes any integer value between 0 and 60 seconds, where 0 restarts immediately. Each further change extends the wait, but a restart is postponed by no more than five times this value (hard-coded). The wait is checked once a second, so the actual delay is rounded up accordingly. Deliberate one-off actions such as a Teleporter import or an explicit restart request are never delayed.";
+	conf->misc.restart_delay.a = cJSON_CreateStringReference("A positive integer value between 0 and 60");
+	conf->misc.restart_delay.t = CONF_UINT;
+	conf->misc.restart_delay.d.ui = 1;
+	conf->misc.restart_delay.c = validate_restart_delay;
+
 	conf->misc.nice.k = "misc.nice";
 	conf->misc.nice.h = "Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting a value of -999. The nice value is an attribute that can be used to influence the CPU scheduler to favor or disfavor a process in scheduling decisions.\n\n The range of the nice value varies across UNIX systems. On modern Linux, the range is -20 (high priority = not very nice to other processes) to +19 (low priority).";
 	conf->misc.nice.a = cJSON_CreateStringReference("A signed integer value between -20 and 19, or -999 to disable niceness");
@@ -2032,8 +2084,15 @@ void set_blockingstatus(bool enabled)
 	if(dnsmasq_failed)
 		return;
 
+	// Reached from the API worker threads and from the timer thread, so it
+	// needs the same lock as any other config change: without it the flip
+	// lands in the live config while another writer already holds a copy of
+	// it, and that writer's replace_config() drops it again
+	lock_config();
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true, NULL);
+	unlock_config();
+
 	raise(SIGHUP);
 }
 
@@ -2102,12 +2161,17 @@ void replace_config(struct config *newconf)
 
 void reread_config(void)
 {
+	// Serialize against API config changes: the file we are about to read
+	// is only authoritative as long as no other thread is in the middle of
+	// changing the config in memory and writing it back
+	lock_config();
 
 	// Create checksum of config file
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!sha256sum(GLOBALTOMLPATH, checksum, false))
 	{
 		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2115,6 +2179,7 @@ void reread_config(void)
 	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
 	{
 		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2168,9 +2233,11 @@ void reread_config(void)
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
 
-	// If we need to restart FTL, we do so now
+	unlock_config();
+
+	// One event arrives per written setting, so collect these like API changes
 	if(restart)
-		restart_ftl("pihole.toml change");
+		request_restart("pihole.toml change");
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to
