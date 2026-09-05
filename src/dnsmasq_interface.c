@@ -176,6 +176,23 @@ static uint64_t ftl_cache_misses = 0;
 #define PERF_STAT_CDB_REGEX      10 // in_regex(REGEX_DENY)
 #define PERF_STAT_COUNT          11
 
+// How long to wait before retrying a MAC lookup that came back empty. Long
+// enough that a busy client costs one netlink round trip a minute instead of
+// one per query, short enough that a genuinely late ARP entry is still picked
+// up quickly.
+#define MAC_LOOKUP_BACKOFF 60
+
+// Monotonic seconds for the backoff deadline. A wall-clock stamp would let an
+// NTP or admin clock step suppress MAC lookups for the size of the step (or
+// expire them early), which is why the encrypted-DNS listeners use the same
+// clock for their deadlines.
+static inline uint32_t mac_lookup_now(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint32_t)ts.tv_sec;
+}
+
 static struct {
 	uint64_t calls;    // number of invocations
 	uint64_t total_us; // cumulative microseconds
@@ -1226,7 +1243,20 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Don't do this for internally generated queries (e.g., DNSSEC), if the
 	// MAC address is already known or if the netlink socket is not available
 	// (e.g., when retrying a query using TCP after UDP truncation)
-	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
+	//
+	// A client that has no ARP entry never gets one from this lookup, and the
+	// unresolved hwlen then re-triggers it on every single query. Measured on a
+	// loopback client: find_mac() itself costs ~67 us and, because the SHM lock
+	// is dropped around it, re-acquiring the lock costs a further ~108 us - some
+	// 27% of FTL's per-query work, spent re-learning that the answer is still no.
+	// Back off after a miss instead; a MAC that appears later is picked up on the
+	// next attempt.
+	// A loopback client is a special case of the same waste: 127.0.0.0/8 and ::1
+	// never appear in the neighbour table at all, so unlike a client that might
+	// gain an ARP entry later there is nothing to come back for. Skip it outright
+	// rather than retrying once per backoff interval forever.
+	if(!internal_query && !mysockaddr_is_loopback(addr) && client->hwlen < 1 &&
+	   daemon->netlinkfd > 0 && mac_lookup_now() >= client->hwaddr_next_try)
 	{
 		// find_mac() may trigger a netlink kernel call
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
@@ -1251,6 +1281,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				client->flags.found_group = false;
 			memcpy(client->hwaddr, hwaddr, sizeof(hwaddr));
 			client->hwlen = hwlen;
+			// Nothing found: do not ask again for a while.
+			if(hwlen < 1)
+				client->hwaddr_next_try = mac_lookup_now() + MAC_LOOKUP_BACKOFF;
 		}
 
 		// Re-fetch all SHM pointers as SHM may have been remapped

@@ -36,7 +36,8 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 17
+// 18: clientsData gained hwaddr_next_try (MAC-lookup backoff)
+#define SHARED_MEMORY_VERSION 18
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
