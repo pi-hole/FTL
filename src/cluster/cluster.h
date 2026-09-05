@@ -72,6 +72,25 @@ static inline bool cluster_waiting(const double deadline, const double now, cons
 // An address offered by another node that did not work is not tried again every
 // round - a peer moves back as easily as it moved away, so it is not for good
 #define CLUSTER_HINT_REARM 300.0
+// How long a node goes on standing down after the machine that shares its
+// identity stops answering. Clearing it the moment the twin goes quiet put both
+// of them back to serving DHCP and claiming the address after one missed poll -
+// the split brain the detection exists to prevent, brought on by a hiccup
+// between them rather than by anybody fixing anything. Long enough that no
+// interruption clears it, short enough that a twin somebody switched off does
+// not hold this node out of the cluster for the rest of the day
+#define CLUSTER_TWIN_MEMORY 300.0
+// How old a relayed fact may be and still decide anything. A relayed entry says
+// when the peer last reached the subject, and nothing bounded that: a member
+// polling on a long interval kept a node that had died most of an interval ago
+// in both elections, and the address stayed on nobody until it noticed.
+//
+// Three of the publishing node's own rounds, with this as the floor. Not the
+// reading node's interval - two readers then disagreed about the same fact and
+// a member near the boundary joined and left the elections round after round -
+// and not a constant on its own, which stopped the relay entirely on any
+// cluster polling slower than it, and `cluster.interval` goes to an hour
+#define CLUSTER_RELAY_MAX_AGE 120.0
 #define CLUSTER_PIN_REARM 3600.0
 
 // Two nodes deciding which change is newer need clocks that agree. This is how
@@ -93,6 +112,8 @@ struct cluster_peer {
 	char hint[CLUSTER_ADDRLEN];        // ...or where another node reached it, when we cannot resolve it
 	char hint_failed[CLUSTER_ADDRLEN]; // ...and one such address that did not work
 	double hint_rearm_at;              // ...which is tried again after a while, not never
+	char run[CLUSTER_HASHLEN];         // the token its running FTL made up, which no copied file carries
+	bool identity_shared;              // ...and whether it says another machine is using its identity
 	char pin[CLUSTER_PINLEN];          // what its certificate's public key hashes to
 	char pin_refused[CLUSTER_PINLEN];  // ...and one that turned out not to be served
 	unsigned int pin_failures;         // how often in a row, so a relay cannot latch it
@@ -151,6 +172,18 @@ struct cluster_peer {
 	bool dhcp_active;                // peer is currently serving DHCP
 	char leaseshash[CLUSTER_HASHLEN];// ...and what its DHCP lease file hashes to
 	bool sees_dhcp;                  // ...or can see a node that is
+	char sees_anchor_id[CLUSTER_HASHLEN]; // the lowest identity it sees serving that could hold the address too
+	// What the other members say about this one, for a round in which this
+	// node cannot poll it itself. Both elections rank on these, so a node with
+	// one broken polling direction otherwise ranks over a smaller cluster than
+	// everybody else and reaches a different answer - which is two DHCP servers
+	bool relayed_seen;                 // somebody who answers us still reaches it
+	char relayed_id[CLUSTER_HASHLEN];  // ...and the identity it answered with, which both elections rank on
+	bool relayed_failover;             // ...and says it runs DHCP failover
+	bool relayed_capable;              // ...and that it could serve DHCP
+	bool relayed_resolving;            // ...and that it answers DNS
+	bool relayed_vip_capable;          // ...and that it could hold the address
+	bool relayed_vip_held;             // ...and that it is holding it now
 	bool vip_held;                   // peer currently holds the virtual IP
 };
 
@@ -165,6 +198,9 @@ struct cluster_peer_status {
 	char branch[CLUSTER_STRLEN];
 	char error[CLUSTER_STRLEN];
 	char id[CLUSTER_HASHLEN];
+	char run[CLUSTER_HASHLEN];       // ...and the token its running FTL made up, so a
+	                                 // third node can tell one member listed twice from two
+	bool identity_shared;            // ...and whether it says another machine is using its identity
 	double clock_offset;
 	bool clock_agrees;
 	bool is_self;
@@ -214,6 +250,9 @@ struct cluster_state *cluster_state(void) __attribute__ ((const));
 // of the configuration under the lock, as the configuration is replaced by
 // other threads while we work with it
 void cluster_name(char buf[CLUSTER_STRLEN]);
+bool peer_answers(const struct cluster_peer *peer) __attribute__ ((pure));
+const char *peer_identity(const struct cluster_peer *peer) __attribute__ ((pure));
+bool peer_anchors(const struct cluster_peer *peer) __attribute__ ((pure));
 
 // The configured virtual IP address, copied out of the configuration under the
 // lock. Everything else works with the copy: the string itself is freed the
@@ -238,6 +277,10 @@ bool cluster_leave_now(char *errbuf, bool *peers_told);
 // Whether the cluster thread is actually there. `cluster.enabled` says what the
 // administrator asked for, this says what happened
 bool cluster_running(void);
+
+// Set when more than one member answers with this node's identity - two machines
+// carrying the same cluster.state. Read where a node decides whether to serve
+extern bool duplicate_identity;
 
 // Say that the lists of this node were last touched now, but only if this node
 // never knew. Called when somebody joins, so the cluster can hand them over

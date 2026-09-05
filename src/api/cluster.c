@@ -55,6 +55,13 @@ int api_cluster_status(struct ftl_conn *api)
 		JSON_COPY_STR_TO_OBJECT(item, "url", peer->url);
 		JSON_COPY_STR_TO_OBJECT(item, "name", peer->name);
 		JSON_COPY_STR_TO_OBJECT(item, "id", peer->id);
+		// Published per member as well as for this node: two members
+		// answering with one identity are one Pi-hole listed twice when
+		// they answer with the same token, and two machines when they do
+		// not - and a third node is where a pair that cannot poll each
+		// other is visible at all
+		JSON_COPY_STR_TO_OBJECT(item, "run", peer->run);
+		JSON_ADD_BOOL_TO_OBJECT(item, "identity_shared", peer->identity_shared);
 		JSON_COPY_STR_TO_OBJECT(item, "version", peer->version);
 		JSON_COPY_STR_TO_OBJECT(item, "branch", peer->branch);
 		JSON_ADD_BOOL_TO_OBJECT(item, "reachable", peer->reachable);
@@ -65,10 +72,16 @@ int api_cluster_status(struct ftl_conn *api)
 		JSON_COPY_STR_TO_OBJECT(item, "address", peer->address);
 		// Every node polls every other one, so reachability is not one
 		// list but a matrix. This is the row this member reports
+		// By address, not by identity. An identity is only ever learned from
+		// a successful poll and dropped after a few missed rounds, so a
+		// member this node has stopped reaching contributed an empty string
+		// here - which matched the empty identity of any other such member
+		// and drew a link between two nodes that cannot see each other, on
+		// the one page whose job is to show which links are down
 		cJSON *sees = JSON_NEW_ARRAY();
 		for(unsigned int k = 0; k < state.num_peers && k < CLUSTER_MAX_PEERS; k++)
 			if(peer->sees & (1U << k))
-				JSON_COPY_STR_TO_ARRAY(sees, state.peers[k].id);
+				JSON_COPY_STR_TO_ARRAY(sees, state.peers[k].url);
 		JSON_ADD_ITEM_TO_OBJECT(item, "sees", sees);
 		cJSON *clock = JSON_NEW_OBJECT();
 		JSON_ADD_BOOL_TO_OBJECT(clock, "agrees", peer->clock_agrees);
