@@ -17,5 +17,6 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_datum_t toml, const bool verbose, bool *restart,
                  const unsigned int version, const bool teleporter);
 bool getLogFilePathTOML(void);
+bool getLogDestinationTOML(void);
 
 #endif //TOML_READER_H

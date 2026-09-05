@@ -44,6 +44,11 @@
 #endif
 #endif
 
+#ifdef HAVE_LIBJOURNAL
+// journal_sendv(), LIBJOURNAL_VERSION_STRING
+#include <journal.h>
+#endif
+
 #include "FTL.h"
 #include "args.h"
 #include "version.h"
@@ -590,6 +595,147 @@ void parse_args(int argc, char *argv[])
 		}
 #else
 		printf("Error: FTL was compiled without TLS support. Certificate reading is not available.\n");
+		exit(EXIT_FAILURE);
+#endif
+	}
+
+	// Send fields to the systemd journal
+	if(argc > 1 && strcmp(argv[1], "journal-send") == 0)
+	{
+#ifdef HAVE_LIBJOURNAL
+		// Check if MESSAGE is provided as an argument
+		bool has_message = false;
+		for(int i = 2; i < argc; i++)
+		{
+			if(strncmp(argv[i], "MESSAGE=", 9) == 0)
+			{
+				has_message = true;
+				break;
+			}
+		}
+
+		// If MESSAGE is not provided, read it from stdin
+		char *stdin_message = NULL;
+		if(!has_message)
+		{
+			size_t buf_size = 0;
+			ssize_t len = getline(&stdin_message, &buf_size, stdin);
+			if(len > 0)
+			{
+				// Remove trailing newline
+				if(stdin_message[len - 1] == '\n')
+					stdin_message[len - 1] = '\0';
+			}
+			else
+			{
+				free(stdin_message);
+				stdin_message = NULL;
+			}
+		}
+
+		if(argc < 3 && stdin_message == NULL)
+		{
+			printf("Usage: %s journal-send FIELD=VALUE [FIELD=VALUE ...]\n", argv[0]);
+			printf("Example: %s journal-send MESSAGE=\"hello world\" PRIORITY=5\n", argv[0]);
+			printf("       echo \"hello\" | %s journal-send PRIORITY=5\n", argv[0]);
+			exit(EXIT_FAILURE);
+		}
+
+		// Valid fields: key must contain only printable ASCII (0x20-0x7E),
+		// must not be empty, and must not start with '_'.
+		for(int i = 2; i < argc; i++)
+		{
+			const char *eq = strchr(argv[i], '=');
+			if(eq == NULL || eq == argv[i])
+			{
+				printf("Error: Invalid field '%s'. Fields must be in KEY=VALUE format.\n", argv[i]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Key must not start with underscore
+			if(argv[i][0] == '_')
+			{
+				printf("Error: Field key in '%s' must not start with an underscore.\n", argv[i]);
+				exit(EXIT_FAILURE);
+			}
+
+			// Validate key: all characters must be printable ASCII (0x20-0x7E)
+			const char *key = argv[i];
+			for(const char *p = key; p < eq; p++)
+			{
+				const unsigned char c = *p;
+				if(c < 0x20 || c > 0x7E)
+				{
+					printf("Error: Field key in '%s' contains invalid character '%c'. "
+					       "Keys may only contain printable ASCII characters.\n",
+					       argv[i], c);
+					exit(EXIT_FAILURE);
+				}
+			}
+		}
+
+		// Connect to the journal socket
+		const int rc = journal_init();
+		if(rc < 0)
+		{
+			printf("Error: Cannot connect to systemd-journald: %s\n", strerror(-rc));
+			exit(EXIT_FAILURE);
+		}
+
+		// Build iovec array for journal_sendv()
+		// Each field must be in "KEY=value" format; journal_sendv() adds newlines
+		const int nfields = (argc - 2) + (stdin_message != NULL ? 1 : 0);
+		struct iovec *iov = malloc(nfields * sizeof(struct iovec));
+		if(iov == NULL)
+		{
+			printf("Error: Memory allocation failed.\n");
+			exit(EXIT_FAILURE);
+		}
+		int idx = 0;
+		for(int i = 2; i < argc; i++)
+		{
+			const char *arg = argv[i];
+			const size_t len = strlen(arg);
+			char *field = malloc(len);
+			if(field == NULL)
+			{
+				printf("Error: Memory allocation failed.\n");
+				exit(EXIT_FAILURE);
+			}
+			memcpy(field, arg, len);
+			iov[idx].iov_base = field;
+			iov[idx].iov_len = len;
+			idx++;
+		}
+
+		// Append MESSAGE from stdin if it was not provided as an argument
+		if(stdin_message != NULL)
+		{
+			const size_t msg_len = strlen(stdin_message);
+			const size_t field_len = 8 + msg_len; // "MESSAGE=" + content
+			char *field = malloc(field_len);
+			if(field == NULL)
+			{
+				printf("Error: Memory allocation failed.\n");
+				exit(EXIT_FAILURE);
+			}
+			memcpy(field, "MESSAGE=", 8);
+			memcpy(field + 8, stdin_message, msg_len);
+			iov[idx].iov_base = field;
+			iov[idx].iov_len = field_len;
+			free(stdin_message);
+		}
+
+		const int rc2 = journal_sendv(iov, nfields);
+		if(rc2 < 0)
+		{
+			printf("Error: Failed to send journal message: %s\n", strerror(-rc2));
+			exit(EXIT_FAILURE);
+		}
+
+		exit(EXIT_SUCCESS);
+#else
+		printf("Error: FTL was compiled without journal support. journal-send is not available.\n");
 		exit(EXIT_FAILURE);
 #endif
 	}
@@ -1188,6 +1334,12 @@ void parse_args(int argc, char *argv[])
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
 			printf("\n");
+#ifdef HAVE_LIBJOURNAL
+			printf("****************************** %s%slibjournal%s ********************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s%s%s\n", green, bold, LIBJOURNAL_VERSION_STRING, normal);
+			printf("\n");
+#endif
 			exit(EXIT_SUCCESS);
 		}
 
@@ -1416,6 +1568,15 @@ void parse_args(int argc, char *argv[])
 			printf("    memory footprint.\n\n");
 			printf("    Usage: %s%s sha256sum %sfile%s\n\n", green, argv[0], cyan, normal);
 
+			printf("%sJournal:%s\n", yellow, normal);
+			printf("    Send fields to the systemd journal (journald). Each argument\n");
+			printf("    must be in %sFIELD=VALUE%s format.\n\n", cyan, normal);
+			printf("    If no %sMESSAGE%s argument is provided, it is read from\n", cyan, normal);
+			printf("    stdin (one line, trailing newline stripped).\n\n");
+			printf("    Usage: %s%s journal-send %sFIELD=VALUE%s [%sFIELD=VALUE%s ...]\n", green, argv[0], cyan, normal, cyan, normal);
+			printf("    Example: %s%s journal-send %sMESSAGE=\"hello world\" PRIORITY=5%s\n", green, argv[0], cyan, normal);
+			printf("    Example: %s%secho \"hello\" | %s%s journal-send %sPRIORITY=5%s\n\n", normal, green, argv[0], normal, cyan, normal);
+
 			printf("%sOther:%s\n", yellow, normal);
 			printf("\t%sverify%s              Verify the integrity of the FTL binary\n", green, normal);
 			printf("\t%sptr %sIP%s %s[tcp]%s        Resolve IP address to hostname\n", green, cyan, normal, purple, normal);
@@ -1533,8 +1694,8 @@ void suggest_complete(const int argc, char *argv[])
 			"arp-scan", "branch", "backtrace", "crash", "--config", "debug",
 		    "--default-gateway", "dhcp-discover", "dnsmasq-test", "-f",
 		    "--gen-x509", "gravity", "gzip", "help", "-h", "--help", "idn2",
-			"--list-dhcp4", "--list-dhcp6", "--lua", "--luac", "lua",
-		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
+			"journal-send", "--list-dhcp4", "--list-dhcp6", "--lua", "--luac",
+			"lua", "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
 		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
@@ -1792,6 +1953,16 @@ void suggest_complete(const int argc, char *argv[])
 								const char *temp = get_temp_unit_str(j);
 								if(strStartsWithIgnoreCase(temp, last_word) || strlen(last_word) == 0)
 									puts(temp);
+							}
+							break;
+
+						case CONF_ENUM_LOG_DESTINATION:
+							// Provide matching suggestions
+							for(size_t j = 0; j < LOG_DEST_MAX; j++)
+							{
+								const char *dest = get_log_destination_str(j);
+								if(strStartsWithIgnoreCase(dest, last_word) || strlen(last_word) == 0)
+									puts(dest);
 							}
 							break;
 

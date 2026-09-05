@@ -366,6 +366,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
 			printTOMLstring(fp, get_edns_mode_str(v->edns_mode), toml);
 			break;
+		case CONF_ENUM_LOG_DESTINATION:
+			printTOMLstring(fp, get_log_destination_str(v->log_destination), toml);
+			break;
 		case CONF_STRUCT_IN_ADDR:
 		{
 			// Special case: 0.0.0.0 -> return empty string
@@ -651,6 +654,21 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 				const int edns_mode = get_edns_mode_val(val.u.s);
 				if(edns_mode != -1)
 					conf_item->v.edns_mode = edns_mode;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_debug(DEBUG_CONFIG, "%s DOES NOT EXIST or is not a valid string", conf_item->k);
+			break;
+		}
+		case CONF_ENUM_LOG_DESTINATION:
+		{
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
+			{
+				const int dest = get_log_destination_val(val.u.s);
+				if(dest != -1)
+					conf_item->v.log_destination = dest;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
 			}
