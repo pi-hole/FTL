@@ -5,6 +5,7 @@ components:
       summary: Modify client
       parameters:
         - $ref: 'clients.yaml#/components/parameters/client'
+        - $ref: 'common.yaml#/components/parameters/item'
       get:
         summary: Get clients
         tags:
@@ -36,7 +37,7 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      put:
+      put: &client_put
         summary: Replace client
         tags:
           - "Client management"
@@ -75,6 +76,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/item_mismatch'
                   no_payload:
                     $ref: 'clients.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
@@ -87,7 +90,7 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      delete:
+      delete: &client_delete
         summary: Delete client
         tags:
           - "Client management"
@@ -114,6 +117,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'clients.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'clients.yaml#/components/examples/errors/bad_request/item_mismatch'
           '401':
             description: Unauthorized
             content:
@@ -237,6 +242,24 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/schemas/took'
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+      put:
+        <<: *client_put
+        operationId: "replace_client_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `PUT /api/clients/{client}`, except that the client is named by the `item` query parameter instead of by a path segment.
+
+          This is the only way to reach a client called `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      delete:
+        <<: *client_delete
+        operationId: "delete_client_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `DELETE /api/clients/{client}`, except that the client is named by the `item` query parameter instead of by a path segment.
+
+          *Note:* There will be no content on success.
     batchDelete:
       post:
         summary: Delete multiple clients
@@ -506,6 +529,14 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
+        item_mismatch:
+          summary: URI path and "item" query parameter name different clients
+          value:
+            error:
+              key: "bad_request"
+              message: 'Invalid request: The item in the URI path and the "item" query parameter disagree'
+              hint: "/api/clients/192.168.2.5"
             took: 0.003
       database_error:
         duplicate:

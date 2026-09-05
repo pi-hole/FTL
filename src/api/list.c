@@ -970,6 +970,56 @@ int api_list(struct ftl_conn *api)
 		}
 	}
 
+	// Browsers collapse a URL path segment equal to "." or ".." - and their
+	// percent-encoded forms %2e / %2e%2e - while resolving the URL (WHATWG URL
+	// standard, "single-/double-dot path segment"). Such an item can never
+	// reach us as a path component, which breaks editing or deleting a list
+	// entry that is literally "." or "..". The web therefore identifies the
+	// item to edit/delete with an "?item=..." query parameter, which is not
+	// subject to path normalization. Honor it whenever the URI path carries no
+	// item. POST intentionally specifies the item in the payload and is left
+	// untouched.
+	// Resolve the effective item locally without mutating the shared api
+	// struct. startsWith() points api->item into the request's URI memory; we
+	// keep that as the default and only shadow it with the query value, so no
+	// local/heap pointer is ever stored back into the longer-lived api struct.
+	const char *item = api->item;
+	char *item_from_query = NULL;
+	if(api->method != HTTP_POST && item != NULL &&
+	   api->request->query_string != NULL)
+	{
+		// The URL-decoded value is never longer than the raw query string, so
+		// a buffer of that length is always sufficient - no truncation, even
+		// for long regular expressions or adlist URLs.
+		const size_t buflen = strlen(api->request->query_string) + 1u;
+		item_from_query = calloc(buflen, sizeof(char));
+		if(item_from_query == NULL)
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Failed to allocate memory for query parameter",
+			                       NULL);
+
+		if(get_string_var(api->request->query_string, "item", item_from_query, buflen) > 0)
+		{
+			if(item[0] == '\0')
+				item = item_from_query;
+			else if(strcmp(item, item_from_query) != 0)
+			{
+				// The path identifies the resource, so a query value
+				// must never silently overrule it - that would make us
+				// act on something else than what any proxy or access
+				// log in front of us has seen. Both may be given at
+				// once only if they agree.
+				free(item_from_query);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid request: The item in the URI path and the \"item\" query parameter disagree",
+				                       api->request->local_uri_raw);
+			}
+		}
+	}
+
+	int ret = 0;
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)
@@ -977,19 +1027,18 @@ int api_list(struct ftl_conn *api)
 		// this for simplicity to ensure nobody else is editing the
 		// lists while we're doing this here
 		lock_shm();
-		const int ret = api_list_read(api, 200, listtype, api->item, NULL);
+		ret = api_list_read(api, 200, listtype, item, NULL);
 		unlock_shm();
-		return ret;
 	}
 	else if(can_modify && api->method == HTTP_PUT)
 	{
 		// Add/update item identified by URI
-		if(api->item != NULL && strlen(api->item) == 0)
+		if(item != NULL && strlen(item) == 0)
 		{
-			return send_json_error(api, 400,
-			                       "uri_error",
-			                       "Invalid request: Specify item in URI",
-			                       NULL);
+			ret = send_json_error(api, 400,
+			                      "uri_error",
+			                      "Invalid request: Specify item in URI",
+			                      NULL);
 		}
 		else
 		{
@@ -997,20 +1046,19 @@ int api_list(struct ftl_conn *api)
 			// however, we do this for simplicity to ensure nobody
 			// else is editing the lists while we're doing this here
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			ret = api_list_write(api, listtype, item);
 			unlock_shm();
-			return ret;
 		}
 	}
 	else if(can_modify && api->method == HTTP_POST && !batchDelete)
 	{
 		// Add item to list identified by payload
-		if(api->item != NULL && strlen(api->item) != 0)
+		if(item != NULL && strlen(item) != 0)
 		{
-			return send_json_error(api, 400,
-			                       "uri_error",
-			                       "Invalid request: Specify item in payload, not as URI parameter",
-			                       api->item);
+			ret = send_json_error(api, 400,
+			                      "uri_error",
+			                      "Invalid request: Specify item in payload, not as URI parameter",
+			                      item);
 		}
 		else
 		{
@@ -1018,9 +1066,8 @@ int api_list(struct ftl_conn *api)
 			// however, we do this for simplicity to ensure nobody
 			// else is editing the lists while we're doing this here
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			ret = api_list_write(api, listtype, item);
 			unlock_shm();
-			return ret;
 		}
 	}
 	else if(can_modify && (api->method == HTTP_DELETE || (api->method == HTTP_POST && batchDelete)))
@@ -1030,21 +1077,21 @@ int api_list(struct ftl_conn *api)
 		// this for simplicity to ensure nobody else is editing the
 		// lists while we're doing this here
 		lock_shm();
-		const int ret = api_list_remove(api, listtype, api->item);
+		ret = api_list_remove(api, listtype, item);
 		unlock_shm();
-		return ret;
 	}
 	else if(!can_modify)
 	{
 		// This list type cannot be modified (e.g., ALL_ALL)
-		return send_json_error(api, 400,
-		                       "uri_error",
-		                       "Invalid request: Specify list to modify more precisely",
-		                       api->request->local_uri_raw);
+		ret = send_json_error(api, 400,
+		                      "uri_error",
+		                      "Invalid request: Specify list to modify more precisely",
+		                      api->request->local_uri_raw);
 	}
-	else
-	{
-		// This results in error 404
-		return 0;
-	}
+	// else: ret stays 0, which results in error 404
+
+	if(item_from_query != NULL)
+		free(item_from_query);
+
+	return ret;
 }

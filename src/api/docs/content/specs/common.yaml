@@ -104,3 +104,27 @@ components:
           type: boolean
         required: false
         example: false
+    item:
+      in: query
+      name: item
+      description: |
+        The item to operate on, as an alternative to naming it in the URI path.
+
+        Browsers remove a path segment that is `.` or `..` - as well as their percent-encoded forms `%2e` and `%2e%2e` - while they resolve a URL, so an item with such a name can never reach Pi-hole as part of the path. A query parameter is not subject to this normalization, e.g., `PUT /api/groups?item=.`
+
+        The value is used whenever the URI path carries no item. Both may be given at the same time as long as they are identical: the path is what identifies the resource, so a disagreement is rejected with `400` instead of being silently resolved in favor of either one.
+      schema:
+        type: string
+      required: false
+      example: "."
+    item_required:
+      in: query
+      name: item
+      description: |
+        The item to operate on.
+
+        Required on this route: the URI carries no item in the path, so nothing else identifies the resource. This is also the only way to address an item that is literally `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      schema:
+        type: string
+      required: true
+      example: "."
