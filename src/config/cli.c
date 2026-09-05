@@ -162,7 +162,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
 			// Verify that the password hash is either valid or empty
-			const enum password_result status = verify_password(value, pwhash, false);
+			const enum password_result status = verify_password(value, pwhash, false, NULL);
 			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");

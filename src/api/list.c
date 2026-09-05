@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api.h"
@@ -650,12 +652,23 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_AddItemToObject(processed, "success", success);
 
+	// Under the same lock the cluster's own import of a peer's lists takes.
+	// These are the seven tables that travel between nodes, so an import that
+	// lands mid-batch replaces the rows already written and the answer still
+	// reports every item as added. Nothing below re-enters it - the gravity
+	// database helpers take no cluster lock - and no shm lock is held here, so
+	// the sync-then-shm order the two API writers use is not inverted. Taken
+	// after the objects above: the JSON_* macros return from inside themselves
+	// on an allocation failure, past any unlock
+	cluster_sync_lock();
+
 	// One connection for the whole batch. Adding N items used to open and
 	// close a gravity connection twice per item, once for the item and once
 	// for its groups
 	sqlite3 *db = gravityDB_write_open(&sql_msg);
 	if(db == NULL)
 	{
+		cluster_sync_unlock();
 		const int ret = send_json_error(api, 500, // 500 Internal Server Error
 		                                "database_error",
 		                                "Could not open gravity database for writing",
@@ -748,6 +761,7 @@ static int api_list_write(struct ftl_conn *api,
 		if(commit_msg != NULL)
 		{
 			gravityDB_write_close(db);
+			cluster_sync_unlock();
 
 			// A partially applied batch left rows behind that the
 			// resolver has to pick up, a failed commit left none
@@ -765,6 +779,7 @@ static int api_list_write(struct ftl_conn *api,
 		}
 	}
 	gravityDB_write_close(db);
+	cluster_sync_unlock();
 
 	// If all items failed, return a database error instead of
 	// a success response with an empty result set
@@ -825,6 +840,7 @@ batch_abort:
 		}
 
 		gravityDB_write_close(db);
+		cluster_sync_unlock();
 
 		if(committed)
 			set_event(RELOAD_GRAVITY);
@@ -1014,9 +1030,13 @@ static int api_list_remove(struct ftl_conn *api,
 		}
 	}
 
-	// From here on, we can assume the JSON payload is valid
+	// From here on, we can assume the JSON payload is valid. The removal is
+	// under the lock the cluster's import takes, as the additions are
 	unsigned int deleted = 0u;
-	if(gravityDB_delFromTable(listtype, array, &deleted, &sql_msg))
+	cluster_sync_lock();
+	const bool removed = gravityDB_delFromTable(listtype, array, &deleted, &sql_msg);
+	cluster_sync_unlock();
+	if(removed)
 	{
 		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);

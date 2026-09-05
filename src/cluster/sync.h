@@ -33,6 +33,7 @@ struct cluster_sync_state {
 	// ...and the fingerprint of what was imported. The peer moves on while
 	// the rebuild runs, so its own fingerprint answers a different question
 	char pending_hash[CLUSTER_HASHLEN];
+	char pre_pull_hash[CLUSTER_HASHLEN]; // what this node held before it asked for the peer's lists
 };
 
 // Fingerprints of everything we synchronize
@@ -89,9 +90,9 @@ void cluster_sync_unlock(void);
 const char *cluster_node_id(void) __attribute__ ((const));
 
 // Take the lists of a peer. These are replaced as a whole rather than merged:
-// the archive carries whole tables, not the changes made to them
-// held is what this node's tables hashed to when the round decided to pull; an
-// edit made here since then is kept rather than replaced
+// the archive carries whole tables, not the changes made to them. held is what
+// this node's tables hashed to when the round decided to pull; an edit made here
+// since then is kept rather than replaced
 bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding);
 
 // Start a rebuild of the blocking database. False when one is already running,
@@ -103,6 +104,7 @@ bool cluster_run_gravity(void);
 // of the fingerprint, so a node whose rebuild never ran would otherwise report
 // the newest lists while blocking nothing
 bool cluster_state_same_build(void) __attribute__ ((pure));
+void cluster_state_build_settled(void);
 bool cluster_gravity_pending(void) __attribute__ ((pure));
 bool cluster_gravity_succeeded(void) __attribute__ ((pure));
 
