@@ -102,6 +102,10 @@ typedef struct {
 		bool aliasclient:1;
 		bool rate_limited:1;
 		bool in_database:1;
+		// Name was inherited from network_addresses, not resolved via
+		// PTR. Such a name must not be written back to the table, it
+		// would keep refreshing its own expiry timestamp.
+		bool nameFromDB:1;
 	} flags;
 	int count;
 	int blockedcount;
