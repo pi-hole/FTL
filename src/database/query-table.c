@@ -1009,8 +1009,16 @@ bool export_queries_to_disk(const bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
-	// End transaction
-	SQL_bool(memdb, "END");
+	// End transaction. A bare SQL_bool() would return with the transaction
+	// still open on the shared in-memory connection, which every later
+	// caller inherits
+	if((rc = dbquery(memdb, "END")) != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): Cannot end transaction: %s",
+		        sqlite3_errstr(rc));
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
 		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
@@ -1811,6 +1819,41 @@ static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
 	return false;
 }
 
+// Snapshot struct for lock-free SQLite writes in phase 2
+struct query_snap {
+	unsigned int queryID;       // SHM index for writeback
+	int64_t idx;                // pre-assigned db index
+	double timestamp;
+	int type_val;               // pre-computed type for param 3
+	int status;                 // param 4
+	int domain_db_id;           // param 5
+	int client_db_id;           // param 6
+	int upstream_db_id;         // param 7
+	int addinfo_id;             // param 8
+	int reply;                  // param 9
+	double response;            // param 10
+	int dnssec;                 // param 11
+	int list_id;                // param 12
+	int ede;                    // param 13
+	bool has_upstream;
+	bool response_calculated;
+	bool is_new;
+	bool blocked;
+};
+
+// Give the snapshotted queries their changed flag back so a later run picks
+// them up. The caller holds the SHM lock
+static void requeue_snapshots(const struct query_snap *snaps, const unsigned int from,
+                              const unsigned int to)
+{
+	for(unsigned int i = from; i < to; i++)
+	{
+		queriesData *query = getQuery(snaps[i].queryID, true);
+		if(query != NULL)
+			query->flags.database.changed = true;
+	}
+}
+
 bool queries_to_database(void)
 {
 	int rc;
@@ -1901,27 +1944,6 @@ bool queries_to_database(void)
 	// (thanks to the in_database flag).
 	// ===================================================================
 
-	// Snapshot struct for lock-free SQLite writes in phase 2
-	struct query_snap {
-		unsigned int queryID;       // SHM index for writeback
-		int64_t idx;                // pre-assigned db index
-		double timestamp;
-		int type_val;               // pre-computed type for param 3
-		int status;                 // param 4
-		int domain_db_id;           // param 5
-		int client_db_id;           // param 6
-		int upstream_db_id;         // param 7
-		int addinfo_id;             // param 8
-		int reply;                  // param 9
-		double response;            // param 10
-		int dnssec;                 // param 11
-		int list_id;                // param 12
-		int ede;                    // param 13
-		bool has_upstream;
-		bool response_calculated;
-		bool is_new;
-		bool blocked;
-	};
 
 	const unsigned int window = counters->queries - last_query;
 	struct query_snap *snaps = malloc(window * sizeof(*snaps));
@@ -2199,12 +2221,11 @@ bool queries_to_database(void)
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
 
-	// If phase 1 encountered an error, skip phase 2 but still clean up
+	// If phase 1 encountered an error, skip phase 2. Everything it
+	// snapshotted had its changed flag cleared, so this goes out through
+	// the same restore as the transaction failures below
 	if(phase1_error)
-	{
-		free(snaps);
-		return false;
-	}
+		goto fail;
 
 	// ===================================================================
 	// PHASE 2: Without SHM lock — bind and step query_stmt for each
@@ -2274,6 +2295,16 @@ bool queries_to_database(void)
 	// ===================================================================
 	lock_shm();
 
+	// A step error in phase 2 left the rest of the snapshot uncommitted, so
+	// those queries get their changed flag back and are written next time
+	if(succeeded < snap_count)
+	{
+		requeue_snapshots(snaps, succeeded, snap_count);
+
+		log_err("Could not store %u queries, they are queued for the next run",
+		        snap_count - succeeded);
+	}
+
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
 	for(unsigned int i = 0; i < succeeded; i++)
@@ -2330,11 +2361,19 @@ bool queries_to_database(void)
 rollback_unlock_fail:
 	dbquery(memdb, "ROLLBACK");
 unlock_fail:
+	// Nothing was committed, so give the snapshotted queries their changed
+	// flag back and let the next run pick them up. The lock is still ours
+	requeue_snapshots(snaps, 0, snap_count);
 	unlock_shm();
-	goto fail;
+	goto fail_free;
 rollback_fail:
 	dbquery(memdb, "ROLLBACK");
 fail:
+	// Same restore, but phase 2 runs without the lock
+	lock_shm();
+	requeue_snapshots(snaps, 0, snap_count);
+	unlock_shm();
+fail_free:
 	free(snaps);
 	return false;
 }
