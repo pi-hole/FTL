@@ -14,7 +14,14 @@
 
 #define ERRBUF_SIZE 1024
 
-bool write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,3)));
+// What write_dnsmasq_config() should do with the file it builds
+enum dnsmasq_write_mode {
+	DNSMASQ_INSTALL,      // install it, no syntax test
+	DNSMASQ_TEST_INSTALL, // test it, install it if the test passes
+	DNSMASQ_TEST_ONLY,    // test it and remove it again
+};
+
+bool write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,3)));
 int get_lineno_from_string(const char *string);
 char *get_dnsmasq_line(const unsigned int lineno);
 bool read_legacy_dhcp_static_config(void);

@@ -334,7 +334,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 
 	// Test dnsmasq config in the imported configuration
 	// The dnsmasq configuration will be overwritten if the test succeeds
-	if(!write_dnsmasq_config(&teleporter_config, true, hint))
+	if(!write_dnsmasq_config(&teleporter_config, DNSMASQ_TEST_INSTALL, hint))
 	{
 		free_config(&teleporter_config, false);
 		toml_free(toml);
