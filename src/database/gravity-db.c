@@ -2134,6 +2134,25 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	return okay;
 }
 
+// sqlite3_errmsg() hands back a string owned by the connection, and the
+// wrappers below close that connection before their caller ever reads the
+// message. Copy it somewhere that outlives the handle. Thread-local because
+// the API answers several requests at once, and only called on failure: a
+// success leaves *message as an earlier iteration set it, which would make
+// this copy a string onto itself
+static const char *keep_message(const char *message)
+{
+	static _Thread_local char kept[256];
+
+	if(message == NULL)
+		return NULL;
+
+	strncpy(kept, message, sizeof(kept) - 1);
+	kept[sizeof(kept) - 1] = '\0';
+
+	return kept;
+}
+
 bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method)
 {
@@ -2142,6 +2161,8 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		return false;
 
 	const bool ret = addToTable(db, listtype, row, message, method);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
 	dbclose_handle(db);
 	return ret;
 }
@@ -2417,6 +2438,8 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		return false;
 
 	const bool ret = delFromTable(db, listtype, array, deleted, message);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
 	dbclose_handle(db);
 	return ret;
 }
@@ -3071,6 +3094,8 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	const bool ret = edit_groups(db, listtype, groups, row, message);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
 	dbclose_handle(db);
 	return ret;
 }
