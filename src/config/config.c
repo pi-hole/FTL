@@ -1918,19 +1918,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// First, read the environment
 	getEnvVars();
 
-	// Open pihole.log and webserver.log now (with default or ENV paths)
-	// so that any log output during write_dnsmasq_config() below is not
-	// silently lost.  open_log_fds(false) will be called again after the
-	// config parse in main() to pick up any path overrides from the TOML
-	// file or legacy config.
-	//
-	// Only the daemon-start path (rewrite == true) needs this early
-	// coverage: write_dnsmasq_config() is only invoked below when the
-	// config is being rewritten.  CLI invocations pass rewrite == false
-	// and must not create log files - e.g. `pihole-FTL --config` would
-	// otherwise O_CREAT both files on every invocation and warn when the
-	// directory is not writable, or leave them root-owned when running as
-	// root.
+	// Open pihole.log and webserver.log early (with default/ENV paths) so log
+	// output during write_dnsmasq_config() below is not lost, then reopen after
+	// the config parse to pick up path overrides.  Only the daemon-start path
+	// (rewrite) opens them, so CLI invocations never create log files.
 	if(rewrite)
 		open_log_fds(false);
 

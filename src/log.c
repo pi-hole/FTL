@@ -46,10 +46,9 @@ static struct log_fd ftl_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd webserver_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 
-// dnsmasq forks per TCP query while FTL threads may be mid-write.  Without
-// atfork handling the child would inherit one of the per-file mutexes locked
-// and the first my_syslog() there would block forever, hanging that query.
-// Lock all log mutexes before fork() and release them in both parent and child.
+// dnsmasq forks per TCP query while FTL threads may be mid-write; without
+// atfork handling the child would inherit a locked log mutex and hang on the
+// first my_syslog() there.  Lock/unlock all log mutexes around fork().
 static void log_atfork_prepare(void)
 {
 	pthread_mutex_lock(&ftl_log.lock);
@@ -188,12 +187,9 @@ void open_log_fds(bool ftl)
 	// pihole.log (dnsmasq) - FTL owns this file from now on
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-		// The value "-" used to select stderr logging via dnsmasq's
-		// log-facility.  Since FTL writes pihole.log itself, this value
-		// is no longer supported: warn about it (without this hint users
-		// upgrading from v6 have no way to know why their stderr logging
-		// silently stopped working) and fall back to the default path so
-		// no file named "-" is created in the working directory.
+		// "-" used to select stderr via dnsmasq's log-facility; since FTL
+		// writes pihole.log itself it is no longer supported.  Fall back to
+		// the default path so no file named "-" is created.
 		const char *path = config.files.log.dnsmasq.v.s;
 		if(strcmp(path, "-") == 0)
 		{
@@ -220,9 +216,6 @@ void open_log_fds(bool ftl)
 
 	// Register atfork handlers once, before any threads or dnsmasq forks
 	// exist, so a TCP-query fork can never inherit a locked log mutex.
-	// Invariant: fork() is never called from inside a log write, so the
-	// atfork prepare/parent/child handlers only need to cover the case
-	// where a thread holds a log mutex at the moment of the fork.
 	static bool atfork_registered = false;
 	if(!atfork_registered)
 	{
@@ -426,6 +419,8 @@ const char *debugstr(const enum debug_flag flag)
 	}
 }
 
+
+
 // Write a dnsmasq log line to pihole.log in dnsmasq's exact on-disk format.
 // The message is the bare body (no timestamp, no prefix) as handed to
 // FTL_dnsmasq_log() from my_syslog().  We reproduce dnsmasq's format:
@@ -434,15 +429,8 @@ const char *debugstr(const enum debug_flag flag)
 // bits extracted in my_syslog().
 bool FTL_write_dnsmasq_log(const char *message, const char *func)
 {
-	// Locale-independent timestamp: ctime_r() renders the month/day in the
-	// C locale regardless of setlocale(LC_ALL, ""), so the buffer cannot
-	// overflow with non-English month names (strftime("%b") would emit
-	// e.g. six bytes for ru_RU). ctime_r() is reentrant, unlike ctime()
-	// which returns a pointer to a static buffer shared with localtime()
-	// and asctime() - critical since FTL_write_dnsmasq_log() runs on the
-	// DNS thread while the webserver, database and NTP threads format their
-	// own timestamps. This is dnsmasq's own idiom and keeps the on-disk
-	// format byte-identical to what we wrote before.
+	// Locale-independent and thread-safe (unlike ctime()), and keeps the
+	// on-disk format byte-identical to what dnsmasq wrote before.
 	time_t now = time(NULL);
 	char ctime_buf[26];
 	const char *ctime_str = ctime_r(&now, ctime_buf);
@@ -563,10 +551,8 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 	const char *prio = priostr(priority, flag);
 
 	// Relay severe messages through _FTL_log() when webserver.log is
-	// unavailable (no usable descriptor, e.g. failed open or unconfigured).
-	// _FTL_log() prints the line to stdout itself under the same conditions
-	// as the explicit print below, so skip that print when we are about to
-	// relay - otherwise the line appears twice on the console.
+	// unavailable, and skip the stdout print when relaying - _FTL_log()
+	// prints it itself, so it would otherwise appear twice.
 	const bool relay = print_log && priority <= LOG_WARNING && webserver_log.fd == -1;
 
 	// Print to stdout before writing to file
@@ -613,11 +599,8 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 
 		if(!write_log_line(&webserver_log, line, off))
 		{
-			// No web log available - keep severe messages durable.
-			// Only relay when we did not already print the line to
-			// stdout above (relay matches fd == -1, which is also the
-			// condition under which write_log_line() cannot write),
-			// since _FTL_log() prints to stdout itself as well.
+			// No web log available; relay severe messages so they are not
+			// lost (only when we did not already print to stdout above).
 			if(relay)
 				_FTL_log(priority, flag, "%s", buffer);
 		}
