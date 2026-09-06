@@ -1653,19 +1653,24 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
 
-  run bash -c './pihole-FTL --config dhcp.netmask 255.254.255.0'
+  # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
   assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
   assert_failure 3
 
-  run bash -c './pihole-FTL --config dhcp.netmask 255.255.254.0'
-  assert_success
-
-  run bash -c './pihole-FTL --config dhcp.netmask'
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.255.254.0'
   assert_line --index 0 '255.255.254.0'
   assert_success
 
-  # An empty netmask is valid, it is then taken from the interface
-  run bash -c './pihole-FTL --config dhcp.netmask ""'
+  # Nothing was applied, so the netmask is still the empty default
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_output ''
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface. This equals
+  # the current value, so it takes the unchanged branch and no validator runs
+  run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
 }
 
