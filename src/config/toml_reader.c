@@ -12,6 +12,7 @@
 #include "toml_reader.h"
 #include "config/setupVars.h"
 #include "log.h"
+#include "datastructure.h"
 // getprio(), setprio()
 #include <sys/resource.h>
 // argv_dnsmasq
@@ -343,6 +344,49 @@ bool getLogFilePathTOML(void)
 		config.files.log.ftl.t = CONF_STRING_ALLOCATED;
 		config.files.log.ftl.v.s = strdup(ftl.u.s); // Allocated string
 	}
+
+	toml_free(conf);
+	return true;
+}
+
+bool getLogDestinationTOML(void)
+{
+	log_debug(DEBUG_CONFIG, "Reading TOML config file: log destination");
+
+	toml_result_t conf = { 0 };
+
+	if(!parseTOML(&conf, 0))
+		return false;
+
+	toml_datum_t files = toml_table_find(conf.toptab, "files");
+	if(files.type != TOML_TABLE)
+	{
+		log_debug(DEBUG_CONFIG, "files DOES NOT EXIST or is not a table");
+		toml_free(conf);
+		return false;
+	}
+
+	toml_datum_t log = toml_table_find(files, "log");
+	if(log.type != TOML_TABLE)
+	{
+		log_debug(DEBUG_CONFIG, "files.log DOES NOT EXIST or is not a table");
+		toml_free(conf);
+		return false;
+	}
+
+	toml_datum_t destination = toml_table_find(log, "destination");
+	if(destination.type != TOML_STRING)
+	{
+		log_debug(DEBUG_CONFIG, "files.log.destination DOES NOT EXIST or is not an enum");
+		toml_free(conf);
+		return false;
+	}
+
+	const int dest = get_log_destination_val(destination.u.s);
+	if(dest != -1)
+		config.files.log.destination.v.log_destination = dest;
+	else
+		log_warn("Config setting %s is invalid, allowed options are: %s", "files.log.destination", "FILE, JSON");
 
 	toml_free(conf);
 	return true;

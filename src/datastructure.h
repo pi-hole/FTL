@@ -238,6 +238,8 @@ const char * __attribute__ ((const)) get_temp_unit_str(const enum temp_unit temp
 int __attribute__ ((pure)) get_temp_unit_val(const char *temp_unit);
 const char * __attribute__ ((const)) get_edns_mode_str(const enum edns_mode edns_mode);
 int __attribute__ ((pure)) get_edns_mode_val(const char *edns_mode);
+const char * __attribute__ ((const)) get_log_destination_str(const enum log_destination dest);
+int __attribute__ ((pure)) get_log_destination_val(const char *dest);
 
 // Pointer getter functions
 #define getQuery(queryID, checkMagic) _getQuery(queryID, checkMagic, __LINE__, __FUNCTION__, __FILE__)

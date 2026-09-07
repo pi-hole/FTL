@@ -315,6 +315,12 @@ enum fifo_logs {
 	FIFO_MAX
 } __attribute__ ((packed));
 
+enum log_destination {
+	LOG_DEST_FILE = 0,
+	LOG_DEST_JSON,
+	LOG_DEST_MAX
+} __attribute__ ((packed));
+
 enum temp_unit {
 	TEMP_UNIT_C = 0,
 	TEMP_UNIT_F,
