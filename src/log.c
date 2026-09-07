@@ -372,9 +372,9 @@ static size_t json_escape(char *out, const size_t outlen, const char *in)
 
 // Emit a structured JSON log line directly into a stack buffer and
 // write it to stdout.  Only the message field needs escaping; the
-// other five are controlled by the caller.  Uses write() instead of
+// other four are controlled by the caller.  Uses write() instead of
 // printf() to avoid stdio buffering.
-void write_json_log(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg)
+void write_json_log(const time_t now, const char *log_level, const char *component, const char *msg)
 {
 	char timestring_iso8601[TIMESTR_SIZE];
 	get_timestr_iso8601(timestring_iso8601, now);
@@ -386,15 +386,16 @@ void write_json_log(const time_t now, const char *log_level, const char *compone
 
 	// Build JSON directly into a stack buffer - zero allocation.
 	// line must hold escaped_msg plus the JSON framing overhead (key
-	// names, punctuation, timestamp, level, component, pid, trailing
-	// brace and newline - roughly 90 bytes).  Using the same size as
-	// escaped_msg would truncate a near-maximum message mid-JSON-string.
-	// sizeof(escaped_msg) + 128 leaves ample headroom for any field length.
+	// names, punctuation, timestamp, level, component, pid, tid,
+	// trailing brace and newline - roughly 100 bytes).  Using the same
+	// size as escaped_msg would truncate a near-maximum message
+	// mid-JSON-string.  sizeof(escaped_msg) + 128 leaves ample headroom
+	// for any field length.
 	char line[sizeof(escaped_msg) + 128];
 	int off = snprintf(line, sizeof(line),
 		"{\"timestamp\":\"%s\",\"log_level\":\"%s\",\"service\":\"pihole-FTL\","
-		"\"component\":\"%s\",\"pid\":\"%s\",\"message\":\"%s\"}\n",
-		timestring_iso8601, log_level, component, pid, escaped_msg);
+		"\"component\":\"%s\",\"pid\":%d,\"tid\":%d,\"message\":\"%s\"}\n",
+		timestring_iso8601, log_level, component, getpid(), gettid(), escaped_msg);
 
 	if(off < 0 || off >= (int)sizeof(line))
 		off = sizeof(line) - 1;
@@ -408,7 +409,7 @@ bool __attribute__((pure)) FTL_want_stdout(void)
 	return !daemonmode && config.files.log.destination.v.log_destination != LOG_DEST_JSON;
 }
 
-void get_idstr(char *idstr, size_t size)
+static void get_idstr(char *idstr, size_t size)
 {
 	const int pid = getpid(); // Get the process ID of the calling process
 	const int mpid = main_pid(); // Get the process ID of the main FTL process
@@ -633,7 +634,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
 			va_end(args);
 
-			write_json_log(now, prio, "FTL", idstr, json_buffer);
+			write_json_log(now, prio, "FTL", json_buffer);
 		}
 
 		// Write to log file only when file logging is explicitly selected
@@ -724,7 +725,7 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 			vsnprintf(json_buffer, sizeof(json_buffer), format, args);
 			va_end(args);
 
-			write_json_log(now, prio, "webserver", idstr, json_buffer);
+			write_json_log(now, prio, "webserver", json_buffer);
 		}
 
 		// Write to log file only when file logging is explicitly selected
