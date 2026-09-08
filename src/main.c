@@ -15,6 +15,7 @@
 #include <inttypes.h>
 #include "daemon.h"
 #include "log.h"
+#include "logger.h"
 #include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
@@ -99,8 +100,8 @@ int main (int argc, char *argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Open FTL.log early (other logs opened after config parse)
-	open_log_fds(true);
+	// Start the logger thread and open FTL.log early
+	(void)logger_start();
 	// Try to open FTL log
 	init_config_mutex();
 	timer_start(EXIT_TIMER);
