@@ -19,6 +19,8 @@
 #include "files.h"
 // DIR, dirent, opendir(), readdir(), closedir()
 #include <dirent.h>
+// PATH_MAX
+#include <limits.h>
 // sqlite3
 #include "database/sqlite3.h"
 // toml_parse()
