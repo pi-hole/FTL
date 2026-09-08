@@ -112,18 +112,6 @@ static bool matches_filter(const regex_t *regex, const unsigned int N_regex, con
 	return false;
 }
 
-// Release the regexes compiled by compile_filter_regex()
-static void free_filter_regex(regex_t *regex, const unsigned int N_regex)
-{
-	if(N_regex == 0)
-		return;
-
-	for(unsigned int i = 0; i < N_regex; i++)
-		regfree(&regex[i]);
-
-	free(regex);
-}
-
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
