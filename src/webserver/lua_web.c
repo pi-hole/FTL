@@ -58,7 +58,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		return 0;
 
 	// Do not redirect for ACME challenges
-	log_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", uri);
+	log_web_debug(DEBUG_WEBSERVER, "Local URI: \"%s\"", uri);
 	const char acme_challenge[] = "/.well-known/acme-challenge/";
 	const bool is_acme = strncmp(uri, acme_challenge, strlen(acme_challenge)) == 0;
 	if(is_acme)
@@ -74,7 +74,7 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	if(!config.webserver.serve_all.v.b &&
 	   strncmp(uri, config.webserver.paths.webhome.v.s, strlen(config.webserver.paths.webhome.v.s)) != 0)
 	{
-		log_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
+		log_web_debug(DEBUG_WEBSERVER, "Not serving %s, returning 404", uri);
 		mg_send_http_error(conn, 404, "Not Found");
 		return 404;
 	}
@@ -115,8 +115,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	const bool in_webhome = (strncmp(uri,
 	                                 config.webserver.paths.webhome.v.s,
 	                                 strlen(config.webserver.paths.webhome.v.s)) == 0);
-	log_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
-	          uri, login, in_webhome, no_dot);
+	log_web_debug(DEBUG_WEBSERVER, "Request for %s, login: %d, in_webhome: %d, no_dot: %d",
+	              uri, login, in_webhome, no_dot);
 
 	// Check if the request is for a LUA page (every XYZ.lp has already been
 	// rewritten at this point to XYZ), we also don't enforce authentication
@@ -138,8 +138,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 			// Log at debug level only: this fires on every unauthenticated
 			// request and would otherwise let a flood of requests inflate
 			// the log file (and exhaust the disk).
-			log_debug(DEBUG_API, "Authentication required, redirecting to %s%slogin",
-			          config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			log_web_debug(DEBUG_API, "Authentication required, redirecting to %s%slogin",
+					config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			ftl_http_redirect(conn, 302, "%s%slogin",
 			                  config.webserver.paths.prefix.v.s,
 			                  config.webserver.paths.webhome.v.s);
@@ -152,8 +152,8 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 		if(authorized)
 		{
 			// User is already authenticated, redirecting to index page
-			log_web("User is already authenticated, redirecting to %s%s",
-			        config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
+			log_web(LOG_INFO, "User is already authenticated, redirecting to %s%s",
+					config.webserver.paths.prefix.v.s, config.webserver.paths.webhome.v.s);
 			ftl_http_redirect(conn, 302, "%s%s",
 			                  config.webserver.paths.prefix.v.s,
 			                  config.webserver.paths.webhome.v.s);

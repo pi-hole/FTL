@@ -14,6 +14,8 @@
 #include "FTL.h"
 #include "enums.h"
 #include "dnsmasq_interface.h"
+#include "dotdoh/proxy.h"
+#include "dotdoh/server.h"
 #include "shmem.h"
 #include "overTime.h"
 #include "database/common.h"
@@ -87,6 +89,47 @@ static bool aabit = false, adbit = false, rabit = false;
 static const char *blockingreason = "";
 static enum reply_type force_next_DNS_reply = REPLY_UNKNOWN;
 static enum query_status cacheStatus = QUERY_UNKNOWN;
+// pi.hole/<hostname> answer over encrypted DNS: the address the client connected
+// to, carried by our own DoT/DoH server in a MAC-verified, loopback-only private
+// EDNS option. Set per query in FTL_new_query and consumed in FTL_make_answer so
+// the answer is the address the client reached, not the loopback forward's.
+static bool pihole_dest_v4_set = false, pihole_dest_v6_set = false;
+static struct in_addr pihole_dest_v4;
+static struct in6_addr pihole_dest_v6;
+// dnsmasq log id this hint belongs to. FTL_CNAME is also called while parsing an
+// upstream reply (a later event-loop iteration), so the CNAME cache path only
+// trusts the hint when it is for the query currently being answered.
+static int pihole_dest_id = -1;
+
+// Whether a query source address is loopback (127.0.0.0/8 or ::1). The private
+// client/dest attribution options are trusted only from a loopback source, as
+// our own DoT/DoH server injected them over the loopback handoff; a query from
+// anywhere else carrying them is spoofed and must be ignored.
+static inline bool mysockaddr_is_loopback(const union mysockaddr *addr)
+{
+	if(addr == NULL)
+		return false;
+	return (addr->sa.sa_family == AF_INET &&
+	        (ntohl(addr->in.sin_addr.s_addr) & 0xFF000000) == 0x7F000000) ||
+	       (addr->sa.sa_family == AF_INET6 &&
+	        IN6_IS_ADDR_LOOPBACK(&addr->in6.sin6_addr));
+}
+
+// Capture this query's pi.hole connected-address hint from its EDNS. Called at the
+// existing getEDNS() sites in FTL_new_query (getEDNS is consume-once), trusted only
+// from a loopback source (our own DoT/DoH server injected it). Only the connected
+// family is known.
+static void capture_pihole_dest(const ednsData *edns, const union mysockaddr *addr, const int id)
+{
+	if(edns == NULL || !edns->private_dest_set || !mysockaddr_is_loopback(addr))
+		return;
+	if(inet_pton(AF_INET, edns->private_dest, &pihole_dest_v4) == 1)
+		pihole_dest_v4_set = true;
+	else if(inet_pton(AF_INET6, edns->private_dest, &pihole_dest_v6) == 1)
+		pihole_dest_v6_set = true;
+	if(pihole_dest_v4_set || pihole_dest_v6_set)
+		pihole_dest_id = id;
+}
 static int last_regex_idx = -1;
 static char *pihole_suffix = NULL;
 static char *hostname_suffix = NULL;
@@ -389,6 +432,26 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// they are already properly set (F_IPV4 and/or F_IPV6)
 		forced_ip = true;
 
+		// A pi.hole/<hostname> ANY query over our encrypted server must return
+		// only the family the client actually connected over. The whole-query
+		// REPLY_NODATA guard in _FTL_new_query cannot express per-family
+		// suppression for ANY, so drop the non-connected family here: otherwise
+		// its record falls back to next_iface (the loopback forward) and leaks
+		// 127.0.0.1/::1. A forced host address (force4/force6) still fills it.
+		// Only the pi.hole/<hostname> reply is affected - a regex IP-redirect also
+		// forces REPLY_IP but fills from redirect_addrX (no leak), and the dest hint
+		// is set for every encrypted query, so gate on the HOSTNAME reason.
+		if(strcmp(blockingreason, HOSTNAME) == 0 &&
+		   (flags & F_IPV4) && (flags & F_IPV6) &&
+		   pihole_dest_id == (int)daemon->log_display_id &&
+		   (pihole_dest_v4_set || pihole_dest_v6_set))
+		{
+			if(!pihole_dest_v4_set && !config.dns.reply.host.force4.v.b)
+				flags &= ~F_IPV4;
+			if(!pihole_dest_v6_set && !config.dns.reply.host.force6.v.b)
+				flags &= ~F_IPV6;
+		}
+
 		// Reset DNS reply forcing
 		force_next_DNS_reply = REPLY_UNKNOWN;
 
@@ -617,6 +680,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force4");
 				memcpy(&addr, &config.dns.reply.blocking.v4.v.in_addr, sizeof(addr.addr4));
 			}
+			else if(hostn && pihole_dest_v4_set &&
+			        pihole_dest_id == (int)daemon->log_display_id)
+			{
+				// pi.hole/<hostname> over encrypted DNS: use the address the client
+				// connected to (conveyed by our DoT/DoH server) instead of the
+				// loopback forward's interface address. Tie the hint to the query
+				// being answered (as update_pihole_cache_record does), so a stale
+				// hint from an earlier query is never used. An explicit forced-host
+				// reply (dns.reply.host.force4, handled above) still takes precedence.
+				log_debug(DEBUG_QUERIES, "Using DoT/DoH connected-address for pi.hole A");
+				memcpy(&addr.addr4, &pihole_dest_v4, sizeof(addr.addr4));
+			}
 			else
 			{
 				log_debug(DEBUG_QUERIES, "Using next_iface A address");
@@ -664,6 +739,13 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 				log_debug(DEBUG_QUERIES, "Using dns.reply.blocking.force6");
 				memcpy(&addr, &config.dns.reply.blocking.v6.v.in6_addr, sizeof(addr.addr6));
 			}
+			else if(hostn && pihole_dest_v6_set &&
+			        pihole_dest_id == (int)daemon->log_display_id)
+			{
+				// pi.hole/<hostname> over encrypted DNS: connected address (see IPv4).
+				log_debug(DEBUG_QUERIES, "Using DoT/DoH connected-address for pi.hole AAAA");
+				memcpy(&addr.addr6, &pihole_dest_v6, sizeof(addr.addr6));
+			}
 			else
 			{
 				log_debug(DEBUG_QUERIES, "Using next_iface AAAA address");
@@ -710,8 +792,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason
+	// Unset the blocking reason and the CNAME target that went with it, so
+	// neither travels into the next query
 	blockingreason = "<not set>";
+	cname_target = NULL;
 
 	return p - (unsigned char *)header;
 }
@@ -798,21 +882,40 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
+	// Reset this query's pi.hole connected-address hint. It is populated from the
+	// SINGLE getEDNS() read further down (getEDNS() is consume-once: reading the
+	// EDNS data here would starve the client-attribution/ECS parsing of it), and
+	// used so a pi.hole/<hostname> answer over encrypted DNS returns the address the
+	// client actually connected to rather than the loopback forward's.
+	pihole_dest_v4_set = pihole_dest_v6_set = false;
+	pihole_dest_id = -1;
+
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
 	if(querytype != TYPE_NONE && is_pihole_domain(name))
 	{
 		if(querytype == TYPE_A || querytype == TYPE_AAAA || querytype == TYPE_ANY)
 		{
-			// "Block" this query by sending the interface IP address
-			// Send NODATA when the current interface doesn't have
-			// the requested IP address, for instance AAAA on an
-			// virtual interface that has only an IPv4 address
+			// A direct pi.hole/<hostname> query returns here without reaching the
+			// client-attribution getEDNS() below, so consume the EDNS here to pick
+			// up our DoT/DoH server's connected-address hint for the reply.
+			capture_pihole_dest(getEDNS(), addr, id);
+
+			// "Block" this query by sending the interface IP address.
+			// Send NODATA when we have no sensible address of the
+			// requested family. Two cases: (1) the current interface
+			// lacks it (e.g., AAAA on a v4-only virtual interface), or
+			// (2) the query arrived over our encrypted server and a
+			// connected address was conveyed, but not for this family -
+			// the interface is then the loopback forward, so answering
+			// from it would leak 127.0.0.1/::1. A forced fixed reply
+			// (dns.reply.host.forceX) always wins and stays positive.
+			const bool encrypted = pihole_dest_v4_set || pihole_dest_v6_set;
 			if((querytype == TYPE_A &&
-			    !next_iface.haveIPv4 &&
+			    (encrypted ? !pihole_dest_v4_set : !next_iface.haveIPv4) &&
 			    !config.dns.reply.host.force4.v.b) ||
 			   (querytype == TYPE_AAAA &&
-			    !next_iface.haveIPv6 &&
+			    (encrypted ? !pihole_dest_v6_set : !next_iface.haveIPv6) &&
 			    !config.dns.reply.host.force6.v.b))
 				force_next_DNS_reply = REPLY_NODATA;
 			else
@@ -854,7 +957,22 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	ednsData *edns = getEDNS();
-	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
+	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
+	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
+	// query name) can use it in update_pihole_cache_record.
+	capture_pihole_dest(edns, addr, id);
+	if(edns && edns->private_client_set && mysockaddr_is_loopback(addr))
+	{
+		// Real downstream client of an inbound DoT/DoH query, injected as a
+		// Pi-hole-private EDNS option by our own encrypted-DNS server. Two checks
+		// gate it: the option carried a per-run HMAC only our process can compute
+		// (verified in the EDNS parser, so another local process cannot forge
+		// it), and the query source is loopback (below), so an external query
+		// cannot spoof another client. Not gated on dns.EDNS0ECS.
+		strncpy(clientIP, edns->private_client, ADDRSTRLEN);
+		clientIP[ADDRSTRLEN] = '\0';
+	}
+	else if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
@@ -969,10 +1087,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
 	if(config.dns.analyzeOnlyAandAAAA.v.b && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
-		// Don't process this query further here, we already counted it
+		// Don't process this query further here
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
+		// Undo the findClientID() increment, as for the rate-limited
+		// branch above: no query record is created here
+		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
 		return false;
 	}
@@ -1250,6 +1371,12 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		                            "    --> NO MATCH <--");
 	}
 
+	// Interface resolved by the last call, used to skip the address
+	// collection below when the same one is seen again. The pointer is
+	// stable within dnsmasq's daemon->interfaces list and is invalidated on
+	// SIGHUP/restart.
+	static struct irec *cached_recviface = NULL;
+
 	// Return early when there is no interface available at this point
 	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
@@ -1261,14 +1388,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 		next_iface.name[0] = '-';
 		next_iface.name[1] = '\0';
+		// Drop the cache too, so the next query on that interface
+		// collects its addresses again
+		cached_recviface = NULL;
 		return;
 	}
 
-	// Cache: if the resolved interface is the same as last time, skip the
-	// expensive second loop (which iterates all interfaces to collect IPv4
-	// and IPv6 addresses).  The pointer is stable within dnsmasq's
-	// daemon->interfaces list and is invalidated on SIGHUP/restart.
-	static struct irec *cached_recviface = NULL;
+	// Skip the expensive second loop (which iterates all interfaces to
+	// collect IPv4 and IPv6 addresses) when the interface is unchanged
 	if(recviface == cached_recviface)
 	{
 		log_debug(DEBUG_NETWORKING, "Interface unchanged, using cached result");
@@ -1674,7 +1801,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
 	//
 	// RFC 9462, Section 4 says:
-	// 
+	//
 	// If the recursive resolver that receives this query has no Designated
 	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
 	// zone, to provide a consistent and accurate signal to clients that it
@@ -1814,6 +1941,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
+				// The CNAME target lives in the cache entry too, and
+				// REPLY_CNAME above is worth nothing without it
+				cname_target = (dns_cache->cname_strpos > 0) ? getstr(dns_cache->cname_strpos) : NULL;
 				last_regex_idx = dns_cache->list_id;
 				query_blocked(query, domain, client, blocking_status);
 				if(blocking_status == QUERY_REGEX_CNAME)
@@ -1924,7 +2054,7 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	}
 
 	// when we reach this point: the query is not in FTL's cache (for this client)
-	
+
 	// Check exact whitelist for match
 	const char *blockedDomain = domainstr;
 	PERF_START(_pcb_allow);
@@ -1959,37 +2089,6 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	PERF_START(_pcb_deny);
 	TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay));
 	PERF_END(_pcb_deny, PERF_STAT_CB_DENYLIST);
-
-	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
-	// (defaulting to true). Timed into the same slot as the primary call above
-	// so the rollup reflects total denylist/gravity work per query, regardless
-	// of whether the _esni fallback ran.
-	if(config.dns.blockESNI.v.b &&
-	   !query->flags.allowed && !blockDomain &&
-	   domainstr[0] == '_' &&
-	   strncmp(domainstr, "_esni.", 6u) == 0 && domainstr[6] != '\0')
-	{
-		PERF_START(_pcb_deny_esni);
-		TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay));
-		PERF_END(_pcb_deny_esni, PERF_STAT_CB_DENYLIST);
-
-		// Update DNS cache status
-		cacheStatus = dns_cache->blocking_status;
-
-		if(blockDomain)
-		{
-			// Truncate "_esni." from queried domain if the parenting domain was
-			// the reason for blocking this query
-			blockedDomain = domainstr + 6u;
-			// Force next DNS reply to be NXDOMAIN for _esni.* queries
-			force_next_DNS_reply = REPLY_NXDOMAIN;
-
-			// Store this in the DNS cache only if the database is available at
-			// this point
-			if(db_okay)
-				dns_cache->force_reply = REPLY_NXDOMAIN;
-		}
-	}
 
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
@@ -2031,8 +2130,22 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
  * the stored address with the address from the next available network interface. It also
  * sets flags indicating the presence of IPv4 and/or IPv6 addresses in the interface structure.
  */
-static void update_pihole_cache_record(void)
+static void update_pihole_cache_record(const int id)
 {
+	// A CNAME chain reaching pi.hole over encrypted DNS: prefer the address the
+	// client connected to (conveyed by our DoT/DoH server) over the interface
+	// address, mirroring the else-branch of FTL_make_answer. An explicit forced-host
+	// reply still takes precedence, and the hint is only trusted when it belongs to
+	// the query currently being answered (FTL_CNAME also fires while parsing an
+	// upstream reply, a later event-loop iteration, where the static would be stale).
+	const bool use_dest_v4 = pihole_dest_v4_set && pihole_dest_id == id;
+	const bool use_dest_v6 = pihole_dest_v6_set && pihole_dest_id == id;
+	// An encrypted query where the client did not connect over this family: the
+	// interface (next_iface) is then the loopback handoff, so writing it would
+	// poison the shared record with 127.0.0.1/::1. Skip it and keep the value the
+	// matching-family / real-interface updates leave, mirroring the direct path's
+	// refusal to answer the non-connected family from the loopback forward.
+	const bool encrypted = (pihole_dest_v4_set || pihole_dest_v6_set) && pihole_dest_id == id;
 	struct crec *lookup = NULL;
 	while ((lookup = cache_find_by_name(lookup, (char*)"pi.hole", 0, F_IPV4 | F_IPV6)))
 	{
@@ -2042,7 +2155,9 @@ static void update_pihole_cache_record(void)
 		{
 			if(config.dns.reply.host.force4.v.b)
 				memcpy(&lookup->addr.addr4, &config.dns.reply.host.v4.v.in_addr, sizeof(lookup->addr.addr4));
-			else
+			else if(use_dest_v4)
+				memcpy(&lookup->addr.addr4, &pihole_dest_v4, sizeof(lookup->addr.addr4));
+			else if(!(encrypted && !pihole_dest_v4_set))
 				memcpy(&lookup->addr.addr4, &next_iface.addr4.addr4, sizeof(lookup->addr.addr4));
 			log_debug(DEBUG_NETWORKING, "Updating IPv4 address in cache");
 		}
@@ -2050,7 +2165,9 @@ static void update_pihole_cache_record(void)
 		{
 			if(config.dns.reply.host.force6.v.b)
 				memcpy(&lookup->addr.addr6, &config.dns.reply.host.v6.v.in6_addr, sizeof(lookup->addr.addr6));
-			else
+			else if(use_dest_v6)
+				memcpy(&lookup->addr.addr6, &pihole_dest_v6, sizeof(lookup->addr.addr6));
+			else if(!(encrypted && !pihole_dest_v6_set))
 				memcpy(&lookup->addr.addr6, &next_iface.addr6.addr6, sizeof(lookup->addr.addr6));
 			log_debug(DEBUG_NETWORKING, "Updating IPv6 address in cache");
 		}
@@ -2069,7 +2186,7 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		// the "pi.hole" cache record is up-to-date with the current
 		// interface addresses for interface-dependent replies
 		log_debug(DEBUG_QUERIES, "Updating pi.hole cache record as it is part of the CNAME chain");
-		update_pihole_cache_record();
+		update_pihole_cache_record(id);
 	}
 
 	// Does the user want to skip deep CNAME inspection?
@@ -2385,9 +2502,9 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Print current set of capabilities if requested via debug flag
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// which may have changed since the last check
+	check_capabilities();
 
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)
@@ -2886,12 +3003,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv4)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv4)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2905,12 +3022,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv6)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv6)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -2923,12 +3040,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
+		blockingreason = "blocked upstream with 0.0.0.0";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with 0.0.0.0";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -2939,12 +3054,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
+		blockingreason = "blocked upstream with ::";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with ::";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3584,7 +3697,7 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		exit(EXIT_FAILURE);
 	}
 
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 	// Start webserver thread
 	if(pthread_create( &threads[WEBSERVER], &attr, webserver_thread, NULL ) != 0)
 	{
@@ -3594,7 +3707,25 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 #else
 	// Initialize FTL HTTP server
 	http_init();
-#endif /* HAVE_MBEDTLS */
+#endif /* HAVE_TLS */
+
+	// Arm the DoT/DoH proxy here - after dnsmasq's startup has closed stray fds,
+	// or the listener fds would be closed and their numbers reused. It runs its
+	// own (auto-scaled) worker threads, so no FTL thread slot is needed.
+	if(dnsmasq_start)
+	{
+		dotdoh_init();
+
+		// Start the inbound DoT (DNS-over-TLS) listener if enabled. (The outbound
+		// encrypted-upstream proxy above manages its own auto-scaled worker pool;
+		// the inbound DoT listener is a separate long-lived FTL thread.)
+		if(config.dns.dot.v.b &&
+		   pthread_create( &threads[DOTDOH_DOT], &attr, dotdoh_dot_thread, NULL ) != 0)
+		{
+			log_crit("Unable to create dotdoh DoT thread. Exiting...");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
 	// option states to run as a different user/group (e.g. "nobody")
@@ -3659,73 +3790,57 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 static char *get_ptrname(const struct in_addr *addr)
 {
-	static char *ptrname = NULL;
-
-	// Return cached value if available
-	if(ptrname)
-		return ptrname;
-
-	// else: Determine name that should be replied to with on Pi-hole PTRs
+	// Determine the name Pi-hole should reply with to PTR queries for its own
+	// interface addresses.
+	//
+	// PTR_PIHOLE and PTR_HOSTNAME are independent of the queried address and
+	// return a stable string. PTR_HOSTNAMEFQDN, however, appends a domain
+	// suffix that may differ per address when conditional domains
+	// (domain=<domain>,<address range>) are configured. We must therefore not
+	// cache a single result across addresses: the caller stores the returned
+	// pointer in a persistent per-interface PTR record, so each address needs
+	// its own string. check_pihole_PTR() ensures we are called at most once
+	// per address, so the per-address allocation is bounded.
 	switch (config.dns.piholePTR.v.ptr_type)
 	{
 		default:
 		case PTR_MAX:
 		case PTR_NONE:
 		case PTR_PIHOLE:
-			ptrname = (char*)"pi.hole";
-			break;
+			return (char*)"pi.hole";
 
 		case PTR_HOSTNAME:
-			ptrname = (char*)hostname();
-			break;
+			return (char*)hostname();
 
 		case PTR_HOSTNAMEFQDN:
 		{
-			const char *suffix;
-			size_t ptrnamesize = 0;
 			// get_domain() will also check conditional domains configured like
 			// domain=<domain>[,<address range>[,local]]
-			if(addr)
-				suffix = get_domain(*addr);
-			else
-				suffix = daemon->domain_suffix;
+			const char *suffix = addr ? get_domain(*addr) : daemon->domain_suffix;
 
 			// If local suffix is not available, we try to obtain the domain from
 			// the kernel similar to how we do it for the hostname
 			if(!suffix)
 				suffix = (char*)domainname();
 
-			// If local suffix is not available, we substitute "no_fqdn_available"
-			// see the comment about PIHOLE_PTR=HOSTNAMEFQDN in the Pi-hole docs
-			// for further details on why this was chosen
+			// If local suffix is still not available, we substitute
+			// "no_fqdn_available", see the comment about PIHOLE_PTR=HOSTNAMEFQDN
+			// in the Pi-hole docs for further details on why this was chosen
 			if(!suffix || suffix[0] == '\0')
 				suffix = (char*)"no_fqdn_available";
 
-			// Get enough space for domain building
-			size_t needspace = strlen(hostname()) + strlen(suffix) + 2;
-			if(ptrnamesize < needspace)
-			{
-				ptrname = realloc(ptrname, needspace);
-				ptrnamesize = needspace;
-			}
-
-			if(ptrname)
-			{
-				// Build "<hostname>.<local suffix>" domain
-				strcpy(ptrname, hostname());
-				strcat(ptrname, ".");
-				strcat(ptrname, suffix);
-			}
-			else
-			{
+			// Build a fresh "<hostname>.<local suffix>" string for this address
+			char *ptrname = calloc(strlen(hostname()) + strlen(suffix) + 2, sizeof(char));
+			if(!ptrname)
 				// Fallback to "<hostname>" on memory error
-				ptrname = (char*)hostname();
-			}
-			break;
+				return (char*)hostname();
+
+			strcpy(ptrname, hostname());
+			strcat(ptrname, ".");
+			strcat(ptrname, suffix);
+			return ptrname;
 		}
 	}
-
-	return ptrname;
 }
 
 void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dnssec)
@@ -3819,6 +3934,20 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(!finished)
+	{
+		// Both callers passing false are inside dnsmasq's sig_handler()
+		// (dnsmasq.c, the SIGALRM arms), and both _exit(0) right after.
+		// Nothing below this point may run there: log_debug() allocates,
+		// lock_shm() takes a process-shared mutex the interrupted code
+		// may be holding mid-update, and gravityDB_close() finalizes
+		// statements that code may still be stepping. None of it is
+		// async-signal-safe, and none of it is needed - the worker's
+		// connections go with the process, and the SHM mutex is robust,
+		// so the parent recovers it through EOWNERDEAD
+		return;
+	}
+
 	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, forking does not happen in debug mode
@@ -4125,13 +4254,15 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 {
 	// Lock SHM
 	lock_shm();
 
-	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, NULL, length);
+	// Add to FIFO buffer. dnsmasq has no FTL debug flags, so its LOG_DEBUG is
+	// a plain "DEBUG" rather than the DEBUG_ANY catch-all priostr() maps to
+	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
 
 	// Unlock SHM
 	unlock_shm();
@@ -4154,6 +4285,20 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 {
 	for (unsigned int i = 0; i < __METRIC_MAX; i++)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
+}
+
+// Fail-closed forwarding gate: for one of our DoT/DoH loopback tuples, return
+// false unless the proxy actually armed it, so dnsmasq skips it (fails over)
+// instead of leaking the plaintext query to a tuple we do not own. Anything else
+// is always available, decided in two comparisons to keep this hot path cheap.
+bool FTL_is_forward_available(const union mysockaddr *addr)
+{
+	if(addr == NULL || addr->sa.sa_family != AF_INET)
+		return true;
+	const uint32_t a = ntohl(addr->in.sin_addr.s_addr);
+	if((a >> 24) != 127)
+		return true; // not 127.0.0.0/8: a real upstream, never gated
+	return dotdoh_forward_available(a, ntohs(addr->in.sin_port));
 }
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)

@@ -9,7 +9,7 @@ bats_load_library 'bats-assert'
 load 'bats_helper.bash'
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ftl)|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for )|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token"'
   refute_output
 }
 
@@ -39,13 +39,17 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (TOTP stress test secret set + remove)
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
+  # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
+  # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
+  # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
+  # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "1"
+      assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "22" ]]
+    [[ ${lines[0]} == "29" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -53,9 +57,11 @@ load 'bats_helper.bash'
   printf "pihole.toml unchanged count: %s\n" "${lines[0]}"
   [[ ${lines[0]} -ge 2 ]]
   assert_success
+  # One more than the deterministic baseline: the randomised DoT/DoH loopback
+  # tuples change the encrypted-upstream config on every (re)start.
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
-  assert_line --index 0 "1"
+  assert_line --index 0 "4"
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (3x)

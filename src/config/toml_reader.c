@@ -309,7 +309,7 @@ bool getLogFilePathTOML(void)
 	log_debug(DEBUG_CONFIG, "Reading TOML config file: log file path");
 
 	toml_result_t conf = { 0 };
-	
+
 	if(!parseTOML(&conf, 0))
 		return false;
 
@@ -332,7 +332,7 @@ bool getLogFilePathTOML(void)
 	toml_datum_t ftl = toml_table_find(log, "ftl");
 	if(ftl.type != TOML_STRING)
 	{
-		log_debug(DEBUG_CONFIG, "files.log DOES NOT EXIST or is not a string");
+		log_debug(DEBUG_CONFIG, "files.log.ftl DOES NOT EXIST or is not a string");
 		toml_free(conf);
 		return false;
 	}

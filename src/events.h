@@ -16,6 +16,9 @@
 
 #define set_event(event) _set_event(event, __LINE__, __FUNCTION__, __FILE__)
 void _set_event(const enum events event, int line, const char *function, const char *file);
+// Raise an event from a signal handler, where the debug logging in _set_event()
+// must not run
+void set_event_from_signal(const enum events event);
 #define get_and_clear_event(event) _get_and_clear_event(event, __LINE__, __FUNCTION__, __FILE__)
 bool _get_and_clear_event(const enum events event, int line, const char *function, const char *file);
 

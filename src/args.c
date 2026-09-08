@@ -19,8 +19,29 @@
 #  define NETTLE_VERSION_MINOR 0
 #endif
 
-#ifdef HAVE_MBEDTLS
-#include <mbedtls/version.h>
+#ifdef HAVE_TLS
+/*
+ * dnsmasq.h (included above) defines common allocator names like `free` and
+ * `strdup` as macros expanding to FTL's tracked wrappers. If still active while
+ * the OpenSSL headers are included, they get expanded inside OpenSSL's
+ * declarations/inline functions and produce invalid code (the exact breakage
+ * depends on the OpenSSL version). Undefine them around the includes and
+ * restore afterwards - the same protection src/FTL.h applies to its own system
+ * headers.
+ */
+#ifdef __GNUC__
+#pragma push_macro("free")
+#pragma push_macro("strdup")
+#undef free
+#undef strdup
+#endif
+#include <openssl/opensslv.h>
+#include <openssl/crypto.h>
+#include <openssl/provider.h>
+#ifdef __GNUC__
+#pragma pop_macro("strdup")
+#pragma pop_macro("free")
+#endif
 #endif
 
 #include "FTL.h"
@@ -42,6 +63,8 @@
 #include "tools/dhcp-discover.h"
 // mg_version()
 #include "webserver/civetweb/civetweb.h"
+// webserver_have_http2()/webserver_have_http3() for the --version report
+#include "webserver/webserver.h"
 // cJSON_Version()
 #include "webserver/cJSON/cJSON.h"
 #include "config/cli.h"
@@ -218,6 +241,16 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 {
 	return strncasecmp(input, start, strlen(start)) == 0;
 }
+
+#ifdef HAVE_TLS
+// Return the value part of an OpenSSL_version() string, skipping the leading
+// "label: " prefix that most of them carry (e.g. "built on: <date>").
+static const char *openssl_value(const char *s)
+{
+	const char *sep = strstr(s, ": ");
+	return sep != NULL ? sep + 2 : s;
+}
+#endif
 
 void parse_args(int argc, char *argv[])
 {
@@ -399,18 +432,26 @@ void parse_args(int argc, char *argv[])
 				                "         The value shown below may not reflect the current configuration.\n",
 				        GLOBALTOMLPATH);
 		}
-		if(argc == 2)
+		if(argc > 2 && strcmp(argv[2], "-t") == 0)
+		{
+			if(argc == 5)
+				exit(set_config_from_CLI(argv[3], argv[4], true));
+		}
+		else if(argc == 2)
 			exit(get_config_from_CLI(NULL, false));
 		else if(argc == 3)
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
 			exit(get_config_from_CLI(argv[3], true));
 		else if(argc == 4)
-			exit(set_config_from_CLI(argv[2], argv[3]));
-		else
+			exit(set_config_from_CLI(argv[2], argv[3], false));
+
+		// Anything else, including `--config -t key` with the value
+		// forgotten, falls through to the usage text
 		{
 			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
-			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
+			printf("       %s --config -t <config item key> <value>\n", argv[0]);
+			printf("Example: %s --config dns.CNAMEdeepInspect true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -481,13 +522,13 @@ void parse_args(int argc, char *argv[])
 	// Generate X.509 certificate
 	if(argc > 1 && strcmp(argv[1], "--gen-x509") == 0)
 	{
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
-			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
-			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
-			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
+			printf("Example:          %s --gen-x509 %s/tls.pem\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" with domain:     %s --gen-x509 %s/tls.pem pi.hole\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" RSA with domain: %s --gen-x509 %s/tls.pem nanopi.lan rsa\n", argv[0], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 		// Read config
@@ -512,12 +553,12 @@ void parse_args(int argc, char *argv[])
 	  (strcmp(argv[1], "--read-x509") == 0 ||
 	   strcmp(argv[1], "--read-x509-key") == 0))
 	{
-#ifdef HAVE_MBEDTLS
+#ifdef HAVE_TLS
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
-			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
-			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			printf("Example: %s %s %s/tls.pem\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
+			printf(" with domain: %s %s %s/tls.pem pi.hole\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 
@@ -704,10 +745,15 @@ void parse_args(int argc, char *argv[])
 		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
 
 		// Create a socket
-		struct sockaddr_in dest;
-		const int sock = create_socket(tcp, &dest);
+		const int sock = create_socket(tcp);
+		if(sock < 0)
+		{
+			// create_socket() has already logged the reason
+			exit(EXIT_FAILURE);
+		}
+
 		char hostn[MAXDOMAINLEN] = { 0 };
-		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		if(!resolveHostname(sock, tcp, hostn, argv[2], true, NULL))
 		{
 			// Close the socket
 			close(sock);
@@ -999,6 +1045,7 @@ void parse_args(int argc, char *argv[])
 			const char *green = cli_color(COL_GREEN);
 			const char *red = cli_color(COL_RED);
 			const char *yellow = cli_color(COL_YELLOW);
+			const char *blue = cli_color(COL_BLUE);
 
 			// Print FTL version
 			printf("****************************** %s%sFTL%s **********************************\n",
@@ -1048,22 +1095,20 @@ void parse_args(int argc, char *argv[])
 			printf("\n");
 			printf("****************************** %s%sCivetWeb%s *****************************\n",
 			       yellow, bold, normal);
-#ifdef HAVE_MBEDTLS
-			printf("Version:         %s%s%s%s (modified by Pi-hole) with %smbed TLS %s%s"MBEDTLS_VERSION_STRING"%s\n",
-			       green, bold, mg_version(), normal, yellow, green, bold, normal);
-#else
-			printf("Version:         %s%s%s%s%s (modified by Pi-hole) without %smbed TLS%s\n",
-			       green, bold, mg_version(), normal, red, yellow, normal);
-#endif
+			printf("Version:         %s%s%s%s (modified by Pi-hole)\n",
+			       green, bold, mg_version(), normal);
 			printf("Features:        ");
 			if(mg_check_feature(MG_FEATURES_FILES))
 				printf("Files: %sYes%s, ", green, normal);
 			else
 				printf("Files: %sNo%s, ", red, normal);
-			if(mg_check_feature(MG_FEATURES_TLS))
-				printf("TLS: %sYes%s, ", green, normal);
-			else
-				printf("TLS: %sNo%s, ", red, normal);
+			// CivetWeb is built NO_SSL, so its own TLS feature is always off;
+			// TLS is provided by FTL's in-process backend instead.
+#ifdef HAVE_TLS
+			printf("TLS: %sYes%s %s(via TLS backend)%s, ", green, normal, blue, normal);
+#else
+			printf("TLS: %sNo%s, ", red, normal);
+#endif
 			if(mg_check_feature(MG_FEATURES_CGI))
 				printf("CGI: %sYes%s, ", green, normal);
 			else
@@ -1096,8 +1141,9 @@ void parse_args(int argc, char *argv[])
 				printf("Compression: %sYes%s\n", green, normal);
 			else
 				printf("Compression: %sNo%s\n", red, normal);
-			if(mg_check_feature(MG_FEATURES_HTTP2))
-				printf("                 HTTP2: %sYes%s, ", green, normal);
+			// Likewise CivetWeb's native HTTP/2 stays off; the backend serves it.
+			if(webserver_have_http2())
+				printf("                 HTTP2: %sYes%s %s(via TLS backend)%s, ", green, normal, blue, normal);
 			else
 				printf("                 HTTP2: %sNo%s, ", red, normal);
 			if(mg_check_feature(MG_FEATURES_X_DOMAIN_SOCKET))
@@ -1105,6 +1151,47 @@ void parse_args(int argc, char *argv[])
 			else
 				printf("Unix domain sockets: %sNo%s\n", red, normal);
 			printf("\n");
+#ifdef HAVE_TLS
+			// FTL fronts the (plain-HTTP) CivetWeb backend with an in-process
+			// engine that terminates TLS and speaks the modern HTTP versions.
+			// Unencrypted HTTP/1.0 and HTTP/1.1 stay served directly on non-TLS
+			// ports, so this only adds capabilities, it removes none.
+			printf("************************ %s%sAdvanced TLS backend%s ***********************\n",
+			       yellow, bold, normal);
+			printf("HTTP/1.0:        %sYes%s (plaintext)\n", green, normal);
+			printf("HTTP/1.1:        %sYes%s\n", green, normal);
+			if(webserver_have_http2())
+				printf("HTTP/2:          %sYes%s\n", green, normal);
+			else
+				printf("HTTP/2:          %sNo%s\n", red, normal);
+			if(webserver_have_http3())
+				printf("HTTP/3:          %sYes%s\n", green, normal);
+			else
+				printf("HTTP/3:          %sNo%s\n", red, normal);
+			printf("\n");
+			printf("****************************** %s%sOpenSSL%s ******************************\n",
+			       yellow, bold, normal);
+			printf("Version:         %s%s"OPENSSL_FULL_VERSION_STR"%s\n", green, bold, normal);
+			printf("Built on:        %s\n", openssl_value(OpenSSL_version(OPENSSL_BUILT_ON)));
+			printf("Platform:        %s\n", openssl_value(OpenSSL_version(OPENSSL_PLATFORM)));
+			printf("CPU info:        %s\n", openssl_value(OpenSSL_version(OPENSSL_CPU_INFO)));
+			printf("Providers:       default: %s%s%s, legacy: %s%s%s, fips: %s%s%s\n",
+			       OSSL_PROVIDER_available(NULL, "default") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "default") ? "Yes" : "No", normal,
+			       OSSL_PROVIDER_available(NULL, "legacy") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "legacy") ? "Yes" : "No", normal,
+			       OSSL_PROVIDER_available(NULL, "fips") ? green : red,
+			       OSSL_PROVIDER_available(NULL, "fips") ? "Yes" : "No", normal);
+			// QUIC (needed for DoQ/DoH3) is available from OpenSSL
+			// 3.5 onwards, unless the library was built with the
+			// build-time option "no-quic".
+#if defined(OPENSSL_NO_QUIC) || !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x30500000L
+			printf("QUIC:            %sNo%s\n", red, normal);
+#else
+			printf("QUIC:            %sYes%s\n", green, normal);
+#endif
+			printf("\n");
+#endif /* HAVE_TLS */
 			printf("****************************** %s%scJSON%s ********************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
@@ -1268,7 +1355,11 @@ void parse_args(int argc, char *argv[])
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
 			printf("\t                    Config items with non-default values may\n");
 			printf("\t                    be colored in %sred%s\n", red, normal);
-			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config -t %skey %svalue%s\n", green, blue, cyan, normal);
+			printf("\t                    Check whether %svalue%s would be accepted for\n", cyan, normal);
+			printf("\t                    %skey%s, without applying it or writing the\n", blue, normal);
+			printf("\t                    config file\n\n");
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
@@ -1293,7 +1384,7 @@ void parse_args(int argc, char *argv[])
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");
 			printf("    and store it in %soutfile%s.\n\n", cyan, normal);
 			printf("    By default, this new certificate is based on the elliptic\n");
-			printf("    curve secp521r1. If the optional flag %s[rsa]%s is specified,\n", purple, normal);
+			printf("    curve secp384r1 (NIST P-384). If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
 			printf("    for which the certificate is valid. If omitted, the domain\n");
@@ -1458,7 +1549,7 @@ void suggest_complete(const int argc, char *argv[])
 		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
-		    "--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
+		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
 		};
 
 		// Provide matching suggestions

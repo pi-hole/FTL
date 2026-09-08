@@ -418,19 +418,13 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.t = CONF_JSON_STRING_ARRAY;
 	conf->dns.upstreams.d.json = cJSON_CreateArray();
 	conf->dns.upstreams.f = FLAG_RESTART_FTL;
-	conf->dns.upstreams.c = validate_array_no_newline;
+	conf->dns.upstreams.c = validate_upstreams;
 
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
 	conf->dns.CNAMEdeepInspect.t = CONF_BOOL;
 	conf->dns.CNAMEdeepInspect.d.b = true;
 	conf->dns.CNAMEdeepInspect.c = validate_stub; // Only type-based checking
-
-	conf->dns.blockESNI.k = "dns.blockESNI";
-	conf->dns.blockESNI.h = "Should _esni. subdomains of blocked domains also be blocked by default? Encrypted Server Name Indication (ESNI) is certainly a good step into the right direction to enhance privacy on the web. It prevents on-path observers, including ISPs, coffee shop owners and firewalls, from intercepting the TLS Server Name Indication (SNI) extension by encrypting it. This prevents the SNI from being used to determine which websites users are visiting.\n\n ESNI will obviously cause issues for pixelserv-tls which will be unable to generate matching certificates on-the-fly when it cannot read the SNI. According to the IETF draft (link above), we can easily restore pixelserv-tls's operation by replying NXDOMAIN to _esni. subdomains of blocked domains as this mimics a \"not configured for this domain\" behavior.\n\n ESNI is mostly obsolete. It was previously rolled out by Cloudflare and Firefox, but they, as well as almost every client and server, are now using Encrypted Client Hello (ECH) instead of ESNI. ECH is served via the HTTPS record on the same RRname, so it will automatically be blocked.";
-	conf->dns.blockESNI.t = CONF_BOOL;
-	conf->dns.blockESNI.d.b = true;
-	conf->dns.blockESNI.c = validate_stub; // Only type-based checking
 
 	conf->dns.EDNS0ECS.k = "dns.EDNS0ECS";
 	conf->dns.EDNS0ECS.h = "Should we overwrite the query source when client information is provided through EDNS0 client subnet (ECS) information? This allows Pi-hole to obtain client IPs even if they are hidden behind the NAT of a router. This feature has been requested and discussed on Discourse where further information how to use it can be found: https://discourse.pi-hole.net/t/support-for-add-subnet-option-from-dnsmasq-ecs-edns0-client-subnet/35940";
@@ -538,7 +532,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_FTL;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
-	
+
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("A string in the format \"<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]\"");
@@ -603,6 +597,28 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.c = validate_dns_revServers;
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
+	conf->dns.upstreamCA.k = "dns.upstreamCA";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
+	conf->dns.upstreamCA.t = CONF_STRING;
+	conf->dns.upstreamCA.d.s = (char*)"";
+	conf->dns.upstreamCA.f = FLAG_RESTART_FTL;
+	conf->dns.upstreamCA.c = validate_filepath_empty;
+
+	conf->dns.doh.k = "dns.doh";
+	conf->dns.doh.h = "Enable the inbound DNS-over-HTTPS (DoH) server. When enabled, FTL answers DoH queries (RFC 8484: an HTTP POST with an application/dns-message body, or a GET with a base64url-encoded ?dns= parameter, to /dns-query) on the Pi-hole HTTPS webserver, letting downstream clients use this Pi-hole directly as their encrypted resolver. This requires a TLS-enabled webserver.port (e.g. \"443s\") with a valid certificate, see config option webserver.port.";
+	conf->dns.doh.t = CONF_BOOL;
+	conf->dns.doh.d.b = true;
+	conf->dns.doh.f = FLAG_RESTART_FTL;
+	conf->dns.doh.c = validate_stub;
+
+	conf->dns.dot.k = "dns.dot";
+	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
+	conf->dns.dot.t = CONF_BOOL;
+	conf->dns.dot.d.b = true;
+	conf->dns.dot.f = FLAG_RESTART_FTL;
+	conf->dns.dot.c = validate_stub;
+
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
 	conf->dns.domain.name.h = "The DNS domain used by your Pi-hole.\n\n This DNS domain is purely local. FTL may answer queries from its local cache and configuration but *never* forwards any requests upstream *unless* you have configured a dns.revServer exactly for this domain. In the latter case, all queries for this domain are sent exclusively to this server (including reverse lookups).\n\n For DHCP, this has two effects; firstly it causes the DHCP server to return the domain to any hosts which request it, and secondly it sets the domain which it is legal for DHCP-configured hosts to claim. The intention is to constrain hostnames so that an untrusted host on the LAN cannot advertise its name via DHCP as e.g. \"google.com\" and capture traffic not meant for it. If no domain suffix is specified, then any DHCP hostname with a domain part (ie with a period) will be disallowed and logged. If a domain is specified, then hostnames with a domain part are allowed, provided the domain part matches the suffix. In addition, when a suffix is set then hostnames without a domain part have the suffix added as an optional domain part. For instance, we can set domain=mylab.com and have a machine whose DHCP hostname is \"laptop\". The IP address for that machine is available both as \"laptop\" and \"laptop.mylab.com\".\n\n You can disable setting a domain by setting this option to an empty string.";
@@ -650,7 +666,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
@@ -718,7 +734,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
-	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");	
+	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
@@ -816,7 +832,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.netmask.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.netmask.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.netmask.d.in_addr, 0, sizeof(struct in_addr));
-	conf->dhcp.netmask.c = validate_stub; // Only type-based checking
+	conf->dhcp.netmask.c = validate_netmask;
 
 	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
@@ -1138,7 +1154,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("A valid TLS certificate file (*.pem)");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
-	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
+	conf->webserver.tls.cert.d.s = (char*)(PIHOLE_INSTALL_DIR "/tls.pem");
 	conf->webserver.tls.cert.c = validate_filepath;
 
 	// sub-struct paths
@@ -1242,7 +1258,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
-	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
+	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in "PIHOLE_INSTALL_DIR" and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
 	conf->webserver.api.cli_pw.t = CONF_BOOL;
 	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL;
 	conf->webserver.api.cli_pw.d.b = true;
@@ -1319,7 +1335,7 @@ void initConfig(struct config *conf)
 	conf->files.database.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.database.t = CONF_STRING;
 	conf->files.database.f = FLAG_RESTART_FTL;
-	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
+	conf->files.database.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-FTL.db");
 	conf->files.database.c = validate_filepath;
 
 	conf->files.tmp_db.k = "files.tmp_db";
@@ -1327,7 +1343,7 @@ void initConfig(struct config *conf)
 	conf->files.tmp_db.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.tmp_db.t = CONF_STRING;
 	conf->files.tmp_db.f = FLAG_RESTART_FTL;
-	conf->files.tmp_db.d.s = (char*)"/etc/pihole/pihole-tmp.db";
+	conf->files.tmp_db.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-tmp.db");
 	conf->files.tmp_db.c = validate_filepath;
 
 	conf->files.gravity.k = "files.gravity";
@@ -1335,7 +1351,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.a = cJSON_CreateStringReference("Any Pi-hole gravity database");
 	conf->files.gravity.t = CONF_STRING;
 	conf->files.gravity.f = FLAG_RESTART_FTL;
-	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
+	conf->files.gravity.d.s = (char*)(PIHOLE_INSTALL_DIR "/gravity.db");
 	conf->files.gravity.c = validate_filepath;
 
 	conf->files.gravity_tmp.k = "files.gravity_tmp";
@@ -1350,7 +1366,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
 	conf->files.macvendor.a = cJSON_CreateStringReference("Any Pi-hole macvendor database");
 	conf->files.macvendor.t = CONF_STRING;
-	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
+	conf->files.macvendor.d.s = (char*)(PIHOLE_INSTALL_DIR "/macvendor.db");
 	conf->files.macvendor.c = validate_filepath;
 
 	conf->files.pcap.k = "files.pcap";
@@ -1627,7 +1643,7 @@ void initConfig(struct config *conf)
 	conf->debug.config.c = validate_stub; // Only type-based checking
 
 	conf->debug.inotify.k = "debug.inotify";
-	conf->debug.inotify.h = "Debug monitoring of /etc/pihole filesystem events";
+	conf->debug.inotify.h = "Debug monitoring of "PIHOLE_INSTALL_DIR" filesystem events";
 	conf->debug.inotify.t = CONF_BOOL;
 	conf->debug.inotify.d.b = false;
 	conf->debug.inotify.c = validate_stub; // Only type-based checking
@@ -1673,6 +1689,12 @@ void initConfig(struct config *conf)
 	conf->debug.performance.t = CONF_BOOL;
 	conf->debug.performance.d.b = false;
 	conf->debug.performance.c = validate_stub; // Only type-based checking
+
+	conf->debug.dotdoh.k = "debug.dotdoh";
+	conf->debug.dotdoh.h = "Print periodic per-upstream statistics for the encrypted-upstream (DoT/DoH) proxy: query throughput, connection reuse depth, TLS session resumption and how often a full handshake was needed. Useful for assessing keep-alive effectiveness against real upstream resolvers.";
+	conf->debug.dotdoh.t = CONF_BOOL;
+	conf->debug.dotdoh.d.b = false;
+	conf->debug.dotdoh.c = validate_stub; // Only type-based checking
 
 	conf->debug.all.k = "debug.all";
 	conf->debug.all.h = "Set all debug flags at once. This is a convenience option to enable all debug flags at once. Note that this option is not persistent, setting it to true will enable all *remaining* debug flags but unsetting it will disable *all* debug flags.";
@@ -1882,7 +1904,7 @@ bool migrate_config_v6(void)
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(&config, false, errbuf);
+	write_dnsmasq_config(&config, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return true;
@@ -1912,7 +1934,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			{
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
-				write_dnsmasq_config(conf, false, errbuf);
+				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 				write_custom_list();
 			}
 			return true;
@@ -1945,10 +1967,33 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(conf, false, errbuf);
+	write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return false;
+}
+
+static bool getLogFilePathENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_ftl");
+	if(val == NULL)
+		return false;
+
+	// Validate the path the same way the regular config load does. The
+	// rejection is not reported here: logging is not available yet at this
+	// early stage, but the regular env parse reports the same issue later on.
+	union conf_value tmp = { .s = (char *)val };
+	char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_filepath(&tmp, config.files.log.ftl.k, err))
+		return false;
+
+	char *copy = strdup(val);
+	if(copy == NULL)
+		return false;
+
+	config.files.log.ftl.v.s = copy;
+	config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+	return true;
 }
 
 bool getLogFilePath(bool try_read)
@@ -1966,8 +2011,8 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Check if the config file contains a different path
-	if(try_read && !getLogFilePathTOML())
+	// Try sources in priority order: ENV > TOML > legacy
+	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;

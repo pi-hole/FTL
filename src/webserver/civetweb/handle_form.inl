@@ -109,8 +109,8 @@ url_encoded_field_get(
 		return MG_FORM_FIELD_STORAGE_ABORT;
 	}
 
-	key_dec_len = mg_url_decode(
-	    key, (int)key_len, key_dec, (int)sizeof(key_dec), 1);
+	key_dec_len =
+	    mg_url_decode(key, (int)key_len, key_dec, (int)sizeof(key_dec), 1);
 
 	if (*value_len >= 2 && value[*value_len - 2] == '%')
 		*value_len -= 2;
@@ -146,7 +146,8 @@ unencoded_field_get(const struct mg_connection *conn,
 	int key_dec_len;
 	(void)conn;
 
-	key_dec_len = mg_url_decode(key, (int)key_len, key_dec, (int)sizeof(key_dec), 1);
+	key_dec_len =
+	    mg_url_decode(key, (int)key_len, key_dec, (int)sizeof(key_dec), 1);
 	if (key_dec_len < 0) {
 		return MG_FORM_FIELD_STORAGE_ABORT;
 	}
@@ -178,8 +179,13 @@ search_boundary(const char *buf,
 
 	/* We must do a binary search here, not a string search, since the
 	 * buffer may contain '\x00' bytes, if binary data is transferred. */
-	int clen = (int)buf_len - (int)boundary_len - boundary_start_len;
-	int i;
+	size_t clen;
+	size_t i;
+
+	if (buf_len < (boundary_len + boundary_start_len)) {
+		return NULL;
+	}
+	clen = buf_len - boundary_len - boundary_start_len;
 
 	for (i = 0; i <= clen; i++) {
 		if (!memcmp(buf + i, boundary_start, boundary_start_len)) {
@@ -428,7 +434,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					 * been closed. */
 					all_data_read = (buf_fill == 0);
 				}
-				buf_fill += r;
+				buf_fill += (size_t)r;
 				buf[buf_fill] = 0;
 				if (buf_fill < 1) {
 					break;
@@ -488,14 +494,14 @@ mg_handle_form_request(struct mg_connection *conn,
 					vallen = (ptrdiff_t)strlen(val);
 					end_of_key_value_pair_found = all_data_read;
 					if ((buf + buf_fill) > (val + vallen)) {
-						/* Avoid DoS attacks by having a zero byte in the middle of
-						 * a request that is supposed to be URL encoded. Since this
-						 * request is certainly invalid, according to the protocol
+						/* Avoid DoS attacks by having a zero byte in the middle
+						 * of a request that is supposed to be URL encoded.
+						 * Since this request is certainly invalid, according to
+						 * the protocol
 						 * specification, stop processing it. Fixes #1348 */
 						abort_read = 1;
 						break;
 					}
-
 				}
 
 				if (field_storage == MG_FORM_FIELD_STORAGE_GET) {
@@ -555,7 +561,7 @@ mg_handle_form_request(struct mg_connection *conn,
 					        buf + (size_t)used,
 					        sizeof(buf) - (size_t)used);
 					next = buf;
-					buf_fill -= used;
+					buf_fill -= (size_t)used;
 					if (buf_fill < (sizeof(buf) - 1)) {
 
 						size_t to_read = sizeof(buf) - 1 - buf_fill;
@@ -576,9 +582,14 @@ mg_handle_form_request(struct mg_connection *conn,
 							 * Content-Length has been reached, or if chunked
 							 * encoding is used and the end marker has been
 							 * read, or if the connection has been closed. */
-							all_data_read = (buf_fill == 0);
+							/* "used == 0" together with "r == 0" means the
+							 * connection is closed, the buffered residue
+							 * could not be parsed and no more data will
+							 * arrive: no progress is possible, so terminate
+							 * instead of spinning on the same bytes. */
+							all_data_read = (buf_fill == 0) || (used == 0);
 						}
-						buf_fill += r;
+						buf_fill += (size_t)r;
 						buf[buf_fill] = 0;
 						if (buf_fill < 1) {
 							break;
@@ -618,7 +629,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			/* Proceed to next entry */
 			used = next - buf;
 			memmove(buf, buf + (size_t)used, sizeof(buf) - (size_t)used);
-			buf_fill -= used;
+			buf_fill -= (size_t)used;
 		}
 
 		return field_count;
@@ -723,7 +734,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				all_data_read = (buf_fill == 0);
 			}
 
-			buf_fill += r;
+			buf_fill += (size_t)r;
 			buf[buf_fill] = 0;
 			if (buf_fill < 1) {
 				/* No data */
@@ -947,7 +958,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			/* If the boundary is already in the buffer, get the address,
 			 * otherwise next will be NULL. */
 			next = search_boundary(hbuf,
-			                       (size_t)((buf - hbuf) + buf_fill),
+			                       ((size_t)(buf - hbuf) + buf_fill),
 			                       boundary,
 			                       bl);
 
@@ -972,7 +983,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			while (!next) {
 				/* Set "towrite" to the number of bytes available
 				 * in the buffer */
-				towrite = (size_t)(buf - hend + buf_fill);
+				towrite = ((size_t)(buf - hend) + buf_fill);
 
 				if (towrite < bl + 4) {
 					/* Not enough data stored. */
@@ -1046,7 +1057,7 @@ mg_handle_form_request(struct mg_connection *conn,
 				}
 				/* r==0 already handled, all_data_read is false here */
 
-				buf_fill += r;
+				buf_fill += (size_t)r;
 				buf[buf_fill] = 0;
 				/* buf_fill is at least 8 here */
 
@@ -1059,7 +1070,16 @@ mg_handle_form_request(struct mg_connection *conn,
 				}
 			}
 
-			towrite = (next ? (size_t)(next - hend) : 0);
+			/* "next" may point before "hend" when the boundary delimiter
+			 * overlaps the part header/body separator - e.g. a malformed
+			 * part whose empty body is directly followed by the boundary,
+			 * so search_boundary() matches the "\r\n" of the "\r\n\r\n"
+			 * separator, which lies before the body start "hend". Guard the
+			 * pointer subtraction: an unchecked (size_t)(next - hend) would
+			 * underflow to a huge value that is then passed to the field_get
+			 * callback as the value length (and to fwrite() as the store
+			 * size), causing an out-of-bounds read of the 8 KB stack buffer. */
+			towrite = (next && (next >= hend)) ? (size_t)(next - hend) : 0;
 
 			if (field_storage == MG_FORM_FIELD_STORAGE_GET) {
 				/* Call callback */
@@ -1129,7 +1149,7 @@ mg_handle_form_request(struct mg_connection *conn,
 			if (next) {
 				used = next - buf + 2;
 				memmove(buf, buf + (size_t)used, sizeof(buf) - (size_t)used);
-				buf_fill -= used;
+				buf_fill -= (size_t)used;
 			} else {
 				buf_fill = 0;
 			}

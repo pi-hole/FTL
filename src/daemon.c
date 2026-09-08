@@ -41,8 +41,8 @@
 #include "config/env.h"
 // parse_proc_stat()
 #include "procps.h"
-// destroy_entropy()
-#include "webserver/x509.h"
+// dotdoh_cleanup()
+#include "dotdoh/proxy.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -419,6 +419,13 @@ void cleanup(const int ret)
 		// Terminate threads
 		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
 		terminate_threads();
+
+		// Tear down the encrypted-upstream proxy. Runs after the worker thread
+		// has joined, so freeing its pooled connections and the shared SSL_CTX
+		// cannot race the poll loop. This also releases the OpenSSL context on a
+		// clean exit, so it does not surface as a leak under valgrind.
+		log_debug(DEBUG_ANY, "Terminating: Stopping encrypted-upstream proxy");
+		dotdoh_cleanup();
 
 		// Close database connection
 		lock_shm();

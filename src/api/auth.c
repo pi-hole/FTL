@@ -70,7 +70,7 @@ static void add_request_info(struct ftl_conn *api, const char *csrf)
 void init_api_sessions(void)
 {
 	// Restore sessions from database
-	log_debug(DEBUG_API, "Initializing API sessions, maximum sessions: %u", config.webserver.api.max_sessions.v.u16);
+	log_web_debug(DEBUG_API, "Initializing API sessions, maximum sessions: %u", config.webserver.api.max_sessions.v.u16);
 	max_sessions = config.webserver.api.max_sessions.v.u16;
 	auth_data = calloc(max_sessions, sizeof(struct session));
 	if(auth_data == NULL)
@@ -206,14 +206,14 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 	if(!sid_avail || sid[0] == '\0')
 	{
 		api->message = "no SID provided";
-		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
+		log_web_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
 	// else: Analyze SID
 	int user_id = API_AUTH_UNAUTHORIZED;
 	const time_t now = time(NULL);
-	log_debug(DEBUG_API, "Read sid=\"%s\" from %s", sid, sid_source);
+	log_web_debug(DEBUG_API, "Read sid=\"%s\" from %s", sid, sid_source);
 
 	// If the SID has been sent through a cookie, we require a CSRF token in
 	// the header to be sent along with the request for any API requests
@@ -233,7 +233,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		else
 		{
 			api->message = "Cookie authentication without CSRF token";
-			log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
+			log_web_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 			return API_AUTH_UNAUTHORIZED;
 		}
 	}
@@ -265,7 +265,7 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 			     memeql_sec(auth_data[i].csrf, csrf, csrflen)))
 			{
 				api->message = "CSRF token mismatch";
-				log_debug(DEBUG_API, "API Authentication: FAIL (%s, received \"%s\", expected \"%s\")",
+				log_web_debug(DEBUG_API, "API Authentication: FAIL (%s, received \"%s\", expected \"%s\")",
 				          api->message, csrf, auth_data[i].csrf);
 				return API_AUTH_UNAUTHORIZED;
 			}
@@ -301,14 +301,14 @@ int check_client_auth(struct ftl_conn *api, const bool is_api)
 		{
 			char timestr[TIMESTR_SIZE];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-			log_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s (%s at login)",
+			log_web_debug(DEBUG_API, "Recognized known user: user_id %i, valid_until: %s, remote_addr %s (%s at login)",
 			          user_id, timestr, api->request->remote_addr, auth_data[user_id].remote_addr);
 		}
 	}
 	else
 	{
 		api->message = expired ? "session expired" : "session unknown";
-		log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
+		log_web_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
 		return API_AUTH_UNAUTHORIZED;
 	}
 
@@ -429,7 +429,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 {
 	if(user_id > API_AUTH_UNAUTHORIZED && (api->method == HTTP_GET || api->method == HTTP_POST))
 	{
-		log_debug(DEBUG_API, "API Auth status: OK");
+		log_web_debug(DEBUG_API, "API Auth status: OK");
 
 		AUTOLOCK(&auth_lock);
 		if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
@@ -449,7 +449,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	{
 		if(user_id > API_AUTH_UNAUTHORIZED)
 		{
-			log_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
+			log_web_debug(DEBUG_API, "API Auth status: Logout, asking to delete cookie");
 
 			snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 			         FTL_DELETE_COOKIE, api->request->is_ssl ? " Secure" : "");
@@ -463,7 +463,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 		}
 		else
 		{
-			log_debug(DEBUG_API, "API Auth status: Logout, but not authenticated");
+			log_web_debug(DEBUG_API, "API Auth status: Logout, but not authenticated");
 
 			cJSON *json = JSON_NEW_OBJECT();
 			get_session_object(api, json, user_id, now);
@@ -472,7 +472,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	}
 	else if(user_id == API_AUTH_EMPTYPASS)
 	{
-		log_debug(DEBUG_API, "API Auth status: OK (empty password)");
+		log_web_debug(DEBUG_API, "API Auth status: OK (empty password)");
 
 		cJSON *json = JSON_NEW_OBJECT();
 		get_session_object(api, json, user_id, now);
@@ -480,7 +480,7 @@ static int send_api_auth_status(struct ftl_conn *api, const int user_id, const t
 	}
 	else
 	{
-		log_debug(DEBUG_API, "API Auth status: Invalid, asking to delete cookie");
+		log_web_debug(DEBUG_API, "API Auth status: Invalid, asking to delete cookie");
 
 		snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
 		         FTL_DELETE_COOKIE, api->request->is_ssl ? " Secure" : "");
@@ -531,7 +531,7 @@ int api_auth(struct ftl_conn *api)
 		if((json_password = cJSON_GetObjectItemCaseSensitive(api->payload.json, "password")) == NULL)
 		{
 			const char *message = "No password found in JSON payload";
-			log_debug(DEBUG_API, "API auth error: %s", message);
+			log_web_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       message,
@@ -542,7 +542,7 @@ int api_auth(struct ftl_conn *api)
 		if(!cJSON_IsString(json_password))
 		{
 			const char *message = "Field password has to be of type 'string'";
-			log_debug(DEBUG_API, "API auth error: %s", message);
+			log_web_debug(DEBUG_API, "API auth error: %s", message);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       message,
@@ -563,7 +563,7 @@ int api_auth(struct ftl_conn *api)
 	// Logout attempt
 	if(api->method == HTTP_DELETE)
 	{
-		log_debug(DEBUG_API, "API Auth: User with ID %i wants to log out", user_id);
+		log_web_debug(DEBUG_API, "API Auth: User with ID %i wants to log out", user_id);
 		return send_api_auth_status(api, user_id, now);
 	}
 
@@ -602,7 +602,7 @@ int api_auth(struct ftl_conn *api)
 			if((json_totp = cJSON_GetObjectItemCaseSensitive(api->payload.json, "totp")) == NULL)
 			{
 				const char *message = "No 2FA token found in JSON payload";
-				log_debug(DEBUG_API, "API auth error: %s", message);
+				log_web_debug(DEBUG_API, "API auth error: %s", message);
 				return send_json_error(api, 400,
 							"bad_request",
 							message,
@@ -644,7 +644,7 @@ int api_auth(struct ftl_conn *api)
 			if(auth_data[i].used &&
 			   auth_data[i].valid_until < now)
 			{
-				log_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
+				log_web_debug(DEBUG_API, "API: Session of client %u (%s) expired, freeing...",
 				          i, auth_data[i].remote_addr);
 				delete_session(i, true);
 			}
@@ -709,14 +709,14 @@ int api_auth(struct ftl_conn *api)
 		{
 			char timestr[TIMESTR_SIZE];
 			get_timestr(timestr, auth_data[user_id].valid_until, false, false);
-			log_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
+			log_web_debug(DEBUG_API, "API: Registered new user: user_id %i valid_until: %s remote_addr %s (accepted due to %s)",
 					user_id, timestr, auth_data[user_id].remote_addr,
 					empty_password ? "empty password" : "correct response");
 		}
 		AUTOUNLOCK();
 		if(user_id == API_AUTH_UNAUTHORIZED)
 		{
-			log_warn("No free API seats available (webserver.api.max_sessions = %u), not authenticating client",
+			log_web(LOG_WARNING, "No free API seats available (webserver.api.max_sessions = %u), not authenticating client",
 			         max_sessions);
 
 			return send_json_error(api, 429,
@@ -739,7 +739,7 @@ int api_auth(struct ftl_conn *api)
 	{
 		// No password set
 		api->message = "password incorrect";
-		log_debug(DEBUG_API, "API: Trying to auth with password but none set");
+		log_web_debug(DEBUG_API, "API: Trying to auth with password but none set");
 
 		// Zero-out password in memory (symmetry with the success path)
 		if(password != NULL)
@@ -749,7 +749,7 @@ int api_auth(struct ftl_conn *api)
 	{
 		api->message = "password incorrect";
 		// Never log the plaintext password, only its length
-		log_debug(DEBUG_API, "API: Password incorrect (length %zu)", password ? strlen(password) : 0);
+		log_web_debug(DEBUG_API, "API: Password incorrect (length %zu)", password ? strlen(password) : 0);
 
 		// Zero-out password in memory (symmetry with the success path)
 		if(password != NULL)

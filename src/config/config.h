@@ -30,8 +30,10 @@
 #include "webserver/cJSON/cJSON.h"
 // enum web_theme
 #include "api/theme.h"
+// PIHOLE_INSTALL_DIR
+#include "install_paths.h"
 
-#define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
+#define GLOBALTOMLPATH PIHOLE_INSTALL_DIR "/pihole.toml"
 
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
@@ -40,13 +42,13 @@
 #define VALIDATOR_ERRBUF_LEN 256
 
 // Location of the legacy (pre-v6.0) config file
-#define GLOBALCONFFILE_LEGACY "/etc/pihole/pihole-FTL.conf"
+#define GLOBALCONFFILE_LEGACY PIHOLE_INSTALL_DIR "/pihole-FTL.conf"
 
 // Migration target for the legacy (pre-v6.0) config file
-#define MIGRATION_TARGET_V6 "/etc/pihole/migration_backup_v6"
+#define MIGRATION_TARGET_V6 PIHOLE_INSTALL_DIR "/migration_backup_v6"
 
 // Location of the legacy (pre-v6.0) setupVars config file
-#define SETUPVARS_CONF "/etc/pihole/setupVars.conf"
+#define SETUPVARS_CONF PIHOLE_INSTALL_DIR "/setupVars.conf"
 
 union conf_value {
 	bool b;                                     // boolean value
@@ -134,7 +136,6 @@ struct config {
 	struct {
 		struct conf_item upstreams;
 		struct conf_item CNAMEdeepInspect;
-		struct conf_item blockESNI;
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
 		struct conf_item showDNSSEC;
@@ -155,6 +156,9 @@ struct config {
 		struct conf_item port;
 		struct conf_item localise;
 		struct conf_item revServers;
+		struct conf_item upstreamCA;
+		struct conf_item doh;
+		struct conf_item dot;
 		struct {
 			struct conf_item name;
 			struct conf_item local;
@@ -367,6 +371,7 @@ struct config {
 		struct conf_item netlink;
 		struct conf_item timing;
 		struct conf_item performance;
+		struct conf_item dotdoh;
 		// all must be the last item in this struct
 		struct conf_item all;
 	} debug;

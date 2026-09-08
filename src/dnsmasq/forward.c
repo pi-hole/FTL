@@ -185,7 +185,10 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
   int forwarded = 0;
   int ede = EDE_UNSET;
   unsigned short rrtype, rrclass;
-
+  unsigned short id = ntohs(header->id); /* Retrieve the id from the new query before we overwrite it. */
+  unsigned int casediff = 0;
+  unsigned int *bitvector = NULL;
+  
   gotname = extract_request(header, plen, daemon->namebuff, &rrtype, &rrclass);
   
   /* Check for retry on existing query.
@@ -205,16 +208,7 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 					     FREC_HAS_PHEADER | FREC_DNSKEY_QUERY | FREC_DS_QUERY | FREC_NO_CACHE)))
     {
       struct frec_src *src;
-      unsigned int casediff = 0;
-      unsigned int *bitvector = NULL;
-      unsigned short id = ntohs(header->id); /* Retrieve the id from the new query before we overwrite it. */
-      
-      /* Get the case-scambled version of the query to resend. This is important because we
-	 may fall through below and forward the query in the packet buffer again and we
-	 want to use the same case scrambling as the first time. */
-      blockdata_retrieve(forward->stash, forward->stash_len, (void *)header); 
-      plen = forward->stash_len;
-
+          
       for (src = &forward->frec_src; src; src = src->next)
 	if (src->orig_id == id && 
 	    sockaddr_isequal(&src->source, udpaddr))
@@ -225,6 +219,11 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  old_src = 1;
 	  /* If a query is retried, use the log_id for the retry when logging the answer. */
 	  src->log_id = daemon->log_id;
+	  /* Get the case-scambled version of the query to resend. This is important because we
+	     may fall through below and forward the query in the packet buffer again and we
+	     want to use the same case scrambling as the first time. */
+	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header); 
+	  plen = forward->stash_len;
 	}
       else
 	{
@@ -250,9 +249,11 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 		 and never resetting until the frec gets deleted by
 		 aging followed by the receipt of a different query. This
 		 is a bit of a DoS vuln. Avoid by explicitly deleting the
-		 frec once it expires. */
-	      if (difftime(now, forward->time) >= TIMEOUT)
-		free_frec(forward);
+		 frec once it expires. The deletion is done at the end of
+		 this function, unless we set forward to NULL here. */
+	      if (difftime(now, forward->time) < TIMEOUT)
+		forward = NULL;
+
 	      goto reply;
 	    }
 
@@ -271,7 +272,10 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 
 	     The original query we sent is now in packet buffer and the query name in the
 	     new instance is on daemon->namebuff. */
-	    	  
+
+	  blockdata_retrieve(forward->stash, forward->stash_len, (void *)header); 
+	  plen = forward->stash_len;
+
 	  if (extract_name(header, forward->stash_len, NULL, daemon->workspacename, EXTR_NAME_EXTRACT, 0))
 	    {
 	      unsigned int i, gobig = 0;
@@ -320,7 +324,6 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
 	  src->fd = udpfd;
 	  src->encode_bitmap = casediff;
 	  src->encode_bigmap = bitvector;
-	  
 	  src->udp_pkt_size = (unsigned short)replylimit;
 
 	  /* closely spaced identical queries cannot be a try and a retry, so
@@ -399,18 +402,15 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
       forward->frec_src.orig_id = ntohs(header->id);
       forward->new_id = get_id();
       header->id = ntohs(forward->new_id);
-      forward->frec_src.encode_bitmap = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
+      forward->frec_src.encode_bitmap = casediff = (!option_bool(OPT_NO_0x20) && option_bool(OPT_DO_0x20)) ? rand32() : 0;
       forward->frec_src.encode_bigmap = NULL;
-
-      if (!extract_name(header, plen, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+      
+      if (casediff != 0 && !extract_name(header, plen, NULL, (char *)&casediff, EXTR_NAME_FLIP, 1))
 	goto reply;
       
       /* Keep copy of query for retries and move to TCP */
       if (!(forward->stash = blockdata_alloc((char *)header, plen)))
-	{
-	  free_frec(forward);
-	  goto reply; /* no mem. return REFUSED */
-	}
+	goto reply; /* no mem. return REFUSED */
       
       forward->stash_len = plen;
       forward->frec_src.log_id = daemon->log_id;
@@ -539,10 +539,16 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     { 
       int fd;
       struct server *srv = daemon->serverarray[start];
-      
-      if ((fd = allocate_rfd(&forward->rfds, srv)) != -1)
+
+      /**** Pi-hole modification ****/
+      /* Skip an encrypted-upstream loopback tuple that FTL's DoT/DoH proxy is not
+	 currently serving, so we never forward its plaintext to a socket we do
+	 not own (unbound, disabled or squatted). */
+      if (FTL_is_forward_available(&srv->addr) &&
+      /******************************/
+	  (fd = allocate_rfd(&forward->rfds, srv)) != -1)
 	{
-	  
+
 #ifdef HAVE_CONNTRACK
 	  /* Copy connection mark of incoming query to outgoing connection. */
 	  if (option_bool(OPT_CONNTRACK))
@@ -601,13 +607,25 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   
   /* could not send on, prepare to return */ 
-  header->id = htons(forward->frec_src.orig_id);
-  free_frec(forward); /* cancel */
   ede = EDE_NETERR;
   
  reply:
   if (udpfd != -1)
     {
+      /* The query now in the buffer can have changed from what arrived during
+	 the preparation for forwarding in two respects.
+	 1) The header->id field may have changed.
+	 2) The case of letters in the query may have been changed.
+	 
+	 Restore both of these changes before using it to build an error return for the client.
+	 The original id is held in local variable id, and the difference in case
+	 is encoded in casediff and also bitvector if the difference spreads beyond the first
+	 32 characters.
+      */
+      header->id = htons(id);
+      if (casediff != 0)
+	extract_name(header, plen, NULL, (char *)(bitvector ? bitvector : &casediff), EXTR_NAME_FLIP, bitvector ? casediff : 1);
+	      
       if (!(plen = make_local_answer(flags, gotname, plen, header, daemon->namebuff, replylimit, first, last, ede)))
 	return;
       
@@ -638,6 +656,11 @@ static void forward_query(int udpfd, union mysockaddr *udpaddr,
     }
   
   daemon->metrics[METRIC_DNS_LOCAL_ANSWERED]++;
+
+  /* This has to be after last use of bitvector. */
+  if (forward)
+    free_frec(forward);
+  
   return;
 }
 
@@ -749,7 +772,7 @@ static size_t process_reply(struct dns_header *header, time_t now, struct server
 
       // Pi-hole modification: Interpret the pseudoheader before
       // it might get stripped off below (added_pheader == true)
-      FTL_parse_pseudoheaders(pheader, (size_t)plen);
+      FTL_parse_pseudoheaders((unsigned char *)header, n, pheader, (size_t)plen);
       
       if (option_bool(OPT_CLIENT_SUBNET) && !check_source(header, n, pheader, query_source))
 	{
@@ -1071,6 +1094,13 @@ static void dnssec_validate(struct frec *forward, struct dns_header *header,
 		 allocation of a new one: third arg of get_new_frec() does that. */
 	      if ((serverind = dnssec_server(forward->sentto, daemon->keyname, STAT_ISEQUAL(status, STAT_NEED_DS), NULL, NULL)) != -1 &&
 		  (server = daemon->serverarray[serverind]) &&
+		  /**** Pi-hole modification ****/
+		  /* Same gate as the UDP/TCP forward loops: never send this plaintext
+		     DNSKEY/DS sub-query to an encrypted-upstream tuple the proxy is not
+		     serving. Skipping keeps serverind != -1, so validation unwinds to
+		     STAT_ABANDONED (SERVFAIL) rather than assuming the zone unsigned. */
+		  FTL_is_forward_available(&server->addr) &&
+		  /******************************/
 		  (nn = dnssec_generate_query(header, daemon->edns_pktsz,
 					      daemon->keyname, forward->class, get_id(),
 					      STAT_ISEQUAL(status, STAT_NEED_KEY) ? T_DNSKEY : T_DS)) && 
@@ -1313,7 +1343,7 @@ void reply_query(int fd, time_t now)
      had replies from all to avoid filling the forwarding table when
      everything is broken */
 
-  /* decrement count of replies recieved if we sent to more than one server. */
+  /* decrement count of replies received if we sent to more than one server. */
   if (forward->forwardall && (--forward->forwardall > 1) && RCODE(header) == REFUSED)
     return;
 
@@ -1335,7 +1365,8 @@ void reply_query(int fd, time_t now)
   server->query_latency = server->mma_latency/128;
   
   /* Flip the bits back in the query name. */
-    if (!extract_name(header, n, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
+    if (forward->frec_src.encode_bitmap != 0 &&
+	!extract_name(header, n, NULL, (char *)&forward->frec_src.encode_bitmap, EXTR_NAME_FLIP, 1))
     return;
       
 #ifdef HAVE_DNSSEC
@@ -1897,7 +1928,7 @@ void receive_query(struct listener *listen, time_t now)
   //********************** Pi-hole modification **********************//
   { size_t phlen = 0;
     pheader = find_pseudoheader(header, (size_t)n, &phlen, NULL, NULL, NULL);
-    FTL_parse_pseudoheaders(pheader, phlen); }
+    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)n, pheader, phlen); }
   //******************************************************************//
 
   if (OPCODE(header) != QUERY)
@@ -2184,7 +2215,15 @@ static ssize_t tcp_talk(int first, int last, int start, struct dns_header *heade
 	}
       
       *servp = serv = daemon->serverarray[start];
-      
+
+      /**** Pi-hole modification ****/
+      /* Skip an encrypted-upstream loopback tuple that FTL's DoT/DoH proxy is not
+	 currently serving, so we never forward its plaintext over TCP to a socket
+	 we do not own (unbound, disabled or squatted). */
+      if (!FTL_is_forward_available(&serv->addr))
+	continue;
+      /******************************/
+
     retry:
       if (serv->tcpfd == -1)
 	{
@@ -2207,7 +2246,7 @@ static ssize_t tcp_talk(int first, int last, int start, struct dns_header *heade
 #if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
 	  /* TCP connections by default take ages to time out.
 	     Set shorter timeouts more appropriate for a DNS server.
-	     We set the recieve timeout as twice the send timeout; we
+	     We set the receive timeout as twice the send timeout; we
 	     want to fail quickly on a non-responsive server, but give it time to get an
 	     answer. */
 	  tv.tv_sec = TCP_TIMEOUT;
@@ -2608,7 +2647,7 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	  //********************** Pi-hole modification **********************//
 	  { size_t phlen = 0;
 	    pheader = find_pseudoheader(header, (size_t)size, &phlen, NULL, NULL, NULL);
-	    FTL_parse_pseudoheaders(pheader, phlen); }
+	    FTL_parse_pseudoheaders((unsigned char *)header, (size_t)size, pheader, phlen); }
 	  //******************************************************************//
 	  
 	  if (OPCODE(header) != QUERY)

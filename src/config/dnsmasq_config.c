@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_* flags for the atomic 0600 config-file creation
+#include <fcntl.h>
 #include "dnsmasq_config.h"
 // logging routines
 #include "log.h"
@@ -18,6 +20,9 @@
 #include "config/config.h"
 // JSON array functions
 #include "webserver/cJSON/cJSON.h"
+// encrypted upstreams: parse_upstream_uri() + the deterministic loopback tuple
+#include "dotdoh/upstream_uri.h"
+#include "dotdoh/registry.h"
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
@@ -136,7 +141,7 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			// Check if the child exited too quickly for waitpid to
 			// catch it. We cannot get the return code in this case
 			// and have to check the pipe content instead
-			if(errno == ECHILD)
+			if(err == ECHILD)
 			{
 				log_debug(DEBUG_CONFIG, "dnsmasq test exited too quickly for waitpid");
 				code = strstr(errbuf, "syntax check OK") != NULL ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -245,12 +250,12 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "/etc/pihole/pihole.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "(make sure misc.etc_dnsmasq_d is set to true in /etc/pihole/pihole.toml)");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "(make sure misc.etc_dnsmasq_d is set to true in %s)", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
@@ -258,7 +263,38 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
-bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+// The netmask of the subnet the DHCP server is going to serve. If it is not
+// configured, we have to guess: dnsmasq takes it from the interface it serves
+// on, which we cannot know here, so we fall back to the classful network the
+// address belongs to (what dnsmasq itself does for relayed networks)
+static uint32_t dhcp_netmask(struct config *conf)
+{
+	const uint32_t netmask = ntohl(conf->dhcp.netmask.v.in_addr.s_addr);
+	if(netmask != 0)
+		return netmask;
+
+	const uint32_t addr = ntohl(conf->dhcp.start.v.in_addr.s_addr);
+	if((addr & 0x80000000u) == 0)
+		return 0xFF000000u; // class A
+	if((addr & 0xC0000000u) == 0x80000000u)
+		return 0xFFFF0000u; // class B
+	return 0xFFFFFF00u; // class C
+}
+
+// Neither the network nor the broadcast address of the subnet can be used by a
+// client. Which addresses these are depends on the netmask, e.g., x.x.x.255 is
+// an ordinary host address in any subnet wider than a /24
+static const char *invalid_host_address(const struct in_addr addr, const uint32_t netmask)
+{
+	const uint32_t host = ntohl(addr.s_addr) & ~netmask;
+	if(host == 0)
+		return "the network address of the subnet";
+	if(host == (~netmask & 0xFFFFFFFFu))
+		return "the broadcast address of the subnet";
+	return NULL;
+}
+
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -286,25 +322,37 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		// The addresses should neither end in .0 or .255 in the last octet
-		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		// A netmask has to be a contiguous block of leading one-bits,
+		// anything else has neither a network nor a broadcast address
+		const uint32_t netmask = dhcp_netmask(conf);
+		const uint32_t hostmask = ~netmask;
+		if((hostmask & (hostmask + 1)) != 0)
 		{
-			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			strncpy(errbuf, "DHCP netmask is not valid", ERRBUF_SIZE);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+
+		// The addresses may be neither the network nor the broadcast
+		// address of the subnet they are used in
+		const char *reason = invalid_host_address(conf->dhcp.start.v.in_addr, netmask);
+		if(reason != NULL)
 		{
-			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP start address is %s", reason);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		reason = invalid_host_address(conf->dhcp.end.v.in_addr, netmask);
+		if(reason != NULL)
 		{
-			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP end address is %s", reason);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		reason = invalid_host_address(conf->dhcp.router.v.in_addr, netmask);
+		if(reason != NULL)
+		{
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP router address is %s", reason);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
@@ -328,11 +376,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	}
 
 	log_debug(DEBUG_CONFIG, "Opening "DNSMASQ_TEMP_CONF" for writing");
-	FILE *pihole_conf = fopen(DNSMASQ_TEMP_CONF, "w");
+	// Create it 0600 and atomically: it carries the randomised loopback tuples, and
+	// open(O_EXCL|O_NOFOLLOW) avoids the world-readable window fopen()+fchmod() would
+	// leave. The rename below preserves the mode; chown_pihole() sets the owner.
+	unlink(DNSMASQ_TEMP_CONF);
+	const int conf_fd = open(DNSMASQ_TEMP_CONF, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+	FILE *pihole_conf = conf_fd >= 0 ? fdopen(conf_fd, "w") : NULL;
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
 		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		if(conf_fd >= 0)
+			close(conf_fd);
 		return false;
 	}
 
@@ -351,10 +406,42 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(cJSON_GetArraySize(conf->dns.upstreams.v.json) > 0)
 	{
 		fputs("# List of upstream DNS server\n", pihole_conf);
+
+		// Encrypted upstreams are not handed to dnsmasq directly: it forwards their
+		// plaintext to a loopback tuple the DoT/DoH proxy binds later, from the same
+		// per-process table (so the two agree). No fail-closed check is needed here -
+		// FTL_is_forward_available() skips any tuple the proxy does not actually own.
+		int enc = 0;
 		cJSON *server = NULL;
 		cJSON_ArrayForEach(server, conf->dns.upstreams.v.json)
 		{
-			if(server != NULL && cJSON_IsString(server))
+			if(server == NULL || !cJSON_IsString(server) || server->valuestring == NULL)
+				continue;
+
+			struct upstream_uri u;
+			const bool encrypted = parse_upstream_uri(server->valuestring, &u) && u.type != UST_PLAIN;
+			if(encrypted)
+			{
+				// The proxy binds at most DOTDOH_MAX_UPSTREAMS loopback tuples
+				// (proxy.c walks the same list with the same index). Never point
+				// dnsmasq at a tuple beyond that range - it would be bound by
+				// nothing and only add failover delay.
+				if(enc >= DOTDOH_MAX_UPSTREAMS)
+				{
+					log_warn("Ignoring encrypted upstream '%s': at most %d are supported",
+					         server->valuestring, DOTDOH_MAX_UPSTREAMS);
+					continue;
+				}
+				// Settle on a tuple that actually binds (redrawing on a collision) so
+				// dnsmasq is pointed at the one the proxy will bind; skip for validation.
+				if(mode == DNSMASQ_INSTALL)
+					dotdoh_tuple_ensure_bindable(enc);
+				char ip[INET_ADDRSTRLEN];
+				dotdoh_tuple_ip(enc, ip, sizeof(ip));
+				fprintf(pihole_conf, "server=%s#%d\n", ip, dotdoh_tuple_port(enc));
+				enc++;
+			}
+			else
 				fprintf(pihole_conf, "server=%s\n", server->valuestring);
 		}
 		fputs("\n", pihole_conf);
@@ -889,7 +976,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
 
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
-	if(test_config && !test_dnsmasq_config(errbuf))
+	if(mode != DNSMASQ_INSTALL && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
@@ -907,6 +994,19 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 
 		return false;
+	}
+
+	// The caller only wanted to know whether the config is valid, so the
+	// file it was tested from goes away again rather than being installed
+	if(mode == DNSMASQ_TEST_ONLY)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+
+		return true;
 	}
 
 	// Check if the new config file is different from the old one
@@ -929,6 +1029,10 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	else
 	{
 		log_debug(DEBUG_CONFIG, "dnsmasq.conf unchanged");
+		// Unchanged content keeps the existing file; tighten its mode too, in case an
+		// older FTL left it world-readable (the changed path creates it 0600 itself).
+		if(chmod(DNSMASQ_PH_CONFIG, S_IRUSR | S_IWUSR) != 0)
+			log_warn("Unable to restrict permissions on "DNSMASQ_PH_CONFIG": %s", strerror(errno));
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{

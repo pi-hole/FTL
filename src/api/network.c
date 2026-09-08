@@ -177,8 +177,11 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	sqlite3 *db = dbopen(true, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_GET()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	const char *sql_msg = NULL;
@@ -293,8 +296,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_DELETE()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	// Delete row from network table by ID
@@ -386,7 +392,7 @@ int api_client_suggestions(struct ftl_conn *api)
 
 	if(sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
-		log_err("Failed to prepare SQL statement: %s", sqlite3_errmsg(db));
+		log_web(LOG_ERR, "Failed to prepare SQL statement: %s", sqlite3_errmsg(db));
 		dbclose(&db);
 		return send_json_error(api, 500,
 		                       "database_error",
@@ -397,7 +403,7 @@ int api_client_suggestions(struct ftl_conn *api)
 	// Bind parameters
 	if(sqlite3_bind_int(stmt, 1, count) != SQLITE_OK)
 	{
-		log_err("Failed to bind parameter: %s", sqlite3_errmsg(db));
+		log_web(LOG_ERR, "Failed to bind parameter: %s", sqlite3_errmsg(db));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
 		return send_json_error(api, 500,
