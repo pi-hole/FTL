@@ -80,10 +80,13 @@ double double_time(void)
 }
 
 // Get a human-readable time string
-void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible)
+// timein is a double epoch-seconds timestamp as produced by double_time() so
+// that the millisecond fraction comes from the timestamp itself
+void get_timestr(char timestring[TIMESTR_SIZE], const double timein, const bool millis, const bool uri_compatible)
 {
+	const time_t seconds = (time_t)timein;
 	struct tm tm;
-	localtime_r(&timein, &tm);
+	localtime_r(&seconds, &tm);
 	char space = ' ';
 	char colon = ':';
 	if(uri_compatible)
@@ -94,9 +97,7 @@ void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool 
 
 	if(millis)
 	{
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		const int millisec = tv.tv_usec/1000;
+		const int millisec = (int)((timein - seconds) * 1000.0);
 
 		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
@@ -264,7 +265,7 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		return;
 
 	// Get human-readable time
-	get_timestr(timestring, time(NULL), true, false);
+	get_timestr(timestring, double_time(), true, false);
 
 	// Get and log PID of current process to avoid ambiguities when more than one
 	// pihole-FTL instance is logging into the same file
@@ -342,7 +343,7 @@ void __attribute__ ((format (printf, 3, 4))) _log_web(const int priority, const 
 		return;
 
 	char timestring[TIMESTR_SIZE];
-	const time_t now = time(NULL);
+	const double now = double_time();
 	va_list args;
 
 	// Get human-readable time

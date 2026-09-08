@@ -1943,7 +1943,7 @@ void dump_strings(void)
 	if(str_dumpfile != NULL)
 	{
 		char timestring[TIMESTR_SIZE] = { 0 };
-		get_timestr(timestring, time(NULL), true, false);
+		get_timestr(timestring, double_time(), true, false);
 		fprintf(str_dumpfile, "String dump starting at %s\n", timestring);
 		log_info("String dump to "STRING_DUMPFILE);
 
