@@ -33,6 +33,7 @@
 #include "files.h"
 // add_to_fifo_buffer() u.a.
 #include "log.h"
+#include "logger.h"
 // global variable daemonmode
 #include "args.h"
 // handle_realtime_signals()
@@ -3678,7 +3679,20 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// is asked to stay in foreground, we just save
 	// the PID of the current process in the PID file
 	if(daemonmode)
+	{
+		// A fork child retains mutex state but not the logger thread that may
+		// own it. Join the logger before the double fork so the daemon can
+		// safely take its configuration snapshot when it restarts the logger.
+		logger_stop();
+
+		// Double fork into the daemon.
 		go_daemon();
+
+		// Resume asynchronous logging in the daemon process.  logger_stop()
+		// above joined the consumer before the double fork, so no mutex held
+		// by it could be inherited by the daemon child.
+		logger_start();
+	}
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
@@ -4313,22 +4327,41 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
 void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
-	// Lock SHM
-	lock_shm();
+	// Build a canonical log record and enqueue it.  The logger thread renders
+	// all sinks (pihole.log and the FIFO), so this producer is lock-free and
+	// runs identically in the main process and in the dnsmasq TCP-query fork
+	// children (which relay their records here).
+	struct log_record rec;
+	log_record_init(&rec, LOG_SOURCE_DNSMASQ, priority, DEBUG_NONE);
 
-	// Add to FIFO buffer. dnsmasq has no FTL debug flags, so its LOG_DEBUG is
-	// a plain "DEBUG" rather than the DEBUG_ANY catch-all priostr() maps to
-	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
+	// Copy the function suffix that dnsmasq embeds in its syslog format
+	// ("dnsmasq-dhcp", "dnsmasq-tftp", ...); the payload follows it.
+	if(func != NULL)
+	{
+		const size_t funclen = strlen(func);
+		if(funclen < sizeof(rec.func))
+		{
+			memcpy(rec.func, func, funclen);
+			rec.func[funclen] = '\0';
+		}
+	}
 
-	// Unlock SHM
-	unlock_shm();
+	// Copy the dnsmasq payload into the record.  length includes the NUL
+	// terminator (my_syslog() passes MAX_MESSAGE on overflow), so only copy
+	// the string itself - rendering stops at the first NUL just like the
+	// previous snprintf("%s", ...) path.
+	if(length > 0)
+	{
+		const size_t msglen = (size_t)strnlen(payload, (size_t)length);
+		const size_t copybytes = msglen < sizeof(rec.message) ? msglen : sizeof(rec.message) - 1u;
+		memcpy(rec.message, payload, copybytes);
+		rec.len = copybytes;
+		// Terminate at the end of the payload; copybytes is always less than
+		// sizeof(rec.message) so this is in-bounds.
+		rec.message[copybytes] = '\0';
+	}
 
-	// Write to pihole.log via shared writer (FTL owns this file now).
-	// If pihole.log is unavailable, fall back to syslog for warnings and
-	// errors so they are not silently lost for the lifetime of the process.
-	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
-		syslog(priority, "%s", payload);
+	log_ring_push(&rec);
 
 	/* Pi-hole diagnosis system */
 	if(priority == LOG_WARNING)
