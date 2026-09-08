@@ -837,7 +837,11 @@ int dhcpv6_discover_iface(const char *ifname, const unsigned int timeout)
 	// Drop root privileges after creating the raw socket for security
 	// measures. This is a no-op if the process is not running as sudo.
 	if (setuid(getuid()))
+	{
+		if(fd >= 0)
+			close(fd);
 		return 1;
+	}
 
 	errno = errval; /* restore socket() error value */
 	return do_discoverv6(fd, ifname, timeout);

@@ -56,7 +56,7 @@
 // sufficient access to the memory (ptrace, swapfile) would also have access to
 // the password file. Leaking the password after exit is not a concern as a new
 // password is generated on every start.
-#define CLI_PW_FILE "/etc/pihole/cli_pw"
+#define CLI_PW_FILE PIHOLE_INSTALL_DIR "/cli_pw"
 
 // Cached content of CLUSTER_SECRET_FILE. Replaced from a webserver thread when
 // this node joins a cluster, while the cluster thread and the other webserver
@@ -204,14 +204,28 @@ static uint8_t * __attribute__((malloc)) base64_decode(const char *data, size_t 
 	// Base64 decoding requires 3 bytes for every 4 bytes of input, plus
 	// additional bytes for padding. The output buffer must be large enough
 	// to hold the decoded data.
-	uint8_t *decoded = calloc(BASE64_DECODE_LENGTH(strlen(data)), sizeof(uint8_t));
+	const size_t buflen = BASE64_DECODE_LENGTH(strlen(data));
+	uint8_t *decoded = calloc(buflen, sizeof(uint8_t));
+	if(decoded == NULL)
+		return NULL;
 
-	// Decode the data
+	// Decode the data. Since nettle 4.0, the length is passed in as well
+	// as out: it carries the size of the destination buffer in and the
+	// number of bytes written back out, and decoding fails when the
+	// buffer is too small. Earlier versions only write to it, so handing
+	// the size in is right for both
+	size_t decodedlen = buflen;
 	struct base64_decode_ctx ctx;
 	base64_decode_init(&ctx);
-	base64_decode_update(&ctx, length, decoded, strlen(data), data);
-	base64_decode_final(&ctx);
+	if(!base64_decode_update(&ctx, &decodedlen, decoded, strlen(data), data) ||
+	   !base64_decode_final(&ctx))
+	{
+		log_err("Base64 decoding failed");
+		free(decoded);
+		return NULL;
+	}
 
+	*length = decodedlen;
 	return decoded;
 }
 
@@ -379,7 +393,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	if(*salt == NULL)
 	{
 		// Error
-		log_err("Error while decoding salt: %s", strerror(errno));
+		log_err("Error while decoding salt");
 		return false;
 	}
 	if(salt_len != SALT_LEN)
@@ -395,7 +409,7 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	if(*hash == NULL)
 	{
 		// Error
-		log_err("Error while decoding hash: %s", strerror(errno));
+		log_err("Error while decoding hash");
 		return false;
 	}
 	if(hash_len != SHA256_DIGEST_SIZE)

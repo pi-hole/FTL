@@ -1034,7 +1034,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.netmask.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.netmask.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	memset(&conf->dhcp.netmask.d.in_addr, 0, sizeof(struct in_addr));
-	conf->dhcp.netmask.c = validate_stub; // Only type-based checking
+	conf->dhcp.netmask.c = validate_netmask;
 
 	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
@@ -1440,7 +1440,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.a = cJSON_CreateStringReference("A valid TLS certificate file (*.pem)");
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.tls.cert.t = CONF_STRING;
-	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
+	conf->webserver.tls.cert.d.s = (char*)(PIHOLE_INSTALL_DIR "/tls.pem");
 	conf->webserver.tls.cert.c = validate_filepath;
 
 	// sub-struct paths
@@ -1545,7 +1545,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.app_sudo.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.cli_pw.k = "webserver.api.cli_pw";
-	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in /etc/pihole and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
+	conf->webserver.api.cli_pw.h = "Should FTL create a temporary CLI password?\n\n This password is stored in clear in "PIHOLE_INSTALL_DIR" and can be used by the CLI (pihole ...  commands) to authenticate against the API. Note that the password is only valid for the current session and regenerated on each FTL restart. Sessions initiated with this password cannot modify the Pi-hole configuration (change passwords, etc.) for security reasons but can still use the API to query data and manage lists.";
 	conf->webserver.api.cli_pw.t = CONF_BOOL;
 	conf->webserver.api.cli_pw.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.api.cli_pw.d.b = true;
@@ -1623,7 +1623,7 @@ void initConfig(struct config *conf)
 	conf->files.database.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.database.t = CONF_STRING;
 	conf->files.database.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
-	conf->files.database.d.s = (char*)"/etc/pihole/pihole-FTL.db";
+	conf->files.database.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-FTL.db");
 	conf->files.database.c = validate_filepath;
 
 	conf->files.tmp_db.k = "files.tmp_db";
@@ -1631,7 +1631,7 @@ void initConfig(struct config *conf)
 	conf->files.tmp_db.a = cJSON_CreateStringReference("Any FTL database");
 	conf->files.tmp_db.t = CONF_STRING;
 	conf->files.tmp_db.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
-	conf->files.tmp_db.d.s = (char*)"/etc/pihole/pihole-tmp.db";
+	conf->files.tmp_db.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-tmp.db");
 	conf->files.tmp_db.c = validate_filepath;
 
 	conf->files.gravity.k = "files.gravity";
@@ -1639,7 +1639,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity.a = cJSON_CreateStringReference("Any Pi-hole gravity database");
 	conf->files.gravity.t = CONF_STRING;
 	conf->files.gravity.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
-	conf->files.gravity.d.s = (char*)"/etc/pihole/gravity.db";
+	conf->files.gravity.d.s = (char*)(PIHOLE_INSTALL_DIR "/gravity.db");
 	conf->files.gravity.c = validate_filepath;
 
 	conf->files.gravity_tmp.k = "files.gravity_tmp";
@@ -1655,7 +1655,7 @@ void initConfig(struct config *conf)
 	conf->files.macvendor.a = cJSON_CreateStringReference("Any Pi-hole macvendor database");
 	conf->files.macvendor.t = CONF_STRING;
 	conf->files.macvendor.f = FLAG_NO_CLUSTER;
-	conf->files.macvendor.d.s = (char*)"/etc/pihole/macvendor.db";
+	conf->files.macvendor.d.s = (char*)(PIHOLE_INSTALL_DIR "/macvendor.db");
 	conf->files.macvendor.c = validate_filepath;
 
 	conf->files.pcap.k = "files.pcap";
@@ -1955,7 +1955,7 @@ void initConfig(struct config *conf)
 	conf->debug.config.c = validate_stub; // Only type-based checking
 
 	conf->debug.inotify.k = "debug.inotify";
-	conf->debug.inotify.h = "Debug monitoring of /etc/pihole filesystem events";
+	conf->debug.inotify.h = "Debug monitoring of "PIHOLE_INSTALL_DIR" filesystem events";
 	conf->debug.inotify.t = CONF_BOOL;
 	conf->debug.inotify.f = FLAG_NO_CLUSTER;
 	conf->debug.inotify.d.b = false;
@@ -2233,7 +2233,7 @@ bool migrate_config_v6(void)
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(&config, false, errbuf);
+	write_dnsmasq_config(&config, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return true;
@@ -2267,7 +2267,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			{
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
-				write_dnsmasq_config(conf, false, errbuf);
+				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 				write_custom_list();
 			}
 			return true;
@@ -2300,7 +2300,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(conf, false, errbuf);
+	write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return false;
@@ -3204,7 +3204,7 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 		return true;
 	}
 
-	if(result->dnsmasq_changed && !write_dnsmasq_config(newconf, true, errbuf))
+	if(result->dnsmasq_changed && !write_dnsmasq_config(newconf, DNSMASQ_TEST_INSTALL, errbuf))
 	{
 		free_config(newconf, false);
 		return false;

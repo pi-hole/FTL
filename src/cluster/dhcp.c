@@ -373,7 +373,7 @@ static void set_dhcp_active(const bool active, const char *reason, const bool te
 	newconf.dhcp.active.v.b = active;
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	if(!write_dnsmasq_config(&newconf, test_config, errbuf))
+	if(!write_dnsmasq_config(&newconf, test_config ? DNSMASQ_TEST_INSTALL : DNSMASQ_INSTALL, errbuf))
 	{
 		log_err("cluster: cannot %s DHCP: %s", active ? "enable" : "disable",
 		        strlen(errbuf) > 0 ? errbuf : "the configuration was refused");

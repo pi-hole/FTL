@@ -35,7 +35,7 @@ RUN rm -rf cmake && \
 # Start from clean counters so the statistics below describe this build alone
     ccache --zero-stats && \
 # Build and test FTL
-    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache" ${BUILD_OPTS} && \
+    bash build.sh "-DSTATIC=${STATIC} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON -DBUILD_PTR_RESPONSE_REGRESSION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache" ${BUILD_OPTS} && \
 # Report what the cache saved, so the CI log shows whether it is worth keeping
     ccache --show-stats && \
 # Copy FTL binary to root directory
