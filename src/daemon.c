@@ -12,6 +12,7 @@
 #include "daemon.h"
 #include "config/config.h"
 #include "log.h"
+#include "logger.h"
 // sleepms()
 #include "timers.h"
 // gravityDB_close()
@@ -470,6 +471,15 @@ void cleanup(const int ret)
 	//            counters-> ... etc.
 	// This should be the last action when cleaning up
 	log_debug(DEBUG_ANY, "Terminating: Removing shared memory");
+
+	// Join the logger thread first.  Its final drain relays records into the
+	// shared-memory FIFO, which would race destroy_shmem() below otherwise
+	// (the logger is the only such writer left at this point).  The log ring
+	// itself is not part of the shared-memory pointers and survives, so the
+	// records the main thread produces while finishing shutdown are drained
+	// by logger_shutdown() at the very end.
+	logger_stop();
+
 	destroy_shmem();
 
 	char buffer[42] = { 0 };
@@ -483,6 +493,20 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+
+	// Report dropped log records so operators can notice log loss caused by a
+	// full log queue.  Only emitted when something was actually lost; the
+	// record itself is drained by logger_shutdown() below.
+	const uint32_t dropped = logger_dropped_count();
+	if(dropped > 0)
+		log_warn("%u log records were dropped because the log queue was full",
+		         (unsigned int)dropped);
+
+	// Finally, stop the logger thread (draining the last records, including
+	// the termination message above) and tear down the shared-memory log
+	// queue.  destroy_shmem() already ran, so the FIFO buffers are gone and
+	// this must be the final logging action of the process.
+	logger_shutdown();
 
 	// Finally, free log config memory
 	if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)

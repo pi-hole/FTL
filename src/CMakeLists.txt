@@ -278,6 +278,8 @@ set(sources
         gc.h
         log.c
         log.h
+        logger.c
+        logger.h
         lookup-table.c
         lookup-table.h
         main.c
