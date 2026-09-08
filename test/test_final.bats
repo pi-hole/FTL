@@ -9,22 +9,22 @@ bats_load_library 'bats-assert'
 load 'bats_helper.bash'
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for )|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token"'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for )|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token"'
   refute_output
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
   refute_output
 }
 
 @test "No CRIT messages in FTL.log (besides error due to starting FTL more than once)" {
-  run bash -c 'grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: pihole-FTL is already running"'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "CRIT:" /var/log/pihole/FTL.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
 }
 
 @test "No \"DB not available\" messages in FTL.log" {
-  run bash -c 'grep -c "database not available" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "database not available" /var/log/pihole/FTL.log'
   assert_line --index 0 "0"
 }
 
@@ -43,7 +43,7 @@ load 'bats_helper.bash'
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
-  run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
@@ -53,16 +53,16 @@ load 'bats_helper.bash'
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
-  run bash -c 'grep -c "pihole.toml unchanged" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "pihole.toml unchanged" /var/log/pihole/FTL.log'
   printf "pihole.toml unchanged count: %s\n" "${lines[0]}"
   [[ ${lines[0]} -ge 2 ]]
   assert_success
   # One more than the deterministic baseline: the randomised DoT/DoH loopback
   # tuples change the encrypted-upstream config on every (re)start.
-  run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
   assert_line --index 0 "4"
-  run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (3x)
   # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (5x)
