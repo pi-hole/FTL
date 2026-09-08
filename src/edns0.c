@@ -25,6 +25,10 @@
 #include <sys/random.h>
 // HMAC-SHA256 for the per-run client-attribution MAC (same crypto lib as the TOTP code)
 #include <nettle/hmac.h>
+// SHA256_DIGEST_SIZE
+#include <nettle/sha2.h>
+// NETTLE_VERSION_MAJOR
+#include <nettle/version.h>
 
 // EDNS(0) Client Subnet [Optional, RFC7871]
 #define EDNS0_ECS EDNS0_OPTION_CLIENT_SUBNET
@@ -75,6 +79,7 @@ ednsData *getEDNS(void)
 // source is loopback. It does not defend against a process that can read our
 // memory, which is already privileged and out of scope.
 #define DOTDOH_MAC_LEN 16
+static_assert(DOTDOH_MAC_LEN <= SHA256_DIGEST_SIZE, "The MAC is a truncated SHA256 digest");
 static unsigned char dotdoh_mac_key[DOTDOH_MAC_LEN];
 static pthread_once_t dotdoh_mac_key_once = PTHREAD_ONCE_INIT;
 static void dotdoh_mac_key_init(void)
@@ -118,13 +123,16 @@ static size_t __attribute__((pure)) dotdoh_question_len(const unsigned char *msg
 	return pos - 12;
 }
 
-// HMAC-SHA256(key = dotdoh_mac_key, code || addr || question), truncated into out.
-// Binds the value to the exact query (so the MAC is not a reusable bearer secret)
-// AND to the option code (so a dest option cannot be replayed as a client one).
+// HMAC-SHA256(key = dotdoh_mac_key, code || addr || question), of which the
+// first DOTDOH_MAC_LEN bytes are the MAC. Binds the value to the exact query (so
+// the MAC is not a reusable bearer secret) AND to the option code (so a dest
+// option cannot be replayed as a client one).
+// The whole digest is written, so out has to hold SHA256_DIGEST_SIZE bytes even
+// though only the first DOTDOH_MAC_LEN of them are ever looked at.
 static void dotdoh_addr_mac(const unsigned short code,
                             const unsigned char *addr, const size_t addrlen,
                             const unsigned char *question, const size_t qlen,
-                            unsigned char out[DOTDOH_MAC_LEN])
+                            unsigned char out[SHA256_DIGEST_SIZE])
 {
 	const unsigned char codebytes[2] = { (unsigned char)(code >> 8), (unsigned char)(code & 0xff) };
 	struct hmac_sha256_ctx ctx;
@@ -133,7 +141,12 @@ static void dotdoh_addr_mac(const unsigned short code,
 	hmac_sha256_update(&ctx, addrlen, addr);
 	if(qlen > 0)
 		hmac_sha256_update(&ctx, qlen, question);
-	hmac_sha256_digest(&ctx, DOTDOH_MAC_LEN, out);
+#if NETTLE_VERSION_MAJOR >= 4
+	// nettle 4.0 dropped the length argument, the digest is always written in full
+	hmac_sha256_digest(&ctx, out);
+#else
+	hmac_sha256_digest(&ctx, SHA256_DIGEST_SIZE, out);
+#endif
 }
 
 // Encode ip as [family(1B): 4 or 6][address] into out (<= 17 bytes), returning the
@@ -209,10 +222,18 @@ static bool dotdoh_opt_rrfilter_safe(unsigned char *buf, size_t plen)
 static size_t dotdoh_inject_addr(unsigned char *buf, size_t plen, size_t cap,
                                  const unsigned short code, const char *ip)
 {
-	unsigned char payload[1 + 16 + DOTDOH_MAC_LEN];
+	unsigned char payload[1 + 16 + SHA256_DIGEST_SIZE];
 	size_t optlen = dotdoh_encode_addr(ip, payload);
 	if(optlen == 0)
 		return plen;
+
+	// The digest lands directly behind the encoded address and is written
+	// in full, so payload carries room for all of it. Only the first
+	// DOTDOH_MAC_LEN bytes travel, the rest is scratch. The bound is
+	// checked rather than trusted: optlen comes out of dotdoh_encode_addr()
+	if(optlen + SHA256_DIGEST_SIZE > sizeof(payload))
+		return plen;
+
 	dotdoh_addr_mac(code, payload + 1, optlen - 1, buf + 12,
 	                dotdoh_question_len(buf, plen), payload + optlen);
 	optlen += DOTDOH_MAC_LEN;
@@ -493,7 +514,7 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 				const size_t qbound = ((const unsigned char *)pheader >= msg &&
 				    (size_t)((const unsigned char *)pheader - msg) <= msglen)
 				    ? (size_t)((const unsigned char *)pheader - msg) : msglen;
-				unsigned char want[DOTDOH_MAC_LEN];
+				unsigned char want[SHA256_DIGEST_SIZE];
 				dotdoh_addr_mac(code, p + 1, addrlen, msg + 12,
 				                dotdoh_question_len(msg, qbound), want);
 				for(size_t i = 0; i < DOTDOH_MAC_LEN; i++)

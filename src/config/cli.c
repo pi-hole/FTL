@@ -380,7 +380,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 	return true;
 }
 
-int set_config_from_CLI(const char *key, const char *value)
+int set_config_from_CLI(const char *key, const char *value, const bool test_only)
 {
 	// Check if we are either
 	// - root, or
@@ -497,13 +497,22 @@ int set_config_from_CLI(const char *key, const char *value)
 		   (conf_item == &config.dns.hosts && newconf.dns.hostsLocal.v.b))
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(!write_dnsmasq_config(&newconf, true, errbuf))
+			if(!write_dnsmasq_config(&newconf, test_only ? DNSMASQ_TEST_ONLY : DNSMASQ_TEST_INSTALL, errbuf))
 			{
 				// Test failed
 				log_debug(DEBUG_CONFIG, "Config item %s: dnsmasq config test failed", conf_item->k);
 				free_config(&newconf, false);
 				return DNSMASQ_TEST_FAILED;
 			}
+		}
+
+		// Test mode stops here: nothing is installed, nothing is written
+		if(test_only)
+		{
+			writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);
+			putchar('\n');
+			free_config(&newconf, false);
+			return OKAY;
 		}
 
 		// Install new configuration
@@ -525,6 +534,12 @@ int set_config_from_CLI(const char *key, const char *value)
 
 		// Print value
 		writeTOMLvalue(stdout, -1, conf_item->t, &conf_item->v);
+
+		if(test_only)
+		{
+			putchar('\n');
+			return OKAY;
+		}
 	}
 
 	putchar('\n');

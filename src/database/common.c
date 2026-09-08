@@ -87,11 +87,6 @@ int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *f
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-	// Silently return if the database is known to be broken. It may not be
-	// possible to close the connection properly.
-	if(FTLDBerror())
-		return;
-
 	// The shared in-memory connection is owned by close_memory_database() and
 	// its prepared statements live as long as FTL does. Closing it here would
 	// finalize them behind the back of whoever cached them, so return before
@@ -210,9 +205,18 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
+
+		// sqlite3_open_v2() associates resources with the handle even
+		// when it fails. dbclose_handle() releases it without the
+		// decrement dbclose() carries, as it is not counted yet
+		dbclose_handle(db);
 		checkFTLDBrc(rc);
 		return NULL;
 	}
+
+	// Count the connection as soon as it exists. The failure paths below
+	// release it through dbclose(), which is the matching decrement
+	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	// If the database is opened in read-write mode, actually check if it is
 	// writable. If it is not, close the database and return an error
@@ -233,9 +237,6 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		checkFTLDBrc(rc);
 		return NULL;
 	}
-
-	// Increment the number of open database connections
-	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	return db;
 }
@@ -327,12 +328,11 @@ static bool create_counter_table(sqlite3* db)
 	return true;
 }
 
-static bool db_create(void)
+// Split from db_create() so that every failure below returns through it and
+// the connection is closed exactly once. SQL_bool() returns on failure, so the
+// close cannot live in here
+static bool db_create_tables(sqlite3 *db)
 {
-	sqlite3 *db = dbopen(false, true);
-	if(db == NULL)
-		return false;
-
 	// Create Queries table in the database
 	SQL_bool(db, CREATE_QUERIES_TABLE_V1);
 
@@ -350,10 +350,23 @@ static bool db_create(void)
 	if(!db_set_FTL_property(db, DB_LASTTIMESTAMP, 0))
 		return false;
 
-	// Close database handle
+	return true;
+}
+
+static bool db_create(void)
+{
+	sqlite3 *db = dbopen(false, true);
+	if(db == NULL)
+		return false;
+
+	const bool okay = db_create_tables(db);
+
+	// Close database handle whether or not the tables were created: a
+	// half-created database that stays open holds the file for the life of
+	// the process while db_init() carries on without it
 	dbclose(&db);
 
-	return true;
+	return okay;
 }
 
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)

@@ -41,7 +41,7 @@ static int search_table(struct ftl_conn *api, sqlite3 *db, const char *item,
 	sqlite3_stmt *stmt = NULL;
 	if(!gravityDB_readTable(db, listtype, item, &sql_msg, !partial, ids, &stmt))
 	{
-		return send_json_error(api, 400, // 400 Bad Request
+		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
@@ -84,6 +84,9 @@ static int search_table(struct ftl_conn *api, sqlite3 *db, const char *item,
 			const int ret = parse_groupIDs(api, &table, row);
 			if(ret != 0)
 			{
+				// row is only added to the array at the end of
+				// the loop body, so it is ours to free here
+				JSON_DELETE(row);
 				gravityDB_readTableFinalize(stmt);
 				return ret;
 			}

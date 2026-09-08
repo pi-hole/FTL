@@ -44,6 +44,11 @@
 // sqliteBusyCallback()
 #include "database/common.h"
 
+#define ZIPNAME_TOML "etc/pihole/pihole.toml"
+#define ZIPNAME_DHCPLEASES "etc/pihole/dhcp.leases"
+#define ZIPNAME_GRAVITY "etc/pihole/gravity.db"
+#define ZIPNAME_FTLDB "etc/pihole/pihole-FTL.db"
+
 // Tables to copy from the gravity database to the Teleporter database
 static const char *gravity_tables[] = {
 	"group",
@@ -174,7 +179,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	// Add pihole.toml to the ZIP archive
 	const char *file_comment = "Pi-hole's configuration";
 	const char *file_path = GLOBALTOMLPATH;
-	if(!mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	if(!mz_zip_writer_add_file(zip, ZIPNAME_TOML, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
 	{
 		mz_zip_writer_end(zip);
 		return "Failed to add "GLOBALTOMLPATH" to heap ZIP archive!";
@@ -189,13 +194,13 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 		return "Failed to add /etc/hosts to heap ZIP archive!";
 	}
 
-	// Add /etc/pihole/dhcp.lease to the ZIP archive if it exists
+	// Add the DHCP leases file to the ZIP archive if it exists
 	file_comment = "DHCP leases file";
-	file_path = "/etc/pihole/dhcp.leases";
-	if(file_exists(file_path) && !mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	file_path = DHCPLEASESFILE;
+	if(file_exists(file_path) && !mz_zip_writer_add_file(zip, ZIPNAME_DHCPLEASES, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
 	{
 		mz_zip_writer_end(zip);
-		return "Failed to add /etc/pihole/dhcp.leases to heap ZIP archive!";
+		return "Failed to add "DHCPLEASESFILE" to heap ZIP archive!";
 	}
 
 	const char *directory = "/etc/dnsmasq.d";
@@ -235,10 +240,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Add gravity database to ZIP archive
 		file_comment = "Pi-hole's gravity database";
-		file_path = config.files.gravity.v.s;
-		if(file_path[0] == '/')
-			file_path++;
-		if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
+		if(!mz_zip_writer_add_mem_ex(zip, ZIPNAME_GRAVITY, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
 		{
 			sqlite3_free(dbbuf);
 			mz_zip_writer_end(zip);
@@ -256,10 +258,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Add FTL database to ZIP archive
 		file_comment = "Pi-hole's FTL database";
-		file_path = config.files.database.v.s;
-		if(file_path[0] == '/')
-			file_path++;
-		if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
+		if(!mz_zip_writer_add_mem_ex(zip, ZIPNAME_FTLDB, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
 		{
 			sqlite3_free(dbbuf);
 			mz_zip_writer_end(zip);
@@ -334,7 +333,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 
 	// Test dnsmasq config in the imported configuration
 	// The dnsmasq configuration will be overwritten if the test succeeds
-	if(!write_dnsmasq_config(&teleporter_config, true, hint))
+	if(!write_dnsmasq_config(&teleporter_config, DNSMASQ_TEST_INSTALL, hint))
 	{
 		free_config(&teleporter_config, false);
 		toml_free(toml);
@@ -578,9 +577,9 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 
 		// List of files to process from a Teleporter ZIP archive
 		const char *extract_files[] = {
-			"etc/pihole/pihole.toml",
-			"etc/pihole/dhcp.leases",
-			config.files.gravity.v.s[0] == '/' ? config.files.gravity.v.s + 1 : config.files.gravity.v.s
+			ZIPNAME_TOML,
+			ZIPNAME_DHCPLEASES,
+			ZIPNAME_GRAVITY
 		};
 
 		// Check if this file is one of the files we want to extract and process
