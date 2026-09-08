@@ -751,6 +751,17 @@ void _unlock_shm(const char *func, const int line, const char * file)
 		        (long int)shmLock->owner.pid, (long int)shmLock->owner.tid);
 	}
 
+	// Read the timestamps while the lock is still ours. Both live in shared
+	// memory, so once the mutexes below are released another thread can take
+	// the lock and overwrite time.begin before we get to read it
+	struct timespec begin = { 0 }, end = { 0 };
+	const bool timing = config.debug.timing.v.b;
+	if(timing)
+	{
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		begin = shmLock->time.begin;
+	}
+
 	// Unlock mutex
 	int result = pthread_mutex_unlock(&shmLock->lock.inner);
 	shmLock->owner.pid = 0;
@@ -763,11 +774,11 @@ void _unlock_shm(const char *func, const int line, const char * file)
 	if(result != 0)
 		log_err("Failed to unlock outer SHM lock: %s", strerror(result));
 
-	if(config.debug.timing.v.b)
+	if(timing)
 	{
-		clock_gettime(CLOCK_MONOTONIC, &shmLock->time.end);
-		const double lock_time = (shmLock->time.end.tv_sec - shmLock->time.begin.tv_sec) / 1000.0 +
-		                         (shmLock->time.end.tv_nsec - shmLock->time.begin.tv_nsec) / 1e6;
+		// Seconds scale up to milliseconds, nanoseconds scale down
+		const double lock_time = (end.tv_sec - begin.tv_sec) * 1000.0 +
+		                         (end.tv_nsec - begin.tv_nsec) / 1e6;
 		log_debug(DEBUG_TIMING, "SHM lock held for %.3f ms in %s() (%s:%i)",
 		          lock_time, func, file, line);
 	}

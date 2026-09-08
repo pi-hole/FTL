@@ -338,7 +338,49 @@ static void gravity_check_list_presence(void)
 	log_debug(DEBUG_DATABASE, "Exact denylist has entries: %s", gravity_has_exact_denylist ? "yes" : "no");
 }
 
-// Open gravity database
+// Connection settings every gravity connection gets. They live in one place
+// because a pragma added to one opener and forgotten in the other does not fail
+// anywhere, it just makes that connection slower - which is how the search
+// connection ended up without them
+static const struct gravity_pragma {
+	const char *sql;
+	bool required;
+} gravity_pragmas[] = {
+	// Temporary tables, indices and views are read from memory rather than disk
+	{ "PRAGMA temp_store = MEMORY", true },
+	// Read B-tree pages straight from the kernel page cache by virtual address
+	// instead of pread() plus a copy. gravity.db is effectively read-only at
+	// runtime (journal_mode = OFF, "pihole -g" swaps in a new file), 256 MiB
+	// covers every real-world gravity, and SQLite falls back to regular I/O
+	// where mmap is unavailable. The in-process page cache is raised globally
+	// via -DSQLITE_DEFAULT_CACHE_SIZE, so no cache_size pragma here
+	{ "PRAGMA mmap_size = 268435456", false },
+};
+
+// Returns false only when a required pragma failed
+static bool gravity_apply_pragmas(sqlite3 *db, const char *func)
+{
+	for(unsigned int i = 0; i < ArraySize(gravity_pragmas); i++)
+	{
+		const struct gravity_pragma *p = &gravity_pragmas[i];
+		char *zErrMsg = NULL;
+		if(sqlite3_exec(db, p->sql, NULL, NULL, &zErrMsg) == SQLITE_OK)
+			continue;
+
+		if(p->required)
+			log_err("%s(%s) - SQL error: %s", func, p->sql, zErrMsg);
+		else
+			log_warn("%s(%s) - SQL error: %s", func, p->sql, zErrMsg);
+		sqlite3_free(zErrMsg);
+
+		if(p->required)
+			return false;
+	}
+
+	return true;
+}
+
+// Open gravity database (read-write mode)
 static bool gravityDB_open(void)
 {
 	struct stat st;
@@ -355,56 +397,26 @@ static bool gravityDB_open(void)
 		return true;
 	}
 
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-only mode", config.files.gravity.v.s);
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Trying to open %s in read-write mode", config.files.gravity.v.s);
 	int rc = sqlite3_open_v2(config.files.gravity.v.s, &gravity_db, SQLITE_OPEN_READWRITE, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("gravityDB_open() - SQL error: %s", sqlite3_errstr(rc));
-		gravityDB_close();
+		// gravityDB_close() returns early while gravityDB_opened is false,
+		// so release the handle sqlite3_open_v2() allocated ourselves
+		sqlite3_close_v2(gravity_db);
+		gravity_db = NULL;
 		return false;
 	}
 
 	// Database connection is now open
 	gravityDB_opened = true;
 
-	// Tell SQLite3 to store temporary tables in memory. This speeds up read operations on
-	// temporary tables, indices, and views.
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Setting location for temporary object to MEMORY");
-	char *zErrMsg = NULL;
-	rc = sqlite3_exec(gravity_db, "PRAGMA temp_store = MEMORY", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK )
+	log_debug(DEBUG_DATABASE, "gravityDB_open(): Applying connection pragmas");
+	if(!gravity_apply_pragmas(gravity_db, "gravityDB_open"))
 	{
-		log_err("gravityDB_open(PRAGMA temp_store) - SQL error (%i): %s", rc, zErrMsg);
-		sqlite3_free(zErrMsg);
 		gravityDB_close();
 		return false;
-	}
-
-	// Enable memory-mapped I/O for the gravity database.
-	// gravity.db is effectively read-only at runtime (journal_mode = OFF;
-	// writes only happen during "pihole -g" which then swaps in a new
-	// file). With mmap enabled, SQLite reads B-tree pages directly from the
-	// kernel's page cache via virtual-address loads rather than going
-	// through pread() + a kernel-to-user copy. This eliminates syscall
-	// overhead for every domain lookup. 256 MiB covers all real-world
-	// gravity databases; SQLite falls back silently to regular I/O on
-	// systems where mmap is unavailable.
-	// Memory implications: Without mmap, SQLite reads pages via pread()
-	// which the kernel caches AND SQLite caches separately in its own page
-	// cache. Two copies. With mmap, SQLite reads directly from the kernel
-	// page cache via a virtual address mapping — one copy, shared. Process
-	// RSS (virtual) increases, but physical RAM usage stays the same or
-	// decreases.
-	// Note: the in-process page cache size is already raised globally via
-	// -DSQLITE_DEFAULT_CACHE_SIZE=16384 in src/CMakeLists.txt, so we do
-	// NOT issue a separate PRAGMA cache_size here.
-	log_debug(DEBUG_DATABASE, "gravityDB_open(): Enabling memory-mapped I/O (mmap_size = 256 MiB)");
-	rc = sqlite3_exec(gravity_db, "PRAGMA mmap_size = 268435456", NULL, NULL, &zErrMsg);
-	if( rc != SQLITE_OK )
-	{
-		log_warn("gravityDB_open(PRAGMA mmap_size) - SQL error (%i): %s", rc, zErrMsg);
-		sqlite3_free(zErrMsg);
-		// Non-fatal: gravity lookups continue with regular I/O
 	}
 
 	// Pre-warm: advise kernel to read gravity.db into page cache
@@ -1184,7 +1196,14 @@ void gravityDB_close(void)
 
 	// Close table
 	log_debug(DEBUG_ANY, "Closing gravity database");
-	sqlite3_close(gravity_db);
+	// Only the shared statements are finalized above, a table cursor handed to
+	// an API thread by gravityDB_readTable() may still be open. dbclose_handle()
+	// would finalize it under that thread's feet, and sqlite3_close() would
+	// refuse and leave us with a connection - and its mmap - nobody can release.
+	// _v2 hands the connection over: it goes away once that cursor is finalized
+	const int rc = sqlite3_close_v2(gravity_db);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close() - Cannot close gravity database: %s", sqlite3_errstr(rc));
 	gravity_db = NULL;
 	gravityDB_opened = false;
 }
@@ -2115,6 +2134,25 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	return okay;
 }
 
+// sqlite3_errmsg() hands back a string owned by the connection, and the
+// wrappers below close that connection before their caller ever reads the
+// message. Copy it somewhere that outlives the handle. Thread-local because
+// the API answers several requests at once, and only called on failure: a
+// success leaves *message as an earlier iteration set it, which would make
+// this copy a string onto itself
+static const char *keep_message(const char *message)
+{
+	static _Thread_local char kept[256];
+
+	if(message == NULL)
+		return NULL;
+
+	strncpy(kept, message, sizeof(kept) - 1);
+	kept[sizeof(kept) - 1] = '\0';
+
+	return kept;
+}
+
 bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method)
 {
@@ -2123,7 +2161,9 @@ bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
 		return false;
 
 	const bool ret = addToTable(db, listtype, row, message, method);
-	sqlite3_close(db);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
+	dbclose_handle(db);
 	return ret;
 }
 
@@ -2398,16 +2438,65 @@ bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* 
 		return false;
 
 	const bool ret = delFromTable(db, listtype, array, deleted, message);
-	sqlite3_close(db);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
+	dbclose_handle(db);
 	return ret;
 }
 
-bool gravityDB_readTable(const enum gravity_list_type listtype,
+// A read-only connection of its own, for reads too long to run on the shared
+// one. Holding the SHM lock across such a read would stall DNS for its whole
+// duration, and without the lock a reload could close the shared connection
+// underneath it
+sqlite3 *gravityDB_open_RO(void)
+{
+	sqlite3 *db = NULL;
+	const int rc = sqlite3_open_v2(config.files.gravity.v.s, &db,
+	                               SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, NULL);
+	if(rc != SQLITE_OK || db == NULL)
+	{
+		log_err("gravityDB_open_RO() - SQL error open: %s", sqlite3_errstr(rc));
+		sqlite3_close_v2(db);
+		return NULL;
+	}
+
+	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
+		log_err("gravityDB_open_RO() - Cannot set busy handler: %s", sqlite3_errmsg(db));
+
+	if(!gravity_apply_pragmas(db, "gravityDB_open_RO"))
+	{
+		sqlite3_close_v2(db);
+		return NULL;
+	}
+
+	return db;
+}
+
+void gravityDB_close_RO(sqlite3 *db)
+{
+	if(db == NULL)
+		return;
+
+	const int rc = sqlite3_close_v2(db);
+	if(rc != SQLITE_OK)
+		log_err("gravityDB_close_RO() - Cannot close gravity database: %s", sqlite3_errstr(rc));
+}
+
+bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
                          const char *item, const char **message,
                          const bool exact, const char *ids,
                          sqlite3_stmt **read_stmt_p)
 {
-	if(gravity_db == NULL)
+	// NULL means the shared connection. Passing one in pins it for the whole
+	// read: we take the global here and only prepare on it further below, and a
+	// reload landing in that window frees the handle right there - an open
+	// cursor keeps it alive (see gravityDB_close()), but between two calls
+	// there is none. A caller making several calls also wants them to see one
+	// gravity, not one per reload
+	if(db == NULL)
+		db = gravity_db;
+
+	if(db == NULL)
 	{
 		*message = "Database not available";
 		return false;
@@ -2568,9 +2657,9 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 
 	// Prepare SQLite statement
 	*read_stmt_p = NULL;
-	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, read_stmt_p, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, read_stmt_p, NULL);
 	if( rc != SQLITE_OK ){
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
 		        listtype, type, rc, querystr, *message);
 		if(!exact)
@@ -2583,7 +2672,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	int idx = sqlite3_bind_parameter_index(*read_stmt_p, ":item");
 	if(idx > 0 && (rc = sqlite3_bind_text(*read_stmt_p, idx, like_name, -1, SQLITE_TRANSIENT)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind item (error %d) - %s",
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
@@ -2598,7 +2687,7 @@ bool gravityDB_readTable(const enum gravity_list_type listtype,
 	idx = sqlite3_bind_parameter_index(*read_stmt_p, ":ids");
 	if(idx > 0 && (rc = sqlite3_bind_text(*read_stmt_p, idx, ids, -1, SQLITE_STATIC)) != SQLITE_OK)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s), %s): Failed to bind ids (error %d) - %s",
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
@@ -2768,7 +2857,7 @@ bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *
 	// SQLITE_DONE (we are finished reading the table)
 	if(rc != SQLITE_DONE)
 	{
-		*message = sqlite3_errmsg(gravity_db);
+		*message = sqlite3_errmsg(sqlite3_db_handle(read_stmt));
 		log_err("gravityDB_readTableGetRow() - SQL error step (%i): %s",
 		        rc, *message);
 		return false;
@@ -3005,7 +3094,9 @@ bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
 		return false;
 
 	const bool ret = edit_groups(db, listtype, groups, row, message);
-	sqlite3_close(db);
+	if(!ret && message != NULL)
+		*message = keep_message(*message);
+	dbclose_handle(db);
 	return ret;
 }
 

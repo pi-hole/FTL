@@ -68,6 +68,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
+// Port the inbound DoT listener binds
+#define DOT_PORT 853
+
 // FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener on port
 // 853. Runs only when dns.dot is enabled. Terminates TLS itself (DoT is not
 // HTTP, so it needs its own raw-TLS listener) and resolves via
