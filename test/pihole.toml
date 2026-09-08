@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.5-156-g043326cc-dirty) on branch tweak/performance
+# Pi-hole configuration file (v6.7-204-gc94f426c) on branch log-journal
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2026-03-21 11:13:18 UTC
+# Last updated on 2026-08-29 23:55:36 CEST
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -1350,6 +1350,17 @@
     #     Any writable file
     webserver = "/var/log/pihole/webserver.log"
 
+    # Where to write FTL, webserver and dnsmasq log output
+    #
+    # Allowed values are:
+    #   - "FILE"
+    #       Write logs to the configured log files
+    #   - "JOURNAL"
+    #       Write logs to the systemd journal
+    #   - "JSON"
+    #       Write logs as structured JSON to stdout
+    destination = "FILE"
+
 [misc]
   # Using privacy levels you can specify which level of detail you want to see in your
   # Pi-hole statistics. Changing this setting will trigger a restart of FTL
@@ -1761,7 +1772,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 171 total entries out of which 115 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

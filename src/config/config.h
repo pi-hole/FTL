@@ -69,6 +69,7 @@ union conf_value {
 	enum web_theme web_theme;                   // enum web_theme value
 	enum temp_unit temp_unit;                   // enum temp_unit value
 	enum edns_mode edns_mode;                   // enum edns_mode value
+	enum log_destination log_destination;       // enum log_destination value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
 	cJSON *json;                                // cJSON * value
@@ -92,6 +93,7 @@ enum conf_type {
 	CONF_ENUM_LISTENING_MODE,
 	CONF_ENUM_WEB_THEME,
 	CONF_ENUM_BLOCKING_EDNS_MODE,
+	CONF_ENUM_LOG_DESTINATION,
 	CONF_ENUM_TEMP_UNIT,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
@@ -314,6 +316,7 @@ struct config {
 			struct conf_item ftl;
 			struct conf_item dnsmasq;
 			struct conf_item webserver;
+			struct conf_item destination;
 		} log;
 	} files;
 

@@ -1413,6 +1413,26 @@ void handle_signals(void)
 	FTLstarttime = time(NULL);
 }
 
+// SIGUSR2: reopen all log fds (logrotate).
+// Registered after dnsmasq so it replaces dnsmasq's handler for this
+// signal - FTL owns all on-disk logs now.
+static void SIGUSR2_handler(int signum, siginfo_t *si, void *context)
+{
+	(void)signum; (void)si; (void)context;
+	const int _errno = errno;
+
+	// Ignore outside main process (TCP forks)
+	if(mpid != getpid())
+	{
+		errno = _errno;
+		return;
+	}
+
+	mark_log_reopen();
+
+	errno = _errno;
+}
+
 // Register real-time signal handler
 void handle_realtime_signals(void)
 {
@@ -1438,6 +1458,15 @@ void handle_realtime_signals(void)
 		SIGACTION.sa_sigaction = &SIGRT_handler;
 		sigaction(signum, &SIGACTION, NULL);
 	}
+
+	// Register SIGUSR2 for log reopen (replaces dnsmasq's handler).
+	// This must run after dnsmasq has registered its own sig_handler
+	// so that FTL's handler wins for SIGUSR2 specifically.
+	struct sigaction sigact = { 0 };
+	sigact.sa_flags = SA_SIGINFO;
+	sigemptyset(&sigact.sa_mask);
+	sigact.sa_sigaction = &SIGUSR2_handler;
+	sigaction(SIGUSR2, &sigact, NULL);
 }
 
 // Return PID of the main FTL process

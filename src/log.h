@@ -43,7 +43,9 @@ extern bool debug_flags[DEBUG_MAX];
 extern bool only_testing;
 
 void clear_debug_flags(void);
-void init_FTL_log(void);
+void open_log_fds(bool ftl);
+void mark_log_reopen(void);
+bool FTL_write_dnsmasq_log(const char *message, const char *func);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], const off_t bytes, double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
@@ -52,11 +54,13 @@ const char *get_FTL_version(void);
 void log_FTL_version(bool crashreport);
 double double_time(void);
 void get_timestr(char timestring[TIMESTR_SIZE], const time_t timein, const bool millis, const bool uri_compatible);
+void write_json_log(const time_t now, const char *log_level, const char *component, const char *pid, const char *msg);
+void get_idstr(char *idstr, size_t size);
 const char *priostr(const int priority, const enum debug_flag flag)  __attribute__((const));
 const char *debugstr(const enum debug_flag flag) __attribute__((const));
 const char *get_ordinal_suffix(unsigned int number) __attribute__ ((const));
 void print_FTL_version(void);
-void dnsmasq_diagnosis_warning(char *message);
+void dnsmasq_diagnosis_warning(const char *message);
 
 // The actual logging routine can take extra options for specialized logging
 // The more general interfaces can be defined here as appropriate shortcuts
@@ -101,6 +105,7 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
 
 bool flush_dnsmasq_log(void);
+int is_log_fd(const int fd);
 
 typedef struct {
 	struct {
