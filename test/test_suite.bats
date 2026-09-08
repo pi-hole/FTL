@@ -37,12 +37,12 @@ setup() {
 }
 
 @test "Initial blocking status is enabled" {
-  run bash -c 'grep -c "Blocking status is enabled" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Blocking status is enabled" /var/log/pihole/FTL.log'
   refute_line --index 0 "0"
 }
 
 @test "Number of compiled regex filters as expected" {
-  run bash -c 'grep "Compiled [0-9]* allow" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "Compiled [0-9]* allow" /var/log/pihole/FTL.log'
   assert_line --partial --index 0 "Compiled 2 allow and 11 deny regex"
 }
 
@@ -164,17 +164,17 @@ setup() {
   run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
 
-  run bash -c "grep -c \"Found database hardware address 127.0.0.4 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Found database hardware address 127.0.0.4 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole/FTL.log"
   refute_line --index 0 "0"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.4 (groups: 4)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny: Querying associated regexes for client 127.0.0.4 (groups: 4)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.4 (groups: 4)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow: Querying associated regexes for client 127.0.0.4 (groups: 4)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
   assert_line --index 0 "2"
-  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.4' /var/log/pihole/FTL.log"
   assert_line --index 0 "11"
 }
 
@@ -186,17 +186,17 @@ setup() {
   run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
 
-  run bash -c "grep -c \"Found database hardware address 127.0.0.5 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Found database hardware address 127.0.0.5 -> aa:bb:cc:dd:ee:ff\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Gravity database: Client aa:bb:cc:dd:ee:ff found. Using groups (4)\" /var/log/pihole/FTL.log"
   refute_line --index 0 "0"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.5 (groups: 4)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny: Querying associated regexes for client 127.0.0.5 (groups: 4)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.5 (groups: 4)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow: Querying associated regexes for client 127.0.0.5 (groups: 4)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
   assert_line --index 0 "2"
-  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.5' /var/log/pihole/FTL.log"
   assert_line --index 0 "11"
 }
 
@@ -207,21 +207,21 @@ setup() {
   # Wait for lines we want to see in the log file
   run bash -c "./pihole-FTL wait-for '**** got cache reply: version.bind is <TXT>' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
-  run bash -c "grep -c \"Found database hardware address 127.0.0.6 -> 00:11:22:33:44:55\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Found database hardware address 127.0.0.6 -> 00:11:22:33:44:55\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"There is no record for 00:11:22:33:44:55 in the client table\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"There is no record for 00:11:22:33:44:55 in the client table\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Found database interface 127.0.0.6 -> enp0s123\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Found database interface 127.0.0.6 -> enp0s123\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole/FTL.log"
+  run bash -c "log_lines \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
   assert_line --index 0 "2"
-  run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
+  run bash -c "log_lines 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
   assert_line --index 0 "11"
 }
 
@@ -238,7 +238,7 @@ setup() {
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
   run bash -c "dig A use-application-dns.net @127.0.0.1"
   assert_line --partial --index 3 "status: NXDOMAIN"
-  run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
+  run bash -c 'log_lines "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
   assert_line --index 0 "1"
 }
 
@@ -361,7 +361,7 @@ setup() {
 
 @test "Upstream blocked domain: NULL is recognized" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
@@ -370,7 +370,7 @@ setup() {
   assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -387,7 +387,7 @@ setup() {
 
 @test "Upstream blocked domain: NULL is recognized (cached)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
@@ -395,7 +395,7 @@ setup() {
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -411,7 +411,7 @@ setup() {
 
 @test "Upstream blocked domain: NULL is recognized (IPv6)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig AAAA null.ftl @127.0.0.1"
@@ -421,7 +421,7 @@ setup() {
 
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -438,7 +438,7 @@ setup() {
 
 @test "Upstream blocked domain: IP is recognized" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella.ftl +short @127.0.0.1"
@@ -446,7 +446,7 @@ setup() {
   assert_line --index 1 ""
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -463,7 +463,7 @@ setup() {
 
 @test "Upstream blocked domain: IP is recognized (cached)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella.ftl +short @127.0.0.1"
@@ -471,7 +471,7 @@ setup() {
   assert_line --index 1 ""
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -489,7 +489,7 @@ setup() {
 
 @test "Upstream blocked domain: IP is recognized (IPv6)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig AAAA umbrella.ftl +short @127.0.0.1"
@@ -497,7 +497,7 @@ setup() {
   assert_line --index 1 ""
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -514,7 +514,7 @@ setup() {
 
 @test "Upstream blocked domain: IP is recognized (multi)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A umbrella-multi.ftl +short @127.0.0.1"
@@ -523,7 +523,7 @@ setup() {
   assert_line --partial "1.2.3.4"
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -539,14 +539,14 @@ setup() {
 
 @test "Upstream blocked domain: EDE 15 is recognized" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
   assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -563,14 +563,14 @@ setup() {
 
 @test "Upstream blocked domain: EDE 15 is recognized (cached)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
   assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -765,14 +765,14 @@ setup() {
 
 # Regex tests
 @test "Compiled deny regex as expected" {
-  run bash -c 'grep -c "Compiling deny regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Compiling deny regex 0 (DB ID 6): regex\[0-9\].ftl" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
 }
 
 @test "Compiled allow regex as expected" {
-  run bash -c 'grep -c "Compiling allow regex 0 (DB ID 3): regex2" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Compiling allow regex 0 (DB ID 3): regex2" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
-  run bash -c 'grep -c "Compiling allow regex 1 (DB ID 4): ^gravity-allowed" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Compiling allow regex 1 (DB ID 4): ^gravity-allowed" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
 }
 
@@ -1150,18 +1150,18 @@ setup() {
 
 @test "Compiler version is correctly reported on startup" {
   compiler_version="$(${CC} --version | head -n1)" && export compiler_version
-  run bash -c 'grep "Compiled for" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "Compiled for" /var/log/pihole/FTL.log'
   printf "Output: %s\n\$CC: %s\nVersion: %s\n" "${lines[@]:-not set}" "${CC:-not set}" "${compiler_version:-not set}"
   assert_line --partial --index 0 "using ${compiler_version}"
 }
 
 @test "No errors on setting busy handlers for the databases" {
-  run bash -c 'grep -c "Cannot set busy handler" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Cannot set busy handler" /var/log/pihole/FTL.log'
   assert_line --index 0 "0"
 }
 
 @test "Blocking status is correctly logged in pihole.log" {
-  run bash -c 'grep -c "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole/pihole.log'
+  run bash -c 'log_lines "gravity blocked gravity.ftl is 0.0.0.0" /var/log/pihole/pihole.log'
   assert_line --index 0 "4"
 }
 
@@ -1180,7 +1180,7 @@ setup() {
 
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test command
   #                                  CLIENT SUBNET          COOKIE                       MAC HEX                     MAC TEXT                                          CPE-ID
@@ -1189,7 +1189,7 @@ setup() {
   assert_success
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   log="$(sed -n "${before},${after}p" /var/log/pihole/FTL.log)"
@@ -1217,19 +1217,19 @@ setup() {
   run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${seed}"
   assert_success
 
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
   run bash -c "dig localhost +short +subnet=${ipv4}/32 +ednsopt=65001:020000000001 @127.0.0.1"
   assert_line --index 0 "127.0.0.1"
   assert_success
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv4}#53 "
 
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
   run bash -c "dig localhost +short +subnet=${ipv6}/128 +ednsopt=65001:020000000001 @127.0.0.1"
   assert_line --index 0 "127.0.0.1"
   assert_success
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
   assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv6}#53 "
 
@@ -1248,17 +1248,17 @@ setup() {
 }
 
 @test "alias-client is imported and used for configured client" {
-  run bash -c 'grep -c "Added alias-client \"some-aliasclient\" (aliasclient-0) with FTL ID 0" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Added alias-client \"some-aliasclient\" (aliasclient-0) with FTL ID 0" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
-  run bash -c 'grep -c "Aliasclient ID 127.0.0.6 -> 0" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Aliasclient ID 127.0.0.6 -> 0" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
-  run bash -c 'grep -c "Client .* (127.0.0.6) IS  managed by this alias-client, adding counts" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines "Client .* (127.0.0.6) IS  managed by this alias-client, adding counts" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
 }
 
 @test "EDNS(0) ECS skipped for loopback address (IPv4)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test command
   run bash -c 'dig localhost +short +subnet=127.0.0.1/32 @127.0.0.1'
@@ -1266,7 +1266,7 @@ setup() {
   assert_success
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
@@ -1275,7 +1275,7 @@ setup() {
 
 @test "EDNS(0) ECS skipped for loopback address (IPv6)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test command
   run bash -c 'dig localhost +short +subnet=::1/128 @127.0.0.1'
@@ -1283,7 +1283,7 @@ setup() {
   assert_success
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
@@ -1329,8 +1329,8 @@ setup() {
 }
 
 @test "No missing config items in pihole.toml" {
-  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log'
-  run bash -c 'grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log | grep -c "DOES NOT EXIST"'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep "DEBUG_CONFIG: " /var/log/pihole/FTL.log | grep -c "DOES NOT EXIST"'
   assert_line --index 0 "0"
 }
 
@@ -1432,6 +1432,30 @@ setup() {
   assert_line --index 0 "fe80::11"
 }
 
+@test "SIGUSR2 log reopen keeps the DNS listeners alive" {
+  # Reopening all log sinks (logrotate-style) must never close a file
+  # descriptor that was recycled into a DNS listener socket: the old
+  # sink_close() closed whatever the number happened to refer to at that
+  # point, silently killing one of the address families.  The reopen must
+  # leave the IPv4 listener fully functional...
+  for i in 1 2 3 4 5; do
+    run bash -c "kill -USR2 $(cat /run/pihole-FTL.pid)"
+    sleep 1
+    run bash -c "dig +time=2 +tries=1 A denied.ftl +short @127.0.0.1"
+    assert_success
+    assert_line --index 0 "10.100.0.11"
+  done
+
+  # ...and, when IPv6 is available, the IPv6 listener as well.
+  if [ -e /proc/net/if_inet6 ]; then
+    run bash -c "kill -USR2 $(cat /run/pihole-FTL.pid)"
+    sleep 1
+    run bash -c "dig +time=2 +tries=1 -6 A denied.ftl +short @::1"
+    assert_success
+    assert_line --index 0 "10.100.0.11"
+  fi
+}
+
 @test "Antigravity domain is not blocked" {
   run bash -c "dig A antigravity.ftl +short @127.0.0.1"
   assert_line --index 0 "192.168.1.6"
@@ -1451,7 +1475,7 @@ setup() {
 
 @test "Zone update (non-query) is rejected with NOTIMP (UDP)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test command
   run bash -c "python3 test/zone_update.py udp"
@@ -1459,7 +1483,7 @@ setup() {
   assert_line --index 1 ""
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
@@ -1471,7 +1495,7 @@ setup() {
 
 @test "Zone update (non-query) is rejected with NOTIMP (TCP)" {
   # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  before="$(log_lines /var/log/pihole/FTL.log)"
 
   # Run test command
   run bash -c "python3 test/zone_update.py tcp"
@@ -1479,7 +1503,7 @@ setup() {
   assert_line --index 1 ""
 
   # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  after="$(log_lines /var/log/pihole/FTL.log)"
 
   # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
@@ -1536,31 +1560,31 @@ setup() {
 
 @test "Correct number of environmental variables is logged" {
   grep "FTLCONF environment variables" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "5 FTLCONF environment variables found (2 used, 2 invalid, 1 ignored)" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep -q "5 FTLCONF environment variables found (2 used, 2 invalid, 1 ignored)" /var/log/pihole/FTL.log'
   assert_success
 }
 
 @test "Correct environmental variable is logged" {
   grep "FTLCONF_misc_nice" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep -q "FTLCONF_misc_nice is used" /var/log/pihole/FTL.log'
   assert_success
 }
 
 @test "Invalid environmental variable is logged (type mismatch)" {
   grep "FTLCONF_debug_api" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_debug_api is not a boolean, using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep -q "FTLCONF_debug_api is not a boolean, using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 
 @test "Invalid environmental variable is logged (validation failed)" {
   grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 
 @test "Unknown environmental variable is logged, a useful alternative is suggested" {
   grep "FTLCONF_dns_upstrrr" /var/log/pihole/FTL.log
-  run bash -c 'grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
+  run bash -c 'log_lines /var/log/pihole/FTL.log >/dev/null; grep -A1 "FTLCONF_dns_upstrrr is unknown" /var/log/pihole/FTL.log'
   assert_line --partial --index 0 "WARNING: [?] FTLCONF_dns_upstrrr is unknown, did you mean any of these?"
   assert_line --partial --index 1 "WARNING:     - FTLCONF_dns_upstreams"
 }
@@ -1888,37 +1912,37 @@ setup() {
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
   assert_success
   # Nagle disabled so small TLS responses are not delayed on the client's ACK.
-  run bash -c 'grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/webserver.log'
   assert_success
   # The terminator's per-boot backend-auth secret; its value is redacted in the log.
-  run bash -c 'grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
   assert_success
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
-  run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/webserver.log'
+  run bash -c 'log_lines /var/log/pihole/webserver.log >/dev/null; grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
 }
 
