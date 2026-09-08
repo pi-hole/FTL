@@ -43,9 +43,7 @@ extern bool debug_flags[DEBUG_MAX];
 extern bool only_testing;
 
 void clear_debug_flags(void);
-void open_log_fds(bool ftl);
 void mark_log_reopen(void);
-bool FTL_write_dnsmasq_log(const char *message, const char *func);
 void log_counter_info(void);
 void format_memory_size(char prefix[2], const off_t bytes, double * const formatted);
 void format_time(char buffer[42], unsigned long seconds, double milliseconds);
@@ -100,7 +98,7 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 // Defaults to 512 [512 * 256 above = use 128 KB of memory for the log]
 #define LOG_SIZE 515u
 
-void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
+void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length, const double timestamp);
 
 bool flush_dnsmasq_log(void);
 int is_log_fd(const int fd);
