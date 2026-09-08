@@ -14,7 +14,7 @@
 #include "config/toml_writer.h"
 #include "config/setupVars.h"
 #include "log.h"
-#include "log.h"
+#include "logger.h"
 // readFTLlegacy()
 #include "legacy_reader.h"
 // file_exists()
@@ -2094,10 +2094,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			if(rewrite)
 			{
 				// Open webserver.log and pihole.log now that paths are
-				// known from the config.  CLI invocations (rewrite == false)
-				// never reach here, so log files are not created on
-				// pihole-FTL --config etc.
-				open_log_fds(false);
+				// known from the config and if we are not in CLI mode.
+				logger_reconfigure();
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
 				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
@@ -2138,8 +2136,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Hold the result to the rules of a config file
 	validate_config(conf, true, NULL);
 
-	// Open webserver.log and pihole.log now that their paths are known
-	open_log_fds(false);
+	// Open webserver.log and pihole.log with default paths
+	logger_reconfigure();
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
