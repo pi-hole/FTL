@@ -646,8 +646,10 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
         # earlier, which is not something to leave to chance
         target_link_libraries(pihole-FTL
             -Wl,--start-group ${LIBCURL} ${LIBSSL} ${LIBCRYPTO} ${LIBNGHTTP2} -Wl,--end-group)
-        # Static libcurl pulls in zlib for the content encodings it offers
-        find_library(LIBZ NAMES libz${LIBRARY_SUFFIX} z)
+        # Static libcurl pulls in zlib for the content encodings it offers. The
+        # archive whichever way FTL itself is linked: a dynamic build would
+        # otherwise take the shared one and gain a runtime dependency
+        find_library(LIBZ NAMES libz.a libz${LIBRARY_SUFFIX} z)
         if(LIBZ)
             target_link_libraries(pihole-FTL ${LIBZ})
         endif()
