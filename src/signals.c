@@ -611,7 +611,7 @@ enum a2l_run {
 	A2L_RUN_OK = 0,          // addr2line ran (frames may still lack debug info)
 	A2L_RUN_TIMED_OUT = 1,   // exceeded the wall-clock deadline
 	A2L_RUN_MISSING = -1,    // addr2line could not be executed (exit 127)
-	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/fork() failed (resource exhaustion)
+	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/_Fork() failed (resource exhaustion)
 };
 
 // Spawn "addr2line -f -e <obj> <rel...>" for one object and read its output,
@@ -619,9 +619,12 @@ enum a2l_run {
 // SIGALRM/itimer watchdog this keeps no process-wide signal or timer state and
 // performs no cross-thread siglongjmp(), so it is safe in the multi-threaded
 // daemon.  Spawning directly avoids popen()'s /bin/sh and stdio buffering.
-// This is not async-signal-safe (it uses snprintf(), poll() and execvp());
-// symbolization is a best-effort step that runs only after the raw frame
-// addresses have already been collected and can be logged.
+// _Fork() is used instead of fork() because it is explicitly async-signal-safe
+// and does not call the pthread_atfork() handlers, so a thread holding a log
+// mutex cannot stall us here (see the log_atfork_prepare() handlers in log.c).
+// This function itself is not async-signal-safe (it uses snprintf(), poll(),
+// and execvp()); symbolization is a best-effort step that runs only after the
+// raw frame addresses have already been collected and can be logged.
 static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
                                          const int *order, const int ng)
 {
@@ -648,7 +651,10 @@ static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
 	if(pipe2(pipefd, O_CLOEXEC) != 0)
 		return A2L_RUN_SPAWN_FAIL;
 
-	const pid_t pid = fork();
+	// _Fork() rather than fork(): _Fork() is async-signal-safe and does not
+	// call the pthread_atfork() handlers registered in log.c, so a thread
+	// parked in write() on a log mutex cannot stall the crash handler here.
+	const pid_t pid = _Fork();
 	if(pid < 0)
 	{
 		close(pipefd[0]);
