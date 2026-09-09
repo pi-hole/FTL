@@ -540,18 +540,45 @@ const char * __attribute__((const)) get_http_method_str(const enum http_method m
 	}
 }
 
-void read_and_parse_payload(struct ftl_conn *api)
+// Does this request carry a body at all? civetweb leaves content_length at -1
+// both for a request that announced no length and for a chunked one, so the
+// encoding header has to be read as well - the same test civetweb makes before
+// it sets is_chunked, and it has already rejected any other encoding with a 400
+static bool payload_expected(struct ftl_conn *api)
 {
-	// Defense in depth: never operate on an unallocated payload buffer
-	if(api->payload.raw == NULL)
-		return;
+	if(api->request->content_length > 0)
+		return true;
 
-	// Read payload
-	api->payload.size = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	const char *encoding = mg_get_header(api->conn, "Transfer-Encoding");
+	return encoding != NULL && strcasecmp(encoding, "identity") != 0;
+}
+
+bool read_and_parse_payload(struct ftl_conn *api)
+{
+	// Most requests are bodyless - every GET a dashboard polls - and those
+	// need no buffer at all
+	if(!payload_expected(api))
+		return true;
+
+	api->payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	if(api->payload.raw == NULL)
+		return false;
+
+	// Read payload. mg_read() reports a read error as a negative number,
+	// which must not reach the unsigned payload size - it would wrap and
+	// read as a payload too large to handle
+	const int nread = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	if (nread < 0)
+	{
+		log_web_debug(DEBUG_API, "Error reading payload");
+		return true;
+	}
+
+	api->payload.size = (long unsigned int)nread;
 	if (api->payload.size < 1)
 	{
 		log_web_debug(DEBUG_API, "Received no payload");
-		return;
+		return true;
 	}
 	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
 	{
@@ -559,7 +586,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 		// truncated the payload. The only reasonable thing to do here is to
 		// discard the payload altogether
 		log_web(LOG_WARNING, "API: Received too large payload - DISCARDING");
-		return;
+		return true;
 	}
 
 	// Debug output of received payload (if enabled)
@@ -573,6 +600,8 @@ void read_and_parse_payload(struct ftl_conn *api)
 
 	// Try to parse possibly existing JSON payload
 	api->payload.json = cJSON_ParseWithOpts(api->payload.raw, &api->payload.json_error, 0);
+
+	return true;
 }
 
 // Escape a string to mask HTML special characters, the resulting string is
