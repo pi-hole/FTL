@@ -911,7 +911,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(dnsmasq_changed)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(write_dnsmasq_config(&newconf, true, errbuf))
+			if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 			{
 				api->ftl.restart_reason = "dnsmasq config changed";
 				api->ftl.restart = restart;
@@ -1133,7 +1133,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	{
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
-		if(write_dnsmasq_config(&newconf, true, errbuf))
+		if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 		{
 			api->ftl.restart_reason = "dnsmasq config changed";
 			// Only restart if the user didn't request otherwise

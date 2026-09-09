@@ -792,8 +792,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason
+	// Unset the blocking reason and the CNAME target that went with it, so
+	// neither travels into the next query
 	blockingreason = "<not set>";
+	cname_target = NULL;
 
 	return p - (unsigned char *)header;
 }
@@ -1085,10 +1087,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
 	if(config.dns.analyzeOnlyAandAAAA.v.b && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
-		// Don't process this query further here, we already counted it
+		// Don't process this query further here
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
+		// Undo the findClientID() increment, as for the rate-limited
+		// branch above: no query record is created here
+		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
 		return false;
 	}
@@ -1366,6 +1371,12 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		                            "    --> NO MATCH <--");
 	}
 
+	// Interface resolved by the last call, used to skip the address
+	// collection below when the same one is seen again. The pointer is
+	// stable within dnsmasq's daemon->interfaces list and is invalidated on
+	// SIGHUP/restart.
+	static struct irec *cached_recviface = NULL;
+
 	// Return early when there is no interface available at this point
 	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
@@ -1377,14 +1388,14 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 		next_iface.name[0] = '-';
 		next_iface.name[1] = '\0';
+		// Drop the cache too, so the next query on that interface
+		// collects its addresses again
+		cached_recviface = NULL;
 		return;
 	}
 
-	// Cache: if the resolved interface is the same as last time, skip the
-	// expensive second loop (which iterates all interfaces to collect IPv4
-	// and IPv6 addresses).  The pointer is stable within dnsmasq's
-	// daemon->interfaces list and is invalidated on SIGHUP/restart.
-	static struct irec *cached_recviface = NULL;
+	// Skip the expensive second loop (which iterates all interfaces to
+	// collect IPv4 and IPv6 addresses) when the interface is unchanged
 	if(recviface == cached_recviface)
 	{
 		log_debug(DEBUG_NETWORKING, "Interface unchanged, using cached result");
@@ -1930,6 +1941,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
+				// The CNAME target lives in the cache entry too, and
+				// REPLY_CNAME above is worth nothing without it
+				cname_target = (dns_cache->cname_strpos > 0) ? getstr(dns_cache->cname_strpos) : NULL;
 				last_regex_idx = dns_cache->list_id;
 				query_blocked(query, domain, client, blocking_status);
 				if(blocking_status == QUERY_REGEX_CNAME)
@@ -2488,9 +2502,9 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Print current set of capabilities if requested via debug flag
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// which may have changed since the last check
+	check_capabilities();
 
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)
@@ -2989,12 +3003,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv4)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv4)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3008,12 +3022,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv6)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv6)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3026,12 +3040,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
+		blockingreason = "blocked upstream with 0.0.0.0";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with 0.0.0.0";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3042,12 +3054,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
+		blockingreason = "blocked upstream with ::";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with ::";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3733,6 +3743,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL log file
 			chown_pihole(config.files.log.ftl.v.s, ent_pw);
 
+			// Configured webserver log file
+			if(config.files.log.webserver.v.s != NULL)
+				chown_pihole(config.files.log.webserver.v.s, ent_pw);
+
+			// Configured dnsmasq log file (pihole.log)
+			if(config.files.log.dnsmasq.v.s != NULL)
+				chown_pihole(config.files.log.dnsmasq.v.s, ent_pw);
+
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
@@ -3924,6 +3942,20 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(!finished)
+	{
+		// Both callers passing false are inside dnsmasq's sig_handler()
+		// (dnsmasq.c, the SIGALRM arms), and both _exit(0) right after.
+		// Nothing below this point may run there: log_debug() allocates,
+		// lock_shm() takes a process-shared mutex the interrupted code
+		// may be holding mid-update, and gravityDB_close() finalizes
+		// statements that code may still be stepping. None of it is
+		// async-signal-safe, and none of it is needed - the worker's
+		// connections go with the process, and the SHM mutex is robust,
+		// so the parent recovers it through EOWNERDEAD
+		return;
+	}
+
 	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, forking does not happen in debug mode
@@ -4230,7 +4262,7 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
 	// Lock SHM
 	lock_shm();
@@ -4242,6 +4274,16 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 
 	// Unlock SHM
 	unlock_shm();
+
+	// Write to pihole.log via shared writer (FTL owns this file now).
+	// If pihole.log is unavailable, fall back to syslog for warnings and
+	// errors so they are not silently lost for the lifetime of the process.
+	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
+		syslog(priority, "%s", payload);
+
+	/* Pi-hole diagnosis system */
+	if(priority == LOG_WARNING)
+		dnsmasq_diagnosis_warning(payload);
 }
 
 static const char *check_dnsmasq_name(const char *name)

@@ -250,12 +250,12 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "/etc/pihole/pihole.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "(make sure misc.etc_dnsmasq_d is set to true in /etc/pihole/pihole.toml)");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "(make sure misc.etc_dnsmasq_d is set to true in %s)", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
@@ -294,7 +294,7 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
-bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -434,7 +434,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 				}
 				// Settle on a tuple that actually binds (redrawing on a collision) so
 				// dnsmasq is pointed at the one the proxy will bind; skip for validation.
-				if(!test_config)
+				if(mode == DNSMASQ_INSTALL)
 					dotdoh_tuple_ensure_bindable(enc);
 				char ip[INET_ADDRSTRLEN];
 				dotdoh_tuple_ip(enc, ip, sizeof(ip));
@@ -466,27 +466,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
+		// FTL writes pihole.log synchronously via a cached descriptor, so
+		// dnsmasq's log-async queue is never used
 		if(conf->misc.extraLogging.v.b)
 			fputs("log-queries=proto\n", pihole_conf);
 		else
 			fputs("log-queries\n", pihole_conf);
-		fputs("log-async\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 	else
 	{
 		fputs("# Disable query logging\n", pihole_conf);
 		fputs("#log-queries\n", pihole_conf);
-		fputs("#log-async\n", pihole_conf);
-		fputs("\n", pihole_conf);
-	}
-
-	if(strlen(conf->files.log.dnsmasq.v.s) > 0)
-	{
-		fputs("# Specify the log file to use\n", pihole_conf);
-		fputs("# We set this even if logging is disabled to store warnings\n", pihole_conf);
-		fputs("# and errors in this file. This is useful for debugging.\n", pihole_conf);
-		fprintf(pihole_conf, "log-facility=%s\n", conf->files.log.dnsmasq.v.s);
 		fputs("\n", pihole_conf);
 	}
 
@@ -976,7 +967,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
 
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
-	if(test_config && !test_dnsmasq_config(errbuf))
+	if(mode != DNSMASQ_INSTALL && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
@@ -994,6 +985,19 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 
 		return false;
+	}
+
+	// The caller only wanted to know whether the config is valid, so the
+	// file it was tested from goes away again rather than being installed
+	if(mode == DNSMASQ_TEST_ONLY)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+
+		return true;
 	}
 
 	// Check if the new config file is different from the old one

@@ -1618,6 +1618,17 @@ setup() {
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
   assert_failure 3
 
+  # No dot follows the last label, but its length is capped just the same
+  long_label="$(printf 'a%.0s' {1..64})"
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"test.${long_label}\")"
+  assert_failure 3
+
+  # A name that is one label and nothing else is measured just the same
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 ${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"${long_label}\")"
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
   assert_line --index 0 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")'
   assert_failure 3
@@ -1642,19 +1653,24 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
 
-  run bash -c './pihole-FTL --config dhcp.netmask 255.254.255.0'
+  # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
   assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
   assert_failure 3
 
-  run bash -c './pihole-FTL --config dhcp.netmask 255.255.254.0'
-  assert_success
-
-  run bash -c './pihole-FTL --config dhcp.netmask'
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.255.254.0'
   assert_line --index 0 '255.255.254.0'
   assert_success
 
-  # An empty netmask is valid, it is then taken from the interface
-  run bash -c './pihole-FTL --config dhcp.netmask ""'
+  # Nothing was applied, so the netmask is still the empty default
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_output ''
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface. This equals
+  # the current value, so it takes the unchanged branch and no validator runs
+  run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
 }
 
