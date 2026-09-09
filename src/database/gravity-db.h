@@ -84,10 +84,12 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype, con
 bool gravityDB_readTableGetRow(const enum gravity_list_type listtype, tablerow *row, const char **message,
                                sqlite3_stmt *stmt);
 void gravityDB_readTableFinalize(sqlite3_stmt *stmt);
-bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
+sqlite3 *gravityDB_write_open(const char **message);
+void gravityDB_write_close(sqlite3 *db);
+bool gravityDB_addToTable(sqlite3 *db, const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method);
 bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message);
-bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+bool gravityDB_edit_groups(sqlite3 *db, const enum gravity_list_type listtype, cJSON *groups,
                            const tablerow *row, const char **message);
 
 time_t gravity_last_updated(void);

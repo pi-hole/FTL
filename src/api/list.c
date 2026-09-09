@@ -649,16 +649,48 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON *success = JSON_NEW_ARRAY();
 	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_AddItemToObject(processed, "success", success);
+
+	// One connection for the whole batch. Adding N items used to open and
+	// close a gravity connection twice per item, once for the item and once
+	// for its groups
+	sqlite3 *db = gravityDB_write_open(&sql_msg);
+	if(db == NULL)
+	{
+		const int ret = send_json_error(api, 500, // 500 Internal Server Error
+		                                "database_error",
+		                                "Could not open gravity database for writing",
+		                                sql_msg);
+		cJSON_Delete(processed);
+		if(allocated_json)
+			cJSON_Delete(row.items);
+		return ret;
+	}
+
+	// And one transaction for the whole batch, so it costs a single commit
+	// rather than one per item. Failing to start it is not fatal, the items
+	// then commit one by one as they did before.
+	//
+	// IMMEDIATE, not the default DEFERRED: a deferred transaction takes only
+	// SHARED and has to promote to RESERVED on the first INSERT, and SQLite
+	// skips the busy handler on that promotion because waiting there could
+	// deadlock. The batch would fail instantly with "database is locked"
+	// during a gravity run, where every item used to get the full
+	// DATABASE_BUSY_TIMEOUT to itself
+	bool in_transaction = sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION;", NULL, NULL, NULL) == SQLITE_OK;
+	if(!in_transaction)
+		log_warn("Could not start transaction for gravity batch add: %s",
+		         sqlite3_errmsg(db));
+
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
-		if((okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
+		if((okay = gravityDB_addToTable(db, listtype, &row, &sql_msg, api->method)))
 		{
 			if(listtype != GRAVITY_GROUPS)
 			{
 				cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
 				if(groups != NULL)
-					okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+					okay = gravityDB_edit_groups(db, listtype, groups, &row, &sql_msg);
 				else
 					// The groups array is optional, we still succeed if it
 					// is omitted (groups stay as they are)
@@ -672,11 +704,65 @@ static int api_list_write(struct ftl_conn *api,
 		}
 
 		cJSON *details = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(details, "item", row.item);
-		if(!okay)
-			JSON_COPY_STR_TO_OBJECT(details, "error", sql_msg);
+		if(details == NULL ||
+		   !add_string_to_object(details, "item", row.item, false) ||
+		   (!okay && !add_string_to_object(details, "error", sql_msg, false)))
+		{
+			// Leaving through the JSON macros here would return
+			// from inside the transaction and strand the write
+			// connection, locking gravity.db for good
+			cJSON_Delete(details);
+			goto batch_abort;
+		}
 		cJSON_AddItemToArray(okay ? success : errors, details);
 	}
+
+	// Commit the batch. Nothing above reached the disk before this, so a
+	// failure here has to be reported rather than logged - every item this
+	// response is about to call a success would be lost
+	if(in_transaction)
+	{
+		// SQLite rolls a transaction back by itself on some errors, a
+		// full disk among them, and returns the connection to
+		// autocommit. Items after that point were then written on their
+		// own while the ones before it were undone, so neither the
+		// per-item results above nor a plain commit failure describe
+		// what is in the database
+		const char *commit_msg = sqlite3_get_autocommit(db) != 0
+		                       ? "Gravity database batch was only partially applied"
+		                       : NULL;
+
+		char commit_err[256] = { 0 };
+		if(commit_msg == NULL &&
+		   sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK)
+		{
+			// The message belongs to the connection, take a copy
+			// of it before the handle goes away
+			strncpy(commit_err, sqlite3_errmsg(db), sizeof(commit_err) - 1);
+			commit_msg = "Could not commit to gravity database";
+		}
+
+		if(commit_msg != NULL)
+		{
+			const bool partial = commit_err[0] == '\0';
+			gravityDB_write_close(db);
+
+			// A partially applied batch left rows behind that the
+			// resolver has to pick up, a failed commit left none
+			if(partial)
+				set_event(RELOAD_GRAVITY);
+
+			const int ret = send_json_error(api, 500, // 500 Internal Server Error
+			                                "database_error",
+			                                commit_msg,
+			                                commit_err[0] != '\0' ? commit_err : NULL);
+			cJSON_Delete(processed);
+			if(allocated_json)
+				cJSON_Delete(row.items);
+			return ret;
+		}
+	}
+	gravityDB_write_close(db);
 
 	// If all items failed, return a database error instead of
 	// a success response with an empty result set
@@ -721,6 +807,32 @@ static int api_list_write(struct ftl_conn *api,
 		cJSON_Delete(row.items);
 
 	return ret;
+
+batch_abort:
+	// The response cannot be assembled any more. Undo what this transaction
+	// holds if it is still ours to undo - if SQLite has already ended it,
+	// part of the batch is on disk and the resolver has to hear about it
+	{
+		bool committed = !in_transaction;
+		if(in_transaction)
+		{
+			if(sqlite3_get_autocommit(db) != 0)
+				committed = true;
+			else
+				sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+		}
+
+		gravityDB_write_close(db);
+
+		if(committed)
+			set_event(RELOAD_GRAVITY);
+	}
+
+	cJSON_Delete(processed);
+	if(allocated_json)
+		cJSON_Delete(row.items);
+
+	return send_http_internal_error(api);
 }
 
 static int api_list_remove(struct ftl_conn *api,
