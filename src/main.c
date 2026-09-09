@@ -54,7 +54,7 @@ int main (int argc, char *argv[])
 	// it if needed
 	username = getUserName();
 
-	// Obtain log file location
+	// Obtain FTL.log file location
 	getLogFilePath(true);
 
 	// Store binary path and PIE load base address for crash-time backtrace.
@@ -67,8 +67,8 @@ int main (int argc, char *argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Initialize FTL log
-	init_FTL_log();
+	// Open FTL.log early (other logs opened after config parse)
+	open_log_fds(true);
 	// Try to open FTL log
 	init_config_mutex();
 	timer_start(EXIT_TIMER);
