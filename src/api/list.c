@@ -17,11 +17,48 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// dbopen()
+#include "database/common.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
 // parse_groupIDs()
 #include "webserver/http-common.h"
 #include <idn2.h>
+
+// cJSON_AddStringToObject() that reports a failure rather than returning 500
+// from the middle of a loop that is holding a database handle open
+static bool add_string_to_object(cJSON *object, const char *key, const char *string,
+                                 const bool reference)
+{
+	cJSON *item = NULL;
+	if(string == NULL)
+		item = cJSON_CreateNull();
+	else
+		item = reference ? cJSON_CreateStringReference(string)
+		                 : cJSON_CreateString(string);
+	if(item == NULL)
+		return false;
+
+	cJSON_AddItemToObject(object, key, item);
+	return true;
+}
+
+// The JSON_* macros answer 500 and return where they fail. Inside the row loop
+// of api_list_read() that would strand the statement and the name-resolution
+// connection it holds, so these do the same job and leave through a label that
+// releases both
+#define ROW_COPY_STR(obj, key, str) do { \
+	if(!add_string_to_object(obj, key, str, false)) goto list_read_fail; \
+} while(0)
+#define ROW_REF_STR(obj, key, str) do { \
+	if(!add_string_to_object(obj, key, str, true)) goto list_read_fail; \
+} while(0)
+#define ROW_ADD_NUM(obj, key, num) do { \
+	if(cJSON_AddNumberToObject(obj, key, num) == NULL) goto list_read_fail; \
+} while(0)
+#define ROW_ADD_BOOL(obj, key, val) do { \
+	if(cJSON_AddBoolToObject(obj, key, val) == NULL) goto list_read_fail; \
+} while(0)
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -33,59 +70,96 @@ static int api_list_read(struct ftl_conn *api,
 	sqlite3_stmt *stmt = NULL;
 	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
 	{
+		JSON_DELETE(processed);
 		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
 	}
 
+	// Everything below leaves through list_read_fail, which releases the
+	// statement, the name-resolution connection and the JSON built so far.
+	// ret stays 0 while nothing has been sent yet
+	int ret = 0;
+	cJSON *row = NULL;
+
+	// Resolving a client name reads pihole-FTL.db, and the lookups open
+	// their own connection when they are not handed one. That is once per
+	// returned row, so open it once here and let every row share it. Both
+	// lookups give up on their own config before they touch the database,
+	// so a setup that resolves nothing must not pay an open at all, and the
+	// open waits for the first row that actually wants a name so an empty
+	// client list does not pay one either. A failure is not fatal, the
+	// lookups then fall back to opening their own
+	const bool resolve_names = listtype == GRAVITY_CLIENTS &&
+	                           (config.resolver.resolveIPv4.v.b ||
+	                            config.resolver.resolveIPv6.v.b ||
+	                            config.resolver.macNames.v.b);
+	sqlite3 *namedb = NULL;
+	bool namedb_tried = false;
+
 	tablerow table = { 0 };
 	cJSON *rows = JSON_NEW_ARRAY();
 	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg, stmt))
 	{
-		cJSON *row = JSON_NEW_OBJECT();
+		row = JSON_NEW_OBJECT();
+		if(row == NULL)
+			goto list_read_fail;
 
 		// Special fields
 		if(listtype == GRAVITY_GROUPS)
 		{
-			JSON_COPY_STR_TO_OBJECT(row, "name", table.name);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "name", table.name);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_ADLISTS ||
 		        listtype == GRAVITY_ADLISTS_BLOCK ||
 		        listtype == GRAVITY_ADLISTS_ALLOW)
 		{
-			JSON_COPY_STR_TO_OBJECT(row, "address", table.address);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "address", table.address);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
 			char name[MAXDOMAINLEN] = { 0 };
-			if(table.client != NULL)
+			if(table.client != NULL && resolve_names)
 			{
-				// Try to obtain hostname
-				if(isValidIPv4(table.client) || isValidIPv6(table.client))
-					getNameFromIP(NULL, name, table.client);
-				else if(isMAC(table.client))
-					getNameFromMAC(table.client, name);
+				const bool is_ip = isValidIPv4(table.client) ||
+				                   isValidIPv6(table.client);
+				if(is_ip || isMAC(table.client))
+				{
+					// First row that needs a name opens the
+					// connection the remaining ones reuse
+					if(!namedb_tried)
+					{
+						namedb = dbopen(false, false);
+						namedb_tried = true;
+					}
+
+					// Try to obtain hostname
+					if(is_ip)
+						getNameFromIP(namedb, name, table.client);
+					else
+						getNameFromMAC(namedb, table.client, name);
+				}
 			}
 
-			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
-			JSON_COPY_STR_TO_OBJECT(row, "name", name);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "client", table.client);
+			ROW_COPY_STR(row, "name", name);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else // domainlists
 		{
 			char *unicode = NULL;
 			const int rc = idn2_to_unicode_lzlz(table.domain, &unicode, IDN2_NONTRANSITIONAL);
-			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			ROW_COPY_STR(row, "domain", table.domain);
 			if(rc == IDN2_OK)
-				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+				ROW_COPY_STR(row, "unicode", unicode);
 			else
-				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
-			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
-			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+				ROW_COPY_STR(row, "unicode", table.domain);
+			ROW_REF_STR(row, "type", table.type);
+			ROW_REF_STR(row, "kind", table.kind);
+			ROW_COPY_STR(row, "comment", table.comment);
 			if(unicode != NULL)
 				free(unicode);
 		}
@@ -95,16 +169,9 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			if(table.group_ids != NULL)
 			{
-				const int ret = parse_groupIDs(api, &table, row);
+				ret = parse_groupIDs(api, &table, row);
 				if(ret != 0)
-				{
-					// row is not in rows yet, it is only
-					// appended at the end of the loop body
-					JSON_DELETE(row);
-					JSON_DELETE(rows);
-					gravityDB_readTableFinalize(stmt);
-					return ret;
-				}
+					goto list_read_fail;
 
 			}
 			else
@@ -117,29 +184,33 @@ static int api_list_read(struct ftl_conn *api,
 
 		// Clients don't have the enabled property
 		if(listtype != GRAVITY_CLIENTS)
-			JSON_ADD_BOOL_TO_OBJECT(row, "enabled", table.enabled);
+			ROW_ADD_BOOL(row, "enabled", table.enabled);
 
 		// Add read-only database parameters
-		JSON_ADD_NUMBER_TO_OBJECT(row, "id", table.id);
-		JSON_ADD_NUMBER_TO_OBJECT(row, "date_added", table.date_added);
-		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
+		ROW_ADD_NUM(row, "id", table.id);
+		ROW_ADD_NUM(row, "date_added", table.date_added);
+		ROW_ADD_NUM(row, "date_modified", table.date_modified);
 
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
 		if(listtype == GRAVITY_ADLISTS ||
 		   listtype == GRAVITY_ADLISTS_BLOCK ||
 		   listtype == GRAVITY_ADLISTS_ALLOW)
 		{
-			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "abp_entries", table.abp_entries);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "status", table.status);
+			ROW_REF_STR(row, "type", table.type);
+			ROW_ADD_NUM(row, "date_updated", table.date_updated);
+			ROW_ADD_NUM(row, "number", table.number);
+			ROW_ADD_NUM(row, "invalid_domains", table.invalid_domains);
+			ROW_ADD_NUM(row, "abp_entries", table.abp_entries);
+			ROW_ADD_NUM(row, "status", table.status);
 		}
 
 		JSON_ADD_ITEM_TO_ARRAY(rows, row);
+		row = NULL;
 	}
 	gravityDB_readTableFinalize(stmt);
+
+	if(namedb != NULL)
+		dbclose(&namedb);
 
 	if(sql_msg == NULL)
 	{
@@ -167,11 +238,25 @@ static int api_list_read(struct ftl_conn *api,
 	else
 	{
 		JSON_DELETE(rows);
+		JSON_DELETE(processed);
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read from gravity database",
 		                       sql_msg);
 	}
+
+list_read_fail:
+	// row is not in rows yet, it is only handed over at the end of the loop
+	JSON_DELETE(row);
+	JSON_DELETE(rows);
+	JSON_DELETE(processed);
+	gravityDB_readTableFinalize(stmt);
+
+	if(namedb != NULL)
+		dbclose(&namedb);
+
+	// A non-zero ret means a reply has gone out already
+	return ret != 0 ? ret : send_http_internal_error(api);
 }
 
 static int api_list_write(struct ftl_conn *api,
