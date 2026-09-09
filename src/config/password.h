@@ -18,12 +18,31 @@ void sha256_raw_to_hex(uint8_t *data, char *buffer);
 char *create_password(const char *password) __attribute__((malloc));
 bool get_secure_randomness(uint8_t *buffer, const size_t length);
 enum password_result verify_login(const char *password);
-enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting);
+enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting, bool *legacy);
 int run_performance_test(void);
 bool set_and_check_password(struct conf_item *conf_item, const char *password);
 bool generate_password(char **password, char **pwhash);
 bool create_cli_password(void);
 bool remove_cli_password(void);
+
+// The shared secret the nodes of a cluster authenticate to each other with. It
+// is stored in its own file instead of in pihole.toml so it is neither
+// world-readable nor served by the API
+#define CLUSTER_SECRET_FILE "/etc/pihole/cluster_secret"
+
+// Shorter than this and the derived keys are not worth having. FTL generates
+// 256 bits; this only bounds what a hand-written file may be
+#define CLUSTER_SECRET_MINLEN 8
+// Long enough for the generated secret and for anything an administrator writes
+// into the file by hand - create_cluster_secret() reads at most this much
+#define CLUSTER_SECRET_LEN 256
+bool create_cluster_secret(void);
+
+// Take over the secret of the cluster this node is joining
+bool adopt_cluster_secret(const char *secret);
+// Copied out rather than handed out: a node joining a cluster replaces the
+// secret from a webserver thread while the cluster thread is signing with it
+bool cluster_secret_copy(char *buf, const size_t buflen);
 
 enum password_result {
 	PASSWORD_INCORRECT = 0,

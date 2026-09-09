@@ -149,9 +149,20 @@ int api_action_gravity(struct ftl_conn *api)
 
 	const char *extra_env = color ? "FORCE_COLOR" : NULL;
 
-	gravity_running = 1;
+	// The cluster runs gravity too, and the flag is what keeps FTL from
+	// stopping in the middle of a rebuild. Clearing it unconditionally would
+	// clear it for whoever else set it, and their child would be killed with
+	// the daemon a moment later
+	// Taken in one step: a test followed by a set is two threads away from
+	// two rebuilds at once, and from one of them clearing the other's claim
+	if(__atomic_exchange_n(&gravity_running, 1, __ATOMIC_SEQ_CST) != 0)
+		return send_json_error(api, 409,
+		                       "conflict",
+		                       "Gravity is already running",
+		                       NULL);
+
 	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
-	gravity_running = 0;
+	__atomic_store_n(&gravity_running, 0, __ATOMIC_SEQ_CST);
 
 	// If a termination/restart was requested while gravity was running,
 	// act on it now rather than waiting up to ~1s for the GC thread to pick it up

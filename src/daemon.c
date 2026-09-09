@@ -43,6 +43,8 @@
 #include "procps.h"
 // dotdoh_cleanup()
 #include "dotdoh/proxy.h"
+// cluster_vip_shutdown()
+#include "cluster/dhcp.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -412,6 +414,13 @@ void cleanup(const int ret)
 {
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
+
+	// The virtual IP address is the cluster's, not the resolver's, and this is
+	// the only thing that gives it back - the cluster thread is cancelled in
+	// its sleep and never joined. A node whose dnsmasq never came up is
+	// exactly the one that should be handing it over, so it cannot sit behind
+	// a flag that says the resolver started
+	cluster_vip_shutdown();
 
 	// Do proper cleanup only if FTL started successfully
 	if(resolver_ready)

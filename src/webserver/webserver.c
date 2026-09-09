@@ -578,6 +578,19 @@ in_port_t __attribute__((pure)) get_https_port(void)
 	return https_port;
 }
 
+// The first encrypted port that is actually listening. https_port is the
+// configured one, which an optional port that failed to bind is still part of -
+// telling somebody else to connect there would send them nowhere
+in_port_t __attribute__((pure)) get_bound_https_port(void)
+{
+	for(unsigned int i = 0; i < MAXPORTS; i++)
+		if(server_ports[i].port != 0 && server_ports[i].is_secure &&
+		   server_ports[i].is_bound && !server_ports[i].is_redirect)
+			return server_ports[i].port;
+
+	return 0;
+}
+
 #define MAX_URL_LEN 255
 unsigned short get_api_string(char **buf, const bool domain)
 {

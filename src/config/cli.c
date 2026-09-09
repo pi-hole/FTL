@@ -162,7 +162,7 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			char *pwhash = strlen(value) > 0 ? create_password(value) : strdup("");
 
 			// Verify that the password hash is either valid or empty
-			const enum password_result status = verify_password(value, pwhash, false);
+			const enum password_result status = verify_password(value, pwhash, false, NULL);
 			if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 			{
 				log_err("Failed to create password hash (verification failed), password remains unchanged");
@@ -520,6 +520,7 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 
 		// Install new configuration
 		replace_config(&newconf);
+		config_stamp_local_change();
 
 		// Print value
 		writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);

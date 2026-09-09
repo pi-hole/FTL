@@ -1,7 +1,7 @@
-# Pi-hole configuration file (v6.5-156-g043326cc-dirty) on branch tweak/performance
+# Pi-hole configuration file (v6.7-195-g74be960d) on branch new/cluster
 # Encoding: UTF-8
 # This file is managed by pihole-FTL
-# Last updated on 2026-03-21 11:13:18 UTC
+# Last updated on 2026-08-31 07:36:52 UTC
 
 [dns]
   # Upstream DNS Servers to be used by Pi-hole. If this is not set, Pi-hole will not
@@ -749,6 +749,123 @@
       # Allowed values are:
       #     true or false
       utc = true
+
+[cluster]
+  # Should this Pi-hole be part of a cluster? The nodes listed in cluster.members then
+  # keep each other's configuration and lists in step, and each of them knows which of
+  # the others are reachable. The two features that change what this machine does on the
+  # network - DHCP failover and the virtual IP address - are switched on separately
+  # below.
+  #
+  # Allowed values are:
+  #     true or false
+  enabled = false
+
+  # Name of this node inside the cluster. If left empty, the system's hostname is used.
+  # It is what the logs and /api/cluster/status call this node, and nothing else:
+  # elections are settled by node identity, which is unique even where names collide -
+  # two Pi-holes imaged from the same card are both "raspberrypi".
+  #
+  # Allowed values are:
+  #     A name for this node, or an empty string to use the hostname
+  name = ""
+
+  # The Pi-holes forming this cluster, as the URLs of their web interfaces - all of them,
+  # including this one. FTL recognizes its own entry and skips it, so the same list can
+  # be used on every node, and it is synchronized like any other setting: a node added
+  # on one of them is known to all of them shortly afterwards.
+  #
+  # At most eight nodes: every node polls every other one, so what a round costs the
+  # network grows with the square of the size.
+  #
+  # The nodes authenticate to each other with a shared secret rather than with
+  # individual passwords: FTL creates one in /etc/pihole/cluster_secret when clustering
+  # is enabled, and that file is copied to every other node once.
+  #
+  # Example: [ "https://192.168.0.5", "https://192.168.0.6" ]
+  #
+  # Allowed values are:
+  #     Array of http:// or https:// URLs, one per node of the cluster, e.g.
+  #     "https://192.168.0.5:443"
+  members = []
+
+  # How often should the peers be contacted [seconds]? This is also the granularity of
+  # DHCP failover decisions.
+  #
+  # Allowed values are:
+  #     A number of seconds between 1 and 3600
+  interval = 10
+
+  [cluster.tls]
+    # Path to a certificate bundle the peers' TLS certificates are verified against. This
+    # is only needed when the nodes use certificates of your own: with Pi-hole's
+    # self-signed ones, which name a machine rather than the address a peer reaches it at,
+    # a chain says nothing. What identifies a peer instead is the hash of its public key,
+    # which it publishes in an answer signed with the shared secret - so there is nothing
+    # to collect and nothing to copy between the nodes.
+    #
+    # Allowed values are:
+    #     A path to a PEM certificate bundle, or empty to identify the peers by their
+    #     public keys
+    ca = ""
+
+  [cluster.sync]
+    # Should the web interface password travel with the rest of the configuration? With
+    # this enabled the nodes are interchangeable down to the password, which is what most
+    # people want from a cluster - a node that takes over is the same Pi-hole with the
+    # same login.
+    #
+    # It is worth knowing what it costs. The nodes authenticate to each other with the
+    # shared secret in /etc/pihole/cluster_secret, and with the password synchronized that
+    # file becomes as good as the password on every node: whoever holds it can set a
+    # password they know everywhere. With this disabled the secret can still change what
+    # the cluster keeps in step, but it cannot log in anywhere.
+    #
+    # The two-factor secret travels with it. A cluster that synchronized the password but
+    # not the second factor would be one where the second factor is skipped by opening a
+    # different node instead.
+    #
+    # Credentials only travel while every member is an https:// one, whatever this is set
+    # to: a signature keeps a peer from changing them, not from reading them. This setting
+    # is not synchronized - each node decides for itself what it accepts.
+    #
+    # Allowed values are:
+    #     true or false
+    credentials = true
+
+  [cluster.dhcp]
+    # Hand DHCP over to another node when this one fails? One node serves DHCP and the
+    # others keep their DHCP server switched off until they are needed - which node that
+    # is follows from the node identities, so every node reaches the same answer on its
+    # own and there is nothing to configure. Only enable this when Pi-hole is your DHCP
+    # server on all cluster nodes.
+    #
+    # Allowed values are:
+    #     true or false
+    failover = false
+
+  [cluster.vip]
+    # Virtual IP address floating between the cluster nodes. Whichever node is currently in
+    # charge adds this address to its interface and answers on it, so clients only ever
+    # need to know this one address. It is the same address on every node by definition,
+    # so it is synchronized like any other setting - set it once, anywhere. An IPv4
+    # address here is also what the DHCP server advertises as the DNS server, in place of
+    # the individual nodes, while cluster.dhcp.failover is on. An empty string disables
+    # the virtual IP.
+    #
+    # Allowed values are:
+    #     An unused IPv4 or IPv6 address in your local network, or an empty string to
+    #     disable
+    address = ""
+
+    # Interface the virtual IP address is added to. If left empty, the interface holding
+    # the route to the default gateway is used, which is the right answer on almost every
+    # machine. Unlike the address, this stays local: the same interface is called
+    # something else on the next node.
+    #
+    # Allowed values are:
+    #     An interface name, or an empty string to use the interface of the default route
+    interface = ""
 
 [resolver]
   # Should FTL try to resolve IPv4 addresses to hostnames?
@@ -1755,14 +1872,21 @@
   #     true or false
   dotdoh = true ### CHANGED, default = false
 
+  # Print debugging information about the cluster: every request sent to a peer, the
+  # answer it gave, and how the DHCP election and configuration synchronization decided.
+  #
+  # Allowed values are:
+  #     true or false
+  cluster = true ### CHANGED, default = false
+
   # Set all debug flags at once. This is a convenience option to enable all debug flags
   # at once. Note that this option is not persistent, setting it to true will enable all
   # *remaining* debug flags but unsetting it will disable *all* debug flags.
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
-# --> 56 entries are modified
+# 180 total entries out of which 123 entries are default
+# --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

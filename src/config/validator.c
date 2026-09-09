@@ -9,6 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+// CLUSTER_SECRET_FILE
+#include "config/password.h"
+// CLUSTER_MAX_PEERS, CLUSTER_URLLEN
+#include "cluster/cluster.h"
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -904,6 +908,132 @@ bool validate_array_no_newline(union conf_value *val, const char *key, char err[
 				return false;
 			}
 		}
+	}
+
+	return true;
+}
+
+// A round scheduled further ahead than this is a clock that moved rather than
+// an interval somebody chose, and the thread treats it as one - so a number
+// above it would have the cluster deciding it had travelled in time every tick
+bool validate_cluster_interval(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui >= 1 && val->ui <= CLUSTER_MAX_INTERVAL)
+		return true;
+
+	snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not between 1 and %u seconds",
+	         key, (unsigned int)CLUSTER_MAX_INTERVAL);
+
+	return false;
+}
+
+bool validate_cluster_members(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's an array
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next, i++)
+	{
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
+			return false;
+		}
+
+		// The URL is everything up to the first comma, the (optional)
+		// app password is everything behind it. Splitting on the first
+		// comma only allows passwords containing commas themselves.
+		const char *url = item->valuestring;
+		const char *comma = strchr(url, ',');
+		const size_t urllen = comma != NULL ? (size_t)(comma - url) : strlen(url);
+
+		size_t hostoffset = 0;
+		if(urllen > 7 && strncmp(url, "http://", 7) == 0)
+			hostoffset = 7;
+		else if(urllen > 8 && strncmp(url, "https://", 8) == 0)
+			hostoffset = 8;
+		else
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> does not start with http:// or https://", key, i);
+			return false;
+		}
+
+		// A URL without a host is never reachable
+		if(urllen == hostoffset || url[hostoffset] == '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> has no host part", key, i);
+			return false;
+		}
+
+		// The peers used to carry their credentials here, which they no
+		// longer do - say so instead of letting curl fail on the comma
+		if(strchr(url, ',') != NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN,
+			         "%s[%d]: only the URL belongs here, the nodes authenticate with the shared secret in %s",
+			         key, i, CLUSTER_SECRET_FILE);
+			return false;
+		}
+
+		// Whitespace in a URL is always a typo and curl would reject it anyway
+		for(size_t j = 0; j < urllen; j++)
+		{
+			if(isspace((unsigned char)url[j]))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> contains whitespace", key, i);
+				return false;
+			}
+		}
+
+		// The endpoint paths are appended to this as it stands, so a
+		// trailing slash asks the peer for //api/cluster/status, which
+		// no route matches - and a browser address bar produces one
+		if(url[urllen - 1] == '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> ends in a slash", key, i);
+			return false;
+		}
+
+		// A longer entry would be cut down to a different host
+		if(urllen >= CLUSTER_URLLEN)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> is longer than %d characters",
+			         key, i, CLUSTER_URLLEN - 1);
+			return false;
+		}
+	}
+
+	// Beyond this the last entries would be dropped - the same ones on every
+	// node, which takes that node out of the cluster in both directions
+	if(i > CLUSTER_MAX_PEERS)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: a cluster holds at most %d nodes",
+		         key, CLUSTER_MAX_PEERS);
+		return false;
+	}
+
+	return true;
+}
+
+bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// An empty string disables the virtual IP address
+	if(val->s == NULL || strlen(val->s) == 0)
+		return true;
+
+	struct in_addr addr4 = { 0 };
+	struct in6_addr addr6 = { 0 };
+	if(inet_pton(AF_INET, val->s, &addr4) != 1 &&
+	   inet_pton(AF_INET6, val->s, &addr6) != 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 or IPv6 address (\"%s\")", key, val->s);
+		return false;
 	}
 
 	return true;

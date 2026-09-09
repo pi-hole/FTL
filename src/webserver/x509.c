@@ -22,6 +22,11 @@
 # include <openssl/x509v3.h>
 // open(), O_* flags for the atomic 0600 key-file creation
 #include <fcntl.h>
+// sha256 and base64, for the public-key pin the cluster peers compare
+#include <nettle/sha2.h>
+// NETTLE_VERSION_MAJOR
+#include <nettle/version.h>
+#include <nettle/base64.h>
 
 // We enforce at least OpenSSL v3.0.0 if we use it (providers, EVP_PKEY_Q_keygen)
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
@@ -727,12 +732,77 @@ bool is_pihole_certificate(const char *certfile)
 	return strcasecmp(issuer_cn, "pi.hole") == 0 && strcasecmp(subject_cn, "pi.hole") == 0;
 }
 
+// What a peer compares this node's certificate against: the SHA-256 of the
+// public key in its DER form, base64-encoded. This is the value behind curl's
+// "sha256//..." pin, and it survives a certificate being reissued for the same
+// key
+bool certificate_pin(const char *certfile, char *out, const size_t outlen)
+{
+	X509 *crt = NULL;
+	BIO *bio = BIO_new_file(certfile, "r");
+	if(bio != NULL)
+	{
+		crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+		BIO_free(bio);
+	}
+	if(crt == NULL)
+	{
+		log_debug(DEBUG_ANY, "Cannot read a certificate from %s", certfile);
+		return false;
+	}
+
+	// The public key alone, in the encoding a pin is taken over
+	unsigned char *der = NULL;
+	EVP_PKEY *key = X509_get_pubkey(crt);
+	const int len = key != NULL ? i2d_PUBKEY(key, &der) : -1;
+	EVP_PKEY_free(key);
+	X509_free(crt);
+
+	if(len <= 0 || der == NULL)
+	{
+		log_debug(DEBUG_ANY, "Cannot read the public key of %s", certfile);
+		OPENSSL_free(der);
+		return false;
+	}
+
+	uint8_t digest[SHA256_DIGEST_SIZE];
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+	sha256_update(&ctx, (size_t)len, der);
+#if NETTLE_VERSION_MAJOR >= 4
+	sha256_digest(&ctx, digest);
+#else
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, digest);
+#endif
+	OPENSSL_free(der);
+
+	// Base64 of the raw digest, which is what curl expects after "sha256//"
+	struct base64_encode_ctx b64;
+	char encoded[BASE64_ENCODE_LENGTH(SHA256_DIGEST_SIZE) + BASE64_ENCODE_FINAL_LENGTH + 1] = { 0 };
+	base64_encode_init(&b64);
+	size_t written = base64_encode_update(&b64, encoded, SHA256_DIGEST_SIZE, digest);
+	written += base64_encode_final(&b64, encoded + written);
+	encoded[written] = '\0';
+
+	if(written >= outlen)
+		return false;
+
+	memcpy(out, encoded, written + 1);
+
+	return true;
+}
+
 #else
 
 enum cert_check read_certificate(const char* certfile, const char *domain, const bool private_key)
 {
 	log_err("FTL was not compiled with TLS support");
 	return CERT_FILE_NOT_FOUND;
+}
+
+bool certificate_pin(const char *certfile, char *out, const size_t outlen)
+{
+	return false;
 }
 
 #endif

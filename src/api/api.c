@@ -105,6 +105,13 @@ static struct {
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/network",              "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/cluster/lists",                     "",                           api_cluster_lists,                     { API_FLAG_NONE, 0                          }, true,  HTTP_GET },
+	{ "/api/cluster/leases",                    "",                           api_cluster_leases,                    { API_FLAG_NONE, 0                          }, true,  HTTP_GET },
+	{ "/api/cluster/discover",                  "",                           api_cluster_discover,                  { API_FLAG_NONE, 0                          }, true,  HTTP_GET },
+	{ "/api/cluster/enroll",                    "",                           api_cluster_enroll,                    { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/cluster/join",                      "",                           api_cluster_join,                      { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/cluster/leave",                     "",                           api_cluster_leave,                     { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
+	{ "/api/cluster/status",                    "",                           api_cluster_status,                    { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
@@ -191,6 +198,25 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			if(api_request[i].require_auth && check_client_auth(&api, true) == API_AUTH_UNAUTHORIZED)
 			{
 				unauthorized = true;
+				break;
+			}
+
+			// A peer of our cluster reads what we publish about
+			// ourselves and hands us its configuration. It has no
+			// business anywhere else, so a stolen cluster secret
+			// reaches neither the password hashes in /api/config nor
+			// the Teleporter archive that carries them
+			const bool cluster_read = api.method == HTTP_GET &&
+			    strncmp(api.request->local_uri_raw, "/api/cluster/", sizeof("/api/cluster/") - 1) == 0 &&
+			    strcmp(api.request->local_uri_raw, "/api/cluster/discover") != 0;
+			const bool cluster_push = api.method == HTTP_PATCH &&
+			    strcmp(api.request->local_uri_raw, "/api/config") == 0;
+			if(api.session.used && api.session.cluster && !cluster_read && !cluster_push)
+			{
+				ret = send_json_error(&api, 403,
+				                      "forbidden",
+				                      "Cluster requests are confined to synchronization",
+				                      "A peer reads /api/cluster and hands us its configuration through PATCH /api/config, and needs nothing beyond that");
 				break;
 			}
 
