@@ -2727,7 +2727,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 		case CONF_ENUM_PRIVACY_LEVEL:
 		{
 			// Check type
-			int value;
+			int value = 0;
 			if(cJSON_IsNumber(elem))
 				value = elem->valueint;
 			else if(cJSON_IsString(elem) && sscanf(elem->valuestring, "%i", &value) == 1)
