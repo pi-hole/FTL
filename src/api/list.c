@@ -728,7 +728,10 @@ static int api_list_write(struct ftl_conn *api,
 		// own while the ones before it were undone, so neither the
 		// per-item results above nor a plain commit failure describe
 		// what is in the database
-		const char *commit_msg = sqlite3_get_autocommit(db) != 0
+		// SQLite has ended the transaction itself if the connection is
+		// back in autocommit, which means part of the batch is on disk
+		const bool partially_applied = sqlite3_get_autocommit(db) != 0;
+		const char *commit_msg = partially_applied
 		                       ? "Gravity database batch was only partially applied"
 		                       : NULL;
 
@@ -744,12 +747,11 @@ static int api_list_write(struct ftl_conn *api,
 
 		if(commit_msg != NULL)
 		{
-			const bool partial = commit_err[0] == '\0';
 			gravityDB_write_close(db);
 
 			// A partially applied batch left rows behind that the
 			// resolver has to pick up, a failed commit left none
-			if(partial)
+			if(partially_applied)
 				set_event(RELOAD_GRAVITY);
 
 			const int ret = send_json_error(api, 500, // 500 Internal Server Error
