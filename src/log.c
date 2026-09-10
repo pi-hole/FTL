@@ -196,27 +196,11 @@ void open_log_fds(bool ftl)
 		}
 	}
 
-	// pihole.log (dnsmasq) - FTL owns this file from now on
+	// pihole.log (dnsmasq) - FTL owns this file from now on.  A stray "-"
+	// sentinel (previously selected stderr) is healed by the config migration.
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-		// "-" used to select stderr via dnsmasq's log-facility; since FTL
-		// writes pihole.log itself it is no longer supported.  Fall back to
-		// the default path so no file named "-" is created.
-		const char *path = config.files.log.dnsmasq.v.s;
-		if(strcmp(path, "-") == 0)
-		{
-			log_warn("files.log.dnsmasq = \"-\" (log to stderr) is no longer supported, using %s instead (see https://github.com/pi-hole/FTL/pull/2960)",
-			         config.files.log.dnsmasq.d.s);
-			path = config.files.log.dnsmasq.d.s;
-
-			// Heal the config value to the effective path so writeFTLtoml(),
-			// the API and chown_pihole() all see it and "-" is not persisted
-			if(config.files.log.dnsmasq.t == CONF_STRING_ALLOCATED)
-				free(config.files.log.dnsmasq.v.s);
-			config.files.log.dnsmasq.v.s = strdup(path);
-			config.files.log.dnsmasq.t = CONF_STRING_ALLOCATED;
-		}
-		set_log_path(&dnsmasq_log, path);
+		set_log_path(&dnsmasq_log, config.files.log.dnsmasq.v.s);
 		if(dnsmasq_log.fd >= 0)
 			close(dnsmasq_log.fd);
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
