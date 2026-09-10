@@ -49,9 +49,17 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 bool dotdoh_source_allowed(const char *client_ip);
 
 // Borrow a connected, non-blocking loopback socket to dnsmasq from the shared
-// pool, or -1 when the pool is empty (the caller then makes its own). Returning
-// it with dotdoh_loopback_give() lets one socket - and so one dnsmasq TCP child
-// - serve many client connections and streams instead of one each.
+// pool. Returns the socket, -1 when the pool is empty, or -2 when we already
+// hold as many dnsmasq TCP children as we may - the caller then refuses the
+// query rather than queueing it.
+//
+// -1 still reserves the slot, so a caller that goes on to open its own socket
+// must release it like any other: with dotdoh_loopback_give() when the socket
+// can be reused, dotdoh_loopback_drop() when it cannot, or drop(-1) if it never
+// got one. Missing that leaks the slot for good.
+//
+// Reusing a socket lets one dnsmasq TCP child serve many client connections and
+// streams instead of one each.
 int dotdoh_loopback_take(void);
 void dotdoh_loopback_give(int fd);
 

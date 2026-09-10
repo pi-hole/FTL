@@ -371,11 +371,6 @@ static int loopback_connect(void)
 	return fd;
 }
 
-// The reused loopback fd is thread-local. It is closed on a thread-exit
-// destructor so it does not outlive its owning thread: native DoH is served from
-// the terminator's per-connection detached handler threads (and from restartable
-// h3 workers), neither of which lives for the whole life of the process, so
-// without this each such thread would leak its loopback fd.
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS
 // listener over loopback TCP: dnsmasq accepts it as an ordinary TCP DNS query,
 // so nothing unsafe (a direct tcp_request()/fork) happens from the calling DoH

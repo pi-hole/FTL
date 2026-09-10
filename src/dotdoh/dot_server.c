@@ -541,17 +541,10 @@ static int drive_read(struct dot_conn *c)
 	memmove(c->rbuf, c->rbuf + consumed, c->have - consumed);
 	c->have -= consumed;
 
-	// Reuse an open loopback connection across this connection's keep-alive
-	// queries: dnsmasq serves up to TCP_MAX_QUERIES per TCP connection, so we do
-	// not fork a fresh child per query. If dnsmasq has since closed it, the resend
-	// path in drive_up_write/drive_up_read reconnects once.
+	// The socket is handed back to the pool after each answer, so this query
+	// takes one of its own. Warm sockets still come from there, which is what
+	// keeps dnsmasq from forking a child per query.
 	c->up_retried = false;
-	if(c->upfd >= 0)
-	{
-		c->up_reused = true;
-		c->st = DS_UP_WRITE;
-		return 1;
-	}
 	c->up_reused = false;
 	const int rs = conn_start_resolve(c);
 	if(rs == -2)
