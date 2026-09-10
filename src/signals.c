@@ -620,8 +620,7 @@ enum a2l_run {
 // performs no cross-thread siglongjmp(), so it is safe in the multi-threaded
 // daemon.  Spawning directly avoids popen()'s /bin/sh and stdio buffering.
 // _Fork() is used instead of fork() because it is explicitly async-signal-safe
-// and does not call the pthread_atfork() handlers, so a thread holding a log
-// mutex cannot stall us here (see the log_atfork_prepare() handlers in log.c).
+// and does not call any pthread_atfork() handlers, which may be unsafe.
 // This function itself is not async-signal-safe (it uses snprintf(), poll(),
 // and execvp()); symbolization is a best-effort step that runs only after the
 // raw frame addresses have already been collected and can be logged.
@@ -652,8 +651,7 @@ static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
 		return A2L_RUN_SPAWN_FAIL;
 
 	// _Fork() rather than fork(): _Fork() is async-signal-safe and does not
-	// call the pthread_atfork() handlers registered in log.c, so a thread
-	// parked in write() on a log mutex cannot stall the crash handler here.
+	// call any pthread_atfork() handlers, which may be unsafe.
 	const pid_t pid = _Fork();
 	if(pid < 0)
 	{
