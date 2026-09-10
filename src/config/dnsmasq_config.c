@@ -479,8 +479,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
-		// FTL writes pihole.log synchronously via a cached descriptor, so
-		// dnsmasq's log-async queue is never used
+		// FTL bypasses dnsmasq's writer and writes pihole.log via its
+		// own async writer. Therefore, dnsmasq's log-async is redundant.
 		if(conf->misc.extraLogging.v.b)
 			fputs("log-queries=proto\n", pihole_conf);
 		else
