@@ -427,11 +427,15 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 				// Remove newline if present
 				char *p = strchr(name, '\n');
 				if (p != NULL) *p = '\0';
-				fclose(f_name);
 			}
+
+			// Closed either way - a failed read left it open before
+			fclose(f_name);
 		}
-		else
-			break;
+		// No readable name file: fall through and report the sensor under
+		// the directory name copied into name above, which is what that
+		// fallback is for. Breaking out here instead dropped this sensor
+		// and every one after it
 
 		// Create sensor array item
 		cJSON *hwmon = JSON_NEW_OBJECT();
@@ -791,10 +795,22 @@ int get_version_obj(struct ftl_conn *api, cJSON *version)
 
 	FILE *fp = fopen(VERSIONS_FILE, "r");
 	if(!fp)
+	{
+		// The seven objects above are ours until they are attached to
+		// the version object at the end of this function
+		JSON_DELETE(core_local);
+		JSON_DELETE(web_local);
+		JSON_DELETE(ftl_local);
+		JSON_DELETE(core_remote);
+		JSON_DELETE(web_remote);
+		JSON_DELETE(ftl_remote);
+		JSON_DELETE(docker);
+
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to read " VERSIONS_FILE,
 		                       NULL);
+	}
 
 	// Loop over KEY=VALUE parts in the versions file
 	while((read = getline(&line, &len, fp)) != -1)
@@ -911,7 +927,16 @@ int api_info_version(struct ftl_conn *api)
 {
 	// Send reply
 	cJSON *version = JSON_NEW_OBJECT();
-	get_version_obj(api, version);
+
+	// A non-zero return means get_version_obj() has answered the request
+	// itself. Carrying on would append a second body to that response
+	const int ret = get_version_obj(api, version);
+	if(ret != 0)
+	{
+		JSON_DELETE(version);
+		return ret;
+	}
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "version", version);
 	JSON_SEND_OBJECT(json);

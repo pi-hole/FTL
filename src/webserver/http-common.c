@@ -422,15 +422,26 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 		return -1;
 	}
 
-	// Extract value of the particular variable
+	// Extract value of the particular variable. mg_get_var() already
+	// URL-decodes what it returns, so this must not decode it a second time:
+	// a value that legitimately contains a percent sign, or a space that
+	// arrived as '+', comes back from the second pass as -1 and the caller
+	// silently drops the filter
 	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
 
-	// Decode the URI component if needed
 	if(len > 0)
-		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
+	{
+		// Copy rather than decode. The temporary buffer is still needed:
+		// mg_get_var() wants a buffer of its own and dest may be shorter
+		// than dest_len suggests to it
+		if((size_t)len >= dest_len)
+			len = (int)dest_len - 1;
 
-	// Free the temporary buffer, if anything was decoded it's now stored in
-	// dest
+		memcpy(dest, tempbuf, len);
+		dest[len] = '\0';
+	}
+
+	// Free the temporary buffer, the value is now stored in dest
 	free(tempbuf);
 
 	// Return the length of the decoded string
