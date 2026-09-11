@@ -108,13 +108,16 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 		const int rc = _dbclose_handle(*db, func, line, file);
 		if(rc != SQLITE_OK)
 			checkFTLDBrc(rc);
+
+		// Inside the guard: dbopen() only counted up when it handed out
+		// a connection, so closing a handle that is already NULL used to
+		// take a decrement with no increment behind it and drift the
+		// counter down, eventually below zero
+		atomic_fetch_sub_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 	}
 
 	// Always set database pointer to NULL, even when closing failed
 	if(db) *db = NULL;
-
-	// Decrement the number of open database connections
-	atomic_fetch_sub_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 }
 
 /**
