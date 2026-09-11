@@ -14,6 +14,10 @@
 #include "log.h"
 #include "tomlc17/tomlc17.h"
 #include "toml_writer.h"
+// open(), O_RDWR
+#include <fcntl.h>
+// flock()
+#include <sys/file.h>
 #include "toml_helper.h"
 // get_blocking_mode_str()
 #include "datastructure.h"
@@ -28,6 +32,17 @@
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
+
+// Release the lock that serialises writing and installing pihole.toml
+static void release_install_lock(int *fd)
+{
+	if(*fd < 0)
+		return;
+
+	// Closing the descriptor releases the flock
+	close(*fd);
+	*fd = -1;
+}
 
 bool writeFTLtoml(const bool verbose, FILE *fp)
 {
@@ -44,16 +59,41 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		return true;
 	}
 
+	// Serialise the whole write-and-install against another writer. The lock
+	// has to sit on a path nothing ever renames: locking the temporary file
+	// or pihole.toml itself would leave the next writer holding a lock on a
+	// different inode the moment one of them renames, which serialises
+	// nothing. Held until this function returns
+	int install_lock = -1;
+	const bool opened = fp == NULL;
+	if(opened)
+	{
+		install_lock = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_CLOEXEC,
+		                    S_IRUSR | S_IWUSR | S_IRGRP);
+		if(install_lock < 0)
+			log_warn("Cannot open %s (%s), writing the config unserialised",
+			         GLOBALTOMLPATH".lock", strerror(errno));
+		else if(flock(install_lock, LOCK_EX) != 0)
+		{
+			log_warn("Cannot lock %s (%s), writing the config unserialised",
+			         GLOBALTOMLPATH".lock", strerror(errno));
+			close(install_lock);
+			install_lock = -1;
+		}
+	}
+
 	// open temporary config file for writing *unless* we are provided with
 	// a file pointer to an already opened file
 	bool locked = false;
-	const bool opened = fp == NULL;
 	if(fp == NULL)
 	{
 		// Try to open a temporary config file for writing
 		fp = openFTLtoml("w", 0, &locked);
 		if(fp == NULL)
+		{
+			release_install_lock(&install_lock);
 			return false;
+		}
 	}
 
 	// Write header
@@ -196,6 +236,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 			log_err("Not replacing "GLOBALTOMLPATH", the new config could not be written");
 			if(unlink(GLOBALTOMLPATH".tmp") != 0)
 				log_warn("Cannot remove temporary config file: %s", strerror(errno));
+			release_install_lock(&install_lock);
 			return false;
 		}
 	}
@@ -219,6 +260,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 			log_warn("Cannot move temporary config file to final location (%s), content not updated", strerror(errno));
 			// Restart watching for changes in the config file
 			watch_config(true);
+			release_install_lock(&install_lock);
 			return false;
 		}
 
@@ -236,6 +278,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		if(unlink(GLOBALTOMLPATH".tmp") != 0)
 		{
 			log_warn("Cannot remove temporary config file (%s), content not updated", strerror(errno));
+			release_install_lock(&install_lock);
 			return false;
 		}
 
@@ -246,5 +289,6 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
 
+	release_install_lock(&install_lock);
 	return true;
 }
