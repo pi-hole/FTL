@@ -1134,6 +1134,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
+	query->flags.upstream_counted = false;
 	query->response = querytimestamp;
 	query->flags.response_calculated = false;
 	// Initialize reply type
@@ -2423,6 +2424,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	if(upstream != NULL)
 	{
 		upstream->count++;
+		query->flags.upstream_counted = true;
 		upstream->lastQuery = now;
 	}
 
@@ -2585,6 +2587,25 @@ static void update_upstream(queriesData *query, const int id)
 				log_debug(DEBUG_QUERIES, "Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
 				          id, oldaddr, oldport, ip, port);
 			}
+		}
+
+		// Move the count along with the attribution. FTL_forwarded()
+		// counted this query against the upstream it first picked and
+		// returns early for every further server of the same forward
+		// round, so the server that actually answered was never counted
+		// and whoever decrements later - query_blocked() or the GC -
+		// would take it off the wrong one
+		if(query->flags.upstream_counted)
+		{
+			upstreamsData *old_upstream = getUpstream(query->upstreamID, true);
+			if(old_upstream != NULL)
+				old_upstream->count--;
+
+			upstreamsData *new_upstream = upstreamID > -1 ? getUpstream(upstreamID, true) : NULL;
+			if(new_upstream != NULL)
+				new_upstream->count++;
+			else
+				query->flags.upstream_counted = false;
 		}
 
 		// Update upstream server ID
@@ -3069,13 +3090,18 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status)
 {
-	// Adjust counters if we recorded a non-blocking status
-	if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
+	// Adjust counters if we recorded a non-blocking status. Clear the flag
+	// with it: the query keeps pointing at the upstream for the reply and
+	// for the database, but the count has been handed back and the GC must
+	// not hand it back a second time when the query expires
+	if(query->status == QUERY_FORWARDED && query->flags.upstream_counted)
 	{
 		// Get forward pointer
 		upstreamsData *upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
 			upstream->count--;
+
+		query->flags.upstream_counted = false;
 	}
 	else if(is_blocked(query->status))
 	{
