@@ -2554,7 +2554,12 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		*message = "Failed to allocate memory for query string";
 		return false;
 	}
+	// like_name is the caller's item until we build a LIKE pattern of our own.
+	// The free() calls below have to follow the allocation, not just !exact:
+	// an empty non-exact item skips the allocation and would otherwise make
+	// this function free a string it never owned
 	char *like_name = (char*)item;
+	bool like_name_allocated = false;
 	if(!exact && item != NULL && item[0] != '\0')
 	{
 		// Build LIKE string (% + item + %)
@@ -2570,6 +2575,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 			return false;
 		}
 		snprintf(like_name, maxlen, "%%%s%%", item);
+		like_name_allocated = true;
 	}
 	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
@@ -2662,7 +2668,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
 		        listtype, type, rc, querystr, *message);
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2677,7 +2683,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
 		*read_stmt_p = NULL;
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2692,7 +2698,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
 		*read_stmt_p = NULL;
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2708,7 +2714,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 
 	// Free memory
 	free(querystr);
-	if(!exact)
+	if(like_name_allocated)
 		free(like_name);
 
 	return true;
