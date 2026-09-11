@@ -1238,6 +1238,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
 		// Release the SHM lock so this potentially slow I/O doesn't
 		// block all other threads (API, database, GC, TCP workers).
+		// Remember where the query array starts: the logical query index
+		// we are holding is relative to queries_offset, which the GC
+		// advances when it drops queries off the front
+		const unsigned int queries_offset_before = counters->queries_offset;
 		unlock_shm();
 
 		unsigned char hwaddr[16] = {0};
@@ -1259,8 +1263,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			client->hwlen = hwlen;
 		}
 
-		// Re-fetch all SHM pointers as SHM may have been remapped
-		query = getQuery(queryID, true);
+		// Re-fetch all SHM pointers as SHM may have been remapped.
+		// If queries_offset moved while we were unlocked then every
+		// logical query index shifted with it, and ours now resolves to
+		// a different query that is very much alive - magic byte and
+		// all - so re-fetching it would quietly update someone else's.
+		// There is no way to rebase it from here, so drop it instead.
+		// Domains and clients are not offset-indexed and are fine
+		if(counters->queries_offset != queries_offset_before)
+		{
+			log_debug(DEBUG_GC, "Query indices moved while resolving the MAC address, "
+			          "dropping query %d", queryID);
+			query = NULL;
+		}
+		else
+			query = getQuery(queryID, true);
 		domain = getDomain(domainID, true);
 		dns_cache_entry = query != NULL && query->cacheID > -1
 		                ? getDNSCache(query->cacheID, true) : NULL;
