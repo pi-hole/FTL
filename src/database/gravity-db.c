@@ -1809,12 +1809,23 @@ bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int n
 		return false;
 	}
 
-	// Bind client's group_id array via carray (parameter ?1)
+	// Bind client's group_id array via carray (parameter ?1). A client in no
+	// group at all must not reach the step below: the statement is shared
+	// between all clients and sqlite3_reset() keeps bindings, so skipping the
+	// bind would leave the previously processed client's array in place and
+	// hand this client that client's regexes. The gravity, allowlist and
+	// denylist lookups return early here for the same reason
 	int group_count = 0;
 	const int32_t *group_ids = getintarray(client->groupspos, &group_count);
-	if(group_ids != NULL && group_count > 0)
-		sqlite3_carray_bind(query_stmt, 1, (void*)group_ids, group_count,
-		                    SQLITE_CARRAY_INT32, SQLITE_STATIC);
+	if(group_ids == NULL || group_count <= 0)
+	{
+		log_debug(DEBUG_REGEX, "Regex %s: Client %s is in no group, no regex applies",
+		          regextype[type], getstr(client->ippos));
+		return true;
+	}
+
+	sqlite3_carray_bind(query_stmt, 1, (void*)group_ids, group_count,
+	                    SQLITE_CARRAY_INT32, SQLITE_STATIC);
 
 	// Perform query
 	log_debug(DEBUG_REGEX, "Regex %s: Querying associated regexes for client %s (groups: %s)",
