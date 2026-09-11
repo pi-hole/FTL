@@ -546,7 +546,11 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 		case CONF_INT:
 		{
 			const toml_datum_t val = toml_table_find(toml, key);
-			if(val.type == TOML_INT64)
+			// Range-checked like the unsigned cases below: v.i is a
+			// 32-bit int and TOML integers are 64-bit, so without this
+			// an out-of-range value in pihole.toml is silently
+			// truncated into something else entirely
+			if(val.type == TOML_INT64 && val.u.int64 >= INT_MIN && val.u.int64 <= INT_MAX)
 				conf_item->v.i = val.u.int64;
 			else
 				log_absent_or_wrong_type(val, conf_item, "integer");
