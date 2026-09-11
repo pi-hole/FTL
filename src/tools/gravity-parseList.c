@@ -98,6 +98,13 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 
 	// TLD checks
 
+	// The loop only measured a label once it reached the dot ending it,
+	// so the last label has not been looked at yet. It runs from
+	// last_dot + 1 to the end of the string, which is the entire string
+	// for a name without any dot (last_dot == -1)
+	if(len - (size_t)(last_dot + 1) > 63)
+		return false;
+
 	// There must be at least two labels (i.e. one dot)
 	// e.g., "example.com" but not "localhost" for exact domain
 	// We do not enforce this for ABP domains and domainlist input
@@ -370,7 +377,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			continue;
 
 		// Split by whitespace and tabs and look over the tokens
-		char *token = strtok(line, " \t");
+		char *saveptr = NULL;
+		char *token = strtok_r(line, " \t", &saveptr);
 		while(token != NULL)
 		{
 			// Skip empty tokens
@@ -542,7 +550,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				}
 			}
 next_domain:
-			token = strtok(NULL, " \t");
+			token = strtok_r(NULL, " \t", &saveptr);
 		}
 
 		// Print progress if the file is large enough every 100 lines

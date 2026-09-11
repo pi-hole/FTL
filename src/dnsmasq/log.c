@@ -102,27 +102,30 @@ int log_start(struct passwd *ent_pw, int errfd)
       entries_alloced = 1;
     }
 
-  /* If we're running as root and going to change uid later,
-     change the ownership here so that the file is always owned by
-     the dnsmasq user. Then logrotate can just copy the owner.
-     Failure of the chown call is OK, (for instance when started as non-root).
-     
-     If we've created a file with group-id root, we also make
-     the file group-writable. This gives processes in the root group
-     write access to the file and avoids the problem that on some systems,
-     once the file is owned by the dnsmasq user, it can't be written
-     whilst dnsmasq is running as root during startup.
- */
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
       struct stat ls;
-      if (getgid() == 0 && fstat(log_fd, &ls) == 0 && ls.st_gid == 0 &&
-	  (ls.st_mode & S_IWGRP) == 0)
-	(void)fchmod(log_fd, ls.st_mode | S_IWGRP);
-      if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
-	ret = errno;
+      
+      /* Only mess with permissions for regular files, not (eg) /dev/null */
+      if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
+	{
+	  /* If we're running as root and going to change uid later,
+	     change the ownership here so that the file is always owned by
+	     the dnsmasq user. Then logrotate can just copy the owner. */
+	  if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
+	    ret = errno;
+	  
+	  /* If we've created a file with group-id root, we also make
+	     the file group-writable. This gives processes in the root group
+	     write access to the file and avoids the problem that on some systems,
+	     once the file is owned by the dnsmasq user, it can't be written
+	     whilst dnsmasq is running as root during startup.
+	     Failure of the chown call is OK, (for instance when started as non-root). */
+	  if (getgid() == 0 && ls.st_gid == 0 && (ls.st_mode & S_IWGRP) == 0)
+	    (void)fchmod(log_fd, ls.st_mode | S_IWGRP);
+	}
     }
-
+  
   return ret;
 }
 
@@ -327,10 +330,13 @@ void my_syslog(int priority, const char *format, ...)
   va_start(ap, format);
   len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
   va_end(ap);
-  FTL_dnsmasq_log(buffer, priority, len > MAX_MESSAGE ? MAX_MESSAGE : len);
-  /*******************************************************************************/
+  FTL_dnsmasq_log(buffer, priority, func, len > MAX_MESSAGE ? MAX_MESSAGE : len);
 
-  if (echo_stderr) 
+  /* Pi-hole: FTL owns pihole.log.  Bypass dnsmasq's file-write path
+     and syslog fallback entirely.
+     Keep echo_stderr so dnsmasq --test errors reach stderr (captured
+     by test_dnsmasq_config() in src/config/dnsmasq_config.c). */
+  if (echo_stderr)
     {
       fprintf(stderr, "dnsmasq%s: ", func);
       va_start(ap, format);
@@ -339,18 +345,8 @@ void my_syslog(int priority, const char *format, ...)
       fputc('\n', stderr);
     }
 
-  /* Pi-hole diagnosis system */
-  if(priority == LOG_WARNING)
-    {
-      char *message;
-      va_start(ap, format);
-      if(vasprintf(&message, format, ap))
-        {
-          dnsmasq_diagnosis_warning(message);
-          free(message);
-        }
-      va_end(ap);
-    }
+  return;
+  /*******************************************************************************/
 
   if (log_fd == -1)
     {

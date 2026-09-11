@@ -58,7 +58,7 @@ static int add_prefixes(struct in6_addr *local,  int prefix,
 			unsigned int preferred, unsigned int valid, void *vparam);
 static int iface_search(struct in6_addr *local,  int prefix,
 			int scope, int if_index, int flags, 
-			unsigned int prefered, unsigned int valid, void *vparam);
+			unsigned int preferred, unsigned int valid, void *vparam);
 static int add_lla(int index, unsigned int type, char *mac, size_t maclen, void *parm);
 static void new_timeout(struct dhcp_context *context, char *iface_name, time_t now);
 static unsigned int calc_lifetime(struct ra_interface *ra);

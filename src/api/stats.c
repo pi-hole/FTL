@@ -112,18 +112,6 @@ static bool matches_filter(const regex_t *regex, const unsigned int N_regex, con
 	return false;
 }
 
-// Release the regexes compiled by compile_filter_regex()
-static void free_filter_regex(regex_t *regex, const unsigned int N_regex)
-{
-	if(N_regex == 0)
-		return;
-
-	for(unsigned int i = 0; i < N_regex; i++)
-		regfree(&regex[i]);
-
-	free(regex);
-}
-
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
@@ -866,7 +854,19 @@ int api_stats_recentblocked(struct ftl_conn *api)
 			// thread after we release the lock below, which would
 			// leave a dangling pointer if we used
 			// JSON_REF_STR_IN_ARRAY here (see #2786)
-			JSON_COPY_STR_TO_ARRAY(blocked, domain);
+			// The JSON_* macros cannot be used while we hold the
+			// lock, as their early return would leave it taken for
+			// good
+			cJSON *item = cJSON_CreateString(domain);
+			if(item == NULL)
+			{
+				log_err("api_stats_recentblocked(): Failed to allocate JSON string");
+				cJSON_Delete(blocked);
+				unlock_shm();
+				send_http_internal_error(api);
+				return 500;
+			}
+			cJSON_AddItemToArray(blocked, item);
 
 			// Only count when added successfully
 			found++;

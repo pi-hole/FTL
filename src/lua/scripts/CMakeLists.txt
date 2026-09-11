@@ -27,7 +27,7 @@ foreach(res_file ${resources})
     set(OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/${res_file}.hex)
     add_custom_command(
         OUTPUT ${OUTPUT_FILE}
-	SOURCES ${INPUT_FILE}
+	DEPENDS ${INPUT_FILE}
 	COMMAND ${RESOURCE_COMPILER} -i < ${INPUT_FILE} > ${OUTPUT_FILE}
         COMMENT "Compiling ${INPUT_FILE}"
         VERBATIM)

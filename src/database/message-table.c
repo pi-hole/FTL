@@ -1456,11 +1456,12 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 }
 
-void logg_warn_dnsmasq_message(char *message)
+void logg_warn_dnsmasq_message(const char *message)
 {
 	// Log to FTL.log (unless the user asked us to hide these warnings)
 	if(!config.misc.hide_dnsmasq_warn.v.b)
 	{
+		// Create message (dnsmasq limits is message length to 1KiB to conform with RFC 3164; See MAX_MESSAGE in dnsmasq/log.c), account for our 'dnsmasq: ' prefix
 		char buf[2048];
 		format_dnsmasq_warn_message(buf, sizeof(buf), NULL, 0, message);
 		log_warn("%s", buf);

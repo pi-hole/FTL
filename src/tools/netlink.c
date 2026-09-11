@@ -22,6 +22,77 @@
 // defined in src/dnsmasq/rfc1035.c
 extern int private_net(struct in_addr addr, int ban_localhost);
 
+// Netlink attributes are variable-length: the kernel decides how many bytes it
+// puts into an attribute and is free to send fewer than the attribute's type
+// suggests (or none at all, e.g., for virtual interfaces). Anything read
+// beyond RTA_PAYLOAD() belongs to the attribute that follows in the message
+// buffer, so every fixed-size read has to be length-checked first.
+static bool rta_payload_ok(const struct rtattr *rta, const size_t need, const char *name)
+{
+	const size_t have = RTA_PAYLOAD(rta);
+	if(have >= need)
+		return true;
+
+	log_debug(DEBUG_NETLINK, "%s carries %zu byte(s), need at least %zu, skipping",
+	          name, have, need);
+	return false;
+}
+
+// Number of bytes an address of this family occupies, zero for the families we
+// cannot render as a string
+static size_t __attribute__ ((const)) family_addrlen(const int family)
+{
+	if(family == AF_INET)
+		return sizeof(struct in_addr);
+	if(family == AF_INET6)
+		return sizeof(struct in6_addr);
+	return 0;
+}
+
+// Convert an address attribute into its string representation. Returns false
+// if the family is not one we can render or the payload is too short for it.
+static bool rta_address(const struct rtattr *rta, const int family, const char *name,
+                        char *ip, const size_t iplen)
+{
+	const size_t need = family_addrlen(family);
+	if(need == 0)
+	{
+		log_debug(DEBUG_NETLINK, "%s has unsupported family %s, skipping",
+		          name, family_name(family));
+		return false;
+	}
+
+	if(!rta_payload_ok(rta, need, name))
+		return false;
+
+	return inet_ntop(family, RTA_DATA(rta), ip, iplen) != NULL;
+}
+
+// Copy a string attribute into a NUL-terminated buffer, truncating what does
+// not fit. The kernel NUL-terminates the strings it sends here, but we do not
+// want to depend on that for data we did not generate ourselves.
+static bool rta_string(const struct rtattr *rta, char *dst, const size_t dstlen)
+{
+	const size_t len = RTA_PAYLOAD(rta);
+	if(len == 0 || dstlen == 0)
+		return false;
+
+	const size_t copy = len < dstlen ? len : dstlen - 1;
+	memcpy(dst, RTA_DATA(rta), copy);
+	dst[copy] = '\0';
+	return true;
+}
+
+// Add a string attribute to a JSON object
+static void add_rta_string(cJSON *json, const char *key, const struct rtattr *rta)
+{
+	// ALTIFNAMSIZ (128) is the longest string any of the attributes we
+	// parse can carry
+	char str[128];
+	if(rta_string(rta, str, sizeof(str)))
+		cJSON_AddStringToObject(json, key, str);
+}
+
 static bool nlrequest(int fd, struct sockaddr_nl *sa, int nlmsg_type)
 {
 	char buf[BUFLEN] = { 0 };
@@ -107,7 +178,7 @@ static ssize_t nlgetmsg(int fd, struct sockaddr_nl *sa, void *buf, size_t len)
 
 static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *routes, const bool detailed)
 {
-	char ifname[IF_NAMESIZE];
+	char ifname[IF_NAMESIZE] = { 0 };
 	cJSON *route = cJSON_CreateObject();
 	cJSON_AddNumberToObject(route, "table", rt->rtm_table);
 	cJSON_AddStringReferenceToObject(route, "family", family_name(rt->rtm_family));
@@ -170,15 +241,23 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			case RTA_GATEWAY: // gateway of the route
 			case RTA_PREFSRC: // preferred source address
 			case RTA_NEWDST: // change package destination address
-				inet_ntop(rt->rtm_family, RTA_DATA(rta), ip, INET6_ADDRSTRLEN);
+				if(!rta_address(rta, rt->rtm_family, rtaTypeToString(rta->rta_type), ip, INET6_ADDRSTRLEN))
+					break;
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ip);
 				break;
 
 			case RTA_IIF: // incoming interface
 			case RTA_OIF: // outgoing interface
 			{
+				if(!rta_payload_ok(rta, sizeof(uint32_t), rtaTypeToString(rta->rta_type)))
+					break;
 				const uint32_t ifidx = *(uint32_t*)RTA_DATA(rta);
-				if_indextoname(ifidx, ifname);
+				if(if_indextoname(ifidx, ifname) == NULL)
+				{
+					log_debug(DEBUG_NETLINK, "%s refers to unknown interface %u, skipping",
+					          rtaTypeToString(rta->rta_type), ifidx);
+					break;
+				}
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ifname);
 				break;
 			}
@@ -188,16 +267,41 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			case RTA_MARK: // route mark
 			case RTA_EXPIRES: // route expires (in seconds)
 			case RTA_UID: // user id
-			case RTA_TTL_PROPAGATE: // propagate TTL
-			case RTA_IP_PROTO: // IP protocol
-			case RTA_SPORT:
-			case RTA_DPORT:
 			case RTA_NH_ID:
 			{
 				if(!detailed)
 					break;
+				if(!rta_payload_ok(rta, sizeof(uint32_t), rtaTypeToString(rta->rta_type)))
+					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
+				break;
+			}
+
+			case RTA_TTL_PROPAGATE: // propagate TTL
+			case RTA_IP_PROTO: // IP protocol
+			{
+				// Single byte attributes
+				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(uint8_t), rtaTypeToString(rta->rta_type)))
+					break;
+				const uint8_t number = *(uint8_t*)RTA_DATA(rta);
+				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
+				break;
+			}
+
+			case RTA_SPORT:
+			case RTA_DPORT:
+			{
+				// Ports are sent in network byte order
+				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(uint16_t), rtaTypeToString(rta->rta_type)))
+					break;
+				uint16_t port;
+				memcpy(&port, RTA_DATA(rta), sizeof(port));
+				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), ntohs(port));
 				break;
 			}
 
@@ -206,10 +310,21 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				break;
 
 			case RTA_PRIORITY: // route priority
-			case RTA_PREF: // route preference
 			{
+				if(!rta_payload_ok(rta, sizeof(uint32_t), rtaTypeToString(rta->rta_type)))
+					break;
 				const uint32_t num = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), num);
+				break;
+			}
+
+			case RTA_PREF: // route preference
+			{
+				// The ICMPv6 router preference is a single byte
+				if(!rta_payload_ok(rta, sizeof(uint8_t), rtaTypeToString(rta->rta_type)))
+					break;
+				const uint8_t pref = *(uint8_t*)RTA_DATA(rta);
+				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), pref);
 				break;
 			}
 
@@ -217,7 +332,9 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			{
 				if(!detailed)
 					break;
-				struct rtnexthop *rtnh = (struct rtnexthop *) RTA_DATA (rta);
+				if(!rta_payload_ok(rta, sizeof(struct rtnexthop), rtaTypeToString(rta->rta_type)))
+					break;
+				const struct rtnexthop *rtnh = (struct rtnexthop *) RTA_DATA (rta);
 				cJSON *multipath = cJSON_CreateObject();
 				cJSON_AddNumberToObject(multipath, "len", rtnh->rtnh_len); // Length of struct + length of RTAs
 
@@ -230,16 +347,26 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 				cJSON_AddNumberToObject(route, "imflags", rtnh->rtnh_flags);
 
 				cJSON_AddNumberToObject(multipath, "hops", rtnh->rtnh_hops); // Nexthop priority
-				if_indextoname(rtnh->rtnh_ifindex, ifname);
-				cJSON_AddStringToObject(multipath, "if", ifname); // Interface for this nexthop
+				// Only report the nexthop interface if the index resolves
+				if(if_indextoname(rtnh->rtnh_ifindex, ifname) != NULL)
+					cJSON_AddStringToObject(multipath, "if", ifname); // Interface for this nexthop
 				cJSON_AddItemToObject(route, rtaTypeToString(rta->rta_type), multipath);
 				break;
 			}
 
 			case RTA_VIA: // next hop address
 			{
-				struct rtvia *via = (struct rtvia*)RTA_DATA(rta);
-				inet_ntop(via->rtvia_family, &via->rtvia_addr, ip, INET6_ADDRSTRLEN);
+				// The address trails the family in the same
+				// attribute, so both have to fit the payload
+				if(!rta_payload_ok(rta, sizeof(struct rtvia), rtaTypeToString(rta->rta_type)))
+					break;
+				const struct rtvia *via = (struct rtvia*)RTA_DATA(rta);
+				const size_t alen = family_addrlen(via->rtvia_family);
+				if(alen == 0 ||
+				   !rta_payload_ok(rta, sizeof(struct rtvia) + alen, rtaTypeToString(rta->rta_type)))
+					break;
+				if(inet_ntop(via->rtvia_family, &via->rtvia_addr, ip, INET6_ADDRSTRLEN) == NULL)
+					break;
 				cJSON_AddStringToObject(route, rtaTypeToString(rta->rta_type), ip);
 				break;
 			}
@@ -247,6 +374,8 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			case RTA_MFC_STATS: // multicast forwarding cache statistics
 			{
 				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(struct rta_mfc_stats), rtaTypeToString(rta->rta_type)))
 					break;
 				const struct rta_mfc_stats *mfc = (struct rta_mfc_stats*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, "mfcs_packets", mfc->mfcs_packets);
@@ -258,6 +387,8 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			case RTA_CACHEINFO:
 			{
 				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(struct rta_cacheinfo), rtaTypeToString(rta->rta_type)))
 					break;
 				const struct rta_cacheinfo *ci = (struct rta_cacheinfo*)RTA_DATA(rta);
 				// Get seconds the system is already up ("uptime")
@@ -358,7 +489,8 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			case IFA_ANYCAST:
 			{
 				char ip[INET6_ADDRSTRLEN] = { 0 };
-				inet_ntop(ifa->ifa_family, RTA_DATA(rta), ip, INET6_ADDRSTRLEN);
+				if(!rta_address(rta, ifa->ifa_family, ifaTypeToString(rta->rta_type), ip, sizeof(ip)))
+					break;
 				cJSON_AddStringToObject(addr, ifaTypeToString(rta->rta_type), ip);
 
 				// Determine and add address type (GUA, ULA, LL, ...)
@@ -440,12 +572,14 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			}
 
 			case IFA_LABEL:
-				strncpy(ifname, (char*)RTA_DATA(rta), IF_NAMESIZE);
-				cJSON_AddStringToObject(addr, ifaTypeToString(rta->rta_type), (char*)RTA_DATA(rta));
+				rta_string(rta, ifname, sizeof(ifname));
+				add_rta_string(addr, ifaTypeToString(rta->rta_type), rta);
 				break;
 
 			case IFA_CACHEINFO:
 			{
+				if(!rta_payload_ok(rta, sizeof(struct ifa_cacheinfo), ifaTypeToString(rta->rta_type)))
+					break;
 				const struct ifa_cacheinfo *ci = (struct ifa_cacheinfo*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, "prefered", ci->ifa_prefered);
 				cJSON_AddNumberToObject(addr, "valid", ci->ifa_valid);
@@ -468,14 +602,18 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			{
 				if(!detailed)
 					break;
+				if(!rta_payload_ok(rta, sizeof(uint32_t), ifaTypeToString(rta->rta_type)))
+					break;
 				const uint32_t prio = *(uint32_t*)RTA_DATA(rta);
-				cJSON_AddStringToObject(addr, rtaTypeToString(rta->rta_type), rt_priority(prio));
+				cJSON_AddNumberToObject(addr, ifaTypeToString(rta->rta_type), prio);
 				break;
 			}
 
 			case IFA_TARGET_NETNSID:
 			{
 				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(uint32_t), ifaTypeToString(rta->rta_type)))
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(addr, ifaTypeToString(rta->rta_type), number);
@@ -633,27 +771,47 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
-				const char *string = (char*)RTA_DATA(rta);
-				cJSON_AddStringToObject(link, iflaTypeToString(rta->rta_type), string);
+				add_rta_string(link, iflaTypeToString(rta->rta_type), rta);
 				break;
 			}
 
 			case IFLA_CARRIER:
 			case IFLA_PROTO_DOWN:
 			{
+				if(!rta_payload_ok(rta, sizeof(uint8_t), iflaTypeToString(rta->rta_type)))
+					break;
 				const uint8_t carrier = *(uint8_t*)RTA_DATA(rta);
 				cJSON_AddBoolToObject(link, iflaTypeToString(rta->rta_type), carrier == 0 ? false : true);
 				break;
 			}
 
+			case IFLA_LINKMODE:
+			{
+				// The kernel sends the link mode as a single byte
+				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(uint8_t), iflaTypeToString(rta->rta_type)))
+					break;
+				const uint8_t linkmode = *(uint8_t*)RTA_DATA(rta);
+				cJSON_AddNumberToObject(link, iflaTypeToString(rta->rta_type), linkmode);
+				break;
+			}
+
 			case IFLA_OPERSTATE:
+			{
+				// The kernel sends the operational state as a
+				// single byte
+				if(!rta_payload_ok(rta, sizeof(uint8_t), iflaTypeToString(rta->rta_type)))
+					break;
+				const uint8_t state = *(uint8_t*)RTA_DATA(rta);
 				for(unsigned int i = 0; i < sizeof(ifstates)/sizeof(ifstates[0]); i++)
-					if (ifstates[i].flag == *(unsigned int*)RTA_DATA(rta))
+					if (ifstates[i].flag == state)
 					{
 						cJSON_AddStringReferenceToObject(link, "state", ifstates[i].name);
 						break;
 					}
 				break;
+			}
 
 			case IFLA_LINK: // Interface index
 			case IFLA_PHYS_PORT_ID:
@@ -664,7 +822,6 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_TXQLEN:
 			case IFLA_MAP:
 			case IFLA_WEIGHT:
-			case IFLA_LINKMODE:
 			case IFLA_COST:
 			case IFLA_PRIORITY:
 			case IFLA_GROUP:
@@ -685,6 +842,8 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
+				if(!rta_payload_ok(rta, sizeof(uint32_t), iflaTypeToString(rta->rta_type)))
+					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(link, iflaTypeToString(rta->rta_type), number);
 				break;
@@ -704,7 +863,14 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					log_err("Memory allocation failed in %s(IFLA_STATS64)", __FUNCTION__);
 					break;
 				}
-				const struct rtnl_link_stats *stats = (struct rtnl_link_stats*)RTA_DATA(rta);
+				// A kernel older than our headers sends a shorter
+				// struct, so start from zero and copy only what
+				// the attribute actually carries
+				struct rtnl_link_stats stats_buf = { 0 };
+				const size_t stats_len = RTA_PAYLOAD(rta);
+				memcpy(&stats_buf, RTA_DATA(rta),
+				       stats_len < sizeof(stats_buf) ? stats_len : sizeof(stats_buf));
+				const struct rtnl_link_stats *stats = &stats_buf;
 				{
 					// Warning: May be overflown if the interface has been up for a long time
 					// and has transferred a lot of data as 32 bits are used for the counters
@@ -775,7 +941,14 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					cJSON_Delete(jstats);
 					jstats = NULL;
 				}
-				const struct rtnl_link_stats64 *stats64 = (struct rtnl_link_stats64*)RTA_DATA(rta);
+				// A kernel older than our headers sends a shorter
+				// struct, so start from zero and copy only what
+				// the attribute actually carries
+				struct rtnl_link_stats64 stats64_buf = { 0 };
+				const size_t stats64_len = RTA_PAYLOAD(rta);
+				memcpy(&stats64_buf, RTA_DATA(rta),
+				       stats64_len < sizeof(stats64_buf) ? stats64_len : sizeof(stats64_buf));
+				const struct rtnl_link_stats64 *stats64 = &stats64_buf;
 				{
 					char prefix[2] = { 0 };
 					double formatted_size;
@@ -974,10 +1147,10 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					switch(nlinkinfo->rta_type)
 					{
 						case IFLA_INFO_KIND:
-							cJSON_AddStringToObject(link, "link_kind", (char*)RTA_DATA(nlinkinfo));
+							add_rta_string(link, "link_kind", nlinkinfo);
 							break;
 						case IFLA_INFO_SLAVE_KIND:
-							cJSON_AddStringToObject(link, "slave_kind", (char*)RTA_DATA(nlinkinfo));
+							add_rta_string(link, "slave_kind", nlinkinfo);
 							break;
 						case IFLA_INFO_DATA:
 						case IFLA_INFO_SLAVE_DATA:
@@ -1006,23 +1179,31 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
+				if(!rta_payload_ok(rta, sizeof(struct rtattr), iflaTypeToString(rta->rta_type)))
+					break;
 				struct rtattr *vfinfo = RTA_DATA(rta);
 				if (vfinfo->rta_type != IFLA_VF_INFO)
 					break;
 
-				const struct ifla_vf_mac *vf_mac;
-				const struct ifla_vf_broadcast *vf_broadcast;
-				const struct ifla_vf_tx_rate *vf_tx_rate;
+				// The nested attribute carries its own length, so it
+				// must cover its header and must not claim more than
+				// the outer payload holds
+				if(vfinfo->rta_len < sizeof(struct rtattr) ||
+				   RTA_PAYLOAD(rta) < vfinfo->rta_len)
+				{
+					log_debug(DEBUG_NETLINK, "IFLA_VF_INFO claims %u byte(s) of %zu, skipping",
+					          (unsigned int)vfinfo->rta_len, (size_t)RTA_PAYLOAD(rta));
+					break;
+				}
+
 				struct rtattr *vf[IFLA_VF_MAX + 1] = {};
 
 				parse_rtattr_nested(vf, IFLA_VF_MAX, vfinfo);
 
-				vf_mac = RTA_DATA(vf[IFLA_VF_MAC]);
-				vf_broadcast = RTA_DATA(vf[IFLA_VF_BROADCAST]);
-				vf_tx_rate = RTA_DATA(vf[IFLA_VF_TX_RATE]);
-
-				if (vf[IFLA_VF_BROADCAST])
+				if(vf[IFLA_VF_BROADCAST] &&
+				   rta_payload_ok(vf[IFLA_VF_BROADCAST], sizeof(struct ifla_vf_broadcast), "IFLA_VF_BROADCAST"))
 				{
+					const struct ifla_vf_broadcast *vf_broadcast = RTA_DATA(vf[IFLA_VF_BROADCAST]);
 					char mac[18];
 					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 					         vf_broadcast->broadcast[0], vf_broadcast->broadcast[1],
@@ -1030,22 +1211,29 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 					         vf_broadcast->broadcast[4], vf_broadcast->broadcast[5]);
 					cJSON_AddStringToObject(link, "vf_broadcast", mac);
 				}
-				if(vf[IFLA_VF_MAC])
+				if(vf[IFLA_VF_MAC] &&
+				   rta_payload_ok(vf[IFLA_VF_MAC], sizeof(struct ifla_vf_mac), "IFLA_VF_MAC"))
 				{
+					const struct ifla_vf_mac *vf_mac = RTA_DATA(vf[IFLA_VF_MAC]);
 					char mac[18];
 					snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 					         vf_mac->mac[0], vf_mac->mac[1], vf_mac->mac[2],
 					         vf_mac->mac[3], vf_mac->mac[4], vf_mac->mac[5]);
 					cJSON_AddStringToObject(link, "vf_mac", mac);
 				}
-				if(vf[IFLA_VF_TX_RATE])
+				if(vf[IFLA_VF_TX_RATE] &&
+				   rta_payload_ok(vf[IFLA_VF_TX_RATE], sizeof(struct ifla_vf_tx_rate), "IFLA_VF_TX_RATE"))
 				{
+					const struct ifla_vf_tx_rate *vf_tx_rate = RTA_DATA(vf[IFLA_VF_TX_RATE]);
 					cJSON_AddNumberToObject(link, "vf_tx_rate", vf_tx_rate->rate);
 				}
-				if(vf[IFLA_VF_LINK_STATE])
+				if(vf[IFLA_VF_LINK_STATE] &&
+				   rta_payload_ok(vf[IFLA_VF_LINK_STATE], sizeof(struct ifla_vf_link_state), "IFLA_VF_LINK_STATE"))
 				{
-					const uint32_t link_state = *(uint32_t*)RTA_DATA(vf[IFLA_VF_LINK_STATE]);
-					cJSON_AddNumberToObject(link, "vf_link_state", link_state);
+					// The attribute carries the VF index
+					// ahead of the state itself
+					const struct ifla_vf_link_state *vf_link_state = RTA_DATA(vf[IFLA_VF_LINK_STATE]);
+					cJSON_AddNumberToObject(link, "vf_link_state", vf_link_state->link_state);
 				}
 
 				break;
@@ -1054,6 +1242,8 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			case IFLA_EVENT:
 			{
 				if(!detailed)
+					break;
+				if(!rta_payload_ok(rta, sizeof(uint32_t), iflaTypeToString(rta->rta_type)))
 					break;
 				const uint32_t event = *(uint32_t*)RTA_DATA(rta);
 				for(unsigned int i = 0; i < sizeof(link_events)/sizeof(link_events[0]); i++)
@@ -1071,15 +1261,15 @@ static int nlparsemsg_link(struct ifinfomsg *ifi, void *buf, size_t len, cJSON *
 			{
 				if(!detailed)
 					break;
-				struct rtattr *af_spec = RTA_DATA(rta);
-				struct rtattr *inet6_attr = parse_rtattr_one_nested(AF_INET6, af_spec);
+				struct rtattr *inet6_attr = parse_rtattr_one_nested(AF_INET6, rta);
 				if(!inet6_attr)
 					break;
 
 				struct rtattr *tb[IFLA_INET6_MAX + 1];
 				parse_rtattr_nested(tb, IFLA_INET6_MAX, inet6_attr);
 
-				if(tb[IFLA_INET6_ADDR_GEN_MODE])
+				if(tb[IFLA_INET6_ADDR_GEN_MODE] &&
+				   rta_payload_ok(tb[IFLA_INET6_ADDR_GEN_MODE], sizeof(uint8_t), "IFLA_INET6_ADDR_GEN_MODE"))
 				{
 					const uint8_t mode = *(uint8_t*)RTA_DATA(tb[IFLA_INET6_ADDR_GEN_MODE]);
 					for(unsigned int i = 0; i < sizeof(addr_gen_modes)/sizeof(addr_gen_modes[0]); i++)
@@ -1153,10 +1343,7 @@ static int nlparsemsg_arp(struct ndmsg *ndm, struct rtattr *rta, int rta_len, cJ
 	char ifname[IF_NAMESIZE] = {0};
 	for(; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
 		if(rta->rta_type == NDA_DST) {
-			if(ndm->ndm_family == AF_INET)
-				inet_ntop(AF_INET, RTA_DATA(rta), ip, sizeof(ip));
-			else if(ndm->ndm_family == AF_INET6)
-				inet_ntop(AF_INET6, RTA_DATA(rta), ip, sizeof(ip));
+			rta_address(rta, ndm->ndm_family, "NDA_DST", ip, sizeof(ip));
 		}
 		else if(rta->rta_type == NDA_LLADDR) {
 			// LLADDR must be exactly 6 bytes (EUI-48 MAC).

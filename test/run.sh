@@ -68,7 +68,10 @@ cp test/broken_lua.lp /var/www/html/broken_lua.lp
 cp test/broken_lua_2.lp /var/www/html/broken_lua_2.lp
 
 # Prepare local powerDNS resolver
-bash test/pdns/setup.sh
+if ! bash test/pdns/setup.sh; then
+  echo "Local PowerDNS setup failed, the DNS tests below cannot pass"
+  exit 1
+fi
 
 # Start the DoT/DoH encrypted-upstream test shim (terminates TLS with the repo
 # test certificate and forwards to the local recursor). See test/dotdoh.bats.

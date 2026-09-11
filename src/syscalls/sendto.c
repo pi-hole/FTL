@@ -16,7 +16,7 @@
 #include <sys/socket.h>
 
 #undef sendto
-ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen, const char *file, const char *func, const int line)
+ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen, const bool warn, const char *file, const char *func, const int line)
 {
 	ssize_t ret = 0;
 	do
@@ -35,7 +35,7 @@ ssize_t FTLsendto(int sockfd, void *buf, size_t len, int flags, const struct soc
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call), also ignore EPROTONOSUPPORT (ARP scanning)
 	// and EPERM + ENOKEY (DHCP probing)
-	if(ret < 0 && errno != EPROTONOSUPPORT && errno != EPERM && errno != ENOKEY)
+	if(warn && ret < 0 && errno != EPROTONOSUPPORT && errno != EPERM && errno != ENOKEY)
 		log_warn("Could not sendto() in %s() (%s:%i): %s",
 		         func, file, line, strerror(errno));
 
