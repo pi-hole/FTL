@@ -55,8 +55,25 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 		snprintf(filename, sizeof(filename), BACKUP_DIR"/pihole.toml.%u", version);
 	}
 
-	// Try to open config file
-	FILE *fp = fopen(filename, mode);
+	// Try to open config file. For writing this deliberately does not go
+	// through fopen(..., "w"): that truncates at open time, before the lock
+	// below is taken, so a second writer arriving mid-write would empty the
+	// temporary file the first one is still filling. Open without
+	// truncating, take the lock, and only then cut the file back to zero
+	const bool writing = mode[0] == 'w';
+	FILE *fp = NULL;
+	if(writing)
+	{
+		const int fd = open(filename, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
+		if(fd >= 0)
+		{
+			fp = fdopen(fd, "r+");
+			if(fp == NULL)
+				close(fd);
+		}
+	}
+	else
+		fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
@@ -68,6 +85,16 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 
 	// Lock file, may block if the file is currently opened
 	*locked = lock_file(fp, filename);
+
+	// Now that the file is ours, discard whatever an earlier write left in it
+	if(writing && ftruncate(fileno(fp), 0) != 0)
+	{
+		log_err("Cannot truncate %s: %s", filename, strerror(errno));
+		if(*locked)
+			unlock_file(fp, filename);
+		fclose(fp);
+		return NULL;
+	}
 
 	// Log if we are using a backup file
 	if(version > 0)
