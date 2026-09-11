@@ -468,12 +468,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		}
 
 		// Adjust upstream counter (no overTime information)
-		if(query->upstreamID > -1)
+		// Only if this query still holds a count. query_blocked() hands
+		// it back when a forwarded query turns out to be blocked, and
+		// the query keeps its upstreamID after that
+		if(query->flags.upstream_counted && query->upstreamID > -1)
 		{
 			upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
 				// Adjust upstream counter
 				upstream->count--;
+
+			query->flags.upstream_counted = false;
 		}
 
 		// Adjust cache refcount
