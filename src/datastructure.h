@@ -53,12 +53,20 @@ typedef struct {
 		bool complete :1;
 		bool blocked :1;
 		bool response_calculated :1;
+		// Set while this query holds a count on upstreamID, so the count
+		// is returned exactly once - either by query_blocked() when the
+		// query stops being a forwarded one, or by the GC when it expires
+		bool upstream_counted :1;
 		struct database_flags {
 			bool changed :1;
 			bool imported :1;
 		} database;
 	} flags;
 } queriesData;
+
+// The layout above is deliberately packed to 64 bytes and lives in shared
+// memory, so a change that grows it needs a SHARED_MEMORY_VERSION bump
+_Static_assert(sizeof(queriesData) == 64, "queriesData must stay 64 bytes");
 
 typedef struct {
 	// Contains size_t and double fields -> size differs by architecture

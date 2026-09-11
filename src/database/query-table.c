@@ -1717,6 +1717,7 @@ void DB_read_queries(void)
 					{
 						upstream->lastQuery = queryTimeStamp;
 						upstream->count++;
+						query->flags.upstream_counted = true;
 					}
 				}
 				break;
