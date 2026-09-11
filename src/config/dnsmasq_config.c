@@ -53,6 +53,19 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	if(cpid == -1)
+	{
+		// Without this the parent branch below would waitpid(-1, ...)
+		// and reap some unrelated child of ours - a dnsmasq TCP helper -
+		// then report its exit status as the result of the config test
+		log_err("Cannot fork to test new dnsmasq config: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		strncpy(errbuf, strerror(errno), ERRBUF_SIZE - 1);
+		errbuf[ERRBUF_SIZE - 1] = '\0';
+		return false;
+	}
+
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
