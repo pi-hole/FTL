@@ -297,7 +297,12 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
-	                       "firstSeen > (cast(strftime('%%s', 'now') as int)-3600)";
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter. As %%s
+	                       // it reached strftime() literally, which answers
+	                       // NULL, so the cast produced 0 and the one-hour
+	                       // window was never applied
+	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
 	return db_query_int_str(db, querystr, ipaddr);
