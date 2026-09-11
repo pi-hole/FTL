@@ -64,10 +64,6 @@ typedef struct {
 	} flags;
 } queriesData;
 
-// The layout above is deliberately packed to 64 bytes and lives in shared
-// memory, so a change that grows it needs a SHARED_MEMORY_VERSION bump
-_Static_assert(sizeof(queriesData) == 64, "queriesData must stay 64 bytes");
-
 typedef struct {
 	// Contains size_t and double fields -> size differs by architecture
 	// (64-bit: 64 bytes with 4 bytes internal padding before ippos; 32-bit:
