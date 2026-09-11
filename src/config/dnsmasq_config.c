@@ -628,8 +628,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
 			// Check if the configured domain is the same as the main domain
-			if(strlen(config.dns.domain.name.v.s) > 0 &&
-			   strcasecmp(domain, config.dns.domain.name.v.s) == 0)
+			if(strlen(conf->dns.domain.name.v.s) > 0 &&
+			   strcasecmp(domain, conf->dns.domain.name.v.s) == 0)
 				revServer_domain = true;
 
 			// Flag if configured a server for queries for "home.arpa" TLD
@@ -676,7 +676,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_homearpa && !config.dns.domain.local.v.b)
+	else if(domain_homearpa && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"home.arpa\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -703,7 +703,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_internal && !config.dns.domain.local.v.b)
+	else if(domain_internal && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"internal\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -720,14 +720,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	if(strlen(conf->dns.domain.name.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		if(revServer_domain || !config.dns.domain.local.v.b)
+		if(revServer_domain || !conf->dns.domain.local.v.b)
 		{
 			if(revServer_domain)
 			{
 				fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
 				fputs("# It is forwarded to the upstream servers configured above\n", pihole_conf);
 			}
-			else // !config.dns.domain.local.v.b
+			else // !conf->dns.domain.local.v.b
 			{
 				fputs("# This domain is explicitly configured to *not* be local. Ensure\n", pihole_conf);
 				fputs("# that you have configured at least one upstream server for this\n", pihole_conf);
@@ -948,8 +948,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
 	}
 
-	// Flush config file to disk
-	fflush(pihole_conf);
+	// Flush config file to disk and make sure all of it got there. Every
+	// directive above is written without checking, and fclose() reports
+	// success after a short write, so without this a disk that filled up
+	// part-way through would be renamed over the live dnsmasq config as a
+	// truncated file that dnsmasq would happily start from
+	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
+	                          fsync(fileno(pihole_conf)) != 0;
+	if(write_failed)
+		log_err("Cannot write dnsmasq config file: %s", strerror(errno));
 
 	// Unlock file
 	if(locked)
@@ -959,6 +966,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	if(fclose(pihole_conf) != 0)
 	{
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
+		return false;
+	}
+
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+			log_err("Cannot remove incomplete dnsmasq config file: %s", strerror(errno));
+
 		return false;
 	}
 
@@ -1276,6 +1292,14 @@ bool write_custom_list(void)
 	else if(N == 0)
 		fputs("\n# There are currently no entries in this file\n", custom_list);
 
+	// Make sure everything written above actually reached the disk, for the
+	// same reason as in write_dnsmasq_config(): none of the writes is
+	// checked and fclose() succeeds after a short one
+	const bool write_failed = fflush(custom_list) != 0 || ferror(custom_list) != 0 ||
+	                          fsync(fileno(custom_list)) != 0;
+	if(write_failed)
+		log_err("Cannot write custom.list: %s", strerror(errno));
+
 	// Unlock file
 	if(locked)
 		unlock_file(custom_list, DNSMASQ_CUSTOM_LIST_LEGACY".tmp");
@@ -1284,6 +1308,15 @@ bool write_custom_list(void)
 	if(fclose(custom_list) != 0)
 	{
 		log_err("Cannot close custom.list: %s", strerror(errno));
+		return false;
+	}
+
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_CUSTOM_LIST_LEGACY".tmp") != 0)
+			log_err("Cannot remove incomplete custom.list: %s", strerror(errno));
+
 		return false;
 	}
 
