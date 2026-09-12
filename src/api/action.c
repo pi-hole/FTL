@@ -39,6 +39,20 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	if(cpid == -1)
+	{
+		// Neither branch below tests for this, and the parent one ends in
+		// waitpid(-1, ...): it would reap an unrelated child of ours - a
+		// dnsmasq TCP helper, say, whose tcp_pids slot then leaks - and
+		// report that child's exit status as the result of this command.
+		// test_dnsmasq_config() has the same fork and is fixed alongside
+		// the config write path
+		log_err("Cannot fork to run command: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return false;
+	}
+
 	if (cpid == 0)
 	{
 		/*** CHILD ***/

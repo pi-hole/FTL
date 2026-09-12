@@ -679,14 +679,17 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 			if(thread_data[tid].src_addr.sin_addr.s_addr != htonl(INADDR_LOOPBACK))
 			{
 				// Create thread
+				// Count the thread only once it exists. A slot
+				// that was never started stays at
+				// STATUS_INITIALIZING, and the progress loop
+				// below waits for every counted slot to reach a
+				// finished state, so counting it hangs
+				// pihole-FTL arp-scan for good
 				if(pthread_create(&scanthread[tid], &attr, arp_scan_iface, &thread_data[tid] ) != 0)
-				{
 					printf("Unable to launch thread for interface %s, skipping...\n",
 						tmp->ifa_name);
-				}
-
-				// Increase thread ID
-				tid++;
+				else
+					tid++;
 			}
 		}
 
