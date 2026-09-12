@@ -87,12 +87,13 @@ typedef struct {
 typedef struct {
 	// Hot fields ordered first for cache locality; cold overTime[] array at
 	// end. Contains size_t fields -> size differs by architecture (64-bit:
-	// 684 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
-	// On 64-bit, 4 bytes between hash (offset 48) and groupspos (offset
-	// 56) are intentional alignment padding: they ensure ippos lands at
-	// offset 64, the start of cache line 1. Without them, ippos would be
-	// at offset 60 and straddle the cache line boundary (bytes 60–67),
-	// causing a split load on every client IP comparison.
+	// 688 bytes for OVERTIME_SLOTS=145; 32-bit: smaller).
+	// On 64-bit, the 4 bytes between hash (offset 48) and groupspos (offset
+	// 56) were alignment padding ensuring ippos lands at offset 64, the start
+	// of cache line 1; without it ippos would sit at offset 60 and straddle
+	// the cache line boundary (bytes 60-67), causing a split load on every
+	// client IP comparison. hwaddr_next_try now occupies that padding, so the
+	// struct is the same size it always was and every offset is unchanged.
 	unsigned char magic;
 	char hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
@@ -111,6 +112,15 @@ typedef struct {
 	unsigned int rate_limit;
 	unsigned int numQueriesARP;
 	uint32_t hash;
+	// When the next MAC lookup for this client may run, in monotonic seconds.
+	// A client whose address has no ARP entry - anything behind a router, and
+	// every loopback client - never yields one, so without this the lookup is
+	// retried on *every* query for the lifetime of the client. Deliberately
+	// uint32_t and placed here: it occupies the alignment padding described
+	// above, so it costs nothing per client and leaves every offset unchanged.
+	// Monotonic seconds, so it is a deadline rather than a wall-clock stamp;
+	// 32 bits is 136 years of uptime.
+	uint32_t hwaddr_next_try;
 	size_t groupspos; // SHM intarray: client's assigned group IDs
 	size_t ippos;
 	size_t namepos;
