@@ -112,6 +112,7 @@ sqlite3 *_get_memdb(const int line, const char *func, const char *file) __attrib
 #define get_memdb(void) _get_memdb(__LINE__, __FUNCTION__, __FILE__)
 void close_memory_database(void);
 bool import_queries_from_disk(void);
+void interrupt_memdb(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
 void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp);

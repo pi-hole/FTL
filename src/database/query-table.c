@@ -25,6 +25,8 @@
 #include "gc.h"
 // flush_message_table()
 #include "database/message-table.h"
+// killed
+#include "signals.h"
 // file_exists()
 #include "files.h"
 
@@ -516,6 +518,14 @@ sqlite3 *__attribute__((pure)) _get_memdb(const int line, const char *func, cons
 	return _memdb;
 }
 
+// Abort a statement currently running on the in-memory database. Used when
+// FTL terminates while the initial query import is still running.
+void interrupt_memdb(void)
+{
+	if(_memdb != NULL)
+		sqlite3_interrupt(_memdb);
+}
+
 // Get memory usage and size of in-memory tables
 bool get_memdb_size(size_t *memsize, int *queries)
 {
@@ -838,13 +848,20 @@ bool import_queries_from_disk(void)
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
+	else if(killed)
+	{
+		// SQLite has rolled the transaction back when the statement was
+		// interrupted, and the memory database is closed right after us
+		sqlite3_finalize(stmt);
+		return false;
+	}
 	else
 		log_err("import_queries_from_disk(): Failed to import queries: %s",
 		        sqlite3_errstr(rc));
 	const int imported_queries = sqlite3_changes(memdb);
 	log_debug(DEBUG_DATABASE, "Imported %i rows from disk.query_storage", imported_queries);
 
-	if(imported_queries != counted_queries)
+	if(!killed && imported_queries != counted_queries)
 		log_warn("Database %s has changed during import: Expected to import %i queries, but only imported %i. You may observe memory error warnings.",
 		         config.files.database.v.s, counted_queries, imported_queries);
 
@@ -1434,8 +1451,9 @@ void DB_read_queries(void)
 	                              "dnssec "\
 	                       "FROM queries";
 
-	// Only try to import from database if it is known to not be broken
-	if(FTLDBerror())
+	// Only try to import from database if it is known to not be broken and
+	// FTL has not been asked to terminate in the meantime
+	if(FTLDBerror() || killed)
 		return;
 
 	log_info("Parsing queries in database");
@@ -1454,6 +1472,10 @@ void DB_read_queries(void)
 	size_t imported_queries = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		// Cancellation-point before the shared memory is locked: the
+		// main thread tears down what the loop below uses once we are gone
+		BREAK_IF_KILLED();
+
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
@@ -1747,12 +1769,14 @@ void DB_read_queries(void)
 		unlock_shm();
 	}
 
-	if( rc == SQLITE_DONE )
+	if(killed)
+		log_info("Aborted import after %zu queries, FTL is shutting down", imported_queries);
+	else if( rc == SQLITE_DONE )
 		log_info("Imported %zu queries from the long-term database", imported_queries);
 	else
 		log_err("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 
-	if((int)imported_queries < counted_queries)
+	if(!killed && (int)imported_queries < counted_queries)
 	{
 		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu. You may see harmless memory errors in the log.",
 		         config.files.database.v.s, counted_queries, imported_queries);

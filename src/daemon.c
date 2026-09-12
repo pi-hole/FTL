@@ -310,12 +310,30 @@ pid_t FTL_gettid(void)
 #endif // SYS_gettid
 }
 
+// Join a thread, waiting at most timeout seconds for it to terminate
+static bool join_thread(const int i, const time_t timeout)
+{
+	struct timespec ts;
+	memset(&ts, 0, sizeof(ts));
+	if(clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		return false;
+
+	ts.tv_sec += timeout;
+	return pthread_timedjoin_np(threads[i], NULL, &ts) == 0;
+}
+
 static void terminate_threads(void)
 {
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
+
+	// Abort a long-running statement on the in-memory database (the initial
+	// query import) so its thread can see the flag above and return
+	interrupt_memdb();
+
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
+	bool all_joined = true;
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
 		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
@@ -332,33 +350,29 @@ static void terminate_threads(void)
 			log_info("Thread %s (%d) is idle, terminating it.",
 			         thread_names[i], i);
 			pthread_cancel(threads[i]);
-			continue;
 		}
-
-		// Cancel thread if we cannot set a timeout for joining
-		struct timespec ts;
-		memset(&ts, 0, sizeof(ts));
-		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		else if(join_thread(i, 2))
 		{
-			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
-			         thread_names[i], i);
-			pthread_cancel(threads[i]);
+			// Thread terminated on its own
 			continue;
 		}
-
-		// Timeout for joining is 2 seconds for each thread
-		ts.tv_sec += 2;
-
-		// Try to join thread and cancel it if it is still busy
-		if(pthread_timedjoin_np(threads[i], NULL, &ts) != 0)
+		else
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
-			     thread_names[i], i);
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
-			continue;
+		}
+
+		// Wait for the cancelled thread as well: the caller closes the
+		// databases and removes the shared memory right afterwards
+		if(!join_thread(i, 2))
+		{
+			log_warn("Thread %s (%d) did not terminate", thread_names[i], i);
+			all_joined = false;
 		}
 	}
-	log_info("All threads joined");
+	if(all_joined)
+		log_info("All threads joined");
 }
 
 void set_nice(void)
