@@ -280,11 +280,19 @@ void get_timestr(char timestring[TIMESTR_SIZE], const double timein, const bool 
 
 	if(millis)
 	{
-		const int millisec = (int)((timein - seconds) * 1000.0);
+		// debug.extra bumps the resolution to microseconds so events
+		// happening within the same millisecond can still be ordered.
+		// Taken from timein rather than a gettimeofday() of its own: the
+		// caller already sampled the clock, and a second sample here
+		// would not describe the event being logged
+		const bool micros = config.debug.extra.v.b;
+		const double frac = timein - seconds;
+		const int subsec = (int)(frac * (micros ? 1000000.0 : 1000.0));
 
-		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%03i%c%s",
+		snprintf(timestring, TIMESTR_SIZE, "%d-%02d-%02d%c%02d%c%02d%c%02d.%0*i%c%s",
 		        tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, space,
-		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, millisec, space, tm.tm_zone);
+		        tm.tm_hour, colon, tm.tm_min, colon, tm.tm_sec, micros ? 6 : 3, subsec,
+		        space, tm.tm_zone);
 	}
 	else
 	{
