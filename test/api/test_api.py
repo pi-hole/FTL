@@ -849,6 +849,87 @@ class TestEndpoints:
 
 
 # ---------------------------------------------------------------------------
+# Wrong method on an existing endpoint
+# ---------------------------------------------------------------------------
+
+class TestMethodNotAllowed:
+
+    @staticmethod
+    def _allow(response):
+        return sorted(m.strip() for m in response.headers["Allow"].split(","))
+
+    def test_wrong_method_returns_405_with_allow(self, api_session):
+        """DELETE on a GET-only endpoint is a 405 naming the methods that work."""
+        r = api_session.delete(f"{FTL_URL}/api/stats/summary", timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+
+        assert r.headers.get("Allow") is not None, \
+            f"No Allow header, got {dict(r.headers)}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+        assert _j(r)["error"]["key"] == "method_not_allowed"
+
+    def test_allow_lists_every_accepted_method(self, api_session):
+        """An endpoint reached by several methods names all of them."""
+        r = api_session.patch(f"{FTL_URL}/api/dns/blocking", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
+
+    def test_allow_only_names_methods_this_uri_shape_takes(self, api_session):
+        """Rows sharing a URI are told apart by their parameters, not just the URI.
+
+        /api/domains has four table rows. Without arguments only the GET one
+        applies, so DELETE - which needs /{type}/{kind}/{domain} - must not be
+        advertised, and with two arguments POST must be.
+        """
+        r = api_session.patch(f"{FTL_URL}/api/domains", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+        r = api_session.patch(f"{FTL_URL}/api/domains/deny/exact", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
+
+    def test_trailing_slash_does_not_shift_the_path(self, api_session):
+        """A trailing slash must not count as another path component.
+
+        /api/domains/deny/ addresses the same row as /api/domains/deny, so it
+        has to advertise the same methods rather than those of the row one
+        level deeper.
+        """
+        plain = api_session.patch(f"{FTL_URL}/api/domains/deny", json={}, timeout=5)
+        slash = api_session.patch(f"{FTL_URL}/api/domains/deny/", json={}, timeout=5)
+        assert plain.status_code == 405, \
+            f"Expected 405, got {plain.status_code} {plain.text}"
+        assert slash.status_code == 405, \
+            f"Expected 405, got {slash.status_code} {slash.text}"
+        assert self._allow(slash) == self._allow(plain), \
+            f"{self._allow(slash)} != {self._allow(plain)}"
+
+    def test_handler_asking_for_404_still_gets_one(self, api_session):
+        """api_docs() returns 0 for a file it does not have, which is a 404.
+
+        It must not be mistaken for "no method matched" and answered 405 with
+        an Allow header naming the very method that was used.
+        """
+        r = api_session.get(f"{FTL_URL}/api/docs/_pytest_no_such_file.html",
+                            timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+
+    def test_unknown_uri_is_still_404(self, api_session):
+        """A URI that does not exist keeps its 404, no Allow header."""
+        r = api_session.delete(f"{FTL_URL}/api/_pytest_no_such_endpoint", timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+        assert "Allow" not in r.headers
+
+
+# ---------------------------------------------------------------------------
 # Info endpoints
 # ---------------------------------------------------------------------------
 
