@@ -1951,6 +1951,15 @@ except socket.timeout:
   assert_line --regexp --index 0 'New dnsmasq configuration is not valid \(.+resolve at line [[:digit:]]+ of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"\), config remains unchanged'
   assert_failure 3
 
+  # dns.fastRetry carries FLAG_RESTART_FTL, so check it with -t
+  run bash -c './pihole-FTL --config -t dns.fastRetry 10'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t dns.fastRetry 10001'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
@@ -2041,6 +2050,19 @@ except socket.timeout:
 
   run bash -c './pihole-FTL --config webserver.paths.webroot'
   assert_line --index 0 '/var/www/html'
+}
+
+@test "Fast retry is off by default and accepted by dnsmasq when enabled" {
+  # Disabled by default, so dnsmasq must not see the option at all
+  run bash -c 'grep -c "^fast-dns-retry=" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 '0'
+
+  # dns.fastRetry carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite. The generated
+  # fast-dns-retry= line is still handed to dnsmasq for testing this way.
+  run bash -c './pihole-FTL --config -t dns.fastRetry 250'
+  assert_line --index 0 '250'
+  assert_success
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
