@@ -1649,6 +1649,14 @@ setup() {
   assert_line --regexp --index 0 'New dnsmasq configuration is not valid \(.+resolve at line [[:digit:]]+ of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"\), config remains unchanged'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config dns.fastRetry 10'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.fastRetry 10001'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
@@ -1672,6 +1680,11 @@ setup() {
   # the current value, so it takes the unchanged branch and no validator runs
   run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
+}
+
+@test "Fast retry interval is passed on to dnsmasq" {
+  run bash -c 'grep "^fast-dns-retry=" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 'fast-dns-retry=1000'
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {

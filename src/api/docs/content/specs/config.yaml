@@ -227,6 +227,8 @@ components:
                   type: array
                   items:
                     type: string
+                fastRetry:
+                  type: integer
                 CNAMEdeepInspect:
                   type: boolean
                 EDNS0ECS:
@@ -770,6 +772,7 @@ components:
         config:
           dns:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
+            fastRetry: 1000
             upstreamCA: ""
             doh: true
             dot: true

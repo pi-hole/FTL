@@ -15,6 +15,25 @@
     "127.0.0.1#5555"
   ] ### CHANGED, default = []
 
+  # Retransmission interval (in milliseconds) for unanswered upstream queries.
+  #
+  # Pi-hole forwards a query and then waits for the reply. If either the query or the
+  # reply is lost on the way, nothing happens until the client gives up and asks again.
+  # Repetitions of a query that is still in flight are attached to the running query
+  # instead of being forwarded again, so a client cannot recover such a loss on its own
+  # either - only Pi-hole can, by asking upstream once more.
+  #
+  # The first retransmission is sent after the configured number of milliseconds, the
+  # interval doubles for every further attempt, and retransmissions stop as soon as the
+  # query is answered or has timed out. Setting this to 0 disables retransmission. Note
+  # that DNSSEC validation enables it independently of this setting because an
+  # unanswered query would otherwise stall the whole validation chain.
+  #
+  # Allowed values are:
+  #     An integer value between 50 and 10000 (milliseconds), or 0 to disable
+  #     retransmission
+  fastRetry = 1000
+
   # Use this option to control deep CNAME inspection. Disabling it might be beneficial
   # for very low-end devices
   #
@@ -1761,7 +1780,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 171 total entries out of which 115 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

@@ -549,6 +549,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("\n", pihole_conf);
 	}
 
+	if(conf->dns.fastRetry.v.ui > 0)
+	{
+		fputs("# Retransmit an unanswered upstream query after this many milliseconds,\n", pihole_conf);
+		fputs("# doubling the interval for every further attempt\n", pihole_conf);
+		fprintf(pihole_conf, "fast-dns-retry=%u\n", conf->dns.fastRetry.v.ui);
+		fputs("\n", pihole_conf);
+	}
+
 	// Check if an explicit interface is configured
 	char interface[MAXIFACESTRLEN];
 	strncpy(interface, conf->dns.interface.v.s, sizeof(interface) - 1);
