@@ -113,9 +113,9 @@ fi
 # They are gated behind CMake options so ordinary builds do not produce them.
 if [[ -n "${test}" ]]; then
     if [[ -n "${cmake_args}" ]]; then
-        cmake_args="${cmake_args} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON"
+        cmake_args="${cmake_args} -DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON -DBUILD_PTR_RESPONSE_REGRESSION=ON"
     else
-        cmake_args="-DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON"
+        cmake_args="-DBUILD_TAR_REGRESSION=ON -DBUILD_GZIP_REGRESSION=ON -DBUILD_DOTDOH_REGRESSION=ON -DBUILD_PTR_RESPONSE_REGRESSION=ON"
     fi
 fi
 
@@ -142,29 +142,6 @@ if [[ -n "${clean}" ]]; then
     # Remove build directory
     rm -rf "${builddir}"
 fi
-
-# Remove possibly outdated api/docs elements
-for filename in src/api/docs/hex/* src/api/docs/hex/**/*; do
-    # Skip if not a file
-    if [ ! -f "${filename}" ]; then
-        continue
-    fi
-
-    # Get the original filename
-    original_filename="${filename/"src/api/docs/hex/"/"src/api/docs/content/"}"
-
-    # Remove the file if it is outdated
-    if [ "${filename}" -ot "${original_filename}" ]; then
-        rm "${filename}"
-    fi
-done
-
-# Remove compiled LUA scripts if older than the plain ones
-for scriptname in src/lua/scripts/*.lua; do
-    if [ -f "${scriptname}.hex" ] && [ "${scriptname}.hex" -ot "${scriptname}" ]; then
-        rm "${scriptname}.hex"
-    fi
-done
 
 # If we are asked to NOT build, we exit here
 if [[ -n ${nobuild} ]]; then
@@ -212,7 +189,7 @@ echo "Copying compiled pihole-FTL binary to repository root"
 cp pihole-FTL ../
 # Copy the regression test binaries alongside it so the bats tests can run them
 # from the repo root.
-for regression_bin in tar_regression gzip_regression dotdoh_regression; do
+for regression_bin in tar_regression gzip_regression dotdoh_regression ptr_response_regression; do
     if [[ -f "${regression_bin}" ]]; then
         cp "${regression_bin}" ../
     fi

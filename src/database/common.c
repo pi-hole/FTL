@@ -61,23 +61,53 @@ bool checkFTLDBrc(const int rc)
 	return atomic_load_explicit(&DBerror, memory_order_relaxed);
 }
 
+// Close a connection owned by the caller. sqlite3_close() refuses while a
+// statement of that connection is still alive, so finalize what was left behind
+// - naming it, as it is a bug - before handing the connection over
+int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file)
+{
+	if(db == NULL)
+		return SQLITE_OK;
+
+	sqlite3_stmt *stmt = NULL;
+	while((stmt = sqlite3_next_stmt(db, NULL)) != NULL)
+	{
+		log_err("Statement not finalized when closing database in %s() (%s:%i): %s",
+		        func, short_path(file), line, sqlite3_sql(stmt));
+		sqlite3_finalize(stmt);
+	}
+
+	const int rc = sqlite3_close_v2(db);
+	if(rc != SQLITE_OK)
+		log_err("Error while trying to close database in %s() (%s:%i): %s",
+		        func, short_path(file), line, sqlite3_errstr(rc));
+
+	return rc;
+}
+
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-	// Silently return if the database is known to be broken. It may not be
-	// possible to close the connection properly.
-	if(FTLDBerror())
+	// The shared in-memory connection is owned by close_memory_database() and
+	// its prepared statements live as long as FTL does. Closing it here would
+	// finalize them behind the back of whoever cached them, so return before
+	// both the NULL assignment and the counter below: the handle stays valid
+	// for its owner, and it never went through dbopen() to be counted
+	if(db != NULL && is_memdb(*db))
+	{
+		log_err("dbclose() called on the in-memory database in %s() (%s:%i)",
+		        func, short_path(file), line);
 		return;
+	}
 
 	if(config.debug.database.v.b)
 		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, short_path(file), line);
 
 	// Only try to close an existing database connection
-	int rc = SQLITE_OK;
-	if(db != NULL && *db != NULL && (rc = sqlite3_close(*db)) != SQLITE_OK)
+	if(db != NULL && *db != NULL)
 	{
-		log_err("Error while trying to close database: %s",
-		        sqlite3_errstr(rc));
-		checkFTLDBrc(rc);
+		const int rc = _dbclose_handle(*db, func, line, file);
+		if(rc != SQLITE_OK)
+			checkFTLDBrc(rc);
 	}
 
 	// Always set database pointer to NULL, even when closing failed
@@ -175,9 +205,18 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 	if( rc != SQLITE_OK )
 	{
 		log_err("Error while trying to open database: %s", sqlite3_errstr(rc));
+
+		// sqlite3_open_v2() associates resources with the handle even
+		// when it fails. dbclose_handle() releases it without the
+		// decrement dbclose() carries, as it is not counted yet
+		dbclose_handle(db);
 		checkFTLDBrc(rc);
 		return NULL;
 	}
+
+	// Count the connection as soon as it exists. The failure paths below
+	// release it through dbclose(), which is the matching decrement
+	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	// If the database is opened in read-write mode, actually check if it is
 	// writable. If it is not, close the database and return an error
@@ -198,9 +237,6 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 		checkFTLDBrc(rc);
 		return NULL;
 	}
-
-	// Increment the number of open database connections
-	atomic_fetch_add_explicit(&dbopen_cnt, 1, memory_order_relaxed);
 
 	return db;
 }
@@ -292,12 +328,11 @@ static bool create_counter_table(sqlite3* db)
 	return true;
 }
 
-static bool db_create(void)
+// Split from db_create() so that every failure below returns through it and
+// the connection is closed exactly once. SQL_bool() returns on failure, so the
+// close cannot live in here
+static bool db_create_tables(sqlite3 *db)
 {
-	sqlite3 *db = dbopen(false, true);
-	if(db == NULL)
-		return false;
-
 	// Create Queries table in the database
 	SQL_bool(db, CREATE_QUERIES_TABLE_V1);
 
@@ -315,10 +350,23 @@ static bool db_create(void)
 	if(!db_set_FTL_property(db, DB_LASTTIMESTAMP, 0))
 		return false;
 
-	// Close database handle
+	return true;
+}
+
+static bool db_create(void)
+{
+	sqlite3 *db = dbopen(false, true);
+	if(db == NULL)
+		return false;
+
+	const bool okay = db_create_tables(db);
+
+	// Close database handle whether or not the tables were created: a
+	// half-created database that stays open holds the file for the life of
+	// the process while db_init() carries on without it
 	dbclose(&db);
 
-	return true;
+	return okay;
 }
 
 void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
@@ -1167,9 +1215,10 @@ const char *get_sqlite3_version(void)
 /**
  * get_row_count - Get the row count of an in-memory SQLite table.
  *
- * Opens a transient SQLite connection (dbopen(false, false)), prepares and
- * executes a "SELECT COUNT(*) FROM <table>;" query for the given table name,
- * and returns the number of rows in that table.
+ * Uses the shared in-memory connection or opens a transient read-only one
+ * (dbopen(true, false)), prepares and executes a "SELECT COUNT(*) FROM
+ * <table>;" query for the given table name, and returns the number of rows in
+ * that table. Only a connection opened here is closed again.
  * 
  * @param table_name The name of the table to get the size of.
  * @param memory If true, use the in-memory database; if false, use the on-disk database.
@@ -1190,7 +1239,8 @@ int64_t get_row_count(const char *table_name, const bool memory)
 		log_err("Failed to prepare statement to get size of in-memory table %s: %s",
 		        table_name, sqlite3_errmsg(db));
 		sqlite3_free(query);
-		dbclose(&db);
+		if(!memory)
+			dbclose(&db);
 		return -3;
 	}
 	sqlite3_free(query);

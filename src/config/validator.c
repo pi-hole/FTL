@@ -284,6 +284,24 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	return true;
 }
 
+// Validate a netmask
+// The one-bits have to be contiguous and leading, anything else describes no
+// subnet and has neither a network nor a broadcast address. 0.0.0.0 is allowed
+// and means the netmask is determined from the interface
+bool validate_netmask(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	const uint32_t hostmask = ~ntohl(val->in_addr.s_addr);
+	if((hostmask & (hostmask + 1)) != 0)
+	{
+		char addr[INET_ADDRSTRLEN] = { 0 };
+		inet_ntop(AF_INET, &val->in_addr, addr, sizeof(addr));
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid netmask (\"%s\"), the one-bits are not contiguous", key, addr);
+		return false;
+	}
+
+	return true;
+}
+
 // Validate domain
 bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
@@ -333,17 +351,6 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 {
 	// Empty paths are allowed, e.g., to disable a feature like PCAP
 	if(strlen(val->s) == 0)
-		return true;
-
-	// else:
-	return validate_filepath(val, key, err);
-}
-
-// Validate file path (dash allowed), used by files.log.dnsmasq
-bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	// Dash is allowed, this enabled printing to stderr
-	if(strlen(val->s) == 1 && val->s[0] == '-')
 		return true;
 
 	// else:

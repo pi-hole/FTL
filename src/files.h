@@ -18,9 +18,11 @@
 #include <nettle/sha2.h>
 // getpwuid()
 #include <pwd.h>
+// PIHOLE_INSTALL_DIR
+#include "install_paths.h"
 
 #define MAX_ROTATIONS 15
-#define BACKUP_DIR "/etc/pihole/config_backups"
+#define BACKUP_DIR PIHOLE_INSTALL_DIR "/config_backups"
 
 // Scratch space handed to getpwnam_r()/getgrgid_r() and friends
 #define PWBUF_SIZE 2048

@@ -883,7 +883,7 @@ components:
             threads: 0
             headers:
               - "X-DNS-Prefetch-Control: off"
-              - "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
+              - "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
               - "X-Frame-Options: DENY"
               - "X-XSS-Protection: 0"
               - "X-Content-Type-Options: nosniff"
@@ -895,7 +895,7 @@ components:
               timeout: 300
               restore: true
             tls:
-              cert: "/etc/pihole/tls.pem"
+              cert: "@PIHOLE_INSTALL_DIR@/tls.pem"
               validity: 47
             paths:
               webroot: "/var/www/html"
@@ -924,11 +924,11 @@ components:
                 unit: "C"
           files:
             pid: "/run/pihole-FTL.pid"
-            database: "/etc/pihole/pihole-FTL.db"
-            tmp_db: "/etc/pihole/pihole-tmp.db"
-            gravity: "/etc/pihole/gravity.db"
+            database: "@PIHOLE_INSTALL_DIR@/pihole-FTL.db"
+            tmp_db: "@PIHOLE_INSTALL_DIR@/pihole-tmp.db"
+            gravity: "@PIHOLE_INSTALL_DIR@/gravity.db"
             gravity_tmp: "/tmp"
-            macvendor: "/etc/pihole/macvendor.db"
+            macvendor: "@PIHOLE_INSTALL_DIR@/macvendor.db"
             pcap: ""
             log:
               ftl: "/var/log/pihole/FTL.log"

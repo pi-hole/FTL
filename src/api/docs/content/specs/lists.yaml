@@ -455,7 +455,7 @@ components:
       value:
         lists:
           - address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-            comment: "Migrated from /etc/pihole/adlists.list"
+            comment: "Migrated from @PIHOLE_INSTALL_DIR@/adlists.list"
             groups:
               - 0
             enabled: true
@@ -463,7 +463,7 @@ components:
             date_added: 1594670974
             date_modified: 1595279300
           - address: "https://mirror1.malwaredomains.com/files/justdomains"
-            comment: "Migrated from /etc/pihole/adlists.list"
+            comment: "Migrated from @PIHOLE_INSTALL_DIR@/adlists.list"
             groups:
               - 0
             enabled: true

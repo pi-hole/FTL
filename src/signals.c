@@ -611,7 +611,7 @@ enum a2l_run {
 	A2L_RUN_OK = 0,          // addr2line ran (frames may still lack debug info)
 	A2L_RUN_TIMED_OUT = 1,   // exceeded the wall-clock deadline
 	A2L_RUN_MISSING = -1,    // addr2line could not be executed (exit 127)
-	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/fork() failed (resource exhaustion)
+	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/_Fork() failed (resource exhaustion)
 };
 
 // Spawn "addr2line -f -e <obj> <rel...>" for one object and read its output,
@@ -619,9 +619,12 @@ enum a2l_run {
 // SIGALRM/itimer watchdog this keeps no process-wide signal or timer state and
 // performs no cross-thread siglongjmp(), so it is safe in the multi-threaded
 // daemon.  Spawning directly avoids popen()'s /bin/sh and stdio buffering.
-// This is not async-signal-safe (it uses snprintf(), poll() and execvp());
-// symbolization is a best-effort step that runs only after the raw frame
-// addresses have already been collected and can be logged.
+// _Fork() is used instead of fork() because it is explicitly async-signal-safe
+// and does not call the pthread_atfork() handlers, so a thread holding a log
+// mutex cannot stall us here (see the log_atfork_prepare() handlers in log.c).
+// This function itself is not async-signal-safe (it uses snprintf(), poll(),
+// and execvp()); symbolization is a best-effort step that runs only after the
+// raw frame addresses have already been collected and can be logged.
 static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
                                          const int *order, const int ng)
 {
@@ -648,7 +651,10 @@ static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
 	if(pipe2(pipefd, O_CLOEXEC) != 0)
 		return A2L_RUN_SPAWN_FAIL;
 
-	const pid_t pid = fork();
+	// _Fork() rather than fork(): _Fork() is async-signal-safe and does not
+	// call the pthread_atfork() handlers registered in log.c, so a thread
+	// parked in write() on a log mutex cannot stall the crash handler here.
+	const pid_t pid = _Fork();
 	if(pid < 0)
 	{
 		close(pipefd[0]);
@@ -1190,7 +1196,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 		// - allowed domains and regex
 		// - denied domains and regex
 		// WITHOUT wiping the DNS cache itself
-		set_event(RELOAD_GRAVITY);
+		set_event_from_signal(RELOAD_GRAVITY);
 	}
 	else if(rtsig == 2)
 	{
@@ -1200,19 +1206,19 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 3)
 	{
 		// Reimport alias-clients from database
-		set_event(REIMPORT_ALIASCLIENTS);
+		set_event_from_signal(REIMPORT_ALIASCLIENTS);
 	}
 	else if(rtsig == 4)
 	{
 		// Re-resolve all clients and forward destinations
 		// Force refreshing hostnames according to
 		// REFRESH_HOSTNAMES config option
-		set_event(RERESOLVE_HOSTNAMES_FORCE);
+		set_event_from_signal(RERESOLVE_HOSTNAMES_FORCE);
 	}
 	else if(rtsig == 5)
 	{
 		// Parse neighbor cache
-		set_event(PARSE_NEIGHBOR_CACHE);
+		set_event_from_signal(PARSE_NEIGHBOR_CACHE);
 	}
 	// else if(rtsig == 6)
 	// {
@@ -1221,7 +1227,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 7)
 	{
 		// Search for hash collisions in the lookup tables
-		set_event(SEARCH_LOOKUP_HASH_COLLISIONS);
+		set_event_from_signal(SEARCH_LOOKUP_HASH_COLLISIONS);
 	}
 
 	// SIGRT32: Used internally by valgrind, do not use
@@ -1413,6 +1419,26 @@ void handle_signals(void)
 	FTLstarttime = time(NULL);
 }
 
+// SIGUSR2: reopen all log fds (logrotate).
+// Registered after dnsmasq so it replaces dnsmasq's handler for this
+// signal - FTL owns all on-disk logs now.
+static void SIGUSR2_handler(int signum, siginfo_t *si, void *context)
+{
+	(void)signum; (void)si; (void)context;
+	const int _errno = errno;
+
+	// Ignore outside main process (TCP forks)
+	if(mpid != getpid())
+	{
+		errno = _errno;
+		return;
+	}
+
+	mark_log_reopen();
+
+	errno = _errno;
+}
+
 // Register real-time signal handler
 void handle_realtime_signals(void)
 {
@@ -1438,6 +1464,15 @@ void handle_realtime_signals(void)
 		SIGACTION.sa_sigaction = &SIGRT_handler;
 		sigaction(signum, &SIGACTION, NULL);
 	}
+
+	// Register SIGUSR2 for log reopen (replaces dnsmasq's handler).
+	// This must run after dnsmasq has registered its own sig_handler
+	// so that FTL's handler wins for SIGUSR2 specifically.
+	struct sigaction sigact = { 0 };
+	sigact.sa_flags = SA_SIGINFO;
+	sigemptyset(&sigact.sa_mask);
+	sigact.sa_sigaction = &SIGUSR2_handler;
+	sigaction(SIGUSR2, &sigact, NULL);
 }
 
 // Return PID of the main FTL process

@@ -112,18 +112,6 @@ static bool matches_filter(const regex_t *regex, const unsigned int N_regex, con
 	return false;
 }
 
-// Release the regexes compiled by compile_filter_regex()
-static void free_filter_regex(regex_t *regex, const unsigned int N_regex)
-{
-	if(N_regex == 0)
-		return;
-
-	for(unsigned int i = 0; i < N_regex; i++)
-		regfree(&regex[i]);
-
-	free(regex);
-}
-
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
@@ -246,9 +234,12 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	// Get domains which the user doesn't want to see
 	regex_t *regex_domains = NULL;
 	unsigned int N_regex_domains = 0;
+	// NULL: this function returns a cJSON object and cannot carry an HTTP
+	// status, so compile_filter_regex() logs a bad regex rather than
+	// answering the request behind our back
 	compile_filter_regex(api, "webserver.api.excludeDomains",
 	                     config.webserver.api.excludeDomains.v.json,
-	                     &regex_domains, &N_regex_domains);
+	                     &regex_domains, &N_regex_domains, NULL);
 
 	// Lock shared memory
 	lock_shm();
@@ -436,9 +427,10 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	// Get clients which the user doesn't want to see
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
+	// NULL for the same reason as in get_top_domains() above
 	compile_filter_regex(api, "webserver.api.excludeClients",
 	                     config.webserver.api.excludeClients.v.json,
-	                     &regex_clients, &N_regex_clients);
+	                     &regex_clients, &N_regex_clients, NULL);
 
 	// Lock shared memory
 	lock_shm();
