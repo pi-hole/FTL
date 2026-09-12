@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 echo "************ Installing PowerDNS configuration ************"
 
@@ -156,7 +157,7 @@ pdnsutil zone secure dnssec
 #   dnssec. IN DS 42206 8 2 6d2007e292483fa061db37011676d9592649d1600e5b2ece1326f792ebedd412 ; ( SHA256 digest )
 # --->
 #   trust-anchor=dnssec.,42206,8,2,6d2007e292483fa061db37011676d9592649d1600e5b2ece1326f792ebedd412
-pdnsutil zone export-ds dnssec. | head -n1 | awk '{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' > /etc/dnsmasq.d/02-trust-anchor.conf
+pdnsutil zone export-ds dnssec. | awk 'NR==1{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' > /etc/dnsmasq.d/02-trust-anchor.conf
 
 # Create a locally-signed root zone so DNSSEC validation never leaves the test
 # environment. FTL ships the real ICANN root trust anchors, so without a local
@@ -164,7 +165,7 @@ pdnsutil zone export-ds dnssec. | head -n1 | awk '{FS=" "; OFS=""; print "trust-
 # rollovers). Serving a signed root here and trusting its key keeps it hermetic.
 pdnsutil zone create . ns1.
 pdnsutil zone secure .
-pdnsutil zone export-ds . | head -n1 | awk '{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' >> /etc/dnsmasq.d/02-trust-anchor.conf
+pdnsutil zone export-ds . | awk 'NR==1{FS=" "; OFS=""; print "trust-anchor=",$1,",",$4,",",$5,",",$6,",",$7}' >> /etc/dnsmasq.d/02-trust-anchor.conf
 
 # Create intentionally broken DNSSEC (BOGUS) zone
 # The only difference to above is that this zone is signed with a key that is
@@ -179,8 +180,8 @@ pdnsutil zone secure bogus
 # keytag/algorithm/digest-type as the real key, but a corrupted digest). This
 # makes bogus validation fail as BOGUS *locally* instead of dnsmasq walking up
 # to the real ICANN root to learn the zone has no secure delegation.
-pdnsutil zone export-ds bogus. | head -n1 | \
-  awk '{OFS=""; d=$7; d=substr(d, 1, length(d) - 8) "deadbeef"; print "trust-anchor=", $1, ",", $4, ",", $5, ",", $6, ",", d}' \
+pdnsutil zone export-ds bogus. | \
+  awk 'NR==1{OFS=""; d=$7; d=substr(d, 1, length(d) - 8) "deadbeef"; print "trust-anchor=", $1, ",", $4, ",", $5, ",", $6, ",", d}' \
   >> /etc/dnsmasq.d/02-trust-anchor.conf
 
 # Create reverse lookup zone
@@ -230,17 +231,31 @@ done
 mkdir -p /var/run/pdns-recursor
 rm -f /var/run/pdns-recursor/*
 
+# Wait until a pdns process answers on its port, for up to thirty seconds: a
+# slow or emulated runner takes noticeably longer than a local one, and the
+# tests below are meaningless against a resolver that is not up. Failing here
+# says which process did not start, rather than leaving it to be inferred
+wait_for_pdns() {
+  local port="${1}" name="${2}" i
+  for i in $(seq 1 60); do
+    if dig @127.0.0.1 -p "${port}" ftl. SOA +tries=1 +time=1 +short > /dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "ERROR: ${name} did not answer on port ${port} within 30 s" >&2
+  return 1
+}
+
 # Start authoritative pdns_server and wait for it to accept queries on
 # its configured port (5554) before continuing.
 pdns_server --daemon
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  dig @127.0.0.1 -p 5554 ftl. SOA +tries=1 +time=1 +short > /dev/null 2>&1 && break
-  sleep 0.5
-done
+if ! wait_for_pdns 5554 "pdns_server"; then
+  exit 1
+fi
 
 # Start pdns_recursor and wait for it to accept queries on port 5555.
 pdns_recursor --daemon
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  dig @127.0.0.1 -p 5555 ftl. SOA +tries=1 +time=1 +short > /dev/null 2>&1 && break
-  sleep 0.5
-done
+if ! wait_for_pdns 5555 "pdns_recursor"; then
+  exit 1
+fi

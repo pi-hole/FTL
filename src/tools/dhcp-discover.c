@@ -37,6 +37,17 @@
 
 // strncpy()
 #include <string.h>
+// get_secure_randomness()
+#include "config/password.h"
+
+// IP4STR() formats into a single static buffer shared by all callers, so
+// concurrent interface threads would overwrite each other's address. Format
+// into a caller-provided buffer instead.
+static const char *ip4str(const struct in_addr addr, char *buf)
+{
+	return inet_ntop(AF_INET, &addr, buf, INET_ADDRSTRLEN) != NULL ? buf : "?";
+}
+#define IP4STR(a) ip4str((a), (char[INET_ADDRSTRLEN]){ 0 })
 
 //*** DHCP definitions **
 #define MAX_DHCP_CHADDR_LENGTH           16
@@ -233,12 +244,12 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 
 #ifdef DEBUG
 	start_lock();
-	printf("Sending DHCPDISCOVER on interface %s@%s ... \n", inet_ntoa(target.sin_addr), iface);
+	printf("Sending DHCPDISCOVER on interface %s@%s ... \n", IP4STR(target.sin_addr), iface);
 	printf("DHCPDISCOVER XID: %lu (0x%X)\n", (unsigned long) ntohl(discover_packet.xid), ntohl(discover_packet.xid));
-	printf("DHCDISCOVER ciaddr:  %s\n", inet_ntoa(discover_packet.ciaddr));
-	printf("DHCDISCOVER yiaddr:  %s\n", inet_ntoa(discover_packet.yiaddr));
-	printf("DHCDISCOVER siaddr:  %s\n", inet_ntoa(discover_packet.siaddr));
-	printf("DHCDISCOVER giaddr:  %s\n", inet_ntoa(discover_packet.giaddr));
+	printf("DHCDISCOVER ciaddr:  %s\n", IP4STR(discover_packet.ciaddr));
+	printf("DHCDISCOVER yiaddr:  %s\n", IP4STR(discover_packet.yiaddr));
+	printf("DHCDISCOVER siaddr:  %s\n", IP4STR(discover_packet.siaddr));
+	printf("DHCDISCOVER giaddr:  %s\n", IP4STR(discover_packet.giaddr));
 	end_lock();
 #endif
 	// send the DHCPDISCOVER packet
@@ -252,7 +263,7 @@ static bool send_dhcp_discover(const int sock, const uint32_t xid, const char *i
 		const char *error = errno == ENOKEY ? "No route to host (no such peer available)" : strerror(errno);
 		start_lock();
 		printf("Error: Could not send DHCPDISCOVER to %s@%s: %s\n",
-		              inet_ntoa(target.sin_addr), iface, error);
+		              IP4STR(target.sin_addr), iface, error);
 		end_lock();
 		return false;
 	}
@@ -336,7 +347,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 					if(n > 0)
 						printf("   ");
 
-					printf("%s: %s\n", opttab[i].name, inet_ntoa(addr_list));
+					printf("%s: %s\n", opttab[i].name, IP4STR(addr_list));
 				}
 
 				// Special case: optlen == 0
@@ -456,7 +467,7 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 					if(n > 0)
 						printf("   ");
 
-					printf("Port Control Protocol (PCP) server: %s\n", inet_ntoa(addr_list));
+					printf("Port Control Protocol (PCP) server: %s\n", IP4STR(addr_list));
 				}
 			}
 			else if((opttype == 121 || opttype == 249) && optlen > 4)
@@ -553,7 +564,7 @@ static bool receive_dhcp_packet(void *buffer, int buffer_size, const char *iface
 	recv_result = recvfrom(sock, (char *)buffer, buffer_size, 0, (struct sockaddr *)address, &address_size);
 
 	start_lock();
-	printf("* Received %d bytes from %s @ %s\n", recv_result, inet_ntoa(address->sin_addr), iface);
+	printf("* Received %d bytes from %s @ %s\n", recv_result, IP4STR(address->sin_addr), iface);
 #ifdef DEBUG
 	printf("  after waiting for %f seconds\n", difftime(time(NULL), start_time));
 #endif
@@ -623,19 +634,19 @@ static unsigned int get_dhcp_offer(const int sock, const uint32_t xid, const cha
 
 		printf("  Offered IP address: ");
 		if(offer_packet.yiaddr.s_addr != 0)
-			printf("%s\n", inet_ntoa(offer_packet.yiaddr));
+			printf("%s\n", IP4STR(offer_packet.yiaddr));
 		else
 			printf("N/A\n");
 
 		printf("  Server IP address: ");
 		if(offer_packet.siaddr.s_addr != 0)
-			printf("%s\n", inet_ntoa(offer_packet.siaddr));
+			printf("%s\n", IP4STR(offer_packet.siaddr));
 		else
 			printf("N/A\n");
 
 		printf("  Relay-agent IP address: ");
 		if(offer_packet.giaddr.s_addr != 0)
-			printf("%s\n", inet_ntoa(offer_packet.giaddr));
+			printf("%s\n", IP4STR(offer_packet.giaddr));
 		else
 			printf("N/A\n");
 
@@ -704,9 +715,13 @@ static void *dhcp_discover_iface_v4(void *args)
 	unsigned char mac[MAX_DHCP_CHADDR_LENGTH] = { 0 };
 	get_hardware_address(dhcp_socket, tdata->iface, mac);
 
-	// Generate pseudo-random transaction ID
-	srand((unsigned int)time(NULL) + getpid());
-	const uint32_t xid = (uint32_t)random();
+	// Random transaction ID identifying this exchange
+	uint32_t xid = 0;
+	if(!get_secure_randomness((uint8_t *)&xid, sizeof(xid)))
+	{
+		log_err("Unable to generate a random DHCP transaction ID");
+		goto end_dhcp_discover_iface_v4;
+	}
 
 	// Probe servers on this interface
 	if(!send_dhcp_discover(dhcp_socket, xid, tdata->iface, mac))

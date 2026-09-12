@@ -442,13 +442,16 @@ void cleanup(const int ret)
 	log_debug(DEBUG_ANY, "Terminating: Freeing regex filter memory");
 	free_regex();
 
+	// Terminate HTTP server (if running) before the API it serves. The other
+	// way round, free_api() backed up, zeroed and freed the session table
+	// while civetweb worker threads were still handling requests against it,
+	// since mg_stop() only runs inside http_terminate()
+	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
+	http_terminate();
+
 	// Terminate API
 	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
-
-	// Terminate HTTP server (if running)
-	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
-	http_terminate();
 
 	// Close memory database
 	log_debug(DEBUG_ANY, "Terminating: Closing memory database");

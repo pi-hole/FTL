@@ -1972,7 +1972,7 @@ static void check_dns_listeners(time_t now)
   /* Note that handling events here can create or destroy fds and
      render the result of the last poll() call invalid. Once
      we find an fd that needs service, do it, then return to go around the
-     poll() loop again. This avoid really, really, wierd bugs. */
+     poll() loop again. This avoid really, really, weird bugs. */
 
   if (!option_bool(OPT_DEBUG))
     for (i = 0; i < daemon->max_procs; i++)
@@ -2052,7 +2052,8 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
   pid_t p;
   union mysockaddr tcp_addr;
   socklen_t tcp_len = sizeof(union mysockaddr);
-  struct server *s; 
+  struct server *s;
+  struct listener *l;
   int flags, auth_dns = 0;
   struct in_addr netmask;
   int pipefd[2];
@@ -2175,25 +2176,19 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	  /* fork() done: parent side */
 	  close(pipefd[1]); /* parent needs read pipe end. */
       
-#ifdef HAVE_LINUX_NETWORK
-	  /* The child process inherits the netlink socket, 
-	     which it never uses, but when the parent (us) 
-	     uses it in the future, the answer may go to the 
-	     child, resulting in the parent blocking
-	     forever awaiting the result. To avoid this
-	     the child closes the netlink socket, but there's
-	     a nasty race, since the parent may use netlink
-	     before the child has done the close.
+	  /* The child process inherits various sockets,
+	     whose existence can mess up the function of
+	     the parent. See below for details of which
+	     sockets, and why they cause problems. The
+	     child closes the sockets during startup,
+	     but there's a nasty race, since the parent
+	     may use them before the child has done the close.
 	     
-	     To avoid this, the parent blocks here until a 
+	     To avoid the race, the parent blocks here until a 
 	     single byte comes back up the pipe, which
-	     is sent by the child after it has closed the
-	     netlink socket. */
-
+	     is sent by the child has finshed the close. */
 	  read_write(pipefd[0], &a, 1, RW_READ);
-#endif
 	  
-
 	  daemon->tcp_pids[slot] = p;
 	  daemon->tcp_pipes[slot] = pipefd[0];
 	  daemon->metrics[METRIC_TCP_CONNECTIONS]++;
@@ -2213,18 +2208,43 @@ static void do_tcp_connection(struct listener *listener, time_t now, int slot)
 	  return;
 	}
       
+#ifdef HAVE_LINUX_NETWORK
+      /* The child process inherits the netlink socket, 
+	 which it never uses, but when the parent
+	 uses it in the future, the answer may go to the 
+	 child, resulting in the parent blocking
+	 forever awaiting the result. To avoid this
+	 close the netlink socket in the child. */
+      close(daemon->netlinkfd);
+#elif defined(HAVE_BSD_NETWORK)
+      close(daemon->routefd);
+#endif
+
+      /* Close inherited listening sockets in the child process.
+         These are not needed here and holding them prevents the
+         parent from re-binding if an interface is removed and
+         re-added (the child's copy causes EADDRINUSE). */
+      for (l = daemon->listeners; l; l = l->next)
+        {
+          if (l->fd != -1)
+	    close(l->fd);
+          if (l->tcpfd != -1)
+	    close(l->tcpfd);
+	  if (l->tftpfd != -1)
+	    close(l->tftpfd);
+        }
+
+      /* unblock parent now we're not holding sockets we shouldn't. */
+      read_write(pipefd[1], &a, 1, RW_WRITE);
+		  
       /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
 	 terminate the process. */
-#ifdef HAVE_LINUX_NETWORK
-      /* See comment above re: netlink socket. */
-      close(daemon->netlinkfd);
-      read_write(pipefd[1], &a, 1, RW_WRITE);
-#endif		  
       alarm(CHILD_LIFETIME);
       close(pipefd[0]); /* close read end in child. */
       daemon->pipe_to_parent = pipefd[1];
-    }
 
+    }
+  
   /* The connected socket inherits non-blocking
      attribute from the listening socket. 
      Reset that here. */
@@ -2279,6 +2299,7 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 		ssize_t *plen, char *name, int class, struct server *server, int *keycount, int *validatecount)
 {
   struct server *s;
+  struct listener *l;
 
   if (!option_bool(OPT_DEBUG))
     {
@@ -2307,22 +2328,18 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	      return STAT_ABANDONED;
 	    }
 
-#ifdef HAVE_LINUX_NETWORK
-	  /* The child process inherits the netlink socket, 
-	     which it never uses, but when the parent (us) 
-	     uses it in the future, the answer may go to the 
-	     child, resulting in the parent blocking
-	     forever awaiting the result. To avoid this
-	     the child closes the netlink socket, but there's
-	     a nasty race, since the parent may use netlink
-	     before the child has done the close.
+	  /* The child process inherits various sockets,
+	     whose existence can mess up the function of
+	     the parent. See below for details of which
+	     sockets, and why they cause problems. The
+	     child closes the sockets during startup,
+	     but there's a nasty race, since the parent
+	     may use them before the child has done the close.
 	     
-	     To avoid this, the parent blocks here until a 
+	     To avoid the race, the parent blocks here until a 
 	     single byte comes back up the pipe, which
-	     is sent by the child after it has closed the
-	     netlink socket. */
+	     is sent by the child has finshed the close. */
 	  read_write(pipefd[0], &a, 1, RW_READ);
-#endif
 	  
 	  /* i holds index of free slot */
 	  daemon->tcp_pids[i] = p;
@@ -2341,13 +2358,37 @@ int swap_to_tcp(struct frec *forward, time_t now, int status, struct dns_header 
 	{
 	  /* child starts here. */
 #ifdef HAVE_LINUX_NETWORK
-	  /* See comment above re: netlink socket. */
+	  /* The child process inherits the netlink socket, 
+	     which it never uses, but when the parent
+	     uses it in the future, the answer may go to the 
+	     child, resulting in the parent blocking
+	     forever awaiting the result. To avoid this
+	     close the netlink socket in the child. */
 	  close(daemon->netlinkfd);
-	  read_write(pipefd[1], &a, 1, RW_WRITE);
 
     // Pi-hole modification
     daemon->netlinkfd = -1;
-#endif		  
+#elif defined(HAVE_BSD_NETWORK)
+	  close(daemon->routefd);
+#endif
+	  
+	  /* Close inherited listening sockets in the child process.
+	     These are not needed here and holding them prevents the
+	     parent from re-binding if an interface is removed and
+	     re-added (the child's copy causes EADDRINUSE). */
+	  for (l = daemon->listeners; l; l = l->next)
+	    {
+	      if (l->fd != -1)
+		close(l->fd);
+	      if (l->tcpfd != -1)
+		close(l->tcpfd);
+	      if (l->tftpfd != -1)
+		close(l->tftpfd);
+	    }
+	  
+	  /* unblock parent now we're not holding sockets we shouldn't. */
+	  read_write(pipefd[1], &a, 1, RW_WRITE);
+	
 	  alarm(CHILD_LIFETIME);
 	  close(pipefd[0]); /* close read end in child. */
 	  daemon->pipe_to_parent = pipefd[1];

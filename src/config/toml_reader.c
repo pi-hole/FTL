@@ -130,6 +130,35 @@ static bool migrate_dns_domain(toml_datum_t toml, struct config *newconf)
 }
 
 
+// The default Content-Security-Policy before img-src was allowed to load
+// data: URIs
+#define CSP_HEADER_OLD "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
+#define CSP_HEADER_NEW "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
+
+static bool migrate_webserver_csp(struct config *newconf)
+{
+	cJSON *header = NULL;
+	int idx = 0;
+
+	// Only replace the policy if it is 1:1 the old default - anyone who
+	// wrote their own Content-Security-Policy keeps it
+	cJSON_ArrayForEach(header, newconf->webserver.headers.v.json)
+	{
+		if(cJSON_IsString(header) && strcmp(header->valuestring, CSP_HEADER_OLD) == 0)
+		{
+			log_debug(DEBUG_CONFIG, "Config setting webserver.headers MIGRATED to CSP img-src 'self' data:");
+			cJSON_ReplaceItemInArray(newconf->webserver.headers.v.json, idx,
+			                         cJSON_CreateString(CSP_HEADER_NEW));
+			return true;
+		}
+		idx++;
+	}
+
+	log_debug(DEBUG_CONFIG, "webserver.headers does not carry the old CSP default - nothing to migrate");
+
+	return false;
+}
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
 static bool migrate_config(toml_datum_t toml, struct config *newconf)
@@ -140,6 +169,8 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 	restart |= migrate_dns_revServer(toml, newconf);
 	// Migrate dns.domain -> dns.domain.name
 	restart |= migrate_dns_domain(toml, newconf);
+	// Migrate the old Content-Security-Policy default to allow data: images
+	restart |= migrate_webserver_csp(newconf);
 
 	return restart;
 }

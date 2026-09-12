@@ -105,13 +105,13 @@ class TestHTTPErrors:
 
 class TestConfigValidationAPIType:
 
-    def test_blockESNI_rejects_float(self, api_session):
+    def test_CNAMEdeepInspect_rejects_float(self, api_session):
         data = _j(api_session.patch(f"{FTL_URL}/api/config",
-                                    json={"config": {"dns": {"blockESNI": 15.5}}}, timeout=20))
+                                    json={"config": {"dns": {"CNAMEdeepInspect": 15.5}}}, timeout=20))
         assert data["error"] == {
             "key": "bad_request",
             "message": "Config item is invalid",
-            "hint": "dns.blockESNI: not of type bool",
+            "hint": "dns.CNAMEdeepInspect: not of type bool",
         }, json.dumps(data, indent=2)
 
     def test_piholePTR_rejects_invalid_option(self, api_session):
@@ -1050,7 +1050,7 @@ class TestConfigGet:
         assert "debug" in config
         assert "database" in config
         assert config["dns"]["CNAMEdeepInspect"] is True
-        assert config["dns"]["blockESNI"] is True
+        assert config["dns"]["EDNS0ECS"] is True
 
     def test_config_element(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/config/dns/upstreams", timeout=5))
