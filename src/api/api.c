@@ -271,9 +271,17 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		                      api.request->local_uri_raw);
 	}
 
-	// Restart FTL if requested
+	// Restart FTL if requested. Config changes go through the delay so that a
+	// burst of them results in a single restart. An explicit action such as a
+	// Teleporter import restarts right away, as does /api/action/restartdns
+	// which never reaches this point.
 	if(api.ftl.restart)
-		restart_ftl(api.ftl.restart_reason);
+	{
+		if(api.ftl.restart_now)
+			restart_ftl(api.ftl.restart_reason);
+		else
+			request_restart(api.ftl.restart_reason);
+	}
 
 	return ret;
 }

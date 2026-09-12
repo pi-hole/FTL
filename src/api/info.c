@@ -116,9 +116,14 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(json, "ctime", st.st_ctime); // Time of last status change (owner or mode change, etc.)
 
 	// Get owner details
+	// The reentrant lookups are required as this runs on a webserver worker
+	// thread: getpwuid()/getgrgid() share one buffer between all threads
+	char pwbuf[PWBUF_SIZE];
+	struct passwd pwstore, *pw = NULL;
+	getpwuid_r(st.st_uid, &pwstore, pwbuf, sizeof(pwbuf), &pw);
+
 	cJSON *user = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(user, "uid", st.st_uid); // UID
-	const struct passwd *pw = getpwuid(st.st_uid);
 	if(pw != NULL)
 	{
 		JSON_COPY_STR_TO_OBJECT(user, "name", pw->pw_name); // User name
@@ -130,9 +135,12 @@ int api_info_database(struct ftl_conn *api)
 		JSON_ADD_NULL_TO_OBJECT(user, "info");
 	}
 
+	char grbuf[PWBUF_SIZE];
+	struct group grstore, *gr = NULL;
+	getgrgid_r(st.st_gid, &grstore, grbuf, sizeof(grbuf), &gr);
+
 	cJSON *group = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(group, "gid", st.st_gid); // GID
-	const struct group *gr = getgrgid(st.st_gid);
 	if(gr != NULL)
 	{
 		JSON_COPY_STR_TO_OBJECT(group, "name", gr->gr_name); // Group name
