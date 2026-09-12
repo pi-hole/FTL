@@ -710,3 +710,37 @@ class TestConfigPatchRoundTrip:
                               timeout=20)
         assert r.status_code == 200
         assert _j(r)["config"]["dns"]["blockTTL"] == orig_val
+
+
+# ---------------------------------------------------------------------------
+# POST several domains in one request
+# ---------------------------------------------------------------------------
+
+class TestBatchAddDomains:
+
+    def test_post_multiple_domains(self, api_session):
+        """All items of a batch add land in one transaction and all survive."""
+        domains = [f"_pytest-batch-{i}.example.com" for i in range(5)]
+        url = f"{FTL_URL}/api/domains/deny/exact"
+
+        r = api_session.post(url,
+                             json={"domain": domains, "comment": "pytest batch",
+                                   "groups": [0], "enabled": True},
+                             timeout=20)
+        assert r.status_code in (200, 201), f"POST failed: {r.status_code} {r.text}"
+
+        # Every item is reported as a success, none as an error
+        processed = _j(r)["processed"]
+        assert processed["errors"] == [], f"Unexpected errors: {processed['errors']}"
+        assert sorted(s["item"] for s in processed["success"]) == sorted(domains)
+
+        # And every one of them is actually readable back
+        present = {d["domain"] for d in _j(api_session.get(url, timeout=5))["domains"]}
+        for domain in domains:
+            assert domain in present, f"{domain} missing after batch POST"
+
+        # Clean up so the seed counts other tests assert stay intact
+        for domain in domains:
+            r = api_session.delete(f"{url}/{domain}", timeout=10)
+            assert r.status_code == 204, \
+                f"Cleanup of {domain} failed: {r.status_code} {r.text}"

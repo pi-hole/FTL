@@ -167,9 +167,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 			if(api_request[i].opts.flags & API_PARSE_JSON)
 			{
-				// Allocate memory for the payload
-				api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
-				if(!api.payload.raw)
+				// Read and try to parse payload. The buffer is
+				// allocated in there, and only for a request that
+				// actually carries a body
+				if(!read_and_parse_payload(&api))
 				{
 					log_crit("Cannot handle API request %s %s: %s",
 							api.request->request_method,
@@ -182,9 +183,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 					                      NULL);
 					break;
 				}
-
-				// Read and try to parse payload
-				read_and_parse_payload(&api);
 			}
 
 			// Verify requesting client is allowed to see this resource
