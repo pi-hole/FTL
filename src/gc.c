@@ -476,12 +476,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		}
 
 		// Adjust upstream counter (no overTime information)
-		if(!hidden && query->upstreamID > -1)
+		// Only if this query still holds a count. query_blocked() hands
+		// it back when a forwarded query turns out to be blocked, and
+		// the query keeps its upstreamID after that
+		if(query->flags.upstream_counted && query->upstreamID > -1)
 		{
 			upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
 				// Adjust upstream counter
 				upstream->count--;
+
+			query->flags.upstream_counted = false;
 		}
 
 		// Adjust cache refcount
@@ -641,6 +646,11 @@ void *GC_thread(void *val)
 
 	// Create inotify watcher for pihole.toml config file
 	watch_config(true);
+
+	// The watcher above reports only what follows it, so compare the file
+	// against the loaded configuration once to pick up anything written
+	// during startup
+	reread_config();
 
 	// Run as long as this thread is not canceled
 	while(!killed)

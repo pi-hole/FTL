@@ -27,15 +27,25 @@ int api_history(struct ftl_conn *api)
 
 	cJSON *history = JSON_NEW_ARRAY();
 	const unsigned int max_slot = get_max_overtime_slot();
-	// Loop over all overTime slots and add them to the array
+	// Loop over all overTime slots and add them to the array. The JSON_*
+	// macros cannot be used while we hold the lock, as their early return
+	// would leave it taken for good
 	for(unsigned int slot = 0; slot <= max_slot; slot++)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
-		JSON_ADD_NUMBER_TO_OBJECT(item, "total", overTime[slot].total);
-		JSON_ADD_NUMBER_TO_OBJECT(item, "cached", overTime[slot].cached);
-		JSON_ADD_NUMBER_TO_OBJECT(item, "blocked", overTime[slot].blocked);
-		JSON_ADD_NUMBER_TO_OBJECT(item, "forwarded", overTime[slot].forwarded);
+		if(cJSON_AddNumberToObject(item, "timestamp", overTime[slot].timestamp) == NULL ||
+		   cJSON_AddNumberToObject(item, "total", overTime[slot].total) == NULL ||
+		   cJSON_AddNumberToObject(item, "cached", overTime[slot].cached) == NULL ||
+		   cJSON_AddNumberToObject(item, "blocked", overTime[slot].blocked) == NULL ||
+		   cJSON_AddNumberToObject(item, "forwarded", overTime[slot].forwarded) == NULL)
+		{
+			log_err("api_history(): Failed to allocate JSON item");
+			cJSON_Delete(item);
+			cJSON_Delete(history);
+			unlock_shm();
+			send_http_internal_error(api);
+			return 500;
+		}
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
 	}
 
@@ -149,13 +159,23 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Main return loop
 	int others_total = 0;
+	// Whether any client was actually folded into the "others" series. The
+	// label below has to follow this and not a separate count, or a client
+	// disappears into an unlabelled bucket
+	bool folded_others = false;
 
+	// The JSON_* macros cannot be used below while we hold the lock, as
+	// their early return would leave it taken for good. Everything that
+	// still has to be released is tracked in these pointers, so the cleanup
+	// at the end of this function can run from any point
 	cJSON *history = JSON_NEW_ARRAY();
+	cJSON *clients = NULL, *item = NULL, *data = NULL;
 	const unsigned int max_slot = get_max_overtime_slot();
 	for(unsigned int slot = 0; slot <= max_slot; slot++)
 	{
-		cJSON *item = JSON_NEW_OBJECT();
-		JSON_ADD_NUMBER_TO_OBJECT(item, "timestamp", overTime[slot].timestamp);
+		item = JSON_NEW_OBJECT();
+		if(cJSON_AddNumberToObject(item, "timestamp", overTime[slot].timestamp) == NULL)
+			goto oom;
 
 		// If we are not in global-max mode, we need to build the temporary
 		// client array for each slot individually
@@ -173,7 +193,7 @@ int api_history_clients(struct ftl_conn *api)
 
 		// Loop over clients to generate output to be sent to the client
 		int others = 0;
-		cJSON *data = JSON_NEW_OBJECT();
+		data = JSON_NEW_OBJECT();
 		for(unsigned int arrayID = 0; arrayID < num_clients; arrayID++)
 		{
 
@@ -190,9 +210,13 @@ int api_history_clients(struct ftl_conn *api)
 			// -1 because of the special "other" client we add below
 			// This is disabled when Nc is 0, which means we want to return
 			// all clients
-			if(arrayID >= Nc - 1)
+			// Fold only when there are more clients than fit. Folding
+			// on arrayID alone also swallowed the lowest-ranked client
+			// when every client fits, which is the normal case
+			if(num_clients > Nc && arrayID >= Nc - 1)
 			{
 				others += client->overTime[slot];
+				folded_others = true;
 				continue;
 			}
 
@@ -201,14 +225,17 @@ int api_history_clients(struct ftl_conn *api)
 		}
 		// Add others as last element in the array
 		others_total += others;
-		JSON_ADD_NUMBER_TO_OBJECT(data, "others", others);
+		if(cJSON_AddNumberToObject(data, "others", others) == NULL)
+			goto oom;
 
 		JSON_ADD_ITEM_TO_OBJECT(item, "data", data);
+		data = NULL;
 		JSON_ADD_ITEM_TO_ARRAY(history, item);
+		item = NULL;
 	}
 
 	// Loop over clients to generate output to be sent to the client
-	cJSON *clients = JSON_NEW_OBJECT();
+	clients = JSON_NEW_OBJECT();
 	for(unsigned int arrayID = 0; arrayID < num_clients; arrayID++)
 	{
 		// Get client pointer
@@ -224,7 +251,8 @@ int api_history_clients(struct ftl_conn *api)
 		// - N is 0, which means we want to return all clients, or
 		// - when we are NOT in global-max mode as we need to return all
 		//   clients in that case
-		if(config.webserver.api.client_history_global_max.v.b && arrayID >= Nc - 1)
+		if(config.webserver.api.client_history_global_max.v.b &&
+		   num_clients > Nc && arrayID >= Nc - 1)
 			break;
 
 		// Get client name and IP address
@@ -232,14 +260,19 @@ int api_history_clients(struct ftl_conn *api)
 		const char *client_name = client->namepos != 0 ? getstr(client->namepos) : NULL;
 
 		// Create JSON object for this client
-		cJSON *item = JSON_NEW_OBJECT();
+		item = JSON_NEW_OBJECT();
 		// Must COPY, not reference: the SHM strings buffer can be
 		// relocated by mremap(MREMAP_MAYMOVE) in another thread after
 		// we release the lock below, which would leave a dangling
-		// pointer if we used JSON_REF_STR_IN_OBJECT here (see #2786)
-		JSON_COPY_STR_TO_OBJECT(item, "name", client_name);
-		JSON_ADD_NUMBER_TO_OBJECT(item, "total", client->count);
+		// pointer if we referenced the string here (see #2786)
+		cJSON *name = client_name != NULL ? cJSON_CreateString(client_name) : cJSON_CreateNull();
+		if(name == NULL)
+			goto oom;
+		cJSON_AddItemToObject(item, "name", name);
+		if(cJSON_AddNumberToObject(item, "total", client->count) == NULL)
+			goto oom;
 		JSON_ADD_ITEM_TO_OBJECT(clients, client_ip, item);
+		item = NULL;
 	}
 
 	// Unlock here to avoid keeping the lock during JSON generation.
@@ -249,14 +282,19 @@ int api_history_clients(struct ftl_conn *api)
 	// can occur if the strings SHM segment is remapped by another thread.
 	unlock_shm();
 
-	// Add "others" client only if there are more clients than we return
-	// and if we are not returning all clients
-	if(num_clients > Nc)
+	// Add the "others" client exactly when the loop above folded something
+	// into that series
+	if(folded_others)
 	{
-		cJSON *item = JSON_NEW_OBJECT();
-		JSON_REF_STR_IN_OBJECT(item, "name", "other clients");
-		JSON_ADD_NUMBER_TO_OBJECT(item, "total", others_total);
+		item = JSON_NEW_OBJECT();
+		cJSON *name = cJSON_CreateStringReference("other clients");
+		if(name == NULL)
+			goto oom_unlocked;
+		cJSON_AddItemToObject(item, "name", name);
+		if(cJSON_AddNumberToObject(item, "total", others_total) == NULL)
+			goto oom_unlocked;
 		JSON_ADD_ITEM_TO_OBJECT(clients, "others", item);
+		item = NULL;
 	}
 
 	// Free memory
@@ -266,4 +304,17 @@ int api_history_clients(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
 	JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 	JSON_SEND_OBJECT(json);
+
+	// Common cleanup for the allocation failures above
+oom:
+	unlock_shm();
+oom_unlocked:
+	log_err("api_history_clients(): Failed to allocate JSON object");
+	cJSON_Delete(data);
+	cJSON_Delete(item);
+	cJSON_Delete(history);
+	cJSON_Delete(clients);
+	free(temparray);
+	send_http_internal_error(api);
+	return 500;
 }

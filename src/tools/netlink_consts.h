@@ -466,22 +466,6 @@ static const char *__attribute__ ((const)) iflaTypeToString(const int ifla_type)
 	}
 }
 
-static const char *__attribute__ ((const)) rt_priority(const uint32_t pref)
-{
-	switch (pref) {
-		case ICMPV6_ROUTER_PREF_HIGH:
-			return "high";
-		case ICMPV6_ROUTER_PREF_MEDIUM:
-			return "medium";
-		case ICMPV6_ROUTER_PREF_LOW:
-			return "low";
-		case ICMPV6_ROUTER_PREF_INVALID:
-			return "invalid";
-		default:
-			return "unknown";
-	}
-}
-
 static const char *__attribute__ ((const)) family_name(int family)
 {
 	switch(family)

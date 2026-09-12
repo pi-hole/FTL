@@ -659,30 +659,30 @@ class TestConfigPatchRoundTrip:
 
     def test_patch_bool_config_round_trip(self, api_session):
         """PATCH a boolean config value, verify, then restore."""
-        url = f"{FTL_URL}/api/config/dns/blockESNI"
+        url = f"{FTL_URL}/api/config/dns/CNAMEdeepInspect"
 
         # Read original
         original = _j(api_session.get(url, timeout=5))
-        orig_val = original["config"]["dns"]["blockESNI"]
+        orig_val = original["config"]["dns"]["CNAMEdeepInspect"]
 
         # Change to opposite
         new_val = not orig_val
         r = api_session.patch(url,
-                              json={"config": {"dns": {"blockESNI": new_val}}},
+                              json={"config": {"dns": {"CNAMEdeepInspect": new_val}}},
                               timeout=20)
         assert r.status_code == 200, f"PATCH failed: {r.status_code} {r.text}"
-        assert _j(r)["config"]["dns"]["blockESNI"] == new_val
+        assert _j(r)["config"]["dns"]["CNAMEdeepInspect"] == new_val
 
         # Verify via GET
         data = _j(api_session.get(url, timeout=5))
-        assert data["config"]["dns"]["blockESNI"] == new_val
+        assert data["config"]["dns"]["CNAMEdeepInspect"] == new_val
 
         # Restore
         r = api_session.patch(url,
-                              json={"config": {"dns": {"blockESNI": orig_val}}},
+                              json={"config": {"dns": {"CNAMEdeepInspect": orig_val}}},
                               timeout=20)
         assert r.status_code == 200
-        assert _j(r)["config"]["dns"]["blockESNI"] == orig_val
+        assert _j(r)["config"]["dns"]["CNAMEdeepInspect"] == orig_val
 
     def test_patch_integer_config_round_trip(self, api_session):
         """PATCH an integer config value, verify, then restore."""
