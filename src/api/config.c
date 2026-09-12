@@ -888,7 +888,14 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Check if this item requires rewriting the HOSTS file
 		if(conf_item == &config.dns.hosts)
+		{
 			rewrite_hosts = true;
+
+			// The local= lines are derived from dns.hosts, so the
+			// dnsmasq config has to follow whenever the records change
+			if(newconf.dns.hostsLocal.v.b)
+				dnsmasq_changed = true;
+		}
 
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
@@ -1101,7 +1108,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 		// Check if this item requires rewriting the HOSTS file
 		if(new_item == &newconf.dns.hosts)
+		{
 			rewrite_hosts = true;
+
+			// The local= lines are derived from dns.hosts, so the
+			// dnsmasq config has to follow whenever the records change
+			if(newconf.dns.hostsLocal.v.b)
+				dnsmasq_changed = true;
+		}
 
 		break;
 	}

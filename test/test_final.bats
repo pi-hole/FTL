@@ -61,7 +61,15 @@ load 'bats_helper.bash'
   # tuples change the encrypted-upstream config on every (re)start.
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
-  assert_line --index 0 "4"
+  # On RISCV64, pytest is skipped, so only the BATS writes occur (4x)
+  # Otherwise, the pytest dns/hosts config array PUT + DELETE add 2 more: with
+  # dns.hostsLocal the local= lines are derived from the records, so changing
+  # them rewrites dnsmasq.conf as well (6x)
+  if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
+    assert_line --index 0 "4"
+  else
+    assert_line --index 0 "6"
+  fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (3x)
