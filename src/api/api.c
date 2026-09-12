@@ -235,28 +235,43 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	}
 
 	// The HTTP OPTIONS method requests permitted communication options for
-	// a given URL or server. We no not implement the wildcard OPTIONS method
+	// a given URL or server. We do not implement the wildcard OPTIONS method
 	// but instead return the allowed methods for the requested endpoint
 	// in the Allow header.
 	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
 	if(api.method == HTTP_OPTIONS)
 	{
-		// Send Allow header
-		mg_printf(conn, "HTTP/1.1 204 No Content\r\n"
-		                "Allow: ");
-
-		// Loop over all possible methods
+		// Build a comma-separated list of the methods allowed for this
+		// endpoint for the RFC 7231 "Allow" header.
+		char methods[256] = "";
 		unsigned int m = 0;
 		for(enum http_method j = HTTP_GET; j < HTTP_OPTIONS; j <<= 1)
 		{
 			// Check if this method is allowed for this endpoint
-			if(allowed_methods & j)
-				mg_printf(conn, "%s%s", m++ > 0 ? ", " : "", get_http_method_str(j));
+			if(!(allowed_methods & j))
+				continue;
+
+			if(m++ > 0)
+				strncat(methods, ", ", sizeof(methods) - strlen(methods) - 1);
+			strncat(methods, get_http_method_str(j), sizeof(methods) - strlen(methods) - 1);
 		}
 
+		// Send Allow header
+		mg_printf(conn, "HTTP/1.1 204 No Content\r\n"
+		                "Allow: %s\r\n", methods);
+
+		// Note: we do not emit the CORS Access-Control-Allow-* preflight
+		// headers here. Civetweb's built-in CORS handler (step 4 of
+		// handle_request()) intercepts and answers valid cross-origin
+		// preflights - those carrying both an "Origin" and an
+		// "Access-Control-Request-Method" header - with a 200 response and the
+		// matching headers before the request is ever routed to this handler.
+		// We therefore only reach this branch for non-preflight OPTIONS
+		// requests, which just need the RFC 7231 "Allow" header.
+		// See https://github.com/pi-hole/FTL/issues/2261
+
 		// Finish header and send empty body
-		mg_printf(conn, "\r\n"
-		                "Content-Length: 0\r\n"
+		mg_printf(conn, "Content-Length: 0\r\n"
 		                "Connection: close\r\n\r\n");
 		return 204;
 	}
