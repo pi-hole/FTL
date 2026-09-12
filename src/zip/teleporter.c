@@ -648,6 +648,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported Pi-hole configuration: %s", file_stat.m_filename);
@@ -669,6 +670,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported DHCP leases: %s", file_stat.m_filename);
@@ -720,6 +722,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported database: %s", file_stat.m_filename);
@@ -799,19 +802,23 @@ bool write_teleporter_zip_to_disk(void)
 	{
 		log_err("Failed to open %s for writing: %s", filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		free(ptr);
 		return false;
 	}
 	if(fwrite(ptr, 1, size, fp) != size)
 	{
 		log_err("Failed to write %zu bytes to %s: %s", size, filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		free(ptr);
 		fclose(fp);
 		return false;
 	}
 	fclose(fp);
 
-	// Free allocated ZIP memory
+	// Free allocated ZIP memory, including the archive buffer that
+	// mz_zip_writer_finalize_heap_archive() handed over to us
 	free_teleporter_zip(&zip);
+	free(ptr);
 
 	/* Output filename on successful creation */
 	log_info("%s", filename);
