@@ -29,9 +29,9 @@
 
 // Number of slots in the lock-free log queue.  Each slot holds one record
 // (LOGGER_MAX_MESSAGE bytes plus ~40 bytes of metadata), totalling roughly
-// 540 KiB of shared memory.  The size must be a compile time constant so the
+// 2 MiB of shared memory.  The size must be a compile time constant so the
 // queue can live in shared memory (shared with dnsmasq TCP-query forks).
-#define LOGGER_RING_SLOTS 256u
+#define LOGGER_RING_SLOTS 1024u
 
 // Eventfd poll timeout for the logger thread.  Records are normally signaled
 // via the eventfd; the timeout catches the remaining races (an out-of-order
