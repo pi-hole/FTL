@@ -4360,8 +4360,9 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 	// Log to FTL.log
 	log_debug(DEBUG_QUERIES, "Connection error (%s#%u, ID %d): %s (%s)%s", ip, port, id, reason, error, extra);
 
-	// Log to pihole.log
-	my_syslog(priority, "%s: %s", reason, error);
+	// Log to pihole.log (unless the user asked us to hide these warnings)
+	if(!config.misc.hide_connection_error.v.b)
+		my_syslog(priority, "%s: %s", reason, error);
 
 	// Add to Pi-hole diagnostics but do not add messages more often than
 	// once every five seconds to avoid hammering the database with errors
