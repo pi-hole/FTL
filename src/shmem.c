@@ -38,6 +38,43 @@
 /// The version of shared memory used
 #define SHARED_MEMORY_VERSION 17
 
+// Every struct below is stored in shared memory, so a change to any of their
+// layouts makes a segment written by an older build unreadable and needs the
+// version above bumped. These assertions hold the sizes to what they are today
+// so that cannot happen unnoticed.
+//
+// The sizes are not the same everywhere. size_t members make them follow the
+// word size, and a 32-bit target aligns double to either 8 (ARM EABI) or 4
+// (i386), which moves the members after it again - clientsData is 688 bytes on
+// 64-bit, 672 on armhf and 664 on i386. All three are pinned rather than only
+// the one this happens to be compiled for. sizeof and _Alignof are constant
+// expressions, so this needs no per-architecture #ifdef
+#define SHM_STRUCT_SIZE(w64, arm32, x86_32) \
+	(sizeof(size_t) == 8 ? (w64) : (_Alignof(double) == 8 ? (arm32) : (x86_32)))
+
+#define ASSERT_SHM_SIZE(type, w64, arm32, x86_32) \
+	_Static_assert(sizeof(type) == SHM_STRUCT_SIZE(w64, arm32, x86_32), \
+	               #type " changed size - bump SHARED_MEMORY_VERSION")
+
+ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
+ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
+ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
+// overTimeData is the one of these that ends in a time_t, whose alignment is 8
+// on 64-bit and on ARM EABI but 4 on i386, which moves the timestamp and with
+// it the total: 32, 32 and 28. Derive it from the layout rather than write
+// three numbers, so it stays right on a target none of us measured
+#define ROUND_UP_TO(n, a) ((((n) + (a) - 1u) / (a)) * (a))
+_Static_assert(sizeof(overTimeData) ==
+               ROUND_UP_TO(ROUND_UP_TO(sizeof(unsigned char), _Alignof(int)) + 4u * sizeof(int),
+                           _Alignof(time_t)) + sizeof(time_t),
+               "overTimeData changed size - bump SHARED_MEMORY_VERSION");
+ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
+ASSERT_SHM_SIZE(fifologData,        568576, 560352, 560336);
+ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
+ASSERT_SHM_SIZE(countersStruct,        356,    356,    356);
+
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
 #define SHARED_LOCK_NAME "lock"

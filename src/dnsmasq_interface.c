@@ -1134,6 +1134,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
+	query->flags.upstream_counted = false;
 	query->response = querytimestamp;
 	query->flags.response_calculated = false;
 	// Initialize reply type
@@ -1237,6 +1238,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
 		// Release the SHM lock so this potentially slow I/O doesn't
 		// block all other threads (API, database, GC, TCP workers).
+		// Remember where the query array starts: the logical query index
+		// we are holding is relative to queries_offset, which the GC
+		// advances when it drops queries off the front
+		const unsigned int queries_offset_before = counters->queries_offset;
 		unlock_shm();
 
 		unsigned char hwaddr[16] = {0};
@@ -1258,8 +1263,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			client->hwlen = hwlen;
 		}
 
-		// Re-fetch all SHM pointers as SHM may have been remapped
-		query = getQuery(queryID, true);
+		// Re-fetch all SHM pointers as SHM may have been remapped.
+		// If queries_offset moved while we were unlocked then every
+		// logical query index shifted with it, and ours now resolves to
+		// a different query that is very much alive - magic byte and
+		// all - so re-fetching it would quietly update someone else's.
+		// There is no way to rebase it from here, so drop it instead.
+		// Domains and clients are not offset-indexed and are fine
+		if(counters->queries_offset != queries_offset_before)
+		{
+			log_debug(DEBUG_GC, "Query indices moved while resolving the MAC address, "
+			          "dropping query %d", queryID);
+			query = NULL;
+		}
+		else
+			query = getQuery(queryID, true);
 		domain = getDomain(domainID, true);
 		dns_cache_entry = query != NULL && query->cacheID > -1
 		                ? getDNSCache(query->cacheID, true) : NULL;
@@ -1371,12 +1389,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		                            "    --> NO MATCH <--");
 	}
 
-	// Interface resolved by the last call, used to skip the address
-	// collection below when the same one is seen again. The pointer is
-	// stable within dnsmasq's daemon->interfaces list and is invalidated on
-	// SIGHUP/restart.
-	static struct irec *cached_recviface = NULL;
-
 	// Return early when there is no interface available at this point
 	// This means we didn't get one passed + we didn't find one above
 	if(!recviface)
@@ -1388,21 +1400,15 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		next_iface.haveIPv4 = next_iface.haveIPv6 = false;
 		next_iface.name[0] = '-';
 		next_iface.name[1] = '\0';
-		// Drop the cache too, so the next query on that interface
-		// collects its addresses again
-		cached_recviface = NULL;
 		return;
 	}
 
-	// Skip the expensive second loop (which iterates all interfaces to
-	// collect IPv4 and IPv6 addresses) when the interface is unchanged
-	if(recviface == cached_recviface)
-	{
-		log_debug(DEBUG_NETWORKING, "Interface unchanged, using cached result");
-		return;
-	}
-
-	// Interface changed — invalidate and recompute
+	// Recomputed on every call. dnsmasq keeps one irec per address, so the
+	// irec pointer says nothing about whether the addresses behind it have
+	// changed, and establishing that they have not costs at least as much as
+	// collecting them again: the loop below stops as soon as it has an IPv4
+	// and a ULA IPv6 address, while any check covering every address cannot
+	// stop early. What it would save is debug-gated anyway
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
 	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
@@ -1506,7 +1512,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	}
 
 	// Update cache so subsequent queries on the same interface skip the loops
-	cached_recviface = recviface;
 }
 
 static void check_pihole_PTR(char *domain)
@@ -1809,7 +1814,13 @@ static bool special_domain(const queriesData *query, const char *domain)
 	if(config.dns.specialDomains.designatedResolver.v.b)
 	{
 		const size_t len = strlen(domain);
-		if(len > 13 && strcmp(&domain[len - 13], "resolver.arpa") == 0)
+		const size_t zonelen = sizeof("resolver.arpa") - 1;
+		// >= rather than >, so the zone apex resolver.arpa itself is
+		// answered instead of being forwarded, and a label boundary,
+		// so notresolver.arpa is not mistaken for part of the zone
+		if(len >= zonelen &&
+		   strcmp(&domain[len - zonelen], "resolver.arpa") == 0 &&
+		   (len == zonelen || domain[len - zonelen - 1] == '.'))
 		{
 			blockingreason = "Designated Resolver domain";
 			force_next_DNS_reply = REPLY_NODATA;
@@ -2292,11 +2303,24 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		if(child_domain_data != NULL)
 			child_domain_data->cname_refcount++;
 
-		// Store CNAME domain ID in DNS cache
+		// Store CNAME domain ID in DNS cache. A cache entry holds at most
+		// one reference and gives it back once, when runGC() recycles it,
+		// so taking one unconditionally here leaks: this path runs again
+		// for an entry whose blocking status a gravity reload has reset,
+		// and the entry is then counted twice against the same domain.
+		// Take a reference only when the entry is not already holding one
+		// for this domain, and hand back the old one when it moves
 		const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
 		DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
-		if(parent_cache != NULL)
+		if(parent_cache != NULL && parent_cache->CNAME_domainID != (unsigned int)child_domainID)
 		{
+			if(parent_cache->CNAME_domainID != (unsigned int)-1)
+			{
+				domainsData *old_cname = getDomain(parent_cache->CNAME_domainID, true);
+				if(old_cname != NULL)
+					old_cname->cname_refcount--;
+			}
+
 			parent_cache->CNAME_domainID = child_domainID;
 			if(child_domain_data != NULL)
 				child_domain_data->cname_refcount++;
@@ -2423,6 +2447,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	if(upstream != NULL)
 	{
 		upstream->count++;
+		query->flags.upstream_counted = true;
 		upstream->lastQuery = now;
 	}
 
@@ -2585,6 +2610,25 @@ static void update_upstream(queriesData *query, const int id)
 				log_debug(DEBUG_QUERIES, "Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
 				          id, oldaddr, oldport, ip, port);
 			}
+		}
+
+		// Move the count along with the attribution. FTL_forwarded()
+		// counted this query against the upstream it first picked and
+		// returns early for every further server of the same forward
+		// round, so the server that actually answered was never counted
+		// and whoever decrements later - query_blocked() or the GC -
+		// would take it off the wrong one
+		if(query->flags.upstream_counted)
+		{
+			upstreamsData *old_upstream = getUpstream(query->upstreamID, true);
+			if(old_upstream != NULL)
+				old_upstream->count--;
+
+			upstreamsData *new_upstream = upstreamID > -1 ? getUpstream(upstreamID, true) : NULL;
+			if(new_upstream != NULL)
+				new_upstream->count++;
+			else
+				query->flags.upstream_counted = false;
 		}
 
 		// Update upstream server ID
@@ -3069,13 +3113,18 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status)
 {
-	// Adjust counters if we recorded a non-blocking status
-	if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
+	// Adjust counters if we recorded a non-blocking status. Clear the flag
+	// with it: the query keeps pointing at the upstream for the reply and
+	// for the database, but the count has been handed back and the GC must
+	// not hand it back a second time when the query expires
+	if(query->status == QUERY_FORWARDED && query->flags.upstream_counted)
 	{
 		// Get forward pointer
 		upstreamsData *upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
 			upstream->count--;
+
+		query->flags.upstream_counted = false;
 	}
 	else if(is_blocked(query->status))
 	{

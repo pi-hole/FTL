@@ -1809,12 +1809,23 @@ bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int n
 		return false;
 	}
 
-	// Bind client's group_id array via carray (parameter ?1)
+	// Bind client's group_id array via carray (parameter ?1). A client in no
+	// group at all must not reach the step below: the statement is shared
+	// between all clients and sqlite3_reset() keeps bindings, so skipping the
+	// bind would leave the previously processed client's array in place and
+	// hand this client that client's regexes. The gravity, allowlist and
+	// denylist lookups return early here for the same reason
 	int group_count = 0;
 	const int32_t *group_ids = getintarray(client->groupspos, &group_count);
-	if(group_ids != NULL && group_count > 0)
-		sqlite3_carray_bind(query_stmt, 1, (void*)group_ids, group_count,
-		                    SQLITE_CARRAY_INT32, SQLITE_STATIC);
+	if(group_ids == NULL || group_count <= 0)
+	{
+		log_debug(DEBUG_REGEX, "Regex %s: Client %s is in no group, no regex applies",
+		          regextype[type], getstr(client->ippos));
+		return true;
+	}
+
+	sqlite3_carray_bind(query_stmt, 1, (void*)group_ids, group_count,
+	                    SQLITE_CARRAY_INT32, SQLITE_STATIC);
 
 	// Perform query
 	log_debug(DEBUG_REGEX, "Regex %s: Querying associated regexes for client %s (groups: %s)",
@@ -2554,7 +2565,12 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		*message = "Failed to allocate memory for query string";
 		return false;
 	}
+	// like_name is the caller's item until we build a LIKE pattern of our own.
+	// The free() calls below have to follow the allocation, not just !exact:
+	// an empty non-exact item skips the allocation and would otherwise make
+	// this function free a string it never owned
 	char *like_name = (char*)item;
+	bool like_name_allocated = false;
 	if(!exact && item != NULL && item[0] != '\0')
 	{
 		// Build LIKE string (% + item + %)
@@ -2570,6 +2586,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 			return false;
 		}
 		snprintf(like_name, maxlen, "%%%s%%", item);
+		like_name_allocated = true;
 	}
 	const char *filter = "";
 	if(listtype == GRAVITY_GROUPS)
@@ -2662,7 +2679,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		*message = sqlite3_errmsg(db);
 		log_err("gravityDB_readTable(%d => (%s)) - SQL error prepare (%i): %s => %s",
 		        listtype, type, rc, querystr, *message);
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2677,7 +2694,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
 		*read_stmt_p = NULL;
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2692,7 +2709,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 		        listtype, type, like_name, rc, *message);
 		sqlite3_finalize(*read_stmt_p);
 		*read_stmt_p = NULL;
-		if(!exact)
+		if(like_name_allocated)
 			free(like_name);
 		free(querystr);
 		return false;
@@ -2708,7 +2725,7 @@ bool gravityDB_readTable(sqlite3 *db, const enum gravity_list_type listtype,
 
 	// Free memory
 	free(querystr);
-	if(!exact)
+	if(like_name_allocated)
 		free(like_name);
 
 	return true;

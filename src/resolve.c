@@ -1194,6 +1194,16 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		size_t ippos = client->ippos;
 		size_t oldnamepos = client->namepos;
 
+		// Copy, do not keep pointing. Everything below runs with the
+		// lock released, and a concurrent mremap(MREMAP_MAYMOVE) of the
+		// strings region or of the clients array leaves both the shm
+		// string pointer and the clientsData pointer aimed at memory
+		// that is no longer mapped. resolveAndAddHostname() copies for
+		// the same reason
+		char ipaddr_copy[INET6_ADDRSTRLEN + 1] = { 0 };
+		strncpy(ipaddr_copy, getstr(ippos), sizeof(ipaddr_copy) - 1);
+		const double firstSeen = client->firstSeen;
+
 		// Only try to resolve host names of clients which were recently active if we are re-resolving
 		// Limit for a "recently active" client is two hours ago
 		if(!force_refreshing && !onlynew && client->lastQuery < now - 2*60*60)
@@ -1218,8 +1228,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
-		// Get IP address of client
-		const char *ipaddr = getstr(ippos);
+		// Get IP address of client, from the copy taken under the lock
+		const char *ipaddr = ipaddr_copy;
 		unlock_shm();
 
 		// Check if we want to resolve an IPv6 address
@@ -1232,10 +1242,10 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// slightly to ensure the network table has had time to possibly
 		// correlate the IPv6 address via a related other address (e.g.,
 		// IPv4 address) though an identical MAC address.
-		if(onlynew && newflag && IPv6 && client->firstSeen + DELAY_V6_RESOLUTION > now)
+		if(onlynew && newflag && IPv6 && firstSeen + DELAY_V6_RESOLUTION > now)
 		{
 			log_debug(DEBUG_RESOLVER, "Postponing resolution of new client %s (IPv6) for at least %.0f more seconds",
-			          getstr(ippos), now - client->firstSeen + DELAY_V6_RESOLUTION);
+			          ipaddr, now - firstSeen + DELAY_V6_RESOLUTION);
 
 			skipped++;
 			continue;
@@ -1251,7 +1261,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// - still new,
 		// - IPv6, and
 		// - need to be resolved
-		const bool new_ipv6_needs_resolve = newflag && IPv6 && client->firstSeen + DELAY_V6_RESOLUTION <= now;
+		const bool new_ipv6_needs_resolve = newflag && IPv6 && firstSeen + DELAY_V6_RESOLUTION <= now;
 
 		if(onlynew == false && !new_ipv6_needs_resolve &&
 		   (config.resolver.refreshNames.v.refresh_hostnames == REFRESH_NONE ||

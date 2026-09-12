@@ -20,9 +20,9 @@
     "test": "npm run openapi-enforcer && npm run validate-examples"
   },
   "devDependencies": {
-    "brace-expansion": "^2.1.4",
-    "fast-uri": "^3.1.7",
-    "js-yaml": "^4.3.2",
+    "brace-expansion": "^5.0.9",
+    "fast-uri": "^4.1.4",
+    "js-yaml": "^5.4.1",
     "openapi-enforcer": "^1.23.0",
     "openapi-examples-validator": "^7.1.0"
   }
