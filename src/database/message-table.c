@@ -482,6 +482,12 @@ static int _add_message(const enum message_type type,
 
 end_of_add_message: // Close database connection
 
+	// Every path that jumps here carries a failing rc, and the duplicate
+	// removing DELETE above is on a hotter path than anything else in this
+	// file - a corrupt database met there has to latch as well
+	if(rc != SQLITE_OK && rc != SQLITE_DONE)
+		checkFTLDBrc(rc);
+
 	// Final database handling
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
@@ -506,9 +512,11 @@ bool delete_message(cJSON *ids, int *deleted)
 	}
 
 	sqlite3_stmt *res = NULL;
-	if(sqlite3_prepare_v2(db, "DELETE FROM message WHERE id = ?;", -1, &res, 0) != SQLITE_OK)
+	int rc = sqlite3_prepare_v2(db, "DELETE FROM message WHERE id = ?;", -1, &res, 0);
+	if(rc != SQLITE_OK)
 	{
 		log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
+		checkFTLDBrc(rc);
 		dbclose(&db);
 		return false;
 	}
@@ -520,7 +528,8 @@ bool delete_message(cJSON *ids, int *deleted)
 	{
 		// Bind id to prepared statement
 		const int idval = cJSON_GetNumberValue(id);
-		if(sqlite3_bind_int(res, 1, idval) != SQLITE_OK)
+		rc = sqlite3_bind_int(res, 1, idval);
+		if(rc != SQLITE_OK)
 		{
 			log_err("delete_message() - Failed to bind id %d: %s", idval, sqlite3_errmsg(db));
 			success = false;
@@ -528,7 +537,8 @@ bool delete_message(cJSON *ids, int *deleted)
 		}
 
 		// Execute and finalize
-		if(sqlite3_step(res) != SQLITE_DONE)
+		rc = sqlite3_step(res);
+		if(rc != SQLITE_DONE)
 		{
 			log_err("SQL error (%i): %s", sqlite3_errcode(db), sqlite3_errmsg(db));
 			success = false;
@@ -541,6 +551,11 @@ bool delete_message(cJSON *ids, int *deleted)
 		sqlite3_reset(res);
 	}
 	sqlite3_finalize(res);
+
+	// A corrupt database has to be latched here, or the next caller opens it
+	// again and fails the same way
+	if(!success)
+		checkFTLDBrc(rc);
 
 	// Close database connection
 	dbclose(&db);
@@ -1067,6 +1082,9 @@ int count_messages(void)
 	count = sqlite3_column_int(stmt, 0);
 
 end_of_count_messages: // Close database connection
+	if(rc != SQLITE_OK && rc != SQLITE_ROW)
+		checkFTLDBrc(rc);
+
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
 	dbclose(&db);
@@ -1358,11 +1376,20 @@ bool format_messages(cJSON *array)
 	}
 
 end_of_format_message: // Close database connection
+	// SQLITE_ROW is how the loop above leaves on a failed allocation, not a
+	// database error - the sibling in count_messages() excludes it too
+	if(rc != SQLITE_OK && rc != SQLITE_DONE && rc != SQLITE_ROW)
+		checkFTLDBrc(rc);
+
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
 	dbclose(&db);
 
-	return true;
+	// Only a result set read to its end is an answer. Returning true after
+	// any of the paths above meant `/api/info/messages` served a truncated
+	// array with a 200 and left its 500 branch unreachable, so the request
+	// that met the corruption never heard about it
+	return rc == SQLITE_DONE;
 }
 
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex)
