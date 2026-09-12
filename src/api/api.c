@@ -109,6 +109,58 @@ static struct {
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
 
+// Does the URI carry as many path components as this table row expects? Several
+// rows share a URI and are told apart only by their parameters, which
+// startsWith() does not look at - /api/domains has four of them. Answering a
+// 405 with the union of all four advertises a DELETE that /api/domains without
+// arguments would refuse with a 400, so count the components and keep the rows
+// that would really have taken this URI
+static bool __attribute__((pure)) parameters_match(const char *parameters, const char *item)
+{
+	unsigned int expected = 0;
+	for(const char *p = parameters; *p != '\0'; p++)
+		if(*p == '{')
+			expected++;
+
+	// A trailing slash does not open another component: /api/domains/deny/
+	// addresses the same one-parameter row as /api/domains/deny
+	size_t len = strlen(item);
+	if(len > 0 && item[len - 1] == '/')
+		len--;
+
+	unsigned int found = 0;
+	if(len > 0)
+	{
+		found = 1;
+		for(size_t i = 0; i < len; i++)
+			if(item[i] == '/')
+				found++;
+	}
+
+	return expected == found;
+}
+
+// Format the methods an endpoint accepts as an Allow header value, e.g.
+// "GET, POST, OPTIONS". OPTIONS is answered for every endpoint by the handler
+// itself, so it belongs in a header a client is meant to act on
+static void format_allowed_methods(char *buffer, const size_t size, const enum http_method allowed)
+{
+	size_t len = 0;
+	buffer[0] = '\0';
+	for(enum http_method j = HTTP_GET; j <= HTTP_OPTIONS; j <<= 1)
+	{
+		if(!(allowed & j))
+			continue;
+
+		const int n = snprintf(buffer + len, size - len, "%s%s",
+		                       len > 0 ? ", " : "", get_http_method_str(j));
+		if(n < 0 || (size_t)n >= size - len)
+			break;
+
+		len += n;
+	}
+}
+
 int api_handler(struct mg_connection *conn, void *ignored)
 {
 	// Unused, but required by CivetWeb
@@ -143,27 +195,30 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	// Loop over all API endpoints and check if the requested URI matches
 	bool unauthorized = false;
+	bool handler_ran = false;
 	enum http_method allowed_methods = 0;
 	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
-		// Check if the requested method is allowed
-		if(!(api_request[i].methods & api.method) && api.method != HTTP_OPTIONS)
-			continue;
-
 		// Check if the requested URI starts with the API endpoint
 		if((api.item = startsWith(api_request[i].uri, &api)) != NULL)
 		{
+			// The URI exists. Remember every method it accepts,
+			// both to answer OPTIONS below and to tell a request
+			// that came with the wrong one which would have worked
+			if(parameters_match(api_request[i].parameters, api.item))
+				allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
+
+			// If this is an OPTIONS request, collecting the
+			// methods is all there is to do here
+			if(api.method == HTTP_OPTIONS)
+				continue;
+
+			// Check if the requested method is allowed
+			if(!(api_request[i].methods & api.method))
+				continue;
 
 			// Copy options to API struct
 			memcpy(&api.opts, &api_request[i].opts, sizeof(api.opts));
-
-			// If this is an OPTIONS request, we add the supported
-			// options of this endpoint and continue
-			if(api.method == HTTP_OPTIONS)
-			{
-				allowed_methods |= api_request[i].methods;
-				continue;
-			}
 
 			if(api_request[i].opts.flags & API_PARSE_JSON)
 			{
@@ -199,6 +254,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			          api.request->request_method,
 			          api.request->local_uri_raw,
 			          api_request[i].uri);
+			handler_ran = true;
 			ret = api_request[i].func(&api);
 			log_web_debug(DEBUG_API, "Done");
 			break;
@@ -241,34 +297,45 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
 	if(api.method == HTTP_OPTIONS)
 	{
-		// Send Allow header
+		char allow[128];
+		format_allowed_methods(allow, sizeof(allow), allowed_methods);
+
+		// Send Allow header and an empty body
 		mg_printf(conn, "HTTP/1.1 204 No Content\r\n"
-		                "Allow: ");
-
-		// Loop over all possible methods
-		unsigned int m = 0;
-		for(enum http_method j = HTTP_GET; j < HTTP_OPTIONS; j <<= 1)
-		{
-			// Check if this method is allowed for this endpoint
-			if(allowed_methods & j)
-				mg_printf(conn, "%s%s", m++ > 0 ? ", " : "", get_http_method_str(j));
-		}
-
-		// Finish header and send empty body
-		mg_printf(conn, "\r\n"
+		                "Allow: %s\r\n"
 		                "Content-Length: 0\r\n"
-		                "Connection: close\r\n\r\n");
+		                "Connection: close\r\n\r\n", allow);
 		return 204;
 	}
 
-	// Check if we need to return with not found payload
 	if(ret == 0)
 	{
-		// not found or invalid request
-		ret = send_json_error(&api, 404,
-		                      "not_found",
-		                      "Not found",
-		                      api.request->local_uri_raw);
+		// A handler that ran and returned 0 is asking for a 404 of its
+		// own - api_docs() does that for a file it does not have - and
+		// must not be turned into a 405 refusing the method it just
+		// served
+		if(allowed_methods != 0 && !handler_ran)
+		{
+			// The URI exists, the method does not. RFC 9110 section
+			// 15.5.6 requires a 405 to name the methods that do
+			char allow[128];
+			format_allowed_methods(allow, sizeof(allow), allowed_methods);
+			snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
+			         "Allow: %s", allow);
+
+			ret = send_json_error(&api, 405,
+			                      "method_not_allowed",
+			                      "Method Not Allowed",
+			                      api.request->request_method);
+		}
+		else
+		{
+			// not found or invalid request
+			ret = send_json_error(&api, 404,
+			                      "not_found",
+			                      "Not found",
+			                      api.request->local_uri_raw);
+		}
 	}
 
 	// Restart FTL if requested
