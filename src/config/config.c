@@ -420,6 +420,14 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.f = FLAG_RESTART_FTL;
 	conf->dns.upstreams.c = validate_upstreams;
 
+	conf->dns.fastRetry.k = "dns.fastRetry";
+	conf->dns.fastRetry.h = "Retransmission interval (in milliseconds) for unanswered upstream queries.\n\n Pi-hole forwards a query and then waits for the reply. If either the query or the reply is lost on the way, nothing happens until the client gives up and asks again. Repetitions of a query that is still in flight are attached to the running query instead of being forwarded again, so a client cannot recover such a loss on its own either - only Pi-hole can, by asking upstream once more.\n\n The first retransmission is sent after the configured number of milliseconds, the interval doubles for every further attempt, and retransmissions stop as soon as the query is answered or has timed out. Setting this to 0 disables retransmission. Note that DNSSEC validation enables it independently of this setting because an unanswered query would otherwise stall the whole validation chain.";
+	conf->dns.fastRetry.a = cJSON_CreateStringReference("An integer value between 50 and 10000 (milliseconds), or 0 to disable retransmission");
+	conf->dns.fastRetry.t = CONF_UINT;
+	conf->dns.fastRetry.f = FLAG_RESTART_FTL;
+	conf->dns.fastRetry.d.ui = 1000u;
+	conf->dns.fastRetry.c = validate_dns_fastRetry;
+
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
 	conf->dns.CNAMEdeepInspect.t = CONF_BOOL;
