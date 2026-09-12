@@ -97,6 +97,9 @@
 #define T_NSEC          47
 #define T_DNSKEY        48
 #define T_NSEC3         50
+/*************** Pi-hole modification ****************/
+#define T_HTTPS         65
+/*****************************************************/
 #define	T_TKEY		249		
 #define	T_TSIG		250
 #define T_AXFR          252
