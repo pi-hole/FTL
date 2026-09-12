@@ -20,6 +20,7 @@
 #   DoH   : HTTPS on 127.0.0.1:8443 (HTTP/2 via ALPN "h2", else HTTP/1.1)
 #   DoH1  : HTTPS on 127.0.0.1:8445 (HTTP/1.1 only - ALPN offers "http/1.1")
 #   DoH3  : QUIC  on 127.0.0.1:8444 (HTTP/3, only if aioquic is installed)
+#   DoQ   : QUIC  on 127.0.0.1:8854 (RFC 9250, only if aioquic is installed)
 #   backend: 127.0.0.1:5555 (pdns_recursor, UDP)
 
 import os
@@ -36,6 +37,7 @@ DOT_ADDR = ("127.0.0.1", 8853)
 DOH_ADDR = ("127.0.0.1", 8443)     # HTTP/2-capable DoH (auto-negotiates via ALPN)
 DOH_H1_ADDR = ("127.0.0.1", 8445)  # HTTP/1.1-only DoH (exercises the h1 fallback)
 DOH3_ADDR = ("127.0.0.1", 8444)    # HTTP/3 (QUIC) DoH, optional (needs aioquic)
+DOQ_ADDR = ("127.0.0.1", 8854)     # DNS-over-QUIC (RFC 9250), optional (needs aioquic)
 # When set, append the on-the-wire length of every decrypted query here so the
 # padding E2E test can confirm FTL padded it. FTL pads encrypted queries to a
 # 128-octet boundary (RFC 8467), so a padded query arrives as a multiple of 128.
@@ -44,6 +46,8 @@ _pad_lock = threading.Lock()
 # Touched once the (optional) HTTP/3 listener is actually bound and accepting, so
 # the bats suite can skip the DoH3 test cleanly when aioquic is not installed.
 H3_READY = os.environ.get("SHIM_H3_READY", "/tmp/dotdoh_h3_ready")
+# Same for the (optional) DoQ listener.
+DOQ_READY = os.environ.get("SHIM_DOQ_READY", "/tmp/dotdoh_doq_ready")
 # Optional per-response delay (ms): each backend resolution sleeps this long
 # before replying, so a concurrency test can overlap in-flight exchanges.
 try:
@@ -58,6 +62,16 @@ def note_query(transport, query):
     with _pad_lock:
         with open(PAD_LOG, "a") as fh:
             fh.write("%s %d\n" % (transport, len(query)))
+
+
+def note_msgid(transport, query):
+    # Record the DNS Message ID a query arrived with. RFC 9250 Sec. 4.2.1 requires
+    # it to be 0 on DoQ, so the suite can assert FTL zeroed it on the wire.
+    if not PAD_LOG or len(query) < 2:
+        return
+    with _pad_lock:
+        with open(PAD_LOG, "a") as fh:
+            fh.write("%s-msgid %d\n" % (transport, (query[0] << 8) | query[1]))
 
 
 def note_proto(transport, proto):
@@ -346,7 +360,7 @@ try:
     from aioquic.h3.connection import H3Connection
     from aioquic.h3.events import DataReceived, HeadersReceived
     from aioquic.quic.configuration import QuicConfiguration
-    from aioquic.quic.events import ProtocolNegotiated
+    from aioquic.quic.events import ProtocolNegotiated, StreamDataReceived
     HAVE_AIOQUIC = True
     AIOQUIC_IMPORT_ERROR = None
 except Exception as exc:
@@ -424,6 +438,80 @@ def start_h3_listener():
     return True
 
 
+def start_doq_listener():
+    """Bring up the DoQ (RFC 9250) listener if aioquic is available.
+
+    DoQ is raw DNS on a QUIC stream: a 2-byte length prefix and the message, one
+    query per client-initiated bidirectional stream, each side FINishing its side
+    when done. Returns True once bound (and touches DOQ_READY), else False.
+    """
+    if not HAVE_AIOQUIC:
+        return False
+
+    class DoQProtocol(QuicConnectionProtocol):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._bufs = {}
+
+        def quic_event_received(self, event):
+            if not isinstance(event, StreamDataReceived):
+                return
+            # Unidirectional client streams (id & 0x2) carry no DoQ query.
+            if event.stream_id & 0x2:
+                return
+            buf = self._bufs.setdefault(event.stream_id, bytearray())
+            buf.extend(event.data)
+            # RFC 9250 Sec. 4.2: the client signals the end of its query with a
+            # STREAM FIN, and only then may the server answer. Waiting for it here
+            # is deliberate - it makes FTL's FIN load-bearing, so a client that
+            # forgets to conclude its send side times out instead of passing.
+            if not event.end_stream:
+                return
+            self._bufs.pop(event.stream_id, None)
+            if len(buf) < 2:
+                return
+            qlen = (buf[0] << 8) | buf[1]
+            if len(buf) < 2 + qlen:
+                return
+            self._reply(event.stream_id, bytes(buf[2:2 + qlen]))
+
+        def _reply(self, stream_id, query):
+            note_proto("doq", "DoQ")
+            note_query("doq", query)
+            note_msgid("doq", query)
+            # The backend echoes the (zeroed) Message ID, which is exactly what
+            # RFC 9250 wants on the wire - and what FTL has to map back.
+            answer = resolve(query)
+            self._quic.send_stream_data(
+                stream_id, struct.pack("!H", len(answer)) + answer, end_stream=True)
+            self.transmit()
+
+    async def _serve():
+        config = QuicConfiguration(is_client=False, alpn_protocols=["doq"])
+        config.load_cert_chain(CERT, CERT)
+        await quic_serve(DOQ_ADDR[0], DOQ_ADDR[1],
+                         configuration=config, create_protocol=DoQProtocol)
+
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_serve())
+        except Exception as exc:
+            print("dotdoh_shim: DoQ listener failed to start (%s)" % exc,
+                  file=sys.stderr)
+            return
+        try:
+            with open(DOQ_READY, "w") as fh:
+                fh.write("1\n")
+        except Exception:
+            pass
+        loop.run_forever()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return True
+
+
 def make_listener(addr):
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -441,10 +529,11 @@ def accept_loop(srv, ctx, handler):
 if __name__ == "__main__":
     # A stale readiness marker from an earlier run must not fool the suite into
     # thinking HTTP/3 is up; drop it and only re-create it once we actually bind.
-    try:
-        os.unlink(H3_READY)
-    except OSError:
-        pass
+    for marker in (H3_READY, DOQ_READY):
+        try:
+            os.unlink(marker)
+        except OSError:
+            pass
 
     dot_ctx = tls_context()                          # DoT: no ALPN
     doh_ctx = tls_context(["h2", "http/1.1"])        # DoH: prefer HTTP/2
@@ -465,6 +554,11 @@ if __name__ == "__main__":
     # reason (import error) rather than a bare "not available".
     if not start_h3_listener():
         print("dotdoh_shim: HTTP/3 (DoH3) listener disabled, aioquic import failed: %s"
+              % AIOQUIC_IMPORT_ERROR, file=sys.stderr)
+
+    # DoQ needs aioquic too; same reporting so a skip is explainable.
+    if not start_doq_listener():
+        print("dotdoh_shim: DoQ listener disabled, aioquic import failed: %s"
               % AIOQUIC_IMPORT_ERROR, file=sys.stderr)
 
     threading.Thread(target=accept_loop, args=(dot_srv, dot_ctx, dot_handle), daemon=True).start()
