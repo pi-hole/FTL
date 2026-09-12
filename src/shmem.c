@@ -36,7 +36,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 17
+#define SHARED_MEMORY_VERSION 18
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -57,8 +57,8 @@
 	               #type " changed size - bump SHARED_MEMORY_VERSION")
 
 ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
-ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
-ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(domainsData,            48,     48,     44);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    668);
 ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
 ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
 // overTimeData is the one of these that ends in a time_t, whose alignment is 8
@@ -73,7 +73,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        568576, 560352, 560336);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        356,    356,    356);
+ASSERT_SHM_SIZE(countersStruct,        360,    360,    360);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
