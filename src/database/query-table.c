@@ -752,6 +752,20 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 	log_debug(DEBUG_DATABASE, "count_queries_on_disk(): Going to import %i queries from disk database",
 	          counted_queries);
 
+	// A failed query reports DB_FAILED, which is negative. counters->queries
+	// is unsigned and init_queries_shm_sz() sizes the queries object from it,
+	// so letting that through asks for an allocation of nearly the whole
+	// address space and takes the startup down
+	if(counted_queries < 0)
+	{
+		log_err("count_queries_on_disk(): Cannot count queries on disk");
+
+		// Zero rather than leave the sentinel in this static: the import
+		// compares its own progress against it further down
+		counted_queries = 0;
+		return false;
+	}
+
 	// Lock shared memory
 	lock_shm();
 	// Set query counter high enough so that the subsequent lock_shm() call
