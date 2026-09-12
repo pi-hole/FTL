@@ -159,6 +159,10 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Main return loop
 	int others_total = 0;
+	// Whether any client was actually folded into the "others" series. The
+	// label below has to follow this and not a separate count, or a client
+	// disappears into an unlabelled bucket
+	bool folded_others = false;
 
 	// The JSON_* macros cannot be used below while we hold the lock, as
 	// their early return would leave it taken for good. Everything that
@@ -206,9 +210,13 @@ int api_history_clients(struct ftl_conn *api)
 			// -1 because of the special "other" client we add below
 			// This is disabled when Nc is 0, which means we want to return
 			// all clients
-			if(arrayID >= Nc - 1)
+			// Fold only when there are more clients than fit. Folding
+			// on arrayID alone also swallowed the lowest-ranked client
+			// when every client fits, which is the normal case
+			if(num_clients > Nc && arrayID >= Nc - 1)
 			{
 				others += client->overTime[slot];
+				folded_others = true;
 				continue;
 			}
 
@@ -243,7 +251,8 @@ int api_history_clients(struct ftl_conn *api)
 		// - N is 0, which means we want to return all clients, or
 		// - when we are NOT in global-max mode as we need to return all
 		//   clients in that case
-		if(config.webserver.api.client_history_global_max.v.b && arrayID >= Nc - 1)
+		if(config.webserver.api.client_history_global_max.v.b &&
+		   num_clients > Nc && arrayID >= Nc - 1)
 			break;
 
 		// Get client name and IP address
@@ -273,9 +282,9 @@ int api_history_clients(struct ftl_conn *api)
 	// can occur if the strings SHM segment is remapped by another thread.
 	unlock_shm();
 
-	// Add "others" client only if there are more clients than we return
-	// and if we are not returning all clients
-	if(num_clients > Nc)
+	// Add the "others" client exactly when the loop above folded something
+	// into that series
+	if(folded_others)
 	{
 		item = JSON_NEW_OBJECT();
 		cJSON *name = cJSON_CreateStringReference("other clients");
