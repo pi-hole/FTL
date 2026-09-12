@@ -297,6 +297,8 @@ components:
                   type: string
                 doh:
                   type: boolean
+                dohReverseProxy:
+                  type: boolean
                 dot:
                   type: boolean
                 blocking:
@@ -462,6 +464,8 @@ components:
               type: object
               properties:
                 domain:
+                  type: string
+                proxySecret:
                   type: string
                 acl:
                   type: string
@@ -772,6 +776,7 @@ components:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             upstreamCA: ""
             doh: true
+            dohReverseProxy: false
             dot: true
             CNAMEdeepInspect: true
             EDNS0ECS: true
@@ -876,6 +881,7 @@ components:
               expire: 365
           webserver:
             domain: pi.hole
+            proxySecret: ''
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0

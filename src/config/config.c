@@ -612,6 +612,13 @@ void initConfig(struct config *conf)
 	conf->dns.doh.f = FLAG_RESTART_FTL;
 	conf->dns.doh.c = validate_stub;
 
+	conf->dns.dohReverseProxy.k = "dns.dohReverseProxy";
+	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole (nginx, Traefik, Caddy, HAProxy, ...). The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires webserver.proxySecret to be set and the proxy to send a PROXY protocol v2 header carrying that secret: only an authenticated proxy is believed, and the client address it announces is used to attribute the query. A plain HTTP request that is not authenticated this way is still refused, so enabling this alone never exposes DNS queries in cleartext.";
+	conf->dns.dohReverseProxy.t = CONF_BOOL;
+	conf->dns.dohReverseProxy.d.b = false;
+	conf->dns.dohReverseProxy.f = FLAG_RESTART_FTL;
+	conf->dns.dohReverseProxy.c = validate_stub;
+
 	conf->dns.dot.k = "dns.dot";
 	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
 	conf->dns.dot.t = CONF_BOOL;
@@ -1076,6 +1083,14 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.f = FLAG_RESTART_FTL;
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 	conf->webserver.domain.c = validate_domain;
+
+	conf->webserver.proxySecret.k = "webserver.proxySecret";
+	conf->webserver.proxySecret.h = "Shared secret authenticating a trusted reverse proxy in front of Pi-hole. When set, FTL accepts a PROXY protocol v2 header carrying this secret and takes the client address (and TLS status) it announces in place of the transport peer, so requests forwarded by the proxy are attributed to the real client instead of to the proxy. Only a proxy that knows the secret is believed, which is why an unauthenticated X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an internal per-boot secret for its own TLS terminator only.";
+	conf->webserver.proxySecret.a = cJSON_CreateStringReference("A shared secret of 32 hexadecimal characters, or an empty string");
+	conf->webserver.proxySecret.t = CONF_STRING;
+	conf->webserver.proxySecret.f = FLAG_RESTART_FTL | FLAG_WRITE_ONLY;
+	conf->webserver.proxySecret.d.s = (char*)"";
+	conf->webserver.proxySecret.c = validate_stub;
 
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
