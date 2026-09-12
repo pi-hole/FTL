@@ -57,8 +57,8 @@
 	               #type " changed size - bump SHARED_MEMORY_VERSION")
 
 ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
-ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
-ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(domainsData,            48,     48,     44);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    668);
 ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
 ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
 // overTimeData is the one of these that ends in a time_t, whose alignment is 8
