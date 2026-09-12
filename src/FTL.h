@@ -123,6 +123,11 @@
 // Default: 300 (five minutes)
 #define API_SESSION_EXPIRE 300u
 
+// Upper bound for webserver.api.prometheus.topN. Shared by the config validator
+// and the Prometheus endpoint (which clamps to it defensively) to keep the
+// per-domain/per-client label cardinality bounded.
+#define PROMETHEUS_TOPN_MAX 1000u
+
 // DELAY_STARTUP should only delay the startup of the resolver during a starting up system
 // This setting control how long after boot we consider a system to be in starting-up mode
 // Default: 180 [seconds]

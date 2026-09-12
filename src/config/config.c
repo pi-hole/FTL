@@ -1328,6 +1328,32 @@ void initConfig(struct config *conf)
 	conf->webserver.api.temp.unit.d.temp_unit = TEMP_UNIT_C;
 	conf->webserver.api.temp.unit.c = validate_stub; // Only type-based checking
 
+	// sub-struct webserver.api.prometheus
+	conf->webserver.api.prometheus.token.k = "webserver.api.prometheus.token";
+	conf->webserver.api.prometheus.token.h = "SHA-256 hash of the token required to scrape the Prometheus/OpenMetrics endpoint at /api/metrics.\n\n This endpoint is disabled and returns HTTP 404 while this value is empty (the default). Generate a token through the API (POST /api/auth/prometheus): FTL creates a random token, stores its hash here automatically (invalidating any previous token) and returns the raw token exactly once. The scraper must then send that raw token in an \"Authorization: Bearer <token>\" header. To disable the endpoint again, set this value back to an empty string. The token is intentionally separate from the login/session password so a long-running scraper does not consume login sessions, and it stays required even on installs without a UI password.\n\n This setting is write-only, the hash itself cannot be read back, but the CLI and the API will show \"" PASSWORD_VALUE "\" to indicate that a token is configured.";
+	conf->webserver.api.prometheus.token.a = cJSON_CreateStringReference("A 64-character lowercase SHA-256 hex digest, or an empty string to disable the endpoint");
+	conf->webserver.api.prometheus.token.t = CONF_STRING;
+	conf->webserver.api.prometheus.token.d.s = (char*)"";
+	// Masked on API/CLI reads like the TOTP secret. The hash is not a
+	// credential (scrapers authenticate with its preimage) but there is no
+	// reason to hand it out. It stays in pihole.toml, so teleporter backups
+	// keep working.
+	conf->webserver.api.prometheus.token.f = FLAG_WRITE_ONLY;
+	conf->webserver.api.prometheus.token.c = validate_prometheus_token_hash;
+
+	conf->webserver.api.prometheus.perEntityMetrics.k = "webserver.api.prometheus.perEntityMetrics";
+	conf->webserver.api.prometheus.perEntityMetrics.h = "Should the Prometheus endpoint expose per-domain and per-client time series (top domains/clients as labelled metrics)?\n\n These series reveal browsing behaviour and the list of active clients, so they are disabled by default and only aggregate metrics are exported. When enabled, the misc.privacylevel setting and the webserver.api.excludeDomains/excludeClients filters are still honoured, and the number of series is capped by webserver.api.prometheus.topN.";
+	conf->webserver.api.prometheus.perEntityMetrics.t = CONF_BOOL;
+	conf->webserver.api.prometheus.perEntityMetrics.d.b = false;
+	conf->webserver.api.prometheus.perEntityMetrics.c = validate_stub; // Only type-based checking
+
+	conf->webserver.api.prometheus.topN.k = "webserver.api.prometheus.topN";
+	conf->webserver.api.prometheus.topN.h = "When webserver.api.prometheus.perEntityMetrics is enabled, up to how many top domains and top clients should be exported? This bounds the number of time series (and hence the label cardinality) the endpoint produces. Setting this to 0 disables the per-entity series entirely.";
+	conf->webserver.api.prometheus.topN.a = cJSON_CreateStringReference("A non-negative integer (0 - 1000)");
+	conf->webserver.api.prometheus.topN.t = CONF_UINT;
+	conf->webserver.api.prometheus.topN.d.ui = 100;
+	conf->webserver.api.prometheus.topN.c = validate_prometheus_topn;
+
 	// struct files
 	// Note: files.pid is hardcoded as FTL_PID_FILE — see GHSA-6w8x-p785-6pm4
 	conf->files.database.k = "files.database";
