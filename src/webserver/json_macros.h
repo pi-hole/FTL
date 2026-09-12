@@ -204,24 +204,6 @@
 	return 200; \
 })
 
-#define JSON_SEND_OBJECT_UNLOCK(object)({ \
-	cJSON_AddNumberToObject(object, "took", double_time() - api->now);\
-	char *json_string = json_formatter(object); \
-	if(json_string == NULL) \
-	{ \
-		cJSON_Delete(object); \
-		send_http_internal_error(api); \
-		log_err("JSON_SEND_OBJECT FAILED!"); \
-		unlock_shm(); \
-		return 500; \
-	} \
-	send_http(api, "application/json; charset=utf-8", json_string); \
-	cJSON_free(json_string); \
-	cJSON_Delete(object); \
-	unlock_shm(); \
-	return 200; \
-})
-
 #define JSON_SEND_OBJECT_CODE(object, code)({ \
 	if((code) < 200 || (code) == 204 || (code) == 304) \
 	{ \

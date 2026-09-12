@@ -792,8 +792,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason
+	// Unset the blocking reason and the CNAME target that went with it, so
+	// neither travels into the next query
 	blockingreason = "<not set>";
+	cname_target = NULL;
 
 	return p - (unsigned char *)header;
 }
@@ -1085,10 +1087,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
 	if(config.dns.analyzeOnlyAandAAAA.v.b && querytype != TYPE_A && querytype != TYPE_AAAA)
 	{
-		// Don't process this query further here, we already counted it
+		// Don't process this query further here
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "Skipping new query (%i)", id);
 
+		// Undo the findClientID() increment, as for the rate-limited
+		// branch above: no query record is created here
+		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
 		return false;
 	}
@@ -1129,6 +1134,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
+	query->flags.upstream_counted = false;
 	query->response = querytimestamp;
 	query->flags.response_calculated = false;
 	// Initialize reply type
@@ -1232,6 +1238,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
 		// Release the SHM lock so this potentially slow I/O doesn't
 		// block all other threads (API, database, GC, TCP workers).
+		// Remember where the query array starts: the logical query index
+		// we are holding is relative to queries_offset, which the GC
+		// advances when it drops queries off the front
+		const unsigned int queries_offset_before = counters->queries_offset;
 		unlock_shm();
 
 		unsigned char hwaddr[16] = {0};
@@ -1253,8 +1263,21 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			client->hwlen = hwlen;
 		}
 
-		// Re-fetch all SHM pointers as SHM may have been remapped
-		query = getQuery(queryID, true);
+		// Re-fetch all SHM pointers as SHM may have been remapped.
+		// If queries_offset moved while we were unlocked then every
+		// logical query index shifted with it, and ours now resolves to
+		// a different query that is very much alive - magic byte and
+		// all - so re-fetching it would quietly update someone else's.
+		// There is no way to rebase it from here, so drop it instead.
+		// Domains and clients are not offset-indexed and are fine
+		if(counters->queries_offset != queries_offset_before)
+		{
+			log_debug(DEBUG_GC, "Query indices moved while resolving the MAC address, "
+			          "dropping query %d", queryID);
+			query = NULL;
+		}
+		else
+			query = getQuery(queryID, true);
 		domain = getDomain(domainID, true);
 		dns_cache_entry = query != NULL && query->cacheID > -1
 		                ? getDNSCache(query->cacheID, true) : NULL;
@@ -1380,18 +1403,12 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 		return;
 	}
 
-	// Cache: if the resolved interface is the same as last time, skip the
-	// expensive second loop (which iterates all interfaces to collect IPv4
-	// and IPv6 addresses).  The pointer is stable within dnsmasq's
-	// daemon->interfaces list and is invalidated on SIGHUP/restart.
-	static struct irec *cached_recviface = NULL;
-	if(recviface == cached_recviface)
-	{
-		log_debug(DEBUG_NETWORKING, "Interface unchanged, using cached result");
-		return;
-	}
-
-	// Interface changed — invalidate and recompute
+	// Recomputed on every call. dnsmasq keeps one irec per address, so the
+	// irec pointer says nothing about whether the addresses behind it have
+	// changed, and establishing that they have not costs at least as much as
+	// collecting them again: the loop below stops as soon as it has an IPv4
+	// and a ULA IPv6 address, while any check covering every address cannot
+	// stop early. What it would save is debug-gated anyway
 	memset(&next_iface.addr4, 0, sizeof(next_iface.addr4));
 	memset(&next_iface.addr6, 0, sizeof(next_iface.addr6));
 	next_iface.haveIPv4 = next_iface.haveIPv6 = false;
@@ -1495,7 +1512,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	}
 
 	// Update cache so subsequent queries on the same interface skip the loops
-	cached_recviface = recviface;
 }
 
 static void check_pihole_PTR(char *domain)
@@ -1790,7 +1806,7 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// _dns.resolver.arpa.     86400   IN      SVCB    2 dns.google. alpn="h2,h3" key7="/dns-query{?dns}"
 	//
 	// RFC 9462, Section 4 says:
-	// 
+	//
 	// If the recursive resolver that receives this query has no Designated
 	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
 	// zone, to provide a consistent and accurate signal to clients that it
@@ -1798,7 +1814,13 @@ static bool special_domain(const queriesData *query, const char *domain)
 	if(config.dns.specialDomains.designatedResolver.v.b)
 	{
 		const size_t len = strlen(domain);
-		if(len > 13 && strcmp(&domain[len - 13], "resolver.arpa") == 0)
+		const size_t zonelen = sizeof("resolver.arpa") - 1;
+		// >= rather than >, so the zone apex resolver.arpa itself is
+		// answered instead of being forwarded, and a label boundary,
+		// so notresolver.arpa is not mistaken for part of the zone
+		if(len >= zonelen &&
+		   strcmp(&domain[len - zonelen], "resolver.arpa") == 0 &&
+		   (len == zonelen || domain[len - zonelen - 1] == '.'))
 		{
 			blockingreason = "Designated Resolver domain";
 			force_next_DNS_reply = REPLY_NODATA;
@@ -1930,6 +1952,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			if(!query->flags.allowed)
 			{
 				force_next_DNS_reply = dns_cache->force_reply;
+				// The CNAME target lives in the cache entry too, and
+				// REPLY_CNAME above is worth nothing without it
+				cname_target = (dns_cache->cname_strpos > 0) ? getstr(dns_cache->cname_strpos) : NULL;
 				last_regex_idx = dns_cache->list_id;
 				query_blocked(query, domain, client, blocking_status);
 				if(blocking_status == QUERY_REGEX_CNAME)
@@ -2040,7 +2065,7 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	}
 
 	// when we reach this point: the query is not in FTL's cache (for this client)
-	
+
 	// Check exact whitelist for match
 	const char *blockedDomain = domainstr;
 	PERF_START(_pcb_allow);
@@ -2075,37 +2100,6 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	PERF_START(_pcb_deny);
 	TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr, client, query, dns_cache, &new_status, &db_okay));
 	PERF_END(_pcb_deny, PERF_STAT_CB_DENYLIST);
-
-	// Check blacklist (exact + regex) and gravity for _esni.domain if enabled
-	// (defaulting to true). Timed into the same slot as the primary call above
-	// so the rollup reflects total denylist/gravity work per query, regardless
-	// of whether the _esni fallback ran.
-	if(config.dns.blockESNI.v.b &&
-	   !query->flags.allowed && !blockDomain &&
-	   domainstr[0] == '_' &&
-	   strncmp(domainstr, "_esni.", 6u) == 0 && domainstr[6] != '\0')
-	{
-		PERF_START(_pcb_deny_esni);
-		TIMED_DB_OP_RESULT(blockDomain, check_domain_blocked(domainstr + 6u, client, query, dns_cache, &new_status, &db_okay));
-		PERF_END(_pcb_deny_esni, PERF_STAT_CB_DENYLIST);
-
-		// Update DNS cache status
-		cacheStatus = dns_cache->blocking_status;
-
-		if(blockDomain)
-		{
-			// Truncate "_esni." from queried domain if the parenting domain was
-			// the reason for blocking this query
-			blockedDomain = domainstr + 6u;
-			// Force next DNS reply to be NXDOMAIN for _esni.* queries
-			force_next_DNS_reply = REPLY_NXDOMAIN;
-
-			// Store this in the DNS cache only if the database is available at
-			// this point
-			if(db_okay)
-				dns_cache->force_reply = REPLY_NXDOMAIN;
-		}
-	}
 
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
@@ -2309,11 +2303,24 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		if(child_domain_data != NULL)
 			child_domain_data->cname_refcount++;
 
-		// Store CNAME domain ID in DNS cache
+		// Store CNAME domain ID in DNS cache. A cache entry holds at most
+		// one reference and gives it back once, when runGC() recycles it,
+		// so taking one unconditionally here leaks: this path runs again
+		// for an entry whose blocking status a gravity reload has reset,
+		// and the entry is then counted twice against the same domain.
+		// Take a reference only when the entry is not already holding one
+		// for this domain, and hand back the old one when it moves
 		const int parent_cacheID = query->cacheID > -1 ? query->cacheID : findCacheID(parent_domainID, clientID, query->type, false);
 		DNSCacheData *parent_cache = parent_cacheID < 0 ? NULL : getDNSCache(parent_cacheID, true);
-		if(parent_cache != NULL)
+		if(parent_cache != NULL && parent_cache->CNAME_domainID != (unsigned int)child_domainID)
 		{
+			if(parent_cache->CNAME_domainID != (unsigned int)-1)
+			{
+				domainsData *old_cname = getDomain(parent_cache->CNAME_domainID, true);
+				if(old_cname != NULL)
+					old_cname->cname_refcount--;
+			}
+
 			parent_cache->CNAME_domainID = child_domainID;
 			if(child_domain_data != NULL)
 				child_domain_data->cname_refcount++;
@@ -2440,6 +2447,7 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	if(upstream != NULL)
 	{
 		upstream->count++;
+		query->flags.upstream_counted = true;
 		upstream->lastQuery = now;
 	}
 
@@ -2519,9 +2527,9 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Print current set of capabilities if requested via debug flag
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// which may have changed since the last check
+	check_capabilities();
 
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)
@@ -2602,6 +2610,25 @@ static void update_upstream(queriesData *query, const int id)
 				log_debug(DEBUG_QUERIES, "Query ID %d: Associated upstream changed (was %s#%d) as %s#%d replied earlier",
 				          id, oldaddr, oldport, ip, port);
 			}
+		}
+
+		// Move the count along with the attribution. FTL_forwarded()
+		// counted this query against the upstream it first picked and
+		// returns early for every further server of the same forward
+		// round, so the server that actually answered was never counted
+		// and whoever decrements later - query_blocked() or the GC -
+		// would take it off the wrong one
+		if(query->flags.upstream_counted)
+		{
+			upstreamsData *old_upstream = getUpstream(query->upstreamID, true);
+			if(old_upstream != NULL)
+				old_upstream->count--;
+
+			upstreamsData *new_upstream = upstreamID > -1 ? getUpstream(upstreamID, true) : NULL;
+			if(new_upstream != NULL)
+				new_upstream->count++;
+			else
+				query->flags.upstream_counted = false;
 		}
 
 		// Update upstream server ID
@@ -3020,12 +3047,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// Check for IP block 146.112.61.104 - 146.112.61.110
 	if((flags & F_IPV4) && ipv4Addr >= 0x92703d68 && ipv4Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv4)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv4)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3039,12 +3066,12 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0xffff0000 &&
 	        ipv6Addr >= 0x92703d68 && ipv6Addr <= 0x92703d6e)
 	{
+		blockingreason = "blocked upstream with known address (IPv6)";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 		if(config.debug.queries.v.b)
 		{
 			char answer[ADDRSTRLEN]; answer[0] = '\0';
 			inet_ntop(AF_INET6, addr, answer, ADDRSTRLEN);
-			blockingreason = "blocked upstream with known address (IPv6)";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_IP;
 			log_debug(DEBUG_QUERIES, "%s -> \"%s\"", blockingreason, answer);
 		}
 
@@ -3057,12 +3084,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	// nothing is reachable under these addresses
 	else if(flags & F_IPV4 && ipv4Addr == 0)
 	{
+		blockingreason = "blocked upstream with 0.0.0.0";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with 0.0.0.0";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3073,12 +3098,10 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 	        addr->addr6.s6_addr32[2] == 0 &&
 	        addr->addr6.s6_addr32[3] == 0)
 	{
+		blockingreason = "blocked upstream with ::";
+		cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 		if(config.debug.queries.v.b)
-		{
-			blockingreason = "blocked upstream with ::";
-			cacheStatus = QUERY_EXTERNAL_BLOCKED_NULL;
 			log_debug(DEBUG_QUERIES, "%s", blockingreason);
-		}
 
 		// Update status
 		return QUERY_EXTERNAL_BLOCKED_NULL;
@@ -3090,13 +3113,18 @@ static enum query_status detect_blocked_IP(const unsigned short flags, const uni
 
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status)
 {
-	// Adjust counters if we recorded a non-blocking status
-	if(query->status == QUERY_FORWARDED && query->upstreamID > -1)
+	// Adjust counters if we recorded a non-blocking status. Clear the flag
+	// with it: the query keeps pointing at the upstream for the reply and
+	// for the database, but the count has been handed back and the GC must
+	// not hand it back a second time when the query expires
+	if(query->status == QUERY_FORWARDED && query->flags.upstream_counted)
 	{
 		// Get forward pointer
 		upstreamsData *upstream = getUpstream(query->upstreamID, true);
 		if(upstream != NULL)
 			upstream->count--;
+
+		query->flags.upstream_counted = false;
 	}
 	else if(is_blocked(query->status))
 	{
@@ -3764,6 +3792,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL log file
 			chown_pihole(config.files.log.ftl.v.s, ent_pw);
 
+			// Configured webserver log file
+			if(config.files.log.webserver.v.s != NULL)
+				chown_pihole(config.files.log.webserver.v.s, ent_pw);
+
+			// Configured dnsmasq log file (pihole.log)
+			if(config.files.log.dnsmasq.v.s != NULL)
+				chown_pihole(config.files.log.dnsmasq.v.s, ent_pw);
+
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
@@ -3955,6 +3991,20 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 volatile atomic_flag worker_already_terminating = ATOMIC_FLAG_INIT;
 void FTL_TCP_worker_terminating(bool finished)
 {
+	if(!finished)
+	{
+		// Both callers passing false are inside dnsmasq's sig_handler()
+		// (dnsmasq.c, the SIGALRM arms), and both _exit(0) right after.
+		// Nothing below this point may run there: log_debug() allocates,
+		// lock_shm() takes a process-shared mutex the interrupted code
+		// may be holding mid-update, and gravityDB_close() finalizes
+		// statements that code may still be stepping. None of it is
+		// async-signal-safe, and none of it is needed - the worker's
+		// connections go with the process, and the SHM mutex is robust,
+		// so the parent recovers it through EOWNERDEAD
+		return;
+	}
+
 	if(get_dnsmasq_debug())
 	{
 		// Nothing to be done here, forking does not happen in debug mode
@@ -4261,16 +4311,28 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
 	// Lock SHM
 	lock_shm();
 
-	// Add to FIFO buffer
-	add_to_fifo_buffer(FIFO_DNSMASQ, payload, NULL, length);
+	// Add to FIFO buffer. dnsmasq has no FTL debug flags, so its LOG_DEBUG is
+	// a plain "DEBUG" rather than the DEBUG_ANY catch-all priostr() maps to
+	const char *prio = priority == LOG_DEBUG ? "DEBUG" : priostr(priority, DEBUG_NONE);
+	add_to_fifo_buffer(FIFO_DNSMASQ, payload, prio, length);
 
 	// Unlock SHM
 	unlock_shm();
+
+	// Write to pihole.log via shared writer (FTL owns this file now).
+	// If pihole.log is unavailable, fall back to syslog for warnings and
+	// errors so they are not silently lost for the lifetime of the process.
+	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
+		syslog(priority, "%s", payload);
+
+	/* Pi-hole diagnosis system */
+	if(priority == LOG_WARNING)
+		dnsmasq_diagnosis_warning(payload);
 }
 
 static const char *check_dnsmasq_name(const char *name)

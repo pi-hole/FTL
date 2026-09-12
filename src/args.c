@@ -432,18 +432,26 @@ void parse_args(int argc, char *argv[])
 				                "         The value shown below may not reflect the current configuration.\n",
 				        GLOBALTOMLPATH);
 		}
-		if(argc == 2)
+		if(argc > 2 && strcmp(argv[2], "-t") == 0)
+		{
+			if(argc == 5)
+				exit(set_config_from_CLI(argv[3], argv[4], true));
+		}
+		else if(argc == 2)
 			exit(get_config_from_CLI(NULL, false));
 		else if(argc == 3)
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
 			exit(get_config_from_CLI(argv[3], true));
 		else if(argc == 4)
-			exit(set_config_from_CLI(argv[2], argv[3]));
-		else
+			exit(set_config_from_CLI(argv[2], argv[3], false));
+
+		// Anything else, including `--config -t key` with the value
+		// forgotten, falls through to the usage text
 		{
 			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
-			printf("Example: %s --config dns.blockESNI true\n", argv[0]);
+			printf("       %s --config -t <config item key> <value>\n", argv[0]);
+			printf("Example: %s --config dns.CNAMEdeepInspect true\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -518,9 +526,9 @@ void parse_args(int argc, char *argv[])
 		if(argc < 3 || argc > 5)
 		{
 			printf("Usage: %s --gen-x509 <output file> [<domain>] [rsa]\n", argv[0]);
-			printf("Example:          %s --gen-x509 /etc/pihole/tls.pem\n", argv[0]);
-			printf(" with domain:     %s --gen-x509 /etc/pihole/tls.pem pi.hole\n", argv[0]);
-			printf(" RSA with domain: %s --gen-x509 /etc/pihole/tls.pem nanopi.lan rsa\n", argv[0]);
+			printf("Example:          %s --gen-x509 %s/tls.pem\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" with domain:     %s --gen-x509 %s/tls.pem pi.hole\n", argv[0], PIHOLE_INSTALL_DIR);
+			printf(" RSA with domain: %s --gen-x509 %s/tls.pem nanopi.lan rsa\n", argv[0], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 		// Read config
@@ -549,8 +557,8 @@ void parse_args(int argc, char *argv[])
 		if(argc > 4)
 		{
 			printf("Usage: %s %s [<input file>] [<domain>]\n", argv[0], argv[1]);
-			printf("Example: %s %s /etc/pihole/tls.pem\n", argv[0], argv[1]);
-			printf(" with domain: %s %s /etc/pihole/tls.pem pi.hole\n", argv[0], argv[1]);
+			printf("Example: %s %s %s/tls.pem\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
+			printf(" with domain: %s %s %s/tls.pem pi.hole\n", argv[0], argv[1], PIHOLE_INSTALL_DIR);
 			exit(EXIT_FAILURE);
 		}
 
@@ -737,10 +745,15 @@ void parse_args(int argc, char *argv[])
 		const bool tcp = argc == 4 && strcasecmp(argv[3], "tcp") == 0;
 
 		// Create a socket
-		struct sockaddr_in dest;
-		const int sock = create_socket(tcp, &dest);
+		const int sock = create_socket(tcp);
+		if(sock < 0)
+		{
+			// create_socket() has already logged the reason
+			exit(EXIT_FAILURE);
+		}
+
 		char hostn[MAXDOMAINLEN] = { 0 };
-		if(!resolveHostname(sock, tcp, &dest, hostn, argv[2], true, NULL))
+		if(!resolveHostname(sock, tcp, hostn, argv[2], true, NULL))
 		{
 			// Close the socket
 			close(sock);
@@ -1342,7 +1355,11 @@ void parse_args(int argc, char *argv[])
 			printf("\t%s--config %skey%s        Get current value of config item %skey%s\n", green, blue, normal, blue, normal);
 			printf("\t                    Config items with non-default values may\n");
 			printf("\t                    be colored in %sred%s\n", red, normal);
-			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config -t %skey %svalue%s\n", green, blue, cyan, normal);
+			printf("\t                    Check whether %svalue%s would be accepted for\n", cyan, normal);
+			printf("\t                    %skey%s, without applying it or writing the\n", blue, normal);
+			printf("\t                    config file\n\n");
 
 			printf("%sEmbedded GZIP un-/compressor:%s\n", yellow, normal);
 			printf("    A simple but fast in-memory gzip compressor\n\n");
@@ -1532,7 +1549,7 @@ void suggest_complete(const int argc, char *argv[])
 		    "luac", "ntp", "no-daemon", "--perf", "ptr", "--read-x509",
 		    "--read-x509-key", "regex-test", "sha256sum", "sqlite3",
 		    "sqlite3_rsync", "tag", "--teleporter", "test", "--totp",
-		    "--tls-ciphers", "-v", "-vv", "--v", "version", "verify",
+		    "--tls-ciphers", "-v", "-vv", "--version", "version", "verify",
 		};
 
 		// Provide matching suggestions

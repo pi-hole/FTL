@@ -228,7 +228,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 {
 	if(conf_item == NULL || elem == NULL)
 	{
-		log_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
+		log_web_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
 		          conf_item, elem);
 		return "invalid arguments";
 	}
@@ -241,7 +241,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type bool";
 			// Set item
 			conf_item->v.b = elem->valueint;
-			log_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_web_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_ALL_DEBUG_BOOL:
@@ -252,7 +252,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.b = elem->valueint;
 			set_all_debug(newconf, elem->valueint);
-			log_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
+			log_web_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
 			break;
 		}
 		case CONF_INT:
@@ -264,7 +264,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type integer";
 			// Set item
 			conf_item->v.i = elem->valueint;
-			log_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
+			log_web_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_UINT:
@@ -276,7 +276,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer";
 			// Set item
 			conf_item->v.ui = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
+			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
 			break;
 		}
 		case CONF_UINT16:
@@ -288,7 +288,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type unsigned integer (16bit)";
 			// Set item
 			conf_item->v.u16 = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
+			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
 			break;
 		}
 		case CONF_LONG:
@@ -300,7 +300,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not of type long";
 			// Set item
 			conf_item->v.l = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
+			log_web_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
 			break;
 		}
 		case CONF_DOUBLE:
@@ -310,7 +310,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a number";
 			// Set item
 			conf_item->v.d = elem->valuedouble;
-			log_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
+			log_web_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
 			break;
 		}
 		case CONF_STRING:
@@ -325,7 +325,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
 			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
 			break;
 		}
 		case CONF_PASSWORD:
@@ -336,7 +336,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			if(strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 			{
 				// Check if password is unchanged (default value set by PASSWORD_VALUE)
-				log_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
+				log_web_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
 				break;
 			}
 
@@ -355,7 +355,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.ptr_type = ptr_type;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
 			break;
 		}
 		case CONF_ENUM_BUSY_TYPE:
@@ -368,7 +368,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.busy_reply = busy_reply;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_MODE:
@@ -381,7 +381,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
@@ -394,7 +394,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.refresh_hostnames = refresh_hostnames;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
 			break;
 		}
 		case CONF_ENUM_LISTENING_MODE:
@@ -407,7 +407,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.listeningMode = listeningMode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
 			break;
 		}
 		case CONF_ENUM_WEB_THEME:
@@ -420,7 +420,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.web_theme = web_theme;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
 			break;
 		}
 		case CONF_ENUM_TEMP_UNIT:
@@ -433,7 +433,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.temp_unit = temp_unit;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
 			break;
 		}
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
@@ -446,7 +446,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "invalid option";
 			// Set item
 			conf_item->v.edns_mode = edns_mode;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
 			break;
 		}
 		case CONF_ENUM_PRIVACY_LEVEL:
@@ -464,7 +464,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not within valid range";
 			// Set item
 			conf_item->v.i = value;
-			log_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
 			break;
 		}
 		case CONF_STRUCT_IN_ADDR:
@@ -484,7 +484,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			}
 			else
 				return "not a valid IPv4 address";
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_STRUCT_IN6_ADDR:
@@ -501,7 +501,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 				return "not a valid IPv6 address";
 			// Set item
 			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
+			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
 			break;
 		}
 		case CONF_JSON_STRING_ARRAY:
@@ -513,7 +513,7 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			{
 				if(!cJSON_IsString(item))
 					return "array has invalid elements";
-				log_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
+				log_web_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
 			}
 			// If we reach this point, all elements are valid. Free the
 			// previous array (duplicated by duplicate_config into newconf)
@@ -609,7 +609,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				cJSON *val = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(val == NULL)
 				{
-					log_warn("Cannot format config item type %s of type %i",
+					log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 						conf_item->k, conf_item->t);
 					continue;
 				}
@@ -620,7 +620,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			cJSON *dval = addJSONConfValue(conf_item->t, &conf_item->d);
 			if(dval == NULL)
 			{
-				log_warn("Cannot format config item type %s of type %i",
+				log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 					conf_item->k, conf_item->t);
 				continue;
 			}
@@ -649,7 +649,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 				cJSON *leaf = addJSONConfValue(conf_item->t, &conf_item->v);
 				if(leaf == NULL)
 				{
-					log_warn("Cannot format config item type %s of type %i",
+					log_web(LOG_WARNING, "Cannot format config item type %s of type %i",
 						conf_item->k, conf_item->t);
 					continue;
 				}
@@ -777,6 +777,8 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Read all known config items
 	bool config_changed = false;
+	bool privacy_level_decreased = false;
+	bool invalidate_sessions = false;
 	bool dnsmasq_changed = false;
 	bool rewrite_hosts = false;
 	struct config newconf;
@@ -797,7 +799,7 @@ static int api_config_patch(struct ftl_conn *api)
 		// Check if this element is present - it doesn't have to be!
 		if(elem == NULL)
 		{
-			log_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
+			log_web_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
 			continue;
 		}
 
@@ -815,7 +817,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
 		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
 		{
-			log_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
+			log_web_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
 			continue;
 		}
 
@@ -861,10 +863,10 @@ static int api_config_patch(struct ftl_conn *api)
 		if((conf_item->t != CONF_PASSWORD && compare_config_item(conf_item->t, &new_item->v, &conf_item->v)) ||
 		   (conf_item->t == CONF_PASSWORD && strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
 		{
-			log_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
+			log_web_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
 			continue;
 		}
-		log_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
+		log_web_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
 
 		// Memorize that at least one config item actually changed
 		config_changed = true;
@@ -893,15 +895,16 @@ static int api_config_patch(struct ftl_conn *api)
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
-		{
-			api->ftl.restart_reason = "Privacy level decreased";
-			api->ftl.restart = true;
-		}
+			privacy_level_decreased = true;
 
 		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions
+		// invalidate all currently active sessions. Only note it here:
+		// a later item in this same request can still be rejected, and
+		// so can the dnsmasq test below, and this candidate config is
+		// then thrown away - logging everyone out for a change that
+		// never happened
 		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			delete_all_sessions();
+			invalidate_sessions = true;
 	}
 
 	// Process new config only when at least one value changed
@@ -911,7 +914,7 @@ static int api_config_patch(struct ftl_conn *api)
 		if(dnsmasq_changed)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(write_dnsmasq_config(&newconf, true, errbuf))
+			if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 			{
 				api->ftl.restart_reason = "dnsmasq config changed";
 				api->ftl.restart = restart;
@@ -929,6 +932,21 @@ static int api_config_patch(struct ftl_conn *api)
 		// Install new configuration
 		replace_config(&newconf);
 
+		// The candidate is the live config now, so the side effects noted
+		// while walking the items can be applied. Doing either earlier
+		// meant a request rejected further down - by a later item, or by
+		// the dnsmasq test above - still logged every session out, or
+		// still left api->ftl.restart set for api.c to act on although
+		// free_config() had thrown the candidate away
+		if(privacy_level_decreased)
+		{
+			api->ftl.restart_reason = "Privacy level decreased";
+			api->ftl.restart = true;
+		}
+
+		if(invalidate_sessions)
+			delete_all_sessions();
+
 		// Reload debug levels
 		set_debug_flags(&config);
 
@@ -943,7 +961,7 @@ static int api_config_patch(struct ftl_conn *api)
 	{
 		// Nothing changed, merely release copied config memory
 		free_config(&newconf, false);
-		log_info("No config changes detected");
+		log_web(LOG_INFO, "No config changes detected");
 	}
 
 	// Return full config after possible changes above
@@ -956,10 +974,27 @@ static int api_config_patch(struct ftl_conn *api)
 //	for (char *current_pos = strchr(str, find); (current_pos = strchr(str+1, find)) != NULL; *current_pos = replace);
 //}
 
+// Upper bound for a value rebuilt out of the request path. No config string
+// array holds anything remotely this long, and a request that exceeds it is
+// answered rather than silently truncated
+#define MAX_CONFIG_VALUE_LEN 1024
+
 static int api_config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
+
+	// Return early if the config is in read-only mode, as api_config_patch()
+	// already does. Without this, PUT and DELETE changed the live config,
+	// 01-pihole.conf and the HOSTS file and restarted FTL, while
+	// writeFTLtoml() deliberately wrote none of it to disk
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+	}
 
 	// Users may specify ?restart=false to avoid a restart of dnsmasq
 	// even if the changed config item would require it
@@ -989,7 +1024,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
-	char *new_item_str = requested_path[min_level - 1];
+	// Filled in from the requested path once the matching item is known.
+	// The buffer lives out here rather than in the loop below: the pointer
+	// would otherwise outlive the block it points into if this is ever read
+	// after the loop, which is what the value it replaced allowed
+	char value_buf[MAX_CONFIG_VALUE_LEN] = { 0 };
+	const char *new_item_str = NULL;
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
@@ -1014,12 +1054,38 @@ static int api_config_put_delete(struct ftl_conn *api)
 		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
 		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 		//  etc.
-		if(!check_paths_equal(new_item->p, requested_path, max(min_level - 2, level - 1)))
+		// Compare exactly this item's own path depth. For a value with no
+		// slash in it this is what max(min_level - 2, level - 1) already
+		// worked out to
+		if(!check_paths_equal(new_item->p, requested_path, level - 1))
 			continue;
 
-		// Check if this is a property where we want to add an item
-		if(min_level != level + 1)
+		// The requested path has to reach at least one component past
+		// this item, and everything past it is the value. Taking only
+		// the last component would drop every value containing a slash,
+		// which a string array is free to hold - civetweb has already
+		// decoded %2F by the time we see the path
+		if(min_level < level + 1)
 			continue;
+
+		size_t value_len = 0;
+		value_buf[0] = '\0';
+		for(unsigned int c = level; c < min_level; c++)
+		{
+			const int n = snprintf(value_buf + value_len, sizeof(value_buf) - value_len,
+			                       "%s%s", c > level ? "/" : "", requested_path[c]);
+			if(n < 0 || (size_t)n >= sizeof(value_buf) - value_len)
+			{
+				free_config(&newconf, false);
+				free_config_path(requested_path);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Item too long",
+				                       NULL);
+			}
+			value_len += n;
+		}
+		new_item_str = value_buf;
 
 		// Error when this config item is read-only due to an
 		// environment variable forcing its value
@@ -1133,7 +1199,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	{
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
-		if(write_dnsmasq_config(&newconf, true, errbuf))
+		if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 		{
 			api->ftl.restart_reason = "dnsmasq config changed";
 			// Only restart if the user didn't request otherwise
@@ -1142,6 +1208,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		else
 		{
 			// The new config did not work
+			free_config(&newconf, false);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid configuration",

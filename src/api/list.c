@@ -31,9 +31,9 @@ static int api_list_read(struct ftl_conn *api,
 {
 	const char *sql_msg = NULL;
 	sqlite3_stmt *stmt = NULL;
-	if(!gravityDB_readTable(listtype, item, &sql_msg, true, NULL, &stmt))
+	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
 	{
-		return send_json_error(api, 400, // 400 Bad Request
+		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
@@ -98,6 +98,9 @@ static int api_list_read(struct ftl_conn *api,
 				const int ret = parse_groupIDs(api, &table, row);
 				if(ret != 0)
 				{
+					// row is not in rows yet, it is only
+					// appended at the end of the loop body
+					JSON_DELETE(row);
 					JSON_DELETE(rows);
 					gravityDB_readTableFinalize(stmt);
 					return ret;
@@ -616,7 +619,7 @@ static int api_list_write(struct ftl_conn *api,
 	{
 		// This may happen for *extremely* long URLs but is not issue in
 		// itself. Merely add a warning to the log file
-		log_warn("Could not add Location header to response: URL too long");
+		log_web(LOG_WARNING, "Could not add Location header to response: URL too long");
 
 		// Truncate location by replacing the last characters with "...\0"
 		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-4] = '.';

@@ -673,6 +673,19 @@ setup() {
   rm -f "${DB}"
 }
 
+@test "Internal PTR resolver reports a refused connection, not a timeout" {
+  # Nothing listens on port 5399, so the kernel answers the query with an
+  # ICMP port-unreachable. The resolver socket is connected, so that is
+  # delivered as ECONNREFUSED. On an unconnected socket the kernel discards
+  # it and the poll() deadline expires instead, which is what the refuted
+  # message is, so the two are told apart without timing anything
+  # Its own log file, so the deliberate error does not land in FTL.log and
+  # weaken the "no unexpected ERROR messages" check in test_final.bats
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/ptr_refused.log FTLCONF_dns_port=5399 ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "Connection refused by upstream DNS server"
+  refute_output --partial "Timed out after"
+}
+
 @test "Test fail on invalid CLI argument" {
   run bash -c './pihole-FTL abc'
   assert_line --index 0 "pihole-FTL: invalid option -- 'abc'"
@@ -1605,6 +1618,17 @@ setup() {
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
   assert_failure 3
 
+  # No dot follows the last label, but its length is capped just the same
+  long_label="$(printf 'a%.0s' {1..64})"
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"test.${long_label}\")"
+  assert_failure 3
+
+  # A name that is one label and nothing else is measured just the same
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 ${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"${long_label}\")"
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
   assert_line --index 0 'Invalid value: dns.revServers[0]: <enabled> not a boolean ("abc")'
   assert_failure 3
@@ -1628,6 +1652,26 @@ setup() {
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
+
+  # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
+  assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.255.254.0'
+  assert_line --index 0 '255.255.254.0'
+  assert_success
+
+  # Nothing was applied, so the netmask is still the empty default
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_output ''
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface. This equals
+  # the current value, so it takes the unchanged branch and no validator runs
+  run bash -c './pihole-FTL --config -t dhcp.netmask ""'
+  assert_success
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
@@ -1774,6 +1818,12 @@ setup() {
   assert_success
 }
 
+@test "PTR stale-response regression harness" {
+  run ./ptr_response_regression
+  assert_success
+  assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
+}
+
 @test "SHA256 checksum working" {
   run bash -c './pihole-FTL sha256sum test/test.pem'
   assert_line --index 0 "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem"
@@ -1838,38 +1888,69 @@ setup() {
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"'; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
   assert_success
   # Nagle disabled so small TLS responses are not delayed on the client's ACK.
-  run bash -c 'grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/webserver.log'
   assert_success
   # The terminator's per-boot backend-auth secret; its value is redacted in the log.
-  run bash -c 'grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
   assert_success
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
-  run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
+}
+
+@test "Gravity: API write waits for a concurrent reader instead of failing" {
+  # gravity_updated() reads gravity.db from its own connection once per second.
+  # A write meeting that reader used to fail with "database is locked" instead
+  # of waiting for it. Hold a read transaction here, wait until it is really
+  # held, and write through the API while it is
+  rm -f /tmp/gravity_reader_ready
+  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell touch /tmp/gravity_reader_ready\n.shell sleep 0.4\nCOMMIT;\n' | \
+    ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db > /dev/null 2>&1 &
+  reader=$!
+
+  # Do not guess how long the reader needs to take its lock
+  for _ in $(seq 1 100); do
+    [ -f /tmp/gravity_reader_ready ] && break
+    sleep 0.05
+  done
+  run bash -c '[ -f /tmp/gravity_reader_ready ]'
+  assert_success
+
+  # The write has to succeed AND to have waited: if it returns immediately the
+  # reader was already gone and this test proved nothing
+  run bash -c 'out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}")"; echo "${out}"; code="${out%% *}"; secs="${out##* }"; case "${code}" in 200|201) ;; *) exit 1;; esac; awk -v t="${secs}" "BEGIN{exit !(t>0.1)}"'
+  assert_success
+
+  wait "${reader}"
+  rm -f /tmp/gravity_reader_ready
+
+  # Remove it again so the following tests see the list they expect
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
+  assert_output "204"
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)

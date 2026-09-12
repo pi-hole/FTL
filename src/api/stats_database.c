@@ -57,7 +57,7 @@ int api_history_database(struct ftl_conn *api)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_history() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		dbclose(&db);
 		return send_json_error(api, 500,
@@ -69,7 +69,7 @@ int api_history_database(struct ftl_conn *api)
 	// Bind interval to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind interval (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind interval (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -83,7 +83,7 @@ int api_history_database(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind from (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -97,7 +97,7 @@ int api_history_database(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 3, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind until (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -291,7 +291,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_history() - SQL error prepare (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_history() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 
 		dbclose(&db);
@@ -305,7 +305,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind from (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -319,7 +319,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind until (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -333,7 +333,7 @@ int api_stats_database_top_items(struct ftl_conn *api)
 	// Bind count limit to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 3, (int)count)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_history(): Failed to bind count (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_history(): Failed to bind count (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -489,7 +489,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_clients() - SQL error prepare outer (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_clients() - SQL error prepare outer (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		dbclose(&db);
 		return send_json_error(api, 500,
@@ -501,7 +501,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -515,7 +515,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -544,7 +544,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Prepare SQLite statement
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_clients() - SQL error prepare (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_clients() - SQL error prepare (%i): %s",
 		   rc, sqlite3_errstr(rc));
 		dbclose(&db);
 		return send_json_error(api, 500,
@@ -556,7 +556,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Bind interval to prepared statement
 	if((rc = sqlite3_bind_int(stmt, 1, interval)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind interval (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind interval (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -570,7 +570,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -584,7 +584,7 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 3, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -678,7 +678,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
-		log_err("api_stats_database_query_types() - SQL error prepare (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_query_types() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		dbclose(&db);
 		return send_json_error(api, 500,
@@ -691,7 +691,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK ||
 	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_query_types() - SQL error bind (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_query_types() - SQL error bind (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -707,7 +707,7 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		// Add 1 as type is stored one-based in the database for historical reasons
 		if((rc = sqlite3_bind_int(stmt, 3, i + 1)) != SQLITE_OK)
 		{
-			log_err("api_stats_database_query_types() - SQL error bind type (%i): %s",
+			log_web(LOG_ERR, "api_stats_database_query_types() - SQL error bind type (%i): %s",
 			        rc, sqlite3_errstr(rc));
 			break;
 		}
@@ -780,7 +780,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("api_stats_database_clients() - SQL error prepare (%i): %s",
+		log_web(LOG_ERR, "api_stats_database_clients() - SQL error prepare (%i): %s",
 		        rc, sqlite3_errstr(rc));
 		dbclose(&db);
 		return send_json_error(api, 500,
@@ -792,7 +792,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Bind from to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind from (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind from (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -806,7 +806,7 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Bind until to prepared statement
 	if((rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
-		log_err("api_stats_database_clients(): Failed to bind until (error %d) - %s",
+		log_web(LOG_ERR, "api_stats_database_clients(): Failed to bind until (error %d) - %s",
 		        rc, sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		dbclose(&db);
@@ -823,14 +823,21 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char *upstream = (char*)sqlite3_column_text(stmt, 0);
+		// A broken row can carry a NULL upstream, which neither sscanf()
+		// nor the JSON output below would survive
+		if(upstream == NULL)
+			upstream = "";
 		const int count = sqlite3_column_int(stmt, 1);
 
 		cJSON *item = JSON_NEW_OBJECT();
-		unsigned int port = -1;
+		// Needs a signed data type here as -1 means: no port applicable
+		int port = -1;
+		unsigned int parsed_port = 0;
 		char buffer[512] =  { 0 };
-		if(sscanf(upstream, "%511[^#]#%u", buffer, &port) == 2)
+		if(sscanf(upstream, "%511[^#]#%u", buffer, &parsed_port) == 2)
 		{
 			buffer[sizeof(buffer)-1] = '\0';
+			port = (int)parsed_port;
 			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer);
 		}
 		else

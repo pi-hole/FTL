@@ -14,6 +14,8 @@
 #include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
+// watch_config()
+#include "config/inotify.h"
 #include "main.h"
 // exit_code
 #include "signals.h"
@@ -52,7 +54,7 @@ int main (int argc, char *argv[])
 	// it if needed
 	username = getUserName();
 
-	// Obtain log file location
+	// Obtain FTL.log file location
 	getLogFilePath(true);
 
 	// Store binary path and PIE load base address for crash-time backtrace.
@@ -65,8 +67,8 @@ int main (int argc, char *argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Initialize FTL log
-	init_FTL_log(argc > 0 ? argv[0] : NULL);
+	// Open FTL.log early (other logs opened after config parse)
+	open_log_fds(true);
 	// Try to open FTL log
 	init_config_mutex();
 	timer_start(EXIT_TIMER);
@@ -115,9 +117,12 @@ int main (int argc, char *argv[])
 	// Initialize overTime datastructure
 	initOverTime();
 
-	// Check for availability of capabilities in debug mode
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Check for availability of capabilities. The per-capability table this
+	// prints is behind DEBUG_CAPS, but the warnings about the ones FTL needs
+	// and does not have are not, and they are the reason to run this at all:
+	// hiding them behind a debug flag means nobody sees them until they
+	// already suspect the problem
+	check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL) + getpid());
@@ -141,7 +146,15 @@ int main (int argc, char *argv[])
 	// Skip it here if we jump back to this point from die()
 	const int jmpret = setjmp(exit_jmp);
 	if(jmpret == 0)
+	{
+		// main_dnsmasq() opens by closing every descriptor it
+		// inherited from us, a config watcher armed while the config
+		// was read included, and the numbers are reissued afterwards.
+		// Close it here, while it is still ours to close
+		watch_config(false);
+
 		main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
+	}
 	else
 	{
 		// We are jumping back to this point from dnsmasq's die()

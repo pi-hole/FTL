@@ -477,11 +477,11 @@ int api_queries(struct ftl_conn *api)
 			// Encoded URI string: %5B = [ and %5D = ]
 			if(GET_VAR(sort_col_id, sort_col, api->request->query_string) > 0)
 			{
-				log_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
+				log_web_debug(DEBUG_API, "Sorting by column %s (%s)", sort_col, sort_dir);
 			}
 			else
 			{
-				log_warn("Sorting by column %d (%s) requested, but column name not found",
+				log_web(LOG_WARNING, "Sorting by column %d (%s) requested, but column name not found",
 				         sort_column, sort_dir);
 			}
 		}
@@ -538,39 +538,57 @@ int api_queries(struct ftl_conn *api)
 					// Apply the search string to the query if this is an allowed column
 					if(j == 0 && strcasecmp(search_col_id_str, "domain") == 0)
 					{
-						log_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
+						log_web_debug(DEBUG_API, "Searching column domain: \"%s\"", search[j]);
 						add_querystr_string(api, querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
 					}
 					else if(j == 1 && (strcasecmp(search_col_id_str, "client.ip") == 0 || strcasecmp(search_col_id_str, "client") == 0))
 					{
-						log_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
+						log_web_debug(DEBUG_API, "Searching column client: \"%s\"", search[j]);
 						// We search both client IP and name
 						add_querystr_string(api, querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
 					}
 					else
-						log_warn("Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
+						log_web(LOG_WARNING, "Column %u with name \"%s\" is not searchable (allowed: 3 = domain, 4 = client)",
 						         3 + j, search_col_id_str);
 				}
 				else
-					log_warn("Column %u is not searchable (allowed: 3 = domain, 4 = client)", 3 + j);
+					log_web(LOG_WARNING, "Column %u is not searchable (allowed: 3 = domain, 4 = client)", 3 + j);
 			}
 		}
 	}
 
-	// Regex filtering?
+	// Regex filtering? Everything from here leaves through queries_fail, which
+	// releases the statement and the compiled regexes
+	int ret = 200;
+	sqlite3_stmt *read_stmt = NULL;
+	// Both regex arrays are declared before the first goto below: the
+	// epilogue frees them, and jumping past their declarations would leave
+	// it reading indeterminate values
 	regex_t *regex_domains = NULL;
 	unsigned int N_regex_domains = 0;
-	if(compile_filter_regex(api, "webserver.api.excludeDomains",
-	                        config.webserver.api.excludeDomains.v.json,
-	                        &regex_domains, &N_regex_domains))
-		filtering = true;
-
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
+	int regex_ret = 0;
+
+	if(compile_filter_regex(api, "webserver.api.excludeDomains",
+	                        config.webserver.api.excludeDomains.v.json,
+	                        &regex_domains, &N_regex_domains, &regex_ret))
+		filtering = true;
+	if(regex_ret != 0)
+	{
+		ret = regex_ret;
+		goto queries_fail;
+	}
+
 	if(compile_filter_regex(api, "webserver.api.excludeClients",
 	                        config.webserver.api.excludeClients.v.json,
-	                        &regex_clients, &N_regex_clients))
+	                        &regex_clients, &N_regex_clients, &regex_ret))
 		filtering = true;
+	if(regex_ret != 0)
+	{
+		ret = regex_ret;
+		goto queries_fail;
+	}
 
 	// Finish preparing query string
 	querystr_finish(querystr, sort_col, sort_dir);
@@ -579,21 +597,22 @@ int api_queries(struct ftl_conn *api)
 	sqlite3 *memdb = get_memdb();
 	if(memdb == NULL)
 	{
-		return send_json_error(api, 500, // 500 Internal error
+		ret = send_json_error(api, 500, // 500 Internal error
 		                       "database_error",
 		                       "Could not read from in-memory database",
 		                       NULL);
+		goto queries_fail;
 	}
 
 	// Prepare SQLite3 statement
-	sqlite3_stmt *read_stmt = NULL;
 	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
-		return send_json_error(api, 500,
+		ret = send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare read SQL query",
 		                       sqlite3_errstr(rc));
+		goto queries_fail;
 	}
 
 	// Bind items to prepared statement
@@ -603,85 +622,85 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":tsfrom");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :tsfrom = %lf to query", timestamp_from);
+			log_web_debug(DEBUG_API, "adding :tsfrom = %lf to query", timestamp_from);
 			filtering = true;
 			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_from)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind timestamp:from to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":tsuntil");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :tsuntil = %lf to query", timestamp_until);
+			log_web_debug(DEBUG_API, "adding :tsuntil = %lf to query", timestamp_until);
 			filtering = true;
 			if((rc = sqlite3_bind_double(read_stmt, idx, timestamp_until)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind timestamp:until to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":domain");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
+			log_web_debug(DEBUG_API, "adding :domain = \"%s\" to query", domainname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, domainname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind domain to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cip");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
+			log_web_debug(DEBUG_API, "adding :cip = \"%s\" to query", clientip);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientip, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind cip to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cname");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
+			log_web_debug(DEBUG_API, "adding :cname = \"%s\" to query", clientname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, clientname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind client to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":upstream");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
+			log_web_debug(DEBUG_API, "adding :upstream = \"%s\" to query", upstreamname);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, upstreamname, -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind upstream to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":type");
@@ -695,25 +714,25 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(type < TYPE_MAX)
 			{
-				log_debug(DEBUG_API, "adding :type = %d to query", type);
+				log_web_debug(DEBUG_API, "adding :type = %d to query", type);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, type);
 				if(rc != SQLITE_OK)
 				{
-					sqlite3_finalize(read_stmt);
-					return send_json_error(api, 500,
+					ret = send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind type to SQL query",
 					                       sqlite3_errstr(rc));
+					goto queries_fail;
 				}
 			}
 			else
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 400,
+				ret = send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested type is invalid",
 				                       typename);
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":status");
@@ -727,25 +746,25 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(status < QUERY_STATUS_MAX)
 			{
-				log_debug(DEBUG_API, "adding :status = %d to query", status);
+				log_web_debug(DEBUG_API, "adding :status = %d to query", status);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, status);
 				if(rc != SQLITE_OK)
 				{
-					sqlite3_finalize(read_stmt);
-					return send_json_error(api, 500,
+					ret = send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind status to SQL query",
 					                       sqlite3_errstr(rc));
+					goto queries_fail;
 				}
 			}
 			else
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 400,
+				ret = send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested status is invalid",
 				                       statusname);
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":reply_type");
@@ -759,25 +778,25 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(reply < QUERY_REPLY_MAX)
 			{
-				log_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
+				log_web_debug(DEBUG_API, "adding :reply_type = %d to query", reply);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, reply);
 				if(rc != SQLITE_OK)
 				{
-					sqlite3_finalize(read_stmt);
-					return send_json_error(api, 500,
+					ret = send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind reply to SQL query",
 					                       sqlite3_errstr(rc));
+					goto queries_fail;
 				}
 			}
 			else
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 400,
+				ret = send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested reply is invalid",
 				                       replyname);
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":dnssec");
@@ -791,75 +810,75 @@ int api_queries(struct ftl_conn *api)
 			}
 			if(dnssec < DNSSEC_MAX)
 			{
-				log_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
+				log_web_debug(DEBUG_API, "adding :dnssec = %d to query", dnssec);
 				filtering = true;
 				rc = sqlite3_bind_int(read_stmt, idx, dnssec);
 				if(rc != SQLITE_OK)
 				{
-					sqlite3_finalize(read_stmt);
-					return send_json_error(api, 500,
+					ret = send_json_error(api, 500,
 					                       "internal_error",
 					                       "Internal server error, failed to bind dnssec to SQL query",
 					                       sqlite3_errstr(rc));
+					goto queries_fail;
 				}
 			}
 			else
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 400,
+				ret = send_json_error(api, 400,
 				                       "bad_request",
 				                       "Requested dnssec is invalid",
 				                       dnssecname);
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cursor");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
+			log_web_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
 			// Do not set filtering as the cursor is not a filter
 			rc = sqlite3_bind_int64(read_stmt, idx, cursor);
 			if(rc != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind count to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":domain_search");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :domain_search = \"%s\" to query", search[0]);
+			log_web_debug(DEBUG_API, "adding :domain_search = \"%s\" to query", search[0]);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, search[0], -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind domain_search to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 		idx = sqlite3_bind_parameter_index(read_stmt, ":client_search");
 		if(idx > 0)
 		{
-			log_debug(DEBUG_API, "adding :client_search = \"%s\" to query", search[1]);
+			log_web_debug(DEBUG_API, "adding :client_search = \"%s\" to query", search[1]);
 			filtering = true;
 			if((rc = sqlite3_bind_text(read_stmt, idx, search[1], -1, SQLITE_STATIC)) != SQLITE_OK)
 			{
-				sqlite3_finalize(read_stmt);
-				return send_json_error(api, 500,
+				ret = send_json_error(api, 500,
 				                       "internal_error",
 				                       "Internal server error, failed to bind client_search to SQL query",
 				                       sqlite3_errstr(rc));
+				goto queries_fail;
 			}
 		}
 	}
 
 	// Debug logging
-	log_debug(DEBUG_API, "SQL: %s", querystr);
-	log_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
+	log_web_debug(DEBUG_API, "SQL: %s", querystr);
+	log_web_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, recordsCounted = 0, regex_skipped = 0;
@@ -871,6 +890,10 @@ int api_queries(struct ftl_conn *api)
 
 		// Apply possible domain regex filters to Query Log
 		const char *domain = (const char*)sqlite3_column_text(read_stmt, 4); // d.domain
+		// A broken row can carry a NULL domain. Substitute an empty string
+		// so neither the regex filters nor the JSON output see a NULL
+		if(domain == NULL)
+			domain = "";
 		if(N_regex_domains > 0)
 		{
 			bool match = false;
@@ -897,6 +920,8 @@ int api_queries(struct ftl_conn *api)
 
 		// Apply possible client regex filters to Query Log
 		const char *client_ip = (const char*)sqlite3_column_text(read_stmt, 10); // c.ip
+		if(client_ip == NULL)
+			client_ip = "";
 		const char *client_name = NULL;
 		if(sqlite3_column_type(read_stmt, 11) == SQLITE_TEXT && sqlite3_column_bytes(read_stmt, 11) > 0)
 			client_name = (const char*)sqlite3_column_text(read_stmt, 11); // c.name
@@ -1078,7 +1103,7 @@ int api_queries(struct ftl_conn *api)
 
 		added++;
 	}
-	log_debug(DEBUG_API, "Sending %u of %lld in memory and %lld on disk queries (counted %u, skipped %u)",
+	log_web_debug(DEBUG_API, "Sending %u of %lld in memory and %lld on disk queries (counted %u, skipped %u)",
 	          added, mem_dbnum, disk_dbnum, recordsCounted, regex_skipped);
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
@@ -1087,7 +1112,7 @@ int api_queries(struct ftl_conn *api)
 	{
 		// Repeat cursor received in the request. This ensures we get a
 		// static result by skipping any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lu", cursor);
+		log_web_debug(DEBUG_API, "Sending cursor %lu", cursor);
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", cursor);
 	}
 	else
@@ -1095,7 +1120,7 @@ int api_queries(struct ftl_conn *api)
 		// Send cursor pointing to the firstID of the data obtained in
 		// this query. This ensures we get a static result by skipping
 		// any newer queries.
-		log_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
+		log_web_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
 	}
 
@@ -1117,32 +1142,43 @@ int api_queries(struct ftl_conn *api)
 
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
-
-	// Free regex memory if allocated
-	if(N_regex_domains > 0)
-	{
-		// Free individual regexes
-		for(unsigned int i = 0; i < N_regex_domains; i++)
-			regfree(&regex_domains[i]);
-
-		// Free array of regex pointers
-		free(regex_domains);
-	}
-	if(N_regex_clients > 0)
-	{
-		// Free individual regexes
-		for(unsigned int i = 0; i < N_regex_clients; i++)
-			regfree(&regex_clients[i]);
-
-		// Free array of regex po^inters
-		free(regex_clients);
-	}
+	free_filter_regex(regex_domains, N_regex_domains);
+	free_filter_regex(regex_clients, N_regex_clients);
 
 	JSON_SEND_OBJECT(json);
+
+queries_fail:
+	sqlite3_finalize(read_stmt);
+	free_filter_regex(regex_domains, N_regex_domains);
+	free_filter_regex(regex_clients, N_regex_clients);
+	return ret;
 }
 
-bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, regex_t **regex, unsigned int *N_regex)
+// Release the regexes compiled by compile_filter_regex()
+void free_filter_regex(regex_t *regex, const unsigned int N_regex)
 {
+	if(N_regex == 0)
+		return;
+
+	for(unsigned int i = 0; i < N_regex; i++)
+		regfree(&regex[i]);
+
+	free(regex);
+}
+
+// Returns whether any regex was compiled, i.e. whether filtering is in effect.
+//
+// A caller that can carry an HTTP status passes ret, and a failure then answers
+// the request and reports the code it sent through it. Answering without that
+// is not allowed: a caller which cannot propagate the code - get_top_domains()
+// and get_top_clients() return a cJSON object, not a status - would go on to
+// send a second body on the same connection. Those pass NULL, and a failure is
+// logged and treated as "no filtering" instead.
+bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
+                          regex_t **regex, unsigned int *N_regex, int *ret)
+{
+	if(ret != NULL)
+		*ret = 0;
 
 	const int N = cJSON_GetArraySize(json);
 	if(N < 1)
@@ -1154,10 +1190,15 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 	*regex = calloc(N, sizeof(regex_t));
 	if(*regex == NULL)
 	{
-		return send_json_error(api, 500,
-		                       "internal_error",
-		                       "Internal server error, failed to allocate memory for regex array",
-		                       NULL);
+		if(ret != NULL)
+			*ret = send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to allocate memory for regex array",
+			                       NULL);
+		else
+			log_web(LOG_ERR, "Cannot allocate regex array for %s", path);
+
+		return false;
 	}
 
 	// Compile regexes
@@ -1168,7 +1209,7 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 		// Skip non-string, invalid and empty values
 		if(!cJSON_IsString(filter) || filter->valuestring == NULL || strlen(filter->valuestring) == 0)
 		{
-			log_warn("Skipping invalid regex at %s.%u", path, i);
+			log_web(LOG_WARNING, "Skipping invalid regex at %s.%u", path, i);
 			continue;
 		}
 
@@ -1179,7 +1220,7 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 			// Failed to compile regex
 			char errbuf[1024] = { 0 };
 			regerror(rc, &(*regex)[i], errbuf, sizeof(errbuf));
-			log_err("Failed to compile regex \"%s\": %s",
+			log_web(LOG_ERR, "Failed to compile regex \"%s\": %s",
 			        filter->valuestring, errbuf);
 
 			// Release the regexes compiled so far and the array itself
@@ -1190,10 +1231,13 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, r
 			*regex = NULL;
 			*N_regex = 0;
 
-			return send_json_error(api, 400,
-			                       "bad_request",
-			                       "Failed to compile regex",
-			                       filter->valuestring);
+			if(ret != NULL)
+				*ret = send_json_error(api, 400,
+				                       "bad_request",
+				                       "Failed to compile regex",
+				                       filter->valuestring);
+
+			return false;
 		}
 
 		i++;

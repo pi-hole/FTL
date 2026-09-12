@@ -54,7 +54,6 @@
 #include <sys/prctl.h>
 #include <time.h>
 
-#define DOT_PORT 853
 // Cap concurrent DoT connections so a flood cannot exhaust memory. Each slot
 // holds a small state record plus ~192 KiB of I/O buffers, allocated once and
 // then pooled across connections (freed only at thread shutdown), so the cap
@@ -844,6 +843,9 @@ void *dotdoh_dot_thread(void *val)
 void *dotdoh_dot_thread(void *val)
 {
 	(void)val;
+	// The log also gives the stub a side effect, so it is not mistaken for a
+	// candidate for __attribute__((const)) under -Wsuggest-attribute=const.
+	log_warn("FTL was compiled without TLS support, DoT is not available");
 	return NULL;
 }
 
