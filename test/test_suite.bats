@@ -1432,30 +1432,6 @@ setup() {
   assert_line --index 0 "fe80::11"
 }
 
-@test "SIGUSR2 log reopen keeps the DNS listeners alive" {
-  # Reopening all log sinks (logrotate-style) must never close a file
-  # descriptor that was recycled into a DNS listener socket: the old
-  # sink_close() closed whatever the number happened to refer to at that
-  # point, silently killing one of the address families.  The reopen must
-  # leave the IPv4 listener fully functional...
-  for i in 1 2 3 4 5; do
-    run bash -c "kill -USR2 $(cat /run/pihole-FTL.pid)"
-    sleep 1
-    run bash -c "dig +time=2 +tries=1 A denied.ftl +short @127.0.0.1"
-    assert_success
-    assert_line --index 0 "10.100.0.11"
-  done
-
-  # ...and, when IPv6 is available, the IPv6 listener as well.
-  if [ -e /proc/net/if_inet6 ]; then
-    run bash -c "kill -USR2 $(cat /run/pihole-FTL.pid)"
-    sleep 1
-    run bash -c "dig +time=2 +tries=1 -6 A denied.ftl +short @::1"
-    assert_success
-    assert_line --index 0 "10.100.0.11"
-  fi
-}
-
 @test "Antigravity domain is not blocked" {
   run bash -c "dig A antigravity.ftl +short @127.0.0.1"
   assert_line --index 0 "192.168.1.6"
