@@ -1027,7 +1027,7 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	// Set timestamp
 	fifo_log->logs[which].timestamp[idx] = now;
 
-	// Set prio (if available)
+	// Set prio
 	fifo_log->logs[which].prio[idx] = prio;
 }
 
