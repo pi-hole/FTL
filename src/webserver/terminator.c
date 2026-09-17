@@ -309,11 +309,9 @@ static SSL_CTX *create_server_ctx(const char *cert_path)
 	return c;
 }
 
-// Bind a dual-stack (IPv4 + IPv6) TCP listener on the given port, all
-// interfaces. Returns the fd or -1.
 // Fill a dual-stack sockaddr_in6 for the given bind address and port. addr may be
 // NULL or empty (bind all interfaces), an IPv6 literal, or an IPv4 literal (bound
-// as a v4-mapped address on the IPv6 socket, honouring IPV6_V6ONLY=off). Returns
+// as a v4-mapped address on the IPv6 socket). Returns
 // false on an unparsable address so the caller fails closed rather than silently
 // widening the scope to all interfaces.
 static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
@@ -339,6 +337,18 @@ static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
 	return false;
 }
 
+// Whether addr is an explicit IPv6 literal. Such an entry is bound IPv6-only, so
+// "0.0.0.0:443" and "[::]:443" can coexist as the two halves of one port, while a
+// bare port (empty addr) stays dual-stack and covers both. This matches the
+// webserver.port semantics documented for CivetWeb, where "[::]:80" is IPv6 only.
+static bool addr_is_v6_literal(const char *addr)
+{
+	struct in6_addr tmp;
+	return addr != NULL && addr[0] != '\0' && inet_pton(AF_INET6, addr, &tmp) == 1;
+}
+
+// Bind a TCP listener for the given address and port: dual-stack for a bare
+// port, IPv6-only for an explicit IPv6 literal. Returns the fd or -1.
 static int bind_listener(const char *addr, int port)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
@@ -352,9 +362,10 @@ static int bind_listener(const char *addr, int port)
 
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	// Accept both IPv4 (as v4-mapped) and IPv6 on this single socket.
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	// A bare port accepts both IPv4 (as v4-mapped) and IPv6 on this one socket;
+	// an explicit IPv6 literal is bound IPv6-only.
+	const int v6only = addr_is_v6_literal(addr) ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
@@ -3924,7 +3935,7 @@ static SSL_CTX *create_quic_server_ctx(const char *cert_path)
 	return c;
 }
 
-// Bind a dual-stack UDP socket on the given port for the QUIC listener.
+// Bind the UDP socket for the QUIC listener, scoped like bind_listener().
 static int bind_udp(const char *addr, int port)
 {
 	const int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
@@ -3935,8 +3946,9 @@ static int bind_udp(const char *addr, int port)
 	}
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	// Same IPv4/IPv6 scoping rule as the TCP listener above.
+	const int v6only = addr_is_v6_literal(addr) ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
