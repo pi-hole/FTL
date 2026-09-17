@@ -434,6 +434,14 @@ static int backend_port = 0;
 // The bind address the operator scoped the secure port to ("" = all interfaces),
 // so the terminator honours it instead of always binding every interface.
 static char terminator_addr[64] = "";
+#ifdef HAVE_TLS
+// Every public TLS listener parsed out of webserver.port. terminator_port and
+// terminator_addr mirror the first one, which is the port HTTP/3 and the
+// plaintext-port mirroring below use.
+static struct terminator_listener tls_listeners[TERMINATOR_MAX_LISTENERS];
+static char tls_listener_addrs[TERMINATOR_MAX_LISTENERS][64];
+static unsigned n_tls_listeners = 0;
+#endif
 /**
  * @brief Retrieves and logs the server ports configuration.
  *
@@ -569,6 +577,34 @@ static bool get_server_ports(void)
 		         server_ports[n].addr, server_ports[n].port);
 		n++;
 	}
+
+#ifdef HAVE_TLS
+	// The mirroring above only ever advertises the first TLS port. Register the
+	// remaining ones so /info and the web interface report every port the
+	// terminator actually serves.
+	for(unsigned t = 1; t < n_tls_listeners && n < MAXPORTS; t++)
+	{
+		const char *a = tls_listeners[t].addr;
+		// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
+		// A bare entry is dual-stack; report it as IPv6, matching how the
+		// terminator binds it (one AF_INET6 socket also serving IPv4).
+		const bool v6 = a[0] == '\0' || strchr(a, ':') != NULL;
+		memset(&server_ports[n], 0, sizeof(server_ports[n]));
+		if(a[0] == '\0')
+			strncpy(server_ports[n].addr, "[::]", sizeof(server_ports[n].addr) - 1);
+		else if(v6)
+			snprintf(server_ports[n].addr, sizeof(server_ports[n].addr), "[%s]", a);
+		else
+			strncpy(server_ports[n].addr, a, sizeof(server_ports[n].addr) - 1);
+		server_ports[n].port = (in_port_t)tls_listeners[t].port;
+		server_ports[n].is_secure = true;
+		server_ports[n].is_bound = true;
+		server_ports[n].protocol = v6 ? 3 : 1;
+		log_info("  - %s:%d (HTTPS, terminator)",
+		         server_ports[n].addr, server_ports[n].port);
+		n++;
+	}
+#endif
 
 	return n > 0;
 }
@@ -748,16 +784,27 @@ static void str_append(char *dst, size_t dstsz, const char *src)
 	strncat(dst, src, dstsz - used - 1);
 }
 
+// Whether a bind address covers every interface. Only a bare port does: the
+// terminator binds it as one dual-stack socket, so any other entry for the same
+// port can only collide with it. "0.0.0.0" and "[::]" are the IPv4 and IPv6
+// halves of a port and are bound as two sockets that coexist.
+static bool tls_addr_is_wildcard(const char *addr)
+{
+	return addr[0] == '\0';
+}
+
 // Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
 // name public TLS ports the terminator owns, so they are dropped from CivetWeb's
 // list and a loopback plaintext backend (ephemeral port, read back after start)
-// is appended instead. Returns the first secure port, or 0 if none.
-static int split_terminator_ports(const char *cfg, char *backend, size_t backend_len,
-                                  char *tls_addr, size_t tls_addr_len)
+// is appended instead. Every secure entry is collected into tls (capacity
+// tls_cap, backed by the caller's tls_addrs storage); returns how many were
+// stored, or 0 if none.
+static unsigned split_terminator_ports(const char *cfg, char *backend, size_t backend_len,
+                                       struct terminator_listener *tls,
+                                       char tls_addrs[][64], unsigned tls_cap)
 {
 	backend[0] = '\0';
-	tls_addr[0] = '\0';
-	int tls_port = 0;
+	unsigned n_tls = 0;
 
 	char *copy = strdup(cfg);
 	if(copy == NULL)
@@ -777,37 +824,78 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 		// A secure entry (carries the 's' flag) is owned by the terminator
 		if(strchr(ent, 's') != NULL)
 		{
-			if(tls_port == 0)
+			if(n_tls >= tls_cap)
 			{
-				// Port digits follow the last ':' ("[::]:443os") or start the
-				// token ("443os"); atoi() stops at the flag letters.
-				const char *p = strrchr(ent, ':');
-				tls_port = atoi(p != NULL ? p + 1 : ent);
-				// Everything before that ':' is the bind address the operator
-				// scoped the port to; strip the [ ] around an IPv6 literal. No
-				// ':' means a bare port ("443s") -> all interfaces (empty addr).
-				if(p != NULL)
+				log_warn("Cannot serve TLS on '%s': at most %u TLS ports are supported",
+				         ent, tls_cap);
+				continue; // still drop it, CivetWeb cannot serve it either
+			}
+			// Port digits follow the last ':' ("[::]:443os") or start the
+			// token ("443os"); atoi() stops at the flag letters.
+			const char *p = strrchr(ent, ':');
+			char *addr = tls_addrs[n_tls];
+			addr[0] = '\0';
+			// Everything before that ':' is the bind address the operator
+			// scoped the port to; strip the [ ] around an IPv6 literal. No
+			// ':' means a bare port ("443s") -> all interfaces (empty addr).
+			if(p != NULL)
+			{
+				const char *astart = ent;
+				size_t alen = (size_t)(p - ent);
+				if(alen >= 2 && ent[0] == '[' && p[-1] == ']')
 				{
-					const char *astart = ent;
-					size_t alen = (size_t)(p - ent);
-					if(alen >= 2 && ent[0] == '[' && p[-1] == ']')
-					{
-						astart++;
-						alen -= 2;
-					}
-					if(alen > 0)
-					{
-						// An over-long address cannot be a valid IP literal;
-						// truncate it (rather than dropping it, which would
-						// silently fall back to all interfaces) so the terminator's
-						// fill_bind_addr() rejects it and fails closed.
-						if(alen >= tls_addr_len)
-							alen = tls_addr_len - 1;
-						memcpy(tls_addr, astart, alen);
-						tls_addr[alen] = '\0';
-					}
+					astart++;
+					alen -= 2;
+				}
+				if(alen > 0)
+				{
+					// An over-long address cannot be a valid IP literal;
+					// truncate it (rather than dropping it, which would
+					// silently fall back to all interfaces) so the terminator's
+					// fill_bind_addr() rejects it and fails closed.
+					if(alen >= 64)
+						alen = 63;
+					memcpy(addr, astart, alen);
+					addr[alen] = '\0';
 				}
 			}
+			const int port = atoi(p != NULL ? p + 1 : ent);
+			// Secure entries never reach CivetWeb, so its own syntax check cannot
+			// catch a malformed one ("[::]:xs", "0s"); reject it here instead of
+			// binding port 0.
+			if(port < 1 || port > 65535)
+			{
+				log_warn("Ignoring TLS entry '%s' in webserver.port: not a valid port", ent);
+				continue;
+			}
+
+			// Collapse entries that would bind the same socket. The default
+			// "443os,[::]:443os" names the dual-stack listener and then its IPv6
+			// half, and binding both is simply EADDRINUSE. A bare port therefore
+			// supersedes any address-scoped entry for that port, and vice versa;
+			// distinct addresses (e.g. "0.0.0.0" and "[::]") each get a socket.
+			bool dup = false;
+			for(unsigned j = 0; j < n_tls; j++)
+			{
+				if(tls[j].port != port)
+					continue;
+				if(tls_addr_is_wildcard(tls[j].addr) || tls_addr_is_wildcard(addr) ||
+				   strcmp(tls[j].addr, addr) == 0)
+				{
+					// Keep the widest of the two, so "[::1]:443s,443s" still ends
+					// up serving every interface.
+					if(tls_addr_is_wildcard(addr) && !tls_addr_is_wildcard(tls[j].addr))
+						tls_addrs[j][0] = '\0';
+					dup = true;
+					break;
+				}
+			}
+			if(dup)
+				continue; // drop from the list handed to CivetWeb
+
+			tls[n_tls].addr = addr;
+			tls[n_tls].port = port;
+			n_tls++;
 			continue; // drop from the list handed to CivetWeb
 		}
 
@@ -824,7 +912,7 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 		str_append(backend, backend_len, ",");
 	str_append(backend, backend_len, "127.0.0.1:0");
 
-	return tls_port;
+	return n_tls;
 }
 #endif /* HAVE_TLS */
 
@@ -916,9 +1004,16 @@ void http_init(void)
 	terminator_addr[0] = '\0';
 	if(tls_used)
 	{
-		terminator_port = split_terminator_ports(config.webserver.port.v.s,
-		                                          backend_ports, sizeof(backend_ports),
-		                                          terminator_addr, sizeof(terminator_addr));
+		n_tls_listeners = split_terminator_ports(config.webserver.port.v.s,
+		                                         backend_ports, sizeof(backend_ports),
+		                                         tls_listeners, tls_listener_addrs,
+		                                         TERMINATOR_MAX_LISTENERS);
+		if(n_tls_listeners > 0)
+		{
+			terminator_port = tls_listeners[0].port;
+			strncpy(terminator_addr, tls_listeners[0].addr, sizeof(terminator_addr) - 1);
+			terminator_addr[sizeof(terminator_addr) - 1] = '\0';
+		}
 		if(terminator_port > 0)
 			listening_ports = backend_ports;
 		else
@@ -1201,7 +1296,7 @@ void http_init(void)
 	{
 		if(backend_port <= 0)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
-		else if(!terminator_start(terminator_addr, terminator_port, backend_port, config.webserver.tls.cert.v.s))
+		else if(!terminator_start(tls_listeners, n_tls_listeners, backend_port, config.webserver.tls.cert.v.s))
 		{
 			log_err("Failed to start the TLS terminator on port %d", terminator_port);
 			https_port = 0; // TLS is not actually available
