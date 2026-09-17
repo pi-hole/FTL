@@ -159,6 +159,29 @@ static bool migrate_webserver_csp(struct config *newconf)
 	return false;
 }
 
+// Migrate the unsupported files.log.dnsmasq = "-" sentinel to the default
+// path (see https://github.com/pi-hole/FTL/pull/2960).  Checks the effective
+// value so a valid env override is never clobbered by a stale "-" in the TOML.
+static bool migrate_files_log_dnsmasq(struct config *newconf)
+{
+	bool restart = false;
+	if(newconf->files.log.dnsmasq.v.s != NULL &&
+	   strcmp(newconf->files.log.dnsmasq.v.s, "-") == 0)
+	{
+		log_warn("files.log.dnsmasq = \"-\" (log to stderr) is no longer supported, using %s instead (see https://github.com/pi-hole/FTL/pull/2960)",
+		         newconf->files.log.dnsmasq.d.s);
+		if(newconf->files.log.dnsmasq.t == CONF_STRING_ALLOCATED)
+			free(newconf->files.log.dnsmasq.v.s);
+		newconf->files.log.dnsmasq.v.s = newconf->files.log.dnsmasq.d.s;
+		newconf->files.log.dnsmasq.t = CONF_STRING;
+		log_debug(DEBUG_CONFIG, "Config setting files.log.dnsmasq MIGRATED to %s", newconf->files.log.dnsmasq.d.s);
+		restart = true;
+	}
+
+	return restart;
+}
+
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
 static bool migrate_config(toml_datum_t toml, struct config *newconf)
@@ -171,6 +194,8 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 	restart |= migrate_dns_domain(toml, newconf);
 	// Migrate the old Content-Security-Policy default to allow data: images
 	restart |= migrate_webserver_csp(newconf);
+	// Migrate files.log.dnsmasq = "-" to the default path
+	restart |= migrate_files_log_dnsmasq(newconf);
 
 	return restart;
 }
