@@ -1862,13 +1862,13 @@ bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int n
 // lookup never waits for the database (see gravityDB_open()). A write does want
 // to wait: the database thread reads gravity.db once per second in
 // gravity_updated(), and a COMMIT meeting that reader fails outright otherwise
-static sqlite3 *gravity_write_open(const char **message)
+sqlite3 *gravityDB_write_open(const char **message)
 {
 	sqlite3 *db = NULL;
 	const int rc = sqlite3_open_v2(config.files.gravity.v.s, &db, SQLITE_OPEN_READWRITE, NULL);
 	if(rc != SQLITE_OK || db == NULL)
 	{
-		log_err("gravity_write_open() - SQL error open: %s", sqlite3_errstr(rc));
+		log_err("gravityDB_write_open() - SQL error open: %s", sqlite3_errstr(rc));
 		if(message != NULL)
 			*message = "Cannot open gravity database for writing";
 		sqlite3_close(db);
@@ -1876,7 +1876,7 @@ static sqlite3 *gravity_write_open(const char **message)
 	}
 
 	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
-		log_err("gravity_write_open() - Cannot set busy handler: %s", sqlite3_errmsg(db));
+		log_err("gravityDB_write_open() - Cannot set busy handler: %s", sqlite3_errmsg(db));
 
 	return db;
 }
@@ -2164,17 +2164,18 @@ static const char *keep_message(const char *message)
 	return kept;
 }
 
-bool gravityDB_addToTable(const enum gravity_list_type listtype, tablerow *row,
+void gravityDB_write_close(sqlite3 *db)
+{
+	if(db != NULL)
+		dbclose_handle(db);
+}
+
+bool gravityDB_addToTable(sqlite3 *db, const enum gravity_list_type listtype, tablerow *row,
                           const char **message, const enum http_method method)
 {
-	sqlite3 *db = gravity_write_open(message);
-	if(db == NULL)
-		return false;
-
 	const bool ret = addToTable(db, listtype, row, message, method);
 	if(!ret && message != NULL)
 		*message = keep_message(*message);
-	dbclose_handle(db);
 	return ret;
 }
 
@@ -2444,7 +2445,7 @@ static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, con
 
 bool gravityDB_delFromTable(const enum gravity_list_type listtype, const cJSON* array, unsigned int *deleted, const char **message)
 {
-	sqlite3 *db = gravity_write_open(message);
+	sqlite3 *db = gravityDB_write_open(message);
 	if(db == NULL)
 		return false;
 
@@ -3103,17 +3104,12 @@ static bool edit_groups(sqlite3 *db, const enum gravity_list_type listtype, cJSO
 	return okay;
 }
 
-bool gravityDB_edit_groups(const enum gravity_list_type listtype, cJSON *groups,
+bool gravityDB_edit_groups(sqlite3 *db, const enum gravity_list_type listtype, cJSON *groups,
                            const tablerow *row, const char **message)
 {
-	sqlite3 *db = gravity_write_open(message);
-	if(db == NULL)
-		return false;
-
 	const bool ret = edit_groups(db, listtype, groups, row, message);
 	if(!ret && message != NULL)
 		*message = keep_message(*message);
-	dbclose_handle(db);
 	return ret;
 }
 
