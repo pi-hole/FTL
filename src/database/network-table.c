@@ -235,7 +235,9 @@ static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ?1 AND "
-	                       "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "lastSeen > (cast(strftime('%s', 'now') as int)-86400) "
 	                       "ORDER BY lastSeen DESC LIMIT 1;";
 
 	// Perform SQL query
@@ -298,10 +300,7 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
 	                       // Single %, this string goes to SQLite as it is
-	                       // and is never run through a formatter. As %%s
-	                       // it reached strftime() literally, which answers
-	                       // NULL, so the cast produced 0 and the one-hour
-	                       // window was never applied
+	                       // and is never run through a formatter
 	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
