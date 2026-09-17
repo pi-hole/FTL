@@ -1645,6 +1645,24 @@ setup() {
   assert_success
 }
 
+@test "Gravity stores internationalized domains as punycode" {
+  # A query carries the punycode form of a name, so this is what has to end up
+  # in the database - the UTF-8 spelling of the list could never match
+  run bash -c 'rm -f /tmp/idn.db && ./pihole-FTL sqlite3 /tmp/idn.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/idn.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'äste.com\n||steä.com^\nexample.com\n日本.example\n' > /tmp/idn.list
+  run ./pihole-FTL gravity parseList /tmp/idn.list /tmp/idn.db 1
+  assert_success
+
+  run bash -c './pihole-FTL sqlite3 /tmp/idn.db "SELECT domain FROM gravity ORDER BY domain;"'
+  assert_success
+  assert_line --index 0 "example.com"
+  assert_line --index 1 "xn--ste-pla.com"
+  assert_line --index 2 "xn--wgv71a.example"
+  assert_line --index 3 "||xn--ste-sla.com^"
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
