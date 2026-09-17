@@ -33,6 +33,8 @@
 #include "config/validator.h"
 // getEnvVars()
 #include "config/env.h"
+// set_mbedtls_debug_threshold()
+#include "webserver/webserver.h"
 // sha256sum()
 #include "files.h"
 // restart_ftl()
@@ -72,6 +74,9 @@ void set_debug_flags(struct config *conf)
 	// If all debug flags are set, we set the "ALL" flag. We subtract 1 from
 	// DEBUG_ELEMENTS as the last element is "ALL" itself
 	conf->debug.all.v.b = elements_set == DEBUG_ELEMENTS-1;
+
+	// Keep mbedTLS in sync, it decides on formatting before we see the message
+	set_mbedtls_debug_threshold(conf->debug.tls.v.b);
 }
 
 void set_all_debug(struct config *conf, const bool status)
