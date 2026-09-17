@@ -11,6 +11,8 @@
 #include "tools/gravity-parseList.h"
 #include "args.h"
 #include "database/sqlite3.h"
+// idn2_to_ascii_8z()
+#include <idn2.h>
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
@@ -32,7 +34,8 @@ static const char *false_positives[] = {
 };
 
 // Lookup table containing characters that are valid in domain names
-// Domain must not contain any character other than [a-zA-Z0-9.-_]
+// Domain must not contain any ASCII character other than [a-zA-Z0-9.-_].
+// Names with non-ASCII bytes are checked by valid_idn()
 static const unsigned char valid_domain_char[256] = {
 	['a' ... 'z'] = 1, ['A' ... 'Z'] = 1, ['0' ... '9'] = 1,
 	['-'] = 1, ['.'] = 1, ['_'] = 1,
@@ -56,6 +59,28 @@ static inline bool string_has_within(const char *s, const char character, const 
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
+// Validate an internationalized name by converting it the way dnsmasq's
+// canonicalise() does, then applying the ASCII rules to the punycode form
+static bool valid_idn(const char *domain, const size_t len, const bool fqdn_only)
+{
+	char buf[256];
+	if(memchr(domain, '\0', len) != NULL)
+		return false;
+	memcpy(buf, domain, len);
+	buf[len] = '\0';
+
+	char *ascii = NULL;
+	if(idn2_to_ascii_8z(buf, &ascii, IDN2_NONTRANSITIONAL) != IDN2_OK)
+	{
+		idn2_free(ascii);
+		return false;
+	}
+
+	const bool valid = valid_domain(ascii, strlen(ascii), fqdn_only);
+	idn2_free(ascii);
+	return valid;
+}
+
 // Validate domain name
 inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only)
 {
@@ -70,6 +95,8 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	{
 		// Check for invalid characters
 		unsigned char c = (unsigned char)domain[i];
+		if(c > 0x7f)
+			return valid_idn(domain, len, fqdn_only);
 		if(!valid_domain_char[c])
 			return false;
 

@@ -1609,6 +1609,42 @@ setup() {
 
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
+@test "Internationalized domain names are accepted, invalid ones are not" {
+  # dnsmasq is built with libidn2 and converts these to punycode itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "2.2.2.2 äste.com", "3.3.3.3 日本.example", "4.4.4.4 𐍈.example" ]'
+  assert_success
+
+  # Wait for change to become effective, otherwise the running FTL can coalesce
+  # this change and the restore below into a single reload
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Malformed UTF-8: overlong encoding, UTF-16 surrogate, above U+10FFFF,
+  # truncated sequence and stray continuation byte
+  for seq in '\xc0\x80' '\xed\xa0\x80' '\xf5\x80\x80\x80' '\xe2\x82' '\xff'; do
+    run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 $(printf '%b' "$seq").com\" ]"
+    assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
+    assert_failure 3
+  done
+
+  # Valid UTF-8 that IDNA2008 rejects: a label whose punycode form exceeds 63
+  # characters, mixed left-to-right and right-to-left scripts, and an emoji
+  for name in '一伀倀儀刀匀吀唀嘀圀堀夀娀嬀尀崀帀开怀愀帀开帀开.example' 'aمثال.example' '😀.example'; do
+    run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 ${name}\" ]"
+    assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
+    assert_failure 3
+  done
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
