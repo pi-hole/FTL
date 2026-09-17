@@ -303,9 +303,38 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
+def doh_proxy(host, port, qname, client_ip, secret_hex):
+    """Plaintext DoH POST as a reverse proxy sends it: a PROXY v2 header
+    announcing client_ip over TLS, authenticated by the shared secret TLV.
+    Returns (HTTP status, body)."""
+    secret = bytes.fromhex(secret_hex)
+    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    # PP2_TYPE_SSL (client=SSL, verify=0) and the secret in custom TLV 0xE0
+    tlvs = bytes([0x20, 0x00, 0x05, 0x01, 0, 0, 0, 0])
+    tlvs += bytes([0xE0]) + struct.pack("!H", len(secret)) + secret
+    body = addrs + tlvs
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    query = build_query(qname)
+    req = (b"POST /dns-query HTTP/1.1\r\nHost: pi.hole\r\n"
+           b"Content-Type: application/dns-message\r\n"
+           b"Content-Length: " + str(len(query)).encode() + b"\r\n"
+           b"Connection: close\r\n\r\n" + query)
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.sendall(hdr + req)
+        resp = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            resp += chunk
+    head, _, payload = resp.partition(b"\r\n\r\n")
+    status = head.split(b" ", 2)[1].decode()
+    return status, payload
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -350,6 +379,14 @@ def main():
     elif cmd == "dotcert":
         _, _, host, port, source, expected_pem = sys.argv[:6]
         dot_peercert(host, int(port), source, expected_pem)
+        print("OK")
+    elif cmd == "dohproxy":
+        _, _, host, port, domain, client_ip, secret_hex, expected_ip = sys.argv[:8]
+        status, answer = doh_proxy(host, int(port), domain, client_ip, secret_hex)
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
         print("OK")
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]

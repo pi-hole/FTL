@@ -287,7 +287,7 @@
   #
   # Allowed values are:
   #     true or false
-  dohReverseProxy = false
+  dohReverseProxy = true ### CHANGED, default = false
 
   # Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL
   # terminates DoT connections directly (RFC 7858) so downstream clients can use this
@@ -1046,7 +1046,7 @@
   #
   # Allowed values are:
   #     A shared secret of 32 hexadecimal characters, or an empty string
-  proxySecret = ""
+  proxySecret = "00112233445566778899aabbccddeeff" ### CHANGED, default = ""
 
   [webserver.session]
     # Session timeout in seconds.
@@ -1786,8 +1786,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 172 total entries out of which 115 entries are default
-# --> 57 entries are modified
+# 172 total entries out of which 113 entries are default
+# --> 59 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem
