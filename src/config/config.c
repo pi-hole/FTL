@@ -1017,8 +1017,12 @@ void initConfig(struct config *conf)
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	conf->database.maxDBdays.a = cJSON_CreateStringReference("A positive integer value in days, or 0 to disable the database");
-	conf->database.maxDBdays.t = CONF_INT;
-	conf->database.maxDBdays.d.i = (365/4);
+	// Unsigned: every reader takes .v.ui - database-thread.c, query-table.c
+	// and common.c - and the help text above promises a positive value. As
+	// CONF_INT the two disagreed, and a -1 stored through .v.i came back out
+	// of .v.ui as 4294967295
+	conf->database.maxDBdays.t = CONF_UINT;
+	conf->database.maxDBdays.d.ui = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking
 
 	conf->database.DBinterval.k = "database.DBinterval";
