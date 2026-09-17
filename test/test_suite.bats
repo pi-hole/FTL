@@ -1814,9 +1814,12 @@ setup() {
   refute_output --partial "FIFO_PW"
 
   # Release the blocked reader and let the CLI finish setting the password
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   echo 'FIFO_PW' >&9
   exec 9>&-
   wait "${cli_pid}"
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
 
   rm -rf "${tmp}"
 
@@ -1864,8 +1867,10 @@ setup() {
   run bash -c 'curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"SECOND_LINE\"}" | jq .session.valid'
   refute_line --index 0 "true"
 
-  # Cleanup: remove the password
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "./pihole-FTL --config webserver.api.password \"\""
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
 }
 
