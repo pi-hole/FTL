@@ -24,6 +24,8 @@
 #include "dotdoh/framing.h"
 // log_err(), log_info(), log_warn()
 #include "log.h"
+// config.webserver.proxySecret
+#include "config/config.h"
 
 // The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
 // the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
@@ -177,6 +179,34 @@ static bool ensure_proxy_token(void)
 {
 	if(g_proxy_token_ready)
 		return true;
+
+	// An operator-configured secret lets an external reverse proxy authenticate
+	// itself as well, so we must use exactly that value rather than a private
+	// one. Without it the token stays per-boot and only our own terminator can
+	// speak to the loopback backend.
+	const char *cfg = config.webserver.proxySecret.v.s;
+	if(cfg != NULL && cfg[0] != '\0')
+	{
+		if(strlen(cfg) != 2 * PROXY_TOKEN_LEN)
+		{
+			log_err("webserver.proxySecret must be %u hexadecimal characters, ignoring it",
+			        2 * PROXY_TOKEN_LEN);
+			return false;
+		}
+		for(unsigned i = 0; i < PROXY_TOKEN_LEN; i++)
+		{
+			unsigned v;
+			if(sscanf(cfg + 2 * i, "%2x", &v) != 1)
+			{
+				log_err("webserver.proxySecret is not valid hexadecimal, ignoring it");
+				return false;
+			}
+			g_proxy_token[i] = (unsigned char)v;
+		}
+		g_proxy_token_ready = true;
+		return true;
+	}
+
 	if(!get_secure_randomness(g_proxy_token, sizeof(g_proxy_token)))
 		return false;
 	g_proxy_token_ready = true;

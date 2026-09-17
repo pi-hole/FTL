@@ -276,6 +276,19 @@
   #     true or false
   doh = true
 
+  # Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole (nginx,
+  # Traefik, Caddy, HAProxy, ...). The client-facing connection stays HTTPS; the proxy
+  # handles the encryption and forwards plain HTTP to Pi-hole. This requires
+  # webserver.proxySecret to be set and the proxy to send a PROXY protocol v2 header
+  # carrying that secret: only an authenticated proxy is believed, and the client
+  # address it announces is used to attribute the query. A plain HTTP request that is
+  # not authenticated this way is still refused, so enabling this alone never exposes
+  # DNS queries in cleartext.
+  #
+  # Allowed values are:
+  #     true or false
+  dohReverseProxy = false
+
   # Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL
   # terminates DoT connections directly (RFC 7858) so downstream clients can use this
   # Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one
@@ -1023,6 +1036,18 @@
   #     An array of valid CivetWeb options
   advancedOpts = []
 
+  # Shared secret authenticating a trusted reverse proxy in front of Pi-hole. When set,
+  # FTL accepts a PROXY protocol v2 header carrying this secret and takes the client
+  # address (and TLS status) it announces in place of the transport peer, so requests
+  # forwarded by the proxy are attributed to the real client instead of to the proxy.
+  # Only a proxy that knows the secret is believed, which is why an unauthenticated
+  # X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an
+  # internal per-boot secret for its own TLS terminator only.
+  #
+  # Allowed values are:
+  #     A shared secret of 32 hexadecimal characters, or an empty string
+  proxySecret = ""
+
   [webserver.session]
     # Session timeout in seconds.
     #
@@ -1761,7 +1786,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
+# 172 total entries out of which 116 entries are default
 # --> 56 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

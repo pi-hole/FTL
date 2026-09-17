@@ -158,6 +158,7 @@ struct config {
 		struct conf_item revServers;
 		struct conf_item upstreamCA;
 		struct conf_item doh;
+		struct conf_item dohReverseProxy;
 		struct conf_item dot;
 		struct {
 			struct conf_item name;
@@ -264,6 +265,7 @@ struct config {
 		struct conf_item headers;
 		struct conf_item serve_all;
 		struct conf_item advancedOpts;
+		struct conf_item proxySecret;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;

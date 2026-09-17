@@ -26,6 +26,15 @@
 #include "webserver/x509.h"
 // terminator_start(), terminator_stop()
 #include "webserver/terminator.h"
+// dotdoh_server_resolve(), base64url_decode(), doh_answer_min_ttl(),
+// dotdoh_source_allowed(), dotdoh_doh_enabled()
+#include "dotdoh/server.h"
+// DNS_MSG_MAX
+#include "dotdoh/framing.h"
+
+// Upper bound on the base64url "dns" value of a plaintext DoH GET, matching the
+// terminator's native path.
+#define DOH_GET_B64_MAX 8192
 // allocate_lua(), free_lua(), init_lua(), request_handler()
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()
@@ -255,21 +264,123 @@ static int begin_request_handler(struct mg_connection *conn)
 	return 0;
 }
 
-// Guard on the CivetWeb /dns-query path. Inbound DoH is served natively by the
-// front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query that
-// reaches CivetWeb is either plaintext - refuse it with 426, DoH must be
-// encrypted or the client's "encrypted" queries would leak - or misdirected.
+// Serve one DoH request (RFC 8484) forwarded by a trusted reverse proxy. Only
+// reached for a connection whose PROXY v2 header authenticated with
+// webserver.proxySecret, so ri->remote_addr is the client address the proxy
+// announced rather than the proxy itself, and the query is attributed correctly.
+static int dns_query_plain(struct mg_connection *conn, const struct mg_request_info *ri)
+{
+	// Thread-local rather than on the stack: a CivetWeb worker stack cannot
+	// carry two 64 KiB buffers. Same reason the terminator does it this way.
+	static _Thread_local uint8_t query[DNS_MSG_MAX];
+	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	ssize_t qlen = -1;
+
+	if(!dotdoh_source_allowed(ri->remote_addr))
+	{
+		mg_send_http_error(conn, 403, "%s", "source not allowed");
+		return 403;
+	}
+
+	if(ri->request_method != NULL && strcmp(ri->request_method, "POST") == 0)
+	{
+		// RFC 8484: body media type application/dns-message (trailing ";..." ok).
+		const char *ctype = mg_get_header(conn, "Content-Type");
+		if(ctype == NULL || strncasecmp(ctype, "application/dns-message",
+		                                sizeof("application/dns-message") - 1) != 0)
+		{
+			mg_send_http_error(conn, 415, "%s", "expected application/dns-message");
+			return 415;
+		}
+		// Reject an oversized or unknown-length body outright rather than
+		// truncating it: a partial read would leave bytes in the stream and
+		// desync the next request on a keep-alive connection.
+		const long long clen = ri->content_length;
+		if(clen < 0)
+		{
+			mg_send_http_error(conn, 411, "%s", "Content-Length required");
+			return 411;
+		}
+		if(clen == 0 || (size_t)clen > sizeof(query))
+		{
+			mg_send_http_error(conn, 413, "%s", "DoH query too large");
+			return 413;
+		}
+		// mg_read() may return short; loop until the whole body is in.
+		size_t got = 0;
+		while(got < (size_t)clen)
+		{
+			const int rd = mg_read(conn, query + got, (size_t)clen - got);
+			if(rd <= 0)
+				break;
+			got += (size_t)rd;
+		}
+		if(got == (size_t)clen)
+			qlen = (ssize_t)got;
+	}
+	else if(ri->query_string != NULL)
+	{
+		// RFC 8484: query base64url-encoded in the "dns" parameter.
+		char b64[DOH_GET_B64_MAX];
+		const int vlen = mg_get_var(ri->query_string, strlen(ri->query_string),
+		                            "dns", b64, sizeof(b64));
+		if(vlen > 0)
+			qlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+	}
+
+	if(qlen <= 0)
+	{
+		mg_send_http_error(conn, 400, "%s", "malformed DoH request");
+		return 400;
+	}
+
+	const ssize_t alen = dotdoh_server_resolve(ri->remote_addr, NULL, query,
+	                                           (size_t)qlen, answer, sizeof(answer));
+	if(alen <= 0)
+	{
+		mg_send_http_error(conn, 502, "%s", "resolver failed");
+		return 502;
+	}
+
+	mg_printf(conn,
+	          "HTTP/1.1 200 OK\r\n"
+	          "Content-Type: application/dns-message\r\n"
+	          "Content-Length: %zd\r\n"
+	          "Cache-Control: max-age=%u\r\n"
+	          "\r\n",
+	          alen, doh_answer_min_ttl(answer, (size_t)alen));
+	mg_write(conn, answer, (size_t)alen);
+	return 200;
+}
+
+// Guard on the CivetWeb /dns-query path. Inbound DoH is normally served natively
+// by the front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query
+// reaching CivetWeb arrived over a plaintext hop.
+//
+// `is_ssl` is set here only when a PROXY v2 header authenticated by
+// webserver.proxySecret announced that the client spoke TLS to a trusted proxy
+// (civetweb rewrites the peer address and TLS status from that header). That is
+// the reverse-proxy deployment dns.dohReverseProxy exists for, and because the
+// proxy authenticated itself the announced client address is trustworthy - an
+// unauthenticated X-Forwarded-For never is, which is why it is not consulted.
+//
+// Anything else is a genuinely cleartext request: refuse it with 426, or the
+// client's "encrypted" queries would leak on the wire.
 static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 {
 	(void)cbdata;
 	const struct mg_request_info *ri = mg_get_request_info(conn);
-	if(ri != NULL && !ri->is_ssl)
+	if(ri == NULL || !ri->is_ssl || !config.dns.dohReverseProxy.v.b)
 	{
 		mg_send_http_error(conn, 426, "%s", "DoH requires HTTPS");
 		return 426;
 	}
-	mg_send_http_error(conn, 421, "%s", "misdirected DoH request");
-	return 421;
+	if(!dotdoh_doh_enabled())
+	{
+		mg_send_http_error(conn, 404, "%s", "DoH is disabled");
+		return 404;
+	}
+	return dns_query_plain(conn, ri);
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
@@ -1084,12 +1195,16 @@ void http_init(void)
 		}
 	}
 
-	// When the front terminator is active it reaches this loopback backend behind
-	// a PROXY v2 header; hand the backend the shared secret (the per-boot token,
-	// hex-encoded) so it authenticates the header and adopts the real client
-	// address. Generated here so it exists before mg_start2(); terminator_start()
-	// reuses the same token.
-	if(terminator_port > 0)
+	// Hand CivetWeb the shared secret authenticating PROXY v2 headers, so it
+	// adopts the real client address the header announces. Two independent
+	// reasons to install it: our own front terminator reaches this loopback
+	// backend behind such a header, and an operator-configured
+	// webserver.proxySecret lets an EXTERNAL reverse proxy do the same. The
+	// latter deployment has no local TLS port at all, so it must not be gated on
+	// the terminator running. Generated here so it exists before mg_start2();
+	// terminator_start() reuses the same value.
+	const char *cfg_proxy_secret = config.webserver.proxySecret.v.s;
+	if(terminator_port > 0 || (cfg_proxy_secret != NULL && cfg_proxy_secret[0] != '\0'))
 	{
 		char secret_hex[33]; // 2 * 16-byte token + NUL
 		if(terminator_proxy_token_hex(secret_hex, sizeof(secret_hex)))
