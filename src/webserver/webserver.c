@@ -35,6 +35,8 @@
 
 #ifdef HAVE_MBEDTLS
 #include <mbedtls/ssl_ciphersuites.h>
+// mbedtls_debug_set_threshold()
+#include <mbedtls/debug.h>
 #endif /* HAVE_MBEDTLS */
 
 // Server context handle
@@ -328,6 +330,19 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	}
 
 	return 1;
+}
+
+// mbedTLS formats every message at or below the threshold before handing it to
+// FTL_mbed_debug(), so the threshold is what keeps this out of the TLS hot path
+// when the user did not ask for debugging. Level 3 is "informational", level 4
+// would add the record hex dumps on top.
+void set_mbedtls_debug_threshold(const bool enabled)
+{
+#ifdef HAVE_MBEDTLS
+	mbedtls_debug_set_threshold(enabled ? 3 : 0);
+#else
+	(void)enabled;
+#endif
 }
 
 void FTL_mbed_debug(void *user_param, int level, const char *file, int line, const char *message)
