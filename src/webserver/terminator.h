@@ -22,18 +22,19 @@
 #define TERMINATOR_MAX_LISTENERS 8
 
 // One public TLS listener: the port and the address it is scoped to (NULL or ""
-// for all interfaces, else an IPv4/IPv6 literal).
+// for all interfaces, else an IPv4/IPv6 literal). terminator_start() sets bound.
 struct terminator_listener {
 	const char *addr;
 	int port;
+	bool bound;
 };
 
 // Start the TLS terminator on every entry of listeners: terminate TLS with the
 // PEM (cert + key) at cert_path and forward accepted connections as plain
 // HTTP/1.1 to 127.0.0.1:backend_port. Spawns one accept thread serving all of
-// them. HTTP/3 is served on the first entry only. Returns true if at least one
-// listener came up; on total failure nothing is left running.
-bool terminator_start(const struct terminator_listener *listeners, unsigned n_listeners,
+// them. HTTP/3 is served on the first entry that bound. Returns true if at least
+// one listener came up; on total failure nothing is left running.
+bool terminator_start(struct terminator_listener *listeners, unsigned n_listeners,
                       int backend_port, const char *cert_path);
 
 // Stop the terminator and free all resources. Safe to call if never started or already stopped.

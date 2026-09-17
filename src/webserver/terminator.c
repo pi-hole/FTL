@@ -4325,7 +4325,7 @@ static void *accept_loop(void *arg)
 	return NULL;
 }
 
-bool terminator_start(const struct terminator_listener *listeners, unsigned n_listeners,
+bool terminator_start(struct terminator_listener *listeners, unsigned n_listeners,
                       int be_port, const char *cert_path)
 {
 	if(running)
@@ -4362,6 +4362,7 @@ bool terminator_start(const struct terminator_listener *listeners, unsigned n_li
 	unsigned bound[TERMINATOR_MAX_LISTENERS];
 	for(unsigned i = 0; i < n_listeners; i++)
 	{
+		listeners[i].bound = false;
 		const int fd = bind_listener(listeners[i].addr, listeners[i].port);
 		if(fd < 0)
 			continue; // bind_listener() already said why
@@ -4392,7 +4393,8 @@ bool terminator_start(const struct terminator_listener *listeners, unsigned n_li
 
 	for(unsigned i = 0; i < n_listen_fds; i++)
 	{
-		const struct terminator_listener *l = &listeners[bound[i]];
+		struct terminator_listener *l = &listeners[bound[i]];
+		l->bound = true;
 		log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
 		         (l->addr && l->addr[0]) ? l->addr : "*", l->port, be_port);
 	}

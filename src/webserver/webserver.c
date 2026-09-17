@@ -552,7 +552,36 @@ static char terminator_addr[64] = "";
 static struct terminator_listener tls_listeners[TERMINATOR_MAX_LISTENERS];
 static char tls_listener_addrs[TERMINATOR_MAX_LISTENERS][64];
 static unsigned n_tls_listeners = 0;
+// Index into tls_listeners of the port terminator_port names
+static unsigned tls_primary = 0;
 #endif
+// Whether the terminator actually serves terminator_port. Settled once
+// terminator_start() has returned.
+static bool terminator_bound = false;
+
+// Read back the ephemeral loopback port CivetWeb bound for the terminator
+// backend. Returns false if CivetWeb reports no ports at all.
+static bool find_backend_port(void)
+{
+	if(ctx == NULL)
+		return false;
+
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	const int ports = mg_get_server_ports(ctx, MAXPORTS, mgports);
+	if(ports < 1)
+	{
+		log_web(LOG_WARNING, "No web server ports configured!");
+		return false;
+	}
+
+	for(int i = 0; i < ports && terminator_port > 0; i++)
+		if(mgports[i].protocol == 1 && !mgports[i].is_ssl &&
+		   mgports[i].addr.sa4.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
+			backend_port = mgports[i].port;
+
+	return true;
+}
+
 /**
  * @brief Retrieves and logs the server ports configuration.
  *
@@ -594,6 +623,7 @@ static bool get_server_ports(void)
 	// plaintext port with the terminator's TLS port on the same address.
 	log_info("Web server ports:");
 	unsigned int n = 0;
+	bool mirrored = false;
 	for(unsigned int i = 0; i < (unsigned int)ports && n < MAXPORTS; i++)
 	{
 		// Stop if no more ports are configured
@@ -619,14 +649,11 @@ static bool get_server_ports(void)
 			continue;
 		}
 
-		// The loopback plaintext backend the terminator forwards to is internal;
-		// remember its port for terminator_start() but do not advertise it.
-		if(terminator_port > 0 && !mgports[i].is_ssl &&
+		// The loopback plaintext backend the terminator forwards to is internal,
+		// do not advertise it
+		if(backend_port > 0 && mgports[i].port == backend_port &&
 		   strcmp(addr, "127.0.0.1") == 0)
-		{
-			backend_port = mgports[i].port;
 			continue;
-		}
 
 		// Store the public port
 		strncpy(server_ports[n].addr, addr, sizeof(server_ports[n].addr) - 1);
@@ -655,14 +682,16 @@ static bool get_server_ports(void)
 			server_ports[n] = server_ports[n - 1];
 			server_ports[n].port = terminator_port;
 			server_ports[n].is_secure = true;
-			server_ports[n].is_bound = true;
-			if(https_port == 0)
+			server_ports[n].is_bound = terminator_bound;
+			if(https_port == 0 && terminator_bound)
 				https_port = (in_port_t)terminator_port;
-			log_info("  - %s:%d (HTTPS, IPv%s%s, terminator)",
+			log_info("  - %s:%d (HTTPS, IPv%s%s, terminator, %s)",
 			         server_ports[n].addr, server_ports[n].port,
 			         server_ports[n].protocol == 1 ? "4" : "6",
-			         server_ports[n].is_optional ? ", optional" : "");
+			         server_ports[n].is_optional ? ", optional" : "",
+			         terminator_bound ? "OK" : "NOT bound");
 			n++;
+			mirrored = true;
 		}
 	}
 
@@ -673,7 +702,7 @@ static bool get_server_ports(void)
 	// get_server_ports() would report failure (aborting the whole web interface)
 	// or leave https_port at 0, which mis-reports the port in /info and skips
 	// certificate auto-renewal (letting an FTL-generated cert silently expire).
-	if(terminator_port > 0 && https_port == 0 && n < MAXPORTS)
+	if(terminator_port > 0 && !mirrored && n < MAXPORTS)
 	{
 		memset(&server_ports[n], 0, sizeof(server_ports[n]));
 		strncpy(server_ports[n].addr,
@@ -681,20 +710,24 @@ static bool get_server_ports(void)
 		        sizeof(server_ports[n].addr) - 1);
 		server_ports[n].port = (in_port_t)terminator_port;
 		server_ports[n].is_secure = true;
-		server_ports[n].is_bound = true;
+		server_ports[n].is_bound = terminator_bound;
 		server_ports[n].protocol = 1;
-		https_port = (in_port_t)terminator_port;
-		log_info("  - %s:%d (HTTPS, terminator)",
-		         server_ports[n].addr, server_ports[n].port);
+		if(terminator_bound)
+			https_port = (in_port_t)terminator_port;
+		log_info("  - %s:%d (HTTPS, terminator, %s)",
+		         server_ports[n].addr, server_ports[n].port,
+		         terminator_bound ? "OK" : "NOT bound");
 		n++;
 	}
 
 #ifdef HAVE_TLS
-	// The mirroring above only ever advertises the first TLS port. Register the
-	// remaining ones so /info and the web interface report every port the
-	// terminator actually serves.
-	for(unsigned t = 1; t < n_tls_listeners && n < MAXPORTS; t++)
+	// The mirroring above only ever advertises the primary TLS port. Register
+	// the remaining ones so /info and the web interface report every port the
+	// terminator was asked to serve, and whether it could.
+	for(unsigned t = 0; t < n_tls_listeners && n < MAXPORTS; t++)
 	{
+		if(t == tls_primary)
+			continue;
 		const char *a = tls_listeners[t].addr;
 		// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
 		// A bare entry is dual-stack; report it as IPv6, matching how the
@@ -709,10 +742,11 @@ static bool get_server_ports(void)
 			strncpy(server_ports[n].addr, a, sizeof(server_ports[n].addr) - 1);
 		server_ports[n].port = (in_port_t)tls_listeners[t].port;
 		server_ports[n].is_secure = true;
-		server_ports[n].is_bound = true;
+		server_ports[n].is_bound = tls_listeners[t].bound;
 		server_ports[n].protocol = v6 ? 3 : 1;
-		log_info("  - %s:%d (HTTPS, terminator)",
-		         server_ports[n].addr, server_ports[n].port);
+		log_info("  - %s:%d (HTTPS, terminator, %s)",
+		         server_ports[n].addr, server_ports[n].port,
+		         tls_listeners[t].bound ? "OK" : "NOT bound");
 		n++;
 	}
 #endif
@@ -748,8 +782,9 @@ unsigned short get_api_string(char **buf, const bool domain)
 	// Loop over all ports
 	for(unsigned int i = 0; i < MAXPORTS; i++)
 	{
-		// Skip ports that are not configured or redirected
-		if(server_ports[i].port == 0 || server_ports[i].is_redirect)
+		// Skip ports that are not configured, redirected or not served
+		if(server_ports[i].port == 0 || server_ports[i].is_redirect ||
+		   !server_ports[i].is_bound)
 			continue;
 
 		// Reallocate additional memory for every port
@@ -1113,6 +1148,8 @@ void http_init(void)
 	terminator_port = 0;
 	backend_port = 0;
 	terminator_addr[0] = '\0';
+	tls_primary = 0;
+	terminator_bound = false;
 	if(tls_used)
 	{
 		n_tls_listeners = split_terminator_ports(config.webserver.port.v.s,
@@ -1327,7 +1364,7 @@ void http_init(void)
 	init.configuration_options = (const char**)conf_opts;
 
 	/* Start the server */
-	if((ctx = mg_start2(&init, &error)) == NULL || !get_server_ports())
+	if((ctx = mg_start2(&init, &error)) == NULL || !find_backend_port())
 	{
 		log_err("Start of webserver failed! Web interface will not be available!");
 		print_webserver_opts(false, idx, (const char **)conf_opts);
@@ -1404,20 +1441,32 @@ void http_init(void)
 	create_cli_password();
 
 #ifdef HAVE_TLS
-	// Start the TLS terminator in front of the (now plaintext) CivetWeb backend.
-	// get_server_ports() captured the ephemeral loopback port as backend_port and
-	// the public TLS port as https_port; forward the TLS port to that backend.
+	// Start the TLS terminator in front of the (now plaintext) CivetWeb backend
+	// on the loopback port find_backend_port() read back.
 	if(tls_used && terminator_port > 0)
 	{
 		if(backend_port <= 0)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
 		else if(!terminator_start(tls_listeners, n_tls_listeners, backend_port, config.webserver.tls.cert.v.s))
-		{
 			log_err("Failed to start the TLS terminator on port %d", terminator_port);
-			https_port = 0; // TLS is not actually available
+
+		// Advertise the first TLS port that actually came up, like HTTP/3 does
+		for(unsigned i = 0; i < n_tls_listeners; i++)
+		{
+			if(!tls_listeners[i].bound)
+				continue;
+			tls_primary = i;
+			terminator_port = tls_listeners[i].port;
+			strncpy(terminator_addr, tls_listeners[i].addr, sizeof(terminator_addr) - 1);
+			terminator_addr[sizeof(terminator_addr) - 1] = '\0';
+			terminator_bound = true;
+			break;
 		}
 	}
 #endif
+
+	// Only now does the port table reflect what the terminator really serves
+	get_server_ports();
 }
 
 static char *append_to_path(char *path, const char *append)

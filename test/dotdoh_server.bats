@@ -182,6 +182,20 @@ setup_file() {
   assert_output "426"
 }
 
+@test "dotdoh-server: every configured TLS port is served" {
+  # test/pihole.toml adds 9443s next to the default 443
+  run curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:9443/api/info/login"
+  assert_output "200"
+}
+
+@test "dotdoh-server: a TLS port that cannot be bound is reported as such" {
+  # 192.0.2.1 (TEST-NET-1) is not assigned locally, so 192.0.2.1:9444s cannot bind
+  run grep -F "192.0.2.1:9444 (HTTPS, terminator, NOT bound)" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "TLS terminator listening on 192.0.2.1#9444" /var/log/pihole/FTL.log
+  assert_failure
+}
+
 @test "dotdoh-server: DoH rejects a non-POST/GET method (405)" {
   local ca; ca="$(pwd)/test/test_ca.crt"
   run curl -s -o /dev/null -w '%{http_code}' --cacert "$ca" \
