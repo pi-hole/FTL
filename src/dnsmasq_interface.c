@@ -340,7 +340,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	}
 
 	// Get question name
-	char name[MAXDNAME] = { 0 };
+	char name[MAXDNAMESTR + 1] = { 0 };
 	unsigned char *p = (unsigned char *)(header+1);
 	if (!extract_name(header, len, &p, name, 1, 4))
 	{
