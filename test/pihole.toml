@@ -734,7 +734,7 @@
       #
       # Allowed values are:
       #     true or false
-      set = false
+      set = true
 
       # Path to the RTC device to update.
       #
