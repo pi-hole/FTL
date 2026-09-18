@@ -1707,7 +1707,8 @@
 
   # Temporary flag that may print additional information. This debug flag is meant to be
   # used whenever needed for temporary investigations. The logged content may change
-  # without further notice at any time.
+  # without further notice at any time. Enabling this flag also raises the resolution of
+  # all log timestamps from milliseconds to microseconds.
   #
   # Allowed values are:
   #     true or false
