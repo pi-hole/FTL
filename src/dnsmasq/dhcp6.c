@@ -720,7 +720,7 @@ static int construct_worker(struct in6_addr *local, int prefix,
     return 1;
   
   for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
-    if (tmp->name && wildcard_match(tmp->name, ifrn_name))
+    if (tmp->name && (tmp->flags & INAME_6) && wildcard_match(tmp->name, ifrn_name))
       return 1;
 
   for (template = daemon->dhcp6; template; template = template->next)

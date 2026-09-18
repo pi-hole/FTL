@@ -1029,6 +1029,13 @@ int dnssec_validate_ds(time_t now, struct dns_header *header, size_t plen, char 
 
   if (!servfail)
     {
+      /* If the answer carries no proof of non-existence, we fall back to asking if the
+	 zone is unsigned, but that question is answered by the very DS record we're
+	 chasing here, so we'd loop getting nowhere. Treat the zone as unsigned and let
+	 the checks below decide if that's acceptable. */
+      if (STAT_ISEQUAL(rc, STAT_NEED_DS) && hostname_isequal(name, keyname))
+	rc = STAT_INSECURE;
+
       if (STAT_ISEQUAL(rc, STAT_INSECURE))
 	{
 	  /* A INSECURE DS answer is OK if it's negative and there's a CNAME answer to the DS answer which is
