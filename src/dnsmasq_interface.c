@@ -2440,14 +2440,14 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Re-check capabilities: what FTL needs depends on the configuration,
-	// which may have changed since the last check
-	check_capabilities();
-
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)
 	if(reload > 1)
 		reread_config();
+
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// so this has to see the config the reload just installed
+	check_capabilities();
 
 	// Report blocking mode
 	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
