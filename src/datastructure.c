@@ -746,8 +746,11 @@ void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
 
-	// (Re-)open gravity database connection
-	gravityDB_reopen();
+	// (Re-)open gravity database connection. A warning rather than an error:
+	// gravityDB_open() has already said its piece, and before the first
+	// pihole -g the file is simply not there yet
+	if(!gravityDB_reopen())
+		log_warn("Reloading the domainlists failed: gravity database could not be reopened");
 
 	// Get size of gravity, number of domains, groups, clients, and lists
 	counters->database.gravity = gravityDB_count(GRAVITY_TABLE, false);
