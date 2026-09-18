@@ -317,6 +317,15 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
+// The blocking reason and the CNAME target describe one query, so they are
+// dropped on every way out of _FTL_make_answer() below, not only on the path
+// that answered
+static void unset_blocking_metadata(void)
+{
+	blockingreason = "<not set>";
+	cname_target = NULL;
+}
+
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len,
                         unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len,
@@ -325,13 +334,19 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Get question name
 	char name[MAXDNAME] = { 0 };
 	unsigned char *p = (unsigned char *)(header+1);
 	if (!extract_name(header, len, &p, name, 1, 4))
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Debug logging
 	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\"", name);
@@ -403,6 +418,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Forced DNS reply to NONE - dropping this query");
 
+		unset_blocking_metadata();
 		return 0;
 	}
 	else
@@ -571,7 +587,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
 	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
@@ -710,10 +729,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason and the CNAME target that went with it, so
-	// neither travels into the next query
-	blockingreason = "<not set>";
-	cname_target = NULL;
+	unset_blocking_metadata();
 
 	return p - (unsigned char *)header;
 }
