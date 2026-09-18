@@ -75,8 +75,12 @@ void set_debug_flags(struct config *conf)
 	// DEBUG_ELEMENTS as the last element is "ALL" itself
 	conf->debug.all.v.b = elements_set == DEBUG_ELEMENTS-1;
 
-	// Keep mbedTLS in sync, it decides on formatting before we see the message
-	set_mbedtls_debug_threshold(conf->debug.tls.v.b);
+	// Keep mbedTLS in sync, it decides on formatting before we see the
+	// message. Only the live configuration may move the process-global
+	// threshold, a candidate can still be discarded - replace_config()
+	// applies it once the candidate is installed
+	if(conf == &config)
+		set_mbedtls_debug_threshold(conf->debug.tls.v.b);
 }
 
 void set_all_debug(struct config *conf, const bool status)
@@ -2062,6 +2066,9 @@ void replace_config(struct config *newconf)
 
 	// Unlock shared memory
 	unlock_shm();
+
+	// This configuration is live now, so the mbedTLS threshold follows it
+	set_mbedtls_debug_threshold(config.debug.tls.v.b);
 }
 
 void reread_config(void)
