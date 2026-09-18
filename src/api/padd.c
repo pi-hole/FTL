@@ -298,7 +298,14 @@ int api_padd(struct ftl_conn *api)
 
 		// info/version
 		cJSON *version = JSON_NEW_OBJECT();
-		get_version_obj(api, version);
+		const int ret = get_version_obj(api, version);
+		if(ret != 0)
+		{
+			// get_version_obj() has answered already
+			JSON_DELETE(version);
+			JSON_DELETE(json);
+			return ret;
+		}
 		JSON_ADD_ITEM_TO_OBJECT(json, "version", version);
 	}
 

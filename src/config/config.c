@@ -1017,8 +1017,12 @@ void initConfig(struct config *conf)
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	conf->database.maxDBdays.a = cJSON_CreateStringReference("A positive integer value in days, or 0 to disable the database");
-	conf->database.maxDBdays.t = CONF_INT;
-	conf->database.maxDBdays.d.i = (365/4);
+	// Unsigned: every reader takes .v.ui - database-thread.c, query-table.c
+	// and common.c - and the help text above promises a positive value. As
+	// CONF_INT the two disagreed, and a -1 stored through .v.i came back out
+	// of .v.ui as 4294967295
+	conf->database.maxDBdays.t = CONF_UINT;
+	conf->database.maxDBdays.d.ui = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking
 
 	conf->database.DBinterval.k = "database.DBinterval";
@@ -1108,7 +1112,7 @@ void initConfig(struct config *conf)
 	conf->webserver.headers.f = FLAG_RESTART_FTL;
 	conf->webserver.headers.d.json = cJSON_CreateArray();
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-DNS-Prefetch-Control: off"));
-	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"));
+	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"));
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Frame-Options: DENY"));
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-XSS-Protection: 0"));
 	cJSON_AddItemToArray(conf->webserver.headers.d.json, cJSON_CreateStringReference("X-Content-Type-Options: nosniff"));

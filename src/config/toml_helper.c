@@ -55,8 +55,25 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 		snprintf(filename, sizeof(filename), BACKUP_DIR"/pihole.toml.%u", version);
 	}
 
-	// Try to open config file
-	FILE *fp = fopen(filename, mode);
+	// Try to open config file. For writing this deliberately does not go
+	// through fopen(..., "w"): that truncates at open time, before the lock
+	// below is taken, so a second writer arriving mid-write would empty the
+	// temporary file the first one is still filling. Open without
+	// truncating, take the lock, and only then cut the file back to zero
+	const bool writing = mode[0] == 'w';
+	FILE *fp = NULL;
+	if(writing)
+	{
+		const int fd = open(filename, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
+		if(fd >= 0)
+		{
+			fp = fdopen(fd, "r+");
+			if(fp == NULL)
+				close(fd);
+		}
+	}
+	else
+		fp = fopen(filename, mode);
 
 	// Return early if opening failed
 	if(!fp)
@@ -68,6 +85,16 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 
 	// Lock file, may block if the file is currently opened
 	*locked = lock_file(fp, filename);
+
+	// Now that the file is ours, discard whatever an earlier write left in it
+	if(writing && ftruncate(fileno(fp), 0) != 0)
+	{
+		log_err("Cannot truncate %s: %s", filename, strerror(errno));
+		if(*locked)
+			unlock_file(fp, filename);
+		fclose(fp);
+		return NULL;
+	}
 
 	// Log if we are using a backup file
 	if(version > 0)
@@ -519,7 +546,11 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 		case CONF_INT:
 		{
 			const toml_datum_t val = toml_table_find(toml, key);
-			if(val.type == TOML_INT64)
+			// Range-checked like the unsigned cases below: v.i is a
+			// 32-bit int and TOML integers are 64-bit, so without this
+			// an out-of-range value in pihole.toml is silently
+			// truncated into something else entirely
+			if(val.type == TOML_INT64 && val.u.int64 >= INT_MIN && val.u.int64 <= INT_MAX)
 				conf_item->v.i = val.u.int64;
 			else
 				log_absent_or_wrong_type(val, conf_item, "integer");

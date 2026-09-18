@@ -777,6 +777,8 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Read all known config items
 	bool config_changed = false;
+	bool privacy_level_decreased = false;
+	bool invalidate_sessions = false;
 	bool dnsmasq_changed = false;
 	bool rewrite_hosts = false;
 	struct config newconf;
@@ -893,15 +895,16 @@ static int api_config_patch(struct ftl_conn *api)
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
-		{
-			api->ftl.restart_reason = "Privacy level decreased";
-			api->ftl.restart = true;
-		}
+			privacy_level_decreased = true;
 
 		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions
+		// invalidate all currently active sessions. Only note it here:
+		// a later item in this same request can still be rejected, and
+		// so can the dnsmasq test below, and this candidate config is
+		// then thrown away - logging everyone out for a change that
+		// never happened
 		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			delete_all_sessions();
+			invalidate_sessions = true;
 	}
 
 	// Process new config only when at least one value changed
@@ -928,6 +931,21 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Install new configuration
 		replace_config(&newconf);
+
+		// The candidate is the live config now, so the side effects noted
+		// while walking the items can be applied. Doing either earlier
+		// meant a request rejected further down - by a later item, or by
+		// the dnsmasq test above - still logged every session out, or
+		// still left api->ftl.restart set for api.c to act on although
+		// free_config() had thrown the candidate away
+		if(privacy_level_decreased)
+		{
+			api->ftl.restart_reason = "Privacy level decreased";
+			api->ftl.restart = true;
+		}
+
+		if(invalidate_sessions)
+			delete_all_sessions();
 
 		// Reload debug levels
 		set_debug_flags(&config);
@@ -956,10 +974,27 @@ static int api_config_patch(struct ftl_conn *api)
 //	for (char *current_pos = strchr(str, find); (current_pos = strchr(str+1, find)) != NULL; *current_pos = replace);
 //}
 
+// Upper bound for a value rebuilt out of the request path. No config string
+// array holds anything remotely this long, and a request that exceeds it is
+// answered rather than silently truncated
+#define MAX_CONFIG_VALUE_LEN 1024
+
 static int api_config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
+
+	// Return early if the config is in read-only mode, as api_config_patch()
+	// already does. Without this, PUT and DELETE changed the live config,
+	// 01-pihole.conf and the HOSTS file and restarted FTL, while
+	// writeFTLtoml() deliberately wrote none of it to disk
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+	}
 
 	// Users may specify ?restart=false to avoid a restart of dnsmasq
 	// even if the changed config item would require it
@@ -989,7 +1024,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
-	char *new_item_str = requested_path[min_level - 1];
+	// Filled in from the requested path once the matching item is known.
+	// The buffer lives out here rather than in the loop below: the pointer
+	// would otherwise outlive the block it points into if this is ever read
+	// after the loop, which is what the value it replaced allowed
+	char value_buf[MAX_CONFIG_VALUE_LEN] = { 0 };
+	const char *new_item_str = NULL;
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
@@ -1014,12 +1054,38 @@ static int api_config_put_delete(struct ftl_conn *api)
 		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
 		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 		//  etc.
-		if(!check_paths_equal(new_item->p, requested_path, max(min_level - 2, level - 1)))
+		// Compare exactly this item's own path depth. For a value with no
+		// slash in it this is what max(min_level - 2, level - 1) already
+		// worked out to
+		if(!check_paths_equal(new_item->p, requested_path, level - 1))
 			continue;
 
-		// Check if this is a property where we want to add an item
-		if(min_level != level + 1)
+		// The requested path has to reach at least one component past
+		// this item, and everything past it is the value. Taking only
+		// the last component would drop every value containing a slash,
+		// which a string array is free to hold - civetweb has already
+		// decoded %2F by the time we see the path
+		if(min_level < level + 1)
 			continue;
+
+		size_t value_len = 0;
+		value_buf[0] = '\0';
+		for(unsigned int c = level; c < min_level; c++)
+		{
+			const int n = snprintf(value_buf + value_len, sizeof(value_buf) - value_len,
+			                       "%s%s", c > level ? "/" : "", requested_path[c]);
+			if(n < 0 || (size_t)n >= sizeof(value_buf) - value_len)
+			{
+				free_config(&newconf, false);
+				free_config_path(requested_path);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Item too long",
+				                       NULL);
+			}
+			value_len += n;
+		}
+		new_item_str = value_buf;
 
 		// Error when this config item is read-only due to an
 		// environment variable forcing its value
@@ -1142,6 +1208,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		else
 		{
 			// The new config did not work
+			free_config(&newconf, false);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid configuration",

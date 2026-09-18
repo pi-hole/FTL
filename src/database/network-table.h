@@ -23,7 +23,7 @@ bool unify_hwaddr(sqlite3 *db);
 bool getMACfromIP(sqlite3 *db, char mac[MAXMACLEN], const char* ipaddr);
 int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr);
 bool getNameFromIP(sqlite3 *db, char hostn[MAXDOMAINLEN], const char* ipaddr);
-bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN]);
+bool getNameFromMAC(sqlite3 *db, const char *client, char hostn[MAXDOMAINLEN]);
 bool getIfaceFromIP(sqlite3 *db, char iface[MAXIFACESTRLEN], const char* ipaddr);
 void resolveNetworkTableNames(void);
 bool flush_network_table(void);

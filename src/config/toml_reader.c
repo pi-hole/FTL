@@ -130,6 +130,58 @@ static bool migrate_dns_domain(toml_datum_t toml, struct config *newconf)
 }
 
 
+// The default Content-Security-Policy before img-src was allowed to load
+// data: URIs
+#define CSP_HEADER_OLD "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
+#define CSP_HEADER_NEW "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'"
+
+static bool migrate_webserver_csp(struct config *newconf)
+{
+	cJSON *header = NULL;
+	int idx = 0;
+
+	// Only replace the policy if it is 1:1 the old default - anyone who
+	// wrote their own Content-Security-Policy keeps it
+	cJSON_ArrayForEach(header, newconf->webserver.headers.v.json)
+	{
+		if(cJSON_IsString(header) && strcmp(header->valuestring, CSP_HEADER_OLD) == 0)
+		{
+			log_debug(DEBUG_CONFIG, "Config setting webserver.headers MIGRATED to CSP img-src 'self' data:");
+			cJSON_ReplaceItemInArray(newconf->webserver.headers.v.json, idx,
+			                         cJSON_CreateString(CSP_HEADER_NEW));
+			return true;
+		}
+		idx++;
+	}
+
+	log_debug(DEBUG_CONFIG, "webserver.headers does not carry the old CSP default - nothing to migrate");
+
+	return false;
+}
+
+// Migrate the unsupported files.log.dnsmasq = "-" sentinel to the default
+// path (see https://github.com/pi-hole/FTL/pull/2960).  Checks the effective
+// value so a valid env override is never clobbered by a stale "-" in the TOML.
+static bool migrate_files_log_dnsmasq(struct config *newconf)
+{
+	bool restart = false;
+	if(newconf->files.log.dnsmasq.v.s != NULL &&
+	   strcmp(newconf->files.log.dnsmasq.v.s, "-") == 0)
+	{
+		log_warn("files.log.dnsmasq = \"-\" (log to stderr) is no longer supported, using %s instead (see https://github.com/pi-hole/FTL/pull/2960)",
+		         newconf->files.log.dnsmasq.d.s);
+		if(newconf->files.log.dnsmasq.t == CONF_STRING_ALLOCATED)
+			free(newconf->files.log.dnsmasq.v.s);
+		newconf->files.log.dnsmasq.v.s = newconf->files.log.dnsmasq.d.s;
+		newconf->files.log.dnsmasq.t = CONF_STRING;
+		log_debug(DEBUG_CONFIG, "Config setting files.log.dnsmasq MIGRATED to %s", newconf->files.log.dnsmasq.d.s);
+		restart = true;
+	}
+
+	return restart;
+}
+
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
 static bool migrate_config(toml_datum_t toml, struct config *newconf)
@@ -140,6 +192,10 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 	restart |= migrate_dns_revServer(toml, newconf);
 	// Migrate dns.domain -> dns.domain.name
 	restart |= migrate_dns_domain(toml, newconf);
+	// Migrate the old Content-Security-Policy default to allow data: images
+	restart |= migrate_webserver_csp(newconf);
+	// Migrate files.log.dnsmasq = "-" to the default path
+	restart |= migrate_files_log_dnsmasq(newconf);
 
 	return restart;
 }

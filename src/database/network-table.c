@@ -297,7 +297,12 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
-	                       "firstSeen > (cast(strftime('%%s', 'now') as int)-3600)";
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter. As %%s
+	                       // it reached strftime() literally, which answers
+	                       // NULL, so the cast produced 0 and the one-hour
+	                       // window was never applied
+	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
 	return db_query_int_str(db, querystr, ipaddr);
@@ -2325,7 +2330,8 @@ getNameFromIP_end:
 }
 
 // Get most recently seen host name of device identified by MAC address
-bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
+// db may be NULL, in which case a connection is opened just for this lookup
+bool getNameFromMAC(sqlite3 *db, const char *client, char hostn[MAXDOMAINLEN])
 {
 	bool got_name = false;
 
@@ -2340,12 +2346,18 @@ bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
 		return false;
 	}
 
-	// Open pihole-FTL.db database file
-	sqlite3 *db = NULL;
-	if((db = dbopen(false, false)) == NULL)
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
 	{
-		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
-		return false;
+		if((db = dbopen(false, false)) == NULL)
+		{
+			log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
+			return false;
+		}
+
+		// Successful
+		db_opened = true;
 	}
 
 	// Check for a host name associated with the given client as MAC address
@@ -2404,11 +2416,13 @@ getNameFromMAC_end:
 	if(!got_name)
 		checkFTLDBrc(rc);
 
-	// Finalize statement and close database handle
+	// Finalize statement and close database handle (if opened)
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
 
-	dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
+
 	return got_name;
 }
 

@@ -53,7 +53,8 @@
 // Version 1
 #define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
 // Version 12
-#define CREATE_QUERY_STORAGE_ID_INDEX			"CREATE UNIQUE INDEX idx_query_storage_id ON query_storage (id);"
+// No index on query_storage(id): id is INTEGER PRIMARY KEY, hence an alias for
+// the rowid, and the rowid B-tree already is that index
 #define CREATE_QUERY_STORAGE_TIMESTAMP_INDEX		"CREATE INDEX idx_query_storage_timestamp ON query_storage (timestamp);"
 #define CREATE_QUERY_STORAGE_TYPE_INDEX		"CREATE INDEX idx_query_storage_type ON query_storage (type);"
 #define CREATE_QUERY_STORAGE_STATUS_INDEX		"CREATE INDEX idx_query_storage_status ON query_storage (status);"
@@ -86,7 +87,6 @@ const char *table_creation[] = {
 	CREATE_QUERIES_VIEW,
 };
 const char *index_creation[] = {
-	CREATE_QUERY_STORAGE_ID_INDEX,
 	CREATE_QUERY_STORAGE_TIMESTAMP_INDEX,
 	CREATE_QUERY_STORAGE_TYPE_INDEX,
 	CREATE_QUERY_STORAGE_STATUS_INDEX,
@@ -112,6 +112,7 @@ sqlite3 *_get_memdb(const int line, const char *func, const char *file) __attrib
 #define get_memdb(void) _get_memdb(__LINE__, __FUNCTION__, __FILE__)
 void close_memory_database(void);
 bool import_queries_from_disk(void);
+void interrupt_memdb(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
 void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp);

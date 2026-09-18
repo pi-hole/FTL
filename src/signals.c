@@ -1278,11 +1278,17 @@ void log_sigterm_info(void)
 	if(fp != NULL)
 	{
 		size_t read = 0;
-		if((read = fread(kill_name, sizeof(char), sizeof(kill_name), fp)) > 0)
+		// One byte short of the buffer, and terminated below: every NUL
+		// separator in cmdline is turned into a space further down, so a
+		// read that filled the buffer completely would leave the string
+		// with no terminator at all for the log line to stop at
+		if((read = fread(kill_name, sizeof(char), sizeof(kill_name) - 1, fp)) > 0)
 		{
+			kill_name[read] = '\0';
+
 			// cmdline contains null-separated arguments - replace
 			// null bytes with spaces for display
-			for(unsigned int i = 0; i < min((size_t)read, sizeof(kill_name)); i++)
+			for(size_t i = 0; i < read; i++)
 			{
 				if(kill_name[i] == '\0')
 					kill_name[i] = ' ';

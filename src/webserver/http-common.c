@@ -422,15 +422,26 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 		return -1;
 	}
 
-	// Extract value of the particular variable
+	// Extract value of the particular variable. mg_get_var() already
+	// URL-decodes what it returns, so this must not decode it a second time:
+	// a value that legitimately contains a percent sign, or a space that
+	// arrived as '+', comes back from the second pass as -1 and the caller
+	// silently drops the filter
 	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
 
-	// Decode the URI component if needed
 	if(len > 0)
-		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
+	{
+		// Copy rather than decode. The temporary buffer is still needed:
+		// mg_get_var() wants a buffer of its own and dest may be shorter
+		// than dest_len suggests to it
+		if((size_t)len >= dest_len)
+			len = (int)dest_len - 1;
 
-	// Free the temporary buffer, if anything was decoded it's now stored in
-	// dest
+		memcpy(dest, tempbuf, len);
+		dest[len] = '\0';
+	}
+
+	// Free the temporary buffer, the value is now stored in dest
 	free(tempbuf);
 
 	// Return the length of the decoded string
@@ -540,18 +551,45 @@ const char * __attribute__((const)) get_http_method_str(const enum http_method m
 	}
 }
 
-void read_and_parse_payload(struct ftl_conn *api)
+// Does this request carry a body at all? civetweb leaves content_length at -1
+// both for a request that announced no length and for a chunked one, so the
+// encoding header has to be read as well - the same test civetweb makes before
+// it sets is_chunked, and it has already rejected any other encoding with a 400
+static bool payload_expected(struct ftl_conn *api)
 {
-	// Defense in depth: never operate on an unallocated payload buffer
-	if(api->payload.raw == NULL)
-		return;
+	if(api->request->content_length > 0)
+		return true;
 
-	// Read payload
-	api->payload.size = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	const char *encoding = mg_get_header(api->conn, "Transfer-Encoding");
+	return encoding != NULL && strcasecmp(encoding, "identity") != 0;
+}
+
+bool read_and_parse_payload(struct ftl_conn *api)
+{
+	// Most requests are bodyless - every GET a dashboard polls - and those
+	// need no buffer at all
+	if(!payload_expected(api))
+		return true;
+
+	api->payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	if(api->payload.raw == NULL)
+		return false;
+
+	// Read payload. mg_read() reports a read error as a negative number,
+	// which must not reach the unsigned payload size - it would wrap and
+	// read as a payload too large to handle
+	const int nread = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	if (nread < 0)
+	{
+		log_web_debug(DEBUG_API, "Error reading payload");
+		return true;
+	}
+
+	api->payload.size = (long unsigned int)nread;
 	if (api->payload.size < 1)
 	{
 		log_web_debug(DEBUG_API, "Received no payload");
-		return;
+		return true;
 	}
 	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
 	{
@@ -559,7 +597,7 @@ void read_and_parse_payload(struct ftl_conn *api)
 		// truncated the payload. The only reasonable thing to do here is to
 		// discard the payload altogether
 		log_web(LOG_WARNING, "API: Received too large payload - DISCARDING");
-		return;
+		return true;
 	}
 
 	// Debug output of received payload (if enabled)
@@ -573,6 +611,8 @@ void read_and_parse_payload(struct ftl_conn *api)
 
 	// Try to parse possibly existing JSON payload
 	api->payload.json = cJSON_ParseWithOpts(api->payload.raw, &api->payload.json_error, 0);
+
+	return true;
 }
 
 // Escape a string to mask HTML special characters, the resulting string is

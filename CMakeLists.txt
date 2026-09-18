@@ -16,7 +16,7 @@ set(CMAKE_C_STANDARD 17)
 
 project(PIHOLE_FTL C)
 
-set(DNSMASQ_VERSION pi-hole-v2.93+16)
+set(DNSMASQ_VERSION pi-hole-v2.93+30)
 
 # Base directory holding Pi-hole's configuration and state (pihole.toml,
 # dnsmasq.conf, the databases, ...). Packagers can relocate the whole tree with

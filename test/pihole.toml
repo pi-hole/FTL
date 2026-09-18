@@ -989,7 +989,7 @@
   #     An array of HTTP headers
   headers = [
     "X-DNS-Prefetch-Control: off",
-    "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'",
+    "Content-Security-Policy: default-src 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; manifest-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'",
     "X-Frame-Options: DENY",
     "X-XSS-Protection: 0",
     "X-Content-Type-Options: nosniff",

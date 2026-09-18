@@ -64,8 +64,12 @@ static int api_teleporter_GET(struct ftl_conn *api)
 	// Send raw (binary) ZIP content
 	mg_write(api->conn, ptr, size);
 
-	// Free allocated ZIP memory
+	// Free allocated ZIP memory. mz_zip_writer_finalize_heap_archive() has
+	// handed the buffer over to us and cleared it out of the writer's state,
+	// so mz_zip_writer_end() inside free_teleporter_zip() releases the
+	// writer but not the archive itself - that is ours now
 	free_teleporter_zip(&zip);
+	free(ptr);
 
 	return 200;
 }
@@ -153,6 +157,15 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 	}
 	else if(data->field.sid)
 	{
+		// A field can arrive in more than one chunk, and a client is free
+		// to send the same field twice. Either way this runs again, and
+		// overwriting the pointer would drop what was allocated before
+		if(data->sid != NULL)
+		{
+			log_web(LOG_WARNING, "Ignoring repeated SID field in teleporter upload");
+			return MG_FORM_FIELD_HANDLE_GET;
+		}
+
 		// Allocate memory for the SID
 		data->sid = calloc(valuelen + 1, sizeof(char));
 		if(data->sid == NULL)
@@ -168,6 +181,13 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 	}
 	else if(data->field.import)
 	{
+		// As above: do not leak an already parsed object by replacing it
+		if(data->import != NULL)
+		{
+			log_web(LOG_WARNING, "Ignoring repeated import field in teleporter upload");
+			return MG_FORM_FIELD_HANDLE_GET;
+		}
+
 		// Try to parse the JSON data
 		const char *json_error = NULL;
 		cJSON *json = cJSON_ParseWithLengthOpts(value, valuelen, &json_error, false);

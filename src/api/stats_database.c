@@ -763,12 +763,27 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND status = 3";
 	int cached_queries = db_query_int_from_until(db, querystr, from, until);
-	sum_queries += cached_queries;
 
 	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND status != 0 AND status != 2 AND status != 3";
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
+
+	// A failed query reports a negative sentinel, and sum_queries is
+	// unsigned - adding it in would wrap into an enormous total and be
+	// served as fact. api_stats_database_summary() checks the same way
+	if(cached_queries < 0 || blocked_queries < 0)
+	{
+		// Close (= unlock) database connection
+		dbclose(&db);
+
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Internal server error",
+		                       NULL);
+	}
+
+	sum_queries += cached_queries;
 	sum_queries += blocked_queries;
 
 	querystr = "SELECT forward,COUNT(*) FROM query_storage "

@@ -258,7 +258,11 @@ void *DB_thread(void *val)
 		{
 			// Update lastDBdelete timer to avoid multiple deletions
 			lastDBdelete = now;
-			const double mintime = now - (double)(config.database.maxDBdays.v.ui * 86400);
+			// Widen before multiplying: maxDBdays is an unsigned int, so
+			// the product was computed in 32-bit arithmetic and wrapped
+			// for large values, turning a long retention into a cutoff
+			// that deletes almost everything
+			const double mintime = now - (double)config.database.maxDBdays.v.ui * 86400.0;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(delete_old_queries_from_db(false, mintime));
 			DBCLOSE_OR_BREAK();
