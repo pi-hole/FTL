@@ -411,41 +411,12 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 	if(!source)
 		return -1;
 
-	// Allocate a temporary buffer to store the possibly URI-encoded value
-	// of the variable. We use the real destination later to store the
-	// decoded value. The decoded value will always be shorter than the
-	// encoded value, so using the same length is fine.
-	char *tempbuf = calloc(dest_len, sizeof(char));
-	if(!tempbuf)
-	{
-		log_web(LOG_ERR, "get_string_var: Out of memory");
-		return -1;
-	}
-
-	// Extract value of the particular variable. mg_get_var() already
-	// URL-decodes what it returns, so this must not decode it a second time:
-	// a value that legitimately contains a percent sign, or a space that
-	// arrived as '+', comes back from the second pass as -1 and the caller
-	// silently drops the filter
-	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
-
-	if(len > 0)
-	{
-		// Copy rather than decode. The temporary buffer is still needed:
-		// mg_get_var() wants a buffer of its own and dest may be shorter
-		// than dest_len suggests to it
-		if((size_t)len >= dest_len)
-			len = (int)dest_len - 1;
-
-		memcpy(dest, tempbuf, len);
-		dest[len] = '\0';
-	}
-
-	// Free the temporary buffer, the value is now stored in dest
-	free(tempbuf);
-
-	// Return the length of the decoded string
-	return len;
+	// Extract the value of the particular variable. mg_get_var() decodes it
+	// for us - the query string reaches us as it was sent because CivetWeb's
+	// decode_query_string is left at its default "no". Decoding a second
+	// time here would corrupt every value containing a literal '%' and let
+	// one containing a space or '+' fail altogether.
+	return mg_get_var(source, strlen(source), var, dest, dest_len);
 }
 
 const char* startsWith(const char *path, struct ftl_conn *api)
