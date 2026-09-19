@@ -218,8 +218,8 @@ class TestDeleteConfigArrayItem:
         assert r.content == b""
 
     def test_value_with_many_slashes_is_kept_whole(self, api_session):
-        """The value is everything after the item, a trailing slash included."""
-        value = "pytest/a/b/c/d/e/f/"
+        """The value is everything after the item, however many slashes it has."""
+        value = "pytest/a/b/c/d/e/f"
         base = f"{FTL_URL}/api/config/webserver/api/excludeDomains"
         url = f"{base}/{value}"
 

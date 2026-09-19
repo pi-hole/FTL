@@ -1004,7 +1004,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(value == NULL)
 			continue;
 
-		const size_t value_len = strlen(value);
+		size_t value_len = strlen(value);
+		// A trailing slash only belongs to the value where it can mean
+		// something, e.g., local=/lan/ in misc.dnsmasq_lines
+		if(value_len > 0 && value[value_len - 1] == '/' &&
+		   new_item != &newconf.misc.dnsmasq_lines)
+			value_len--;
 		if(value_len == 0)
 			continue;
 		if(value_len >= sizeof(value_buf))
