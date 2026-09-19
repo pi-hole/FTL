@@ -31,7 +31,8 @@
 // enum web_theme
 #include "api/theme.h"
 
-#define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
+#define CONFIG_DIR "/etc/pihole"
+#define GLOBALTOMLPATH CONFIG_DIR"/pihole.toml"
 
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
@@ -404,6 +405,9 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
+// Restore a single config item to its compiled-in default
+void reset_config_default(struct conf_item *conf_item);
 bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 

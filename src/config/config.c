@@ -47,7 +47,6 @@ uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
 // Private prototypes
 static bool port_in_use(const in_port_t port);
-static void reset_config_default(struct conf_item *conf_item);
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -1156,26 +1155,26 @@ void initConfig(struct config *conf)
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
-	conf->webserver.paths.webroot.h = "Server root on the host";
-	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid path");
+	conf->webserver.paths.webroot.h = "Server root on the host.\n\n Every file below this directory can be requested over the network once webserver.serve_all is enabled, so it cannot be \"/\" or any other directory containing \""CONFIG_DIR"\".\n\n Relocating the document root decides which files the web server serves, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
+	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid absolute path not containing \""CONFIG_DIR"\"");
 	conf->webserver.paths.webroot.t = CONF_STRING;
-	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
-	conf->webserver.paths.webroot.c = validate_filepath;
+	conf->webserver.paths.webroot.c = validate_webroot;
 
 	conf->webserver.paths.webhome.k = "webserver.paths.webhome";
-	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
+	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
 	conf->webserver.paths.webhome.a = cJSON_CreateStringReference("A valid subpath, both slashes are needed!");
 	conf->webserver.paths.webhome.t = CONF_STRING;
-	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
 	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
 
 	conf->webserver.paths.prefix.k = "webserver.paths.prefix";
-	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!";
+	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
 	conf->webserver.paths.prefix.a = cJSON_CreateStringReference("A valid URL prefix or empty");
 	conf->webserver.paths.prefix.t = CONF_STRING;
-	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.prefix.d.s = (char*)"";
 	conf->webserver.paths.prefix.c = validate_filepath_empty;
 
@@ -1357,7 +1356,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity_tmp.t = CONF_STRING;
 	conf->files.gravity_tmp.f = FLAG_RESTART_FTL;
 	conf->files.gravity_tmp.d.s = (char*)"/tmp";
-	conf->files.gravity_tmp.c = validate_stub; // Only type-based checking
+	conf->files.gravity_tmp.c = validate_filepath;
 
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
@@ -1391,7 +1390,7 @@ void initConfig(struct config *conf)
 	conf->files.log.webserver.t = CONF_STRING;
 	conf->files.log.webserver.f = FLAG_RESTART_FTL;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
-	conf->files.log.webserver.c = validate_webserver_logfile;
+	conf->files.log.webserver.c = validate_filepath;
 
 	// struct misc
 	conf->misc.privacylevel.k = "misc.privacylevel";
@@ -1774,7 +1773,7 @@ void initConfig(struct config *conf)
 	}
 }
 
-static void reset_config_default(struct conf_item *conf_item)
+void reset_config_default(struct conf_item *conf_item)
 {
 	if(conf_item->t == CONF_JSON_STRING_ARRAY)
 	{
@@ -1800,6 +1799,60 @@ static void reset_config_default(struct conf_item *conf_item)
 		// Ordinary value: Simply copy the union over
 		memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
 	}
+}
+
+
+/**
+ * @brief Hold a configuration to the same rules every way of setting it obeys.
+ *
+ * Runs the validator each config item declares, then the rules spanning several
+ * items, which a validator seeing one value at a time cannot express.
+ *
+ * @param conf Configuration to check
+ * @param reset If true, an offending item is reset to its default and the check
+ *              continues; if false, the first rejection ends it
+ * @param err Buffer receiving the rejection, may be NULL when \p reset is true
+ * @return Whether the configuration is acceptable
+ */
+bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(conf, i);
+		if(conf_item->c == NULL)
+			continue;
+
+		char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(conf_item->c(&conf_item->v, conf_item->k, valerr))
+			continue;
+
+		if(!reset)
+		{
+			if(err != NULL)
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
+			return false;
+		}
+
+		// The validator's message opens with the key, so it is not repeated
+		log_err("Invalid value: %s", valerr);
+		log_err("----> %s has been reset to its default value", conf_item->k);
+		reset_config_default(conf_item);
+	}
+
+	if(!reset)
+	{
+		char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(conf, patherr, NULL))
+		{
+			if(err != NULL)
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", patherr);
+			return false;
+		}
+	}
+	else
+		resolve_config_paths(conf);
+
+	return true;
 }
 
 
@@ -1892,6 +1945,14 @@ bool migrate_config_v6(void)
 	// setupVars.conf
 	get_web_port(&config);
 
+	// Hold the migrated values to the same rules every other way of setting
+	// them obeys. The legacy file is not necessarily one we wrote: it can be
+	// uploaded as a Teleporter archive, which makes this a way into the
+	// configuration that would otherwise run no validator at all. Migrating
+	// must not fail outright, though - it also runs for genuine upgrades - so
+	// an offending value is reset to its default and the reason is logged.
+	validate_config(&config, true, NULL);
+
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
@@ -1916,7 +1977,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
 		toml_datum_t toml = { 0 };
-		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false))
+		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false, NULL))
 		{
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
@@ -2096,7 +2157,7 @@ void reread_config(void)
 	// Read TOML config file
 	bool restart = false;
 	toml_datum_t toml = { 0 };
-	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false))
+	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false, NULL))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");

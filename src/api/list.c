@@ -529,9 +529,10 @@ static int api_list_write(struct ftl_conn *api,
 					it->valuestring[i] = tolower((unsigned char)it->valuestring[i]);
 
 				// Validate domain
-				// This will reject domains like äöü{{{.com
-				// which convert to xn--{{{-pla4gpb.com
-				if(!valid_domain(it->valuestring, strlen(it->valuestring), false))
+				// An internationalized name has to be added in its
+				// punycode form: the query name is matched byte-wise
+				// and always arrives as an A-label
+				if(!valid_domain(it->valuestring, strlen(it->valuestring), false, false))
 				{
 					if(allocated_json)
 						cJSON_Delete(row.items);
