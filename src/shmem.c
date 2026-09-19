@@ -36,7 +36,8 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 17
+// 18: clientsData gained hwaddr_next_try (MAC-lookup backoff)
+#define SHARED_MEMORY_VERSION 18
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
