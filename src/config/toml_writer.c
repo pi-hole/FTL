@@ -68,8 +68,12 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	const bool opened = fp == NULL;
 	if(opened)
 	{
-		install_lock = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_CLOEXEC,
+		// flock() does not need write access, so read-only lets members
+		// of the pihole group take the lock as well
+		install_lock = open(GLOBALTOMLPATH".lock", O_RDONLY | O_CREAT | O_CLOEXEC,
 		                    S_IRUSR | S_IWUSR | S_IRGRP);
+		if(install_lock >= 0 && geteuid() == 0)
+			chown_pihole(GLOBALTOMLPATH".lock", NULL);
 		if(install_lock < 0)
 			log_warn("Cannot open %s (%s), writing the config unserialised",
 			         GLOBALTOMLPATH".lock", strerror(errno));

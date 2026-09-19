@@ -1609,6 +1609,34 @@ setup() {
 
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
+@test "Internationalized domain names are accepted, malformed UTF-8 is not" {
+  # dnsmasq is built with libidn2 and converts these to punycode itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "2.2.2.2 äste.com", "3.3.3.3 日本.example", "4.4.4.4 𐍈.example" ]'
+  assert_success
+
+  # Wait for change to become effective, otherwise the running FTL can coalesce
+  # this change and the restore below into a single reload
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Only sequences a decoder accepts: no overlong encoding, no UTF-16 surrogate,
+  # nothing above U+10FFFF, no truncated sequence and no stray continuation byte
+  for seq in '\xc0\x80' '\xed\xa0\x80' '\xf5\x80\x80\x80' '\xe2\x82' '\xff'; do
+    run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 $(printf '%b' "$seq").com\" ]"
+    assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
+    assert_failure 3
+  done
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
@@ -1888,48 +1916,62 @@ setup() {
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/13: document_root=/var/www/html" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 0/16: document_root=/var/www/html" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/13: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/13: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/13: decode_url=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/13: enable_directory_listing=no" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 4/16: enable_directory_listing=no" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/13: num_threads=50" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 5/16: num_threads=50" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/13: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 6/16: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/13: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 7/16: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/13: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 8/16: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/13: enable_keep_alive=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 9/16: enable_keep_alive=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/13: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 10/16: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
   assert_success
   # Nagle disabled so small TLS responses are not delayed on the client's ACK.
-  run bash -c 'grep -F "Webserver option 11/13: tcp_nodelay=1" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 11/16: tcp_nodelay=1" /var/log/pihole/webserver.log'
+  assert_success
+  run bash -c 'grep -F "Webserver option 12/16: lua_server_page_pattern=**.lp$" /var/log/pihole/webserver.log'
+  assert_success
+  run bash -c 'grep -F "Webserver option 13/16: lua_script_pattern=" /var/log/pihole/webserver.log'
+  assert_success
+  run bash -c 'grep -F "Webserver option 14/16: ssi_pattern=" /var/log/pihole/webserver.log'
   assert_success
   # The terminator's per-boot backend-auth secret; its value is redacted in the log.
-  run bash -c 'grep -F "Webserver option 12/13: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 15/16: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
   assert_success
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
-  run bash -c 'grep -F "Webserver option 13/13: <END OF OPTIONS>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
 }
 
 @test "Gravity: API write waits for a concurrent reader instead of failing" {
-  # gravity_updated() reads gravity.db from its own connection once per second.
-  # A write meeting that reader used to fail with "database is locked" instead
-  # of waiting for it. Hold a read transaction here, wait until it is really
-  # held, and write through the API while it is
-  rm -f /tmp/gravity_reader_ready
-  printf 'BEGIN;\nSELECT count(*) FROM domainlist;\n.shell touch /tmp/gravity_reader_ready\n.shell sleep 0.4\nCOMMIT;\n' | \
-    ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db > /dev/null 2>&1 &
+  # gravity_updated() reads gravity.db from its own connection once per second
+  # and a write meeting such a reader has to wait for it. Hold a read
+  # transaction here, write through the API while it is held, and release the
+  # reader once the busy handler of the write was seen waiting (debug.database
+  # is enabled in the test configuration)
+  rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
+  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+  cat > /tmp/gravity_reader.sql << 'SQL'
+BEGIN;
+SELECT count(*) FROM domainlist;
+.shell touch /tmp/gravity_reader_ready
+.shell i=0; while [ ! -f /tmp/gravity_reader_release ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done
+COMMIT;
+SQL
+  ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db < /tmp/gravity_reader.sql > /dev/null 2>&1 3>&- &
   reader=$!
 
   # Do not guess how long the reader needs to take its lock
@@ -1937,20 +1979,39 @@ setup() {
     [ -f /tmp/gravity_reader_ready ] && break
     sleep 0.05
   done
-  run bash -c '[ -f /tmp/gravity_reader_ready ]'
-  assert_success
+  reader_ready=no
+  [ -f /tmp/gravity_reader_ready ] && reader_ready=yes
 
-  # The write has to succeed AND to have waited: if it returns immediately the
-  # reader was already gone and this test proved nothing
-  run bash -c 'out="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d "{\"comment\":\"busy handler regression\",\"groups\":[0],\"enabled\":true}")"; echo "${out}"; code="${out%% *}"; secs="${out##* }"; case "${code}" in 200|201) ;; *) exit 1;; esac; awk -v t="${secs}" "BEGIN{exit !(t>0.1)}"'
-  assert_success
+  # Write while the reader holds its lock
+  curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}' > /tmp/gravity_put_result 2> /dev/null 3>&- &
+  put=$!
 
-  wait "${reader}"
-  rm -f /tmp/gravity_reader_ready
+  # Release the reader as soon as the write is waiting for it. This is well
+  # within the busy timeout, however long the request took to get there
+  write_waited=no
+  for _ in $(seq 1 100); do
+    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+    if [ "${busy_now}" -gt "${busy_before}" ]; then
+      write_waited=yes
+      break
+    fi
+    sleep 0.05
+  done
+  touch /tmp/gravity_reader_release
 
-  # Remove it again so the following tests see the list they expect
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
-  assert_output "204"
+  wait "${put}" || true
+  wait "${reader}" || true
+  put_code="$(cat /tmp/gravity_put_result)"
+
+  # Clean up before asserting so a failure does not leak into later tests
+  rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result /tmp/gravity_reader.sql
+  delete_code="$(curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl)"
+
+  printf "reader ready: %s, write waited: %s, PUT: %s, DELETE: %s\n" "${reader_ready}" "${write_waited}" "${put_code}" "${delete_code}"
+  [[ "${reader_ready}" == "yes" ]]
+  [[ "${write_waited}" == "yes" ]]
+  [[ "${put_code}" == "200" || "${put_code}" == "201" ]]
+  [[ "${delete_code}" == "204" ]]
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)

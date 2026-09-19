@@ -144,11 +144,15 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
-			// errors are fatal and we break out of the loop
+			// errors are fatal: there is no status to evaluate and
+			// the test counts as failed
 			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
-				break;
+				if(errbuf != NULL)
+					snprintf(errbuf, ERRBUF_SIZE, "Cannot wait for dnsmasq test: %s", strerror(err));
+				code = EXIT_FAILURE;
+				goto check_return;
 			}
 
 			// Check if the child exited too quickly for waitpid to

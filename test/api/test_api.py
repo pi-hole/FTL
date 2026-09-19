@@ -11,6 +11,7 @@ Usage:
 
 import json
 import re
+from urllib.parse import quote
 
 import pytest
 
@@ -972,6 +973,56 @@ class TestMethodNotAllowed:
             f"Expected 405, got {slash.status_code} {slash.text}"
         assert self._allow(slash) == self._allow(plain), \
             f"{self._allow(slash)} != {self._allow(plain)}"
+
+    def test_config_element_spans_several_components(self, api_session):
+        """A config element is a path of its own, e.g., dns/cache/size.
+
+        Both the 405 and the OPTIONS reply have to name the methods of the
+        /{element} and /{element}/{value} rows for it, and only GET for an
+        element that is a single component.
+        """
+        r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        r = api_session.options(f"{FTL_URL}/api/config/dns/cache/size", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        r = api_session.post(f"{FTL_URL}/api/config/dns", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_parameter_with_slashes_keeps_its_row(self, api_session):
+        """A list address arrives decoded, its slashes are not path components."""
+        address = quote("https://pytest.example.com/list.txt", safe="")
+        r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        # Only the row with the most parameters takes the rest of the URI
+        r = api_session.options(f"{FTL_URL}/api/domains/deny/regex/{quote('a/b', safe='')}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+    def test_longer_endpoint_wins_over_a_parameter(self, api_session):
+        """/api/info/messages/count is an endpoint, not the message ID "count"."""
+        r = api_session.options(f"{FTL_URL}/api/info/messages/count", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_docs_path_names_get(self, api_session):
+        """The documentation is served from any path below /api/docs."""
+        r = api_session.post(f"{FTL_URL}/api/docs/index.html", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
 
     def test_handler_asking_for_404_still_gets_one(self, api_session):
         """api_docs() returns 0 for a file it does not have, which is a 404.

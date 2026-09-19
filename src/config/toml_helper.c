@@ -561,6 +561,15 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 			const toml_datum_t val = toml_table_find(toml, key);
 			if(val.type == TOML_INT64 && val.u.int64 >= 0 && val.u.int64 <= UINT_MAX)
 				conf_item->v.ui = val.u.int64;
+			else if(val.type == TOML_INT64 && val.u.int64 < 0 &&
+			        conf_item == &newconf->database.maxDBdays)
+			{
+				// A negative number kept the queries forever when
+				// this was a signed value and continues to do so
+				log_info("Config setting %s MIGRATED from %lli to %u",
+				         conf_item->k, (long long)val.u.int64, UINT_MAX);
+				conf_item->v.ui = UINT_MAX;
+			}
 			else
 				log_absent_or_wrong_type(val, conf_item, "unsigned integer");
 			break;
@@ -577,7 +586,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 		case CONF_LONG:
 		{
 			const toml_datum_t val = toml_table_find(toml, key);
-			if(val.type == TOML_INT64 && val.u.int64 <= LONG_MAX)
+			if(val.type == TOML_INT64 && val.u.int64 >= LONG_MIN && val.u.int64 <= LONG_MAX)
 				conf_item->v.l = val.u.int64;
 			else
 				log_absent_or_wrong_type(val, conf_item, "long integer");

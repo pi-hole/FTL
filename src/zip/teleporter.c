@@ -324,11 +324,24 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true))
+	// readFTLtoml() holds every value in the archive to the validator its config
+	// item declares. An import is not a lesser path than PATCH /api/config: it
+	// is reachable by anyone holding an admin session and installs a complete
+	// configuration, so a value the API refuses must not get in this way either.
+	char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true, valerr))
 	{
 		free_config(&teleporter_config, false);
 		toml_free(toml);
-		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
+
+		// The buffer names the offending item when a value was refused, and
+		// stays empty when the file could not be read at all
+		if(valerr[0] == '\0')
+			return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
+
+		log_err("Teleporter: %s", valerr);
+		set_hint(hint, valerr);
+		return "File etc/pihole/pihole.toml in ZIP archive contains an invalid value";
 	}
 
 	// Test dnsmasq config in the imported configuration
@@ -357,13 +370,83 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	return NULL;
 }
 
+// Check that an imported DHCP lease database actually looks like one.
+//
+// The archive member is written verbatim to a well-known path, which makes the
+// import a way to place chosen bytes on disk. Rejecting anything that is not
+// printable ASCII, and any record not opening with a type dnsmasq knows, keeps
+// an arbitrary file from arriving under a name dnsmasq will parse.
+//
+// This is a shape check, not a grammar check: the fields after the first are
+// not validated, so a well-formed record can still carry arbitrary printable
+// text. Accepted records are "duid <hex>", "vendorclass|agent-info <address>
+// <hex>" and "<expiry> <hwaddr> <address> [hostname [clientid]]".
+bool valid_dhcp_leases(const char *data, const size_t size)
+{
+	size_t pos = 0;
+	while(pos < size)
+	{
+		// Determine the extent of this line
+		size_t eol = pos;
+		while(eol < size && data[eol] != '\n')
+			eol++;
+
+		// A lease database holds only numbers, hex, addresses and host
+		// names, so anything outside printable ASCII is not one
+		for(size_t i = pos; i < eol; i++)
+			if(data[i] != '\t' && (data[i] < 0x20 || data[i] > 0x7e))
+				return false;
+
+		// Skip leading whitespace, accept empty lines
+		while(pos < eol && (data[pos] == ' ' || data[pos] == '\t'))
+			pos++;
+		if(pos == eol)
+		{
+			pos = eol + 1;
+			continue;
+		}
+
+		// The first token decides the record type
+		size_t tok = pos;
+		while(tok < eol && data[tok] != ' ' && data[tok] != '\t')
+			tok++;
+		const size_t toklen = tok - pos;
+
+		bool numeric = true;
+		for(size_t i = pos; i < tok; i++)
+			if(data[i] < '0' || data[i] > '9')
+				numeric = false;
+
+		if(!numeric &&
+		   !(toklen == 4 && strncmp(data + pos, "duid", 4) == 0) &&
+		   !(toklen == 11 && strncmp(data + pos, "vendorclass", 11) == 0) &&
+		   !(toklen == 10 && strncmp(data + pos, "agent-info", 10) == 0))
+			return false;
+
+		pos = eol + 1;
+	}
+
+	return true;
+}
+
 static const char *import_dhcp_leases(const void *ptr, size_t size, char * const hint)
 {
 	// We do not check if the file is empty here, as an empty dhcp.leases file is valid
 
-	// When we reach this point, we know that the file is a valid dhcp.leases file.
-	// We can now safely overwrite the current dhcp.leases file with the one from the ZIP archive
-	// Nevertheless, we rotate the current dhcp.leases file to keep a backup of the previous version
+	// Check the content really is a lease database before overwriting the
+	// current one - the bytes come straight from the uploaded archive.
+	//
+	// Skip the file rather than failing the import: pihole.toml is installed
+	// earlier in the same archive, so returning an error here would report
+	// failure for an import that has already changed the configuration. The
+	// TAR.GZ importer skips the same file for the same reason.
+	if(!valid_dhcp_leases(ptr, size))
+	{
+		log_warn("Not importing etc/pihole/dhcp.leases: not a DHCP lease database");
+		return NULL;
+	}
+
+	// Rotate the current dhcp.leases file to keep a backup of the previous version
 
 	// Rotate current dhcp.leases file
 	rotate_files(DHCPLEASESFILE, NULL);

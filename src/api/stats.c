@@ -283,17 +283,21 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 		if(strcmp(domain_name, HIDDEN_DOMAIN) == 0)
 			continue;
 
-		// Skip domains the user does not want to see. We filter here,
-		// before the heap, so excluded domains cannot occupy heap capacity
-		// and evict genuine top entries (see issue #2946)
-		if(matches_filter(regex_domains, N_regex_domains, domain_name))
-			continue;
-
 		// Use either blocked or total count based on request string
 		const int entry_count = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
 
 		// Skip zero-count entries early
 		if(entry_count < 1)
+			continue;
+
+		// An entry too small for the full heap needs no filtering
+		if(heap_ready && entry_count <= top_domains[0].count)
+			continue;
+
+		// Skip domains the user does not want to see. We filter here,
+		// before the heap, so excluded domains cannot occupy heap capacity
+		// and evict genuine top entries (see issue #2946)
+		if(matches_filter(regex_domains, N_regex_domains, domain_name))
 			continue;
 
 		if(heap_size < heap_cap)
@@ -482,6 +486,17 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 			continue;
 		}
 
+		// Use either blocked or total count based on request string
+		const int entry_count = blocked ? client->blockedcount : client->count;
+
+		// Skip zero-count entries early
+		if(entry_count < 1)
+			continue;
+
+		// An entry too small for the full heap needs no filtering
+		if(heap_ready && entry_count <= top_clients[0].count)
+			continue;
+
 		// Skip clients the user does not want to see. We filter here,
 		// before the heap, so excluded clients cannot occupy heap capacity
 		// and evict genuine top entries (see issue #2946)
@@ -492,13 +507,6 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 			log_debug(DEBUG_API, "Skipping client %u because it matches a filter", clientID);
 			continue;
 		}
-
-		// Use either blocked or total count based on request string
-		const int entry_count = blocked ? client->blockedcount : client->count;
-
-		// Skip zero-count entries early
-		if(entry_count < 1)
-			continue;
 
 		if(heap_size < heap_cap)
 		{

@@ -432,7 +432,7 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 		}
 
 		// Check if this the special read-only config option
-		if(item->f & FLAG_READ_ONLY)
+		if(item->f & FLAG_API_CLI_READ_ONLY)
 		{
 			log_err("Config option %s can only be set in pihole.toml, not via the CLI", key);
 			free_config(&newconf, false);
