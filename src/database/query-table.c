@@ -859,6 +859,15 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// sqlite3_interrupt() has no effect on a statement that is not running
+	// yet, so do not start the import when FTL is already terminating
+	if(killed)
+	{
+		sqlite3_finalize(stmt);
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
@@ -903,7 +912,17 @@ bool import_queries_from_disk(void)
 	int imported[ArraySize(subtable_names)] = { 0 };
 	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
+		rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
+
+		// An interrupt has rolled the transaction back already, the
+		// ROLLBACK covers a termination request between two statements
+		if(killed)
+		{
+			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			return false;
+		}
+
+		if(rc != SQLITE_OK)
 			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
 			        subtable_sql[i], sqlite3_errstr(rc));
 		imported[i] = sqlite3_changes(memdb);
