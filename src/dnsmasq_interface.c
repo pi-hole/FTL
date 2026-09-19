@@ -1397,8 +1397,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			break;
 		}
 	}
-
-	// Update cache so subsequent queries on the same interface skip the loops
 }
 
 static void check_pihole_PTR(char *domain)
