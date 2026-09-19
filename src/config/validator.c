@@ -637,6 +637,19 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	return true;
 }
 
+bool validate_dns_fastRetry(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// dnsmasq rejects intervals below 50 ms outright, and an interval
+	// beyond the forwarding timeout would never fire a retransmission
+	if(val->ui != 0 && (val->ui < 50 || val->ui > 10000))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be 0 (disabled) or between 50 and 10000", key);
+		return false;
+	}
+
+	return true;
+}
+
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(val->ui < 7 && val->ui != 0)
