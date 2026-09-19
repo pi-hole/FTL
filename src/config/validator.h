@@ -28,6 +28,7 @@ bool validate_webserver_logfile(union conf_value *val, const char *key, char err
 bool validate_regex_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_restart_delay(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 void sanitize_dns_hosts(union conf_value *val);
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_str_no_newline(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);

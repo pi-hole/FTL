@@ -741,7 +741,7 @@ static int api_config_get(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int api_config_patch(struct ftl_conn *api)
+static int config_patch(struct ftl_conn *api, bool *send_config)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -964,8 +964,23 @@ static int api_config_patch(struct ftl_conn *api)
 		log_web(LOG_INFO, "No config changes detected");
 	}
 
-	// Return full config after possible changes above
-	return api_config_get(api);
+	// Return full config after possible changes above. The caller renders it
+	// once the lock is released
+	*send_config = true;
+	return 0;
+}
+
+static int api_config_patch(struct ftl_conn *api)
+{
+	// The reply is rendered outside the lock: serializing the entire config
+	// and writing it to the connection can block for as long as the client
+	// takes to read it, which must not hold up the other config writers
+	bool send_config = false;
+	lock_config();
+	const int ret = config_patch(api, &send_config);
+	unlock_config();
+
+	return send_config ? api_config_get(api) : ret;
 }
 
 // Inspired by https://stackoverflow.com/a/32496721
@@ -979,7 +994,7 @@ static int api_config_patch(struct ftl_conn *api)
 // answered rather than silently truncated
 #define MAX_CONFIG_VALUE_LEN 1024
 
-static int api_config_put_delete(struct ftl_conn *api)
+static int config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
@@ -1242,6 +1257,14 @@ static int api_config_put_delete(struct ftl_conn *api)
 		send_http_code(api, NULL, 204, "");
 		return 204;
 	}
+}
+
+static int api_config_put_delete(struct ftl_conn *api)
+{
+	lock_config();
+	const int ret = config_put_delete(api);
+	unlock_config();
+	return ret;
 }
 
 // Endpoint /api/config router
