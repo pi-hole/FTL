@@ -116,7 +116,7 @@ static struct {
 // 405 with the union of all four advertises a DELETE that /api/domains without
 // arguments would refuse with a 400, so count the components and keep the rows
 // that would really have taken this URI
-static bool __attribute__((pure)) parameters_match(const char *parameters, const char *item)
+static bool __attribute__((pure)) parameters_match(const char *uri, const char *parameters, const char *item)
 {
 	unsigned int expected = 0;
 	for(const char *p = parameters; *p != '\0'; p++)
@@ -137,6 +137,11 @@ static bool __attribute__((pure)) parameters_match(const char *parameters, const
 			if(item[i] == '/')
 				found++;
 	}
+
+	// A config element is a path of its own (dns/cache/size), so the rows of
+	// /api/config take any URI that is at least as long as they expect
+	if(expected > 0 && strcmp(uri, "/api/config") == 0)
+		return found >= expected;
 
 	return expected == found;
 }
@@ -206,7 +211,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			// The URI exists. Remember every method it accepts,
 			// both to answer OPTIONS below and to tell a request
 			// that came with the wrong one which would have worked
-			if(parameters_match(api_request[i].parameters, api.item))
+			if(parameters_match(api_request[i].uri, api_request[i].parameters, api.item))
 				allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
 
 			// If this is an OPTIONS request, collecting the
