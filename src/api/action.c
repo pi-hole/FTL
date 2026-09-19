@@ -132,8 +132,19 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		}
 
 		// Wait until child has exited to get its return code
-		int status;
-		waitpid(cpid, &status, 0);
+		// dnsmasq reaps every child on SIGCHLD and may have been faster,
+		// the exit status is unknown then and the streamed output is all
+		// there is to judge the run by
+		int status = 0;
+		pid_t waited;
+		do
+			waited = waitpid(cpid, &status, 0);
+		while(waited == -1 && errno == EINTR);
+		if(waited == -1)
+		{
+			log_debug(DEBUG_API, "Cannot wait for child: %s", strerror(errno));
+			status = 0;
+		}
 		code = WEXITSTATUS(status);
 
 		if(WIFSIGNALED(status))
