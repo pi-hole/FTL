@@ -100,6 +100,15 @@ class ResponseVerifyer():
 				jsonData = content[expected_mimetype]
 				YAMLresponseSchema = None
 				YAMLresponseExamples = None
+			elif 'application/octet-stream' in content:
+				# A file as it is on disk, with no schema to check it
+				# against - the DHCP lease file the cluster hands its
+				# peers is one
+				expected_mimetype = 'application/octet-stream'
+				jsonData = content[expected_mimetype]
+				authentication_method = AuthenticationMethods.HEADER
+				YAMLresponseSchema = None
+				YAMLresponseExamples = None
 		else:
 			# No response defined
 			return self.errors
@@ -177,21 +186,28 @@ class ResponseVerifyer():
 				bad_filename = zipfile_obj.testzip()
 				if bad_filename is not None:
 					self.errors.append("File " + bad_filename + " in received archive is corrupt.")
-				# Try to read pihole.toml and see if it starts with the expected
-				# header block
-				try:
-					# Check if all expected files are present
-					for expected_file in self.TELEPORTER_FILES_EXPORT:
-						if expected_file not in zipfile_obj.namelist():
-							self.errors.append("File " + expected_file + " is missing in received archive.")
-					pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
-					if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
-						self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
-				except Exception as err:
-					self.errors.append("Error during ZIP analysis: " + str(err))
+				# Only the Teleporter archive carries the whole of
+				# Pi-hole. The cluster ships the list tables alone,
+				# deliberately without pihole.toml, so the expectations
+				# below apply to the Teleporter endpoint only
+				if endpoint == "/teleporter":
+					# Try to read pihole.toml and see if it starts with
+					# the expected header block
+					try:
+						# Check if all expected files are present
+						for expected_file in self.TELEPORTER_FILES_EXPORT:
+							if expected_file not in zipfile_obj.namelist():
+								self.errors.append("File " + expected_file + " is missing in received archive.")
+						pihole_toml = zipfile_obj.read("etc/pihole/pihole.toml")
+						if not pihole_toml.startswith(b"# Pi-hole configuration file (v"):
+							self.errors.append("Received ZIP file's pihole.toml starts with wrong header")
+					except Exception as err:
+						self.errors.append("Error during ZIP analysis: " + str(err))
 
-				# Store Teleporter archive for later use
-				self.teleporter_archive = FTLresponse
+					# Store Teleporter archive for later use
+					self.teleporter_archive = FTLresponse
+				elif len(zipfile_obj.namelist()) == 0:
+					self.errors.append("Received ZIP file is empty")
 		elif expected_mimetype == "text/html":
 			# Decode the response if it is bytes
 			if type(FTLresponse) is bytes:
@@ -203,8 +219,14 @@ class ResponseVerifyer():
 			r = FTLresponse.lower()
 			if not r.startswith("<!doctype html>") and not r.startswith("<html>"):
 				self.errors.append("FTL's response does not start with <!DOCTYPE html> or <html>")
+		elif expected_mimetype == "application/octet-stream":
+			# A file verbatim. There is nothing to check beyond having
+			# received bytes at all - a DHCP lease file is empty on a node
+			# that has handed out no addresses, which is a valid answer
+			if type(FTLresponse) is not bytes and type(FTLresponse) is not str:
+				self.errors.append("FTL's response is neither bytes nor string")
 		else:
-			self.errors.append("Checker script does not know how to check for mimetype \"" + expected_mimetype + "\"")
+			self.errors.append("Checker script does not know how to check for mimetype \"" + str(expected_mimetype) + "\"")
 
 		# Return all errors
 		return self.errors

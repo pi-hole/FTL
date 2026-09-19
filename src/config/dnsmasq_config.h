@@ -21,6 +21,7 @@ enum dnsmasq_write_mode {
 	DNSMASQ_TEST_ONLY,    // test it and remove it again
 };
 
+bool dhcp_config_valid(struct config *conf, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,2)));
 bool write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,3)));
 int get_lineno_from_string(const char *string);
 char *get_dnsmasq_line(const unsigned int lineno);
