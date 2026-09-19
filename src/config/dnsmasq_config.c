@@ -144,6 +144,8 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
+				if(errbuf != NULL)
+					snprintf(errbuf, ERRBUF_SIZE, "Cannot wait for dnsmasq test: %s", strerror(err));
 				code = EXIT_FAILURE;
 				goto check_return;
 			}
