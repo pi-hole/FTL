@@ -723,7 +723,9 @@ void _lock_shm(const char *func, const int line, const char *file)
 
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
-	if(result != 0)
+	// EOWNERDEAD is recovered from below, e.g., after a TCP worker ran into
+	// its timeout while it was holding the lock
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining outer SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
@@ -760,7 +762,7 @@ void _lock_shm(const char *func, const int line, const char *file)
 		log_debug(DEBUG_LOCKS, "Obtained SHM lock for %s() (%s:%i)", func, file, line);
 	}
 
-	if(result != 0)
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining inner SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
