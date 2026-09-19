@@ -2354,6 +2354,16 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
 	const unsigned int upstreamID = findUpstreamID(dest, upstreamPort);
+
+	// A query is counted against one upstream at a time. If it is forwarded
+	// again before it is complete, the count moves along
+	if(query->flags.upstream_counted)
+	{
+		upstreamsData *old_upstream = getUpstream(query->upstreamID, true);
+		if(old_upstream != NULL)
+			old_upstream->count--;
+		query->flags.upstream_counted = false;
+	}
 	query->upstreamID = upstreamID;
 
 	upstreamsData *upstream = getUpstream(upstreamID, true);
