@@ -303,9 +303,139 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
+
+# --- DoQ (DNS-over-QUIC, RFC 9250) client -----------------------------------
+#
+# aioquic's asyncio connect() always binds the wildcard address, but the inbound
+# tests must query FTL from a specific loopback source to prove client
+# attribution. So we drive aioquic's sans-IO QuicConnection over a socket we own
+# and pump datagrams ourselves - which also gives us the exact stream control DoQ
+# needs (one query per bidirectional stream, FIN in both directions).
+
+
+def _doq_import():
+    try:
+        from aioquic.quic.configuration import QuicConfiguration
+        from aioquic.quic.connection import QuicConnection
+        from aioquic.quic import events as quic_events
+        return QuicConfiguration, QuicConnection, quic_events
+    except Exception as exc:
+        sys.exit("SKIP: aioquic unavailable (%s)" % (exc,))
+
+
+def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.hole",
+                 timeout=20.0):
+    """Send each wire message in `queries` on its own QUIC stream and return the
+    list of answers, in the order the queries were submitted."""
+    import select
+    import time
+
+    QuicConfiguration, QuicConnection, quic_events = _doq_import()
+
+    cfg = QuicConfiguration(is_client=True, alpn_protocols=[alpn])
+    # The shared test cert chains to a keyUsage-less CA (OpenSSL >= 4.0 rejects
+    # it); these tests exercise the DoQ transport, not the PKI, so skip
+    # verification here - test.crt itself is asserted by the DoT cert test.
+    cfg.verify_mode = ssl.CERT_NONE
+    cfg.server_name = server_name
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    if source:
+        sock.bind((source, 0))
+    addr = (host, port)
+
+    conn = QuicConnection(configuration=cfg)
+    now = time.monotonic
+    conn.connect(addr, now=now())
+
+    pending = list(queries)
+    streams = []          # submitted stream ids, in order
+    bufs = {}             # stream id -> accumulated bytes
+    answers = {}          # stream id -> answer
+    handshaked = False
+    deadline = now() + timeout
+    terminated = None
+
+    def flush():
+        for data, dest in conn.datagrams_to_send(now=now()):
+            sock.sendto(data, dest)
+
+    try:
+        flush()
+        while now() < deadline and len(answers) < len(queries):
+            timer = conn.get_timer()
+            wait = min(deadline, timer) - now() if timer is not None else deadline - now()
+            r, _, _ = select.select([sock], [], [], max(0.0, min(wait, 1.0)))
+            if r:
+                while True:
+                    try:
+                        data, src = sock.recvfrom(65536)
+                    except BlockingIOError:
+                        break
+                    conn.receive_datagram(data, src, now=now())
+            timer = conn.get_timer()
+            if timer is not None and now() >= timer:
+                conn.handle_timer(now=now())
+
+            while True:
+                event = conn.next_event()
+                if event is None:
+                    break
+                if isinstance(event, quic_events.HandshakeCompleted):
+                    handshaked = True
+                elif isinstance(event, quic_events.ConnectionTerminated):
+                    terminated = event
+                    deadline = 0.0
+                    break
+                elif isinstance(event, quic_events.StreamDataReceived):
+                    buf = bufs.setdefault(event.stream_id, bytearray())
+                    buf.extend(event.data)
+                    if len(buf) >= 2:
+                        alen = (buf[0] << 8) | buf[1]
+                        if len(buf) >= 2 + alen and event.stream_id not in answers:
+                            answers[event.stream_id] = bytes(buf[2:2 + alen])
+
+            if handshaked and pending:
+                for query in pending:
+                    sid = conn.get_next_available_stream_id()
+                    streams.append(sid)
+                    conn.send_stream_data(
+                        sid, struct.pack("!H", len(query)) + query, end_stream=True)
+                pending = []
+            flush()
+
+        conn.close()
+        flush()
+    finally:
+        sock.close()
+
+    if terminated is not None and len(answers) < len(queries):
+        sys.exit("DoQ: connection terminated (%s: %s)"
+                 % (terminated.error_code, terminated.reason_phrase))
+    if len(answers) < len(queries):
+        sys.exit("DoQ: timed out with %d/%d answers" % (len(answers), len(queries)))
+    return [answers[sid] for sid in streams]
+
+
+def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
+    """Fail unless a QUIC handshake offering `alpn` is refused by the server."""
+    try:
+        doq_exchange(host, port, [build_query("a.ftl")], source=source, alpn=alpn,
+                     timeout=timeout)
+    except SystemExit as exc:
+        msg = str(exc.code) if exc.code is not None else ""
+        if msg.startswith("SKIP:"):
+            raise
+        return  # terminated or timed out: the server refused it, as required
+    sys.exit("DoQ: handshake with ALPN %r was accepted, expected refusal" % alpn)
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|"
+                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqalpn> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -354,6 +484,54 @@ def main():
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]
         doh3(host, int(port), domain, expected_ip)
+        print("OK")
+    elif cmd == "doq":
+        # RFC 9250 Sec. 4.2.1: a DoQ query carries Message ID 0.
+        _, _, host, port, domain, source, expected_ip = sys.argv[:7]
+        query = build_query(domain)
+        query = b"\x00\x00" + query[2:]
+        answers = doq_exchange(host, int(port), [query], source=source)
+        validate(answers[0], expected_ip)
+        print("OK")
+    elif cmd == "doqnodata":
+        # Cross-family pi.hole over DoQ: with the connected-address hint conveyed,
+        # the family the client did not connect over is answered NODATA. Without
+        # the hint the answer falls back to the loopback handoff's interface and
+        # leaks ::1 (or 127.0.0.1), so this is what proves the hint arrives.
+        _, _, host, port, domain, source = sys.argv[:6]
+        query = b"\x00\x00" + build_query(domain, qtype=28)[2:]
+        answers = doq_exchange(host, int(port), [query], source=source)
+        validate_nodata(answers[0])
+        print("OK")
+    elif cmd == "doqmulti":
+        # Several queries multiplexed on one QUIC connection, each on its own
+        # bidirectional stream - the DoQ equivalent of DoT keep-alive.
+        _, _, host, port, domain, source, expected_ip, count = sys.argv[:8]
+        query = b"\x00\x00" + build_query(domain)[2:]
+        answers = doq_exchange(host, int(port), [query] * int(count), source=source)
+        if len(answers) != int(count):
+            sys.exit("DoQ: got %d/%s answers" % (len(answers), count))
+        for a in answers:
+            validate(a, expected_ip)
+        print("OK")
+    elif cmd == "doqgarbage":
+        # A framed but non-DNS message must not wedge the listener.
+        _, _, host, port, source = sys.argv[:5]
+        try:
+            doq_exchange(host, int(port), [b"\xde\xad\xbe\xef" * 4], source=source,
+                         timeout=8.0)
+        except SystemExit as exc:
+            msg = str(exc.code) if exc.code is not None else ""
+            if msg.startswith("SKIP:"):
+                raise
+            # No answer (or a reset stream) is a perfectly good outcome here; the
+            # follow-up query in the bats test proves the listener still serves.
+        print("OK")
+    elif cmd == "doqalpn":
+        # QUIC mandates ALPN and RFC 9250 Sec. 4.1.2 defines exactly one token for
+        # DoQ, so a client offering something else must be refused.
+        _, _, host, port, alpn, source = sys.argv[:6]
+        doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
     else:
         sys.exit("unknown subcommand: %s" % cmd)

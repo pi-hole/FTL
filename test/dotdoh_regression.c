@@ -115,6 +115,21 @@ static void test_doh(void)
 	ok("h3://doh.example#8443/q",           UST_DOH3, "doh.example", "doh.example", 8443, "/q");
 }
 
+static void test_doq(void)
+{
+	// DoQ (RFC 9250): DoT's grammar and default port, but over QUIC and with no
+	// path - the DNS message rides a QUIC stream, there is no HTTP layer.
+	ok("doq://dns.adguard.com",          UST_DOQ, "dns.adguard.com", "dns.adguard.com", 853, "");
+	ok("doq://dns.adguard.com#853",      UST_DOQ, "dns.adguard.com", "dns.adguard.com", 853, "");
+	ok("doq://dns.adguard.com#8853",     UST_DOQ, "dns.adguard.com", "dns.adguard.com", 8853, "");
+	ok("doq://dns.google@8.8.8.8",       UST_DOQ, "8.8.8.8",         "dns.google",      853, "");
+	ok("doq://[2606:4700:4700::1111]",   UST_DOQ, "2606:4700:4700::1111", "2606:4700:4700::1111", 853, "");
+	ok("doq://dns.google@[2001:4860:4860::8888]", UST_DOQ, "2001:4860:4860::8888", "dns.google", 853, "");
+	// "quic://" is the spelling AdGuard/dnsproxy configs use; same type.
+	ok("quic://dns.adguard.com",         UST_DOQ, "dns.adguard.com", "dns.adguard.com", 853, "");
+	ok("quic://dns.google@8.8.8.8#8853", UST_DOQ, "8.8.8.8",         "dns.google",      8853, "");
+}
+
 static void test_reject(void)
 {
 	bad("tls://"); // empty host
@@ -131,6 +146,15 @@ static void test_reject(void)
 	bad("h3://"); // empty host
 	bad("h3://ho st/dns-query"); // space in host
 	bad("h3://host#0"); // port 0
+	bad("doq://"); // empty host
+	bad("quic://"); // empty host
+	bad("doq://ho st"); // space in host
+	bad("doq://host#0"); // port 0
+	bad("doq://host#99999"); // port out of range
+	bad("doq://host/dns-query"); // DoQ has no path: '/' is not a valid host character
+	bad("quic://host/q"); // ditto
+	bad("doq://@1.1.1.1"); // empty verify name
+	bad("doqx://host"); // unknown scheme (must not prefix-match "doq")
 	bad(NULL); // NULL input
 	bad(""); // empty input
 }
@@ -415,6 +439,100 @@ static void test_edns_pad(void)
 	}
 }
 
+
+// edns_remove_option(): stripping edns-tcp-keepalive (RFC 7828 option 11) from a
+// query before it goes out over DoQ, where RFC 9250 Sec. 5.5.2 forbids it.
+static void test_edns_remove_option(void)
+{
+	// 1) Padded query with a keepalive option ahead of the padding: the option is
+	//    removed and the freed bytes are absorbed into the padding, so the RFC 8467
+	//    block length is preserved and the option list still tiles the RDATA.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION); // 29
+		buf[p++] = 0x00;                       // root name
+		buf[p++] = 0x00; buf[p++] = 0x29;      // type OPT
+		buf[p++] = 0x10; buf[p++] = 0x00;      // UDP size 4096
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; // TTL
+		const size_t rdlen_off = p;
+		buf[p++] = 0x00; buf[p++] = 0x06;      // RDLEN 6 (one keepalive option)
+		buf[p++] = 0x00; buf[p++] = 0x0B;      // option code 11 (edns-tcp-keepalive)
+		buf[p++] = 0x00; buf[p++] = 0x02;      // option length 2
+		buf[p++] = 0x00; buf[p++] = 0x64;      // timeout 100 (100ms units)
+		const size_t len = p;
+
+		const size_t padded = edns_pad_query(buf, len, sizeof(buf));
+		EXPECT(padded == 128, "keepalive: padded length %zu != 128", padded);
+		EXPECT(edns_has_option(buf, padded, 11), "keepalive: option missing before removal");
+
+		const size_t out = edns_remove_option(buf, padded, 11);
+		EXPECT(out == padded, "keepalive: length changed %zu -> %zu", padded, out);
+		EXPECT(!edns_has_option(buf, out, 11), "keepalive: option still present");
+		EXPECT(edns_has_padding_option(buf, out), "keepalive: padding option lost");
+		// Absorbing keeps the RDATA the same size, so RDLENGTH is untouched (88 =
+		// the 6-byte keepalive plus the 82-byte padding option edns_pad_query
+		// added); the padding option itself grew from 78 to 84 octets and now
+		// starts where the keepalive used to. edns_has_option() finding the
+		// padding at all proves find_opt() still parses the option list cleanly.
+		EXPECT(buf[rdlen_off] == 0x00 && buf[rdlen_off + 1] == 0x58,
+		       "keepalive: RDLEN changed (0x%02x%02x)", buf[rdlen_off], buf[rdlen_off + 1]);
+		EXPECT(buf[40] == 0x00 && buf[41] == 0x0C, "keepalive: padding option not moved down");
+		EXPECT(buf[42] == 0x00 && buf[43] == 0x54, "keepalive: padding not grown to 84");
+		expect_zeros(buf, 44, out, "keepalive: absorbed padding octets");
+	}
+
+	// 2) Unpadded query with only a keepalive option: nothing to absorb into, so
+	//    the message shrinks by the whole option and the RDLENGTH follows.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 1);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		size_t p = 12 + sizeof(QUESTION);
+		buf[p++] = 0x00;
+		buf[p++] = 0x00; buf[p++] = 0x29;
+		buf[p++] = 0x10; buf[p++] = 0x00;
+		buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00; buf[p++] = 0x00;
+		const size_t rdlen_off = p;
+		buf[p++] = 0x00; buf[p++] = 0x06;
+		buf[p++] = 0x00; buf[p++] = 0x0B;
+		buf[p++] = 0x00; buf[p++] = 0x02;
+		buf[p++] = 0x00; buf[p++] = 0x64;
+		const size_t len = p;
+
+		const size_t out = edns_remove_option(buf, len, 11);
+		EXPECT(out == len - 6, "keepalive-bare: length %zu != %zu", out, len - 6);
+		EXPECT(!edns_has_option(buf, out, 11), "keepalive-bare: option still present");
+		EXPECT(buf[rdlen_off] == 0x00 && buf[rdlen_off + 1] == 0x00,
+		       "keepalive-bare: RDLEN not zeroed");
+	}
+
+	// 3) Fail-open cases: no OPT, option absent, and a truncated message are all
+	//    returned untouched rather than mangled.
+	{
+		uint8_t buf[512];
+		memset(buf, 0, sizeof(buf));
+		put_header(buf, 1, 0, 0, 0);
+		memcpy(buf + 12, QUESTION, sizeof(QUESTION));
+		const size_t len = 12 + sizeof(QUESTION);
+		uint8_t copy[512];
+		memcpy(copy, buf, sizeof(copy));
+
+		EXPECT(edns_remove_option(buf, len, 11) == len, "no-OPT: length changed");
+		EXPECT(memcmp(buf, copy, len) == 0, "no-OPT: message modified");
+
+		const size_t padded = edns_pad_query(buf, len, sizeof(buf));
+		memcpy(copy, buf, sizeof(copy));
+		EXPECT(edns_remove_option(buf, padded, 11) == padded, "absent: length changed");
+		EXPECT(memcmp(buf, copy, padded) == 0, "absent: message modified");
+
+		EXPECT(edns_remove_option(buf, 5, 11) == 5, "short: length changed");
+	}
+}
+
 static void test_edns_pad_response(void)
 {
 	// edns_has_padding_option: absent on a bare query, present once padded.
@@ -576,12 +694,14 @@ int main(void)
 	test_plain();
 	test_dot();
 	test_doh();
+	test_doq();
 	test_reject();
 	test_dot_framing();
 	test_doh_request();
 	test_doh_response();
 	test_registry();
 	test_edns_pad();
+	test_edns_remove_option();
 	test_edns_pad_response();
 	test_source_filter();
 

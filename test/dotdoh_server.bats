@@ -5,6 +5,8 @@
 #   - DoH: an HTTPS POST of application/dns-message to /dns-query on the pi.hole
 #     webserver (port 443, TLS by the repo test cert, CN/SAN "pi.hole").
 #   - DoT: raw TLS + 2-byte length-prefixed DNS on port 853.
+#   - DoQ: QUIC + the same 2-byte length-prefixed DNS on UDP port 853 (RFC 9250),
+#     one query per bidirectional stream.
 #
 # The point of the inbound server is that the query is attributed to the real
 # downstream client, carried into dnsmasq via a private EDNS option that is
@@ -142,6 +144,73 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: the inbound DoQ listener came up on UDP port 853" {
+  run bash -c 'grep -F "dotdoh: DoQ server listening on UDP port 853" /var/log/pihole/FTL.log'
+  assert_success
+}
+
+@test "dotdoh-server: a DoQ query resolves and returns the expected answer" {
+  # curl cannot speak DoQ (it is not HTTP), so an aioquic client drives FTL's QUIC
+  # listener directly; skip cleanly where aioquic is not installed.
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a DoQ query is attributed to the real downstream client" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.4 is used by no other test, so a.ftl showing up under it can only
+  # have come from this DoQ query. If the private EDNS client option survived the
+  # loopback handoff, the API lists it there - not under 127.0.0.1, which is what
+  # a naive "attribute to the handoff source" would record.
+  local src="127.0.0.4" i out
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$DOMAIN" "$src" "$EXPECT_IP"
+  assert_output "OK"
+  for i in $(seq 1 10); do
+    out=$(curl -s "${FTL_URL}/api/queries?client_ip=${src}")
+    grep -qF "$DOMAIN" <<< "$out" && break
+    sleep 0.3
+  done
+  run bash -c 'grep -F "$1" <<< "$2"' _ "$DOMAIN" "$out"
+  assert_success
+}
+
+@test "dotdoh-server: several DoQ queries multiplex over one QUIC connection" {
+  # RFC 9250 Sec. 4.2: each query gets its own bidirectional stream on the same
+  # connection, so this exercises concurrent per-stream resolves in the reactor.
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doqmulti 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 5
+  assert_output "OK"
+}
+
+@test "dotdoh-server: the DoQ listener rejects a client not offering the doq ALPN" {
+  # QUIC mandates ALPN and RFC 9250 defines exactly one token for DoQ, so a client
+  # offering "h3" instead must not be served.
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doqalpn 127.0.0.1 853 h3 "$CLIENT"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: the DoQ listener survives a malformed (non-DNS) query" {
+  # Send garbage framed as a DoQ message, then confirm the listener still serves a
+  # normal query - i.e. bad input did not crash or wedge the reactor.
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doqgarbage 127.0.0.1 853 "$CLIENT"
+  assert_output "OK"
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a DoQ query over IPv6 resolves" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  ipv6_loopback_available || skip "IPv6 loopback not available in this environment"
+  # A name of its own, not $DOMAIN: the DoT-over-IPv6 test below proves attribution
+  # by finding a.ftl under ::1, and querying a.ftl from ::1 here would satisfy that
+  # assertion on this test's evidence instead of its own.
+  run python3 test/dotdoh_query.py doq ::1 853 allowed.ftl ::1 192.168.1.4
+  assert_output "OK"
+}
+
 @test "dotdoh-server: a DoT query resolves and returns the expected answer" {
   local ca
   ca="$(pwd)/test/test_ca.crt"
@@ -207,6 +276,25 @@ setup_file() {
            --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
            "https://pi.hole/dns-query?dns=...."
   assert_output "400"
+}
+
+@test "dotdoh-server: a fresh DoT connection per query keeps being answered" {
+  # Regression test for the loopback-socket pool. dnsmasq forks a child per TCP
+  # connection, so before the pool a client that opened a DoT connection per
+  # query forked one child per query; the child slots ran out after ~45 queries
+  # and from then on FTL read queries and never answered them (measured: 83.7%
+  # answered, and every unanswered query in the connection-per-query phase).
+  # 100 iterations is a bit over twice that threshold, and costs ~5 s - almost
+  # all of it the client's TLS handshakes, not FTL.
+  local ca i
+  ca="$(pwd)/test/test_ca.crt"
+  for i in $(seq 1 100); do
+    run python3 test/dotdoh_query.py dot 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$ca" "$EXPECT_IP"
+    if [ "$output" != "OK" ]; then
+      echo "fresh-connection DoT query $i of 100 was not answered: $output" >&2
+      false
+    fi
+  done
 }
 
 @test "dotdoh-server: a DoT connection is reused for multiple queries (keep-alive)" {
@@ -322,6 +410,25 @@ setup_file() {
            --data-binary "@$q" "https://pi.hole/dns-query" --output "$a"
   assert_success
   run python3 test/dotdoh_query.py check "$a" 127.0.0.3
+  assert_output "OK"
+}
+
+@test "dotdoh-server: pi.hole over DoQ resolves to an address the client can reach" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 pi.hole "$CLIENT" 127.0.0.1
+  assert_output "OK"
+}
+
+@test "dotdoh-server: pi.hole AAAA over a v4 DoQ transport returns NODATA, not loopback" {
+  # This is what proves the connected-address hint reaches dnsmasq over DoQ.
+  # OpenSSL's QUIC API exposes no per-connection local address, so the listener
+  # derives the address this client reached it on from the route back to it and
+  # conveys it as the private EDNS destination option. With the hint present the
+  # family the client did NOT connect over is suppressed (NODATA); without it the
+  # AAAA record is filled from the loopback handoff's interface and ::1 leaks to
+  # the client. The DoT listener is asserted the same way, further down.
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doqnodata 127.0.0.1 853 pi.hole "$CLIENT"
   assert_output "OK"
 }
 

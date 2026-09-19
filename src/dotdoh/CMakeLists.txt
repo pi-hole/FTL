@@ -19,8 +19,12 @@ set(dotdoh_sources
         registry.h
         tls_client.c
         tls_client.h
+        quic_common.c
+        quic_common.h
         quic_client.c
         quic_client.h
+        doq_client.c
+        doq_client.h
         proxy.c
         proxy.h
         server.c
@@ -28,6 +32,7 @@ set(dotdoh_sources
         source_filter.c
         source_filter.h
         dot_server.c
+        doq_server.c
         )
 
 add_library(dotdoh OBJECT ${dotdoh_sources})
