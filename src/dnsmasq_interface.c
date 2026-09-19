@@ -340,7 +340,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	}
 
 	// Get question name
-	char name[MAXDNAME] = { 0 };
+	char name[MAXDNAMESTR + 1] = { 0 };
 	unsigned char *p = (unsigned char *)(header+1);
 	if (!extract_name(header, len, &p, name, 1, 4))
 	{
@@ -3741,16 +3741,17 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		// capability in its own permitted and effective sets while starting up;
 		// from here on it chowns files it created itself, which the owning user
 		// may do without any capability. When the RTC is not being set FTL has
-		// no further use for it and drops it from the main thread as well.
+		// no further use for it and takes it out of use on the main thread as
+		// well. The permitted copy stays for FTL's own restart, see main().
 		// Setting the RTC changes ownership of the device repeatedly during
 		// runtime, so that path keeps it.
 		if(config.ntp.sync.rtc.set.v.b)
 		{
 			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
 		}
-		else if(drop_capability(CAP_CHOWN))
+		else if(suspend_capability(CAP_CHOWN))
 		{
-			log_debug(DEBUG_CAPS, "Dropped CAP_CHOWN");
+			log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
 		}
 	}
 
