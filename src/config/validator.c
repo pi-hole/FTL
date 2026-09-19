@@ -488,8 +488,19 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 	for(size_t i = 0; i < ArraySize(written); i++)
 	{
 		const char *path = written[i]->v.s;
-		if(path == NULL || path[0] != '/')
+		if(path == NULL || path[0] == '\0')
 			continue;
+
+		// A relative path is resolved from the working directory and cannot
+		// be compared with the document root
+		if(path[0] != '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must be an absolute path",
+			         written[i]->k, path);
+			if(offender != NULL)
+				*offender = written[i];
+			return false;
+		}
 
 		char pnorm[NORMALIZED_PATH_LEN];
 		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
@@ -1067,6 +1078,12 @@ void resolve_config_paths(struct config *conf)
 			return;
 
 		log_err("Inconsistent configuration: %s", err);
+
+		// Resetting a file that is at its default already changes
+		// nothing, the document root has to give way then
+		if(compare_config_item(offender->t, &offender->v, &offender->d))
+			offender = &conf->webserver.paths.webroot;
+
 		log_err("----> %s has been reset to its default value", offender->k);
 		reset_config_default(offender);
 	}
