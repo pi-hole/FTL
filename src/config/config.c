@@ -1119,10 +1119,10 @@ void initConfig(struct config *conf)
 	conf->webserver.serve_all.c = validate_stub;
 
 	conf->webserver.advancedOpts.k = "webserver.advancedOpts";
-	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). See the CivetWeb documentation for a list of supported options. The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". Be aware that this is an advanced option and that setting options here may break the web server if invalid or conflicting with other settings applied based on other settings in this file. The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last values is used when a config option is specified multiple times). Use with caution.\n\n Example: [ \"ssl_protocol_version=4\", \"ssl_cipher_list=AES128:!MD5\" ]";
-	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of valid CivetWeb options");
+	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last value is used when a config option is specified multiple times). Use with caution: setting options here may break the web server if they conflict with other settings applied based on other settings in this file.\n\n Options given here reach the web server unchecked, and some of them decide which files it serves or executes, so this option cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.\n\n Example: [ \"num_threads=8\", \"max_request_size=32768\" ]";
+	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of permitted CivetWeb options");
 	conf->webserver.advancedOpts.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL;
+	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.advancedOpts.d.json = cJSON_CreateArray();
 	conf->webserver.advancedOpts.c = validate_stub; // Only type-based checking
 
@@ -1439,10 +1439,10 @@ void initConfig(struct config *conf)
 	conf->misc.etc_dnsmasq_d.c = validate_stub; // Only type-based checking
 
 	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
-	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n\n Use this option with extra care.\n\n Example: [ \"address=/example.com/192.168.0.1\", \"address=/example.org/192.168.0.2\", \"address=/example.net/192.168.0.3\" ]";
+	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n\n Use this option with extra care.\n\n dnsmasq directives such as \"dhcp-script\" and \"conf-script\" name programs that dnsmasq then executes, so this option cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host, which anyone placing such a script has anyway.\n\n Example: [ \"address=/example.com/192.168.0.1\", \"address=/example.org/192.168.0.2\", \"address=/example.net/192.168.0.3\" ]";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("Array of valid dnsmasq config line options");
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
-	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
+	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 	conf->misc.dnsmasq_lines.c = validate_array_no_newline;
 
@@ -1456,7 +1456,7 @@ void initConfig(struct config *conf)
 	conf->misc.readOnly.k = "misc.readOnly";
 	conf->misc.readOnly.h = "Put configuration into read-only mode. This will prevent any changes to the configuration file via the API or CLI. This setting useful when a configuration is to be forced/modified by some third-party application (like infrastructure-as-code providers) and should not be changed by any means.";
 	conf->misc.readOnly.t = CONF_BOOL;
-	conf->misc.readOnly.f = FLAG_READ_ONLY;
+	conf->misc.readOnly.f = FLAG_API_CLI_READ_ONLY;
 	conf->misc.readOnly.d.b = false;
 	conf->misc.readOnly.c = validate_stub; // Only type-based checking
 

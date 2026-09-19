@@ -1002,19 +1002,22 @@
   # Additional options passed directly to the web server.
   #
   # This can be used to set any option supported by the underlying web server
-  # (CivetWeb). See the CivetWeb documentation for a list of supported options. The
-  # options are passed as an array of strings, where each string is an option in the
-  # form "<option>=<value>". Be aware that this is an advanced option and that setting
-  # options here may break the web server if invalid or conflicting with other settings
-  # applied based on other settings in this file. The config options specified here are
-  # added to the end of the passed options. This makes it possible to overwrite settings
-  # set by Pi-hole (only the last values is used when a config option is specified
-  # multiple times). Use with caution.
+  # (CivetWeb). The options are passed as an array of strings, where each string is an
+  # option in the form "<option>=<value>". The config options specified here are added
+  # to the end of the passed options. This makes it possible to overwrite settings set
+  # by Pi-hole (only the last value is used when a config option is specified multiple
+  # times). Use with caution: setting options here may break the web server if they
+  # conflict with other settings applied based on other settings in this file.
   #
-  # Example: [ "ssl_protocol_version=4", "ssl_cipher_list=AES128:!MD5" ]
+  # Options given here reach the web server unchecked, and some of them decide which
+  # files it serves or executes, so this option cannot be set through the API. Set it in
+  # /etc/pihole/pihole.toml, through an environment variable, or with "pihole-FTL
+  # --config" - all of which require access to the host.
+  #
+  # Example: [ "num_threads=8", "max_request_size=32768" ]
   #
   # Allowed values are:
-  #     An array of valid CivetWeb options
+  #     An array of permitted CivetWeb options
   advancedOpts = []
 
   [webserver.session]
@@ -1415,6 +1418,12 @@
   # from working.
   #
   # Use this option with extra care.
+  #
+  # dnsmasq directives such as "dhcp-script" and "conf-script" name programs that
+  # dnsmasq then executes, so this option cannot be set through the API. Set it in
+  # /etc/pihole/pihole.toml, through an environment variable, or with "pihole-FTL
+  # --config" - all of which require access to the host, which anyone placing such a
+  # script has anyway.
   #
   # Example: [ "address=/example.com/192.168.0.1", "address=/example.org/192.168.0.2",
   # "address=/example.net/192.168.0.3" ]

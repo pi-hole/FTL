@@ -3612,6 +3612,18 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
+	// Deny CAP_CHOWN to anything FTL executes, before the worker threads below
+	// are created. Capability sets are per-thread and a new thread inherits a
+	// copy of its creator's, so this has to happen before the threads exist:
+	// clearing the ambient and inheritable sets on the main thread once they
+	// are already running would leave them - and the children they exec, such
+	// as a program a Lua page spawns - holding the systemd-granted ambient
+	// CAP_CHOWN. FTL keeps the capability in its permitted and effective sets
+	// for the ownership changes it makes itself (startup, and the RTC device
+	// while ntp.sync.rtc.set is enabled); only the inheritance to children goes.
+	if(getuid() != 0)
+		deny_capability_to_children(CAP_CHOWN);
+
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
 
@@ -3722,6 +3734,24 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
+
+		// The ambient and inheritable sets were cleared before the worker
+		// threads were created (see the deny above), so nothing FTL executes
+		// can inherit CAP_CHOWN, no matter which thread runs it. FTL keeps the
+		// capability in its own permitted and effective sets while starting up;
+		// from here on it chowns files it created itself, which the owning user
+		// may do without any capability. When the RTC is not being set FTL has
+		// no further use for it and drops it from the main thread as well.
+		// Setting the RTC changes ownership of the device repeatedly during
+		// runtime, so that path keeps it.
+		if(config.ntp.sync.rtc.set.v.b)
+		{
+			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
+		}
+		else if(drop_capability(CAP_CHOWN))
+		{
+			log_debug(DEBUG_CAPS, "Dropped CAP_CHOWN");
+		}
 	}
 
 	forked = true;
