@@ -586,7 +586,7 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 		case CONF_LONG:
 		{
 			const toml_datum_t val = toml_table_find(toml, key);
-			if(val.type == TOML_INT64 && val.u.int64 <= LONG_MAX)
+			if(val.type == TOML_INT64 && val.u.int64 >= LONG_MIN && val.u.int64 <= LONG_MAX)
 				conf_item->v.l = val.u.int64;
 			else
 				log_absent_or_wrong_type(val, conf_item, "long integer");
