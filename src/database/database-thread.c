@@ -157,8 +157,11 @@ void *DB_thread(void *val)
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
 
-	// Signify that the import is done, so garbage collection will run
-	db_import_done = true;
+	// Signify that the import is done, so garbage collection will run. An
+	// import that was aborted because FTL terminates is not: main() skips
+	// the final export then
+	if(!killed)
+		db_import_done = true;
 
 	// Log some information about the imported queries (if any)
 	log_counter_info();
@@ -258,7 +261,11 @@ void *DB_thread(void *val)
 		{
 			// Update lastDBdelete timer to avoid multiple deletions
 			lastDBdelete = now;
-			const double mintime = now - (double)(config.database.maxDBdays.v.ui * 86400);
+			// Widen before multiplying: maxDBdays is an unsigned int, so
+			// the product was computed in 32-bit arithmetic and wrapped
+			// for large values, turning a long retention into a cutoff
+			// that deletes almost everything
+			const double mintime = now - (double)config.database.maxDBdays.v.ui * 86400.0;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(delete_old_queries_from_db(false, mintime));
 			DBCLOSE_OR_BREAK();

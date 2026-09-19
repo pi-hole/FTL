@@ -366,8 +366,14 @@ int generateTOTP(struct ftl_conn *api)
 	// Encode base32 secret
 	const size_t base32_len = sizeof(random_secret)*8/5+1;
 	char *base32 = calloc(base32_len, sizeof(char));
+	if(base32 == NULL)
+		return send_json_error(api, 500, "internal_error", "Failed to allocate memory for the TOTP secret", strerror(errno));
+
 	if(!encode_uint8_t_array_to_base32(random_secret, sizeof(random_secret), base32, base32_len))
+	{
+		free(base32);
 		return send_json_error(api, 500, "internal_error", "Failed to encode secret", "Check FTL.log for details");
+	}
 
 	// Create JSON object
 	cJSON *tjson = cJSON_CreateObject();

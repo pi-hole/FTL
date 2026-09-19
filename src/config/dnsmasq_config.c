@@ -48,6 +48,19 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	if(cpid == -1)
+	{
+		// Without this the parent branch below would waitpid(-1, ...)
+		// and reap some unrelated child of ours - a dnsmasq TCP helper -
+		// then report its exit status as the result of the config test
+		log_err("Cannot fork to test new dnsmasq config: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		strncpy(errbuf, strerror(errno), ERRBUF_SIZE - 1);
+		errbuf[ERRBUF_SIZE - 1] = '\0';
+		return false;
+	}
+
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
@@ -126,17 +139,21 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
-			// errors are fatal and we break out of the loop
+			// errors are fatal: there is no status to evaluate and
+			// the test counts as failed
 			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
-				break;
+				if(errbuf != NULL)
+					snprintf(errbuf, ERRBUF_SIZE, "Cannot wait for dnsmasq test: %s", strerror(err));
+				code = EXIT_FAILURE;
+				goto check_return;
 			}
 
 			// Check if the child exited too quickly for waitpid to
 			// catch it. We cannot get the return code in this case
 			// and have to check the pipe content instead
-			if(errno == ECHILD)
+			if(err == ECHILD)
 			{
 				log_debug(DEBUG_CONFIG, "dnsmasq test exited too quickly for waitpid");
 				code = strstr(errbuf, "syntax check OK") != NULL ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -258,7 +275,38 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "################################################################################");
 }
 
-bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+// The netmask of the subnet the DHCP server is going to serve. If it is not
+// configured, we have to guess: dnsmasq takes it from the interface it serves
+// on, which we cannot know here, so we fall back to the classful network the
+// address belongs to (what dnsmasq itself does for relayed networks)
+static uint32_t dhcp_netmask(struct config *conf)
+{
+	const uint32_t netmask = ntohl(conf->dhcp.netmask.v.in_addr.s_addr);
+	if(netmask != 0)
+		return netmask;
+
+	const uint32_t addr = ntohl(conf->dhcp.start.v.in_addr.s_addr);
+	if((addr & 0x80000000u) == 0)
+		return 0xFF000000u; // class A
+	if((addr & 0xC0000000u) == 0x80000000u)
+		return 0xFFFF0000u; // class B
+	return 0xFFFFFF00u; // class C
+}
+
+// Neither the network nor the broadcast address of the subnet can be used by a
+// client. Which addresses these are depends on the netmask, e.g., x.x.x.255 is
+// an ordinary host address in any subnet wider than a /24
+static const char *invalid_host_address(const struct in_addr addr, const uint32_t netmask)
+{
+	const uint32_t host = ntohl(addr.s_addr) & ~netmask;
+	if(host == 0)
+		return "the network address of the subnet";
+	if(host == (~netmask & 0xFFFFFFFFu))
+		return "the broadcast address of the subnet";
+	return NULL;
+}
+
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -286,25 +334,37 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		// The addresses should neither end in .0 or .255 in the last octet
-		if((ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.start.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		// A netmask has to be a contiguous block of leading one-bits,
+		// anything else has neither a network nor a broadcast address
+		const uint32_t netmask = dhcp_netmask(conf);
+		const uint32_t hostmask = ~netmask;
+		if((hostmask & (hostmask + 1)) != 0)
 		{
-			strncpy(errbuf, "DHCP start address is not valid", ERRBUF_SIZE);
+			strncpy(errbuf, "DHCP netmask is not valid", ERRBUF_SIZE);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		if((ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.end.v.in_addr.s_addr) & 0xFF) == 0xFF)
+
+		// The addresses may be neither the network nor the broadcast
+		// address of the subnet they are used in
+		const char *reason = invalid_host_address(conf->dhcp.start.v.in_addr, netmask);
+		if(reason != NULL)
 		{
-			strncpy(errbuf, "DHCP end address is not valid", ERRBUF_SIZE);
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP start address is %s", reason);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
-		if((ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0 ||
-		   (ntohl(conf->dhcp.router.v.in_addr.s_addr) & 0xFF) == 0xFF)
+		reason = invalid_host_address(conf->dhcp.end.v.in_addr, netmask);
+		if(reason != NULL)
 		{
-			strncpy(errbuf, "DHCP router address is not valid", ERRBUF_SIZE);
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP end address is %s", reason);
+			log_err("Unable to update dnsmasq configuration: %s", errbuf);
+			return false;
+		}
+		reason = invalid_host_address(conf->dhcp.router.v.in_addr, netmask);
+		if(reason != NULL)
+		{
+			snprintf(errbuf, ERRBUF_SIZE, "DHCP router address is %s", reason);
 			log_err("Unable to update dnsmasq configuration: %s", errbuf);
 			return false;
 		}
@@ -550,8 +610,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
 			// Check if the configured domain is the same as the main domain
-			if(strlen(config.dns.domain.name.v.s) > 0 &&
-			   strcasecmp(domain, config.dns.domain.name.v.s) == 0)
+			if(strlen(conf->dns.domain.name.v.s) > 0 &&
+			   strcasecmp(domain, conf->dns.domain.name.v.s) == 0)
 				revServer_domain = true;
 
 			// Flag if configured a server for queries for "home.arpa" TLD
@@ -598,7 +658,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_homearpa && !config.dns.domain.local.v.b)
+	else if(domain_homearpa && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"home.arpa\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -625,7 +685,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_internal && !config.dns.domain.local.v.b)
+	else if(domain_internal && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"internal\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -642,14 +702,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(strlen(conf->dns.domain.name.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		if(revServer_domain || !config.dns.domain.local.v.b)
+		if(revServer_domain || !conf->dns.domain.local.v.b)
 		{
 			if(revServer_domain)
 			{
 				fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
 				fputs("# It is forwarded to the upstream servers configured above\n", pihole_conf);
 			}
-			else // !config.dns.domain.local.v.b
+			else // !conf->dns.domain.local.v.b
 			{
 				fputs("# This domain is explicitly configured to *not* be local. Ensure\n", pihole_conf);
 				fputs("# that you have configured at least one upstream server for this\n", pihole_conf);
@@ -870,8 +930,15 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
 	}
 
-	// Flush config file to disk
-	fflush(pihole_conf);
+	// Flush config file to disk and make sure all of it got there. Every
+	// directive above is written without checking, and fclose() reports
+	// success after a short write, so without this a disk that filled up
+	// part-way through would be renamed over the live dnsmasq config as a
+	// truncated file that dnsmasq would happily start from
+	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
+	                          fsync(fileno(pihole_conf)) != 0;
+	if(write_failed)
+		log_err("Cannot write dnsmasq config file: %s", strerror(errno));
 
 	// Unlock file
 	if(locked)
@@ -884,12 +951,21 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		return false;
 	}
 
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+			log_err("Cannot remove incomplete dnsmasq config file: %s", strerror(errno));
+
+		return false;
+	}
+
 	// Chown file if we are root
 	if(geteuid() == 0)
 		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
 
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
-	if(test_config && !test_dnsmasq_config(errbuf))
+	if(mode != DNSMASQ_INSTALL && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
@@ -907,6 +983,19 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		}
 
 		return false;
+	}
+
+	// The caller only wanted to know whether the config is valid, so the
+	// file it was tested from goes away again rather than being installed
+	if(mode == DNSMASQ_TEST_ONLY)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			return false;
+		}
+
+		return true;
 	}
 
 	// Check if the new config file is different from the old one
@@ -1181,6 +1270,14 @@ bool write_custom_list(void)
 	else if(N == 0)
 		fputs("\n# There are currently no entries in this file\n", custom_list);
 
+	// Make sure everything written above actually reached the disk, for the
+	// same reason as in write_dnsmasq_config(): none of the writes is
+	// checked and fclose() succeeds after a short one
+	const bool write_failed = fflush(custom_list) != 0 || ferror(custom_list) != 0 ||
+	                          fsync(fileno(custom_list)) != 0;
+	if(write_failed)
+		log_err("Cannot write custom.list: %s", strerror(errno));
+
 	// Unlock file
 	if(locked)
 		unlock_file(custom_list, DNSMASQ_CUSTOM_LIST_LEGACY".tmp");
@@ -1189,6 +1286,15 @@ bool write_custom_list(void)
 	if(fclose(custom_list) != 0)
 	{
 		log_err("Cannot close custom.list: %s", strerror(errno));
+		return false;
+	}
+
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_CUSTOM_LIST_LEGACY".tmp") != 0)
+			log_err("Cannot remove incomplete custom.list: %s", strerror(errno));
+
 		return false;
 	}
 

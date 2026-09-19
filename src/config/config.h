@@ -31,7 +31,8 @@
 // enum web_theme
 #include "api/theme.h"
 
-#define GLOBALTOMLPATH "/etc/pihole/pihole.toml"
+#define CONFIG_DIR "/etc/pihole"
+#define GLOBALTOMLPATH CONFIG_DIR"/pihole.toml"
 
 // This static string represents an unchanged password
 #define PASSWORD_VALUE "********"
@@ -105,8 +106,16 @@ enum conf_type {
 #define FLAG_WRITE_ONLY            (1 << 3)
 #define FLAG_ENV_VAR               (1 << 4)
 #define FLAG_CONF_IMPORTED         (1 << 5)
-#define FLAG_READ_ONLY             (1 << 6)
+// Settable in pihole.toml or through an environment variable, but neither
+// through the API nor the CLI. For the switch that locks the configuration
+// itself: letting either of them change it would defeat the lock.
+#define FLAG_API_CLI_READ_ONLY     (1 << 6)
 #define FLAG_FTL_LOG               (1 << 7)
+// As above, but the CLI may still set it. For options that hand code to
+// something Pi-hole then runs: configuring those needs access to the host, which
+// everyone with a legitimate use for them already has, and a web session on its
+// own should not be enough.
+#define FLAG_API_READ_ONLY         (1 << 8)
 
 struct conf_item {
 	const char *k;        // item Key
@@ -115,7 +124,7 @@ struct conf_item {
 	const char *h;        // Help text / description
 	cJSON *a;             // JSON array or object of Allowed values (where applicable)
 	enum conf_type t;     // variable Type
-	uint8_t f;            // additional Flags
+	uint16_t f;           // additional Flags
 	union conf_value v;   // current Value
 	union conf_value d;   // Default value
 	bool (*c)(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]); // Function pointer to validate the value
@@ -396,6 +405,9 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
+// Restore a single config item to its compiled-in default
+void reset_config_default(struct conf_item *conf_item);
 bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 

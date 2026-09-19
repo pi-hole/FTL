@@ -14,6 +14,8 @@
 #include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
+// watch_config()
+#include "config/inotify.h"
 #include "main.h"
 // exit_code
 #include "signals.h"
@@ -27,6 +29,8 @@
 #include "overTime.h"
 // export_queries_to_disk()
 #include "database/query-table.h"
+// db_import_done
+#include "gc.h"
 // verify_FTL()
 #include "files.h"
 // init_entropy()
@@ -115,9 +119,12 @@ int main (int argc, char *argv[])
 	// Initialize overTime datastructure
 	initOverTime();
 
-	// Check for availability of capabilities in debug mode
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Check for availability of capabilities. The per-capability table this
+	// prints is behind DEBUG_CAPS, but the warnings about the ones FTL needs
+	// and does not have are not, and they are the reason to run this at all:
+	// hiding them behind a debug flag means nobody sees them until they
+	// already suspect the problem
+	check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL) + getpid());
@@ -141,7 +148,15 @@ int main (int argc, char *argv[])
 	// Skip it here if we jump back to this point from die()
 	const int jmpret = setjmp(exit_jmp);
 	if(jmpret == 0)
+	{
+		// main_dnsmasq() opens by closing every descriptor it
+		// inherited from us, a config watcher armed while the config
+		// was read included, and the numbers are reissued afterwards.
+		// Close it here, while it is still ours to close
+		watch_config(false);
+
 		main_dnsmasq(argc_dnsmasq, (char**)argv_dnsmasq);
+	}
 	else
 	{
 		// We are jumping back to this point from dnsmasq's die()
@@ -165,14 +180,26 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database
-	export_queries_to_disk(true);
-	log_info("Finished final database update");
+	// Save new queries to database. The initial import still occupies the
+	// in-memory database when it is not done, and there is nothing to export
+	// before it is. terminate_threads() aborts it
+	if(db_import_done)
+	{
+		export_queries_to_disk(true);
+		log_info("Finished final database update");
+	}
 
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
+	{
+		// A binary without file capabilities only keeps the ambient set
+		// across execvp(). All threads are gone and nothing else is
+		// executed from here, the restarted FTL withholds it again
+		if(getuid() != 0)
+			restore_capability_for_exec(CAP_CHOWN);
 		execvp(argv[0], argv);
+	}
 
 	return exit_code;
 }

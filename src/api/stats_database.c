@@ -247,11 +247,11 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for domains
-		count_total_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
+		count_total_str = "SELECT COUNT(*) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count total number of blocked queries for domains
-		count_blocked_str = "SELECT COUNT(DISTINCT domain) FROM query_storage "
+		count_blocked_str = "SELECT COUNT(*) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
 			            "AND " FILTER_STATUS_BLOCKED;
 	}
@@ -277,11 +277,11 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		}
 
 		// Count total number of queries for clients
-		count_total_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
+		count_total_str = "SELECT COUNT(*) FROM query_storage "
 		                  "WHERE timestamp >= :from AND timestamp <= :until";
 
 		// Count number of blocked queries for clients
-		count_blocked_str = "SELECT COUNT(DISTINCT client) FROM query_storage "
+		count_blocked_str = "SELECT COUNT(*) FROM query_storage "
 		                    "WHERE timestamp >= :from AND timestamp <= :until "
 			            "AND " FILTER_STATUS_BLOCKED;
 	}
@@ -763,12 +763,27 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 	           "AND status = 3";
 	int cached_queries = db_query_int_from_until(db, querystr, from, until);
-	sum_queries += cached_queries;
 
 	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
 		   "AND status != 0 AND status != 2 AND status != 3";
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
+
+	// A failed query reports a negative sentinel, and sum_queries is
+	// unsigned - adding it in would wrap into an enormous total and be
+	// served as fact. api_stats_database_summary() checks the same way
+	if(cached_queries < 0 || blocked_queries < 0)
+	{
+		// Close (= unlock) database connection
+		dbclose(&db);
+
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Internal server error",
+		                       NULL);
+	}
+
+	sum_queries += cached_queries;
 	sum_queries += blocked_queries;
 
 	querystr = "SELECT forward,COUNT(*) FROM query_storage "
@@ -823,14 +838,21 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		const char *upstream = (char*)sqlite3_column_text(stmt, 0);
+		// A broken row can carry a NULL upstream, which neither sscanf()
+		// nor the JSON output below would survive
+		if(upstream == NULL)
+			upstream = "";
 		const int count = sqlite3_column_int(stmt, 1);
 
 		cJSON *item = JSON_NEW_OBJECT();
-		unsigned int port = -1;
+		// Needs a signed data type here as -1 means: no port applicable
+		int port = -1;
+		unsigned int parsed_port = 0;
 		char buffer[512] =  { 0 };
-		if(sscanf(upstream, "%511[^#]#%u", buffer, &port) == 2)
+		if(sscanf(upstream, "%511[^#]#%u", buffer, &parsed_port) == 2)
 		{
 			buffer[sizeof(buffer)-1] = '\0';
+			port = (int)parsed_port;
 			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer);
 		}
 		else

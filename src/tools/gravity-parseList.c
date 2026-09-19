@@ -32,7 +32,9 @@ static const char *false_positives[] = {
 };
 
 // Lookup table containing characters that are valid in domain names
-// Domain must not contain any character other than [a-zA-Z0-9.-_]
+// Domain must not contain any ASCII character other than [a-zA-Z0-9.-_].
+// Non-ASCII bytes are not covered here, they are checked as UTF-8 sequences,
+// see utf8_sequence_len()
 static const unsigned char valid_domain_char[256] = {
 	['a' ... 'z'] = 1, ['A' ... 'Z'] = 1, ['0' ... '9'] = 1,
 	['-'] = 1, ['.'] = 1, ['_'] = 1,
@@ -56,8 +58,61 @@ static inline bool string_has_within(const char *s, const char character, const 
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
+// Length of the UTF-8 sequence starting at *p, or 0 if it is not one
+//
+// An internationalized name reaches us as UTF-8 and dnsmasq, built with
+// libidn2, converts it to punycode itself. We accept such a name only where
+// its bytes form a well-formed UTF-8 sequence: the ranges below are those of
+// RFC 3629, which excludes overlong encodings, UTF-16 surrogates and
+// everything above U+10FFFF.
+static inline unsigned int __attribute__((pure)) utf8_sequence_len(const unsigned char *p, const size_t avail)
+{
+	unsigned char lo = 0x80, hi = 0xbf;
+	unsigned int len;
+
+	if(p[0] >= 0xc2 && p[0] <= 0xdf)
+		len = 2;
+	else if(p[0] >= 0xe0 && p[0] <= 0xef)
+	{
+		len = 3;
+		if(p[0] == 0xe0)
+			lo = 0xa0;
+		else if(p[0] == 0xed)
+			hi = 0x9f;
+	}
+	else if(p[0] >= 0xf0 && p[0] <= 0xf4)
+	{
+		len = 4;
+		if(p[0] == 0xf0)
+			lo = 0x90;
+		else if(p[0] == 0xf4)
+			hi = 0x8f;
+	}
+	else
+		return 0;
+
+	if(avail < len)
+		return 0;
+
+	// The first continuation byte carries the range restriction of its lead
+	if(p[1] < lo || p[1] > hi)
+		return 0;
+	for(unsigned int i = 2; i < len; i++)
+		if(p[i] < 0x80 || p[i] > 0xbf)
+			return 0;
+
+	return len;
+}
+
 // Validate domain name
-inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only)
+//
+// allow_utf8 accepts an internationalized name in its UTF-8 form. Only pass it
+// where the value is handed to dnsmasq, which is built with libidn2 and converts
+// such a name itself. Pi-hole's own lists are matched byte-wise against the
+// query name, which always arrives as an A-label, so a UTF-8 entry there would
+// be stored and never match anything.
+inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len,
+                                               const bool fqdn_only, const bool allow_utf8)
 {
 	// Domain must not be NULL or empty, and they should not be longer than
 	// 255 characters
@@ -66,10 +121,23 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 
 	// Loop over line
 	int last_dot = -1;
-	for(unsigned int i = 0; i < len; i++)
+	unsigned int i = 0;
+	while(i < len)
 	{
 		// Check for invalid characters
 		unsigned char c = (unsigned char)domain[i];
+		if(c > 0x7f)
+		{
+			if(!allow_utf8)
+				return false;
+
+			// Skip over the sequence at once, none of its bytes is a dot
+			const unsigned int seq = utf8_sequence_len((const unsigned char *)domain + i, len - i);
+			if(seq == 0)
+				return false;
+			i += seq;
+			continue;
+		}
 		if(!valid_domain_char[c])
 			return false;
 
@@ -94,9 +162,18 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 			// Update last_dot to this dot
 			last_dot = i;
 		}
+
+		i++;
 	}
 
 	// TLD checks
+
+	// The loop only measured a label once it reached the dot ending it,
+	// so the last label has not been looked at yet. It runs from
+	// last_dot + 1 to the end of the string, which is the entire string
+	// for a name without any dot (last_dot == -1)
+	if(len - (size_t)(last_dot + 1) > 63)
+		return false;
 
 	// There must be at least two labels (i.e. one dot)
 	// e.g., "example.com" but not "localhost" for exact domain
@@ -131,7 +208,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+4, len-5, false);
+		return valid_domain(line+4, len-5, false, false);
 	}
 	else
 	{
@@ -148,7 +225,7 @@ static inline bool __attribute__((pure)) valid_abp_domain(const char *line, cons
 			return false;
 
 		// Domain must be valid
-		return valid_domain(line+2, len-3, false);
+		return valid_domain(line+2, len-3, false, false);
 	}
 }
 
@@ -370,7 +447,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 			continue;
 
 		// Split by whitespace and tabs and look over the tokens
-		char *token = strtok(line, " \t");
+		char *saveptr = NULL;
+		char *token = strtok_r(line, " \t", &saveptr);
 		while(token != NULL)
 		{
 			// Skip empty tokens
@@ -413,7 +491,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Validate line
 			if(line[0] != (antigravity ? '@' : '|') &&  // <- Not an ABP-style match
-			   valid_domain(token, token_len, true))
+			   valid_domain(token, token_len, true, false))
 			{
 				// Exact match found
 				if(checkOnly)
@@ -542,7 +620,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				}
 			}
 next_domain:
-			token = strtok(NULL, " \t");
+			token = strtok_r(NULL, " \t", &saveptr);
 		}
 
 		// Print progress if the file is large enough every 100 lines

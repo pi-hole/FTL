@@ -25,6 +25,8 @@
 #include "gc.h"
 // flush_message_table()
 #include "database/message-table.h"
+// killed
+#include "signals.h"
 // file_exists()
 #include "files.h"
 
@@ -503,10 +505,25 @@ void close_memory_database(void)
 	_memdb = NULL;
 }
 
+// Is this the shared in-memory connection? Used to keep dbclose() away from a
+// handle it does not own
+bool __attribute__((pure)) is_memdb(const sqlite3 *db)
+{
+	return db != NULL && db == _memdb;
+}
+
 sqlite3 *__attribute__((pure)) _get_memdb(const int line, const char *func, const char *file)
 {
 	log_debug(DEBUG_DATABASE, "Accessing in-memory database in %s() (%s:%i)", func, file, line);
 	return _memdb;
+}
+
+// Abort a statement currently running on the in-memory database. Used when
+// FTL terminates while the initial query import is still running.
+void interrupt_memdb(void)
+{
+	if(_memdb != NULL)
+		sqlite3_interrupt(_memdb);
 }
 
 // Get memory usage and size of in-memory tables
@@ -745,6 +762,20 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 	log_debug(DEBUG_DATABASE, "count_queries_on_disk(): Going to import %i queries from disk database",
 	          counted_queries);
 
+	// A failed query reports DB_FAILED, which is negative. counters->queries
+	// is unsigned and init_queries_shm_sz() sizes the queries object from it,
+	// so letting that through asks for an allocation of nearly the whole
+	// address space and takes the startup down
+	if(counted_queries < 0)
+	{
+		log_err("count_queries_on_disk(): Cannot count queries on disk");
+
+		// Zero rather than leave the sentinel in this static: the import
+		// compares its own progress against it further down
+		counted_queries = 0;
+		return false;
+	}
+
 	// Lock shared memory
 	lock_shm();
 	// Set query counter high enough so that the subsequent lock_shm() call
@@ -828,16 +859,32 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// sqlite3_interrupt() has no effect on a statement that is not running
+	// yet, so do not start the import when FTL is already terminating
+	if(killed)
+	{
+		sqlite3_finalize(stmt);
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
+	else if(killed)
+	{
+		// SQLite has rolled the transaction back when the statement was
+		// interrupted, and the memory database is closed right after us
+		sqlite3_finalize(stmt);
+		return false;
+	}
 	else
 		log_err("import_queries_from_disk(): Failed to import queries: %s",
 		        sqlite3_errstr(rc));
 	const int imported_queries = sqlite3_changes(memdb);
 	log_debug(DEBUG_DATABASE, "Imported %i rows from disk.query_storage", imported_queries);
 
-	if(imported_queries != counted_queries)
+	if(!killed && imported_queries != counted_queries)
 		log_warn("Database %s has changed during import: Expected to import %i queries, but only imported %i. You may observe memory error warnings.",
 		         config.files.database.v.s, counted_queries, imported_queries);
 
@@ -865,7 +912,17 @@ bool import_queries_from_disk(void)
 	int imported[ArraySize(subtable_names)] = { 0 };
 	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
+		rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
+
+		// An interrupt has rolled the transaction back already, the
+		// ROLLBACK covers a termination request between two statements
+		if(killed)
+		{
+			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			return false;
+		}
+
+		if(rc != SQLITE_OK)
 			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
 			        subtable_sql[i], sqlite3_errstr(rc));
 		imported[i] = sqlite3_changes(memdb);
@@ -1002,8 +1059,16 @@ bool export_queries_to_disk(const bool final)
 		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
 	}
 
-	// End transaction
-	SQL_bool(memdb, "END");
+	// End transaction. A bare SQL_bool() would return with the transaction
+	// still open on the shared in-memory connection, which every later
+	// caller inherits
+	if((rc = dbquery(memdb, "END")) != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): Cannot end transaction: %s",
+		        sqlite3_errstr(rc));
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
 
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
 		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
@@ -1419,8 +1484,9 @@ void DB_read_queries(void)
 	                              "dnssec "\
 	                       "FROM queries";
 
-	// Only try to import from database if it is known to not be broken
-	if(FTLDBerror())
+	// Only try to import from database if it is known to not be broken and
+	// FTL has not been asked to terminate in the meantime
+	if(FTLDBerror() || killed)
 		return;
 
 	log_info("Parsing queries in database");
@@ -1439,6 +1505,10 @@ void DB_read_queries(void)
 	size_t imported_queries = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
+		// Cancellation-point before the shared memory is locked: the
+		// main thread tears down what the loop below uses once we are gone
+		BREAK_IF_KILLED();
+
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
 		// 1483228800 = 01/01/2017 @ 12:00am (UTC)
@@ -1702,6 +1772,7 @@ void DB_read_queries(void)
 					{
 						upstream->lastQuery = queryTimeStamp;
 						upstream->count++;
+						query->flags.upstream_counted = true;
 					}
 				}
 				break;
@@ -1732,12 +1803,14 @@ void DB_read_queries(void)
 		unlock_shm();
 	}
 
-	if( rc == SQLITE_DONE )
+	if(killed)
+		log_info("Aborted import after %zu queries, FTL is shutting down", imported_queries);
+	else if( rc == SQLITE_DONE )
 		log_info("Imported %zu queries from the long-term database", imported_queries);
 	else
 		log_err("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 
-	if((int)imported_queries < counted_queries)
+	if(!killed && (int)imported_queries < counted_queries)
 	{
 		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu. You may see harmless memory errors in the log.",
 		         config.files.database.v.s, counted_queries, imported_queries);
@@ -1787,6 +1860,70 @@ static void init_disk_db_idx(sqlite3 *memdb)
 	log_debug(DEBUG_DATABASE, "Last long-term idx is %"PRId64, memdb_queries_maxid);
 }
 
+// Run one of the transaction statements of queries_to_database(). SQL_bool()
+// cannot be used there, as its early return would skip the cleanup, but its
+// logging is worth keeping: a busy database is transient and only warned about
+static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
+{
+	const int rc = dbquery(memdb, "%s", sql);
+	if(rc == SQLITE_OK)
+		return true;
+
+	if(rc == SQLITE_BUSY)
+		log_warn("queries_to_database(): Database busy when trying to %s", what);
+	else
+		log_err("queries_to_database(): Failed to %s", what);
+
+	return false;
+}
+
+// Snapshot struct for lock-free SQLite writes in phase 2
+struct query_snap {
+	unsigned int queryID;       // SHM index for writeback
+	int64_t idx;                // pre-assigned db index
+	double timestamp;
+	int type_val;               // pre-computed type for param 3
+	int status;                 // param 4
+	int domain_db_id;           // param 5
+	int client_db_id;           // param 6
+	int upstream_db_id;         // param 7
+	int addinfo_id;             // param 8
+	int reply;                  // param 9
+	double response;            // param 10
+	int dnssec;                 // param 11
+	int list_id;                // param 12
+	int ede;                    // param 13
+	bool has_upstream;
+	bool response_calculated;
+	bool is_new;
+	bool blocked;
+};
+
+// Get the query a snapshot was taken of. Its index is rebased by the number of
+// queries the garbage collector removed since, a query that is gone itself
+// yields NULL. The caller holds the SHM lock
+static queriesData *get_snapshot_query(const struct query_snap *snap, const unsigned int removed_before)
+{
+	const unsigned int shift = get_queries_removed() - removed_before;
+	if(snap->queryID < shift)
+		return NULL;
+
+	return getQuery(snap->queryID - shift, true);
+}
+
+// Give the snapshotted queries their changed flag back so a later run picks
+// them up. The caller holds the SHM lock
+static void requeue_snapshots(const struct query_snap *snaps, const unsigned int from,
+                              const unsigned int to, const unsigned int removed_before)
+{
+	for(unsigned int i = from; i < to; i++)
+	{
+		queriesData *query = get_snapshot_query(&snaps[i], removed_before);
+		if(query != NULL)
+			query->flags.database.changed = true;
+	}
+}
+
 bool queries_to_database(void)
 {
 	int rc;
@@ -1815,6 +1952,10 @@ bool queries_to_database(void)
 	}
 
 	lock_shm();
+
+	// The snapshot indices taken below are rebased against this once the
+	// lock was released in between
+	const unsigned int removed_before = get_queries_removed();
 
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
@@ -1877,27 +2018,6 @@ bool queries_to_database(void)
 	// (thanks to the in_database flag).
 	// ===================================================================
 
-	// Snapshot struct for lock-free SQLite writes in phase 2
-	struct query_snap {
-		unsigned int queryID;       // SHM index for writeback
-		int64_t idx;                // pre-assigned db index
-		double timestamp;
-		int type_val;               // pre-computed type for param 3
-		int status;                 // param 4
-		int domain_db_id;           // param 5
-		int client_db_id;           // param 6
-		int upstream_db_id;         // param 7
-		int addinfo_id;             // param 8
-		int reply;                  // param 9
-		double response;            // param 10
-		int dnssec;                 // param 11
-		int list_id;                // param 12
-		int ede;                    // param 13
-		bool has_upstream;
-		bool response_calculated;
-		bool is_new;
-		bool blocked;
-	};
 
 	const unsigned int window = counters->queries - last_query;
 	struct query_snap *snaps = malloc(window * sizeof(*snaps));
@@ -1914,8 +2034,11 @@ bool queries_to_database(void)
 	bool phase1_error = false;
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
-	// mostly skipped due to in_database caching)
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	// mostly skipped due to in_database caching). SQL_bool() cannot be used
+	// while we hold the SHM lock, as its early return would leave the lock
+	// taken for good
+	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the linking table transaction"))
+		goto unlock_fail;
 
 	for(unsigned int queryID = last_query; queryID < counters->queries; queryID++)
 	{
@@ -2166,17 +2289,17 @@ bool queries_to_database(void)
 	}
 
 	// Commit linking table transaction
-	SQL_bool(memdb, "END");
+	if(!memdb_exec(memdb, "END", "commit the linking table transaction"))
+		goto rollback_unlock_fail;
 
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
 
-	// If phase 1 encountered an error, skip phase 2 but still clean up
+	// If phase 1 encountered an error, skip phase 2. Everything it
+	// snapshotted had its changed flag cleared, so this goes out through
+	// the same restore as the transaction failures below
 	if(phase1_error)
-	{
-		free(snaps);
-		return false;
-	}
+		goto fail;
 
 	// ===================================================================
 	// PHASE 2: Without SHM lock — bind and step query_stmt for each
@@ -2184,7 +2307,8 @@ bool queries_to_database(void)
 	// the DNS processing or API threads.
 	// ===================================================================
 
-	SQL_bool(memdb, "BEGIN TRANSACTION");
+	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the query transaction"))
+		goto fail;
 
 	unsigned int succeeded = 0;
 	for(unsigned int i = 0; i < snap_count; i++)
@@ -2236,7 +2360,8 @@ bool queries_to_database(void)
 		succeeded++;
 	}
 
-	SQL_bool(memdb, "END");
+	if(!memdb_exec(memdb, "END", "commit the query transaction"))
+		goto rollback_fail;
 
 	// ===================================================================
 	// PHASE 3: Brief SHM lock — write back db indices and clear changed
@@ -2244,12 +2369,22 @@ bool queries_to_database(void)
 	// ===================================================================
 	lock_shm();
 
+	// A step error in phase 2 left the rest of the snapshot uncommitted, so
+	// those queries get their changed flag back and are written next time
+	if(succeeded < snap_count)
+	{
+		requeue_snapshots(snaps, succeeded, snap_count, removed_before);
+
+		log_err("Could not store %u queries, they are queued for the next run",
+		        snap_count - succeeded);
+	}
+
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
-		queriesData *query = getQuery(s->queryID, true);
+		queriesData *query = get_snapshot_query(s, removed_before);
 		if(query == NULL)
 			continue;
 
@@ -2293,4 +2428,26 @@ bool queries_to_database(void)
 	}
 
 	return true;
+
+	// Common cleanup for the transaction failures above. `SQL_bool()` is not
+	// usable there: its early return would skip the unlock and leave the SHM
+	// lock taken for good
+rollback_unlock_fail:
+	dbquery(memdb, "ROLLBACK");
+unlock_fail:
+	// Nothing was committed, so give the snapshotted queries their changed
+	// flag back and let the next run pick them up. The lock is still ours
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
+	unlock_shm();
+	goto fail_free;
+rollback_fail:
+	dbquery(memdb, "ROLLBACK");
+fail:
+	// Same restore, but phase 2 runs without the lock
+	lock_shm();
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
+	unlock_shm();
+fail_free:
+	free(snaps);
+	return false;
 }

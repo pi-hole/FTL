@@ -673,6 +673,19 @@ setup() {
   rm -f "${DB}"
 }
 
+@test "Internal PTR resolver reports a refused connection, not a timeout" {
+  # Nothing listens on port 5399, so the kernel answers the query with an
+  # ICMP port-unreachable. The resolver socket is connected, so that is
+  # delivered as ECONNREFUSED. On an unconnected socket the kernel discards
+  # it and the poll() deadline expires instead, which is what the refuted
+  # message is, so the two are told apart without timing anything
+  # Its own log file, so the deliberate error does not land in FTL.log and
+  # weaken the "no unexpected ERROR messages" check in test_final.bats
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/ptr_refused.log FTLCONF_dns_port=5399 ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "Connection refused by upstream DNS server"
+  refute_output --partial "Timed out after"
+}
+
 @test "Test fail on invalid CLI argument" {
   run bash -c './pihole-FTL abc'
   assert_line --index 0 "pihole-FTL: invalid option -- 'abc'"
@@ -1195,38 +1208,43 @@ setup() {
   assert_line --index 0 "1"
 }
 
-@test "EDNS(0) ECS can overwrite client address (IPv4)" {
-  # Get number of lines in the log before the test
-  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+@test "EDNS(0) MAC groups ECS addresses in network table" {
+  mac="02:00:00:00:00:01"
+  ipv4="192.168.47.97"
+  ipv6="fe80::b167:af1e:968b:dead"
 
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=192.168.47.97/32 @127.0.0.1'
-  assert_line --index 0 "127.0.0.1"
+  seed="INSERT INTO network (hwaddr, interface, firstSeen, lastQuery, numQueries) VALUES ('ip-${ipv4}', 'test', 0, 0, 0); INSERT INTO network_addresses (network_id, ip) SELECT id, '${ipv4}' FROM network WHERE hwaddr = 'ip-${ipv4}';"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${seed}"
   assert_success
 
-  # Get number of lines in the log after the test
-  after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
-  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/192.168.47.97#53 "
-}
-
-@test "EDNS(0) ECS can overwrite client address (IPv6)" {
-  # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Run test command
-  run bash -c 'dig localhost +short +subnet=fe80::b167:af1e:968b:dead/128 @127.0.0.1'
+  run bash -c "dig localhost +short +subnet=${ipv4}/32 +ednsopt=65001:020000000001 @127.0.0.1"
   assert_line --index 0 "127.0.0.1"
   assert_success
-
-  # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
-
-  # Extract relevant log lines
   run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
-  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/fe80::b167:af1e:968b:dead#53 "
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv4}#53 "
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "dig localhost +short +subnet=${ipv6}/128 +ednsopt=65001:020000000001 @127.0.0.1"
+  assert_line --index 0 "127.0.0.1"
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log"
+  assert_line --partial "**** new UDP IPv4 query[A] query \"localhost\" from lo/${ipv6}#53 "
+
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+
+  query="SELECT lower(n.hwaddr) || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE a.ip IN ('${ipv4}', '${ipv6}') ORDER BY a.ip; SELECT 'mac_rows=' || count(*) FROM network WHERE lower(hwaddr) = '${mac}'; SELECT 'mock_rows=' || count(*) FROM network WHERE lower(hwaddr) IN ('ip-${ipv4}', 'ip-${ipv6}');"
+  expected="${mac}|${ipv4}"$'\n'"${mac}|${ipv6}"$'\n'"mac_rows=1"$'\n'"mock_rows=0"
+  for _ in $(seq 1 30); do
+    result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
+    [[ "${result}" == "${expected}" ]] && break
+    sleep 0.1
+  done
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}"
+  assert_output "${expected}"
 }
 
 @test "alias-client is imported and used for configured client" {
@@ -1591,6 +1609,34 @@ setup() {
 
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
+@test "Internationalized domain names are accepted, malformed UTF-8 is not" {
+  # dnsmasq is built with libidn2 and converts these to punycode itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "2.2.2.2 äste.com", "3.3.3.3 日本.example", "4.4.4.4 𐍈.example" ]'
+  assert_success
+
+  # Wait for change to become effective, otherwise the running FTL can coalesce
+  # this change and the restore below into a single reload
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Only sequences a decoder accepts: no overlong encoding, no UTF-16 surrogate,
+  # nothing above U+10FFFF, no truncated sequence and no stray continuation byte
+  for seq in '\xc0\x80' '\xed\xa0\x80' '\xf5\x80\x80\x80' '\xe2\x82' '\xff'; do
+    run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 $(printf '%b' "$seq").com\" ]"
+    assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
+    assert_failure 3
+  done
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
@@ -1598,6 +1644,17 @@ setup() {
 
   run bash -c './pihole-FTL --config dns.hosts "[\"1.1.1.1 cf\",\"8.8.8.8 google\",\"1.2.3.4\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
+  assert_failure 3
+
+  # No dot follows the last label, but its length is capped just the same
+  long_label="$(printf 'a%.0s' {1..64})"
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"test.${long_label}\")"
+  assert_failure 3
+
+  # A name that is one label and nothing else is measured just the same
+  run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 ${long_label}\"]'"
+  assert_line --index 0 "Invalid value: dns.hosts[0]: invalid hostname (\"${long_label}\")"
   assert_failure 3
 
   run bash -c './pihole-FTL --config dns.revServers "[\"abc,def,ghi\"]"'
@@ -1623,6 +1680,26 @@ setup() {
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
+
+  # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
+  assert_line --index 0 'Invalid value: dhcp.netmask: not a valid netmask ("255.254.255.0"), the one-bits are not contiguous'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t dhcp.netmask 255.255.254.0'
+  assert_line --index 0 '255.255.254.0'
+  assert_success
+
+  # Nothing was applied, so the netmask is still the empty default
+  run bash -c './pihole-FTL --config dhcp.netmask'
+  assert_output ''
+  assert_success
+
+  # An empty netmask is valid, it is then taken from the interface. This equals
+  # the current value, so it takes the unchanged branch and no validator runs
+  run bash -c './pihole-FTL --config -t dhcp.netmask ""'
+  assert_success
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
@@ -1810,6 +1887,12 @@ setup() {
   assert_success
 }
 
+@test "PTR stale-response regression harness" {
+  run ./ptr_response_regression
+  assert_success
+  assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
+}
+
 @test "SHA256 checksum working" {
   run bash -c './pihole-FTL sha256sum test/test.pem'
   assert_line --index 0 "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem"
@@ -1874,32 +1957,96 @@ setup() {
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/12: document_root=/var/www/html" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 0/15: document_root=/var/www/html" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/12: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 1/15: error_pages=/var/www/html/admin/" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 2/12: listening_ports=80o,443os,[::]:80o,[::]:443os" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 2/15: listening_ports=80o,443os,[::]:80o,[::]:443os" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/12: decode_url=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 3/15: decode_url=yes" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/12: enable_directory_listing=no" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 4/15: enable_directory_listing=no" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/12: num_threads=50" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 5/15: num_threads=50" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/12: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 6/15: authentication_domain=pi.hole" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/12: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"'; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 7/15: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"'; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/12: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 8/15: index_files=index.html,index.htm,index.lp" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/12: enable_keep_alive=yes" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 9/15: enable_keep_alive=yes" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/12: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 10/15: keep_alive_timeout_ms=5000" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 11/12: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 11/15: lua_server_page_pattern=**.lp$" /var/log/pihole/FTL.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 12/12: <END OF OPTIONS>" /var/log/pihole/FTL.log'
+  run bash -c 'grep -F "Webserver option 12/15: lua_script_pattern=" /var/log/pihole/FTL.log'
   assert_success
+  run bash -c 'grep -F "Webserver option 13/15: ssi_pattern=" /var/log/pihole/FTL.log'
+  assert_success
+  run bash -c 'grep -F "Webserver option 14/15: ssl_certificate=/etc/pihole/test.pem" /var/log/pihole/FTL.log'
+  assert_success
+  run bash -c 'grep -F "Webserver option 15/15: <END OF OPTIONS>" /var/log/pihole/FTL.log'
+  assert_success
+}
+
+@test "Gravity: API write waits for a concurrent reader instead of failing" {
+  # gravity_updated() reads gravity.db from its own connection once per second
+  # and a write meeting such a reader has to wait for it. Hold a read
+  # transaction here, write through the API while it is held, and release the
+  # reader once the busy handler of the write was seen waiting (debug.database
+  # is enabled in the test configuration)
+  rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
+  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+  cat > /tmp/gravity_reader.sql << 'SQL'
+BEGIN;
+SELECT count(*) FROM domainlist;
+.shell touch /tmp/gravity_reader_ready
+.shell i=0; while [ ! -f /tmp/gravity_reader_release ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done
+COMMIT;
+SQL
+  ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db < /tmp/gravity_reader.sql > /dev/null 2>&1 3>&- &
+  reader=$!
+
+  # Do not guess how long the reader needs to take its lock
+  for _ in $(seq 1 100); do
+    [ -f /tmp/gravity_reader_ready ] && break
+    sleep 0.05
+  done
+  reader_ready=no
+  [ -f /tmp/gravity_reader_ready ] && reader_ready=yes
+
+  # Write while the reader holds its lock
+  curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}' > /tmp/gravity_put_result 2> /dev/null 3>&- &
+  put=$!
+
+  # Release the reader as soon as the write is waiting for it. This is well
+  # within the busy timeout, however long the request took to get there
+  write_waited=no
+  for _ in $(seq 1 100); do
+    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+    if [ "${busy_now}" -gt "${busy_before}" ]; then
+      write_waited=yes
+      break
+    fi
+    sleep 0.05
+  done
+  touch /tmp/gravity_reader_release
+
+  wait "${put}" || true
+  wait "${reader}" || true
+  put_code="$(cat /tmp/gravity_put_result)"
+
+  # Clean up before asserting so a failure does not leak into later tests
+  rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result /tmp/gravity_reader.sql
+  delete_code="$(curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl)"
+
+  printf "reader ready: %s, write waited: %s, PUT: %s, DELETE: %s\n" "${reader_ready}" "${write_waited}" "${put_code}" "${delete_code}"
+  [[ "${reader_ready}" == "yes" ]]
+  [[ "${write_waited}" == "yes" ]]
+  [[ "${put_code}" == "200" || "${put_code}" == "201" ]]
+  [[ "${delete_code}" == "204" ]]
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)

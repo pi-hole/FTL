@@ -10,6 +10,8 @@ Usage:
 """
 
 import json
+import re
+from urllib.parse import quote
 
 import pytest
 
@@ -19,19 +21,18 @@ FTL_URL = "http://127.0.0.1"
 # ---------------------------------------------------------------------------
 # Expected query counters
 # ---------------------------------------------------------------------------
-# The bats test suite queries mask.icloud.com via an allowlisted client, which
-# forwards the query upstream.  The mask.icloud.com -> mask.apple-dns.net CNAME
-# chain is served by the local (unsigned) PowerDNS authoritative server (see
-# test/pdns/setup.sh and recursor.conf) instead of being recursed to the public
-# internet.  This keeps the resolution hermetic and the query counts below
-# deterministic — previously they drifted by +2 whenever Apple toggled DNSSEC
-# signing on these zones, which made the suite flaky (see issue #2908 / PR
-# #2845).  If you add or remove queries in test_suite.bats, update these.
+# These counters must stay hermetic: every query the bats suite fires is served
+# by the local PowerDNS instance, including a locally-signed root zone (see
+# test/pdns/setup.sh and recursor.conf).  DNSSEC validation therefore never
+# recurses to the public ICANN root, whose DNSKEY set drifts with key-signing-key
+# rollovers - that used to change the number of root DNSKEY lookups and made the
+# DNSSEC-dependent counters below flaky.  If you add or remove queries in
+# test_suite.bats, update these.
 
-TOTAL       = 137
-FORWARDED   = 47
-DNSKEY      = 9
-TOP_DOMAIN  = "."
+TOTAL       = 131
+FORWARDED   = 41
+DNSKEY      = 4
+TOP_DOMAIN  = "localhost"
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +642,56 @@ class TestStatsTopDomains:
         assert "gravity.ftl" not in names, \
             f"gravity.ftl should not be in permitted domains:\n{json.dumps(data, indent=2)}"
 
+    def test_top_domains_small_count_is_true_prefix(self, api_session):
+        # Regression for #2946: the bounded top-K heap selection must return
+        # the real top-K for small counts and must not drop legitimate
+        # domains. A small count reduces the heap capacity to count*4, so any
+        # entry that wrongly occupies a slot would evict a genuine domain and
+        # shorten the result below the requested count.
+        full = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=100", timeout=5),
+                  dump="top_domains_full")["domains"]
+        full_counts = [d["count"] for d in full]
+        assert len(full) > 4, \
+            f"test data must expose more than 4 domains to exercise heap eviction, got {len(full)}"
+        for n in (1, 2, 3, 4):
+            data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count={n}", timeout=5))
+            counts = [d["count"] for d in data["domains"]]
+            assert len(counts) == min(n, len(full)), \
+                f"count={n} returned {len(counts)} domains, expected {min(n, len(full))}"
+            assert counts == sorted(counts, reverse=True), \
+                f"count={n} not sorted descending: {counts}"
+            assert counts == full_counts[:n], \
+                f"count={n} is not the top-{n} prefix: {counts} vs {full_counts[:n]}"
+
+    def test_top_domains_exclude_filter_does_not_shorten(self, api_session):
+        # Regression for #2946: excludeDomains must be applied before the
+        # bounded top-K heap selection, not only at output. Excluded (usually
+        # high-count) domains that reach the heap occupy slots and evict
+        # genuine domains, so the result ends up shorter than requested. At
+        # count=1 the heap capacity is 4, so excluding the four top domains
+        # would empty a broken (output-only) filter's result entirely.
+        full = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=100", timeout=5),
+                  dump="top_domains_exclude_full")["domains"]
+        names = [d["domain"] for d in full]
+        full_counts = [d["count"] for d in full]
+        assert len(names) > 5, \
+            f"test data must expose more than 5 domains to exercise the filter, got {len(names)}"
+
+        excluded = names[:4]
+        try:
+            set_config(api_session, "webserver.api.excludeDomains",
+                       [f"^{re.escape(n)}$" for n in excluded])
+            data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?count=1", timeout=5))
+            result = data["domains"]
+            assert len(result) == 1, \
+                f"excluding the top domains must not empty the result: {result}"
+            assert result[0]["domain"] not in excluded, \
+                f"an excluded domain leaked into the result: {result}"
+            assert result[0]["count"] == full_counts[4], \
+                f"expected the first non-excluded count {full_counts[4]}, got {result}"
+        finally:
+            set_config(api_session, "webserver.api.excludeDomains", [])
+
 
 # ---------------------------------------------------------------------------
 # Stats: top clients
@@ -691,7 +742,7 @@ class TestStatsQueryTypes:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
             "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
-            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 7,
+            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
         }, json.dumps(data, indent=2)
@@ -737,17 +788,25 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_domains?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "domains" in data
         assert isinstance(data["domains"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_top_clients_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/top_clients?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "clients" in data
         assert isinstance(data["clients"], list)
-        assert "total_queries" in data
+        assert data["total_queries"] == summary["sum_queries"]
+        assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_upstreams_with_range(self, api_session):
         data = _j(api_session.get(
@@ -788,6 +847,137 @@ class TestEndpoints:
             assert method in eps, f"Missing method '{method}':\n{json.dumps(eps.keys(), indent=2)}"
         # GET should have the most endpoints
         assert len(eps["get"]) > 20
+
+
+# ---------------------------------------------------------------------------
+# Wrong method on an existing endpoint
+# ---------------------------------------------------------------------------
+
+class TestMethodNotAllowed:
+
+    @staticmethod
+    def _allow(response):
+        return sorted(m.strip() for m in response.headers["Allow"].split(","))
+
+    def test_wrong_method_returns_405_with_allow(self, api_session):
+        """DELETE on a GET-only endpoint is a 405 naming the methods that work."""
+        r = api_session.delete(f"{FTL_URL}/api/stats/summary", timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+
+        assert r.headers.get("Allow") is not None, \
+            f"No Allow header, got {dict(r.headers)}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+        assert _j(r)["error"]["key"] == "method_not_allowed"
+
+    def test_allow_lists_every_accepted_method(self, api_session):
+        """An endpoint reached by several methods names all of them."""
+        r = api_session.patch(f"{FTL_URL}/api/dns/blocking", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
+
+    def test_allow_only_names_methods_this_uri_shape_takes(self, api_session):
+        """Rows sharing a URI are told apart by their parameters, not just the URI.
+
+        /api/domains has four table rows. Without arguments only the GET one
+        applies, so DELETE - which needs /{type}/{kind}/{domain} - must not be
+        advertised, and with two arguments POST must be.
+        """
+        r = api_session.patch(f"{FTL_URL}/api/domains", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+        r = api_session.patch(f"{FTL_URL}/api/domains/deny/exact", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
+
+    def test_trailing_slash_does_not_shift_the_path(self, api_session):
+        """A trailing slash must not count as another path component.
+
+        /api/domains/deny/ addresses the same row as /api/domains/deny, so it
+        has to advertise the same methods rather than those of the row one
+        level deeper.
+        """
+        plain = api_session.patch(f"{FTL_URL}/api/domains/deny", json={}, timeout=5)
+        slash = api_session.patch(f"{FTL_URL}/api/domains/deny/", json={}, timeout=5)
+        assert plain.status_code == 405, \
+            f"Expected 405, got {plain.status_code} {plain.text}"
+        assert slash.status_code == 405, \
+            f"Expected 405, got {slash.status_code} {slash.text}"
+        assert self._allow(slash) == self._allow(plain), \
+            f"{self._allow(slash)} != {self._allow(plain)}"
+
+    def test_config_element_spans_several_components(self, api_session):
+        """A config element is a path of its own, e.g., dns/cache/size.
+
+        Both the 405 and the OPTIONS reply have to name the methods of the
+        /{element} and /{element}/{value} rows for it, and only GET for an
+        element that is a single component.
+        """
+        r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        r = api_session.options(f"{FTL_URL}/api/config/dns/cache/size", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        r = api_session.post(f"{FTL_URL}/api/config/dns", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_parameter_with_slashes_keeps_its_row(self, api_session):
+        """A list address arrives decoded, its slashes are not path components."""
+        address = quote("https://pytest.example.com/list.txt", safe="")
+        r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+        # Only the row with the most parameters takes the rest of the URI
+        r = api_session.options(f"{FTL_URL}/api/domains/deny/regex/{quote('a/b', safe='')}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+
+    def test_longer_endpoint_wins_over_a_parameter(self, api_session):
+        """/api/info/messages/count is an endpoint, not the message ID "count"."""
+        r = api_session.options(f"{FTL_URL}/api/info/messages/count", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_docs_path_names_get(self, api_session):
+        """The documentation is served from any path below /api/docs."""
+        r = api_session.post(f"{FTL_URL}/api/docs/index.html", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_handler_asking_for_404_still_gets_one(self, api_session):
+        """api_docs() returns 0 for a file it does not have, which is a 404.
+
+        It must not be mistaken for "no method matched" and answered 405 with
+        an Allow header naming the very method that was used.
+        """
+        r = api_session.get(f"{FTL_URL}/api/docs/_pytest_no_such_file.html",
+                            timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+
+    def test_unknown_uri_is_still_404(self, api_session):
+        """A URI that does not exist keeps its 404, no Allow header."""
+        r = api_session.delete(f"{FTL_URL}/api/_pytest_no_such_endpoint", timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+        assert "Allow" not in r.headers
 
 
 # ---------------------------------------------------------------------------

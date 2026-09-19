@@ -33,6 +33,8 @@
 #include "config/validator.h"
 // getEnvVars()
 #include "config/env.h"
+// set_mbedtls_debug_threshold()
+#include "webserver/webserver.h"
 // sha256sum()
 #include "files.h"
 // restart_ftl()
@@ -45,7 +47,6 @@ uint8_t last_checksum[SHA256_DIGEST_SIZE] = { 0 };
 
 // Private prototypes
 static bool port_in_use(const in_port_t port);
-static void reset_config_default(struct conf_item *conf_item);
 
 // Set debug flags from config struct to global debug_flags array
 // This is called whenever the config is reloaded and debug flags may have
@@ -72,6 +73,13 @@ void set_debug_flags(struct config *conf)
 	// If all debug flags are set, we set the "ALL" flag. We subtract 1 from
 	// DEBUG_ELEMENTS as the last element is "ALL" itself
 	conf->debug.all.v.b = elements_set == DEBUG_ELEMENTS-1;
+
+	// Keep mbedTLS in sync, it decides on formatting before we see the
+	// message. Only the live configuration may move the process-global
+	// threshold, a candidate can still be discarded - replace_config()
+	// applies it once the candidate is installed
+	if(conf == &config)
+		set_mbedtls_debug_threshold(conf->debug.tls.v.b);
 }
 
 void set_all_debug(struct config *conf, const bool status)
@@ -816,7 +824,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.netmask.t = CONF_STRUCT_IN_ADDR;
 	conf->dhcp.netmask.f = FLAG_RESTART_FTL;
 	memset(&conf->dhcp.netmask.d.in_addr, 0, sizeof(struct in_addr));
-	conf->dhcp.netmask.c = validate_stub; // Only type-based checking
+	conf->dhcp.netmask.c = validate_netmask;
 
 	conf->dhcp.leaseTime.k = "dhcp.leaseTime";
 	conf->dhcp.leaseTime.h = "If the lease time is given, then leases will be given for that length of time. If not given, the default lease time is one hour for IPv4 and one day for IPv6.";
@@ -1001,8 +1009,12 @@ void initConfig(struct config *conf)
 	conf->database.maxDBdays.k = "database.maxDBdays";
 	conf->database.maxDBdays.h = "How long should queries be stored in the database [days]?";
 	conf->database.maxDBdays.a = cJSON_CreateStringReference("A positive integer value in days, or 0 to disable the database");
-	conf->database.maxDBdays.t = CONF_INT;
-	conf->database.maxDBdays.d.i = (365/4);
+	// Unsigned: every reader takes .v.ui - database-thread.c, query-table.c
+	// and common.c - and the help text above promises a positive value. As
+	// CONF_INT the two disagreed, and a -1 stored through .v.i came back out
+	// of .v.ui as 4294967295
+	conf->database.maxDBdays.t = CONF_UINT;
+	conf->database.maxDBdays.d.ui = (365/4);
 	conf->database.maxDBdays.c = validate_stub; // Only type-based checking
 
 	conf->database.DBinterval.k = "database.DBinterval";
@@ -1106,10 +1118,10 @@ void initConfig(struct config *conf)
 	conf->webserver.serve_all.c = validate_stub;
 
 	conf->webserver.advancedOpts.k = "webserver.advancedOpts";
-	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). See the CivetWeb documentation for a list of supported options. The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". Be aware that this is an advanced option and that setting options here may break the web server if invalid or conflicting with other settings applied based on other settings in this file. The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last values is used when a config option is specified multiple times). Use with caution.\n\n Example: [ \"ssl_protocol_version=4\", \"ssl_cipher_list=AES128:!MD5\" ]";
-	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of valid CivetWeb options");
+	conf->webserver.advancedOpts.h = "Additional options passed directly to the web server.\n\n This can be used to set any option supported by the underlying web server (CivetWeb). The options are passed as an array of strings, where each string is an option in the form \"<option>=<value>\". The config options specified here are added to the end of the passed options. This makes it possible to overwrite settings set by Pi-hole (only the last value is used when a config option is specified multiple times). Use with caution: setting options here may break the web server if they conflict with other settings applied based on other settings in this file.\n\n Options given here reach the web server unchecked, and some of them decide which files it serves or executes, so this option cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.\n\n Example: [ \"num_threads=8\", \"max_request_size=32768\" ]";
+	conf->webserver.advancedOpts.a = cJSON_CreateStringReference("An array of permitted CivetWeb options");
 	conf->webserver.advancedOpts.t = CONF_JSON_STRING_ARRAY;
-	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL;
+	conf->webserver.advancedOpts.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.advancedOpts.d.json = cJSON_CreateArray();
 	conf->webserver.advancedOpts.c = validate_stub; // Only type-based checking
 
@@ -1143,26 +1155,26 @@ void initConfig(struct config *conf)
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
-	conf->webserver.paths.webroot.h = "Server root on the host";
-	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid path");
+	conf->webserver.paths.webroot.h = "Server root on the host.\n\n Every file below this directory can be requested over the network once webserver.serve_all is enabled, so it cannot be \"/\" or any other directory containing \""CONFIG_DIR"\".\n\n Relocating the document root decides which files the web server serves, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
+	conf->webserver.paths.webroot.a = cJSON_CreateStringReference("A valid absolute path not containing \""CONFIG_DIR"\"");
 	conf->webserver.paths.webroot.t = CONF_STRING;
-	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webroot.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webroot.d.s = (char*)"/var/www/html";
-	conf->webserver.paths.webroot.c = validate_filepath;
+	conf->webserver.paths.webroot.c = validate_webroot;
 
 	conf->webserver.paths.webhome.k = "webserver.paths.webhome";
-	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface";
+	conf->webserver.paths.webhome.h = "Sub-directory of the root containing the web interface\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
 	conf->webserver.paths.webhome.a = cJSON_CreateStringReference("A valid subpath, both slashes are needed!");
 	conf->webserver.paths.webhome.t = CONF_STRING;
-	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
 	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
 
 	conf->webserver.paths.prefix.k = "webserver.paths.prefix";
-	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!";
+	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
 	conf->webserver.paths.prefix.a = cJSON_CreateStringReference("A valid URL prefix or empty");
 	conf->webserver.paths.prefix.t = CONF_STRING;
-	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL;
+	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.prefix.d.s = (char*)"";
 	conf->webserver.paths.prefix.c = validate_filepath_empty;
 
@@ -1344,7 +1356,7 @@ void initConfig(struct config *conf)
 	conf->files.gravity_tmp.t = CONF_STRING;
 	conf->files.gravity_tmp.f = FLAG_RESTART_FTL;
 	conf->files.gravity_tmp.d.s = (char*)"/tmp";
-	conf->files.gravity_tmp.c = validate_stub; // Only type-based checking
+	conf->files.gravity_tmp.c = validate_filepath;
 
 	conf->files.macvendor.k = "files.macvendor";
 	conf->files.macvendor.h = "The database containing MAC -> Vendor information for the network table";
@@ -1378,7 +1390,7 @@ void initConfig(struct config *conf)
 	conf->files.log.webserver.t = CONF_STRING;
 	conf->files.log.webserver.f = FLAG_RESTART_FTL;
 	conf->files.log.webserver.d.s = (char*)"/var/log/pihole/webserver.log";
-	conf->files.log.webserver.c = validate_webserver_logfile;
+	conf->files.log.webserver.c = validate_filepath;
 
 	// struct misc
 	conf->misc.privacylevel.k = "misc.privacylevel";
@@ -1426,10 +1438,10 @@ void initConfig(struct config *conf)
 	conf->misc.etc_dnsmasq_d.c = validate_stub; // Only type-based checking
 
 	conf->misc.dnsmasq_lines.k = "misc.dnsmasq_lines";
-	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n\n Use this option with extra care.\n\n Example: [ \"address=/example.com/192.168.0.1\", \"address=/example.org/192.168.0.2\", \"address=/example.net/192.168.0.3\" ]";
+	conf->misc.dnsmasq_lines.h = "Additional lines to inject into the generated dnsmasq configuration.\n Warning: This is an advanced setting and should only be used with care. Incorrectly formatted or duplicated lines as well as lines conflicting with the automatic configuration of Pi-hole can break the embedded dnsmasq and will stop DNS resolution from working.\n\n Use this option with extra care.\n\n dnsmasq directives such as \"dhcp-script\" and \"conf-script\" name programs that dnsmasq then executes, so this option cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host, which anyone placing such a script has anyway.\n\n Example: [ \"address=/example.com/192.168.0.1\", \"address=/example.org/192.168.0.2\", \"address=/example.net/192.168.0.3\" ]";
 	conf->misc.dnsmasq_lines.a = cJSON_CreateStringReference("Array of valid dnsmasq config line options");
 	conf->misc.dnsmasq_lines.t = CONF_JSON_STRING_ARRAY;
-	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL;
+	conf->misc.dnsmasq_lines.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->misc.dnsmasq_lines.d.json = cJSON_CreateArray();
 	conf->misc.dnsmasq_lines.c = validate_array_no_newline;
 
@@ -1443,7 +1455,7 @@ void initConfig(struct config *conf)
 	conf->misc.readOnly.k = "misc.readOnly";
 	conf->misc.readOnly.h = "Put configuration into read-only mode. This will prevent any changes to the configuration file via the API or CLI. This setting useful when a configuration is to be forced/modified by some third-party application (like infrastructure-as-code providers) and should not be changed by any means.";
 	conf->misc.readOnly.t = CONF_BOOL;
-	conf->misc.readOnly.f = FLAG_READ_ONLY;
+	conf->misc.readOnly.f = FLAG_API_CLI_READ_ONLY;
 	conf->misc.readOnly.d.b = false;
 	conf->misc.readOnly.c = validate_stub; // Only type-based checking
 
@@ -1761,7 +1773,7 @@ void initConfig(struct config *conf)
 	}
 }
 
-static void reset_config_default(struct conf_item *conf_item)
+void reset_config_default(struct conf_item *conf_item)
 {
 	if(conf_item->t == CONF_JSON_STRING_ARRAY)
 	{
@@ -1787,6 +1799,60 @@ static void reset_config_default(struct conf_item *conf_item)
 		// Ordinary value: Simply copy the union over
 		memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->d));
 	}
+}
+
+
+/**
+ * @brief Hold a configuration to the same rules every way of setting it obeys.
+ *
+ * Runs the validator each config item declares, then the rules spanning several
+ * items, which a validator seeing one value at a time cannot express.
+ *
+ * @param conf Configuration to check
+ * @param reset If true, an offending item is reset to its default and the check
+ *              continues; if false, the first rejection ends it
+ * @param err Buffer receiving the rejection, may be NULL when \p reset is true
+ * @return Whether the configuration is acceptable
+ */
+bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(conf, i);
+		if(conf_item->c == NULL)
+			continue;
+
+		char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(conf_item->c(&conf_item->v, conf_item->k, valerr))
+			continue;
+
+		if(!reset)
+		{
+			if(err != NULL)
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
+			return false;
+		}
+
+		// The validator's message opens with the key, so it is not repeated
+		log_err("Invalid value: %s", valerr);
+		log_err("----> %s has been reset to its default value", conf_item->k);
+		reset_config_default(conf_item);
+	}
+
+	if(!reset)
+	{
+		char patherr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(conf, patherr, NULL))
+		{
+			if(err != NULL)
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", patherr);
+			return false;
+		}
+	}
+	else
+		resolve_config_paths(conf);
+
+	return true;
 }
 
 
@@ -1879,10 +1945,18 @@ bool migrate_config_v6(void)
 	// setupVars.conf
 	get_web_port(&config);
 
+	// Hold the migrated values to the same rules every other way of setting
+	// them obeys. The legacy file is not necessarily one we wrote: it can be
+	// uploaded as a Teleporter archive, which makes this a way into the
+	// configuration that would otherwise run no validator at all. Migrating
+	// must not fail outright, though - it also runs for genuine upgrades - so
+	// an offending value is reset to its default and the reason is logged.
+	validate_config(&config, true, NULL);
+
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(&config, false, errbuf);
+	write_dnsmasq_config(&config, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return true;
@@ -1903,7 +1977,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	for(unsigned int i = 0; i < MAX_ROTATIONS; i++)
 	{
 		toml_datum_t toml = { 0 };
-		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false))
+		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false, NULL))
 		{
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
@@ -1912,7 +1986,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 			{
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
-				write_dnsmasq_config(conf, false, errbuf);
+				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 				write_custom_list();
 			}
 			return true;
@@ -1945,7 +2019,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	write_dnsmasq_config(conf, false, errbuf);
+	write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);
 	write_custom_list();
 
 	return false;
@@ -2053,6 +2127,9 @@ void replace_config(struct config *newconf)
 
 	// Unlock shared memory
 	unlock_shm();
+
+	// This configuration is live now, so the mbedTLS threshold follows it
+	set_mbedtls_debug_threshold(config.debug.tls.v.b);
 }
 
 void reread_config(void)
@@ -2080,7 +2157,7 @@ void reread_config(void)
 	// Read TOML config file
 	bool restart = false;
 	toml_datum_t toml = { 0 };
-	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false))
+	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false, NULL))
 	{
 		// Install new configuration
 		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");

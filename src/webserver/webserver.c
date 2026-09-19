@@ -35,6 +35,8 @@
 
 #ifdef HAVE_MBEDTLS
 #include <mbedtls/ssl_ciphersuites.h>
+// mbedtls_debug_set_threshold()
+#include <mbedtls/debug.h>
 #endif /* HAVE_MBEDTLS */
 
 // Server context handle
@@ -330,6 +332,19 @@ static int log_http_access(const struct mg_connection *conn, const char *message
 	return 1;
 }
 
+// mbedTLS formats every message at or below the threshold before handing it to
+// FTL_mbed_debug(), so the threshold is what keeps this out of the TLS hot path
+// when the user did not ask for debugging. Level 3 is "informational", level 4
+// would add the record hex dumps on top.
+void set_mbedtls_debug_threshold(const bool enabled)
+{
+#ifdef HAVE_MBEDTLS
+	mbedtls_debug_set_threshold(enabled ? 3 : 0);
+#else
+	(void)enabled;
+#endif
+}
+
 void FTL_mbed_debug(void *user_param, int level, const char *file, int line, const char *message)
 {
 	// Only log when in TLS debugging mode
@@ -556,9 +571,9 @@ unsigned short get_api_string(char **buf, const bool domain)
 			return 0;
 		}
 
-		// Check if snprintf() truncated the string (this should never
-		// happen as we allocate enough memory for the domain to fit)
-		if((size_t)this_len >= bufsz - len - 1)
+		// Reject the URL if snprintf() truncated it to fit api_str (this_len is
+		// the would-be length) or if it does not fit the destination buffer.
+		if((size_t)this_len >= MAX_URL_LEN || (size_t)this_len >= bufsz - len - 1)
 		{
 			log_err("API URL buffer too small!");
 			free(api_str);
@@ -589,6 +604,21 @@ unsigned short get_api_string(char **buf, const bool domain)
 
 	// Return total length
 	return (unsigned short)len;
+}
+
+// Whether the embedded web server knows this option in this build. Passing one
+// it does not know makes mg_start() fail, which would leave the web interface
+// unavailable until the config is corrected on disk. Which options are
+// acceptable is not decided here - webserver.advancedOpts cannot be set through
+// the API at all, so reaching this code already required access to the host.
+static bool webserver_option_known(const char *key)
+{
+	// Compared the same way CivetWeb compares them, see get_option_index()
+	for(const struct mg_option *opt = mg_get_valid_options(); opt->name != NULL; opt++)
+		if(strcmp(key, opt->name) == 0)
+			return true;
+
+	return false;
 }
 
 /**
@@ -725,6 +755,16 @@ void http_init(void)
 		"index_files", "index.html,index.htm,index.lp",
 		"enable_keep_alive", "yes",
 		"keep_alive_timeout_ms", "5000",
+		// Pi-hole's web interface is built from Lua *pages* (".lp"), which are
+		// the only files the embedded web server may evaluate. CivetWeb would
+		// otherwise also run standalone ".lua" scripts and expand server-side
+		// includes in ".shtml" files, both through patterns that default to
+		// being enabled. Pin all three: an empty pattern matches nothing (see
+		// match_prefix_strlen(), whose callers all test for a match > 0) and
+		// therefore never selects a handler.
+		"lua_server_page_pattern", "**.lp$",
+		"lua_script_pattern", "",
+		"ssi_pattern", "",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
@@ -840,16 +880,11 @@ void http_init(void)
 		strncpy(key, opt, key_len);
 		key[key_len] = '\0';
 
-		// Reject attempts to override the embedded web server's Lua
-		// options via advancedOpts. Pi-hole configures its own Lua
-		// handling internally, and options such as lua_background_script
-		// or lua_preload_file execute arbitrary code - allowing them here
-		// would turn this trusted-admin passthrough into a code execution
-		// vector (an authenticated user could point the web server at a
-		// script they control).
-		if(strncasecmp(key, "lua_", 4) == 0)
+		// Skip an option this build does not know rather than letting
+		// mg_start() fail over it
+		if(!webserver_option_known(key))
 		{
-			log_warn("Ignoring disallowed webserver.advancedOpts option \"%s\": lua_* options are not permitted", key);
+			log_warn("Ignoring unknown webserver.advancedOpts option \"%s\"", key);
 			free(key);
 			continue;
 		}

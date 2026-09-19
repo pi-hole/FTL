@@ -31,9 +31,9 @@ static int api_list_read(struct ftl_conn *api,
 {
 	const char *sql_msg = NULL;
 	sqlite3_stmt *stmt = NULL;
-	if(!gravityDB_readTable(listtype, item, &sql_msg, true, NULL, &stmt))
+	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
 	{
-		return send_json_error(api, 400, // 400 Bad Request
+		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
@@ -98,6 +98,9 @@ static int api_list_read(struct ftl_conn *api,
 				const int ret = parse_groupIDs(api, &table, row);
 				if(ret != 0)
 				{
+					// row is not in rows yet, it is only
+					// appended at the end of the loop body
+					JSON_DELETE(row);
 					JSON_DELETE(rows);
 					gravityDB_readTableFinalize(stmt);
 					return ret;
@@ -526,9 +529,10 @@ static int api_list_write(struct ftl_conn *api,
 					it->valuestring[i] = tolower((unsigned char)it->valuestring[i]);
 
 				// Validate domain
-				// This will reject domains like äöü{{{.com
-				// which convert to xn--{{{-pla4gpb.com
-				if(!valid_domain(it->valuestring, strlen(it->valuestring), false))
+				// An internationalized name has to be added in its
+				// punycode form: the query name is matched byte-wise
+				// and always arrives as an A-label
+				if(!valid_domain(it->valuestring, strlen(it->valuestring), false, false))
 				{
 					if(allocated_json)
 						cJSON_Delete(row.items);

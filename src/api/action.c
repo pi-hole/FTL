@@ -31,14 +31,38 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	int pipefd[2];
 	if(pipe(pipefd) !=0)
 	{
+		// This function returns an HTTP status code, so a plain false
+		// would be a 0 the caller turns into a 404
 		log_err("Cannot create pipe while running gravity action: %s", strerror(errno));
-		return false;
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot create pipe",
+		                       strerror(errno));
 	}
 
 	// Fork!
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	if(cpid == -1)
+	{
+		// Neither branch below tests for this, and the parent one ends in
+		// waitpid(-1, ...): it would reap an unrelated child of ours - a
+		// dnsmasq TCP helper, say, whose tcp_pids slot then leaks - and
+		// report that child's exit status as the result of this command.
+		// test_dnsmasq_config() has the same fork and is fixed alongside
+		// the config write path
+		// Kept across the close() calls, which may clobber errno
+		const int err = errno;
+		log_err("Cannot fork to run command: %s", strerror(err));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot fork to run command",
+		                       strerror(err));
+	}
+
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
@@ -108,8 +132,19 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		}
 
 		// Wait until child has exited to get its return code
-		int status;
-		waitpid(cpid, &status, 0);
+		// dnsmasq reaps every child on SIGCHLD and may have been faster,
+		// the exit status is unknown then and the streamed output is all
+		// there is to judge the run by
+		int status = 0;
+		pid_t waited;
+		do
+			waited = waitpid(cpid, &status, 0);
+		while(waited == -1 && errno == EINTR);
+		if(waited == -1)
+		{
+			log_debug(DEBUG_API, "Cannot wait for child: %s", strerror(errno));
+			status = 0;
+		}
 		code = WEXITSTATUS(status);
 
 		if(WIFSIGNALED(status))

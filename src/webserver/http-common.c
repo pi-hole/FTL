@@ -422,22 +422,33 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 		return -1;
 	}
 
-	// Extract value of the particular variable
+	// Extract value of the particular variable. mg_get_var() already
+	// URL-decodes what it returns, so this must not decode it a second time:
+	// a value that legitimately contains a percent sign, or a space that
+	// arrived as '+', comes back from the second pass as -1 and the caller
+	// silently drops the filter
 	int len = mg_get_var(source, strlen(source), var, tempbuf, dest_len);
 
-	// Decode the URI component if needed
 	if(len > 0)
-		len = mg_url_decode(tempbuf, len, dest, dest_len, 0);
+	{
+		// Copy rather than decode. The temporary buffer is still needed:
+		// mg_get_var() wants a buffer of its own and dest may be shorter
+		// than dest_len suggests to it
+		if((size_t)len >= dest_len)
+			len = (int)dest_len - 1;
 
-	// Free the temporary buffer, if anything was decoded it's now stored in
-	// dest
+		memcpy(dest, tempbuf, len);
+		dest[len] = '\0';
+	}
+
+	// Free the temporary buffer, the value is now stored in dest
 	free(tempbuf);
 
 	// Return the length of the decoded string
 	return len;
 }
 
-const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *api)
+const char* startsWith(const char *path, struct ftl_conn *api)
 {
 	// We use local_uri_raw here to get the unescaped URI, see
 	// https://github.com/civetweb/civetweb/pull/975
@@ -448,6 +459,10 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 			if(api->action_path != NULL)
 				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri_raw);
+			// Returning NULL reads as "route did not match", which yields a
+			// 404 instead of dereferencing the failed allocation right below
+			if(api->action_path == NULL)
+				return NULL;
 			api->action_path[strlen(path)] = '\0';
 			return api->request->local_uri_raw + strlen(path) + 1u;
 		}
@@ -457,6 +472,8 @@ const char* __attribute__((pure)) startsWith(const char *path, struct ftl_conn *
 			if(api->action_path != NULL)
 				free(api->action_path);
 			api->action_path = strdup(api->request->local_uri_raw);
+			if(api->action_path == NULL)
+				return NULL;
 			return "";
 		}
 		else

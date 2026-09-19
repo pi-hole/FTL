@@ -1188,7 +1188,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 		// - allowed domains and regex
 		// - denied domains and regex
 		// WITHOUT wiping the DNS cache itself
-		set_event(RELOAD_GRAVITY);
+		set_event_from_signal(RELOAD_GRAVITY);
 	}
 	else if(rtsig == 2)
 	{
@@ -1198,19 +1198,19 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 3)
 	{
 		// Reimport alias-clients from database
-		set_event(REIMPORT_ALIASCLIENTS);
+		set_event_from_signal(REIMPORT_ALIASCLIENTS);
 	}
 	else if(rtsig == 4)
 	{
 		// Re-resolve all clients and forward destinations
 		// Force refreshing hostnames according to
 		// REFRESH_HOSTNAMES config option
-		set_event(RERESOLVE_HOSTNAMES_FORCE);
+		set_event_from_signal(RERESOLVE_HOSTNAMES_FORCE);
 	}
 	else if(rtsig == 5)
 	{
 		// Parse neighbor cache
-		set_event(PARSE_NEIGHBOR_CACHE);
+		set_event_from_signal(PARSE_NEIGHBOR_CACHE);
 	}
 	// else if(rtsig == 6)
 	// {
@@ -1219,7 +1219,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 7)
 	{
 		// Search for hash collisions in the lookup tables
-		set_event(SEARCH_LOOKUP_HASH_COLLISIONS);
+		set_event_from_signal(SEARCH_LOOKUP_HASH_COLLISIONS);
 	}
 
 	// SIGRT32: Used internally by valgrind, do not use
@@ -1270,11 +1270,17 @@ void log_sigterm_info(void)
 	if(fp != NULL)
 	{
 		size_t read = 0;
-		if((read = fread(kill_name, sizeof(char), sizeof(kill_name), fp)) > 0)
+		// One byte short of the buffer, and terminated below: every NUL
+		// separator in cmdline is turned into a space further down, so a
+		// read that filled the buffer completely would leave the string
+		// with no terminator at all for the log line to stop at
+		if((read = fread(kill_name, sizeof(char), sizeof(kill_name) - 1, fp)) > 0)
 		{
+			kill_name[read] = '\0';
+
 			// cmdline contains null-separated arguments - replace
 			// null bytes with spaces for display
-			for(unsigned int i = 0; i < min((size_t)read, sizeof(kill_name)); i++)
+			for(size_t i = 0; i < read; i++)
 			{
 				if(kill_name[i] == '\0')
 					kill_name[i] = ' ';

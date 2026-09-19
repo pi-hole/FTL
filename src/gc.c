@@ -397,6 +397,16 @@ static void check_load(void)
 		log_resource_shortage(load[2], nprocs, -1, -1, NULL, NULL);
 }
 
+
+// Total number of queries removed from the front of the queries array. Every
+// logical query index shifts down by the same amount, so a thread holding an
+// index across an unlocked section can rebase it. Guarded by the SHM lock
+static unsigned int queries_removed = 0;
+unsigned int __attribute__((pure)) get_queries_removed(void)
+{
+	return queries_removed;
+}
+
 void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 {
 	doGC = false;
@@ -468,12 +478,17 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		}
 
 		// Adjust upstream counter (no overTime information)
-		if(query->upstreamID > -1)
+		// Only if this query still holds a count. query_blocked() hands
+		// it back when a forwarded query turns out to be blocked, and
+		// the query keeps its upstreamID after that
+		if(query->flags.upstream_counted && query->upstreamID > -1)
 		{
 			upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
 				// Adjust upstream counter
 				upstream->count--;
+
+			query->flags.upstream_counted = false;
 		}
 
 		// Adjust cache refcount
@@ -535,6 +550,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// the physical array actually runs out of room.
 		counters->queries_offset += removed;
 		counters->queries -= removed;
+		queries_removed += removed;
 
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
@@ -626,6 +642,11 @@ void *GC_thread(void *val)
 
 	// Create inotify watcher for pihole.toml config file
 	watch_config(true);
+
+	// The watcher above reports only what follows it, so compare the file
+	// against the loaded configuration once to pick up anything written
+	// during startup
+	reread_config();
 
 	// Run as long as this thread is not canceled
 	while(!killed)

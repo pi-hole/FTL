@@ -235,7 +235,9 @@ static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ?1 AND "
-	                       "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "lastSeen > (cast(strftime('%s', 'now') as int)-86400) "
 	                       "ORDER BY lastSeen DESC LIMIT 1;";
 
 	// Perform SQL query
@@ -297,7 +299,9 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
-	                       "firstSeen > (cast(strftime('%%s', 'now') as int)-3600)";
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
 	return db_query_int_str(db, querystr, ipaddr);
@@ -875,7 +879,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			if(dbID >= 0)
 				log_debug(DEBUG_ARP, "Network table: Client with MAC %s is network ID %i", hwaddr, dbID);
 		}
-		if (dbID == DB_NODATA)
+		else
 		{
 			//
 			// Variant 2: Try to find a device using the same IP address within the last 24 hours
@@ -897,7 +901,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// if DHCP server is enabled
 		//
 		bool dhcp_lease = false;
-		if (dbID == DB_NODATA && config.dhcp.active.v.b)
+		if (snap_hwlen != 6 && dbID == DB_NODATA && config.dhcp.active.v.b)
 		{
 			log_debug(DEBUG_ARP, "Network table: DHCP server enabled, checking leases for IP %s", ipaddr);
 			FILE *fp = fopen(DHCPLEASESFILE, "r");
@@ -963,7 +967,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// Only try this when there is no EDNS(0) MAC address available
 		// nor a corresponding DHCP lease
 		//
-		if (dbID < 0 && dhcp_lease == false)
+		if (snap_hwlen != 6 && dbID < 0 && dhcp_lease == false)
 		{
 			unlock_shm();
 			dbID = find_device_by_mock_hwaddr(db, ipaddr);
@@ -1829,7 +1833,7 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 	if(rc != SQLITE_OK)
 	{
 		log_err("getMACVendor(\"%s\") - SQL error: %s", hwaddr, sqlite3_errstr(rc));
-		sqlite3_close(macvendor_db);
+		dbclose_handle(macvendor_db);
 		return false;
 	}
 
@@ -1881,13 +1885,13 @@ static bool getMACVendor(const char *hwaddr, char vendor[MAXVENDORLEN])
 
 getMACVendor_end:
 
-	if(!success)
-		checkFTLDBrc(rc);
+	// No checkFTLDBrc() here: this is macvendor.db, a broken one says
+	// nothing about the FTL database and must not take it out of service
 
 	// Finalize statement and close database
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
-	sqlite3_close(macvendor_db);
+	dbclose_handle(macvendor_db);
 
 	log_debug(DEBUG_ARP, "MAC Vendor lookup for %s returned \"%s\"", hwaddr, vendor);
 

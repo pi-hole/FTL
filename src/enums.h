@@ -279,6 +279,7 @@ enum message_type {
 	NTP_MESSAGE,
 	VERIFY_MESSAGE,
 	GRAVITY_RESTORED_MESSAGE,
+	TELEPORTER_SKIPPED_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 

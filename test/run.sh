@@ -68,7 +68,10 @@ cp test/broken_lua.lp /var/www/html/broken_lua.lp
 cp test/broken_lua_2.lp /var/www/html/broken_lua_2.lp
 
 # Prepare local powerDNS resolver
-bash test/pdns/setup.sh
+if ! bash test/pdns/setup.sh; then
+  echo "Local PowerDNS setup failed, the DNS tests below cannot pass"
+  exit 1
+fi
 
 # Set restrictive umask
 OLDUMASK=$(umask)
@@ -103,14 +106,6 @@ echo "FTL verbose version (CLI): "
 /home/pihole/pihole-FTL -vv
 echo -n "Contained dnsmasq version (DNS): "
 dig TXT CHAOS version.bind @127.0.0.1 +short
-
-# Pre-warm DNSSEC root key cache. dnsmasq's DNSSEC validation can
-# trigger internal DNSKEY queries for the root zone at unpredictable
-# times. By explicitly querying DNSKEY for "." first, we force the
-# root key into cache so all subsequent DNSSEC validation uses the
-# cached key. This makes the total query count deterministic.
-dig DNSKEY . @127.0.0.1 +dnssec > /dev/null 2>&1
-sleep 1
 
 RET=0
 

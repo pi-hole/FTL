@@ -16,6 +16,8 @@
 #include "capabilities.h"
 #include "config/config.h"
 #include "log.h"
+// prctl(), PR_CAP_AMBIENT
+#include <sys/prctl.h>
 
 static const unsigned int capabilityIDs[]   = { CAP_CHOWN ,  CAP_DAC_OVERRIDE ,  CAP_DAC_READ_SEARCH ,  CAP_FOWNER ,  CAP_FSETID ,  CAP_KILL ,  CAP_SETGID ,  CAP_SETUID ,  CAP_SETPCAP ,  CAP_LINUX_IMMUTABLE ,  CAP_NET_BIND_SERVICE ,  CAP_NET_BROADCAST ,  CAP_NET_ADMIN ,  CAP_NET_RAW ,  CAP_IPC_LOCK ,  CAP_IPC_OWNER ,  CAP_SYS_MODULE ,  CAP_SYS_RAWIO ,  CAP_SYS_CHROOT ,  CAP_SYS_PTRACE ,  CAP_SYS_PACCT ,  CAP_SYS_ADMIN ,  CAP_SYS_BOOT ,  CAP_SYS_NICE ,  CAP_SYS_RESOURCE ,  CAP_SYS_TIME ,  CAP_SYS_TTY_CONFIG ,  CAP_MKNOD ,  CAP_LEASE ,  CAP_AUDIT_WRITE ,  CAP_AUDIT_CONTROL ,  CAP_SETFCAP };
 static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_SETGID", "CAP_SETUID", "CAP_SETPCAP", "CAP_LINUX_IMMUTABLE", "CAP_NET_BIND_SERVICE", "CAP_NET_BROADCAST", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_IPC_LOCK", "CAP_IPC_OWNER", "CAP_SYS_MODULE", "CAP_SYS_RAWIO", "CAP_SYS_CHROOT", "CAP_SYS_PTRACE", "CAP_SYS_PACCT", "CAP_SYS_ADMIN", "CAP_SYS_BOOT", "CAP_SYS_NICE", "CAP_SYS_RESOURCE", "CAP_SYS_TIME", "CAP_SYS_TTY_CONFIG", "CAP_MKNOD", "CAP_LEASE", "CAP_AUDIT_WRITE", "CAP_AUDIT_CONTROL", "CAP_SETFCAP"};
@@ -29,10 +31,18 @@ static const char*        capabilityNames[] = {"CAP_CHOWN", "CAP_DAC_OVERRIDE", 
  * @param data Pointer to a cap_user_data_t structure where the capabilities
  *             will be stored. The memory for this structure is allocated within
  *             the function and should be freed by the caller.
+ * @param hdr_out If not NULL, receives the negotiated header, which the caller
+ *                needs to hand the same version back to capset(). Allocated
+ *                within the function and to be freed by the caller.
  */
-static bool get_caps(cap_user_data_t *data)
+static bool get_caps(cap_user_data_t *data, cap_user_header_t *hdr_out)
 {
 	cap_user_header_t hdr = calloc(1, sizeof(*hdr));
+	if(hdr == NULL)
+	{
+		log_err("Failed to allocate memory for capabilities header");
+		return false;
+	}
 
 	// Determine capabilities version used by the current kernel
 	if(capget(hdr, NULL) != 0)
@@ -62,18 +72,145 @@ static bool get_caps(cap_user_data_t *data)
 
 	// Get current capabilities
 	*data = calloc(capsize, sizeof(**data));
+	if(*data == NULL)
+	{
+		log_err("Failed to allocate memory for capabilities data");
+		free(hdr);
+		return false;
+	}
 	if(capget(hdr, *data) != 0)
 	{
 		log_err("Failed to retrieve capabilities data: %s", strerror(errno));
 		free(hdr);
 		free(*data);
+		*data = NULL;
 		return false;
 	}
 
-	// Free allocated memory
-	free(hdr);
+	// Hand the header to the caller or free it here
+	if(hdr_out != NULL)
+		*hdr_out = hdr;
+	else
+		free(hdr);
 
 	return true;
+}
+
+/**
+ * @brief Takes a capability out of use without giving it up for good.
+ *
+ * Clears the capability from the effective and inheritable sets and lowers it
+ * in the ambient set, so neither this thread nor anything it executes can use
+ * it. It stays in the permitted set: FTL restarts itself through execvp(), and
+ * a binary without file capabilities - the systemd installation - only keeps
+ * what is in the ambient set across that. restore_capability_for_exec() needs
+ * the permitted copy to hand the capability to the restarted process.
+ *
+ * @param cap The capability to suspend.
+ * @return true if the capability is out of use afterwards, false otherwise.
+ */
+bool suspend_capability(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	// All capabilities FTL uses live in the first 32 bit block
+	data[0].effective &= ~(1U << cap);
+	data[0].inheritable &= ~(1U << cap);
+
+	const bool success = capset(hdr, data) == 0;
+	if(!success)
+		log_warn("Failed to suspend capability: %s", strerror(errno));
+
+	// Clearing inheritable already removes the capability from the ambient
+	// set, but say so explicitly: the ambient set is what an exec()ed child
+	// would inherit.
+	if(success && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, cap, 0, 0) != 0 && errno != EINVAL)
+		log_debug(DEBUG_CAPS, "Could not lower ambient capability: %s", strerror(errno));
+
+	free(hdr);
+	free(data);
+
+	return success;
+}
+
+/**
+ * @brief Hands a capability to the process FTL is about to become.
+ *
+ * Puts a capability that is still permitted back into the effective,
+ * inheritable and ambient sets. Only to be called right before FTL replaces
+ * itself through execvp(): the restarted FTL withholds it from its children
+ * again before it starts any thread.
+ *
+ * @param cap The capability to restore.
+ * @return true if the capability survives the execvp(), false otherwise.
+ */
+bool restore_capability_for_exec(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	bool success = false;
+	if(data[0].permitted & (1U << cap))
+	{
+		data[0].effective |= 1U << cap;
+		data[0].inheritable |= 1U << cap;
+
+		// The ambient set only takes what is permitted and inheritable
+		success = capset(hdr, data) == 0 &&
+		          prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, cap, 0, 0) == 0;
+		if(!success)
+			log_warn("Failed to restore capability: %s", strerror(errno));
+	}
+
+	free(hdr);
+	free(data);
+
+	return success;
+}
+
+/**
+ * @brief Keeps a capability for FTL itself but denies it to any child.
+ *
+ * Leaves the capability in the permitted and effective sets so FTL can still
+ * use it, but clears it from the inheritable set and lowers it in the ambient
+ * set. A capability may sit in the ambient set only while it is both permitted
+ * and inheritable, so clearing inheritable also bars it from the ambient set.
+ * An exec()ed child - a DHCP script, a program a Lua page spawns - receives
+ * capabilities through the ambient set, so this is what stops the capability
+ * leaking out of the process while FTL retains it.
+ *
+ * @param cap The capability to withhold from children.
+ * @return true if the sets were updated, false otherwise.
+ */
+bool deny_capability_to_children(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	// Keep effective and permitted, drop inheritable
+	data[0].inheritable &= ~(1U << cap);
+
+	const bool success = capset(hdr, data) == 0;
+	if(!success)
+		log_warn("Failed to restrict capability: %s", strerror(errno));
+
+	// Clearing inheritable already removes the capability from the ambient set,
+	// but lower it explicitly: the ambient set is what an exec()ed child would
+	// inherit.
+	if(success && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, cap, 0, 0) != 0 && errno != EINVAL)
+		log_debug(DEBUG_CAPS, "Could not lower ambient capability: %s", strerror(errno));
+
+	free(hdr);
+	free(data);
+
+	return success;
 }
 
 /**
@@ -88,7 +225,7 @@ static bool get_caps(cap_user_data_t *data)
 bool check_capability(const unsigned int cap)
 {
 	cap_user_data_t data = NULL;
-	if(!get_caps(&data))
+	if(!get_caps(&data, NULL))
 		return false;
 
 	// Check if the capability is available
@@ -110,10 +247,71 @@ bool check_capability(const unsigned int cap)
  *
  * @return true if all required capabilities are available, false otherwise.
  */
+// Does anything in this configuration want a port below 1024? 1024 itself is
+// the first unprivileged one (net.ipv4.ip_unprivileged_port_start). dns.port,
+// and every entry of webserver.port count, the latter being a list like
+// "80o,443os,[::]:80o", so the port is what follows the final colon, if any.
+// The DHCP server has fixed privileged ports (67, 547). The NTP server (123)
+// is active by default and not fatal when it cannot bind, it does not count
+static bool binds_privileged_port(void)
+{
+	if(config.dns.port.v.u16 != 0 && config.dns.port.v.u16 < 1024)
+		return true;
+
+	if(config.dhcp.active.v.b)
+		return true;
+
+	const char *list = config.webserver.port.v.s;
+	if(list == NULL)
+		return false;
+
+	char *copy = strdup(list);
+	if(copy == NULL)
+		return false;
+
+	bool privileged = false;
+	char *save = NULL;
+	for(char *tok = strtok_r(copy, ",", &save); tok != NULL && !privileged; tok = strtok_r(NULL, ",", &save))
+	{
+		// Skipped through a separate pointer so the loop variable itself
+		// is not modified in the body
+		const char *ent = tok;
+		while(*ent == ' ')
+			ent++;
+
+		// An entry may carry an address, so the port follows the last colon
+		const char *port = strrchr(ent, ':');
+		port = port != NULL ? port + 1 : ent;
+
+		const long p = strtol(port, NULL, 10);
+		if(p > 0 && p < 1024)
+			privileged = true;
+	}
+
+	free(copy);
+	return privileged;
+}
+
+// Warn when a capability this configuration needs is missing. Returns false
+// only in that case: a capability the running configuration does not use is
+// not reported at all
+static bool warn_missing_cap(const cap_user_data_t data, const unsigned int capid,
+                             const char *name, const bool needed, const char *what)
+{
+	if(!needed)
+		return true;
+
+	if((data->permitted & (1u << capid)) && (data->effective & (1u << capid)))
+		return true;
+
+	log_warn("Linux capability %s is not available, needed for %s", name, what);
+	return false;
+}
+
 bool check_capabilities(void)
 {
 	cap_user_data_t data = NULL;
-	if(!get_caps(&data))
+	if(!get_caps(&data, NULL))
 		return false;
 
 	log_debug(DEBUG_CAPS, "***************************************");
@@ -129,47 +327,29 @@ bool check_capabilities(void)
 	}
 	log_debug(DEBUG_CAPS, "***************************************");
 
+	// Warn only about what this configuration actually uses. A container
+	// started without a capability it does not need is a deliberate choice,
+	// not a fault to report on every start
 	bool capabilities_okay = true;
-	if (!(data->permitted & (1 << CAP_NET_ADMIN)) ||
-	    !(data->effective & (1 << CAP_NET_ADMIN)))
+	capabilities_okay &= warn_missing_cap(data, CAP_NET_ADMIN, "CAP_NET_ADMIN",
+	                                      config.dhcp.active.v.b,
+	                                      "ARP injection while acting as the DHCP server");
+	capabilities_okay &= warn_missing_cap(data, CAP_NET_BIND_SERVICE, "CAP_NET_BIND_SERVICE",
+	                                      binds_privileged_port(),
+	                                      "binding a privileged port");
+	capabilities_okay &= warn_missing_cap(data, CAP_SYS_NICE, "CAP_SYS_NICE",
+	                                      config.misc.nice.v.i < 0,
+	                                      "raising the process priority set in misc.nice");
+	capabilities_okay &= warn_missing_cap(data, CAP_SYS_TIME, "CAP_SYS_TIME",
+	                                      config.ntp.sync.active.v.b,
+	                                      "setting the system time from the NTP client");
+
+	// Always needed: FTL chowns the files it creates to the pihole user. It
+	// takes the capability out of use once startup is done, so only the
+	// permitted set tells whether it was granted
+	if(!(data->permitted & (1u << CAP_CHOWN)))
 	{
-		// Needed for ARP-injection (used when we're the DHCP server)
-		log_warn("Required Linux capability CAP_NET_ADMIN not available");
-		capabilities_okay = false;
-	}
-	if (!(data->permitted & (1 << CAP_NET_RAW)) ||
-	    !(data->effective & (1 << CAP_NET_RAW)))
-	{
-		// Needed for raw socket access (necessary for ICMP)
-		log_warn("Required Linux capability CAP_NET_RAW not available");
-		capabilities_okay = false;
-	}
-	if (!(data->permitted & (1 << CAP_NET_BIND_SERVICE)) ||
-	    !(data->effective & (1 << CAP_NET_BIND_SERVICE)))
-	{
-		// Necessary for dynamic port binding
-		log_warn("Required Linux capability CAP_NET_BIND_SERVICE not available");
-		capabilities_okay = false;
-	}
-	if (!(data->permitted & (1 << CAP_SYS_NICE)) ||
-	    !(data->effective & (1 << CAP_SYS_NICE)))
-	{
-		// Necessary for setting higher process priority through nice
-		log_warn("Required Linux capability CAP_SYS_NICE not available");
-		capabilities_okay = false;
-	}
-	if (!(data->permitted & (1 << CAP_CHOWN)) ||
-	    !(data->effective & (1 << CAP_CHOWN)))
-	{
-		// Necessary to chown required files that are owned by another user
-		log_warn("Required Linux capability CAP_CHOWN not available");
-		capabilities_okay = false;
-	}
-	if (!(data->permitted & (1 << CAP_SYS_TIME)) ||
-	    !(data->effective & (1 << CAP_SYS_TIME)))
-	{
-		// Necessary for setting the system time in the NTP client
-		log_warn("Required Linux capability CAP_SYS_TIME not available");
+		log_warn("Linux capability CAP_CHOWN is not available, needed for taking ownership of the files FTL creates");
 		capabilities_okay = false;
 	}
 
