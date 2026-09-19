@@ -217,6 +217,27 @@ class TestDeleteConfigArrayItem:
             f"Expected 204, got {r.status_code} {r.text}"
         assert r.content == b""
 
+    def test_value_with_many_slashes_is_kept_whole(self, api_session):
+        """The value is everything after the item, a trailing slash included."""
+        value = "pytest/a/b/c/d/e/f/"
+        base = f"{FTL_URL}/api/config/webserver/api/excludeDomains"
+        url = f"{base}/{value}"
+
+        r = api_session.put(f"{url}?restart=false", timeout=10)
+        assert r.status_code in (200, 201, 204), \
+            f"PUT failed: {r.status_code} {r.text}"
+
+        try:
+            r = api_session.get(base, timeout=5)
+            assert r.status_code == 200, \
+                f"Expected 200, got {r.status_code} {r.text}"
+            stored = _j(r)["config"]["webserver"]["api"]["excludeDomains"]
+            assert value in stored, f"{value} not in {stored}"
+        finally:
+            r = api_session.delete(f"{url}?restart=false", timeout=10)
+            assert r.status_code == 204, \
+                f"Expected 204, got {r.status_code} {r.text}"
+
     def test_delete_nonexistent_config_item_returns_404(self, api_session):
         value = quote("192.168.255.99 no_such_host", safe="")
         r = api_session.delete(

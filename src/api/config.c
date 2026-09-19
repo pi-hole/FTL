@@ -992,23 +992,32 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(min_level < level + 1)
 			continue;
 
-		size_t value_len = 0;
-		value_buf[0] = '\0';
-		for(unsigned int c = level; c < min_level; c++)
+		// Take the value from the request itself, gen_config_path()
+		// stops splitting at MAX_CONFIG_PATH_DEPTH components
+		const char *value = api->item;
+		for(unsigned int c = 0; c < level && value != NULL; c++)
 		{
-			const int n = snprintf(value_buf + value_len, sizeof(value_buf) - value_len,
-			                       "%s%s", c > level ? "/" : "", requested_path[c]);
-			if(n < 0 || (size_t)n >= sizeof(value_buf) - value_len)
-			{
-				free_config(&newconf, false);
-				free_config_path(requested_path);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Item too long",
-				                       NULL);
-			}
-			value_len += n;
+			value = strchr(value, '/');
+			if(value != NULL)
+				value++;
 		}
+		if(value == NULL)
+			continue;
+
+		const size_t value_len = strlen(value);
+		if(value_len == 0)
+			continue;
+		if(value_len >= sizeof(value_buf))
+		{
+			free_config(&newconf, false);
+			free_config_path(requested_path);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Item too long",
+			                       NULL);
+		}
+		memcpy(value_buf, value, value_len);
+		value_buf[value_len] = '\0';
 		new_item_str = value_buf;
 
 		// Error when this config item is read-only due to an
