@@ -138,7 +138,7 @@ bool import_aliasclients(sqlite3 *db)
 		}
 
 		// Try to open existing client
-		const int clientID = findClientID(aliasclient_str, false, true, now);
+		const int clientID = findClientID(aliasclient_str, false, true, now, false);
 
 		clientsData *client = getClient(clientID, true);
 		if(client == NULL)
