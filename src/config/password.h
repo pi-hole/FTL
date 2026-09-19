@@ -10,11 +10,15 @@
 #ifndef PASSWORD_H
 #define PASSWORD_H
 #include <stdbool.h>
+// uint8_t
+#include <stdint.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 
 void sha256_raw_to_hex(uint8_t *data, char *buffer);
+char *sha256_hex(const char *input) __attribute__((malloc));
+bool valid_sha256_hex(const char *hash) __attribute__((pure));
 char *create_password(const char *password) __attribute__((malloc));
 bool get_secure_randomness(uint8_t *buffer, const size_t length);
 enum password_result verify_login(const char *password);

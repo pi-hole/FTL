@@ -313,6 +313,31 @@ components:
                     - $ref: 'info.yaml#/components/schemas/login'
                     - $ref: 'common.yaml#/components/schemas/took'
 
+    prometheus_metrics:
+      get:
+        summary: Prometheus/OpenMetrics scrape endpoint
+        tags:
+          - "Metrics"
+        operationId: "get_prometheus_metrics"
+        security: []
+        description: |
+          Exposes Pi-hole metrics in the Prometheus text exposition format (version 0.0.4) for scraping by Prometheus or any OpenMetrics-compatible collector.
+
+          This endpoint uses its own bearer-token authentication and is independent of the login session mechanism. The scraper must send the raw token (generated via `POST /api/auth/prometheus`) in an `Authorization: Bearer <token>` header. Because the token is a high-entropy random value, no request rate limiting is applied.
+
+          While no token is configured in `webserver.api.prometheus.token`, the endpoint is disabled and returns HTTP 404, so it never exposes any data unless explicitly enabled. By default only aggregate metrics are exported; per-domain and per-client series can be enabled (privacy permitting) via `webserver.api.prometheus.perEntityMetrics`.
+        responses:
+          '200':
+            description: OK
+            content:
+              text/plain:
+                schema:
+                  type: string
+          '401':
+            description: Unauthorized (token missing or incorrect)
+          '404':
+            description: Not Found (endpoint disabled, no token configured)
+
   schemas:
     client:
       remote_addr:
