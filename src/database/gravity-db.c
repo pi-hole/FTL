@@ -35,9 +35,17 @@
 #include "common.h"
 // pthread_mutex_t
 #include <pthread.h>
+// sleepms()
+#include "timers.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
+
+// How long a domain lookup waits for a busy database, and in which steps [ms]
+#define GRAVITY_BUSY_WAIT 100u
+#define GRAVITY_BUSY_STEP 5u
+// How long lookups do not wait again after a wait was in vain [s]
+#define GRAVITY_BUSY_BACKOFF 1
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -1417,8 +1425,23 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 		return LIST_NOT_AVAILABLE;
 	}
 
-	// Perform step
+	// Perform step. A list write from the API holds the database only while
+	// it commits, so wait that out before treating the list as unavailable
+	// Lookups run under the SHM lock, so after one wait was in vain the next
+	// ones do not wait again for GRAVITY_BUSY_BACKOFF seconds
+	static time_t last_busy_timeout = 0;
 	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_BUSY && time(NULL) - last_busy_timeout >= GRAVITY_BUSY_BACKOFF)
+	{
+		for(unsigned int waited = 0; rc == SQLITE_BUSY && waited < GRAVITY_BUSY_WAIT; waited += GRAVITY_BUSY_STEP)
+		{
+			sqlite3_reset(stmt);
+			sleepms(GRAVITY_BUSY_STEP);
+			rc = sqlite3_step(stmt);
+		}
+		if(rc == SQLITE_BUSY)
+			last_busy_timeout = time(NULL);
+	}
 	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
