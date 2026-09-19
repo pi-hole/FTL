@@ -1960,17 +1960,19 @@ setup() {
 @test "Gravity: API write waits for a concurrent reader instead of failing" {
   # gravity_updated() reads gravity.db from its own connection once per second
   # and a write meeting such a reader has to wait for it. Hold a read
-  # transaction here until it is released below, and write through the API
-  # while it is held
+  # transaction here, write through the API while it is held, and release the
+  # reader once the busy handler of the write was seen waiting (debug.database
+  # is enabled in the test configuration)
   rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
+  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
   cat > /tmp/gravity_reader.sql << 'SQL'
 BEGIN;
 SELECT count(*) FROM domainlist;
 .shell touch /tmp/gravity_reader_ready
-.shell i=0; while [ ! -f /tmp/gravity_reader_release ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done
+.shell i=0; while [ ! -f /tmp/gravity_reader_release ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done
 COMMIT;
 SQL
-  ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db < /tmp/gravity_reader.sql > /dev/null 2>&1 &
+  ./pihole-FTL sqlite3 -interactive /etc/pihole/gravity.db < /tmp/gravity_reader.sql > /dev/null 2>&1 3>&- &
   reader=$!
 
   # Do not guess how long the reader needs to take its lock
@@ -1978,34 +1980,39 @@ SQL
     [ -f /tmp/gravity_reader_ready ] && break
     sleep 0.05
   done
-  run bash -c '[ -f /tmp/gravity_reader_ready ]'
-  assert_success
+  reader_ready=no
+  [ -f /tmp/gravity_reader_ready ] && reader_ready=yes
 
-  # Write while the reader holds its lock and note when the write returned
-  (
-    code="$(curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}')"
-    echo "${code} ${EPOCHREALTIME}" > /tmp/gravity_put_result
-  ) &
+  # Write while the reader holds its lock
+  curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}' > /tmp/gravity_put_result 2> /dev/null 3>&- &
   put=$!
 
-  # Release the reader well within the busy timeout of the write. The time
-  # is taken before the reader can see the file
-  sleep 0.3
-  released="${EPOCHREALTIME}"
-  echo "${released}" > /tmp/gravity_reader_release
+  # Release the reader as soon as the write is waiting for it. This is well
+  # within the busy timeout, however long the request took to get there
+  write_waited=no
+  for _ in $(seq 1 100); do
+    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+    if [ "${busy_now}" -gt "${busy_before}" ]; then
+      write_waited=yes
+      break
+    fi
+    sleep 0.05
+  done
+  touch /tmp/gravity_reader_release
 
-  wait "${put}"
-  wait "${reader}"
+  wait "${put}" || true
+  wait "${reader}" || true
+  put_code="$(cat /tmp/gravity_put_result)"
 
-  # The write has to succeed AND to return only after the reader was released
-  run bash -c 'read -r code finished < /tmp/gravity_put_result; released="$(cat /tmp/gravity_reader_release)"; echo "${code} finished=${finished} released=${released}"; case "${code}" in 200|201) ;; *) exit 1;; esac; awk -v f="${finished}" -v r="${released}" "BEGIN{exit !(f>=r)}"'
-  assert_success
-
+  # Clean up before asserting so a failure does not leak into later tests
   rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result /tmp/gravity_reader.sql
+  delete_code="$(curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl)"
 
-  # Remove it again so the following tests see the list they expect
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1/api/domains/deny/exact/lockrace.ftl'
-  assert_output "204"
+  printf "reader ready: %s, write waited: %s, PUT: %s, DELETE: %s\n" "${reader_ready}" "${write_waited}" "${put_code}" "${delete_code}"
+  [[ "${reader_ready}" == "yes" ]]
+  [[ "${write_waited}" == "yes" ]]
+  [[ "${put_code}" == "200" || "${put_code}" == "201" ]]
+  [[ "${delete_code}" == "204" ]]
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
