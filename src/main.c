@@ -180,16 +180,11 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	if(!db_import_done)
+	// Save new queries to database. The initial import still occupies the
+	// in-memory database when it is not done, and there is nothing to export
+	// before it is. terminate_threads() aborts it
+	if(db_import_done)
 	{
-		// The initial import still occupies the in-memory database.
-		// Abort it, there is nothing to export before it is done
-		killed = true;
-		interrupt_memdb();
-	}
-	else
-	{
-		// Save new queries to database
 		export_queries_to_disk(true);
 		log_info("Finished final database update");
 	}
