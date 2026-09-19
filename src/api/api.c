@@ -116,7 +116,8 @@ static struct {
 // 405 with the union of all four advertises a DELETE that /api/domains without
 // arguments would refuse with a 400, so count the components and keep the rows
 // that would really have taken this URI
-static bool __attribute__((pure)) parameters_match(const char *uri, const char *parameters, const char *item)
+enum parameter_match { PARAMETERS_DIFFER, PARAMETERS_LONGER, PARAMETERS_MATCH };
+static enum parameter_match __attribute__((pure)) parameters_match(const char *uri, const char *parameters, const char *item)
 {
 	unsigned int expected = 0;
 	for(const char *p = parameters; *p != '\0'; p++)
@@ -140,10 +141,15 @@ static bool __attribute__((pure)) parameters_match(const char *uri, const char *
 
 	// A config element is a path of its own (dns/cache/size), so the rows of
 	// /api/config take any URI that is at least as long as they expect
-	if(expected > 0 && strcmp(uri, "/api/config") == 0)
-		return found >= expected;
+	if(expected > 0 && found >= expected && strcmp(uri, "/api/config") == 0)
+		return PARAMETERS_MATCH;
 
-	return expected == found;
+	if(expected == found)
+		return PARAMETERS_MATCH;
+
+	// The URI is decoded, so a last parameter with slashes in it (a list
+	// address, a client subnet) looks like further components
+	return expected > 0 && found > expected ? PARAMETERS_LONGER : PARAMETERS_DIFFER;
 }
 
 // Format the methods an endpoint accepts as an Allow header value, e.g.
@@ -202,7 +208,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	// Loop over all API endpoints and check if the requested URI matches
 	bool unauthorized = false;
 	bool handler_ran = false;
-	enum http_method allowed_methods = 0;
+	enum http_method allowed_methods = 0, allowed_methods_longer = 0;
 	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
 		// Check if the requested URI starts with the API endpoint
@@ -211,8 +217,11 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			// The URI exists. Remember every method it accepts,
 			// both to answer OPTIONS below and to tell a request
 			// that came with the wrong one which would have worked
-			if(parameters_match(api_request[i].uri, api_request[i].parameters, api.item))
+			const enum parameter_match match = parameters_match(api_request[i].uri, api_request[i].parameters, api.item);
+			if(match == PARAMETERS_MATCH)
 				allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
+			else if(match == PARAMETERS_LONGER)
+				allowed_methods_longer |= api_request[i].methods | HTTP_OPTIONS;
 
 			// If this is an OPTIONS request, collecting the
 			// methods is all there is to do here
@@ -266,6 +275,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			break;
 		}
 	}
+
+	// Rows taking a longer URI only count when no row matches exactly
+	if(allowed_methods == 0)
+		allowed_methods = allowed_methods_longer;
 
 	// Free memory allocated for action path (if allocated)
 	if(api.action_path != NULL)

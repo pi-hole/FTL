@@ -11,6 +11,7 @@ Usage:
 
 import json
 import re
+from urllib.parse import quote
 
 import pytest
 
@@ -931,6 +932,14 @@ class TestMethodNotAllowed:
         assert r.status_code == 405, \
             f"Expected 405, got {r.status_code} {r.text}"
         assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_parameter_with_slashes_keeps_its_row(self, api_session):
+        """A list address arrives decoded, its slashes are not path components."""
+        address = quote("https://pytest.example.com/list.txt", safe="")
+        r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
 
     def test_handler_asking_for_404_still_gets_one(self, api_session):
         """api_docs() returns 0 for a file it does not have, which is a 404.
