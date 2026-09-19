@@ -448,14 +448,45 @@ bool chown_pihole(const char *path, struct passwd *pwd)
 	struct group *grp = getgrgid(pwd->pw_gid);
 	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
 
-	// Change ownership of file to pihole user
-	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
+	// Pin the path entry itself, without following a final symbolic link, and
+	// act on this handle from here on: the directories these files live in are
+	// writable by the pihole user, and FTL may be running as root
+	const int fd = open(path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+	if(fd < 0)
 	{
 		if(errno == ENOENT) // ENOENT = No such file or directory
 		{
 			log_debug(DEBUG_CONFIG, "File \"%s\" does not exist, not changing ownership", path);
 			return true;
 		}
+		log_warn("Cannot open \"%s\" to change its ownership: %s", path, strerror(errno));
+		return false;
+	}
+
+	// A link would hand somebody else's file to the pihole user
+	struct stat st = { 0 };
+	if(fstat(fd, &st) != 0 || S_ISLNK(st.st_mode) ||
+	   (!S_ISDIR(st.st_mode) && st.st_nlink > 1))
+	{
+		log_warn("Not changing ownership of \"%s\": it is a symbolic link or has several hard links", path);
+		close(fd);
+		return false;
+	}
+
+	// Nothing to do
+	if(st.st_uid == pwd->pw_uid && st.st_gid == pwd->pw_gid)
+	{
+		close(fd);
+		return true;
+	}
+
+	// Change ownership of file to pihole user
+	const int ret = fchownat(fd, "", pwd->pw_uid, pwd->pw_gid, AT_EMPTY_PATH);
+	const int err = errno;
+	close(fd);
+	errno = err;
+	if(ret < 0)
+	{
 		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
 		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
 		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));

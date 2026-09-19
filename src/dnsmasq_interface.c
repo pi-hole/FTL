@@ -360,6 +360,15 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
+// The blocking reason and the CNAME target describe one query, so they are
+// dropped on every way out of _FTL_make_answer() below, not only on the path
+// that answered
+static void unset_blocking_metadata(void)
+{
+	blockingreason = "<not set>";
+	cname_target = NULL;
+}
+
 // This is inspired by make_local_answer()
 size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len,
                         unsigned char ede_data[MAX_EDE_DATA], size_t *ede_len,
@@ -368,13 +377,19 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	log_debug(DEBUG_FLAGS, "FTL_make_answer() called from %s:%d", short_path(file), line);
 	// Exit early if there are no questions in this query
 	if(ntohs(header->qdcount) == 0)
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Get question name
-	char name[MAXDNAME] = { 0 };
+	char name[MAXDNAMESTR + 1] = { 0 };
 	unsigned char *p = (unsigned char *)(header+1);
 	if (!extract_name(header, len, &p, name, 1, 4))
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Debug logging
 	log_debug(DEBUG_QUERIES, "Preparing reply for \"%s\"", name);
@@ -466,6 +481,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Forced DNS reply to NONE - dropping this query");
 
+		unset_blocking_metadata();
 		return 0;
 	}
 	else
@@ -634,7 +650,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 
 	// Skip questions so we can start adding answers (if applicable)
 	if (!(p = skip_questions(header, len)))
+	{
+		unset_blocking_metadata();
 		return 0;
+	}
 
 	// Are we replying to pi.hole / <hostname> / pi.hole.<local> / <hostname>.<local> ?
 	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
@@ -792,10 +811,7 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	if (trunc)
 		header->hb3 |= HB3_TC;
 
-	// Unset the blocking reason and the CNAME target that went with it, so
-	// neither travels into the next query
-	blockingreason = "<not set>";
-	cname_target = NULL;
+	unset_blocking_metadata();
 
 	return p - (unsigned char *)header;
 }
@@ -1238,10 +1254,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
 		// Release the SHM lock so this potentially slow I/O doesn't
 		// block all other threads (API, database, GC, TCP workers).
-		// Remember where the query array starts: the logical query index
-		// we are holding is relative to queries_offset, which the GC
-		// advances when it drops queries off the front
-		const unsigned int queries_offset_before = counters->queries_offset;
 		unlock_shm();
 
 		unsigned char hwaddr[16] = {0};
@@ -1263,21 +1275,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			client->hwlen = hwlen;
 		}
 
-		// Re-fetch all SHM pointers as SHM may have been remapped.
-		// If queries_offset moved while we were unlocked then every
-		// logical query index shifted with it, and ours now resolves to
-		// a different query that is very much alive - magic byte and
-		// all - so re-fetching it would quietly update someone else's.
-		// There is no way to rebase it from here, so drop it instead.
+		// Re-fetch all SHM pointers as SHM may have been remapped. The
+		// query is looked up by its dnsmasq ID as its index is relative
+		// to queries_offset and not valid across the unlocked section.
 		// Domains and clients are not offset-indexed and are fine
-		if(counters->queries_offset != queries_offset_before)
-		{
-			log_debug(DEBUG_GC, "Query indices moved while resolving the MAC address, "
-			          "dropping query %d", queryID);
-			query = NULL;
-		}
-		else
-			query = getQuery(queryID, true);
+		const int new_queryID = findQueryID(id);
+		query = new_queryID < 0 ? NULL : getQuery(new_queryID, true);
 		domain = getDomain(domainID, true);
 		dns_cache_entry = query != NULL && query->cacheID > -1
 		                ? getDNSCache(query->cacheID, true) : NULL;
@@ -1510,8 +1513,6 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 			break;
 		}
 	}
-
-	// Update cache so subsequent queries on the same interface skip the loops
 }
 
 static void check_pihole_PTR(char *domain)
@@ -2441,6 +2442,16 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// Get ID of upstream destination, create new upstream record
 	// if not found in current data structure
 	const unsigned int upstreamID = findUpstreamID(dest, upstreamPort);
+
+	// A query is counted against one upstream at a time. If it is forwarded
+	// again before it is complete, the count moves along
+	if(query->flags.upstream_counted)
+	{
+		upstreamsData *old_upstream = getUpstream(query->upstreamID, true);
+		if(old_upstream != NULL)
+			old_upstream->count--;
+		query->flags.upstream_counted = false;
+	}
 	query->upstreamID = upstreamID;
 
 	upstreamsData *upstream = getUpstream(upstreamID, true);
@@ -2527,14 +2538,14 @@ void FTL_dnsmasq_reload(void)
 	// - Flush FTL's DNS cache
 	set_event(RELOAD_GRAVITY);
 
-	// Re-check capabilities: what FTL needs depends on the configuration,
-	// which may have changed since the last check
-	check_capabilities();
-
 	// Re-read pihole.toml (incl. rewriting) on every but the first reload
 	// (which is happening right after the start of dnsmasq)
 	if(reload > 1)
 		reread_config();
+
+	// Re-check capabilities: what FTL needs depends on the configuration,
+	// so this has to see the config the reload just installed
+	check_capabilities();
 
 	// Report blocking mode
 	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
@@ -3704,6 +3715,18 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
+	// Deny CAP_CHOWN to anything FTL executes, before the worker threads below
+	// are created. Capability sets are per-thread and a new thread inherits a
+	// copy of its creator's, so this has to happen before the threads exist:
+	// clearing the ambient and inheritable sets on the main thread once they
+	// are already running would leave them - and the children they exec, such
+	// as a program a Lua page spawns - holding the systemd-granted ambient
+	// CAP_CHOWN. FTL keeps the capability in its permitted and effective sets
+	// for the ownership changes it makes itself (startup, and the RTC device
+	// while ntp.sync.rtc.set is enabled); only the inheritance to children goes.
+	if(getuid() != 0)
+		deny_capability_to_children(CAP_CHOWN);
+
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
 
@@ -3840,6 +3863,25 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
+
+		// The ambient and inheritable sets were cleared before the worker
+		// threads were created (see the deny above), so nothing FTL executes
+		// can inherit CAP_CHOWN, no matter which thread runs it. FTL keeps the
+		// capability in its own permitted and effective sets while starting up;
+		// from here on it chowns files it created itself, which the owning user
+		// may do without any capability. When the RTC is not being set FTL has
+		// no further use for it and takes it out of use on the main thread as
+		// well. The permitted copy stays for FTL's own restart, see main().
+		// Setting the RTC changes ownership of the device repeatedly during
+		// runtime, so that path keeps it.
+		if(config.ntp.sync.rtc.set.v.b)
+		{
+			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
+		}
+		else if(suspend_capability(CAP_CHOWN))
+		{
+			log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
+		}
 	}
 
 	forked = true;

@@ -29,6 +29,8 @@
 #include "overTime.h"
 // export_queries_to_disk()
 #include "database/query-table.h"
+// db_import_done
+#include "gc.h"
 // verify_FTL()
 #include "files.h"
 // init_entropy()
@@ -178,14 +180,26 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database
-	export_queries_to_disk(true);
-	log_info("Finished final database update");
+	// Save new queries to database. The initial import still occupies the
+	// in-memory database when it is not done, and there is nothing to export
+	// before it is. terminate_threads() aborts it
+	if(db_import_done)
+	{
+		export_queries_to_disk(true);
+		log_info("Finished final database update");
+	}
 
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
+	{
+		// A binary without file capabilities only keeps the ambient set
+		// across execvp(). All threads are gone and nothing else is
+		// executed from here, the restarted FTL withholds it again
+		if(getuid() != 0)
+			restore_capability_for_exec(CAP_CHOWN);
 		execvp(argv[0], argv);
+	}
 
 	return exit_code;
 }
