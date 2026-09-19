@@ -113,10 +113,14 @@ bool check_capability(const unsigned int cap)
 // Does anything in this configuration want a port below 1024? 1024 itself is
 // the first unprivileged one (net.ipv4.ip_unprivileged_port_start). dns.port,
 // and every entry of webserver.port count, the latter being a list like
-// "80o,443os,[::]:80o", so the port is what follows the final colon, if any
+// "80o,443os,[::]:80o", so the port is what follows the final colon, if any.
+// The NTP (123) and DHCP (67, 547) servers have fixed privileged ports
 static bool binds_privileged_port(void)
 {
 	if(config.dns.port.v.u16 != 0 && config.dns.port.v.u16 < 1024)
+		return true;
+
+	if(config.ntp.ipv4.active.v.b || config.ntp.ipv6.active.v.b || config.dhcp.active.v.b)
 		return true;
 
 	const char *list = config.webserver.port.v.s;
