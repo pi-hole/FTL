@@ -97,17 +97,19 @@ static bool get_caps(cap_user_data_t *data, cap_user_header_t *hdr_out)
 }
 
 /**
- * @brief Irreversibly removes a capability from this process.
+ * @brief Takes a capability out of use without giving it up for good.
  *
- * Clears the capability from the effective, permitted and inheritable sets and
- * lowers it in the ambient set. Dropping it from the permitted set is what makes
- * this final: the process cannot raise it again, and no child it executes can
- * inherit it.
+ * Clears the capability from the effective and inheritable sets and lowers it
+ * in the ambient set, so neither this thread nor anything it executes can use
+ * it. It stays in the permitted set: FTL restarts itself through execvp(), and
+ * a binary without file capabilities - the systemd installation - only keeps
+ * what is in the ambient set across that. restore_capability_for_exec() needs
+ * the permitted copy to hand the capability to the restarted process.
  *
- * @param cap The capability to drop.
- * @return true if the capability is gone afterwards, false otherwise.
+ * @param cap The capability to suspend.
+ * @return true if the capability is out of use afterwards, false otherwise.
  */
-bool drop_capability(const unsigned int cap)
+bool suspend_capability(const unsigned int cap)
 {
 	cap_user_header_t hdr = NULL;
 	cap_user_data_t data = NULL;
@@ -116,18 +118,54 @@ bool drop_capability(const unsigned int cap)
 
 	// All capabilities FTL uses live in the first 32 bit block
 	data[0].effective &= ~(1U << cap);
-	data[0].permitted &= ~(1U << cap);
 	data[0].inheritable &= ~(1U << cap);
 
 	const bool success = capset(hdr, data) == 0;
 	if(!success)
-		log_warn("Failed to drop capability: %s", strerror(errno));
+		log_warn("Failed to suspend capability: %s", strerror(errno));
 
-	// Clearing permitted and inheritable already removes the capability from
-	// the ambient set, but say so explicitly: the ambient set is what an
-	// exec()ed child would inherit.
+	// Clearing inheritable already removes the capability from the ambient
+	// set, but say so explicitly: the ambient set is what an exec()ed child
+	// would inherit.
 	if(success && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, cap, 0, 0) != 0 && errno != EINVAL)
 		log_debug(DEBUG_CAPS, "Could not lower ambient capability: %s", strerror(errno));
+
+	free(hdr);
+	free(data);
+
+	return success;
+}
+
+/**
+ * @brief Hands a capability to the process FTL is about to become.
+ *
+ * Puts a capability that is still permitted back into the effective,
+ * inheritable and ambient sets. Only to be called right before FTL replaces
+ * itself through execvp(): the restarted FTL withholds it from its children
+ * again before it starts any thread.
+ *
+ * @param cap The capability to restore.
+ * @return true if the capability survives the execvp(), false otherwise.
+ */
+bool restore_capability_for_exec(const unsigned int cap)
+{
+	cap_user_header_t hdr = NULL;
+	cap_user_data_t data = NULL;
+	if(!get_caps(&data, &hdr))
+		return false;
+
+	bool success = false;
+	if(data[0].permitted & (1U << cap))
+	{
+		data[0].effective |= 1U << cap;
+		data[0].inheritable |= 1U << cap;
+
+		// The ambient set only takes what is permitted and inheritable
+		success = capset(hdr, data) == 0 &&
+		          prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, cap, 0, 0) == 0;
+		if(!success)
+			log_warn("Failed to restore capability: %s", strerror(errno));
+	}
 
 	free(hdr);
 	free(data);
@@ -306,9 +344,14 @@ bool check_capabilities(void)
 	                                      config.ntp.sync.active.v.b,
 	                                      "setting the system time from the NTP client");
 
-	// Always needed: FTL chowns the files it creates to the pihole user
-	capabilities_okay &= warn_missing_cap(data, CAP_CHOWN, "CAP_CHOWN", true,
-	                                      "taking ownership of the files FTL creates");
+	// Always needed: FTL chowns the files it creates to the pihole user. It
+	// takes the capability out of use once startup is done, so only the
+	// permitted set tells whether it was granted
+	if(!(data->permitted & (1u << CAP_CHOWN)))
+	{
+		log_warn("Linux capability CAP_CHOWN is not available, needed for taking ownership of the files FTL creates");
+		capabilities_okay = false;
+	}
 
 	// Free allocated memory
 	free(data);

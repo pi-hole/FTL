@@ -192,7 +192,14 @@ int main (int argc, char *argv[])
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
+	{
+		// A binary without file capabilities only keeps the ambient set
+		// across execvp(). All threads are gone and nothing else is
+		// executed from here, the restarted FTL withholds it again
+		if(getuid() != 0)
+			restore_capability_for_exec(CAP_CHOWN);
 		execvp(argv[0], argv);
+	}
 
 	return exit_code;
 }
