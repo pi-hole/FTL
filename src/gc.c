@@ -397,6 +397,16 @@ static void check_load(void)
 		log_resource_shortage(load[2], nprocs, -1, -1, NULL, NULL);
 }
 
+
+// Total number of queries removed from the front of the queries array. Every
+// logical query index shifts down by the same amount, so a thread holding an
+// index across an unlocked section can rebase it. Guarded by the SHM lock
+static unsigned int queries_removed = 0;
+unsigned int __attribute__((pure)) get_queries_removed(void)
+{
+	return queries_removed;
+}
+
 void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 {
 	doGC = false;
@@ -540,6 +550,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// the physical array actually runs out of room.
 		counters->queries_offset += removed;
 		counters->queries -= removed;
+		queries_removed += removed;
 
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
