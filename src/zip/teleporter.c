@@ -358,13 +358,72 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	return NULL;
 }
 
+// Check that an imported DHCP lease database actually looks like one.
+//
+// The archive member is written verbatim to a well-known path, which makes the
+// import a way to place chosen bytes on disk. Holding the content to the dnsmasq
+// lease grammar keeps the result from doubling as a script or config fragment
+// for anything else that may read a file from there. Accepted records are
+// "duid <hex>", "vendorclass|agent-info <address> <hex>" and
+// "<expiry> <hwaddr> <address> [hostname [clientid]]".
+bool valid_dhcp_leases(const char *data, const size_t size)
+{
+	size_t pos = 0;
+	while(pos < size)
+	{
+		// Determine the extent of this line
+		size_t eol = pos;
+		while(eol < size && data[eol] != '\n')
+			eol++;
+
+		// A lease database holds only numbers, hex, addresses and host
+		// names, so anything outside printable ASCII is not one
+		for(size_t i = pos; i < eol; i++)
+			if(data[i] != '\t' && (data[i] < 0x20 || data[i] > 0x7e))
+				return false;
+
+		// Skip leading whitespace, accept empty lines
+		while(pos < eol && (data[pos] == ' ' || data[pos] == '\t'))
+			pos++;
+		if(pos == eol)
+		{
+			pos = eol + 1;
+			continue;
+		}
+
+		// The first token decides the record type
+		size_t tok = pos;
+		while(tok < eol && data[tok] != ' ' && data[tok] != '\t')
+			tok++;
+		const size_t toklen = tok - pos;
+
+		bool numeric = true;
+		for(size_t i = pos; i < tok; i++)
+			if(data[i] < '0' || data[i] > '9')
+				numeric = false;
+
+		if(!numeric &&
+		   !(toklen == 4 && strncmp(data + pos, "duid", 4) == 0) &&
+		   !(toklen == 11 && strncmp(data + pos, "vendorclass", 11) == 0) &&
+		   !(toklen == 10 && strncmp(data + pos, "agent-info", 10) == 0))
+			return false;
+
+		pos = eol + 1;
+	}
+
+	return true;
+}
+
 static const char *import_dhcp_leases(const void *ptr, size_t size, char * const hint)
 {
 	// We do not check if the file is empty here, as an empty dhcp.leases file is valid
 
-	// When we reach this point, we know that the file is a valid dhcp.leases file.
-	// We can now safely overwrite the current dhcp.leases file with the one from the ZIP archive
-	// Nevertheless, we rotate the current dhcp.leases file to keep a backup of the previous version
+	// Check the content really is a lease database before overwriting the
+	// current one - the bytes come straight from the uploaded archive
+	if(!valid_dhcp_leases(ptr, size))
+		return "File etc/pihole/dhcp.leases in ZIP archive is not a DHCP lease database";
+
+	// Rotate the current dhcp.leases file to keep a backup of the previous version
 
 	// Rotate current dhcp.leases file
 	rotate_files(DHCPLEASESFILE, NULL);

@@ -15,6 +15,7 @@
 
 const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], void **ptr, size_t *size);
 bool free_teleporter_zip(mz_zip_archive *zip);
+bool valid_dhcp_leases(const char *data, const size_t size);
 const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char *hint, cJSON *import, cJSON *json_files);
 
 bool write_teleporter_zip_to_disk(void);
