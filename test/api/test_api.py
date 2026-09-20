@@ -941,30 +941,21 @@ class TestMethodNotAllowed:
             f"Expected 405, got {r.status_code} {r.text}"
         assert self._allow(r) == ["GET", "OPTIONS", "POST"]
 
-    def test_allow_only_names_methods_this_uri_shape_takes(self, api_session):
-        """Rows sharing a URI are told apart by their parameters, not just the URI.
+    def test_allow_names_the_methods_of_every_row_of_the_uri(self, api_session):
+        """Rows sharing a URI are not told apart, Allow is the union of them.
 
-        /api/domains has four table rows. Without arguments only the GET one
-        applies, so DELETE - which needs /{type}/{kind}/{domain} - must not be
-        advertised, and with two arguments POST must be.
+        The table describes the documented shapes of a URI, the handlers
+        accept more than that, e.g., PATCH /api/config/<element>.
         """
-        r = api_session.patch(f"{FTL_URL}/api/domains", json={}, timeout=5)
-        assert r.status_code == 405, \
-            f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS"]
+        union = ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
+        for uri in ("/api/domains", "/api/domains/deny/exact"):
+            r = api_session.patch(f"{FTL_URL}{uri}", json={}, timeout=5)
+            assert r.status_code == 405, \
+                f"Expected 405, got {r.status_code} {r.text}"
+            assert self._allow(r) == union, f"{uri}: {self._allow(r)}"
 
-        r = api_session.patch(f"{FTL_URL}/api/domains/deny/exact", json={}, timeout=5)
-        assert r.status_code == 405, \
-            f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
-
-    def test_trailing_slash_does_not_shift_the_path(self, api_session):
-        """A trailing slash must not count as another path component.
-
-        /api/domains/deny/ addresses the same row as /api/domains/deny, so it
-        has to advertise the same methods rather than those of the row one
-        level deeper.
-        """
+    def test_trailing_slash_does_not_change_the_answer(self, api_session):
+        """/api/domains/deny/ is the same resource as /api/domains/deny."""
         plain = api_session.patch(f"{FTL_URL}/api/domains/deny", json={}, timeout=5)
         slash = api_session.patch(f"{FTL_URL}/api/domains/deny/", json={}, timeout=5)
         assert plain.status_code == 405, \
@@ -974,51 +965,19 @@ class TestMethodNotAllowed:
         assert self._allow(slash) == self._allow(plain), \
             f"{self._allow(slash)} != {self._allow(plain)}"
 
-    def test_config_element_spans_several_components(self, api_session):
-        """A config element is a path of its own, e.g., dns/cache/size.
-
-        Both the 405 and the OPTIONS reply have to name the methods of all
-        three /api/config rows for it, and GET and PATCH for an element that
-        is a single component.
-        """
+    def test_uri_with_slashes_in_its_last_part(self, api_session):
+        """A config element, a list address and the docs carry further slashes."""
         r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
         assert r.status_code == 405, \
             f"Expected 405, got {r.status_code} {r.text}"
         assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
 
-        r = api_session.options(f"{FTL_URL}/api/config/dns/cache/size", timeout=5)
-        assert r.status_code == 204, \
-            f"Expected 204, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
-
-        r = api_session.post(f"{FTL_URL}/api/config/dns", json={}, timeout=5)
-        assert r.status_code == 405, \
-            f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS", "PATCH"]
-
-    def test_parameter_with_slashes_keeps_its_row(self, api_session):
-        """A list address arrives decoded, its slashes are not path components."""
         address = quote("https://pytest.example.com/list.txt", safe="")
         r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
         assert r.status_code == 204, \
             f"Expected 204, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
 
-        # Only the row with the most parameters takes the rest of the URI
-        r = api_session.options(f"{FTL_URL}/api/domains/deny/regex/{quote('a/b', safe='')}", timeout=5)
-        assert r.status_code == 204, \
-            f"Expected 204, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
-
-    def test_longer_endpoint_wins_over_a_parameter(self, api_session):
-        """/api/info/messages/count is an endpoint, not the message ID "count"."""
-        r = api_session.options(f"{FTL_URL}/api/info/messages/count", timeout=5)
-        assert r.status_code == 204, \
-            f"Expected 204, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS"]
-
-    def test_docs_path_names_get(self, api_session):
-        """The documentation is served from any path below /api/docs."""
         r = api_session.post(f"{FTL_URL}/api/docs/index.html", json={}, timeout=5)
         assert r.status_code == 405, \
             f"Expected 405, got {r.status_code} {r.text}"

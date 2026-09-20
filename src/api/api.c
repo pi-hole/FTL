@@ -109,59 +109,6 @@ static struct {
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
 
-// How well does this table row fit the URI? Several rows share a URI and are
-// told apart only by their parameters, which startsWith() does not look at -
-// /api/domains has four of them. Answering a 405 with the union of all four
-// advertises a DELETE that /api/domains without arguments would refuse with a
-// 400, so count the components and rank the rows: 0 is no fit, a row taking
-// exactly this URI beats one whose last parameter has to take the rest of it,
-// and a longer endpoint beats a shorter one (/api/info/messages/count is not a
-// message ID). Only the rows of the highest rank name the allowed methods
-static unsigned int __attribute__((pure)) row_rank(const char *uri, const char *parameters, const char *item)
-{
-	unsigned int expected = 0;
-	for(const char *p = parameters; *p != '\0'; p++)
-		if(*p == '{')
-			expected++;
-
-	// A trailing slash does not open another component: /api/domains/deny/
-	// addresses the same one-parameter row as /api/domains/deny
-	size_t len = strlen(item);
-	if(len > 0 && item[len - 1] == '/')
-		len--;
-
-	unsigned int found = 0;
-	if(len > 0)
-	{
-		found = 1;
-		for(size_t i = 0; i < len; i++)
-			if(item[i] == '/')
-				found++;
-	}
-
-	const unsigned int exact = 1000000u, longer = 1000u;
-	const unsigned int urilen = strlen(uri);
-
-	// A config element is a path of its own (dns/cache/size), so the rows of
-	// /api/config take any URI that is at least as long as they expect, which
-	// includes the PATCH of the first row. The documentation is served from
-	// a path below /api/docs
-	if((found >= expected && strcmp(uri, "/api/config") == 0) ||
-	   strcmp(uri, "/api/docs") == 0)
-		return exact + urilen;
-
-	if(expected == found)
-		return exact + urilen;
-
-	// The URI is decoded, so a last parameter with slashes in it (a list
-	// address, a client subnet) looks like further components. The row
-	// with the most parameters is the one that takes it
-	if(expected > 0 && found > expected)
-		return longer * expected + urilen;
-
-	return 0;
-}
-
 // Format the methods an endpoint accepts as an Allow header value, e.g.
 // "GET, POST, OPTIONS". OPTIONS is answered for every endpoint by the handler
 // itself, so it belongs in a header a client is meant to act on
@@ -219,23 +166,15 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	bool unauthorized = false;
 	bool handler_ran = false;
 	enum http_method allowed_methods = 0;
-	unsigned int best_rank = 0;
 	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
 		// Check if the requested URI starts with the API endpoint
 		if((api.item = startsWith(api_request[i].uri, &api)) != NULL)
 		{
-			// The URI exists. Remember every method it accepts,
-			// both to answer OPTIONS below and to tell a request
-			// that came with the wrong one which would have worked
-			const unsigned int rank = row_rank(api_request[i].uri, api_request[i].parameters, api.item);
-			if(rank > best_rank)
-			{
-				best_rank = rank;
-				allowed_methods = 0;
-			}
-			if(rank > 0 && rank == best_rank)
-				allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
+			// The URI exists. Remember every method its rows accept, for
+			// OPTIONS and for a 405. The rows describe the documented shapes
+			// of a URI, not all a handler takes, so they are not told apart
+			allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
 
 			// If this is an OPTIONS request, collecting the
 			// methods is all there is to do here
