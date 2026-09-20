@@ -70,7 +70,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	{
 		// flock() does not need write access, so read-only lets members
 		// of the pihole group take the lock as well
-		install_lock = open(GLOBALTOMLPATH".lock", O_RDONLY | O_CREAT | O_CLOEXEC,
+		install_lock = open(GLOBALTOMLPATH".lock", O_RDONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
 		                    S_IRUSR | S_IWUSR | S_IRGRP);
 		if(install_lock >= 0 && geteuid() == 0)
 			chown_pihole(GLOBALTOMLPATH".lock", NULL);

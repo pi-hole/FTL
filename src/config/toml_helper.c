@@ -64,7 +64,7 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	FILE *fp = NULL;
 	if(writing)
 	{
-		const int fd = open(filename, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
+		const int fd = open(filename, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
 		if(fd >= 0)
 		{
 			fp = fdopen(fd, "r+");
