@@ -9,6 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// isalnum(), isdigit()
+#include <ctype.h>
+// inet_pton()
+#include <arpa/inet.h>
 #include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
@@ -370,17 +374,26 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	return NULL;
 }
 
-// Check that an imported DHCP lease database actually looks like one.
+// Check one token of a lease record: not empty, not longer than dnsmasq reads
+// and made of the given characters only
+static bool valid_lease_token(const char *tok, const size_t len, const size_t maxlen, const char *allowed)
+{
+	if(len == 0 || len > maxlen)
+		return false;
+
+	for(size_t i = 0; i < len; i++)
+		if(!isalnum((unsigned char)tok[i]) && strchr(allowed, tok[i]) == NULL)
+			return false;
+
+	return true;
+}
+
+// Check that an imported DHCP lease database is one.
 //
-// The archive member is written verbatim to a well-known path, which makes the
-// import a way to place chosen bytes on disk. Rejecting anything that is not
-// printable ASCII, and any record not opening with a type dnsmasq knows, keeps
-// an arbitrary file from arriving under a name dnsmasq will parse.
-//
-// This is a shape check, not a grammar check: the fields after the first are
-// not validated, so a well-formed record can still carry arbitrary printable
-// text. Accepted records are "duid <hex>", "vendorclass|agent-info <address>
-// <hex>" and "<expiry> <hwaddr> <address> [hostname [clientid]]".
+// The archive member is written verbatim to a well-known path dnsmasq parses,
+// so every record has to be one dnsmasq writes itself: "duid <hex>",
+// "vendorclass|agent-info <address> <data>" or
+// "<expiry> <hwaddr|iaid> <address> <hostname|*> <clientid|*>"
 bool valid_dhcp_leases(const char *data, const size_t size)
 {
 	size_t pos = 0;
@@ -391,39 +404,67 @@ bool valid_dhcp_leases(const char *data, const size_t size)
 		while(eol < size && data[eol] != '\n')
 			eol++;
 
-		// A lease database holds only numbers, hex, addresses and host
-		// names, so anything outside printable ASCII is not one
-		for(size_t i = pos; i < eol; i++)
-			if(data[i] != '\t' && (data[i] < 0x20 || data[i] > 0x7e))
+		// Split the line into its tokens
+		const char *tok[6] = { NULL };
+		size_t toklen[6] = { 0 };
+		unsigned int tokens = 0;
+		size_t i = pos;
+		while(i < eol)
+		{
+			while(i < eol && (data[i] == ' ' || data[i] == '\t'))
+				i++;
+			if(i == eol)
+				break;
+
+			// More tokens than any record has
+			if(tokens == ArraySize(tok))
 				return false;
 
-		// Skip leading whitespace, accept empty lines
-		while(pos < eol && (data[pos] == ' ' || data[pos] == '\t'))
-			pos++;
-		if(pos == eol)
+			tok[tokens] = data + i;
+			while(i < eol && data[i] != ' ' && data[i] != '\t')
+				i++;
+			toklen[tokens] = (size_t)(data + i - tok[tokens]);
+			tokens++;
+		}
+		pos = eol + 1;
+
+		// Accept empty lines
+		if(tokens == 0)
+			continue;
+
+		const char *hex = ":-*";
+		if(toklen[0] == 4 && strncmp(tok[0], "duid", 4) == 0)
 		{
-			pos = eol + 1;
+			if(tokens != 2 || !valid_lease_token(tok[1], toklen[1], 764, hex))
+				return false;
 			continue;
 		}
 
-		// The first token decides the record type
-		size_t tok = pos;
-		while(tok < eol && data[tok] != ' ' && data[tok] != '\t')
-			tok++;
-		const size_t toklen = tok - pos;
+		if((toklen[0] == 11 && strncmp(tok[0], "vendorclass", 11) == 0) ||
+		   (toklen[0] == 10 && strncmp(tok[0], "agent-info", 10) == 0))
+		{
+			if(tokens != 3 ||
+			   !valid_lease_token(tok[1], toklen[1], 64, ".:") ||
+			   !valid_lease_token(tok[2], toklen[2], 764, hex))
+				return false;
+			continue;
+		}
 
-		bool numeric = true;
-		for(size_t i = pos; i < tok; i++)
-			if(data[i] < '0' || data[i] > '9')
-				numeric = false;
-
-		if(!numeric &&
-		   !(toklen == 4 && strncmp(data + pos, "duid", 4) == 0) &&
-		   !(toklen == 11 && strncmp(data + pos, "vendorclass", 11) == 0) &&
-		   !(toklen == 10 && strncmp(data + pos, "agent-info", 10) == 0))
+		// A lease: the expiry is a number, the address is one
+		char addr[65] = { 0 };
+		struct in6_addr parsed;
+		if(tokens != 5 || toklen[2] >= sizeof(addr))
 			return false;
-
-		pos = eol + 1;
+		for(size_t k = 0; k < toklen[0]; k++)
+			if(!isdigit((unsigned char)tok[0][k]))
+				return false;
+		memcpy(addr, tok[2], toklen[2]);
+		if(inet_pton(AF_INET, addr, &parsed) != 1 && inet_pton(AF_INET6, addr, &parsed) != 1)
+			return false;
+		if(!valid_lease_token(tok[1], toklen[1], 255, hex) ||
+		   !valid_lease_token(tok[3], toklen[3], 255, ".-_*") ||
+		   !valid_lease_token(tok[4], toklen[4], 764, hex))
+			return false;
 	}
 
 	return true;
