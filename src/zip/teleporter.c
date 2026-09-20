@@ -493,7 +493,9 @@ bool valid_dhcp_leases(const char *data, const size_t size)
 		memcpy(addr, tok[2], toklen[2]);
 		if(inet_pton(AF_INET, addr, &parsed) != 1 && inet_pton(AF_INET6, addr, &parsed) != 1)
 			return false;
-		if(!valid_lease_hex(tok[1], toklen[1], 255) ||
+		// dnsmasq marks the IAID of a temporary DHCPv6 address with a "T"
+		const bool temporary = toklen[1] > 1 && tok[1][0] == 'T' && strchr(addr, ':') != NULL;
+		if(!valid_lease_hex(tok[1] + (temporary ? 1 : 0), toklen[1] - (temporary ? 1 : 0), 255) ||
 		   !valid_lease_token(tok[3], toklen[3], 255, ".-_*") ||
 		   !valid_lease_hex(tok[4], toklen[4], 764))
 			return false;
