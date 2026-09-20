@@ -172,7 +172,6 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			memset(errbuf, 0, sizeof(errbuf));
 		}
 
-		// Wait until child has exited to get its return code
 		// Get the exit status of the command from the status pipe
 		int status = -1;
 		ssize_t got;
@@ -191,11 +190,11 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		if(got != sizeof(status) || status == -1)
 		{
 			log_err("Cannot get the exit status of the command");
-			status = EXIT_FAILURE << 8;
+			code = EXIT_FAILURE;
 		}
-		code = WEXITSTATUS(status);
-
-		if(WIFSIGNALED(status))
+		else if(WIFEXITED(status))
+			code = WEXITSTATUS(status);
+		else if(WIFSIGNALED(status))
 		{
 			crashed = true;
 			log_err("gravity failed with signal %d %s",
