@@ -1167,7 +1167,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			if(attempt == 1)
 			{
-				if(api->method != HTTP_DELETE || value_buf[value_len - 1] != '/')
+				if(api->method != HTTP_DELETE || value_len < 2 || value_buf[value_len - 1] != '/')
 					break;
 				value_buf[value_len - 1] = '\0';
 			}
