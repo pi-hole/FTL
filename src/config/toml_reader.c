@@ -219,7 +219,9 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  const unsigned int version, const bool teleporter,
                  char err[VALIDATOR_ERRBUF_LEN])
 {
-	n_teleporter_skipped = 0;
+	// A config reload running next to an import must not empty its list
+	if(teleporter)
+		n_teleporter_skipped = 0;
 
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
