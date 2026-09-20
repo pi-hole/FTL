@@ -218,8 +218,12 @@ class TestDeleteConfigArrayItem:
         assert r.content == b""
 
     def test_value_with_many_slashes_is_kept_whole(self, api_session):
-        """The value is everything after the item, however many slashes it has."""
-        value = "pytest/a/b/c/d/e/f"
+        """The value is everything after the item, a trailing slash included.
+
+        A DELETE that finds nothing tries again without a trailing slash, as
+        the URI may simply end in one.
+        """
+        value = "pytest/a/b/c/d/e/f/"
         base = f"{FTL_URL}/api/config/webserver/api/excludeDomains"
         url = f"{base}/{value}"
 
@@ -234,7 +238,7 @@ class TestDeleteConfigArrayItem:
             stored = _j(r)["config"]["webserver"]["api"]["excludeDomains"]
             assert value in stored, f"{value} not in {stored}"
         finally:
-            r = api_session.delete(f"{url}?restart=false", timeout=10)
+            r = api_session.delete(f"{url}/?restart=false", timeout=10)
             assert r.status_code == 204, \
                 f"Expected 204, got {r.status_code} {r.text}"
 

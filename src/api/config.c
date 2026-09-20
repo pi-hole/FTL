@@ -1116,12 +1116,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(value == NULL)
 			continue;
 
-		size_t value_len = strlen(value);
-		// A trailing slash only belongs to the value where it can mean
-		// something, e.g., local=/lan/ in misc.dnsmasq_lines
-		if(value_len > 0 && value[value_len - 1] == '/' &&
-		   new_item != &newconf.misc.dnsmasq_lines)
-			value_len--;
+		const size_t value_len = strlen(value);
 		if(value_len == 0)
 			continue;
 		if(value_len >= sizeof(value_buf))
@@ -1163,16 +1158,30 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                            key, true, true);
 		}
 
-		// Check if this entry exists in the array
+		// Check if this entry exists in the array. The value is taken as it
+		// is, a trailing slash can be part of it ("Location: /"). Only a
+		// DELETE that finds nothing tries again without one, the URI may
+		// simply end in a slash
 		int idx = 0;
-		for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
-		    elem != NULL; elem = elem->next, idx++)
+		for(unsigned int attempt = 0; attempt < 2 && !found; attempt++)
 		{
-			if(elem != NULL && elem->valuestring != NULL &&
-				strcmp(elem->valuestring, new_item_str) == 0)
+			if(attempt == 1)
 			{
-				found = true;
-				break;
+				if(api->method != HTTP_DELETE || value_buf[value_len - 1] != '/')
+					break;
+				value_buf[value_len - 1] = '\0';
+			}
+
+			idx = 0;
+			for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
+			    elem != NULL; elem = elem->next, idx++)
+			{
+				if(elem->valuestring != NULL &&
+				   strcmp(elem->valuestring, new_item_str) == 0)
+				{
+					found = true;
+					break;
+				}
 			}
 		}
 
