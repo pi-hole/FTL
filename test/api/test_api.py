@@ -977,24 +977,24 @@ class TestMethodNotAllowed:
     def test_config_element_spans_several_components(self, api_session):
         """A config element is a path of its own, e.g., dns/cache/size.
 
-        Both the 405 and the OPTIONS reply have to name the methods of the
-        /{element} and /{element}/{value} rows for it, and only GET for an
-        element that is a single component.
+        Both the 405 and the OPTIONS reply have to name the methods of all
+        three /api/config rows for it, and GET and PATCH for an element that
+        is a single component.
         """
         r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
         assert r.status_code == 405, \
             f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
 
         r = api_session.options(f"{FTL_URL}/api/config/dns/cache/size", timeout=5)
         assert r.status_code == 204, \
             f"Expected 204, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PUT"]
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
 
         r = api_session.post(f"{FTL_URL}/api/config/dns", json={}, timeout=5)
         assert r.status_code == 405, \
             f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS"]
+        assert self._allow(r) == ["GET", "OPTIONS", "PATCH"]
 
     def test_parameter_with_slashes_keeps_its_row(self, api_session):
         """A list address arrives decoded, its slashes are not path components."""

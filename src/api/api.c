@@ -143,9 +143,10 @@ static unsigned int __attribute__((pure)) row_rank(const char *uri, const char *
 	const unsigned int urilen = strlen(uri);
 
 	// A config element is a path of its own (dns/cache/size), so the rows of
-	// /api/config take any URI that is at least as long as they expect. The
-	// documentation is served from a path below /api/docs
-	if((expected > 0 && found >= expected && strcmp(uri, "/api/config") == 0) ||
+	// /api/config take any URI that is at least as long as they expect, which
+	// includes the PATCH of the first row. The documentation is served from
+	// a path below /api/docs
+	if((found >= expected && strcmp(uri, "/api/config") == 0) ||
 	   strcmp(uri, "/api/docs") == 0)
 		return exact + urilen;
 
