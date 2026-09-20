@@ -119,7 +119,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 			if(host[0] == '#')
 				break;
 
-			if(!valid_domain(host, strlen(host), false, true))
+			if(!valid_domain(host, strlen(host), false))
 			{
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
 				         key, i, host);
@@ -218,7 +218,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false, true))
+	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -306,7 +306,7 @@ bool validate_netmask(union conf_value *val, const char *key, char err[VALIDATOR
 bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(!valid_domain(val->s, strlen(val->s), false, true))
+	if(!valid_domain(val->s, strlen(val->s), false))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -725,7 +725,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				struct in6_addr addr6 = { 0 };
 				const bool server_ipv4 = inet_pton(AF_INET, server, &addr) == 1;
 				const bool server_ipv6 = inet_pton(AF_INET6, server, &addr6) == 1;
-				const bool server_domain = valid_domain(server, strlen(server), false, true);
+				const bool server_domain = valid_domain(server, strlen(server), false);
 
 				// Check if server is valid
 				if(!server_ipv4 && !server_ipv6 && !server_domain)
@@ -756,7 +756,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			// Check if the third element is a valid domain
 			else if(e == 3)
 			{
-				if(!valid_domain(s, strlen(s), false, true))
+				if(!valid_domain(s, strlen(s), false))
 				{
 					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
 					free(str);
@@ -938,7 +938,7 @@ void sanitize_dns_hosts(union conf_value *val)
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's a valid domain
-	if(valid_domain(val->s, strlen(val->s), false, true))
+	if(valid_domain(val->s, strlen(val->s), false))
 	{
 		return true;
 	}
