@@ -1041,7 +1041,7 @@ static void format_teleporter_skipped_message(char *plain, const int sizeof_plai
 
 	if(snprintf(html, sizeof_html,
 	            "The imported Teleporter archive contained a value for <code>%s</code>, which was <strong>not</strong> applied.<br><br>"
-	            "This setting can name a program Pi-hole then runs, so it cannot be changed through the web interface or the API. "
+	            "This setting can only be changed on the host itself, not through the web interface or the API. "
 	            "Everything else in the archive was imported as usual and the value configured on this host was kept.<br><br>"
 	            "To change it, edit <code>%s</code>, set the matching environment variable, or use <code>pihole-FTL --config</code>.",
 	            escaped_key, GLOBALTOMLPATH) > sizeof_html)
