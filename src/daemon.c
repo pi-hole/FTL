@@ -497,10 +497,6 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
-
-	// Finally, free log config memory
-	if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
-		free(config.files.log.ftl.v.s);
 }
 
 static float ftl_cpu_usage = 0.0f;
@@ -520,7 +516,7 @@ void calc_cpu_usage(const unsigned int interval)
 
 	// Calculate the total CPU usage
 	const double cpu_time = parse_proc_stat();
-	
+
 	// Calculate the CPU usage since the last call to this function
 	static double last_cpu_time = 0.0f;
 	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval / norm_factor;
