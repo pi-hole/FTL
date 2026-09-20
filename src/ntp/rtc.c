@@ -145,9 +145,15 @@ static int open_rtc_device(const char *path)
 	// Open it for reading now that we own it
 	rtc_fd = open(procpath, O_RDONLY | O_CLOEXEC);
 
-	// Restore the original owner regardless of whether the reopen succeeded
+	// Restore the original owner regardless of whether the reopen succeeded.
+	// A device left with the FTL user is not one to go on working with
 	if(chown(procpath, st.st_uid, st.st_gid) == -1)
-		log_debug(DEBUG_NTP, "Restoring owner of \"%s\" failed: %s", path, strerror(errno));
+	{
+		log_warn("Cannot restore the owner of \"%s\": %s", path, strerror(errno));
+		if(rtc_fd != -1)
+			close(rtc_fd);
+		rtc_fd = -1;
+	}
 
 	if(raised)
 		use_capability(CAP_CHOWN, false);
