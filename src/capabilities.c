@@ -162,11 +162,11 @@ bool restore_capability_for_exec(const unsigned int cap)
 		data[0].effective |= 1U << cap;
 		data[0].inheritable |= 1U << cap;
 
-		// The ambient set only takes what is permitted and inheritable
+		// The ambient set only takes what is permitted and inheritable.
+		// No logging here, the log is closed already. The restarted FTL
+		// reports a capability it did not get
 		success = capset(hdr, data) == 0 &&
 		          prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, cap, 0, 0) == 0;
-		if(!success)
-			log_warn("Failed to restore capability: %s", strerror(errno));
 	}
 
 	free(hdr);
