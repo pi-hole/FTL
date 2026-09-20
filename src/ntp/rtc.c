@@ -121,8 +121,9 @@ static int open_rtc_device(const char *path)
 		return -1;
 	}
 
-	// Refer to the pinned handle through /proc/self/fd so neither the chown nor
-	// the reopen can land on a different file than the one just verified.
+	// The ownership changes act on the pinned handle itself. An O_PATH handle
+	// cannot be read from, so the reopen goes through /proc/self/fd, which
+	// resolves to the very same file
 	char procpath[32] = { 0 };
 	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", path_fd);
 
@@ -132,7 +133,7 @@ static int open_rtc_device(const char *path)
 	// Take ownership momentarily
 	const uid_t uid = getuid();
 	const gid_t gid = getgid();
-	if(chown(procpath, uid, gid) == -1)
+	if(fchownat(path_fd, "", uid, gid, AT_EMPTY_PATH) == -1)
 	{
 		log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s", path, uid, gid,
 		          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
@@ -147,7 +148,7 @@ static int open_rtc_device(const char *path)
 
 	// Restore the original owner regardless of whether the reopen succeeded.
 	// A device left with the FTL user is not one to go on working with
-	if(chown(procpath, st.st_uid, st.st_gid) == -1)
+	if(fchownat(path_fd, "", st.st_uid, st.st_gid, AT_EMPTY_PATH) == -1)
 	{
 		log_warn("Cannot restore the owner of \"%s\": %s", path, strerror(errno));
 		if(rtc_fd != -1)
