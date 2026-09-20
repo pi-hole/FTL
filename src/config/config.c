@@ -382,10 +382,6 @@ void free_config(struct config *conf, const bool terminating)
 				// Nothing to do
 				break;
 			case CONF_STRING_ALLOCATED:
-				// Do not free log file path if we are
-				// terminating or nothing can be logged anymore
-				if(terminating && conf_item->f & FLAG_FTL_LOG)
-					continue;
 				free(conf_item->v.s);
 				conf_item->v.s = NULL;
 				conf_item->t = CONF_STRING; // not allocated anymore
@@ -2081,7 +2077,7 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.d.s = (char*)"/var/log/pihole/FTL.log";
 	config.files.log.ftl.v.s = config.files.log.ftl.d.s;
 	config.files.log.ftl.c = validate_filepath;
-	config.files.log.ftl.f = FLAG_FTL_LOG | FLAG_RESTART_FTL;
+	config.files.log.ftl.f = FLAG_RESTART_FTL;
 
 	// Try sources in priority order: ENV > TOML > legacy
 	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
