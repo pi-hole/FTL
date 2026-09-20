@@ -78,7 +78,9 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 
  	// Check if the first byte is valid: mode is expected to be 3 ("client")
 	if ((recv_buf[0] & 0x07) != 0x3) {
-		log_warn("Received invalid NTP request: not from an NTP client, ignoring");
+		// Debug, not warning: any client can send this and the server
+		// discards it, like the version check just below
+		log_debug(DEBUG_NTP, "Received invalid NTP request: not from an NTP client, ignoring");
 		return false;
 	}
         // Check NTP version, log if it is an old unsupported version (< v4)
