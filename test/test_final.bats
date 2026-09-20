@@ -219,3 +219,39 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
 }
+
+@test "Pi-hole PTR records are generated once per address, however it is spelled" {
+  # Start FTL afresh so no record exists yet, and ask for a non-canonical
+  # spelling first: the record must still answer the canonical name. Further
+  # spellings (leading zeros, extra leading labels) must not add records
+  addr=$(ip -4 -o address show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+  [ -n "${addr}" ]
+  IFS=. read -r a b c d <<< "${addr}"
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A ptr.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  dig +tries=1 +time=2 PTR "0${d}.0${c}.0${b}.0${a}.in-addr.arpa" @127.0.0.1 > /dev/null
+  run dig +tries=1 +time=2 -x "${addr}" @127.0.0.1 +short
+  assert_output "pi.hole."
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  for name in "00${d}.${c}.${b}.${a}" "9.${d}.${c}.${b}.${a}" "7.9.${d}.${c}.${b}.${a}" "${d}.${c}.${b}.${a}"; do
+    dig +tries=1 +time=2 PTR "${name}.in-addr.arpa" @127.0.0.1 > /dev/null
+  done
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Generating PTR record'"
+  assert_output "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+}
