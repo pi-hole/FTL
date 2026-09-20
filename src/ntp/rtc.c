@@ -19,6 +19,8 @@
 #include <linux/rtc.h>
 // O_WRONLY
 #include <fcntl.h>
+// use_capability()
+#include "capabilities.h"
 // struct config
 #include "config/config.h"
 
@@ -88,6 +90,9 @@ static int open_rtc_device(const char *path)
 	char procpath[32] = { 0 };
 	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", path_fd);
 
+	// CAP_CHOWN is kept out of use, raise it for the ownership changes only
+	const bool raised = use_capability(CAP_CHOWN, true);
+
 	// Take ownership momentarily
 	const uid_t uid = getuid();
 	const gid_t gid = getgid();
@@ -95,6 +100,8 @@ static int open_rtc_device(const char *path)
 	{
 		log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s", path, uid, gid,
 		          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+		if(raised)
+			use_capability(CAP_CHOWN, false);
 		close(path_fd);
 		return -1;
 	}
@@ -106,6 +113,8 @@ static int open_rtc_device(const char *path)
 	if(chown(procpath, st.st_uid, st.st_gid) == -1)
 		log_debug(DEBUG_NTP, "Restoring owner of \"%s\" failed: %s", path, strerror(errno));
 
+	if(raised)
+		use_capability(CAP_CHOWN, false);
 	close(path_fd);
 	return rtc_fd;
 }

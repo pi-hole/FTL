@@ -3715,17 +3715,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
-	// Deny CAP_CHOWN to anything FTL executes, before the worker threads below
-	// are created. Capability sets are per-thread and a new thread inherits a
-	// copy of its creator's, so this has to happen before the threads exist:
-	// clearing the ambient and inheritable sets on the main thread once they
-	// are already running would leave them - and the children they exec, such
-	// as a program a Lua page spawns - holding the systemd-granted ambient
-	// CAP_CHOWN. FTL keeps the capability in its permitted and effective sets
-	// for the ownership changes it makes itself (startup, and the RTC device
-	// while ntp.sync.rtc.set is enabled); only the inheritance to children goes.
-	if(getuid() != 0)
-		deny_capability_to_children(CAP_CHOWN);
+	// Take CAP_CHOWN out of use before the worker threads below are created.
+	// Capability sets are per-thread and a new thread inherits a copy of its
+	// creator's, so every thread starts without it in its effective,
+	// inheritable and ambient sets and nothing FTL executes can receive it.
+	// The permitted copy stays: the RTC code raises the capability for the
+	// moment it needs it, and main() hands it to a restarted FTL
+	if(getuid() != 0 && suspend_capability(CAP_CHOWN))
+		log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
 
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
@@ -3863,25 +3860,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
-
-		// The ambient and inheritable sets were cleared before the worker
-		// threads were created (see the deny above), so nothing FTL executes
-		// can inherit CAP_CHOWN, no matter which thread runs it. FTL keeps the
-		// capability in its own permitted and effective sets while starting up;
-		// from here on it chowns files it created itself, which the owning user
-		// may do without any capability. When the RTC is not being set FTL has
-		// no further use for it and takes it out of use on the main thread as
-		// well. The permitted copy stays for FTL's own restart, see main().
-		// Setting the RTC changes ownership of the device repeatedly during
-		// runtime, so that path keeps it.
-		if(config.ntp.sync.rtc.set.v.b)
-		{
-			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
-		}
-		else if(suspend_capability(CAP_CHOWN))
-		{
-			log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
-		}
 	}
 
 	forked = true;
