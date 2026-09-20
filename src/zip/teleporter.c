@@ -13,6 +13,10 @@
 #include <ctype.h>
 // inet_pton()
 #include <arpa/inet.h>
+// LONG_MAX
+#include <limits.h>
+// errno, ERANGE
+#include <errno.h>
 #include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
@@ -335,6 +339,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
 	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true, valerr))
 	{
+		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
 		toml_free(toml);
 
@@ -352,6 +357,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// The dnsmasq configuration will be overwritten if the test succeeds
 	if(!write_dnsmasq_config(&teleporter_config, DNSMASQ_TEST_INSTALL, hint))
 	{
+		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
 		toml_free(toml);
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid dnsmasq configuration";
@@ -364,6 +370,9 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Install new configuration (takes ownership of teleporter_config)
 	replace_config(&teleporter_config);
 
+	// Only now is there an import the skipped settings belong to
+	report_teleporter_skipped(true);
+
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
 	rotate_files(GLOBALTOMLPATH, NULL);
@@ -375,14 +384,32 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 }
 
 // Check one token of a lease record: not empty, not longer than dnsmasq reads
-// and made of the given characters only
+// and made of alphanumeric and the given characters only
 static bool valid_lease_token(const char *tok, const size_t len, const size_t maxlen, const char *allowed)
 {
 	if(len == 0 || len > maxlen)
 		return false;
 
+	// strchr() would find a NUL byte in the terminator of allowed
 	for(size_t i = 0; i < len; i++)
-		if(!isalnum((unsigned char)tok[i]) && strchr(allowed, tok[i]) == NULL)
+		if(tok[i] == '\0' ||
+		   (!isalnum((unsigned char)tok[i]) && strchr(allowed, tok[i]) == NULL))
+			return false;
+
+	return true;
+}
+
+// Check a token dnsmasq runs through parse_hex(): hex digits separated by
+// colons, with an optional "<type>-" in front, or "*" for "not set"
+static bool valid_lease_hex(const char *tok, const size_t len, const size_t maxlen)
+{
+	if(len == 1 && tok[0] == '*')
+		return true;
+	if(len == 0 || len > maxlen)
+		return false;
+
+	for(size_t i = 0; i < len; i++)
+		if(!isxdigit((unsigned char)tok[i]) && tok[i] != ':' && tok[i] != '-')
 			return false;
 
 	return true;
@@ -432,10 +459,9 @@ bool valid_dhcp_leases(const char *data, const size_t size)
 		if(tokens == 0)
 			continue;
 
-		const char *hex = ":-*";
 		if(toklen[0] == 4 && strncmp(tok[0], "duid", 4) == 0)
 		{
-			if(tokens != 2 || !valid_lease_token(tok[1], toklen[1], 764, hex))
+			if(tokens != 2 || !valid_lease_hex(tok[1], toklen[1], 764))
 				return false;
 			continue;
 		}
@@ -445,25 +471,31 @@ bool valid_dhcp_leases(const char *data, const size_t size)
 		{
 			if(tokens != 3 ||
 			   !valid_lease_token(tok[1], toklen[1], 64, ".:") ||
-			   !valid_lease_token(tok[2], toklen[2], 764, hex))
+			   !valid_lease_hex(tok[2], toklen[2], 764))
 				return false;
 			continue;
 		}
 
-		// A lease: the expiry is a number, the address is one
-		char addr[65] = { 0 };
+		// A lease: the expiry is a number dnsmasq reads with atol(), the
+		// address is one
+		char addr[65] = { 0 }, expiry[24] = { 0 };
 		struct in6_addr parsed;
-		if(tokens != 5 || toklen[2] >= sizeof(addr))
+		if(tokens != 5 || toklen[2] >= sizeof(addr) || toklen[0] >= sizeof(expiry))
 			return false;
 		for(size_t k = 0; k < toklen[0]; k++)
 			if(!isdigit((unsigned char)tok[0][k]))
 				return false;
+		memcpy(expiry, tok[0], toklen[0]);
+		errno = 0;
+		const unsigned long long expires = strtoull(expiry, NULL, 10);
+		if(errno == ERANGE || expires > LONG_MAX)
+			return false;
 		memcpy(addr, tok[2], toklen[2]);
 		if(inet_pton(AF_INET, addr, &parsed) != 1 && inet_pton(AF_INET6, addr, &parsed) != 1)
 			return false;
-		if(!valid_lease_token(tok[1], toklen[1], 255, hex) ||
+		if(!valid_lease_hex(tok[1], toklen[1], 255) ||
 		   !valid_lease_token(tok[3], toklen[3], 255, ".-_*") ||
-		   !valid_lease_token(tok[4], toklen[4], 764, hex))
+		   !valid_lease_hex(tok[4], toklen[4], 764))
 			return false;
 	}
 
