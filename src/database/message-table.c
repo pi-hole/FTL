@@ -103,6 +103,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "VERIFY";
 		case GRAVITY_RESTORED_MESSAGE:
 			return "GRAVITY_RESTORED";
+		case TELEPORTER_SKIPPED_MESSAGE:
+			return "TELEPORTER_SKIPPED";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -143,6 +145,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return VERIFY_MESSAGE;
 	else if (strcmp(typestr, "GRAVITY_RESTORED") == 0)
 		return GRAVITY_RESTORED_MESSAGE;
+	else if (strcmp(typestr, "TELEPORTER_SKIPPED") == 0)
+		return TELEPORTER_SKIPPED_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -266,6 +270,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
+		},
+		{
+			// TELEPORTER_SKIPPED_MESSAGE: The message column contains the config key
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
@@ -302,8 +314,14 @@ bool create_message_table(sqlite3 *db)
 // Flush message table
 bool flush_message_table(sqlite3 *memdb)
 {
-	// Flush message table
-	SQL_bool(memdb, "DELETE FROM disk.message;");
+	// Flush message table, keeping the messages that state a lasting fact
+	// rather than a condition of the run that just ended.
+	//
+	// A Teleporter import that did not carry everything over stays true across
+	// a restart, and it is that very import which triggers the restart - so
+	// flushing it here would delete the message before anyone could see it.
+	// These are dismissed by the user like any other message.
+	SQL_bool(memdb, "DELETE FROM disk.message WHERE type != 'TELEPORTER_SKIPPED';");
 
 	return true;
 }
@@ -1004,6 +1022,34 @@ static void format_verify_message(char *plain, const int sizeof_plain, char *htm
 	free(escaped_arch);
 }
 
+static void format_teleporter_skipped_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                              const char *key)
+{
+	if(snprintf(plain, sizeof_plain,
+	            "Teleporter import skipped %s: this setting can only be changed on the host", key) > sizeof_plain)
+		log_warn("format_teleporter_skipped_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_key = escape_html(key);
+
+	// Return early if memory allocation failed
+	if(escaped_key == NULL)
+		return;
+
+	if(snprintf(html, sizeof_html,
+	            "The imported Teleporter archive contained a value for <code>%s</code>, which was <strong>not</strong> applied.<br><br>"
+	            "This setting can only be changed on the host itself, not through the web interface or the API. "
+	            "Everything else in the archive was imported as usual and the value configured on this host was kept.<br><br>"
+	            "To change it, edit <code>%s</code>, set the matching environment variable, or use <code>pihole-FTL --config</code>.",
+	            escaped_key, GLOBALTOMLPATH) > sizeof_html)
+		log_warn("format_teleporter_skipped_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_key);
+}
+
 static void format_gravity_restored_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                             const char *status)
 {
@@ -1338,6 +1384,16 @@ bool format_messages(cJSON *array)
 				break;
 			}
 
+			case TELEPORTER_SKIPPED_MESSAGE:
+			{
+				const char *key = (const char*)sqlite3_column_text(stmt, 3);
+
+				format_teleporter_skipped_message(plain, sizeof(plain), html, sizeof(html),
+				                                  key);
+
+				break;
+			}
+
 			case MAX_MESSAGE: // Fall through
 			default:
 				log_warn("format_messages() - Unknown message type: %s", mtypestr);
@@ -1640,6 +1696,19 @@ void log_verify_message(const char *expected, const char *actual)
 	// Log to database
 	add_message(VERIFY_MESSAGE, buf, expected, actual, git_hash(), ftl_arch());
 
+}
+
+void log_teleporter_skipped(const char *key)
+{
+	// Create message
+	char buf[2048];
+	format_teleporter_skipped_message(buf, sizeof(buf), NULL, 0, key);
+
+	// Log to FTL.log
+	log_warn("%s", buf);
+
+	// Log to database so it is visible from the web interface
+	add_message_no_args(TELEPORTER_SKIPPED_MESSAGE, key);
 }
 
 void log_gravity_restored(const char *status)

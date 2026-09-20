@@ -15,5 +15,8 @@
 
 bool check_capability(const unsigned int cap);
 bool check_capabilities(void);
+bool suspend_capability(const unsigned int cap);
+bool restore_capability_for_exec(const unsigned int cap);
+bool use_capability(const unsigned int cap, const bool enable);
 
 #endif //CAPABILITIES_H

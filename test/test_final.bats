@@ -9,12 +9,12 @@ bats_load_library 'bats-assert'
 load 'bats_helper.bash'
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for )|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token|(Teleporter import skipped )"'
   refute_output
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))"'
   refute_output
 }
 
@@ -33,6 +33,7 @@ load 'bats_helper.bash'
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
+  # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (dns/blocking disable + enable)
   # pytest: 4x pihole.toml writes (config PATCH round-trips: bool + int, change + restore each)
   # pytest: 2x pihole.toml writes (auth stress test password set + remove)
@@ -49,7 +50,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "29" ]]
+    [[ ${lines[0]} == "31" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -64,12 +65,12 @@ load 'bats_helper.bash'
   assert_line --index 0 "4"
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (3x)
-  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (5x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (5x)
+  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (7x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "3"
-  else
     assert_line --index 0 "5"
+  else
+    assert_line --index 0 "7"
   fi
 }
 

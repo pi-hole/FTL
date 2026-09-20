@@ -674,6 +674,21 @@ unsigned short get_api_string(char **buf, const bool domain)
 	return (unsigned short)len;
 }
 
+// Whether the embedded web server knows this option in this build. Passing one
+// it does not know makes mg_start() fail, which would leave the web interface
+// unavailable until the config is corrected on disk. Which options are
+// acceptable is not decided here - webserver.advancedOpts cannot be set through
+// the API at all, so reaching this code already required access to the host.
+static bool webserver_option_known(const char *key)
+{
+	// Compared the same way CivetWeb compares them, see get_option_index()
+	for(const struct mg_option *opt = mg_get_valid_options(); opt->name != NULL; opt++)
+		if(strcmp(key, opt->name) == 0)
+			return true;
+
+	return false;
+}
+
 /**
  * @brief Prints webserver options with optional debug logging.
  *
@@ -930,6 +945,16 @@ void http_init(void)
 		// (and UI/API) latency. Responses are normally sent in full, so Nagle
 		// buys nothing here.
 		"tcp_nodelay", "1",
+		// Pi-hole's web interface is built from Lua *pages* (".lp"), which are
+		// the only files the embedded web server may evaluate. CivetWeb would
+		// otherwise also run standalone ".lua" scripts and expand server-side
+		// includes in ".shtml" files, both through patterns that default to
+		// being enabled. Pin all three: an empty pattern matches nothing (see
+		// match_prefix_strlen(), whose callers all test for a match > 0) and
+		// therefore never selects a handler.
+		"lua_server_page_pattern", "**.lp$",
+		"lua_script_pattern", "",
+		"ssi_pattern", "",
 		NULL, NULL, // Optional slots for TLS configuration
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
@@ -1048,16 +1073,11 @@ void http_init(void)
 		strncpy(key, opt, key_len);
 		key[key_len] = '\0';
 
-		// Reject attempts to override the embedded web server's Lua
-		// options via advancedOpts. Pi-hole configures its own Lua
-		// handling internally, and options such as lua_background_script
-		// or lua_preload_file execute arbitrary code - allowing them here
-		// would turn this trusted-admin passthrough into a code execution
-		// vector (an authenticated user could point the web server at a
-		// script they control).
-		if(strncasecmp(key, "lua_", 4) == 0)
+		// Skip an option this build does not know rather than letting
+		// mg_start() fail over it
+		if(!webserver_option_known(key))
 		{
-			log_web(LOG_WARNING, "Ignoring disallowed webserver.advancedOpts option \"%s\": lua_* options are not permitted", key);
+			log_web(LOG_WARNING, "Ignoring unknown webserver.advancedOpts option \"%s\"", key);
 			free(key);
 			continue;
 		}

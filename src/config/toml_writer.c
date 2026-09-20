@@ -68,8 +68,15 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	const bool opened = fp == NULL;
 	if(opened)
 	{
-		install_lock = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_CLOEXEC,
+		// flock() needs no write access on a local file system, which is
+		// what lets members of the pihole group take the lock. NFS emulates
+		// it and wants a writable descriptor for an exclusive lock
+		install_lock = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
 		                    S_IRUSR | S_IWUSR | S_IRGRP);
+		if(install_lock < 0 && errno == EACCES)
+			install_lock = open(GLOBALTOMLPATH".lock", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		if(install_lock >= 0 && geteuid() == 0)
+			chown_pihole(GLOBALTOMLPATH".lock", NULL);
 		if(install_lock < 0)
 			log_warn("Cannot open %s (%s), writing the config unserialised",
 			         GLOBALTOMLPATH".lock", strerror(errno));
