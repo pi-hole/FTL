@@ -231,7 +231,8 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 
 	// Parse the route attributes
 	struct rtattr *rta = NULL;
-	static char ip[INET6_ADDRSTRLEN];
+	// Local, not static: this parser runs on concurrent API worker threads
+	char ip[INET6_ADDRSTRLEN];
 	for_each_rattr(rta, buf, len)
 	{
 		switch (rta->rta_type)
