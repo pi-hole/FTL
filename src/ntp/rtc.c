@@ -19,6 +19,10 @@
 #include <linux/rtc.h>
 // O_WRONLY
 #include <fcntl.h>
+// opendir(), readdir()
+#include <dirent.h>
+// major(), minor()
+#include <sys/sysmacros.h>
 // use_capability()
 #include "capabilities.h"
 // struct config
@@ -41,6 +45,38 @@ static void print_tm_time(const char *label, const struct tm *tm)
 	char timestr[TIMESTR_SIZE] = { 0 };
 	strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm);
 	log_info("%s %s", label, timestr);
+}
+
+// Is this device number one of the kernel's RTCs? /sys/class/rtc/<name>/dev
+// holds "major:minor" for each of them
+static bool is_rtc_device(const dev_t rdev)
+{
+	DIR *dir = opendir("/sys/class/rtc");
+	if(dir == NULL)
+		return false;
+
+	bool found = false;
+	struct dirent *ent;
+	while(!found && (ent = readdir(dir)) != NULL)
+	{
+		if(ent->d_name[0] == '.')
+			continue;
+
+		char devpath[PATH_MAX];
+		snprintf(devpath, sizeof(devpath), "/sys/class/rtc/%s/dev", ent->d_name);
+		FILE *fp = fopen(devpath, "r");
+		if(fp == NULL)
+			continue;
+
+		unsigned int maj = 0, min = 0;
+		if(fscanf(fp, "%u:%u", &maj, &min) == 2 &&
+		   maj == major(rdev) && min == minor(rdev))
+			found = true;
+		fclose(fp);
+	}
+	closedir(dir);
+
+	return found;
 }
 
 // Open one RTC device, momentarily taking ownership if the current permissions
@@ -75,12 +111,12 @@ static int open_rtc_device(const char *path)
 		return -1;
 	}
 
-	// It has to be the RTC character device - not, e.g., a regular file whose
+	// It has to be an RTC - not a regular file or another device whose
 	// ownership someone wants handed to the FTL user.
 	struct stat st = { 0 };
-	if(fstat(path_fd, &st) == -1 || !S_ISCHR(st.st_mode))
+	if(fstat(path_fd, &st) == -1 || !S_ISCHR(st.st_mode) || !is_rtc_device(st.st_rdev))
 	{
-		log_debug(DEBUG_NTP, "\"%s\" is not a character device, refusing", path);
+		log_debug(DEBUG_NTP, "\"%s\" is not an RTC device, refusing", path);
 		close(path_fd);
 		return -1;
 	}
