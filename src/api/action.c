@@ -208,16 +208,21 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		close(pipefd[0]);
 	}
 
-	// Send final chunk of size 0 showing end of data
+	// Report a failure inside the stream, while it can still reach the client.
+	// The response is already committed as 200 chunked text/plain, so a status
+	// sent from here is dropped by civetweb and the caller would see success
+	// whatever happened
+	if(code != EXIT_SUCCESS || crashed)
+	{
+		const char *const failmsg = "Gravity failed\n";
+		mg_printf(api->conn, "%zx\r\n%s\r\n", strlen(failmsg), failmsg);
+	}
+
+	// Send final chunk of size 0 showing end of data. Nothing may be written
+	// after it - the message ends here
 	mg_printf(api->conn, "0\r\n\r\n");
 
-	if(code == EXIT_SUCCESS && !crashed)
-		return send_json_success(api);
-	else
-		return send_json_error(api, 500,
-		                       "server_error",
-		                       "Gravity failed",
-		                       NULL);
+	return (code == EXIT_SUCCESS && !crashed) ? 200 : 500;
 }
 
 int api_action_gravity(struct ftl_conn *api)
@@ -231,9 +236,9 @@ int api_action_gravity(struct ftl_conn *api)
 
 	const char *extra_env = color ? "FORCE_COLOR" : NULL;
 
-	gravity_running = 1;
+	atomic_fetch_add(&gravity_running, 1u);
 	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
-	gravity_running = 0;
+	atomic_fetch_sub(&gravity_running, 1u);
 
 	// If a termination/restart was requested while gravity was running,
 	// act on it now rather than waiting up to ~1s for the GC thread to pick it up
