@@ -445,11 +445,12 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 // Their content follows from what clients send - logged requests, resolved
 // names, imported settings - so serving them hands that straight back out, and a
 // name matching the Lua server-page pattern makes the web server evaluate them
-// rather than serve them.
+// rather than serve them. The TLS certificate is generated with its private key
+// in the same file.
 #define WRITTEN_FILES(conf) { \
 	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
 	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
-	&(conf).files.gravity_tmp, &(conf).files.pcap }
+	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
 
 // Check the path relationships of a complete configuration.
 //

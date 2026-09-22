@@ -1726,6 +1726,11 @@ setup() {
   # the current value, so it takes the unchanged branch and no validator runs
   run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
+
+  # The certificate is written with its private key, so it stays out of the webroot
+  run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
+  assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
+  assert_failure 3
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
