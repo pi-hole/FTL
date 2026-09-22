@@ -93,6 +93,10 @@ static void reopen_log_fd(struct log_fd *log)
 		log->fd = -1;
 }
 
+// The logger writes with the raw write(2): FTLwrite() reports its failures
+// through the logger, which would re-enter here under the lock already held
+#undef write
+
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
 // per-file so SIGUSR2 only touches the fd that actually needs it.
