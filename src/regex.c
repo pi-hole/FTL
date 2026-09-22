@@ -452,16 +452,16 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
-				// Set special reply type if configured for this regex
-				if(regex->ext.reply != REPLY_UNKNOWN)
-					dns_cache->force_reply = regex->ext.reply;
+				// Set the reply type this regex forces (REPLY_UNKNOWN
+				// when it carries no reply option)
+				dns_cache->force_reply = regex->ext.reply;
 
 				// Store CNAME target in the shared string pool so the
 				// position can be shared safely across process boundaries.
 				// A raw heap pointer cannot be stored in SHM since it is
 				// only valid in the process that wrote it.
-				if(regex->ext.cname_target != NULL)
-					dns_cache->cname_strpos = addstr(regex->ext.cname_target);
+				// 0 = this regex has no CNAME target
+				dns_cache->cname_strpos = regex->ext.cname_target != NULL ? addstr(regex->ext.cname_target) : 0;
 			}
 
 			// Match, return true
