@@ -449,6 +449,56 @@ class TestPutDomains:
         # Clean up
         api_session.delete(url, timeout=10)
 
+    def test_put_moves_domain(self, api_session):
+        """PUT with the body naming the row's current list moves it."""
+        domain = "_pytest-move.example.com"
+        src = f"{FTL_URL}/api/domains/deny/exact/{domain}"
+        dst = f"{FTL_URL}/api/domains/allow/exact/{domain}"
+
+        r = api_session.put(src, json={"comment": "moved", "groups": [0]},
+                            timeout=10)
+        assert r.status_code in (200, 201)
+        src_id = _j(r)["domains"][0]["id"]
+
+        r = api_session.put(dst, json={"type": "deny", "kind": "exact",
+                                       "comment": "moved", "groups": [0]},
+                            timeout=10)
+        assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
+        domains = _j(r)["domains"]
+        assert len(domains) == 1
+        assert domains[0]["type"] == "allow"
+        assert domains[0]["id"] == src_id
+
+        r = api_session.get(f"{FTL_URL}/api/domains", timeout=5)
+        rows = [d for d in _j(r)["domains"] if d["domain"] == domain]
+        assert [(d["type"], d["kind"]) for d in rows] == [("allow", "exact")]
+
+        # Clean up
+        r = api_session.delete(dst, timeout=10)
+        assert r.status_code == 204
+
+    def test_put_domain_with_absent_source_uses_uri_type(self, api_session):
+        """A body type/kind without a matching row does not divert the insert."""
+        domain = "_pytest-nosrc.example.com"
+        url = f"{FTL_URL}/api/domains/allow/exact/{domain}"
+
+        r = api_session.put(url, json={"type": "deny", "kind": "exact",
+                                       "comment": "nosrc", "groups": [0]},
+                            timeout=10)
+        assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
+        domains = _j(r)["domains"]
+        assert len(domains) == 1
+        assert domains[0]["type"] == "allow"
+        assert domains[0]["kind"] == "exact"
+
+        r = api_session.get(f"{FTL_URL}/api/domains", timeout=5)
+        rows = [d for d in _j(r)["domains"] if d["domain"] == domain]
+        assert [(d["type"], d["kind"]) for d in rows] == [("allow", "exact")]
+
+        # Clean up
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
     def test_put_punycode_domain(self, api_session):
         """Punycode domains with IDNA2008-disallowed chars must be accepted.
 
