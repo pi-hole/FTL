@@ -87,7 +87,7 @@ components:
               type: string
           - in: query
             name: type
-            description: Filter by specific query type (A, AAAA, ...)
+            description: Filter by specific query type (A, AAAA, ..., OTHER for all types without a name of their own, or TYPEnnn for one of them)
             required: false
             schema:
               type: string

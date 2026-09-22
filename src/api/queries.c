@@ -455,9 +455,15 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 
-		// Query type filtering?
+		// Query type filtering? Unmapped types are stored as 100 + the
+		// DNS type, so OTHER matches everything at or above 100
 		if(GET_STR("type", typename, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "q.type=", ":type", &where);
+		{
+			if(strcasecmp(typename, "OTHER") == 0)
+				add_querystr_string(api, querystr, "q.type>=", ":type", &where);
+			else
+				add_querystr_string(api, querystr, "q.type=", ":type", &where);
+		}
 
 		// Query status filtering?
 		if(GET_STR("status", statusname, api->request->query_string) > 0)
@@ -719,11 +725,24 @@ int api_queries(struct ftl_conn *api)
 				if(strcasecmp(typename, get_query_type_str(type, NULL, NULL)) == 0)
 					break;
 			}
-			if(type < TYPE_MAX)
+			// Stored value to bind: the enum value for a mapped type, 100
+			// for OTHER (q.type>=100), 100 + nnn for TYPEnnn
+			int type_val = -1;
+			char *endptr = NULL;
+			unsigned long nnn = 0;
+			if(type == TYPE_OTHER)
+				type_val = 100;
+			else if(type < TYPE_MAX)
+				type_val = type;
+			else if(strncasecmp(typename, "TYPE", 4) == 0 && isdigit((unsigned char)typename[4]) &&
+			        (nnn = strtoul(typename + 4, &endptr, 10)) <= UINT16_MAX &&
+			        *endptr == '\0')
+				type_val = 100 + nnn;
+			if(type_val >= 0)
 			{
-				log_web_debug(DEBUG_API, "adding :type = %d to query", type);
+				log_web_debug(DEBUG_API, "adding :type = %d to query", type_val);
 				filtering = true;
-				rc = sqlite3_bind_int(read_stmt, idx, type);
+				rc = sqlite3_bind_int(read_stmt, idx, type_val);
 				if(rc != SQLITE_OK)
 				{
 					ret = send_json_error(api, 500,
@@ -1026,7 +1045,15 @@ int api_queries(struct ftl_conn *api)
 		char buffer[20] = { 0 };
 		JSON_ADD_NUMBER_TO_OBJECT(item, "id", sqlite3_column_int64(read_stmt, 0)); // q.id);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "time", sqlite3_column_double(read_stmt, 1)); // timestamp
-		query.type = sqlite3_column_int(read_stmt, 2); // type
+		// Unmapped query types are stored as 100 + the DNS type
+		const int type = sqlite3_column_int(read_stmt, 2); // type
+		if(type >= 100)
+		{
+			query.type = TYPE_OTHER;
+			query.qtype = type - 100;
+		}
+		else
+			query.type = type;
 		query.status = sqlite3_column_int(read_stmt, 3); // status
 		query.reply = sqlite3_column_int(read_stmt, 7); // reply_type
 		query.dnssec = sqlite3_column_int(read_stmt, 9); // dnssec
