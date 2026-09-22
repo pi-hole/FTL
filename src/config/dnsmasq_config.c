@@ -1098,8 +1098,10 @@ bool read_legacy_dhcp_static_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "dhcp-host=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "dhcp-host=", sizeof("dhcp-host=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
@@ -1161,8 +1163,10 @@ bool read_legacy_cnames_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "cname=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "cname=", sizeof("cname=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
