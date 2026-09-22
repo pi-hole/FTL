@@ -1582,6 +1582,12 @@ setup() {
   assert_line --index 0 "Unknown config option misc.privacyLLL, did you mean:"
   assert_line --index 1 " - misc.privacylevel"
   assert_failure 4
+  # A substring of a real key is answered with the whole key
+  run bash -c './pihole-FTL --config upstreams'
+  assert_line --index 0 "Unknown config option upstreams, did you mean:"
+  assert_line --index 1 " - dns.upstreams"
+  refute_line " - upstreams"
+  assert_failure 4
 }
 
 @test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
