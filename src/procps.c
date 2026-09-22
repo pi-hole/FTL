@@ -293,7 +293,8 @@ double parse_proc_stat(void)
 	if(statfile == NULL)
 		return -1.0;
 
-	unsigned long user, nice, system;
+	// The kernel prints these as unsigned 64-bit values
+	unsigned long long user, nice, system;
 	/*
 	    user   (1) Time spent in user mode. (includes guest and guest_nice time)
 
@@ -333,7 +334,7 @@ double parse_proc_stat(void)
 	{
 		if(strncmp(line, "cpu ", 4) == 0)
 		{
-			if(sscanf(line, "cpu %lu %lu %lu",
+			if(sscanf(line, "cpu %llu %llu %llu",
 			       &user, &nice, &system) != 3)
 			{
 				log_debug(DEBUG_ANY, "Failed to parse CPU line in /proc/stat");
@@ -378,8 +379,8 @@ double parse_proc_self_stat(void)
 		return -1.0;
 
 	// Read utime and stime
-	unsigned long utime = 0, stime = 0;
-	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &utime, &stime) == 2;
+	unsigned long long utime = 0, stime = 0;
+	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &utime, &stime) == 2;
 	fclose(file);
 
 	// If we could not parse the file, return -1.0
