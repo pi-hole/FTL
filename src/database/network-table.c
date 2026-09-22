@@ -23,7 +23,7 @@
 #include "resolve.h"
 // killed
 #include "signals.h"
-// nlneigh(), nllinks()
+// nlneigh(), nllinks(), nladdrs()
 #include "tools/netlink.h"
 // DHCPLEASESFILE
 #include "config/dnsmasq_config.h"
@@ -1103,6 +1103,14 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
 	          cJSON_GetArraySize(links));
 
+	// Attach the IP addresses to their links
+	if(!nladdrs(links, false))
+	{
+		log_err("Failed to get addresses, cannot update network table");
+		cJSON_Delete(links);
+		return false;
+	}
+
 	// Parse link information
 	cJSON *link = NULL;
 	cJSON_ArrayForEach(link, links)
@@ -1111,8 +1119,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		if(link == NULL)
 			continue;
 
-		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "ifname"));
-		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "mac"));
+		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "name"));
+		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "address"));
 
 		// Do not try to read IP addresses when the information above is incomplete
 		if(iface == NULL || strlen(iface) == 0 ||

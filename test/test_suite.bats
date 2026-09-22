@@ -1247,6 +1247,32 @@ setup() {
   assert_output "${expected}"
 }
 
+@test "Local interfaces are added to the network table" {
+  # Use the first interface with a hardware address, fall back to lo
+  iface="lo"
+  for dir in /sys/class/net/*; do
+    [[ "$(basename "${dir}")" != "lo" && -s "${dir}/address" ]] || continue
+    iface="$(basename "${dir}")"
+    break
+  done
+  mac="$(cat "/sys/class/net/${iface}/address")"
+  addr="$(curl -s 127.0.0.1/api/network/interfaces | jq -r ".interfaces[] | select(.name == \"${iface}\") | .addresses[0].address")"
+  [[ -n "${mac}" && -n "${addr}" && "${addr}" != "null" ]]
+
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+
+  query="SELECT n.interface || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE lower(n.hwaddr) = lower('${mac}') AND a.ip = '${addr}';"
+  expected="${iface}|${addr}"
+  for _ in $(seq 1 30); do
+    result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
+    [[ "${result}" == "${expected}" ]] && break
+    sleep 0.1
+  done
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}"
+  assert_output "${expected}"
+}
+
 @test "alias-client is imported and used for configured client" {
   run bash -c 'grep -c "Added alias-client \"some-aliasclient\" (aliasclient-0) with FTL ID 0" /var/log/pihole/FTL.log'
   assert_line --index 0 "1"
