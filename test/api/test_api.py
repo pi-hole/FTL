@@ -882,8 +882,17 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "types" in data
         assert isinstance(data["types"], dict)
+        # Every stored query has exactly one type, OTHER included
+        assert set(data["types"]) == {
+            "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR", "MX",
+            "DS", "RRSIG", "DNSKEY", "NS", "SVCB", "HTTPS", "OTHER"}
+        assert sum(data["types"].values()) == summary["sum_queries"], \
+            json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------

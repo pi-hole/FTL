@@ -669,11 +669,10 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       "Failed to open long-term database",
 		                       NULL);
 
-	// Prepare statement once; bind :from and :until once; rebind only
-	// :type per iteration to avoid (TYPE_MAX - TYPE_A) repeated prepares.
-	const char *querystr = "SELECT COUNT(*) FROM query_storage "
+	// Count all types in one pass over the range
+	const char *querystr = "SELECT type,COUNT(*) FROM query_storage "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
-	                       "AND type = :type";
+	                       "GROUP BY type";
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -687,7 +686,6 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Bind the fixed parameters once before the loop
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK ||
 	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
@@ -701,24 +699,31 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	cJSON *types = JSON_NEW_OBJECT();
-	for(int i = TYPE_A; i < TYPE_MAX; i++)
+	// The database stores the enum value for the mapped types and
+	// 100 + the DNS type for everything else (TYPE_OTHER)
+	unsigned int counts[TYPE_MAX] = { 0 };
+	while(sqlite3_step(stmt) == SQLITE_ROW)
 	{
-		// Add 1 as type is stored one-based in the database for historical reasons
-		if((rc = sqlite3_bind_int(stmt, 3, i + 1)) != SQLITE_OK)
-		{
-			log_web(LOG_ERR, "api_stats_database_query_types() - SQL error bind type (%i): %s",
-			        rc, sqlite3_errstr(rc));
-			break;
-		}
-		int count = 0;
-		if(sqlite3_step(stmt) == SQLITE_ROW)
-			count = sqlite3_column_int(stmt, 0);
-		sqlite3_reset(stmt);
-		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), count);
+		int type = sqlite3_column_int(stmt, 0);
+		const int count = sqlite3_column_int(stmt, 1);
+		if(type >= 100)
+			type = TYPE_OTHER;
+		if(type < TYPE_A || type >= TYPE_MAX)
+			continue;
+		counts[type] += count;
 	}
 
 	sqlite3_finalize(stmt);
+
+	// Same layout as the in-memory endpoint: OTHER comes last
+	cJSON *types = JSON_NEW_OBJECT();
+	for(int i = TYPE_A; i < TYPE_MAX; i++)
+	{
+		if(i == TYPE_OTHER)
+			continue;
+		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), counts[i]);
+	}
+	JSON_ADD_NUMBER_TO_OBJECT(types, "OTHER", counts[TYPE_OTHER]);
 
 	// Close (= unlock) database connection
 	dbclose(&db);
