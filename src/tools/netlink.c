@@ -573,7 +573,9 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			}
 
 			case IFA_LABEL:
-				rta_string(rta, ifname, sizeof(ifname));
+				// The label of an alias address ("eth0:1")
+				// differs from the link name, so it is only
+				// reported here and not used to find the link
 				add_rta_string(addr, ifaTypeToString(rta->rta_type), rta);
 				break;
 
@@ -641,9 +643,13 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 		}
 	}
 
-	// Get the interface name if it is not already set
-	if(!ifname[0])
-		if_indextoname(ifa->ifa_index, ifname);
+	// Look the link up by the index the kernel attached the address to
+	if(if_indextoname(ifa->ifa_index, ifname) == NULL)
+	{
+		log_debug(DEBUG_NETLINK, "Address refers to unknown interface %u, skipping", ifa->ifa_index);
+		cJSON_Delete(addr);
+		return 0;
+	}
 
 	// Debug output
 	if(config.debug.netlink.v.b)
