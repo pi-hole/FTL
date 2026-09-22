@@ -234,7 +234,10 @@ static int api_network_devices_GET(struct ftl_conn *api)
 			// Possible error handling
 			if(sql_msg != NULL)
 			{
+				// item is not part of devices yet, so it has
+				// to be released on its own
 				cJSON_Delete(ips);
+				cJSON_Delete(item);
 				cJSON_Delete(devices);
 
 				networkTable_readIPsFinalize(ip_stmt);
