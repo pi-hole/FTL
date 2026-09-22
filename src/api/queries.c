@@ -271,13 +271,20 @@ int api_queries(struct ftl_conn *api)
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
-		// Minimum structure is
-		// {"queries":[], "cursor": null}
+		// Same keys as the regular reply below, with nothing to show:
+		// there are no queries available, send NULL cursor and zero counts
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *queries = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
-		// There are no more queries available, send NULL cursor
 		JSON_ADD_NULL_TO_OBJECT(json, "cursor");
+		JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", 0);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", 0);
+		int draw = 0;
+		if(api->request->query_string != NULL)
+			get_int_var(api->request->query_string, "draw", &draw);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", 0.0);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp_disk", 0.0);
 		JSON_SEND_OBJECT(json);
 	}
 

@@ -272,7 +272,8 @@ components:
                 text: null
         cursor:
           type: integer
-          description: Database ID of most recent query to show
+          nullable: true
+          description: Database ID of most recent query to show (null when there are no queries to show, e.g., at privacy level 3)
           example: 175881
         recordsTotal:
           type: integer
