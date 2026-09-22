@@ -264,7 +264,6 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			}
 
 			case RTA_FLOW: // route realm
-			case RTA_METRICS: // route metric
 			case RTA_MARK: // route mark
 			case RTA_EXPIRES: // route expires (in seconds)
 			case RTA_UID: // user id
@@ -276,6 +275,30 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
+				break;
+			}
+
+			case RTA_METRICS: // nested RTAX_* route metrics
+			{
+				if(!detailed)
+					break;
+				struct rtattr *mx[RTAX_MAX + 1];
+				parse_rtattr_nested(mx, RTAX_MAX, rta);
+				cJSON *metrics = cJSON_CreateObject();
+				for(unsigned int i = 1; i <= RTAX_MAX; i++)
+				{
+					if(mx[i] == NULL)
+						continue;
+					const char *name = rtaxTypeToString(i);
+					// The congestion control algorithm is the
+					// only string in here, everything else is
+					// a 32 bit number
+					if(i == RTAX_CC_ALGO)
+						add_rta_string(metrics, name, mx[i]);
+					else if(rta_payload_ok(mx[i], sizeof(uint32_t), name))
+						cJSON_AddNumberToObject(metrics, name, *(uint32_t*)RTA_DATA(mx[i]));
+				}
+				cJSON_AddItemToObject(route, rtaTypeToString(rta->rta_type), metrics);
 				break;
 			}
 
