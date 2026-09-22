@@ -212,13 +212,15 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	JSON_ADD_ITEM_TO_OBJECT(memory, "ram", ram);
 
 	cJSON *swap = JSON_NEW_OBJECT();
+	// The kernel reports the swap counters in units of mem_unit, so the
+	// products are computed in 64 bits before they are scaled to kB
 	// Total swap space size
-	const float total_swap = info.totalswap * info.mem_unit / 1024;
+	const float total_swap = (uint64_t)info.totalswap * info.mem_unit / 1024;
 	JSON_ADD_NUMBER_TO_OBJECT(swap, "total", total_swap);
 	// Swap space still available
-	JSON_ADD_NUMBER_TO_OBJECT(swap, "free", info.freeswap * info.mem_unit / 1024);
+	JSON_ADD_NUMBER_TO_OBJECT(swap, "free", (uint64_t)info.freeswap * info.mem_unit / 1024);
 	// Used swap space
-	const float used_swap = (info.totalswap - info.freeswap) * info.mem_unit / 1024;
+	const float used_swap = (uint64_t)(info.totalswap - info.freeswap) * info.mem_unit / 1024;
 	JSON_ADD_NUMBER_TO_OBJECT(swap, "used", used_swap);
 	JSON_ADD_NUMBER_TO_OBJECT(swap, "%used", total_swap > 0 ? 100.0*used_swap/total_swap : 0);
 	JSON_ADD_ITEM_TO_OBJECT(memory, "swap", swap);
