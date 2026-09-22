@@ -483,10 +483,13 @@ int api_history_database_clients(struct ftl_conn *api)
 		                       "Failed to open long-term database",
 		                       NULL);
 
-	const char *querystr = "SELECT DISTINCT(client),ip,name FROM query_storage "
+	// Key clients by IP address like the in-memory endpoint does. The same
+	// address can have several client_by_id rows (one per name seen), so
+	// group by the address and prefer a non-empty name
+	const char *querystr = "SELECT ip,MAX(name),COUNT(*) FROM query_storage "
 	                       "JOIN client_by_id ON client_by_id.id = client "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
-	                       "ORDER BY client DESC";
+	                       "GROUP BY ip ORDER BY ip";
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt = NULL;
@@ -534,15 +537,18 @@ int api_history_database_clients(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
-		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 1), item);
+		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 1));
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", sqlite3_column_int(stmt, 2));
+		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 0), item);
 	}
 	sqlite3_finalize(stmt);
 
-	// Build SQL string
-	querystr = "SELECT (timestamp/:interval)*:interval interval,client,COUNT(*) FROM query_storage "
+	// Build SQL string. The timestamp is stored with a fractional part, so
+	// it needs to be truncated for the integer division to form slots
+	querystr = "SELECT (CAST(timestamp AS INTEGER)/:interval)*:interval interval,ip,COUNT(*) FROM query_storage "
+	           "JOIN client_by_id ON client_by_id.id = client "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "GROUP BY interval,client ORDER BY interval DESC, client DESC";
+	           "GROUP BY interval,ip ORDER BY interval DESC, ip";
 
 	// Prepare SQLite statement
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
