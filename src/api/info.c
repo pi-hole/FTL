@@ -1049,11 +1049,17 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 
 	// Delete message with this ID from the database
 	int deleted = 0;
-	delete_message(ids, &deleted);
+	const bool success = delete_message(ids, &deleted);
 
 	// Free memory
 	free(id);
 	cJSON_Delete(ids);
+
+	if(!success)
+		return send_json_error(api, 500,
+		                       "internal_error",
+		                       "Failed to delete message(s) from the database",
+		                       NULL);
 
 	// Send empty reply with codes:
 	// - 204 No Content (if any items were deleted)
