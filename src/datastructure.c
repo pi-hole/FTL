@@ -771,8 +771,10 @@ void FTL_reload_all_domainlists(void)
 	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
 	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 
-	// Read and compile possible regex filters
-	// only after having called gravityDB_reopen()
+	// Advance the shared regex generation so that other forks reload
+	// their regex on their next lookup, then read and compile possible
+	// regex filters (only after having called gravityDB_reopen())
+	counters->regex_change++;
 	read_regex_from_database();
 
 	// Check for inaccessible adlist URLs
