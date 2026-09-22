@@ -550,6 +550,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				// Special case: empty string -> 0.0.0.0
 				conf_item->v.in_addr.s_addr = INADDR_ANY;
+				item->valid = true;
 			}
 			else if(inet_pton(AF_INET, envvar, &addr4))
 			{
@@ -570,6 +571,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				// Special case: empty string -> ::
 				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+				item->valid = true;
 			}
 			else if(inet_pton(AF_INET6, envvar, &addr6))
 			{
