@@ -19,9 +19,12 @@
 // db
 #include "database/common.h"
 
-// SQL Query type filters for the database
+// SQL Query type filters for the database, mirroring is_blocked(),
+// is_cached() and is_forwarded()
 #define FILTER_STATUS_NOT_BLOCKED "status IN (0,2,3,12,13,14,17)"
 #define FILTER_STATUS_BLOCKED "status NOT IN (0,2,3,12,13,14,17)"
+#define FILTER_STATUS_CACHED "status IN (3,17)"
+#define FILTER_STATUS_FORWARDED "status IN (2,12,13)"
 
 int api_history_database(struct ftl_conn *api)
 {
@@ -762,22 +765,24 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       NULL);
 
 	// Perform simple SQL queries
-	unsigned int sum_queries = 0;
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM query_storage "
+	           "WHERE timestamp >= :from AND timestamp <= :until";
+	const int sum_queries = db_query_int_from_until(db, querystr, from, until);
+
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "AND status = 3";
+	           "AND " FILTER_STATUS_CACHED;
 	int cached_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-		   "AND status != 0 AND status != 2 AND status != 3";
+	           "AND " FILTER_STATUS_BLOCKED;
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 
-	// A failed query reports a negative sentinel, and sum_queries is
-	// unsigned - adding it in would wrap into an enormous total and be
-	// served as fact. api_stats_database_summary() checks the same way
-	if(cached_queries < 0 || blocked_queries < 0)
+	// A failed query reports a negative sentinel which must not be served
+	// as fact. api_stats_database_summary() checks the same way
+	if(sum_queries < 0 || cached_queries < 0 || blocked_queries < 0)
 	{
 		// Close (= unlock) database connection
 		dbclose(&db);
@@ -788,13 +793,14 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	sum_queries += cached_queries;
-	sum_queries += blocked_queries;
-
-	querystr = "SELECT forward,COUNT(*) FROM query_storage "
+	// Count only the queries an upstream answered (or is retrying), like
+	// the in-memory upstream counters: a forwarded query that ended up
+	// blocked keeps its upstream for the record but is not counted here
+	querystr = "SELECT f.forward,COUNT(*) FROM query_storage q "
+	           "JOIN forward_by_id f ON q.forward = f.id "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-		   "AND forward IS NOT NULL "
-	           "GROUP BY forward ORDER BY forward";
+	           "AND " FILTER_STATUS_FORWARDED " "
+	           "GROUP BY q.forward ORDER BY q.forward";
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt = NULL;
@@ -875,9 +881,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		forwarded_queries += count;
 	}
 	sqlite3_finalize(stmt);
-
-	// Add number of forwarded queries to total query count
-	sum_queries += forwarded_queries;
 
 	// Add cache and blocklist as upstreams
 	cJSON *cached = JSON_NEW_OBJECT();
