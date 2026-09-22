@@ -141,25 +141,23 @@ int FTLvfprintf(FILE *stream, const char *file, const char *func, const int line
 	}
 
 	// Actually write into the requested stream now
-	char *_buffer = buffer;
+	int ret;
 	do
 	{
 		// Reset errno before trying to write
 		errno = 0;
-		// Print buffer into stream and advance working pointer by number of
-		// written bytes
-		_buffer += fputs(_buffer, stream);
+		// Print buffer into stream, fputs() only tells success or failure
+		ret = fputs(buffer, stream);
 	}
-	// Try to write the remaining content into the stream if this failed due
-	// to an interruption by an incoming signal
-	while(_buffer < buffer && errno == EINTR);
+	// Try again if this failed due to an interruption by an incoming signal
+	while(ret == EOF && errno == EINTR);
 
 	// Backup errno value
 	_errno = errno;
 
 	// Final error checking (may have failed for some other reason then an
 	// EINTR = interrupted system call)
-	if(_buffer < buffer)
+	if(ret == EOF)
 	{
 		syscalls_report_error("vfprintf() did not print all characters",
 		                      stream, errno, format, func, file, line);
