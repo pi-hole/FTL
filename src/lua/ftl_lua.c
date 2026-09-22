@@ -117,39 +117,27 @@ static int pihole_hostname(lua_State *L) {
 	return 1; // number of results
 }
 
-static void get_abspath(char abs_filename[1024], char rel_filename[1024], const char *filename)
+// Build the absolute path (webroot + webhome + filename) and, if requested,
+// the relative path (prefix + webhome + filename) of a web file. Returns
+// false when either path does not fit into its buffer.
+static bool get_abspath(char abs_filename[1024], char rel_filename[1024], const char *filename)
 {
-	size_t abs_filename_len = 1023;
-	size_t rel_filename_len = 1023;
-	if(config.webserver.paths.webroot.v.s != NULL)
-	{
-		strncpy(abs_filename, config.webserver.paths.webroot.v.s, abs_filename_len);
-		abs_filename_len -= strlen(config.webserver.paths.webroot.v.s);
-	}
+	const char *webroot = config.webserver.paths.webroot.v.s != NULL ? config.webserver.paths.webroot.v.s : "";
+	const char *webhome = config.webserver.paths.webhome.v.s != NULL ? config.webserver.paths.webhome.v.s : "";
+	const char *prefix = config.webserver.paths.prefix.v.s != NULL ? config.webserver.paths.prefix.v.s : "";
 
-	// Add prefix to rel_filename if applicable
-	if(rel_filename != NULL && config.webserver.paths.prefix.v.s[0] != '\0')
-	{
-		strncpy(rel_filename, config.webserver.paths.prefix.v.s, rel_filename_len);
-		rel_filename_len -= strlen(config.webserver.paths.prefix.v.s);
-	}
+	const int abs_len = snprintf(abs_filename, 1024, "%s%s%s", webroot, webhome, filename);
+	if(abs_len < 0 || abs_len >= 1024)
+		return false;
 
-	// Add webhome to abs_filename and rel_filename if applicable
-	if(config.webserver.paths.webhome.v.s != NULL)
-	{
-		strncat(abs_filename, config.webserver.paths.webhome.v.s, abs_filename_len);
-		abs_filename_len -= strlen(config.webserver.paths.webhome.v.s);
-
-		// Add webhome to rel_filename
-		if(rel_filename != NULL)
-		{
-			strncat(rel_filename, config.webserver.paths.webhome.v.s, rel_filename_len);
-			rel_filename_len -= strlen(config.webserver.paths.webhome.v.s);
-		}
-	}
-	strncat(abs_filename, filename, abs_filename_len);
 	if(rel_filename != NULL)
-		strncat(rel_filename, filename, rel_filename_len);
+	{
+		const int rel_len = snprintf(rel_filename, 1024, "%s%s%s", prefix, webhome, filename);
+		if(rel_len < 0 || rel_len >= 1024)
+			return false;
+	}
+
+	return true;
 }
 
 // pihole.fileversion(<filename:str>)
@@ -163,7 +151,8 @@ static int pihole_fileversion(lua_State *L) {
 	// Construct full filename if webroot/webhome are available
 	char abspath[1024] = { 0 };
 	char relpath[1024] = { 0 };
-	get_abspath(abspath, relpath, filename);
+	if(!get_abspath(abspath, relpath, filename))
+		return luaL_error(L, "Path to \"%s\" is too long", filename);
 
 	// Check if file exists
 	if(!file_exists(abspath))
@@ -234,7 +223,8 @@ static int pihole_include(lua_State *L) {
 
 	// Construct full filename if webroot/webhome are available
 	char abspath[1024] = { 0 };
-	get_abspath(abspath, NULL, filename);
+	if(!get_abspath(abspath, NULL, filename))
+		return luaL_error(L, "Path to \"%s\" is too long", filename);
 
 	// Load and execute file
 	luaL_dofile(L, abspath);
