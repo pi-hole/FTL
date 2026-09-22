@@ -21,6 +21,7 @@ const char *domainname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
+bool join_db_thread(const time_t timeout);
 void set_nice(void);
 void calc_cpu_usage(const unsigned int interval);
 float get_ftl_cpu_percentage(void) __attribute__((pure));
