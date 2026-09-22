@@ -1662,7 +1662,8 @@ void DB_read_queries(void)
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
 		query->cacheID = -1;
-		query->id = counters->queries;
+		// No dnsmasq ID belongs to an imported query
+		query->id = -1;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
