@@ -25,7 +25,7 @@ void timer_start(const enum timers i)
 		log_crit("Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
-	clock_gettime(CLOCK_REALTIME, &t0[i]);
+	clock_gettime(CLOCK_MONOTONIC, &t0[i]);
 }
 
 static struct timespec diff(struct timespec start, struct timespec end)
@@ -66,7 +66,7 @@ double timer_elapsed_msec(const enum timers i)
 		exit(EXIT_FAILURE);
 	}
 	struct timespec t1, td;
-	clock_gettime(CLOCK_REALTIME, &t1);
+	clock_gettime(CLOCK_MONOTONIC, &t1);
 	td = diff(t0[i], t1);
 	return td.tv_sec * 1e3 + td.tv_nsec * 1e-6;
 }
