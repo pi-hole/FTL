@@ -354,12 +354,9 @@ int api_client_suggestions(struct ftl_conn *api)
 		return 0;
 	}
 
-	// Does the user request a custom number of addresses per device to be included?
+	// Does the user request a custom number of suggested clients?
 	unsigned int count = 50;
 	get_uint_var(api->request->query_string, "count", &count);
-
-	bool ipv4_only = true;
-	get_bool_var(api->request->query_string, "ipv4_only", &ipv4_only);
 
 	// Open pihole-FTL.db database file connection
 	sqlite3 *db = dbopen(true, false);
