@@ -1710,6 +1710,10 @@ bool nlneigh(cJSON *arp_entries)
  */
 void get_gateway_name(char gateway[MAXIFACESTRLEN])
 {
+	// Start empty so the fallback below does not depend on what the
+	// caller passed in
+	gateway[0] = '\0';
+
 	cJSON *json = cJSON_CreateObject();
 	cJSON *routes = cJSON_CreateArray();
 	nlroutes(routes, false);
