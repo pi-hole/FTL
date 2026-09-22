@@ -1442,6 +1442,18 @@ class TestHistoryDatabase:
             f"{FTL_URL}/api/history/database/clients?from=1&until=9999999999", timeout=5))
         assert "history" in data
         assert "clients" in data
+        clients = data["clients"]
+        # history[].data and clients share their keys, and the per-slot
+        # counts of a client add up to its total
+        totals = {}
+        for slot in data["history"]:
+            for client, count in slot["data"].items():
+                assert client in clients, json.dumps(data, indent=2)
+                totals[client] = totals.get(client, 0) + count
+        for client, item in clients.items():
+            assert "name" in item and "total" in item, json.dumps(item, indent=2)
+            assert totals.get(client, 0) == item["total"], \
+                json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
