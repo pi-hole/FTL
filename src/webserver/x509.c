@@ -457,16 +457,16 @@ static bool check_wildcard_domain(const char *domain, const char *san, const siz
 	return strncasecmp(domain + label_len, tail, tail_len) == 0;
 }
 
-// Copy the first Common Name (CN) of an X.509 name into buf as a NUL-terminated
-// string, returning its length or -1 if there is none (or it does not fit).
-// Replaces the convenience X509_NAME_get_text_by_NID(), deprecated in OpenSSL
-// 4.0, with the plain, non-deprecated entry accessors.
-static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
+// Copy the first entry of the given type (NID) of an X.509 name into buf as a
+// NUL-terminated string, returning its length or -1 if there is none (or it
+// does not fit). Replaces the convenience X509_NAME_get_text_by_NID(),
+// deprecated in OpenSSL 4.0, with the plain, non-deprecated entry accessors.
+static int get_name_entry(const X509_NAME *name, const int nid, char *buf, size_t buflen)
 {
 	if(buflen == 0)
 		return -1;
 	buf[0] = '\0';
-	const int idx = X509_NAME_get_index_by_NID(name, NID_commonName, -1);
+	const int idx = X509_NAME_get_index_by_NID(name, nid, -1);
 	if(idx < 0)
 		return -1;
 	const X509_NAME_ENTRY *entry = X509_NAME_get_entry(name, idx);
@@ -480,6 +480,12 @@ static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
 	memcpy(buf, txt, (size_t)len);
 	buf[len] = '\0';
 	return len;
+}
+
+// Copy the first Common Name (CN) of an X.509 name into buf
+static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
+{
+	return get_name_entry(name, NID_commonName, buf, buflen);
 }
 
 // Check whether the given domain is covered by the certificate, either through
@@ -715,16 +721,19 @@ bool is_pihole_certificate(const char *certfile)
 		return false;
 	}
 
-	// Check if both the issuer and subject common name are "pi.hole"
+	// Our certificates are signed by the CA generate_certificate() creates,
+	// so the issuer identifies them. The subject CN is the configured
+	// webserver domain, which need not be pi.hole.
 	char issuer_cn[256] = { 0 };
-	char subject_cn[256] = { 0 };
-	get_common_name(X509_get_issuer_name(crt), issuer_cn, sizeof(issuer_cn));
-	get_common_name(X509_get_subject_name(crt), subject_cn, sizeof(subject_cn));
+	char issuer_o[256] = { 0 };
+	const X509_NAME *issuer = X509_get_issuer_name(crt);
+	get_name_entry(issuer, NID_commonName, issuer_cn, sizeof(issuer_cn));
+	get_name_entry(issuer, NID_organizationName, issuer_o, sizeof(issuer_o));
 
 	// Free resources
 	X509_free(crt);
 
-	return strcasecmp(issuer_cn, "pi.hole") == 0 && strcasecmp(subject_cn, "pi.hole") == 0;
+	return strcasecmp(issuer_cn, PIHOLE_ISSUER_CN) == 0 && strcasecmp(issuer_o, PIHOLE_ISSUER_O) == 0;
 }
 
 #else
