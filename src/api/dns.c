@@ -86,8 +86,8 @@ static int set_blocking(struct ftl_conn *api)
 	{
 		// The blocking status does not need to be changed
 
-		// Delete a possibly running timer
-		set_blockingmode_timer(time, true);
+		// Restart the timer (-1 disables all running timers)
+		set_blockingmode_timer(time, !target_status);
 
 		log_web_debug(DEBUG_API, "No change in blocking mode, resetting timer");
 	}
