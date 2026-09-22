@@ -1102,7 +1102,8 @@ class TestNetwork:
         devices = data["devices"]
         hwaddrs = [d["hwaddr"] for d in devices]
         assert "aa:bb:cc:dd:ee:ff" in hwaddrs, json.dumps(hwaddrs, indent=2)
-        assert "ip-127.0.0.1" in hwaddrs
+        ips = [ip["ip"] for d in devices for ip in d["ips"]]
+        assert "127.0.0.1" in ips, json.dumps(devices, indent=2)
 
     def test_network_interfaces(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/network/interfaces", timeout=5))
