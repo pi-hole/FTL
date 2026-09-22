@@ -303,9 +303,19 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 	// We start from 4 as the first 32 bit are the DHCP magic coockie (verified before)
 	for(unsigned int x = 4; x < MAX_DHCP_OPTIONS_LENGTH;)
 	{
-		// End of options
+		// PAD option (0) is a single byte without length, skip it
 		if(offer_packet->options[x] == 0)
+		{
+			x++;
+			continue;
+		}
+
+		// END option (255) is a single byte, nothing follows it
+		if(offer_packet->options[x] == 255)
+		{
+			printf("   --- end of options ---\n");
 			break;
+		}
 
 		// Sanity check
 		if(x >= MAX_DHCP_OPTIONS_LENGTH-2)
@@ -349,10 +359,6 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 
 					printf("%s: %s\n", opttab[i].name, IP4STR(addr_list));
 				}
-
-				// Special case: optlen == 0
-				if(optlen == 0)
-					printf("--- end of options ---\n");
 			}
 			else if(opttab[i].size & OT_NAME)
 			{
@@ -452,18 +458,18 @@ static void print_dhcp_offer(struct in_addr source, struct dhcp_packet_data *off
 			}
 			else if(opttype == 158) // DHCPv4 PCP Option (RFC 7291)
 			{                       // https://tools.ietf.org/html/rfc7291#section-4
-				if(optlen < 1)
-					break;
-				uint16_t list_length = offer_packet->options[x++] / 4; // 4 bytes per list entry
+				// The first byte is the list length in bytes (4 per
+				// entry), the addresses follow it
+				const uint16_t list_length = optlen > 0 ? offer_packet->options[x] / 4 : 0;
 				// Loop over IPv4 lists
 				for(unsigned int n = 0; n < list_length; n++)
 				{
 					struct in_addr addr_list = { 0 };
-					// The list-length byte above consumed one byte, so
-					// only optlen-1 bytes of address data remain
+					// The list-length byte takes one byte, so only
+					// optlen-1 bytes of address data remain
 					if(optlen < 1 + (n+1)*sizeof(addr_list.s_addr))
 						break;
-					memcpy(&addr_list.s_addr, &offer_packet->options[x+n*sizeof(addr_list.s_addr)], sizeof(addr_list.s_addr));
+					memcpy(&addr_list.s_addr, &offer_packet->options[x+1+n*sizeof(addr_list.s_addr)], sizeof(addr_list.s_addr));
 					if(n > 0)
 						printf("   ");
 
