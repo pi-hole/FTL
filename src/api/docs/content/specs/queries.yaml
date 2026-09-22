@@ -213,7 +213,7 @@ components:
                     nullable: true
                   time:
                     type: number
-                    description: Time until the response was received (ms, negative if N/A)
+                    description: Time until the response was received (seconds, 0 if not available)
               list_id:
                 type: integer
                 description: ID of corresponding database table (adlist for anti-/gravity, else domainlist) (`NULL` if N/A)
@@ -245,7 +245,7 @@ components:
               dnssec: "INSECURE"
               reply:
                 type: "IP"
-                time: 19
+                time: 0.019
               list_id: NULL
               upstream: "localhost#5353"
               id: 112421354
@@ -263,7 +263,7 @@ components:
               dnssec: "UNKNOWN"
               reply:
                 type: "IP"
-                time: 12.3
+                time: 0.0123
               list_id: NULL
               upstream: "localhost#5353"
               id: 112421355
