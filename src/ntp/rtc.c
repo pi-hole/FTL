@@ -23,6 +23,8 @@
 #include <dirent.h>
 // major(), minor()
 #include <sys/sysmacros.h>
+// PATH_MAX
+#include <limits.h>
 // use_capability()
 #include "capabilities.h"
 // struct config
