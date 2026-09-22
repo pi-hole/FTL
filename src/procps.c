@@ -15,6 +15,8 @@
 // getpid()
 #include <unistd.h>
 #include <sys/times.h>
+// PATH_MAX
+#include <limits.h>
 // config
 #include "config/config.h"
 // readPID()
@@ -42,16 +44,23 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 	snprintf(filename, sizeof(filename), "/proc/%d/exe", pid);
 
 	// Read link destination
-	ssize_t len = readlink(filename, name, PROC_PATH_SIZ - 1);
+	char exe[PATH_MAX] = { 0 };
+	ssize_t len = readlink(filename, exe, sizeof(exe) - 1);
 	if(len > 0)
 	{
 		// If readlink() succeeded, terminate string
-		name[len] = '\0';
+		exe[len] = '\0';
+
+		// The kernel appends " (deleted)" when the binary on disk has
+		// been replaced or removed, strip it
+		const char *deleted = " (deleted)";
+		const size_t dlen = strlen(deleted);
+		if((size_t)len > dlen && strcmp(exe + len - dlen, deleted) == 0)
+			exe[len - dlen] = '\0';
 
 		// Strip path from name
-		char *ptr = strrchr(name, '/');
-		if(ptr != NULL)
-			memmove(name, ptr+1, len - (ptr - name));
+		const char *ptr = strrchr(exe, '/');
+		snprintf(name, PROC_PATH_SIZ, "%s", ptr != NULL ? ptr + 1 : exe);
 
 		return true;
 	}
