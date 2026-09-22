@@ -332,6 +332,73 @@ class TestPutGroups:
         # Clean up
         api_session.delete(url, timeout=10)
 
+    def test_put_renames_group(self, api_session):
+        """PUT with a different name renames the group and replies with it."""
+        old_name = "_pytest_rename_old"
+        new_name = "_pytest_rename_new"
+
+        # Create
+        r = api_session.put(f"{FTL_URL}/api/groups/{old_name}",
+                            json={"comment": "before"}, timeout=10)
+        assert r.status_code in (200, 201)
+
+        # Rename
+        r = api_session.put(f"{FTL_URL}/api/groups/{old_name}",
+                            json={"name": new_name, "comment": "after"},
+                            timeout=10)
+        assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
+        assert r.headers.get("Location") == f"/api/groups/{new_name}"
+        groups = _j(r)["groups"]
+        assert len(groups) == 1
+        assert groups[0]["name"] == new_name
+        assert groups[0]["comment"] == "after"
+
+        # The old name is gone, the new one is there
+        r = api_session.get(f"{FTL_URL}/api/groups/{old_name}", timeout=5)
+        assert r.status_code == 404 or _j(r).get("groups", []) == []
+        r = api_session.get(f"{FTL_URL}/api/groups/{new_name}", timeout=5)
+        assert r.status_code == 200
+        assert _j(r)["groups"][0]["name"] == new_name
+
+        # Clean up
+        r = api_session.delete(f"{FTL_URL}/api/groups/{new_name}", timeout=10)
+        assert r.status_code == 204
+
+    def test_put_creates_group_with_own_name(self, api_session):
+        """PUT with name equal to the URI creates the group like a nameless PUT."""
+        name = "_pytest_put_named_group"
+        url = f"{FTL_URL}/api/groups/{name}"
+
+        r = api_session.put(url, json={"name": name, "comment": "named"},
+                            timeout=10)
+        assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
+        groups = _j(r)["groups"]
+        assert len(groups) == 1
+        assert groups[0]["name"] == name
+        assert groups[0]["comment"] == "named"
+
+        # Clean up
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    def test_put_rename_nonexistent_group_fails(self, api_session):
+        """Renaming a group that does not exist is an error, not a no-op."""
+        old_name = "_pytest_rename_nosuch"
+        new_name = "_pytest_rename_nosuch_new"
+
+        r = api_session.put(f"{FTL_URL}/api/groups/{old_name}",
+                            json={"name": new_name, "comment": "x"},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert r.json()["error"]["key"] == "database_error"
+
+        # Nothing was created under either name
+        for name in (old_name, new_name):
+            r = api_session.get(f"{FTL_URL}/api/groups/{name}", timeout=5)
+            assert r.status_code == 404 or _j(r).get("groups", []) == [], \
+                f"Group {name} exists after failed rename"
+
 
 # ---------------------------------------------------------------------------
 # PUT domains

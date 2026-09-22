@@ -2044,7 +2044,7 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	{	// Create new or replace existing entry, no error if existing
 		// We UPSERT here to avoid violating FOREIGN KEY constraints
 		if(listtype == GRAVITY_GROUPS)
-			if(row->name == NULL)
+			if(row->name == NULL || strcmp(row->name, row->item) == 0)
 			{
 				// Name is not to be changed
 				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
@@ -2199,8 +2199,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
-		// Domain added/modified
-		okay = true;
+		// A rename updates the group named in the URI, so a statement
+		// that changed no row found no such group
+		if(name_idx > 0 && sqlite3_changes(db) == 0)
+			*message = "Group not found";
+		else
+			okay = true;
 	}
 	else
 	{
