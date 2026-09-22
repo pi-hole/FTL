@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// forked
+#include "main.h"
 // sysinfo()
 #include <sys/sysinfo.h>
 #include <errno.h>
@@ -427,8 +429,9 @@ void cleanup(const int ret)
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
 
-	// Do proper cleanup only if FTL started successfully
-	if(resolver_ready)
+	// Join the worker threads only when they exist. They are started before
+	// the resolver is ready, and stay running when dnsmasq dies at startup
+	if(forked)
 	{
 		// Terminate threads
 		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
