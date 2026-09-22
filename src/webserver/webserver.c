@@ -1278,9 +1278,10 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 		return;
 	}
 
-	// Change last occurrence of "/" to "-" (if any)
+	// Change last occurrence of "/" to "-" (if any), but only if it lies
+	// beyond the webroot so the rewritten path stays inside of it
 	char *last_slash = strrchr(filename_lp, '/');
-	if(last_slash != NULL)
+	if(last_slash != NULL && (size_t)(last_slash - filename_lp) > strlen(config.webserver.paths.webroot.v.s))
 	{
 		*last_slash = '-';
 		if(file_readable(filename_lp))
