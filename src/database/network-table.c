@@ -2585,6 +2585,8 @@ bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, c
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
 		        id, rc, *message);
+		sqlite3_finalize(*read_stmt);
+		*read_stmt = NULL;
 		return false;
 	}
 
