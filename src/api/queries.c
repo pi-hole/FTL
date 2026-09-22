@@ -19,6 +19,8 @@
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
+// PRIu64
+#include <inttypes.h>
 
 #if 0
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
@@ -308,7 +310,7 @@ int api_queries(struct ftl_conn *api)
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
 	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
-	unsigned long cursor = (unsigned long)largest_db_index;
+	uint64_t cursor = (uint64_t)largest_db_index;
 
 	// We send 100 queries (unless the API is asked for a different limit)
 	int length = 100;
@@ -429,7 +431,7 @@ int api_queries(struct ftl_conn *api)
 			// Do not start at the most recent, but at an older
 			// query (so new queries do not show up suddenly in the
 			// log and shift pages)
-			if(unum <= (unsigned long)largest_db_index && msg == NULL)
+			if(unum <= (uint64_t)largest_db_index && msg == NULL)
 			{
 				cursor = unum;
 				cursor_set = true;
@@ -834,7 +836,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cursor");
 		if(idx > 0)
 		{
-			log_web_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
+			log_web_debug(DEBUG_API, "adding :cursor = %"PRIu64" to query", cursor);
 			// Do not set filtering as the cursor is not a filter
 			rc = sqlite3_bind_int64(read_stmt, idx, cursor);
 			if(rc != SQLITE_OK)
@@ -878,7 +880,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Debug logging
 	log_web_debug(DEBUG_API, "SQL: %s", querystr);
-	log_web_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
+	log_web_debug(DEBUG_API, "  with cursor: %"PRIu64", start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, recordsCounted = 0, regex_skipped = 0;
@@ -1112,7 +1114,7 @@ int api_queries(struct ftl_conn *api)
 	{
 		// Repeat cursor received in the request. This ensures we get a
 		// static result by skipping any newer queries.
-		log_web_debug(DEBUG_API, "Sending cursor %lu", cursor);
+		log_web_debug(DEBUG_API, "Sending cursor %"PRIu64, cursor);
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", cursor);
 	}
 	else
