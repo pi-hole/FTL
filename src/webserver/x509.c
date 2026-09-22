@@ -155,10 +155,11 @@ static bool set_random_serial(X509 *cert)
 // subject_key is embedded as the certificate's public key, issuer_key signs
 // it. issuer_cert provides the authority key identifier (pass the certificate
 // itself for a self-signed CA). san, when not NULL, is an OpenSSL SAN string
-// such as "DNS:pi.hole,DNS:example.com".
+// such as "DNS:pi.hole,DNS:example.com". validity_days is the lifetime in
+// days, handed to OpenSSL as a day count.
 static X509 *build_certificate(EVP_PKEY *subject_key, EVP_PKEY *issuer_key, X509 *issuer_cert,
                                X509_NAME *subject, X509_NAME *issuer, const bool is_ca,
-                               const char *san, const long validity_secs)
+                               const char *san, const int validity_days)
 {
 	X509 *cert = X509_new();
 	if(cert == NULL)
@@ -167,7 +168,7 @@ static X509 *build_certificate(EVP_PKEY *subject_key, EVP_PKEY *issuer_key, X509
 	if(X509_set_version(cert, X509_VERSION_3) != 1 ||
 	   !set_random_serial(cert) ||
 	   X509_gmtime_adj(X509_getm_notBefore(cert), 0) == NULL ||
-	   X509_gmtime_adj(X509_getm_notAfter(cert), validity_secs) == NULL ||
+	   X509_time_adj_ex(X509_getm_notAfter(cert), validity_days, 0, NULL) == NULL ||
 	   X509_set_pubkey(cert, subject_key) != 1 ||
 	   X509_set_subject_name(cert, subject) != 1 ||
 	   X509_set_issuer_name(cert, issuer) != 1)
@@ -354,8 +355,9 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 		goto cleanup;
 
 	// Validity period: valid from now until now + validity_days. If no
-	// validity is specified, use 30 years.
-	const long validity_secs = (validity_days > 0 ? (long)validity_days : 30L * 365L) * 24L * 3600L;
+	// validity is specified, use 30 years. The config validator bounds
+	// validity_days so the conversion cannot overflow.
+	const int days = validity_days > 0 ? (int)validity_days : 30 * 365;
 
 	// Distinguished names: CA is "CN=pi.hole,O=Pi-hole,C=DE", the server
 	// certificate uses the (optionally custom) domain as its CN.
@@ -369,7 +371,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 
 	// 1. Create self-signed CA certificate
 	printf("Generating new CA...\n");
-	ca_cert = build_certificate(ca_key, ca_key, NULL, ca_name, ca_name, true, NULL, validity_secs);
+	ca_cert = build_certificate(ca_key, ca_key, NULL, ca_name, ca_name, true, NULL, days);
 	if(ca_cert == NULL)
 		goto cleanup;
 
@@ -389,7 +391,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 
 	// 2. Create server certificate signed by the CA
 	printf("Generating new server certificate...\n");
-	server_cert = build_certificate(server_key, ca_key, ca_cert, server_name, ca_name, false, san, validity_secs);
+	server_cert = build_certificate(server_key, ca_key, ca_cert, server_name, ca_name, false, san, days);
 	if(server_cert == NULL)
 		goto cleanup;
 

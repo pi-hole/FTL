@@ -1707,6 +1707,14 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
 
+  run bash -c './pihole-FTL --config webserver.tls.validity 6'
+  assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be lower than 7'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config webserver.tls.validity 36501'
+  assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
+  assert_failure 3
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'

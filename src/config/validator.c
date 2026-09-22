@@ -809,6 +809,14 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 		return false;
 	}
 
+	// The value is a day count handed to OpenSSL as an int, keep it within
+	// a range that stays meaningful as a certificate lifetime (100 years)
+	if(val->ui > 36500)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than 36500", key);
+		return false;
+	}
+
 	return true;
 }
 
