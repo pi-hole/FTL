@@ -2064,7 +2064,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
+			// The row is inserted at the type named in the URI unless
+			// the request points at an existing row of another type,
+			// which the conflict clause then moves to the URI type
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,"\
+			           "CASE WHEN EXISTS (SELECT 1 FROM domainlist WHERE domain = :item AND type = :oldtype) THEN :oldtype ELSE :type END,"\
+			           ":enabled,:comment) "\
 			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
