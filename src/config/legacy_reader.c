@@ -178,7 +178,9 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "DBFILE");
 
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s)))
+	if(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s) == 1)
+		conf->files.database.t = CONF_STRING_ALLOCATED;
+	else
 	{
 		// Use standard path if no custom path was obtained from the config file
 		conf->files.database.v.s = conf->files.database.d.s;
@@ -243,9 +245,11 @@ const char *readFTLlegacy(struct config *conf)
 
 	// MACVENDORDB
 	conf->files.macvendor.v.s = getPath(fp, "MACVENDORDB", conf->files.macvendor.v.s);
+	conf->files.macvendor.t = CONF_STRING_ALLOCATED;
 
 	// GRAVITYDB
 	conf->files.gravity.v.s = getPath(fp, "GRAVITYDB", conf->files.gravity.v.s);
+	conf->files.gravity.t = CONF_STRING_ALLOCATED;
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
@@ -267,6 +271,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// WEBROOT
 	conf->webserver.paths.webroot.v.s = getPath(fp, "WEBROOT", conf->webserver.paths.webroot.v.s);
+	conf->webserver.paths.webroot.t = CONF_STRING_ALLOCATED;
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
@@ -275,12 +280,19 @@ const char *readFTLlegacy(struct config *conf)
 
 	value = 0;
 	if(buffer != NULL && strlen(buffer) > 0)
+	{
 		conf->webserver.port.v.s = strdup(buffer);
+		conf->webserver.port.t = CONF_STRING_ALLOCATED;
+		// Mark the ports as imported so no default port detection
+		// replaces them later on
+		conf->webserver.port.f |= FLAG_CONF_IMPORTED;
+	}
 
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
 	conf->webserver.paths.webhome.v.s = getPath(fp, "WEBHOME", conf->webserver.paths.webhome.v.s);
+	conf->webserver.paths.webhome.t = CONF_STRING_ALLOCATED;
 
 	// WEBACL
 	// Default: allow all access
@@ -304,7 +316,10 @@ const char *readFTLlegacy(struct config *conf)
 	//
 	buffer = parseFTLconf(fp, "WEBACL");
 	if(buffer != NULL)
+	{
 		conf->webserver.acl.v.s = strdup(buffer);
+		conf->webserver.acl.t = CONF_STRING_ALLOCATED;
+	}
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -322,6 +337,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// API_INFO_LOG
 	conf->files.log.webserver.v.s = getPath(fp, "API_INFO_LOG", conf->files.log.webserver.v.s);
+	conf->files.log.webserver.t = CONF_STRING_ALLOCATED;
 
 	// NICE
 	// Shall we change the nice of the current process?
@@ -385,6 +401,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// WEBDOMAIN
 	conf->webserver.domain.v.s = getPath(fp, "WEBDOMAIN", conf->webserver.domain.v.s);
+	conf->webserver.domain.t = CONF_STRING_ALLOCATED;
 
 	// RATE_LIMIT
 	// defaults to: 1000 queries / 60 seconds

@@ -1875,7 +1875,7 @@ static void get_web_port(struct config *conf)
 	// Determine default webserver ports if not imported from setupVars.conf
 	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
 	{
-		log_info("Webserver ports already imported from setupVars.conf, skipping default port detection");
+		log_info("Webserver ports already imported from legacy config files, skipping default port detection");
 		return;
 	}
 
