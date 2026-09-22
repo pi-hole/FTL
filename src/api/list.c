@@ -383,7 +383,6 @@ static int api_list_write(struct ftl_conn *api,
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
-		regexData regex = { 0 };
 		cJSON *it = NULL;
 		cJSON_ArrayForEach(it, row.items)
 		{
@@ -408,15 +407,18 @@ static int api_list_write(struct ftl_conn *api,
 				                       it->valuestring);
 			}
 
-			// Check every array element for its validity
+			// Check every array element for its validity, each one
+			// starting from a clean regex data structure
+			regexData regex = { 0 };
 			okay = compile_regex(it->valuestring, &regex, &regex_msg);
 
-			// Free regex after successful compilation
+			// Release everything compile_regex() allocated
 			if(regex.available)
-			{
 				regfree(&regex.regex);
+			if(regex.string != NULL)
 				free(regex.string);
-			}
+			if(regex.ext.cname_target != NULL)
+				free(regex.ext.cname_target);
 
 			// Fail fast if any regex in the passed array is invalid
 			if(!okay)
