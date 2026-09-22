@@ -39,6 +39,8 @@
 #include <pthread.h>
 // sleepms()
 #include "timers.h"
+// main_pid()
+#include "signals.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -1219,12 +1221,17 @@ void gravityDB_close(void)
 	if(!gravityDB_opened)
 		return;
 
-	// Finalize prepared list statements for all clients
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	// Finalize prepared list statements for all clients. The client data
+	// lives in shared memory and is owned by the main process, a forked
+	// TCP worker closing its private connection leaves it untouched
+	if(main_pid() == getpid())
 	{
-		clientsData *client = getClient(clientID, true);
-		if(client != NULL)
-			gravityDB_finalize_client_statements(client);
+		for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			clientsData *client = getClient(clientID, true);
+			if(client != NULL)
+				gravityDB_finalize_client_statements(client);
+		}
 	}
 
 	// Reset carray bind cache (statements are about to be finalized)
