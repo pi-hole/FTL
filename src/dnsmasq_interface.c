@@ -1043,12 +1043,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
 	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
+		// Log the first rate-limited query for this client in this
+		// interval, after the lock is released below: the message goes
+		// to pihole-FTL.db, and a contended database can hold us in
+		// sqliteBusyCallback() for up to DATABASE_BUSY_TIMEOUT, which
+		// would stall every DNS query and API worker waiting on the
+		// lock. We do not log the blocked domain for privacy reasons
+		unsigned int rate_limit_count = 0;
 		if(!client->flags.rate_limited)
 		{
-			// Log the first rate-limited query for this client in
-			// this interval. We do not log the blocked domain for
-			// privacy reasons
-			logg_rate_limit_message(clientIP, client->rate_limit);
+			rate_limit_count = client->rate_limit;
 			// Reset rate-limiting counter so we can count what
 			// comes within the adjacent interval
 			client->rate_limit = 0;
@@ -1068,6 +1072,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// inflated for the lifetime of the process.
 		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
+
+		// clientIP is a local buffer, so it stays valid here
+		if(rate_limit_count > 0)
+			logg_rate_limit_message(clientIP, rate_limit_count);
+
 		return true;
 	}
 
