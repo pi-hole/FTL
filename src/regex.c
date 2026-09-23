@@ -806,9 +806,6 @@ static void read_regex_table(const enum regex_type regexid)
 
 		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
-
-		// Signal other forks that the regex data has changed and should be updated
-		regex_change = ++counters->regex_change;
 	}
 
 	// Finalize statement and close gravity database handle
@@ -850,6 +847,9 @@ void read_regex_from_database(void)
 
 		reload_per_client_regex(client);
 	}
+
+	// This process is now up to date with the shared regex generation
+	regex_change = counters->regex_change;
 
 	// Print message to FTL's log after reloading regex filters
 	log_info("Compiled %u allow and %u deny regex for %u client%s in %.1f msec",
