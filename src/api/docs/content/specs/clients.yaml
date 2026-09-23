@@ -129,7 +129,9 @@ components:
           - "Client management"
         operationId: "get_client_suggestions"
         description: |
-          Returns a list of unconfigured clients that have been seen by Pi-hole.
+          Returns a list of unconfigured clients that have been seen by Pi-hole. By default, this list is limited to 50 clients. Clients are ordered by when your Pi-hole has received the last query from this client (most recent first)
+        parameters:
+          - $ref: 'clients.yaml#/components/parameters/count'
         responses:
           '200':
             description: OK
@@ -525,3 +527,12 @@ components:
       required: true
       description: client IP / MAC / hostname / interface
       example: 127.0.0.1
+    count:
+      in: query
+      name: count
+      schema:
+        type: integer
+        default: 50
+      required: false
+      description: (Optional) Maximum number of clients to show
+      example: 50
