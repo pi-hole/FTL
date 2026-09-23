@@ -724,7 +724,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 		{
 			// Calculate progress (total number of scans / total number of addresses)
 			// We add 1 to total_scans to avoid division by zero
-			const unsigned int new_progress = 100 * (unsigned int)(num_scans / (total_scans + 1));
+			const unsigned int new_progress = (unsigned int)(100 * num_scans / (total_scans + 1));
 			if(new_progress > progress)
 			{
 				// Print progress

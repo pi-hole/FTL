@@ -323,9 +323,9 @@ bool check_capabilities(void)
 		const unsigned int capid = capabilityIDs[i];
 		log_debug(DEBUG_CAPS, "* %-24s (%02u) = %s%s%s *",
 			capabilityNames[capid], capid,
-			((data->permitted   & (1 << capid)) ? "P":"-"),
-			((data->inheritable & (1 << capid)) ? "I":"-"),
-			((data->effective   & (1 << capid)) ? "E":"-"));
+			((data->permitted   & (1u << capid)) ? "P":"-"),
+			((data->inheritable & (1u << capid)) ? "I":"-"),
+			((data->effective   & (1u << capid)) ? "E":"-"));
 	}
 	log_debug(DEBUG_CAPS, "***************************************");
 
