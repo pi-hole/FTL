@@ -155,10 +155,11 @@ static bool set_random_serial(X509 *cert)
 // subject_key is embedded as the certificate's public key, issuer_key signs
 // it. issuer_cert provides the authority key identifier (pass the certificate
 // itself for a self-signed CA). san, when not NULL, is an OpenSSL SAN string
-// such as "DNS:pi.hole,DNS:example.com".
+// such as "DNS:pi.hole,DNS:example.com". validity_days is the lifetime in
+// days, handed to OpenSSL as a day count.
 static X509 *build_certificate(EVP_PKEY *subject_key, EVP_PKEY *issuer_key, X509 *issuer_cert,
                                X509_NAME *subject, X509_NAME *issuer, const bool is_ca,
-                               const char *san, const long validity_secs)
+                               const char *san, const int validity_days)
 {
 	X509 *cert = X509_new();
 	if(cert == NULL)
@@ -167,7 +168,7 @@ static X509 *build_certificate(EVP_PKEY *subject_key, EVP_PKEY *issuer_key, X509
 	if(X509_set_version(cert, X509_VERSION_3) != 1 ||
 	   !set_random_serial(cert) ||
 	   X509_gmtime_adj(X509_getm_notBefore(cert), 0) == NULL ||
-	   X509_gmtime_adj(X509_getm_notAfter(cert), validity_secs) == NULL ||
+	   X509_time_adj_ex(X509_getm_notAfter(cert), validity_days, 0, NULL) == NULL ||
 	   X509_set_pubkey(cert, subject_key) != 1 ||
 	   X509_set_subject_name(cert, subject) != 1 ||
 	   X509_set_issuer_name(cert, issuer) != 1)
@@ -354,8 +355,9 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 		goto cleanup;
 
 	// Validity period: valid from now until now + validity_days. If no
-	// validity is specified, use 30 years.
-	const long validity_secs = (validity_days > 0 ? (long)validity_days : 30L * 365L) * 24L * 3600L;
+	// validity is specified, use 30 years. The config validator bounds
+	// validity_days so the conversion cannot overflow.
+	const int days = validity_days > 0 ? (int)validity_days : 30 * 365;
 
 	// Distinguished names: CA is "CN=pi.hole,O=Pi-hole,C=DE", the server
 	// certificate uses the (optionally custom) domain as its CN.
@@ -369,7 +371,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 
 	// 1. Create self-signed CA certificate
 	printf("Generating new CA...\n");
-	ca_cert = build_certificate(ca_key, ca_key, NULL, ca_name, ca_name, true, NULL, validity_secs);
+	ca_cert = build_certificate(ca_key, ca_key, NULL, ca_name, ca_name, true, NULL, days);
 	if(ca_cert == NULL)
 		goto cleanup;
 
@@ -389,7 +391,7 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 
 	// 2. Create server certificate signed by the CA
 	printf("Generating new server certificate...\n");
-	server_cert = build_certificate(server_key, ca_key, ca_cert, server_name, ca_name, false, san, validity_secs);
+	server_cert = build_certificate(server_key, ca_key, ca_cert, server_name, ca_name, false, san, days);
 	if(server_cert == NULL)
 		goto cleanup;
 
@@ -457,16 +459,16 @@ static bool check_wildcard_domain(const char *domain, const char *san, const siz
 	return strncasecmp(domain + label_len, tail, tail_len) == 0;
 }
 
-// Copy the first Common Name (CN) of an X.509 name into buf as a NUL-terminated
-// string, returning its length or -1 if there is none (or it does not fit).
-// Replaces the convenience X509_NAME_get_text_by_NID(), deprecated in OpenSSL
-// 4.0, with the plain, non-deprecated entry accessors.
-static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
+// Copy the first entry of the given type (NID) of an X.509 name into buf as a
+// NUL-terminated string, returning its length or -1 if there is none (or it
+// does not fit). Replaces the convenience X509_NAME_get_text_by_NID(),
+// deprecated in OpenSSL 4.0, with the plain, non-deprecated entry accessors.
+static int get_name_entry(const X509_NAME *name, const int nid, char *buf, size_t buflen)
 {
 	if(buflen == 0)
 		return -1;
 	buf[0] = '\0';
-	const int idx = X509_NAME_get_index_by_NID(name, NID_commonName, -1);
+	const int idx = X509_NAME_get_index_by_NID(name, nid, -1);
 	if(idx < 0)
 		return -1;
 	const X509_NAME_ENTRY *entry = X509_NAME_get_entry(name, idx);
@@ -480,6 +482,12 @@ static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
 	memcpy(buf, txt, (size_t)len);
 	buf[len] = '\0';
 	return len;
+}
+
+// Copy the first Common Name (CN) of an X.509 name into buf
+static int get_common_name(const X509_NAME *name, char *buf, size_t buflen)
+{
+	return get_name_entry(name, NID_commonName, buf, buflen);
 }
 
 // Check whether the given domain is covered by the certificate, either through
@@ -715,16 +723,19 @@ bool is_pihole_certificate(const char *certfile)
 		return false;
 	}
 
-	// Check if both the issuer and subject common name are "pi.hole"
+	// Our certificates are signed by the CA generate_certificate() creates,
+	// so the issuer identifies them. The subject CN is the configured
+	// webserver domain, which need not be pi.hole.
 	char issuer_cn[256] = { 0 };
-	char subject_cn[256] = { 0 };
-	get_common_name(X509_get_issuer_name(crt), issuer_cn, sizeof(issuer_cn));
-	get_common_name(X509_get_subject_name(crt), subject_cn, sizeof(subject_cn));
+	char issuer_o[256] = { 0 };
+	const X509_NAME *issuer = X509_get_issuer_name(crt);
+	get_name_entry(issuer, NID_commonName, issuer_cn, sizeof(issuer_cn));
+	get_name_entry(issuer, NID_organizationName, issuer_o, sizeof(issuer_o));
 
 	// Free resources
 	X509_free(crt);
 
-	return strcasecmp(issuer_cn, "pi.hole") == 0 && strcasecmp(subject_cn, "pi.hole") == 0;
+	return strcasecmp(issuer_cn, PIHOLE_ISSUER_CN) == 0 && strcasecmp(issuer_o, PIHOLE_ISSUER_O) == 0;
 }
 
 #else
