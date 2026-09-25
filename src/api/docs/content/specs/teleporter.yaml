@@ -104,8 +104,15 @@ components:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'teleporter.yaml#/components/errors/invalid_zip'
+                    - $ref: 'common.yaml#/components/errors/bad_request'
                     - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  invalid_file:
+                    $ref: 'teleporter.yaml#/components/examples/errors/bad_request/invalid_file'
+                  invalid_archive:
+                    $ref: 'teleporter.yaml#/components/examples/errors/bad_request/invalid_archive'
+                  no_file:
+                    $ref: 'teleporter.yaml#/components/examples/errors/bad_request/no_file'
           '401':
             description: Unauthorized
             content:
@@ -114,43 +121,79 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  app_session:
+                    $ref: 'teleporter.yaml#/components/examples/errors/forbidden/app_session'
+                  cli_session:
+                    $ref: 'teleporter.yaml#/components/examples/errors/forbidden/cli_session'
   schemas:
     teleporter:
       post:
         type: object
         properties:
-          processed:
+          files:
             type: array
+            description: Files (and gravity tables) imported from the archive
             items:
               type: string
-  errors:
-    invalid_zip:
-      type: object
-      description: Invalid ZIP archive uploaded
-      properties:
-        error:
-          type: object
-          properties:
-            key:
-              type: string
-              description: "Machine-readable error type"
-              example: "invalid_zip"
-            message:
-              type: string
-              description: "Human-readable error message"
-              example: "Invalid ZIP file uploaded"
-            hint:
-              type: string
-              nullable: true
-              description: "No additional data available"
-              example: null
 
   examples:
     teleporter:
       value:
-        processed:
+        files:
           - etc/pihole/pihole.toml
           - etc/pihole/gravity.db->group
           - etc/pihole/gravity.db->adlist
           - etc/pihole/gravity.db->adlist_by_group
         took: 0.003
+    errors:
+      bad_request:
+        invalid_file:
+          summary: The uploaded file is not a Teleporter archive
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid file"
+              hint: "The uploaded file does not appear to be a valid Pi-hole Teleporter archive"
+            took: 0.003
+        invalid_archive:
+          summary: The archive could not be read
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid request"
+              hint: "Failed to parse received ZIP archive: failed finding central directory"
+            took: 0.003
+        no_file:
+          summary: No file in the form data
+          value:
+            error:
+              key: "bad_request"
+              message: "No ZIP archive received"
+              hint: null
+            took: 0.003
+      forbidden:
+        app_session:
+          summary: Application session without sudo mode
+          value:
+            error:
+              key: "forbidden"
+              message: "Unable to change configuration (read-only)"
+              hint: "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)"
+            took: 0.003
+        cli_session:
+          summary: CLI session
+          value:
+            error:
+              key: "forbidden"
+              message: "Unable to change configuration (read-only)"
+              hint: "The current CLI session is not allowed to modify Pi-hole config settings"
+            took: 0.003

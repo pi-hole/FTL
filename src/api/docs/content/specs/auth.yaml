@@ -92,14 +92,21 @@ components:
                   totp_missing:
                     $ref: 'auth.yaml#/components/examples/errors/totp_missing'
           '401':
-            description: Unauthorized
+            description: |
+              Unauthorized. A wrong password is answered with the session object (`valid` is `false`), only a rejected 2FA token is answered with an error object.
             content:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - anyOf:
+                      - $ref: 'auth.yaml#/components/schemas/session'
+                      - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
+                  login_required:
+                    $ref: 'auth.yaml#/components/examples/login_required'
+                  login_required_2fa:
+                    $ref: 'auth.yaml#/components/examples/login_required_2fa'
                   totp_invalid:
                     $ref: 'auth.yaml#/components/examples/errors/totp_invalid'
                   totp_reused:
@@ -147,13 +154,16 @@ components:
                 schema:
                   $ref: 'common.yaml#/components/schemas/took'
           '401':
-            description: Unauthorized
+            description: Unauthorized (not authenticated, the session object is returned)
             content:
               application/json:
                 schema:
                   allOf:
-                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'auth.yaml#/components/schemas/session'
                     - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  login_failed:
+                    $ref: 'auth.yaml#/components/examples/login_failed'
     session_list:
       get:
         summary: List of all current sessions
@@ -319,6 +329,10 @@ components:
           type: string
           description: Password to be used for login
           example: abcdef
+        totp:
+          type: integer
+          description: Time-based one-time password (TOTP) token, required when 2FA is enabled
+          example: 123456
     sessions_list:
       type: object
       description: List of all current sessions
