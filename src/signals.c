@@ -1151,9 +1151,12 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	}
 	else if(gettid() != getpid())
 	{
-		// This is a thread, signal to the main process to shut down
+		// This is a thread. Stop the DNS service right here rather than
+		// through want_terminate: the thread polling that flag may be
+		// the one that crashed
 		log_info("Shutting down thread...");
-		terminate_error();
+		exit_code = EXIT_FAILURE;
+		terminate();
 
 		// Exit the thread here, it failed anyway
 		pthread_exit(NULL);
