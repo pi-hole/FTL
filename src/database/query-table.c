@@ -1039,6 +1039,11 @@ bool export_queries_to_disk(const bool final)
 				new_blocked = 0;
 		}
 	}
+	else
+	{
+		// Nothing to store, the linking tables below are still exported
+		okay = true;
+	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
 	const char *subtable_names[SUBTABLE_STMTS] = {

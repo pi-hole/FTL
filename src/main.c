@@ -185,8 +185,18 @@ int main (int argc, char *argv[])
 	// before it is. terminate_threads() aborts it
 	if(db_import_done)
 	{
-		export_queries_to_disk(true);
-		log_info("Finished final database update");
+		// The database thread has seen killed by now but may still be
+		// inside its periodic export on the shared in-memory connection
+		// or the daily cleanup, which locks the disk file. Let it return
+		// before the final export touches either
+		if(!join_db_thread(DB_THREAD_JOIN_TIMEOUT))
+			log_warn("Database thread still busy after %d seconds, exporting anyway",
+			         DB_THREAD_JOIN_TIMEOUT);
+
+		if(export_queries_to_disk(true))
+			log_info("Finished final database update");
+		else
+			log_err("Final database update failed");
 	}
 
 	cleanup(exit_code);
