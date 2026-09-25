@@ -1,13 +1,27 @@
 name: API validation
 
-on: [push]
+on:
+  # A bare push keeps every branch and every tag, as the previous `on: [push]`
+  # did. Restricting it to branches would drop tag pushes
+  push:
+  pull_request:
 
 env:
   FORCE_COLOR: 2
 
+permissions:
+  contents: read
+
 jobs:
   openapi-validator:
     name: Node
+    # A branch in this repository is covered by its push event. A pull request
+    # from a fork pushes nowhere we see, so it is covered by the pull_request
+    # event instead - the same split build.yml uses, and it keeps either kind
+    # of change from being validated twice
+    if: |
+      github.event_name == 'push'
+      || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
 
     steps:
