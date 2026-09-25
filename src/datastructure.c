@@ -736,10 +736,14 @@ void FTL_reset_per_client_domain_data(void)
 
 		// Reset blocking status
 		dns_cache->blocking_status = QUERY_UNKNOWN;
+		dns_cache->flags.allowed = false;
 		// Reset expiry
 		dns_cache->expires = 0;
 		// Reset domainlist ID
 		dns_cache->list_id = -1;
+		// Reset forced reply and CNAME target of a former regex match
+		dns_cache->force_reply = REPLY_UNKNOWN;
+		dns_cache->cname_strpos = 0;
 	}
 }
 

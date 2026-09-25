@@ -1868,6 +1868,8 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;
 		dns_cache->list_id = -1;
+		dns_cache->force_reply = REPLY_UNKNOWN;
+		dns_cache->cname_strpos = 0;
 	}
 
 	// Check if the cache record we have applies to the current query
