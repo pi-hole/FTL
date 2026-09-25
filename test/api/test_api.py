@@ -875,15 +875,38 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/upstreams?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "upstreams" in data
         assert isinstance(data["upstreams"], list)
+        # Same status sets as the in-memory endpoint: every stored query is
+        # counted once at most, blocked ones under "blocklist"
+        assert data["total_queries"] == summary["sum_queries"]
+        pseudo = {u["ip"]: u for u in data["upstreams"] if u["port"] == -1}
+        assert set(pseudo) == {"cache", "blocklist"}, json.dumps(data, indent=2)
+        assert pseudo["blocklist"]["count"] == summary["sum_blocked"]
+        real = [u for u in data["upstreams"] if u["port"] != -1]
+        assert sum(u["count"] for u in real) == data["forwarded_queries"]
+        assert sum(u["count"] for u in data["upstreams"]) <= data["total_queries"]
+        for u in real:
+            assert not u["ip"].isdigit(), json.dumps(u, indent=2)
 
     def test_database_query_types_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "types" in data
         assert isinstance(data["types"], dict)
+        # Every stored query has exactly one type, OTHER included
+        assert set(data["types"]) == {
+            "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR", "MX",
+            "DS", "RRSIG", "DNSKEY", "NS", "SVCB", "HTTPS", "OTHER"}
+        assert sum(data["types"].values()) == summary["sum_queries"], \
+            json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1420,6 +1443,18 @@ class TestHistoryDatabase:
             f"{FTL_URL}/api/history/database/clients?from=1&until=9999999999", timeout=5))
         assert "history" in data
         assert "clients" in data
+        clients = data["clients"]
+        # history[].data and clients share their keys, and the per-slot
+        # counts of a client add up to its total
+        totals = {}
+        for slot in data["history"]:
+            for client, count in slot["data"].items():
+                assert client in clients, json.dumps(data, indent=2)
+                totals[client] = totals.get(client, 0) + count
+        for client, item in clients.items():
+            assert "name" in item and "total" in item, json.dumps(item, indent=2)
+            assert totals.get(client, 0) == item["total"], \
+                json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------

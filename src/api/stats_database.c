@@ -19,9 +19,12 @@
 // db
 #include "database/common.h"
 
-// SQL Query type filters for the database
+// SQL Query type filters for the database, mirroring is_blocked(),
+// is_cached() and is_forwarded()
 #define FILTER_STATUS_NOT_BLOCKED "status IN (0,2,3,12,13,14,17)"
 #define FILTER_STATUS_BLOCKED "status NOT IN (0,2,3,12,13,14,17)"
+#define FILTER_STATUS_CACHED "status IN (3,17)"
+#define FILTER_STATUS_FORWARDED "status IN (2,12,13)"
 
 int api_history_database(struct ftl_conn *api)
 {
@@ -480,10 +483,13 @@ int api_history_database_clients(struct ftl_conn *api)
 		                       "Failed to open long-term database",
 		                       NULL);
 
-	const char *querystr = "SELECT DISTINCT(client),ip,name FROM query_storage "
+	// Key clients by IP address like the in-memory endpoint does. The same
+	// address can have several client_by_id rows (one per name seen), so
+	// group by the address and prefer a non-empty name
+	const char *querystr = "SELECT ip,MAX(name),COUNT(*) FROM query_storage "
 	                       "JOIN client_by_id ON client_by_id.id = client "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
-	                       "ORDER BY client DESC";
+	                       "GROUP BY ip ORDER BY ip";
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt = NULL;
@@ -531,15 +537,18 @@ int api_history_database_clients(struct ftl_conn *api)
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		cJSON *item = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 2));
-		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 1), item);
+		JSON_COPY_STR_TO_OBJECT(item, "name", sqlite3_column_text(stmt, 1));
+		JSON_ADD_NUMBER_TO_OBJECT(item, "total", sqlite3_column_int(stmt, 2));
+		JSON_ADD_ITEM_TO_OBJECT(clients, (const char*)sqlite3_column_text(stmt, 0), item);
 	}
 	sqlite3_finalize(stmt);
 
-	// Build SQL string
-	querystr = "SELECT (timestamp/:interval)*:interval interval,client,COUNT(*) FROM query_storage "
+	// Build SQL string. The timestamp is stored with a fractional part, so
+	// it needs to be truncated for the integer division to form slots
+	querystr = "SELECT (CAST(timestamp AS INTEGER)/:interval)*:interval interval,ip,COUNT(*) FROM query_storage "
+	           "JOIN client_by_id ON client_by_id.id = client "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "GROUP BY interval,client ORDER BY interval DESC, client DESC";
+	           "GROUP BY interval,ip ORDER BY interval DESC, ip";
 
 	// Prepare SQLite statement
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -669,11 +678,10 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       "Failed to open long-term database",
 		                       NULL);
 
-	// Prepare statement once; bind :from and :until once; rebind only
-	// :type per iteration to avoid (TYPE_MAX - TYPE_A) repeated prepares.
-	const char *querystr = "SELECT COUNT(*) FROM query_storage "
+	// Count all types in one pass over the range
+	const char *querystr = "SELECT type,COUNT(*) FROM query_storage "
 	                       "WHERE timestamp >= :from AND timestamp <= :until "
-	                       "AND type = :type";
+	                       "GROUP BY type";
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -687,7 +695,6 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	// Bind the fixed parameters once before the loop
 	if((rc = sqlite3_bind_double(stmt, 1, from)) != SQLITE_OK ||
 	   (rc = sqlite3_bind_double(stmt, 2, until)) != SQLITE_OK)
 	{
@@ -701,24 +708,31 @@ int api_stats_database_query_types(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	cJSON *types = JSON_NEW_OBJECT();
-	for(int i = TYPE_A; i < TYPE_MAX; i++)
+	// The database stores the enum value for the mapped types and
+	// 100 + the DNS type for everything else (TYPE_OTHER)
+	unsigned int counts[TYPE_MAX] = { 0 };
+	while(sqlite3_step(stmt) == SQLITE_ROW)
 	{
-		// Add 1 as type is stored one-based in the database for historical reasons
-		if((rc = sqlite3_bind_int(stmt, 3, i + 1)) != SQLITE_OK)
-		{
-			log_web(LOG_ERR, "api_stats_database_query_types() - SQL error bind type (%i): %s",
-			        rc, sqlite3_errstr(rc));
-			break;
-		}
-		int count = 0;
-		if(sqlite3_step(stmt) == SQLITE_ROW)
-			count = sqlite3_column_int(stmt, 0);
-		sqlite3_reset(stmt);
-		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), count);
+		int type = sqlite3_column_int(stmt, 0);
+		const int count = sqlite3_column_int(stmt, 1);
+		if(type >= 100)
+			type = TYPE_OTHER;
+		if(type < TYPE_A || type >= TYPE_MAX)
+			continue;
+		counts[type] += count;
 	}
 
 	sqlite3_finalize(stmt);
+
+	// Same layout as the in-memory endpoint: OTHER comes last
+	cJSON *types = JSON_NEW_OBJECT();
+	for(int i = TYPE_A; i < TYPE_MAX; i++)
+	{
+		if(i == TYPE_OTHER)
+			continue;
+		JSON_ADD_NUMBER_TO_OBJECT(types, get_query_type_str(i, NULL, NULL), counts[i]);
+	}
+	JSON_ADD_NUMBER_TO_OBJECT(types, "OTHER", counts[TYPE_OTHER]);
 
 	// Close (= unlock) database connection
 	dbclose(&db);
@@ -757,22 +771,24 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       NULL);
 
 	// Perform simple SQL queries
-	unsigned int sum_queries = 0;
 	const char *querystr;
 	querystr = "SELECT COUNT(*) FROM query_storage "
+	           "WHERE timestamp >= :from AND timestamp <= :until";
+	const int sum_queries = db_query_int_from_until(db, querystr, from, until);
+
+	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "AND status = 3";
+	           "AND " FILTER_STATUS_CACHED;
 	int cached_queries = db_query_int_from_until(db, querystr, from, until);
 
 	querystr = "SELECT COUNT(*) FROM query_storage "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-		   "AND status != 0 AND status != 2 AND status != 3";
+	           "AND " FILTER_STATUS_BLOCKED;
 	int blocked_queries = db_query_int_from_until(db, querystr, from, until);
 
-	// A failed query reports a negative sentinel, and sum_queries is
-	// unsigned - adding it in would wrap into an enormous total and be
-	// served as fact. api_stats_database_summary() checks the same way
-	if(cached_queries < 0 || blocked_queries < 0)
+	// A failed query reports a negative sentinel which must not be served
+	// as fact. api_stats_database_summary() checks the same way
+	if(sum_queries < 0 || cached_queries < 0 || blocked_queries < 0)
 	{
 		// Close (= unlock) database connection
 		dbclose(&db);
@@ -783,13 +799,14 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		                       NULL);
 	}
 
-	sum_queries += cached_queries;
-	sum_queries += blocked_queries;
-
-	querystr = "SELECT forward,COUNT(*) FROM query_storage "
+	// Count only the queries an upstream answered (or is retrying), like
+	// the in-memory upstream counters: a forwarded query that ended up
+	// blocked keeps its upstream for the record but is not counted here
+	querystr = "SELECT f.forward,COUNT(*) FROM query_storage q "
+	           "JOIN forward_by_id f ON q.forward = f.id "
 	           "WHERE timestamp >= :from AND timestamp <= :until "
-		   "AND forward IS NOT NULL "
-	           "GROUP BY forward ORDER BY forward";
+	           "AND " FILTER_STATUS_FORWARDED " "
+	           "GROUP BY q.forward ORDER BY q.forward";
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt = NULL;
@@ -870,9 +887,6 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		forwarded_queries += count;
 	}
 	sqlite3_finalize(stmt);
-
-	// Add number of forwarded queries to total query count
-	sum_queries += forwarded_queries;
 
 	// Add cache and blocklist as upstreams
 	cJSON *cached = JSON_NEW_OBJECT();
