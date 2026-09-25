@@ -1774,6 +1774,23 @@ setup() {
   # the current value, so it takes the unchanged branch and no validator runs
   run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
+
+  # The TOTP secret has to be something verifyTOTP() can decode
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret 0189'
+  assert_line --index 0 'Invalid value: webserver.api.totp_secret: not a base32 string'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret ABCDEFGHIJKLMNOPQRSTUVWXYZ234567A'
+  assert_line --index 0 'Invalid value: webserver.api.totp_secret: longer than 32 characters'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  assert_success
+
+  # The certificate is written with its private key, so it stays out of the webroot
+  run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
+  assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
+  assert_failure 3
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {

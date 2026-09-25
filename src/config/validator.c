@@ -357,6 +357,35 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
+// Validate the TOTP secret: empty (2FA off) or a base32 string of at most 32
+// characters (the 20 byte secret), which is what verifyTOTP() can decode
+bool validate_totp_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->s == NULL)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: null string", key);
+		return false;
+	}
+
+	const size_t len = strlen(val->s);
+	if(len > 32)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: longer than 32 characters", key);
+		return false;
+	}
+
+	for(size_t i = 0; i < len; i++)
+	{
+		if(strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", toupper((unsigned char)val->s[i])) == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a base32 string", key);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 // Whether two absolute paths are the same or one contains the other. Comparing
 // at component boundaries keeps a sibling sharing a prefix ("/etc-backup")
 // apart from a real parent ("/etc").
@@ -445,11 +474,12 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 // Their content follows from what clients send - logged requests, resolved
 // names, imported settings - so serving them hands that straight back out, and a
 // name matching the Lua server-page pattern makes the web server evaluate them
-// rather than serve them.
+// rather than serve them. The TLS certificate is generated with its private key
+// in the same file.
 #define WRITTEN_FILES(conf) { \
 	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
 	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
-	&(conf).files.gravity_tmp, &(conf).files.pcap }
+	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
 
 // Check the path relationships of a complete configuration.
 //

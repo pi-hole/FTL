@@ -402,7 +402,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
-		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot open "DNSMASQ_TEMP_CONF" for writing: %s", strerror(errno));
+		log_err("%s, unable to update dnsmasq configuration", errbuf);
 		if(conf_fd >= 0)
 			close(conf_fd);
 		return false;
@@ -970,10 +971,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// success after a short write, so without this a disk that filled up
 	// part-way through would be renamed over the live dnsmasq config as a
 	// truncated file that dnsmasq would happily start from
+	// The reason goes into errbuf as the callers report it as their hint
 	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
 	                          fsync(fileno(pihole_conf)) != 0;
 	if(write_failed)
-		log_err("Cannot write dnsmasq config file: %s", strerror(errno));
+	{
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		log_err("%s", errbuf);
+	}
 
 	// Unlock file
 	if(locked)
@@ -982,6 +987,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Close file
 	if(fclose(pihole_conf) != 0)
 	{
+		if(!write_failed)
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot close "DNSMASQ_TEMP_CONF": %s", strerror(errno));
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
@@ -1026,7 +1033,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 
@@ -1039,7 +1047,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
-			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot install "DNSMASQ_PH_CONFIG": %s", strerror(errno));
+			log_err("%s", errbuf);
 
 			// Remove temporary config file
 			if(remove(DNSMASQ_TEMP_CONF) != 0)
@@ -1060,7 +1069,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 	}
