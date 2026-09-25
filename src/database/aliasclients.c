@@ -307,7 +307,8 @@ void reimport_aliasclients(sqlite3 *db)
 	// Import aliasclients from database table
 	import_aliasclients(db);
 
-	// Recompute all alias-clients
+	// Assign every client to its alias-client (if any) first, so that no
+	// recomputation below sees a membership that is no longer current
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
@@ -316,7 +317,19 @@ void reimport_aliasclients(sqlite3 *db)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		reset_aliasclient(db, client);
+		client->aliasclient_id = get_aliasclient_ID(db, client);
+	}
+
+	// Recompute all alias-clients
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get pointer to client candidate
+		const clientsData *client = getClient(clientID, true);
+		// Skip invalid and non-alias-clients
+		if(client == NULL || !client->flags.aliasclient)
+			continue;
+
+		recompute_aliasclient(clientID);
 	}
 
 	// Close the database if we opened it here

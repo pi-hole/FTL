@@ -157,6 +157,10 @@ void queryIDMap_clear(void)
 
 int findQueryID(const int id)
 {
+	// Queries imported from the database carry no dnsmasq ID (-1)
+	if(id < 0)
+		return -1;
+
 	// Try O(1) direct-mapped cache lookup
 	const unsigned int slot = (unsigned int)id & QUERY_ID_MAP_MASK;
 	if(query_id_map[slot].dnsmasq_id == id)
