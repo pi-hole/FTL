@@ -50,7 +50,7 @@ setup() {
   run bash -c "dig denied.ftl @127.0.0.1 +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (denylist)"
   assert_line --index 1 ""
@@ -78,7 +78,7 @@ setup() {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
   assert_line --index 1 ""
@@ -103,7 +103,7 @@ setup() {
   run bash -c "dig regex5.ftl @127.0.0.1 +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (regex)"
   assert_line --index 1 ""
@@ -1371,7 +1371,7 @@ setup() {
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   refute_output
-  
+
 }
 
 @test "Pi-hole use interface-dependent replies for pi.hole" {
@@ -1382,6 +1382,14 @@ setup() {
   assert_line --index 0 "::1"
 }
 
+@test "Pi-hole returns HTTPS RR for pi.hole" {
+  run bash -c "dig HTTPS pi.hole @127.0.0.1 +short"
+  assert_line --index 0 "1 . alpn=\"h2,h3\" port=443 ipv4hint=127.0.0.1 ipv6hint=::1"
+
+  run bash -c "dig HTTPS pi.hole @127.0.0.1 +noall +comments | grep -o \" aa\""
+  assert_line --index 0 " aa"
+}
+
 @test "Pi-hole uses interface-dependent replies inside CNAME chains" {
   run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
   assert_line --index 0 "pi.hole."
@@ -1390,6 +1398,10 @@ setup() {
   run bash -c "dig AAAA pihole.mydomain.net +short @127.0.0.1"
   assert_line --index 0 "pi.hole."
   assert_line --index 1 "::1"
+
+  run bash -c "dig HTTPS pihole.mydomain.net @127.0.0.1 +short"
+  assert_line --index 0 "pi.hole."
+  assert_line --index 1 "1 . alpn=\"h2,h3\" port=443 ipv4hint=127.0.0.1 ipv6hint=::1"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 for pi.hole" {
@@ -1445,7 +1457,7 @@ setup() {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
 
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
- 
+
   # Wait for change to become effective
   run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
@@ -1808,7 +1820,7 @@ setup() {
   assert_line --index 0 '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]'
 }
 
-@test "DNS hosts sanitization: Comments are handled correctly" { 
+@test "DNS hosts sanitization: Comments are handled correctly" {
   # Set dns.hosts with entries containing comments
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
