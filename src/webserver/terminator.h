@@ -32,7 +32,7 @@ struct terminator_listener {
 // Start the TLS terminator on every entry of listeners: terminate TLS with the
 // PEM (cert + key) at cert_path and forward accepted connections as plain
 // HTTP/1.1 to 127.0.0.1:backend_port. Spawns one accept thread serving all of
-// them. HTTP/3 is served on the first entry that bound. Returns true if at least
+// them, and HTTP/3 on every entry that bound. Returns true if at least
 // one listener came up; on total failure nothing is left running.
 bool terminator_start(struct terminator_listener *listeners, unsigned n_listeners,
                       int backend_port, const char *cert_path);

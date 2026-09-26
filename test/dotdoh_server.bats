@@ -188,6 +188,18 @@ setup_file() {
   assert_output "200"
 }
 
+@test "dotdoh-server: HTTP/3 is served on every configured TLS port" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doh3 127.0.0.1 9443 "$DOMAIN" "$EXPECT_IP"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: Alt-Svc names every HTTP/3 port in webserver.port order" {
+  # 192.0.2.1:9444s could not bind, so it has no QUIC listener to advertise
+  run bash -c 'curl -sk --http2 -D - -o /dev/null "https://127.0.0.1:9443/api/info/login" | grep -i "^alt-svc:" | tr -d "\r"'
+  assert_output 'alt-svc: h3=":443"; ma=86400, h3=":9443"; ma=86400'
+}
+
 @test "dotdoh-server: a TLS port that cannot be bound is reported as such" {
   # 192.0.2.1 (TEST-NET-1) is not assigned locally, so 192.0.2.1:9444s cannot bind
   run grep -F "192.0.2.1:9444 (HTTPS, terminator, NOT bound)" /var/log/pihole/FTL.log

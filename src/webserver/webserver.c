@@ -563,8 +563,8 @@ static int backend_port = 0;
 static char terminator_addr[64] = "";
 #ifdef HAVE_TLS
 // Every public TLS listener parsed out of webserver.port. terminator_port and
-// terminator_addr mirror the first one, which is the port HTTP/3 and the
-// plaintext-port mirroring below use.
+// terminator_addr mirror the first one, which is the port the plaintext-port
+// mirroring below uses.
 static struct terminator_listener tls_listeners[TERMINATOR_MAX_LISTENERS];
 static char tls_listener_addrs[TERMINATOR_MAX_LISTENERS][64];
 static unsigned n_tls_listeners = 0;
@@ -1490,7 +1490,7 @@ void http_init(void)
 		else if(!terminator_start(tls_listeners, n_tls_listeners, backend_port, config.webserver.tls.cert.v.s))
 			log_err("Failed to start the TLS terminator on port %d", terminator_port);
 
-		// Advertise the first TLS port that actually came up, like HTTP/3 does
+		// Advertise the first TLS port that actually came up
 		for(unsigned i = 0; i < n_tls_listeners; i++)
 		{
 			if(!tls_listeners[i].bound)
