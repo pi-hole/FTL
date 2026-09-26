@@ -1588,7 +1588,7 @@ setup() {
 
 @test "Invalid environmental variable is logged (validation failed)" {
   grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (invalid character at position 0), using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 

@@ -318,12 +318,19 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 // Validate file path
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
-	// Check if the path contains only valid characters
+	// Accept every printable ASCII character. The range is not widened beyond
+	// it because these paths are handed out as JSON, which has to be UTF-8, and
+	// are written into the generated dnsmasq config, where a control character
+	// would start a second directive. The comparison is explicit rather than
+	// isprint(), which follows the locale FTL picks up from the environment
 	for(unsigned int i = 0; i < strlen(val->s); i++)
 	{
-		if(!isalnum(val->s[i]) && val->s[i] != '/' && val->s[i] != '.' && val->s[i] != '-' && val->s[i] != '_' && val->s[i] != ' ')
+		const unsigned char c = val->s[i];
+		if(c < 0x20 || c > 0x7E)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (\"%s\")", key, val->s);
+			// The offending byte is named by position, not echoed - it
+			// would break the line it is reported on
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (invalid character at position %u)", key, i);
 			return false;
 		}
 	}
