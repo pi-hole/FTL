@@ -49,7 +49,9 @@
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 bool dnsmasq_failed = false;
-volatile sig_atomic_t gravity_running = 0;
+// Number of gravity runs in flight. A counter, not a flag: concurrent runs
+// must not let the first one to finish clear the guard for the others
+atomic_uint gravity_running = 0;
 volatile sig_atomic_t want_terminate = 0;
 
 void go_daemon(void)
