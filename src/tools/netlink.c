@@ -264,7 +264,6 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 			}
 
 			case RTA_FLOW: // route realm
-			case RTA_METRICS: // route metric
 			case RTA_MARK: // route mark
 			case RTA_EXPIRES: // route expires (in seconds)
 			case RTA_UID: // user id
@@ -276,6 +275,30 @@ static int nlparsemsg_route(struct rtmsg *rt, void *buf, size_t len, cJSON *rout
 					break;
 				const uint32_t number = *(uint32_t*)RTA_DATA(rta);
 				cJSON_AddNumberToObject(route, rtaTypeToString(rta->rta_type), number);
+				break;
+			}
+
+			case RTA_METRICS: // nested RTAX_* route metrics
+			{
+				if(!detailed)
+					break;
+				struct rtattr *mx[RTAX_MAX + 1];
+				parse_rtattr_nested(mx, RTAX_MAX, rta);
+				cJSON *metrics = cJSON_CreateObject();
+				for(unsigned int i = 1; i <= RTAX_MAX; i++)
+				{
+					if(mx[i] == NULL)
+						continue;
+					const char *name = rtaxTypeToString(i);
+					// The congestion control algorithm is the
+					// only string in here, everything else is
+					// a 32 bit number
+					if(i == RTAX_CC_ALGO)
+						add_rta_string(metrics, name, mx[i]);
+					else if(rta_payload_ok(mx[i], sizeof(uint32_t), name))
+						cJSON_AddNumberToObject(metrics, name, *(uint32_t*)RTA_DATA(mx[i]));
+				}
+				cJSON_AddItemToObject(route, rtaTypeToString(rta->rta_type), metrics);
 				break;
 			}
 
@@ -573,7 +596,9 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 			}
 
 			case IFA_LABEL:
-				rta_string(rta, ifname, sizeof(ifname));
+				// The label of an alias address ("eth0:1")
+				// differs from the link name, so it is only
+				// reported here and not used to find the link
 				add_rta_string(addr, ifaTypeToString(rta->rta_type), rta);
 				break;
 
@@ -641,9 +666,13 @@ static int nlparsemsg_address(struct ifaddrmsg *ifa, void *buf, size_t len, cJSO
 		}
 	}
 
-	// Get the interface name if it is not already set
-	if(!ifname[0])
-		if_indextoname(ifa->ifa_index, ifname);
+	// Look the link up by the index the kernel attached the address to
+	if(if_indextoname(ifa->ifa_index, ifname) == NULL)
+	{
+		log_debug(DEBUG_NETLINK, "Address refers to unknown interface %u, skipping", ifa->ifa_index);
+		cJSON_Delete(addr);
+		return 0;
+	}
 
 	// Debug output
 	if(config.debug.netlink.v.b)
@@ -1681,6 +1710,10 @@ bool nlneigh(cJSON *arp_entries)
  */
 void get_gateway_name(char gateway[MAXIFACESTRLEN])
 {
+	// Start empty so the fallback below does not depend on what the
+	// caller passed in
+	gateway[0] = '\0';
+
 	cJSON *json = cJSON_CreateObject();
 	cJSON *routes = cJSON_CreateArray();
 	nlroutes(routes, false);
