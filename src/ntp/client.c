@@ -292,6 +292,21 @@ static bool settime_skew(const double offset)
 	return true;
 }
 
+// The system precision, RFC 5905's s.rho: what our own clock can resolve, not
+// anything a server reports about its own. T1 and T4 come from gettime64(),
+// which reads gettimeofday(), so a measurement cannot be finer than one
+// microsecond however fine the kernel claims its clock to be
+#define NTP_TIMESTAMP_RESOLUTION 1e-6
+static double system_precision(void)
+{
+	struct timespec res;
+	if(clock_getres(CLOCK_REALTIME, &res) != 0)
+		return NTP_TIMESTAMP_RESOLUTION;
+
+	const double rho = res.tv_sec + res.tv_nsec * 1e-9;
+	return rho > NTP_TIMESTAMP_RESOLUTION ? rho : NTP_TIMESTAMP_RESOLUTION;
+}
+
 static bool reply(const int fd, const char *server, struct addrinfo *saddr, struct ntp_sync *ntp)
 {
 	// NTP Packet buffer
@@ -441,8 +456,9 @@ static bool reply(const int fd, const char *server, struct addrinfo *saddr, stru
 	// misleading in subsequent computations, the value of delta should be
 	// clamped not less than s.rho, where s.rho is the system precision
 	// described in Section 11.1, expressed in seconds.
-	if(ntp->delta < ntp->precision)
-		ntp->delta = 0;
+	const double sys_rho = system_precision();
+	if(ntp->delta < sys_rho)
+		ntp->delta = sys_rho;
 
 	// Return early if not verbose
 	if(!config.debug.ntp.v.b)
@@ -460,6 +476,8 @@ static bool reply(const int fd, const char *server, struct addrinfo *saddr, stru
 	// Print offset and delay
 	log_debug(DEBUG_NTP, "Time offset: %e s", ntp->theta);
 	log_debug(DEBUG_NTP, "Round-trip delay: %e s", ntp->delta);
+	log_debug(DEBUG_NTP, "Server precision: %e s, system precision: %e s",
+	          ntp->precision, sys_rho);
 	const uint32_t root_delay = ntohl(srv_root_delay);
 	log_debug(DEBUG_NTP, "Root delay: %e s", FP2D(root_delay));
 	const uint32_t root_dispersion = ntohl(srv_root_dispersion);
@@ -597,9 +615,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
-		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision ||
-		   !ntp[i].valid)
+		if(!ntp[i].valid)
 			continue;
 
 		theta_avg += ntp[i].theta;
@@ -620,9 +636,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
-		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision ||
-		   !ntp[i].valid)
+		if(!ntp[i].valid)
 			continue;
 
 		theta_stdev += pow(ntp[i].theta - theta_avg, 2);
@@ -653,9 +667,7 @@ bool ntp_client(const char *server, const bool settime, const bool print)
 	for(unsigned int i = 0; i < count; i++)
 	{
 		// Skip invalid values
-		if(fabs(ntp[i].theta) < ntp[i].precision ||
-		   fabs(ntp[i].delta) < ntp[i].precision ||
-		   !ntp[i].valid)
+		if(!ntp[i].valid)
 			continue;
 
 		// Skip outliers
