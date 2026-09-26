@@ -530,11 +530,6 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 		// Install new configuration
 		replace_config(&newconf);
 
-		// Rewrite the custom.list file, this reads the records from the
-		// config we have just installed
-		if(conf_item == &config.dns.hosts)
-			write_custom_list();
-
 		// Print value
 		writeTOMLvalue(stdout, -1, new_item->t, &new_item->v);
 	}

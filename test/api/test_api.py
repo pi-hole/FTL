@@ -30,6 +30,7 @@ FTL_URL = "http://127.0.0.1"
 # test_suite.bats, update these.
 
 TOTAL       = 134
+NONQUERY    = 2   # zone updates (non-query opcode), stored without a type
 FORWARDED   = 41
 DNSKEY      = 4
 TOP_DOMAIN  = "localhost"
@@ -901,11 +902,12 @@ class TestStatsDatabase:
             timeout=5))
         assert "types" in data
         assert isinstance(data["types"], dict)
-        # Every stored query has exactly one type, OTHER included
+        # Every stored query has exactly one type, OTHER included. Only the
+        # non-query zone updates have none
         assert set(data["types"]) == {
             "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR", "MX",
             "DS", "RRSIG", "DNSKEY", "NS", "SVCB", "HTTPS", "OTHER"}
-        assert sum(data["types"].values()) == summary["sum_queries"], \
+        assert sum(data["types"].values()) == summary["sum_queries"] - NONQUERY, \
             json.dumps(data, indent=2)
 
 
