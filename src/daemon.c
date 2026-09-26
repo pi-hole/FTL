@@ -45,6 +45,8 @@
 #include "procps.h"
 // dotdoh_cleanup()
 #include "dotdoh/proxy.h"
+// cluster_vip_shutdown()
+#include "cluster/dhcp.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -444,6 +446,11 @@ void cleanup(const int ret)
 {
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
+
+	// The virtual IP address is the cluster's, not the resolver's. The cluster
+	// thread is cancelled in its sleep and cannot give it back itself, and a
+	// node whose dnsmasq never came up is the one that should hand it over
+	cluster_vip_shutdown();
 
 	// Join the worker threads only when they exist. They are started before
 	// the resolver is ready, and stay running when dnsmasq dies at startup
