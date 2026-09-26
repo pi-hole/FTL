@@ -155,7 +155,7 @@ bool parse_upstream_uri(const char *in, struct upstream_uri *out)
 					return false;
 		}
 		else
-			// RFC 8484 (Sec. 4.1.1) defines the path via a URI
+			// RFC 8484 (Sec. 3) defines the path via a URI
 			// Template rather than mandating one; "/dns-query" is
 			// the widely used convention we default to.
 			strcpy(out->doh_path, "/dns-query");

@@ -436,9 +436,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 		break;
 	}
 
-	// RFC 8467 Sec. 4: pad the answer to a 468-octet boundary so its ciphertext
-	// length leaks less, but only when the client's query asked for padding (a
-	// server MUST NOT pad otherwise). The original query is checked, not the
+	// Pad the answer to a 468-octet boundary (RFC 8467 Sec. 4.1) so its ciphertext
+	// length leaks less, but only when the client's query asked for padding, which
+	// RFC 7830 Sec. 4 makes a MUST. The original query is checked, not the
 	// client-injected copy.
 	if(alen > 0 && edns_has_padding_option(query, qlen))
 		alen = (ssize_t)edns_pad_response(answer, (size_t)alen, answer_sz);

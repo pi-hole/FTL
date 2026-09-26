@@ -528,7 +528,7 @@ def main():
             # follow-up query in the bats test proves the listener still serves.
         print("OK")
     elif cmd == "doqalpn":
-        # QUIC mandates ALPN and RFC 9250 Sec. 4.1.2 defines exactly one token for
+        # QUIC mandates ALPN and RFC 9250 Sec. 4.1 defines exactly one token for
         # DoQ, so a client offering something else must be refused.
         _, _, host, port, alpn, source = sys.argv[:6]
         doq_handshake_rejected(host, int(port), alpn, source=source)

@@ -388,7 +388,7 @@ static int conn_answer_servfail(struct dot_conn *c)
 	if(slen < 0)
 		return -1;
 	// RFC 6891 Sec. 6.1.1: answer an EDNS query with an OPT, whether or not it
-	// padded - replying without one marks us EDNS-lame. RFC 8467 Sec. 4: only
+	// padded - replying without one marks us EDNS-lame. RFC 7830 Sec. 4: only
 	// pad when it asked, as the resolved answer does, or the refusal leaks the
 	// query length the client paid to hide. The synthesised OPT copies the
 	// query's DO bit (RFC 3225 Sec. 3).
@@ -651,7 +651,7 @@ static int drive_up_read(struct dot_conn *c)
 		c->up_retried = false;
 	}
 
-	// RFC 8467 Sec. 4: pad the answer only if the query asked for it.
+	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
 	if(c->client_padded)
 		c->alen = edns_pad_response(c->abuf, c->alen, ABUF_SZ);
 

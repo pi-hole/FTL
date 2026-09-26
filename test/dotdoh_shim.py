@@ -231,7 +231,7 @@ def doh_http1(conn):
 
 # --- Minimal HTTP/2 server -------------------------------------------------
 #
-# Just enough of RFC 7540 to serve the DoH exchange to FTL's nghttp2 client with
+# Just enough of RFC 9113 to serve the DoH exchange to FTL's nghttp2 client with
 # no third-party dependency. We never decode the request HPACK header block (we
 # only need the DATA payload) and hand-encode the response headers, which avoids
 # any HPACK dynamic-table state.

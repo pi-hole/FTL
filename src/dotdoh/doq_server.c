@@ -62,7 +62,7 @@
 // RFC 9250 Sec. 4.1.1: DoQ uses UDP port 853 by default - the same number DoT
 // uses on TCP, which does not collide.
 #define DOQ_PORT 853
-// ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1.2). QUIC mandates ALPN, so a
+// ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1). QUIC mandates ALPN, so a
 // client that does not offer it is rejected during the handshake.
 #define DOQ_ALPN_STR "doq"
 
@@ -107,7 +107,7 @@
 #define WBUF_SZ (2 + DNS_MSG_MAX)
 
 // EDNS(0) TCP Keepalive (RFC 7828). RFC 9250 Sec. 5.5.2 forbids it on DoQ and
-// requires the connection be closed with DOQ_PROTOCOL_ERROR if one arrives.
+// Sec. 4.3.3 has the connection closed with DOQ_PROTOCOL_ERROR if one arrives.
 #define EDNS_OPT_TCP_KEEPALIVE 11
 
 // One QUIC listener: a bound UDP socket plus the OpenSSL listener SSL over it.
@@ -780,7 +780,7 @@ static int drive_read(struct doq_stream *s)
 		return -1;    // FIN before a full query, a reset, or a hard error
 	}
 
-	// RFC 9250 Sec. 5.5.2: edns-tcp-keepalive is a protocol error on DoQ.
+	// RFC 9250 Sec. 4.3.3: edns-tcp-keepalive is a protocol error on DoQ.
 	if(edns_has_option(s->rbuf + off, (size_t)qlen, EDNS_OPT_TCP_KEEPALIVE))
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s carried edns-tcp-keepalive, "
@@ -887,7 +887,7 @@ static int drive_up_read(struct doq_stream *s)
 	s->up_pooled = false;
 	s->up_ev = 0;
 
-	// RFC 8467 Sec. 4: pad the answer only if the query asked for it.
+	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
 	if(s->client_padded)
 		s->alen = edns_pad_response(s->abuf, s->alen, ABUF_SZ);
 

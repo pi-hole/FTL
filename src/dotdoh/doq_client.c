@@ -47,14 +47,14 @@
 // answer), so a bad upstream cannot pin a worker; on expiry, dnsmasq fails over.
 #define DOQ_EXCHANGE_TIMEOUT_MS 10000
 
-// ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1.2). QUIC mandates ALPN, so an
+// ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1). QUIC mandates ALPN, so an
 // upstream that does not speak DoQ fails the handshake instead of half-working.
 static const unsigned char DOQ_ALPN[] = { 3, 'd', 'o', 'q' };
 
 // EDNS(0) TCP Keepalive (RFC 7828). RFC 9250 Sec. 5.5.2 forbids it on a DoQ
 // connection in either direction, and a conformant server aborts the connection
 // with DOQ_PROTOCOL_ERROR when it sees one - as our own inbound listener does.
-// It is a hop-by-hop option, so stripping it here is also what RFC 7828 wants of
+// EDNS is hop-by-hop (RFC 6891 Sec. 1), so stripping it here is also right for
 // a forwarder.
 #define EDNS_OPT_TCP_KEEPALIVE 11
 

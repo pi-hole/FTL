@@ -865,8 +865,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		[T_DS]     = TYPE_DS,
 		[T_RRSIG]  = TYPE_RRSIG,
 		[T_DNSKEY] = TYPE_DNSKEY,
-		[64]       = TYPE_SVCB,  // draft-ietf-dnsop-svcb-https
-		[65]       = TYPE_HTTPS, // draft-ietf-dnsop-svcb-https
+		[64]       = TYPE_SVCB,  // RFC 9460
+		[65]       = TYPE_HTTPS, // RFC 9460
 		[T_ANY]    = TYPE_ANY,
 	};
 	enum query_type querytype;

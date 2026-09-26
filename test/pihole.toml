@@ -400,8 +400,7 @@
     #       In NULL mode, which is both the default and recommended mode for Pi-hole
     #       FTLDNS, blocked queries will be answered with the "unspecified address"
     #       (0.0.0.0 or ::). The "unspecified address" is a reserved IP address specified
-    #       by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture,
-    #       section 2.5.2.
+    #       by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2.
     #   - "IP_NODATA_AAAA"
     #       In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4
     #       addresses of your Pi-hole. Blocked AAAA queries will be answered with

@@ -41,8 +41,8 @@ uint16_t edns_query_udp_size(const uint8_t *buf, size_t len) __attribute__((pure
 // EDNS(0) OPT record - a fresh OPT is never synthesised onto an answer. Same
 // in-place semantics, idempotency and fail-open behaviour as edns_pad_query.
 //
-// The caller must gate this on the request having carried a Padding option
-// (RFC 8467 Sec. 4): a server MUST NOT pad a response otherwise. See
+// The caller must gate this on the request having carried a Padding option,
+// which RFC 7830 Sec. 4 makes a MUST and which we treat as the only case. See
 // edns_has_padding_option().
 size_t edns_pad_response(uint8_t *buf, size_t len, size_t bufsz);
 

@@ -187,8 +187,8 @@ bool __attribute__((pure)) edns_has_option(const uint8_t *msg, size_t len, uint1
 	return false;
 }
 
-// Used to decide whether a response may be padded (RFC 8467 Sec. 4: a server pads
-// only when the request did).
+// Used to decide whether a response is padded (RFC 7830 Sec. 4: it MUST be when
+// the request was; we pad only then).
 bool __attribute__((pure)) edns_has_padding_option(const uint8_t *msg, size_t len)
 {
 	return edns_has_option(msg, len, EDNS_OPT_PAD);
@@ -237,7 +237,7 @@ size_t edns_remove_option(uint8_t *buf, size_t len, uint16_t code)
 	{
 		// The padding option moved down by what we removed; its data now ends
 		// opt_total bytes short of the message, so zero-fill that tail (RFC 7830
-		// padding octets MUST be zero) and grow its length by the same amount.
+		// padding octets SHOULD be zero) and grow its length by the same amount.
 		// RDLENGTH and the total message length are unchanged.
 		const size_t moved = pad_len_off - opt_total;
 		memset(buf + len - opt_total, 0, opt_total);
