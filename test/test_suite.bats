@@ -1743,6 +1743,14 @@ setup() {
   assert_line --regexp --index 0 'New dnsmasq configuration is not valid \(.+resolve at line [[:digit:]]+ of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"\), config remains unchanged'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config dns.fastRetry 10'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.fastRetry 10001'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
@@ -1791,6 +1799,11 @@ setup() {
   run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
   assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
   assert_failure 3
+}
+
+@test "Fast retry interval is passed on to dnsmasq" {
+  run bash -c 'grep "^fast-dns-retry=" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 'fast-dns-retry=1000'
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
