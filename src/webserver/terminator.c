@@ -27,6 +27,44 @@
 // config.webserver.proxySecret
 #include "config/config.h"
 
+// Length of the secret authenticating PROXY v2 headers to the CivetWeb backend
+#define PROXY_TOKEN_LEN 16u
+
+// Decode webserver.proxySecret into tok. Returns 1 if it is set and valid, 0 if
+// it is unset, and -1 (logged) if it is not 2 * PROXY_TOKEN_LEN hex digits.
+static int config_proxy_secret(unsigned char tok[PROXY_TOKEN_LEN])
+{
+	const char *cfg = config.webserver.proxySecret.v.s;
+	if(cfg == NULL || cfg[0] == '\0')
+		return 0;
+	if(strlen(cfg) != 2 * PROXY_TOKEN_LEN ||
+	   strspn(cfg, "0123456789abcdefABCDEF") != 2 * PROXY_TOKEN_LEN)
+	{
+		log_err("webserver.proxySecret must be %u hexadecimal characters, ignoring it",
+		        2 * PROXY_TOKEN_LEN);
+		return -1;
+	}
+	for(unsigned i = 0; i < 2 * PROXY_TOKEN_LEN; i++)
+	{
+		const int c = tolower((unsigned char)cfg[i]);
+		const unsigned v = (unsigned)(isdigit(c) ? c - '0' : c - 'a' + 10);
+		tok[i / 2] = (unsigned char)(i % 2 == 0 ? v << 4 : tok[i / 2] | v);
+	}
+	return 1;
+}
+
+// Hex-encode tok into out, which needs 2 * PROXY_TOKEN_LEN + 1 bytes
+static void proxy_token_hex(const unsigned char tok[PROXY_TOKEN_LEN], char *out)
+{
+	static const char hex[] = "0123456789abcdef";
+	for(unsigned i = 0; i < PROXY_TOKEN_LEN; i++)
+	{
+		out[2 * i]     = hex[tok[i] >> 4];
+		out[2 * i + 1] = hex[tok[i] & 0x0F];
+	}
+	out[2 * PROXY_TOKEN_LEN] = '\0';
+}
+
 // The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
 // the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
 // guards every terminator_start()/stop() call with HAVE_TLS; only the token
@@ -162,7 +200,6 @@ static void ip_release(const uint8_t key[16])
 // another local process (the loopback bind is the only other trust gate, and the
 // backend port is locally reachable). PP2_TYPE_MIN_CUSTOM..MAX_CUSTOM is 0xE0-EF.
 #define PP2_TYPE_FTL_TOKEN 0xE0u
-#define PROXY_TOKEN_LEN 16u
 // Largest PROXY v2 header we emit: 16 header + 36 IPv6 address block + 8 SSL TLV
 // + (3 + PROXY_TOKEN_LEN) token TLV.
 #define PROXY_V2_MAX (16u + 36u + 8u + 3u + PROXY_TOKEN_LEN)
@@ -184,27 +221,11 @@ static bool ensure_proxy_token(void)
 	// itself as well, so we must use exactly that value rather than a private
 	// one. Without it the token stays per-boot and only our own terminator can
 	// speak to the loopback backend.
-	const char *cfg = config.webserver.proxySecret.v.s;
-	if(cfg != NULL && cfg[0] != '\0')
+	const int cfg = config_proxy_secret(g_proxy_token);
+	if(cfg != 0)
 	{
-		if(strlen(cfg) != 2 * PROXY_TOKEN_LEN)
-		{
-			log_err("webserver.proxySecret must be %u hexadecimal characters, ignoring it",
-			        2 * PROXY_TOKEN_LEN);
-			return false;
-		}
-		for(unsigned i = 0; i < PROXY_TOKEN_LEN; i++)
-		{
-			unsigned v;
-			if(sscanf(cfg + 2 * i, "%2x", &v) != 1)
-			{
-				log_err("webserver.proxySecret is not valid hexadecimal, ignoring it");
-				return false;
-			}
-			g_proxy_token[i] = (unsigned char)v;
-		}
-		g_proxy_token_ready = true;
-		return true;
+		g_proxy_token_ready = cfg > 0;
+		return g_proxy_token_ready;
 	}
 
 	if(!get_secure_randomness(g_proxy_token, sizeof(g_proxy_token)))
@@ -220,16 +241,9 @@ static bool ensure_proxy_token(void)
 // fails.
 bool terminator_proxy_token_hex(char *out, size_t outsz)
 {
-	static const char hex[] = "0123456789abcdef";
-	size_t i;
 	if(outsz < 2 * PROXY_TOKEN_LEN + 1 || !ensure_proxy_token())
 		return false;
-	for(i = 0; i < PROXY_TOKEN_LEN; i++)
-	{
-		out[2 * i]     = hex[g_proxy_token[i] >> 4];
-		out[2 * i + 1] = hex[g_proxy_token[i] & 0x0F];
-	}
-	out[2 * PROXY_TOKEN_LEN] = '\0';
+	proxy_token_hex(g_proxy_token, out);
 	return true;
 }
 
@@ -4447,18 +4461,18 @@ void terminator_stop(void)
 
 #else // !HAVE_TLS
 
-// No-TLS build: the terminator does not exist. webserver.c still links
-// terminator_proxy_token_hex() (its call is guarded by terminator_port > 0,
-// which stays 0 here), so provide a stub. terminator_start()/stop() are only
+// No-TLS build: the terminator does not exist, so the only secret is the one an
+// external reverse proxy authenticates with. terminator_start()/stop() are only
 // ever called under HAVE_TLS, so they need no stubs.
 bool terminator_proxy_token_hex(char *out, size_t outsz)
 {
-	// No terminator here, so there is no token: return an empty string. The
-	// write also gives the stub a side effect, so it is not mistaken for a
-	// candidate for __attribute__((const)) under -Wsuggest-attribute=const.
+	unsigned char tok[PROXY_TOKEN_LEN];
 	if(outsz > 0)
 		out[0] = '\0';
-	return false;
+	if(outsz < 2 * PROXY_TOKEN_LEN + 1 || config_proxy_secret(tok) != 1)
+		return false;
+	proxy_token_hex(tok, out);
+	return true;
 }
 
 #endif // HAVE_TLS

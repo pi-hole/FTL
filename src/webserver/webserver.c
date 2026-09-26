@@ -1295,6 +1295,7 @@ void http_init(void)
 			        config.webserver.tls.cert.v.s);
 		}
 	}
+#endif
 
 	// Hand CivetWeb the shared secret authenticating PROXY v2 headers, so it
 	// adopts the real client address the header announces. Two independent
@@ -1317,7 +1318,7 @@ void http_init(void)
 		else
 			log_err("Terminator: could not derive proxy_protocol_secret; requests will log the loopback address");
 	}
-#endif
+
 	// Add access control list if configured (last two options)
 	if(strlen(config.webserver.acl.v.s) > 0)
 	{
