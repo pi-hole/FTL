@@ -212,6 +212,23 @@ setup_file() {
   assert_success
 }
 
+@test "dotdoh-server: DoH GET behind a reverse proxy is not shared-cacheable" {
+  # The answer depends on the client the proxy announced, so it must be private
+  run python3 test/dotdoh_query.py dohproxyget 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          00112233445566778899aabbccddeeff "$EXPECT_IP"
+  assert_line --index 0 "OK"
+  assert_line --index 1 --regexp '^cache-control: private, max-age=[0-9]+$'
+}
+
+@test "dotdoh-server: DoH behind a reverse proxy rejects a non-POST/GET method (405)" {
+  local m
+  for m in PUT DELETE HEAD OPTIONS; do
+    run python3 test/dotdoh_query.py dohproxymethod 127.0.0.1 80 "$m" "$DOMAIN" 127.0.0.3 \
+            00112233445566778899aabbccddeeff
+    assert_output "HTTP 405 allow=GET, POST body=0"
+  done
+}
+
 @test "dotdoh-server: DoH behind a proxy with the wrong secret is refused (426)" {
   run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
           ffeeddccbbaa99887766554433221100 "$EXPECT_IP"

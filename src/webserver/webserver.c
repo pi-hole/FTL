@@ -276,13 +276,26 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 	static _Thread_local uint8_t answer[DNS_MSG_MAX];
 	ssize_t qlen = -1;
 
+	// Only GET and POST are DoH methods; anything else gets the same 405 and
+	// Allow header as the terminator's native path (RFC 9110 15.5.6)
+	const bool is_post = ri->request_method != NULL && strcmp(ri->request_method, "POST") == 0;
+	const bool is_get = ri->request_method != NULL && strcmp(ri->request_method, "GET") == 0;
+	if(!is_get && !is_post)
+	{
+		mg_response_header_start(conn, 405);
+		mg_response_header_add(conn, "Allow", "GET, POST", -1);
+		mg_response_header_add(conn, "Content-Length", "0", -1);
+		mg_response_header_send(conn);
+		return 405;
+	}
+
 	if(!dotdoh_source_allowed(ri->remote_addr))
 	{
 		mg_send_http_error(conn, 403, "%s", "source not allowed");
 		return 403;
 	}
 
-	if(ri->request_method != NULL && strcmp(ri->request_method, "POST") == 0)
+	if(is_post)
 	{
 		// RFC 8484: body media type application/dns-message (trailing ";..." ok).
 		const char *ctype = mg_get_header(conn, "Content-Type");
@@ -342,11 +355,14 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 		return 502;
 	}
 
+	// private: the answer depends on the client's groups, so a shared cache
+	// must not hand it to anyone else
 	mg_printf(conn,
 	          "HTTP/1.1 200 OK\r\n"
 	          "Content-Type: application/dns-message\r\n"
 	          "Content-Length: %zd\r\n"
-	          "Cache-Control: max-age=%u\r\n"
+	          "Cache-Control: private, max-age=%u\r\n"
+	          "X-Content-Type-Options: nosniff\r\n"
 	          "\r\n",
 	          alen, doh_answer_min_ttl(answer, (size_t)alen));
 	mg_write(conn, answer, (size_t)alen);
