@@ -64,30 +64,25 @@ void sha256_raw_to_hex(uint8_t *data, char *buffer)
 	}
 }
 
-static char * __attribute__((malloc)) double_sha256_password(const char *password)
+// Compute the (single) SHA-256 hex digest of a NUL-terminated string.
+//
+// This is used to store and verify high-entropy API tokens (e.g. the
+// Prometheus scrape token). Unlike user-chosen passwords, a 256-bit random
+// token does not need the deliberately slow balloon hashing to resist brute
+// force - it is infeasible to guess regardless. A fast digest keeps per-request
+// verification cheap enough to run on every scrape, while still storing only a
+// preimage-resistant hash at rest so a leaked pihole.toml does not reveal a
+// usable token.
+char *sha256_hex(const char *input)
 {
 	char response[2 * SHA256_DIGEST_SIZE + 1] = { 0 };
 	uint8_t raw_response[SHA256_DIGEST_SIZE];
 	struct sha256_ctx ctx;
 
-	// Hash password a first time
 	sha256_init(&ctx);
 	sha256_update(&ctx,
-	              strlen(password),
-	              (uint8_t*)password);
-
-#if NETTLE_VERSION_MAJOR >= 4
-	sha256_digest(&ctx, raw_response);
-#else
-	sha256_digest(&ctx, SHA256_DIGEST_SIZE, raw_response);
-#endif
-	sha256_raw_to_hex(raw_response, response);
-
-	// Hash password a second time
-	sha256_init(&ctx);
-	sha256_update(&ctx,
-	              strlen(response),
-	              (uint8_t*)response);
+	              strlen(input),
+	              (const uint8_t*)input);
 
 #if NETTLE_VERSION_MAJOR >= 4
 	sha256_digest(&ctx, raw_response);
@@ -97,6 +92,37 @@ static char * __attribute__((malloc)) double_sha256_password(const char *passwor
 	sha256_raw_to_hex(raw_response, response);
 
 	return strdup(response);
+}
+
+// Return true if the string is a valid lowercase SHA-256 hex digest, i.e.
+// exactly 2*SHA256_DIGEST_SIZE (64) lowercase hexadecimal characters. This is
+// the format produced by sha256_hex() and is used both to validate the
+// Prometheus scrape token hash config item and to fail closed on a malformed
+// stored value at request time.
+bool valid_sha256_hex(const char *hash)
+{
+	if(hash == NULL || strlen(hash) != 2 * SHA256_DIGEST_SIZE)
+		return false;
+
+	for(unsigned int i = 0; i < 2 * SHA256_DIGEST_SIZE; i++)
+		if(!isxdigit((unsigned char)hash[i]) || isupper((unsigned char)hash[i]))
+			return false;
+
+	return true;
+}
+
+static char * __attribute__((malloc)) double_sha256_password(const char *password)
+{
+	// Legacy double-SHA256: hex(sha256(hex(sha256(password)))). This is exactly
+	// sha256_hex() applied twice, so we reuse it rather than open-coding the
+	// nettle digest sequence (and its version guard) a second and third time.
+	char *first = sha256_hex(password);
+	if(first == NULL)
+		return NULL;
+
+	char *second = sha256_hex(first);
+	free(first);
+	return second;
 }
 
 // Thread-safe: getrandom() is a syscall and the /dev/urandom fallback opens
