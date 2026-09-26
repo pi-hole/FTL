@@ -14,9 +14,11 @@ Usage:
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 import pytest
+import requests
 
 FTL_URL = "http://127.0.0.1"
 
@@ -30,6 +32,79 @@ def _j(response):
     data = response.json()
     data.pop("took", None)
     return data
+
+
+# ===========================================================================
+# Concurrent config mutations
+# ===========================================================================
+
+class TestConcurrentConfigMutations:
+    """Regression test for the lost-delete race (pi-hole/FTL#3015).
+
+    Config changes are a read-copy-modify-install sequence.  Without a lock
+    spanning the whole sequence, two API workers can each copy the config,
+    change their own copy and install it - whoever installs last silently
+    drops the other's change, so an entry deleted with a 204 reappears.
+
+    ``webserver.api.excludeDomains`` is used instead of ``dns.hosts`` because
+    it is empty in the test config and needs neither a dnsmasq test, a
+    ``custom.list`` rewrite nor a restart, which keeps the test out of the
+    other write counters ``test/test_final.bats`` asserts on.
+    """
+
+    # 2 * WORKERS * ROUNDS pihole.toml writes -- keep the count in
+    # test/test_final.bats ("Expected number of config file rotations") in sync
+    WORKERS = 4
+    ROUNDS = 6
+    BASE = f"{FTL_URL}/api/config/webserver/api/excludeDomains"
+
+    @staticmethod
+    def _entries(session):
+        r = session.get(TestConcurrentConfigMutations.BASE, timeout=10)
+        assert r.status_code == 200, f"GET failed: {r.status_code} {r.text}"
+        return _j(r)["config"]["webserver"]["api"]["excludeDomains"]
+
+    @classmethod
+    def _worker(cls, headers, idx):
+        """PUT and DELETE this worker's own entries, one at a time."""
+        problems = []
+        session = requests.Session()
+        session.headers.update(headers)
+        for i in range(cls.ROUNDS):
+            item = quote(f"pytest-3015-{idx}-{i}.test", safe="")
+            url = f"{cls.BASE}/{item}"
+            try:
+                r = session.put(url, timeout=20)
+                if r.status_code != 201:
+                    problems.append(f"PUT {item}: {r.status_code} {r.text}")
+                    continue
+                r = session.delete(url, timeout=20)
+                if r.status_code != 204:
+                    problems.append(f"DELETE {item}: {r.status_code} {r.text}")
+            except requests.RequestException as err:
+                # FTL died or dropped the connection mid-request
+                problems.append(f"{item}: {err}")
+                break
+        session.close()
+        return problems
+
+    def test_parallel_put_delete_leaves_no_entry_behind(self, api_session):
+        before = self._entries(api_session)
+        headers = dict(api_session.headers)
+
+        with ThreadPoolExecutor(max_workers=self.WORKERS) as pool:
+            results = pool.map(lambda i: self._worker(headers, i),
+                               range(self.WORKERS))
+            problems = [p for result in results for p in result]
+
+        assert not problems, "Requests failed:\n" + "\n".join(problems[:10])
+
+        after = self._entries(api_session)
+        resurrected = sorted(set(after) - set(before))
+        assert not resurrected, \
+            f"Entries returned after their DELETE was acked: {resurrected}"
+        assert sorted(after) == sorted(before), \
+            f"Config changed: {sorted(before)} -> {sorted(after)}"
 
 
 # ---------------------------------------------------------------------------
