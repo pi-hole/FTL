@@ -54,10 +54,11 @@ components:
         - $ref: 'domains.yaml#/components/parameters/type'
         - $ref: 'domains.yaml#/components/parameters/kind'
         - $ref: 'domains.yaml#/components/parameters/domain'
+        - $ref: 'common.yaml#/components/parameters/item'
       get:
         operationId: "get_domain"
         <<: *get_path
-      put:
+      put: &domain_put
         summary: Replace domain
         tags:
           - "Domain management"
@@ -107,6 +108,8 @@ components:
                     $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
                     $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/item_mismatch'
                   no_payload:
                     $ref: 'domains.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
@@ -121,7 +124,7 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      delete:
+      delete: &domain_delete
         summary: Delete domain
         tags:
           - "Domain management"
@@ -150,6 +153,8 @@ components:
                     $ref: 'domains.yaml#/components/examples/errors/uri_error/list_imprecise'
                   item_missing:
                     $ref: 'domains.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'domains.yaml#/components/examples/errors/bad_request/item_mismatch'
           '401':
             description: Unauthorized
             content:
@@ -224,6 +229,24 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+      put:
+        <<: *domain_put
+        operationId: "replace_domain_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `PUT /api/domains/{type}/{kind}/{domain}`, except that the domain is named by the `item` query parameter instead of by a path segment.
+
+          This is the only way to reach a domain or regular expression that is literally `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      delete:
+        <<: *domain_delete
+        operationId: "delete_domain_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `DELETE /api/domains/{type}/{kind}/{domain}`, except that the domain is named by the `item` query parameter instead of by a path segment.
+
+          *Note:* There will be no content on success.
     type:
       parameters:
         - $ref: 'domains.yaml#/components/parameters/type'
@@ -518,6 +541,14 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
+        item_mismatch:
+          summary: URI path and "item" query parameter name different domains
+          value:
+            error:
+              key: "bad_request"
+              message: 'Invalid request: The item in the URI path and the "item" query parameter disagree'
+              hint: "/api/domains/deny/exact/example.com"
             took: 0.003
       database_error:
         duplicate:
