@@ -955,6 +955,56 @@ static bool tls_addr_is_wildcard(const char *addr)
 	return addr[0] == '\0';
 }
 
+// Parse one secure webserver.port entry with CivetWeb's syntax, as these never
+// reach CivetWeb's own check: "[ipv6]:", "ipv4:" or "+" (none of them for a
+// bare port), a port 1-65535, then only the flags 'o', 'r' and 's', each at
+// most once, 's' required and 'r' not with it. addr receives the address
+// without brackets, or "" for all interfaces.
+static bool parse_tls_entry(const char *ent, char addr[64], int *port)
+{
+	const char *p = ent;
+	addr[0] = '\0';
+	if(*p == '[' || (*p != '+' && strchr(p, ':') != NULL))
+	{
+		const bool v6 = *p == '[';
+		const char *end = v6 ? strstr(p, "]:") : strchr(p, ':');
+		if(end == NULL)
+			return false;
+		const char *astart = v6 ? p + 1 : p;
+		const size_t alen = (size_t)(end - astart);
+		if(alen == 0 || alen >= 64)
+			return false;
+		memcpy(addr, astart, alen);
+		addr[alen] = '\0';
+		unsigned char tmp[sizeof(struct in6_addr)];
+		if(inet_pton(v6 ? AF_INET6 : AF_INET, addr, tmp) != 1)
+			return false;
+		p = end + (v6 ? 2 : 1);
+	}
+	else if(*p == '+')
+		p++;
+
+	if(!isdigit((unsigned char)*p))
+		return false;
+	long val = 0;
+	for(; isdigit((unsigned char)*p); p++)
+		if((val = val * 10 + (*p - '0')) > 65535)
+			return false;
+	if(val < 1)
+		return false;
+
+	bool o = false, r = false, sec = false;
+	for(; *p != '\0'; p++)
+	{
+		bool *flag = *p == 'o' ? &o : *p == 'r' ? &r : *p == 's' ? &sec : NULL;
+		if(flag == NULL || *flag)
+			return false;
+		*flag = true;
+	}
+	*port = (int)val;
+	return sec && !r;
+}
+
 // Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
 // name public TLS ports the terminator owns, so they are dropped from CivetWeb's
 // list and a loopback plaintext backend (ephemeral port, read back after start)
@@ -975,59 +1025,25 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 	char *save = NULL;
 	for(char *tok = strtok_r(copy, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save))
 	{
-		// Skip leading whitespace via a separate pointer so the loop variable
-		// itself is not modified in the body.
+		// Trim surrounding whitespace, as CivetWeb's option list parser does
 		const char *ent = tok;
-		while(*ent == ' ')
+		while(*ent == ' ' || *ent == '\t')
 			ent++;
+		for(char *e = tok + strlen(tok); e > ent && (e[-1] == ' ' || e[-1] == '\t'); )
+			*--e = '\0';
 		if(*ent == '\0')
 			continue;
 
 		// A secure entry (carries the 's' flag) is owned by the terminator
 		if(strchr(ent, 's') != NULL)
 		{
-			if(n_tls >= tls_cap)
+			// Secure entries never reach CivetWeb, so a malformed one ("44s3",
+			// "443xs") must be rejected here rather than read as a port
+			char addr[64];
+			int port = 0;
+			if(!parse_tls_entry(ent, addr, &port))
 			{
-				log_warn("Cannot serve TLS on '%s': at most %u TLS ports are supported",
-				         ent, tls_cap);
-				continue; // still drop it, CivetWeb cannot serve it either
-			}
-			// Port digits follow the last ':' ("[::]:443os") or start the
-			// token ("443os"); atoi() stops at the flag letters.
-			const char *p = strrchr(ent, ':');
-			char *addr = tls_addrs[n_tls];
-			addr[0] = '\0';
-			// Everything before that ':' is the bind address the operator
-			// scoped the port to; strip the [ ] around an IPv6 literal. No
-			// ':' means a bare port ("443s") -> all interfaces (empty addr).
-			if(p != NULL)
-			{
-				const char *astart = ent;
-				size_t alen = (size_t)(p - ent);
-				if(alen >= 2 && ent[0] == '[' && p[-1] == ']')
-				{
-					astart++;
-					alen -= 2;
-				}
-				if(alen > 0)
-				{
-					// An over-long address cannot be a valid IP literal;
-					// truncate it (rather than dropping it, which would
-					// silently fall back to all interfaces) so the terminator's
-					// fill_bind_addr() rejects it and fails closed.
-					if(alen >= 64)
-						alen = 63;
-					memcpy(addr, astart, alen);
-					addr[alen] = '\0';
-				}
-			}
-			const int port = atoi(p != NULL ? p + 1 : ent);
-			// Secure entries never reach CivetWeb, so its own syntax check cannot
-			// catch a malformed one ("[::]:xs", "0s"); reject it here instead of
-			// binding port 0.
-			if(port < 1 || port > 65535)
-			{
-				log_warn("Ignoring TLS entry '%s' in webserver.port: not a valid port", ent);
+				log_warn("Ignoring malformed TLS entry '%s' in webserver.port", ent);
 				continue;
 			}
 
@@ -1055,7 +1071,14 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 			if(dup)
 				continue; // drop from the list handed to CivetWeb
 
-			tls[n_tls].addr = addr;
+			if(n_tls >= tls_cap)
+			{
+				log_warn("Cannot serve TLS on '%s': at most %u TLS ports are supported",
+				         ent, tls_cap);
+				continue; // still drop it, CivetWeb cannot serve it either
+			}
+			strcpy(tls_addrs[n_tls], addr);
+			tls[n_tls].addr = tls_addrs[n_tls];
 			tls[n_tls].port = port;
 			n_tls++;
 			continue; // drop from the list handed to CivetWeb

@@ -196,6 +196,16 @@ setup_file() {
   assert_failure
 }
 
+@test "dotdoh-server: a malformed TLS entry is rejected, not read as a port" {
+  # test/pihole.toml lists "44s3" and "443xs", which CivetWeb would refuse
+  run grep -F "Ignoring malformed TLS entry '44s3' in webserver.port" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "Ignoring malformed TLS entry '443xs' in webserver.port" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "TLS terminator listening on *#44," /var/log/pihole/FTL.log
+  assert_failure
+}
+
 @test "dotdoh-server: DoH behind an authenticated reverse proxy is served" {
   # A PROXY v2 header carrying webserver.proxySecret announces client 127.0.0.3
   # and TLS, so the plaintext request is served and attributed to that client

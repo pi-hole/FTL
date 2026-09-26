@@ -954,7 +954,7 @@
   #
   # Allowed values are:
   #     A comma-separated list of <[ip_address:]port>
-  port = "80o,443os,[::]:80o,[::]:443os,9443s,192.0.2.1:9444s" ### CHANGED, default = "80o,443os,[::]:80o,[::]:443os"
+  port = "80o,443os,[::]:80o,[::]:443os,9443s,192.0.2.1:9444s,44s3,443xs" ### CHANGED, default = "80o,443os,[::]:80o,[::]:443os"
 
   # Maximum number of worker threads allowed.
   #
