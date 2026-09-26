@@ -212,9 +212,9 @@ struct dot_conn {
 	bool used;
 	int cfd;                 // client TLS socket (non-blocking)
 	SSL *ssl;
-	int upfd;                // loopback resolve socket, kept open across keep-alive
-	                         // queries for reuse; -1 when none is open
-	bool up_reused;          // upfd carried over from a previous query this conn
+	int upfd;                // loopback resolve socket, borrowed from the shared
+	                         // pool for one query; -1 when none is open
+	bool up_reused;          // upfd came from the shared pool (may be stale)
 	bool up_idle;            // upfd is at a clean message boundary (no exchange
 	                         // in flight), so it may go back into the pool
 	bool up_retried;         // already reconnected once for the current query
@@ -628,9 +628,7 @@ static int drive_up_read(struct dot_conn *c)
 		{ c->active_fd = c->upfd; c->active_ev = POLLIN; return 0; }
 		return -1;
 	}
-	// Answer complete. Keep the loopback socket open so the next keep-alive query
-	// reuses it instead of forking a fresh dnsmasq child - and it is now back at
-	// a message boundary, so conn_free() may return it to the shared pool.
+	// Answer complete: the loopback socket is back at a message boundary.
 	c->up_idle = true;
 
 	// Hand the loopback socket back now that the exchange is complete, rather

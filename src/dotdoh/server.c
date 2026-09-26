@@ -188,7 +188,8 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 	return (ssize_t)alen;
 }
 
-// Shared pool of connected loopback sockets for the DoT and DoQ reactors.
+// Shared pool of connected loopback sockets for the DoT and DoQ reactors and the
+// DoH path.
 //
 // dnsmasq forks a child per TCP connection, so tying one loopback socket to each
 // inbound connection (DoT) or to each in-flight stream (DoQ) makes the number of
@@ -197,25 +198,26 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 // child slots, at which point queries are read but never answered. Pooling the
 // sockets decouples the two: a keep-alive socket is reused across unrelated
 // client connections and streams, so a client that opens a connection per query
-// no longer forks a child per query. Note this bounds the IDLE cache, not the
-// number of sockets in flight - concurrency is capped by the reactors' own
-// stream/connection limits, not by the pool size.
+// no longer forks a child per query. The pool size bounds only the idle cache;
+// sockets in flight are capped by loopback_cap() in dotdoh_loopback_take().
 //
 // The sockets are non-blocking because both reactors drive them from their poll
 // set. Both are single-threaded but they are two different threads, so the pool
 // is mutex-guarded; contention is a couple of pointer moves per query.
+//
 // Upper bound on the array; the number actually retained follows the derived
 // concurrency cap (see pool_keep_max()). Keeping the pool as large as the cap
 // means a query at full concurrency always finds a warm socket, so no fork
 // churn: the children the cap allows are simply resident rather than being
 // created and destroyed.
-// Bound on a blocking loopback exchange, so a slow dnsmasq child cannot pin a
-// webserver worker (and a concurrency slot) for its full 300 s lifetime.
-#define LOOPBACK_IO_TIMEOUT_S 5
 #define LOOPBACK_POOL_SLOTS 64
 static pthread_mutex_t pool_lock = PTHREAD_MUTEX_INITIALIZER;
 static int pool_fds[LOOPBACK_POOL_SLOTS];
 static int pool_n = 0;
+
+// Bound on a blocking loopback exchange, so a slow dnsmasq child cannot pin a
+// webserver worker (and a concurrency slot) for its full 300 s lifetime.
+#define LOOPBACK_IO_TIMEOUT_S 5
 
 // Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
 // draw on the same pool. Encrypted listeners get the rest.
@@ -320,10 +322,6 @@ void dotdoh_loopback_drop(int fd)
 		close(fd);
 }
 
-// Open a blocking loopback TCP connection to dnsmasq's own DNS listener, with
-// send/recv timeouts so a stall cannot pin the worker (the loopback connect
-// itself is effectively instant, so no separate connect timeout is needed).
-// Returns the connected fd or -1.
 // Pooled sockets are non-blocking because the DoT and DoQ reactors drive them
 // from a poll() set. The DoH path below does a blocking exchange instead, so it
 // toggles the flag around its use and always hands the socket back non-blocking.
@@ -348,6 +346,10 @@ static bool set_blocking(int fd, bool blocking)
 	       setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == 0;
 }
 
+// Open a blocking loopback TCP connection to dnsmasq's own DNS listener, with
+// send/recv timeouts so a stall cannot pin the worker (the loopback connect
+// itself is effectively instant, so no separate connect timeout is needed).
+// Returns the connected fd or -1.
 static int loopback_connect(void)
 {
 	const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
