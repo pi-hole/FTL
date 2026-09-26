@@ -328,9 +328,9 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 		const unsigned char c = val->s[i];
 		if(c < 0x20 || c > 0x7E)
 		{
-			// The offending byte is named by position, not echoed - it
-			// would break the line it is reported on
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (invalid character at position %u)", key, i);
+			// The byte is reported as hex rather than echoed, which
+			// would break the very line reporting it
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (invalid character 0x%02x at position %u)", key, c, i);
 			return false;
 		}
 	}
