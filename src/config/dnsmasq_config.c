@@ -144,11 +144,15 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
-			// errors are fatal and we break out of the loop
+			// errors are fatal: there is no status to evaluate and
+			// the test counts as failed
 			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
-				break;
+				if(errbuf != NULL)
+					snprintf(errbuf, ERRBUF_SIZE, "Cannot wait for dnsmasq test: %s", strerror(err));
+				code = EXIT_FAILURE;
+				goto check_return;
 			}
 
 			// Check if the child exited too quickly for waitpid to
@@ -398,7 +402,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
-		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot open "DNSMASQ_TEMP_CONF" for writing: %s", strerror(errno));
+		log_err("%s, unable to update dnsmasq configuration", errbuf);
 		if(conf_fd >= 0)
 			close(conf_fd);
 		return false;
@@ -966,10 +971,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// success after a short write, so without this a disk that filled up
 	// part-way through would be renamed over the live dnsmasq config as a
 	// truncated file that dnsmasq would happily start from
+	// The reason goes into errbuf as the callers report it as their hint
 	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
 	                          fsync(fileno(pihole_conf)) != 0;
 	if(write_failed)
-		log_err("Cannot write dnsmasq config file: %s", strerror(errno));
+	{
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		log_err("%s", errbuf);
+	}
 
 	// Unlock file
 	if(locked)
@@ -978,6 +987,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Close file
 	if(fclose(pihole_conf) != 0)
 	{
+		if(!write_failed)
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot close "DNSMASQ_TEMP_CONF": %s", strerror(errno));
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
@@ -1022,7 +1033,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 
@@ -1035,7 +1047,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
-			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot install "DNSMASQ_PH_CONFIG": %s", strerror(errno));
+			log_err("%s", errbuf);
 
 			// Remove temporary config file
 			if(remove(DNSMASQ_TEMP_CONF) != 0)
@@ -1056,7 +1069,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 	}
@@ -1094,8 +1108,10 @@ bool read_legacy_dhcp_static_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "dhcp-host=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "dhcp-host=", sizeof("dhcp-host=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
@@ -1157,8 +1173,10 @@ bool read_legacy_cnames_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "cname=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "cname=", sizeof("cname=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer

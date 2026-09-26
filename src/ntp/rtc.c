@@ -19,6 +19,14 @@
 #include <linux/rtc.h>
 // O_WRONLY
 #include <fcntl.h>
+// opendir(), readdir()
+#include <dirent.h>
+// major(), minor()
+#include <sys/sysmacros.h>
+// PATH_MAX
+#include <limits.h>
+// use_capability()
+#include "capabilities.h"
 // struct config
 #include "config/config.h"
 
@@ -41,136 +49,148 @@ static void print_tm_time(const char *label, const struct tm *tm)
 	log_info("%s %s", label, timestr);
 }
 
-// Try to find the RTC device and open it
-static int open_rtc(void)
+// Is this device number one of the kernel's RTCs? /sys/class/rtc/<name>/dev
+// holds "major:minor" for each of them
+static bool is_rtc_device(const dev_t rdev)
 {
-	int rtc_fd = -1;
+	DIR *dir = opendir("/sys/class/rtc");
+	if(dir == NULL)
+		return false;
 
-	// Get current user's UID and GID
-	const uid_t uid = getuid();
-	const gid_t gid = getgid();
-
-	// If the user has specified an RTC device, try to open it
-	if(config.ntp.sync.rtc.device.v.s != NULL &&
-	   strlen(config.ntp.sync.rtc.device.v.s) > 0)
+	bool found = false;
+	struct dirent *ent;
+	while(!found && (ent = readdir(dir)) != NULL)
 	{
-		// Open the RTC device
-		rtc_fd = open(config.ntp.sync.rtc.device.v.s, O_RDONLY);
-		if (rtc_fd != -1)
-		{
-			log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-			          config.ntp.sync.rtc.device.v.s);
-			return rtc_fd;
-		}
+		if(ent->d_name[0] == '.')
+			continue;
 
-		// If the open failed because of permissions, try to change them
-		// momentarily. On some embedded systems, the RTC device is owned by
-		// root exclusively and users do not have permission to even open it.
-		// Without being able to access the RTC, the capability to set the
-		// time (CAP_SYS_TIME) is useless.
-		if(errno == EACCES)
-		{
-			// Get current owner of the device
-			struct stat st = { 0 };
-			if(stat(config.ntp.sync.rtc.device.v.s, &st) == -1)
-			{
-				log_debug(DEBUG_NTP, "stat(\"%s\") failed: %s",
-				          config.ntp.sync.rtc.device.v.s, strerror(errno));
-				return -1;
-			}
+		char devpath[PATH_MAX];
+		snprintf(devpath, sizeof(devpath), "/sys/class/rtc/%s/dev", ent->d_name);
+		FILE *fp = fopen(devpath, "r");
+		if(fp == NULL)
+			continue;
 
-			if(chown(config.ntp.sync.rtc.device.v.s, uid, gid) == -1)
-			{
-				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          config.ntp.sync.rtc.device.v.s, uid, gid,
-				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
-				return -1;
-			}
+		unsigned int maj = 0, min = 0;
+		if(fscanf(fp, "%u:%u", &maj, &min) == 2 &&
+		   maj == major(rdev) && min == minor(rdev))
+			found = true;
+		fclose(fp);
+	}
+	closedir(dir);
 
-			rtc_fd = open(config.ntp.sync.rtc.device.v.s, O_RDONLY);
-			if (rtc_fd != -1)
-			{
-				log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-				          config.ntp.sync.rtc.device.v.s);
-			}
+	return found;
+}
 
-			// Chown the device back to the original owner
-			if(chown(config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid) == -1)
-			{
-				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          config.ntp.sync.rtc.device.v.s, st.st_uid, st.st_gid,
-				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
-				return -1;
-			}
+// Open one RTC device, momentarily taking ownership if the current permissions
+// do not allow it. On some embedded systems the RTC device is owned by root
+// exclusively and the FTL user cannot even open it; without access to the RTC,
+// the capability to set the time (CAP_SYS_TIME) is useless.
+//
+// The path can come from configuration (ntp.sync.rtc.device), so the escalation
+// must not be usable to touch anything but an actual RTC device. Everything past
+// the initial open therefore acts on a single O_PATH|O_NOFOLLOW handle to the
+// exact path entry, referenced through /proc/self/fd: a final symlink is not
+// followed, the entry must be a character device, and the target cannot be
+// swapped for another file between the check and the chown. Returns a readable
+// file descriptor on success, -1 otherwise.
+static int open_rtc_device(const char *path)
+{
+	// Fast path: the device is already openable
+	int rtc_fd = open(path, O_RDONLY | O_CLOEXEC);
+	if(rtc_fd != -1)
+		return rtc_fd;
 
-			// Return the RTC file descriptor (can be -1)
-			return rtc_fd;
-		}
+	// Only a permission problem is worth escalating for
+	if(errno != EACCES)
+		return -1;
 
-		log_debug(DEBUG_NTP, "Failed to open RTC at \"%s\": %s",
-		          config.ntp.sync.rtc.device.v.s, strerror(errno));
-
+	// Pin the exact path entry without following a final symlink and without
+	// needing any access right to it. All following operations use this handle.
+	const int path_fd = open(path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+	if(path_fd == -1)
+	{
+		log_debug(DEBUG_NTP, "open(\"%s\", O_PATH) failed: %s", path, strerror(errno));
 		return -1;
 	}
 
-	// If the user has not specified an RTC device, try to open the default
-	// ones
-	for(size_t i = 0; i < ArraySize(rtc_devices); i++)
+	// It has to be an RTC - not a regular file or another device whose
+	// ownership someone wants handed to the FTL user.
+	struct stat st = { 0 };
+	if(fstat(path_fd, &st) == -1 || !S_ISCHR(st.st_mode) || !is_rtc_device(st.st_rdev))
 	{
-		rtc_fd = open(rtc_devices[i], O_RDONLY);
-		if (rtc_fd != -1)
-		{
-			log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-			          rtc_devices[i]);
-			break;
-		}
-
-		// If the open failed because of permissions, try to change them
-		// momentarily
-		if(errno == EACCES)
-		{
-			// Get current owner of the device
-			struct stat st = { 0 };
-			if(stat(rtc_devices[i], &st) == -1)
-			{
-				log_debug(DEBUG_NTP, "stat(\"%s\") failed: %s",
-				          rtc_devices[i], strerror(errno));
-				return -1;
-			}
-
-			if(chown(rtc_devices[i], uid, gid) == -1)
-			{
-				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          rtc_devices[i], uid, gid,
-				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
-				return -1;
-			}
-
-			rtc_fd = open(rtc_devices[i], O_RDONLY);
-			if (rtc_fd != -1)
-			{
-				log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"",
-				          rtc_devices[i]);
-			}
-
-			// Chown the device back to the original owner
-			if(chown(rtc_devices[i], st.st_uid, st.st_gid) == -1)
-			{
-				log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s",
-				          rtc_devices[i], st.st_uid, st.st_gid, 
-				          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
-				return -1;
-			}
-
-			// Return the RTC file descriptor (can be -1)
-			return rtc_fd;
-		}
-
-		log_debug(DEBUG_NTP, "Failed to open RTC at \"%s\": %s",
-		          rtc_devices[i], strerror(errno));
+		log_debug(DEBUG_NTP, "\"%s\" is not an RTC device, refusing", path);
+		close(path_fd);
+		return -1;
 	}
 
+	// The ownership changes act on the pinned handle itself. An O_PATH handle
+	// cannot be read from, so the reopen goes through /proc/self/fd, which
+	// resolves to the very same file
+	char procpath[32] = { 0 };
+	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", path_fd);
+
+	// CAP_CHOWN is kept out of use, raise it for the ownership changes only
+	const bool raised = use_capability(CAP_CHOWN, true);
+
+	// Take ownership momentarily
+	const uid_t uid = getuid();
+	const gid_t gid = getgid();
+	if(fchownat(path_fd, "", uid, gid, AT_EMPTY_PATH) == -1)
+	{
+		log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s", path, uid, gid,
+		          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+		if(raised)
+			use_capability(CAP_CHOWN, false);
+		close(path_fd);
+		return -1;
+	}
+
+	// Open it for reading now that we own it
+	rtc_fd = open(procpath, O_RDONLY | O_CLOEXEC);
+
+	// Restore the original owner regardless of whether the reopen succeeded.
+	// A device left with the FTL user is not one to go on working with
+	if(fchownat(path_fd, "", st.st_uid, st.st_gid, AT_EMPTY_PATH) == -1)
+	{
+		log_warn("Cannot restore the owner of \"%s\": %s", path, strerror(errno));
+		if(rtc_fd != -1)
+			close(rtc_fd);
+		rtc_fd = -1;
+	}
+
+	if(raised)
+		use_capability(CAP_CHOWN, false);
+	close(path_fd);
 	return rtc_fd;
+}
+
+// Try to find the RTC device and open it
+static int open_rtc(void)
+{
+	// If the user has specified an RTC device, use exactly that one
+	if(config.ntp.sync.rtc.device.v.s != NULL &&
+	   strlen(config.ntp.sync.rtc.device.v.s) > 0)
+	{
+		const int rtc_fd = open_rtc_device(config.ntp.sync.rtc.device.v.s);
+		log_debug(DEBUG_NTP, "%s RTC at \"%s\"",
+		          rtc_fd != -1 ? "Successfully opened" : "Failed to open",
+		          config.ntp.sync.rtc.device.v.s);
+		return rtc_fd;
+	}
+
+	// Otherwise, try the well-known device paths in turn
+	for(size_t i = 0; i < ArraySize(rtc_devices); i++)
+	{
+		const int rtc_fd = open_rtc_device(rtc_devices[i]);
+		if(rtc_fd != -1)
+		{
+			log_debug(DEBUG_NTP, "Successfully opened RTC at \"%s\"", rtc_devices[i]);
+			return rtc_fd;
+		}
+		log_debug(DEBUG_NTP, "Failed to open RTC at \"%s\"", rtc_devices[i]);
+	}
+
+	return -1;
 }
 
 static bool read_rtc(struct tm *tm)

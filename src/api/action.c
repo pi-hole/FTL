@@ -14,6 +14,8 @@
 #include "api/api.h"
 // wait()
 #include <sys/wait.h>
+// O_CLOEXEC
+#include <fcntl.h>
 // reboot()
 #include <sys/reboot.h>
 #include <unistd.h>
@@ -31,8 +33,28 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	int pipefd[2];
 	if(pipe(pipefd) !=0)
 	{
+		// This function returns an HTTP status code, so a plain false
+		// would be a 0 the caller turns into a 404
 		log_err("Cannot create pipe while running gravity action: %s", strerror(errno));
-		return false;
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot create pipe",
+		                       strerror(errno));
+	}
+
+	// dnsmasq reaps every child of this process on SIGCHLD, so the exit
+	// status of the command comes back through a pipe of its own
+	int statusfd[2];
+	if(pipe2(statusfd, O_CLOEXEC) != 0)
+	{
+		const int err = errno;
+		log_err("Cannot create status pipe while running gravity action: %s", strerror(err));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot create pipe",
+		                       strerror(err));
 	}
 
 	// Fork!
@@ -47,17 +69,25 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// report that child's exit status as the result of this command.
 		// test_dnsmasq_config() has the same fork and is fixed alongside
 		// the config write path
-		log_err("Cannot fork to run command: %s", strerror(errno));
+		// Kept across the close() calls, which may clobber errno
+		const int err = errno;
+		log_err("Cannot fork to run command: %s", strerror(err));
 		close(pipefd[0]);
 		close(pipefd[1]);
-		return false;
+		close(statusfd[0]);
+		close(statusfd[1]);
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot fork to run command",
+		                       strerror(err));
 	}
 
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
-		// Close the reading end of the pipe
+		// Close the reading ends of the pipes
 		close(pipefd[0]);
+		close(statusfd[0]);
 
 		// Disable logging
 		log_ctrl(false, false);
@@ -85,18 +115,39 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// custom handlers which are reset to SIG_DFL.
 		signal(SIGTERM, SIG_IGN);
 
-		// Run pihole -g
-		execv(path, (char *const *)args);
+		// Run the command in a child of our own, which nobody else can
+		// reap, and hand its exit status to the parent
+		const pid_t gpid = fork();
+		if(gpid == 0)
+		{
+			// Run pihole -g
+			execv(path, (char *const *)args);
 
-		// execv() only returns if it failed, so the command never ran.
-		// Exit non-zero so the parent reports the action as failed.
-		exit(EXIT_FAILURE);
+			// execv() only returns if it failed, so the command never ran.
+			// Exit non-zero so the parent reports the action as failed.
+			_exit(EXIT_FAILURE);
+		}
+
+		int gstatus = -1;
+		if(gpid > 0)
+		{
+			pid_t waited;
+			do
+				waited = waitpid(gpid, &gstatus, 0);
+			while(waited == -1 && errno == EINTR);
+			if(waited == -1)
+				gstatus = -1;
+		}
+
+		const ssize_t written = write(statusfd[1], &gstatus, sizeof(gstatus));
+		_exit(written == sizeof(gstatus) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 	else
 	{
 		/*** PARENT ***/
-		// Close the writing end of the pipe
+		// Close the writing ends of the pipes
 		close(pipefd[1]);
+		close(statusfd[1]);
 
 		// Send 200 OK with chunked size (-1)
 		mg_send_http_ok(api->conn, "text/plain", -1);
@@ -121,12 +172,29 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			memset(errbuf, 0, sizeof(errbuf));
 		}
 
-		// Wait until child has exited to get its return code
-		int status;
-		waitpid(cpid, &status, 0);
-		code = WEXITSTATUS(status);
+		// Get the exit status of the command from the status pipe
+		int status = -1;
+		ssize_t got;
+		do
+			got = read(statusfd[0], &status, sizeof(status));
+		while(got == -1 && errno == EINTR);
+		close(statusfd[0]);
 
-		if(WIFSIGNALED(status))
+		// Reap the helper, dnsmasq may have been faster
+		pid_t waited;
+		do
+			waited = waitpid(cpid, NULL, 0);
+		while(waited == -1 && errno == EINTR);
+
+		// An unknown exit status is not a success
+		if(got != sizeof(status) || status == -1)
+		{
+			log_err("Cannot get the exit status of the command");
+			code = EXIT_FAILURE;
+		}
+		else if(WIFEXITED(status))
+			code = WEXITSTATUS(status);
+		else if(WIFSIGNALED(status))
 		{
 			crashed = true;
 			log_err("gravity failed with signal %d %s",

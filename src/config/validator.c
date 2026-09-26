@@ -357,34 +357,228 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
-// Validate the web server log file path. In addition to the regular file-path
-// checks, reject a path inside webserver.paths.webroot: a log file served from
-// the web server's document root can be read - and, if the path matches the
-// Lua server-page pattern, executed - by the web server itself, turning
-// attacker-controlled request data written into the access log into code
-// execution.
-bool validate_webserver_logfile(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+// Validate the TOTP secret: empty (2FA off) or a base32 string of at most 32
+// characters (the 20 byte secret), which is what verifyTOTP() can decode
+bool validate_totp_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->s == NULL)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: null string", key);
+		return false;
+	}
+
+	const size_t len = strlen(val->s);
+	if(len > 32)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: longer than 32 characters", key);
+		return false;
+	}
+
+	for(size_t i = 0; i < len; i++)
+	{
+		if(strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", toupper((unsigned char)val->s[i])) == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a base32 string", key);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Whether two absolute paths are the same or one contains the other. Comparing
+// at component boundaries keeps a sibling sharing a prefix ("/etc-backup")
+// apart from a real parent ("/etc").
+static bool paths_overlap(const char *a, const size_t alen, const char *b)
+{
+	const size_t blen = strlen(b);
+	const size_t shorter = alen < blen ? alen : blen;
+
+	if(strncmp(a, b, shorter) != 0)
+		return false;
+
+	return alen == blen ||
+	       (alen > blen && a[blen] == '/') ||
+	       (blen > alen && b[alen] == '/');
+}
+
+// Rewrite an absolute path into the one spelling of it we compare against:
+// repeated slashes collapsed, "." segments dropped and ".." resolved, clamping
+// at the root. Without this the comparisons below are defeated by writing the
+// same directory differently - "/." and "//etc/pihole" name the root and the
+// configuration directory just as well as "/" and "/etc/pihole" do.
+//
+// Resolution is lexical, so a symbolic link still points where it points. That
+// is deliberate: realpath() needs the path to exist, which would stop a
+// directory from being configured before it is created, and planting a link in
+// the first place already requires access to the host.
+//
+// Returns the length written, or 0 if the path is not absolute or does not fit,
+// which callers treat as "reject" rather than "skip the check".
+#define NORMALIZED_PATH_LEN 4096
+static size_t normalize_path(const char *path, char *out, const size_t outlen)
+{
+	if(path == NULL || path[0] != '/' || outlen < 2)
+		return 0;
+
+	size_t o = 0;
+	out[o++] = '/';
+
+	for(const char *p = path; *p != '\0';)
+	{
+		// Skip over the separator(s) before this segment
+		while(*p == '/')
+			p++;
+		if(*p == '\0')
+			break;
+
+		const char *seg = p;
+		while(*p != '\0' && *p != '/')
+			p++;
+		const size_t seglen = (size_t)(p - seg);
+
+		// "." is the directory we are already in
+		if(seglen == 1 && seg[0] == '.')
+			continue;
+
+		// ".." drops the segment before it, and does nothing at the root
+		if(seglen == 2 && seg[0] == '.' && seg[1] == '.')
+		{
+			while(o > 1 && out[o - 1] != '/')
+				o--;
+			if(o > 1)
+				o--;
+			continue;
+		}
+
+		// Separator, unless we are still at the leading slash
+		if(o > 1)
+		{
+			if(o + 1 >= outlen)
+				return 0;
+			out[o++] = '/';
+		}
+
+		if(o + seglen >= outlen)
+			return 0;
+		memcpy(out + o, seg, seglen);
+		o += seglen;
+	}
+
+	out[o] = '\0';
+
+	return o;
+}
+
+// The files Pi-hole writes and therefore must keep out of the document root.
+// Their content follows from what clients send - logged requests, resolved
+// names, imported settings - so serving them hands that straight back out, and a
+// name matching the Lua server-page pattern makes the web server evaluate them
+// rather than serve them. The TLS certificate is generated with its private key
+// in the same file.
+#define WRITTEN_FILES(conf) { \
+	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
+	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
+	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
+
+// Check the path relationships of a complete configuration.
+//
+// The per-item validators can only compare a new value against the values
+// currently in effect, which is not enough when several of them change together:
+// a request moving the document root and a log file below it in one go passes
+// both individual checks. Config also reaches FTL through the Teleporter, which
+// parses a whole file at once and never ran the per-item validators at all. This
+// runs over the resulting configuration instead and is the authoritative check -
+// call it before putting a new configuration in place.
+bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
+                           struct conf_item **offender)
+{
+	if(offender != NULL)
+		*offender = &conf->webserver.paths.webroot;
+
+	const char *webroot = conf->webserver.paths.webroot.v.s;
+	if(webroot == NULL || webroot[0] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be an absolute path",
+		         conf->webserver.paths.webroot.k);
+		return false;
+	}
+
+	char wnorm[NORMALIZED_PATH_LEN];
+	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
+	if(wlen == 0 || wlen == 1 || paths_overlap(wnorm, wlen, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         conf->webserver.paths.webroot.k, CONFIG_DIR);
+		return false;
+	}
+
+	struct conf_item *written[] = WRITTEN_FILES(*conf);
+	for(size_t i = 0; i < ArraySize(written); i++)
+	{
+		const char *path = written[i]->v.s;
+		if(path == NULL || path[0] == '\0')
+			continue;
+
+		// A relative path is resolved from the working directory and cannot
+		// be compared with the document root
+		if(path[0] != '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must be an absolute path",
+			         written[i]->k, path);
+			if(offender != NULL)
+				*offender = written[i];
+			return false;
+		}
+
+		char pnorm[NORMALIZED_PATH_LEN];
+		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
+		   paths_overlap(wnorm, wlen, pnorm))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN,
+			         "%s (\"%s\") must not be inside %s (\"%s\")",
+			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
+			if(offender != NULL)
+				*offender = written[i];
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+// Validate the web server's document root.
+//
+// Every file below this directory can be requested over the network once
+// webserver.serve_all is enabled, and files outside the web home are served
+// without authentication. A document root spanning Pi-hole's own configuration
+// would therefore hand out the API password hash, the TLS private key and the
+// databases; "/" would hand out everything the pihole user can open.
+//
+// Whether it comes to span a file Pi-hole writes depends on a second item, so
+// that half is checked in validate_config_paths() on the assembled config.
+bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Regular file-path validation first
 	if(!validate_filepath(val, key, err))
 		return false;
 
-	const char *webroot = config.webserver.paths.webroot.v.s;
-	if(webroot == NULL || webroot[0] == '\0')
-		return true;
+	if(val->s[0] != '/')
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be an absolute path (\"%s\")", key, val->s);
+		return false;
+	}
 
-	// Compare against the webroot with trailing slashes stripped so that
-	// "<webroot>" and "<webroot>/..." are both rejected, but a sibling
-	// path sharing the prefix (e.g. "<webroot>-backup") is not.
-	size_t wlen = strlen(webroot);
-	while(wlen > 1 && webroot[wlen - 1] == '/')
-		wlen--;
-	if(strncmp(val->s, webroot, wlen) == 0 &&
-	   (val->s[wlen] == '\0' || val->s[wlen] == '/'))
+	char norm[NORMALIZED_PATH_LEN];
+	const size_t len = normalize_path(val->s, norm, sizeof(norm));
+
+	if(len == 0 || len == 1 || paths_overlap(norm, len, CONFIG_DIR))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be inside the web server document root (webserver.paths.webroot = \"%s\")",
-		         key, webroot);
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, CONFIG_DIR);
 		return false;
 	}
 
@@ -645,6 +839,14 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 		return false;
 	}
 
+	// The value is a day count handed to OpenSSL as an int, keep it within
+	// a range that stays meaningful as a certificate lifetime (100 years)
+	if(val->ui > 36500)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than 36500", key);
+		return false;
+	}
+
 	return true;
 }
 
@@ -896,4 +1098,31 @@ bool validate_array_no_newline(union conf_value *val, const char *key, char err[
 	}
 
 	return true;
+}
+
+// Reset offending items until the path rules hold.
+//
+// Resetting one item can expose a conflict with another, so a single pass is
+// not enough. Each pass returns the item the check names to its default, and
+// the defaults do not conflict, so every item is reset at most once.
+void resolve_config_paths(struct config *conf)
+{
+	struct conf_item *written[] = WRITTEN_FILES(*conf);
+	for(size_t pass = 0; pass <= ArraySize(written); pass++)
+	{
+		struct conf_item *offender = NULL;
+		char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(validate_config_paths(conf, err, &offender))
+			return;
+
+		log_err("Inconsistent configuration: %s", err);
+
+		// Resetting a file that is at its default already changes
+		// nothing, the document root has to give way then
+		if(compare_config_item(offender->t, &offender->v, &offender->d))
+			offender = &conf->webserver.paths.webroot;
+
+		log_err("----> %s has been reset to its default value", offender->k);
+		reset_config_default(offender);
+	}
 }

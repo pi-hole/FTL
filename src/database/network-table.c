@@ -23,7 +23,7 @@
 #include "resolve.h"
 // killed
 #include "signals.h"
-// nlneigh(), nllinks()
+// nlneigh(), nllinks(), nladdrs()
 #include "tools/netlink.h"
 // DHCPLEASESFILE
 #include "config/dnsmasq_config.h"
@@ -235,7 +235,9 @@ static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ?1 AND "
-	                       "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "lastSeen > (cast(strftime('%s', 'now') as int)-86400) "
 	                       "ORDER BY lastSeen DESC LIMIT 1;";
 
 	// Perform SQL query
@@ -298,10 +300,7 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
 	                       // Single %, this string goes to SQLite as it is
-	                       // and is never run through a formatter. As %%s
-	                       // it reached strftime() literally, which answers
-	                       // NULL, so the cast produced 0 and the one-hour
-	                       // window was never applied
+	                       // and is never run through a formatter
 	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
@@ -1104,6 +1103,14 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
 	          cJSON_GetArraySize(links));
 
+	// Attach the IP addresses to their links
+	if(!nladdrs(links, false))
+	{
+		log_err("Failed to get addresses, cannot update network table");
+		cJSON_Delete(links);
+		return false;
+	}
+
 	// Parse link information
 	cJSON *link = NULL;
 	cJSON_ArrayForEach(link, links)
@@ -1112,8 +1119,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		if(link == NULL)
 			continue;
 
-		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "ifname"));
-		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "mac"));
+		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "name"));
+		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "address"));
 
 		// Do not try to read IP addresses when the information above is incomplete
 		if(iface == NULL || strlen(iface) == 0 ||
@@ -2586,6 +2593,8 @@ bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, c
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
 		        id, rc, *message);
+		sqlite3_finalize(*read_stmt);
+		*read_stmt = NULL;
 		return false;
 	}
 

@@ -24,9 +24,8 @@ static const char *eventtext(const enum events event);
 
 // Queue containing all possible events
 // An atomic_bool rather than an atomic_flag: a flag cannot be read without
-// setting it, which is what used to lose events (see below). RELOAD_GRAVITY is
-// raised from the SIGRTMIN handler, so the type has to be lock-free for the
-// exchange to be async-signal-safe
+// setting it. RELOAD_GRAVITY is raised from the SIGRTMIN handler, so the type
+// has to be lock-free for the exchange to be async-signal-safe
 static _Atomic bool eventqueue[EVENTS_MAX];
 static_assert(ATOMIC_BOOL_LOCK_FREE == 2, "Event queue must be lock-free, it is used from a signal handler");
 

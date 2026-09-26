@@ -4718,6 +4718,8 @@ my_send_http_error_headers(struct mg_connection *conn,
 	mg_response_header_start(conn, status);
 	send_no_cache_header(conn);
 	send_additional_header(conn);
+	/* Pi-hole: 204 and error responses need CORS headers, too */
+	send_cors_header(conn);
 	mg_response_header_add(conn, "Content-Type", mime_type, -1);
 	if (content_length < 0) {
 		/* Size not known. Use chunked encoding (HTTP/1.x) */

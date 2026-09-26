@@ -92,6 +92,14 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
     flush_logs:
       post:
         summary: Flush the DNS logs
@@ -116,6 +124,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
     flush_network:
       post:

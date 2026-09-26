@@ -68,8 +68,27 @@ static int api_list_read(struct ftl_conn *api,
 {
 	const char *sql_msg = NULL;
 	sqlite3_stmt *stmt = NULL;
-	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
+
+	// A read-only connection of our own, as api_search() already takes.
+	// Passing NULL here would borrow the shared handle, which the database
+	// thread closes and rebuilds in gravityDB_reopen() on every gravity
+	// reload - the reason this endpoint used to be wrapped in the global
+	// shared memory lock. With a connection that nobody else can pull away,
+	// that lock is not needed, and it is the lock every DNS query has to
+	// take
+	sqlite3 *gravitydb = gravityDB_open_RO();
+	if(gravitydb == NULL)
 	{
+		JSON_DELETE(processed);
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "database_error",
+		                       "Could not open gravity database",
+		                       NULL);
+	}
+
+	if(!gravityDB_readTable(gravitydb, listtype, item, &sql_msg, true, NULL, &stmt))
+	{
+		gravityDB_close_RO(gravitydb);
 		JSON_DELETE(processed);
 		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
@@ -208,6 +227,7 @@ static int api_list_read(struct ftl_conn *api,
 		row = NULL;
 	}
 	gravityDB_readTableFinalize(stmt);
+	gravityDB_close_RO(gravitydb);
 
 	if(namedb != NULL)
 		dbclose(&namedb);
@@ -251,6 +271,7 @@ list_read_fail:
 	JSON_DELETE(rows);
 	JSON_DELETE(processed);
 	gravityDB_readTableFinalize(stmt);
+	gravityDB_close_RO(gravitydb);
 
 	if(namedb != NULL)
 		dbclose(&namedb);
@@ -259,9 +280,17 @@ list_read_fail:
 	return ret != 0 ? ret : send_http_internal_error(api);
 }
 
+// Performs the write and, on success, hands back what the GET-style reply needs
+// rather than rendering it: returns 0 with *code, *reply_item and *processed
+// filled in, and the caller sends the reply once it has dropped the shared
+// memory lock. Rendering in here would open the read-only gravity connection
+// under that lock, and that connection waits on a busy database - so a
+// gravity.db held by someone else would park the resolver along with it.
+// Any other return value is a status this function has already answered with
 static int api_list_write(struct ftl_conn *api,
                           const enum gravity_list_type listtype,
-                          const char *item)
+                          const char *item,
+                          int *code, char **reply_item, cJSON **processed_out)
 {
 	tablerow row = { 0 };
 
@@ -614,8 +643,9 @@ static int api_list_write(struct ftl_conn *api,
 					it->valuestring[i] = tolower((unsigned char)it->valuestring[i]);
 
 				// Validate domain
-				// This will reject domains like äöü{{{.com
-				// which convert to xn--{{{-pla4gpb.com
+				// An internationalized name has to be added in its
+				// punycode form: the query name is matched byte-wise
+				// and always arrives as an A-label
 				if(!valid_domain(it->valuestring, strlen(it->valuestring), false))
 				{
 					if(allocated_json)
@@ -787,8 +817,14 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
+	// A group PUT carrying a name has renamed the group to it, so the
+	// Location header and the reply have to use that name
+	const char *reply_name = row.item;
+	if(api->method == HTTP_PUT && listtype == GRAVITY_GROUPS && row.name != NULL)
+		reply_name = row.name;
+
 	// Add "Location" header to response
-	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, reply_name) >= (int)sizeof(pi_hole_extra_headers))
 	{
 		// This may happen for *extremely* long URLs but is not issue in
 		// itself. Merely add a warning to the log file
@@ -801,14 +837,27 @@ static int api_list_write(struct ftl_conn *api,
 		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-1] = '\0';
 	}
 
-	// Send GET style reply
-	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
+	// Hand the reply over to the caller, which renders it outside the lock.
+	// reply_name points into row.items (released just below) or the payload
+	*code = response_code;
+	*reply_item = strdup(reply_name);
+	*processed_out = processed;
 
 	// Free allocated memory
 	if(allocated_json)
 		cJSON_Delete(row.items);
 
-	return ret;
+	if(*reply_item == NULL)
+	{
+		cJSON_Delete(processed);
+		*processed_out = NULL;
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "internal_error",
+		                       "Memory allocation failed",
+		                       NULL);
+	}
+
+	return 0;
 
 batch_abort:
 	// The response cannot be assembled any more. Undo what this transaction
@@ -1175,12 +1224,8 @@ int api_list(struct ftl_conn *api)
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)
-		// We would not actually need the SHM lock here, however, we do
-		// this for simplicity to ensure nobody else is editing the
-		// lists while we're doing this here
-		lock_shm();
+		// No lock: api_list_read() reads through a connection of its own
 		const int ret = api_list_read(api, 200, listtype, api->item, NULL);
-		unlock_shm();
 		return ret;
 	}
 	else if(can_modify && api->method == HTTP_PUT)
@@ -1195,12 +1240,24 @@ int api_list(struct ftl_conn *api)
 		}
 		else
 		{
-			// We would not actually need the SHM lock here,
-			// however, we do this for simplicity to ensure nobody
-			// else is editing the lists while we're doing this here
+			// The write needs the lock, the reply that follows it does
+			// not - and must not have it, since rendering opens the
+			// read-only gravity connection, which waits on a busy
+			// database and would hold the resolver up with it
+			int code = 0;
+			char *reply_item = NULL;
+			cJSON *processed = NULL;
+
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+
+			if(ret == 0)
+			{
+				ret = api_list_read(api, code, listtype, reply_item, processed);
+				free(reply_item);
+			}
+
 			return ret;
 		}
 	}
@@ -1216,21 +1273,30 @@ int api_list(struct ftl_conn *api)
 		}
 		else
 		{
-			// We would not actually need the SHM lock here,
-			// however, we do this for simplicity to ensure nobody
-			// else is editing the lists while we're doing this here
+			// The write needs the lock, the reply that follows it does
+			// not - and must not have it, since rendering opens the
+			// read-only gravity connection, which waits on a busy
+			// database and would hold the resolver up with it
+			int code = 0;
+			char *reply_item = NULL;
+			cJSON *processed = NULL;
+
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+
+			if(ret == 0)
+			{
+				ret = api_list_read(api, code, listtype, reply_item, processed);
+				free(reply_item);
+			}
+
 			return ret;
 		}
 	}
 	else if(can_modify && (api->method == HTTP_DELETE || (api->method == HTTP_POST && batchDelete)))
 	{
-		// Delete item from list
-		// We would not actually need the SHM lock here, however, we do
-		// this for simplicity to ensure nobody else is editing the
-		// lists while we're doing this here
+		// Delete item from list, under the lock: it writes
 		lock_shm();
 		const int ret = api_list_remove(api, listtype, api->item);
 		unlock_shm();

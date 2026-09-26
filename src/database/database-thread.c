@@ -157,8 +157,11 @@ void *DB_thread(void *val)
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
 
-	// Signify that the import is done, so garbage collection will run
-	db_import_done = true;
+	// Signify that the import is done, so garbage collection will run. An
+	// import that was aborted because FTL terminates is not: main() skips
+	// the final export then
+	if(!killed)
+		db_import_done = true;
 
 	// Log some information about the imported queries (if any)
 	log_counter_info();

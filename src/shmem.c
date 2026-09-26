@@ -723,13 +723,20 @@ void _lock_shm(const char *func, const int line, const char *file)
 
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
-	if(result != 0)
+	// Who held the lock before us, for the recovery messages below
+	const pid_t previous_pid = shmLock->owner.pid;
+	const pid_t previous_tid = shmLock->owner.tid;
+
+	// EOWNERDEAD is recovered from below, e.g., after a TCP worker ran into
+	// its timeout while it was holding the lock
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining outer SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		log_debug(DEBUG_LOCKS, "Owner of outer SHM lock died, making lock consistent");
+		log_info("Owner of outer SHM lock (PID %d, TID %d) died, making lock consistent",
+		         previous_pid, previous_tid);
 
 		result = pthread_mutex_consistent(&shmLock->lock.outer);
 		if(result != 0)
@@ -760,13 +767,14 @@ void _lock_shm(const char *func, const int line, const char *file)
 		log_debug(DEBUG_LOCKS, "Obtained SHM lock for %s() (%s:%i)", func, file, line);
 	}
 
-	if(result != 0)
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining inner SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		log_debug(DEBUG_LOCKS, "Owner of inner SHM lock died, making lock consistent");
+		log_info("Owner of inner SHM lock (PID %d, TID %d) died, making lock consistent",
+		         previous_pid, previous_tid);
 
 		result = pthread_mutex_consistent(&shmLock->lock.inner);
 		if(result != 0)

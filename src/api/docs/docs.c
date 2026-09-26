@@ -70,6 +70,9 @@ int api_docs(struct ftl_conn *api)
 	{
 		log_web_debug(DEBUG_API, "Redirecting /api/docs --301--> /api/docs/");
 		mg_send_http_redirect(api->conn, "/api/docs/", 301);
+
+		// The redirect is the whole response; return so no 404 follows it
+		return 301;
 	}
 
 	// Handle root request by redirecting to "/"

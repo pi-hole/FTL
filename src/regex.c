@@ -452,16 +452,16 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
-				// Set special reply type if configured for this regex
-				if(regex->ext.reply != REPLY_UNKNOWN)
-					dns_cache->force_reply = regex->ext.reply;
+				// Set the reply type this regex forces (REPLY_UNKNOWN
+				// when it carries no reply option)
+				dns_cache->force_reply = regex->ext.reply;
 
 				// Store CNAME target in the shared string pool so the
 				// position can be shared safely across process boundaries.
 				// A raw heap pointer cannot be stored in SHM since it is
 				// only valid in the process that wrote it.
-				if(regex->ext.cname_target != NULL)
-					dns_cache->cname_strpos = addstr(regex->ext.cname_target);
+				// 0 = this regex has no CNAME target
+				dns_cache->cname_strpos = regex->ext.cname_target != NULL ? addstr(regex->ext.cname_target) : 0;
 			}
 
 			// Match, return true
@@ -806,9 +806,6 @@ static void read_regex_table(const enum regex_type regexid)
 
 		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
-
-		// Signal other forks that the regex data has changed and should be updated
-		regex_change = ++counters->regex_change;
 	}
 
 	// Finalize statement and close gravity database handle
@@ -850,6 +847,9 @@ void read_regex_from_database(void)
 
 		reload_per_client_regex(client);
 	}
+
+	// This process is now up to date with the shared regex generation
+	regex_change = counters->regex_change;
 
 	// Print message to FTL's log after reloading regex filters
 	log_info("Compiled %u allow and %u deny regex for %u client%s in %.1f msec",

@@ -260,30 +260,60 @@ class TestAuthWorkflow:
     # -- 08: rate limiting enforced --
 
     def test_08_rate_limiting_enforced(self):
-        """Sending many wrong passwords triggers rate limiting (HTTP 429)."""
+        """Sending wrong passwords faster than the limit triggers HTTP 429.
+
+        FTL permits MAX_PASSWORD_ATTEMPTS_PER_SECOND attempts per wall-clock
+        second, so the attempts have to arrive together to reach the limit.
+        They are sent in parallel rather than one after another: each attempt
+        costs one deliberately expensive hash, and sequentially a slow or busy
+        machine fits fewer than the limit into any one second, so the counter
+        resets before it is ever reached. FTL counts an attempt before it
+        hashes it, so a burst trips the limiter whatever a hash costs.
+        """
+        import concurrent.futures
         import random
         import string
         import time
 
-        for i in range(100):
+        # The limit is 3/s, so a burst of 8 exceeds it even when the burst
+        # straddles a second boundary and the attempts are split over two
+        burst = 8
+
+        # The limiter answers with a plain 429, it does not drop the
+        # connection, so a transport failure is a failure and must not be
+        # allowed to stand in for a rate-limit response
+        def attempt(_):
             pw = "".join(random.choices(string.printable, k=random.randint(1, 64)))
             try:
                 r = requests.post(
                     f"{FTL_URL}/api/auth",
                     json={"password": pw},
-                    timeout=5,
+                    timeout=10,
                 )
-            except requests.ConnectionError:
-                # FTL may forcefully close the connection when rate limiting
-                # Wait for FTL to recover before subsequent tests
-                time.sleep(2)
-                return
-            if r.status_code == 429:
-                # Wait for FTL to recover from rate limiting
+            except requests.RequestException as e:
+                return ("error", repr(e))
+            return (r.status_code, r)
+
+        errors = []
+        for _ in range(5):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=burst) as pool:
+                results = list(pool.map(attempt, range(burst)))
+
+            errors += [r for code, r in results if code == "error"]
+            limited = [r for code, r in results if code == 429]
+            if limited:
+                # The reply names the reason, so a 429 from somewhere else
+                # cannot satisfy this
+                assert limited[0].json()["error"]["key"] == "rate_limiting", limited[0].text
+                # Wait for FTL to leave the rate-limited state so the
+                # following tests can log in again
                 time.sleep(2)
                 return
 
-        pytest.fail("Rate limiting was not enforced after 100 login attempts")
+        pytest.fail(
+            f"No 429 from {5 * burst} parallel attempts"
+            + (f"; {len(errors)} transport failures: {errors[:3]}" if errors else "")
+        )
 
     # -- 09: remove the password --
 

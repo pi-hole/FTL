@@ -859,6 +859,15 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// sqlite3_interrupt() has no effect on a statement that is not running
+	// yet, so do not start the import when FTL is already terminating
+	if(killed)
+	{
+		sqlite3_finalize(stmt);
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
@@ -903,7 +912,17 @@ bool import_queries_from_disk(void)
 	int imported[ArraySize(subtable_names)] = { 0 };
 	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
 	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
+		rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
+
+		// An interrupt has rolled the transaction back already, the
+		// ROLLBACK covers a termination request between two statements
+		if(killed)
+		{
+			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			return false;
+		}
+
+		if(rc != SQLITE_OK)
 			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
 			        subtable_sql[i], sqlite3_errstr(rc));
 		imported[i] = sqlite3_changes(memdb);
@@ -1019,6 +1038,11 @@ bool export_queries_to_disk(const bool final)
 				// Success
 				new_blocked = 0;
 		}
+	}
+	else
+	{
+		// Nothing to store, the linking tables below are still exported
+		okay = true;
 	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
@@ -1643,7 +1667,8 @@ void DB_read_queries(void)
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
 		query->cacheID = -1;
-		query->id = counters->queries;
+		// No dnsmasq ID belongs to an imported query
+		query->id = -1;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
@@ -1880,14 +1905,26 @@ struct query_snap {
 	bool blocked;
 };
 
+// Get the query a snapshot was taken of. Its index is rebased by the number of
+// queries the garbage collector removed since, a query that is gone itself
+// yields NULL. The caller holds the SHM lock
+static queriesData *get_snapshot_query(const struct query_snap *snap, const unsigned int removed_before)
+{
+	const unsigned int shift = get_queries_removed() - removed_before;
+	if(snap->queryID < shift)
+		return NULL;
+
+	return getQuery(snap->queryID - shift, true);
+}
+
 // Give the snapshotted queries their changed flag back so a later run picks
 // them up. The caller holds the SHM lock
 static void requeue_snapshots(const struct query_snap *snaps, const unsigned int from,
-                              const unsigned int to)
+                              const unsigned int to, const unsigned int removed_before)
 {
 	for(unsigned int i = from; i < to; i++)
 	{
-		queriesData *query = getQuery(snaps[i].queryID, true);
+		queriesData *query = get_snapshot_query(&snaps[i], removed_before);
 		if(query != NULL)
 			query->flags.database.changed = true;
 	}
@@ -1921,6 +1958,10 @@ bool queries_to_database(void)
 	}
 
 	lock_shm();
+
+	// The snapshot indices taken below are rebased against this once the
+	// lock was released in between
+	const unsigned int removed_before = get_queries_removed();
 
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
@@ -2338,7 +2379,7 @@ bool queries_to_database(void)
 	// those queries get their changed flag back and are written next time
 	if(succeeded < snap_count)
 	{
-		requeue_snapshots(snaps, succeeded, snap_count);
+		requeue_snapshots(snaps, succeeded, snap_count, removed_before);
 
 		log_err("Could not store %u queries, they are queued for the next run",
 		        snap_count - succeeded);
@@ -2349,7 +2390,7 @@ bool queries_to_database(void)
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
-		queriesData *query = getQuery(s->queryID, true);
+		queriesData *query = get_snapshot_query(s, removed_before);
 		if(query == NULL)
 			continue;
 
@@ -2402,7 +2443,7 @@ rollback_unlock_fail:
 unlock_fail:
 	// Nothing was committed, so give the snapshotted queries their changed
 	// flag back and let the next run pick them up. The lock is still ours
-	requeue_snapshots(snaps, 0, snap_count);
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
 	unlock_shm();
 	goto fail_free;
 rollback_fail:
@@ -2410,7 +2451,7 @@ rollback_fail:
 fail:
 	// Same restore, but phase 2 runs without the lock
 	lock_shm();
-	requeue_snapshots(snaps, 0, snap_count);
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
 	unlock_shm();
 fail_free:
 	free(snaps);

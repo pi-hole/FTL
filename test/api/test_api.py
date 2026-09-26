@@ -11,6 +11,7 @@ Usage:
 
 import json
 import re
+from urllib.parse import quote
 
 import pytest
 
@@ -28,7 +29,7 @@ FTL_URL = "http://127.0.0.1"
 # DNSSEC-dependent counters below flaky.  If you add or remove queries in
 # test_suite.bats, update these.
 
-TOTAL       = 131
+TOTAL       = 132
 FORWARDED   = 41
 DNSKEY      = 4
 TOP_DOMAIN  = "localhost"
@@ -97,6 +98,69 @@ class TestHTTPErrors:
         """HTTP server responds with 404 to path outside /admin."""
         r = api_session.head(f"{FTL_URL}/undefined", timeout=5)
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# CORS headers for cross-origin web apps
+# ---------------------------------------------------------------------------
+
+class TestCORS:
+    """Cross-origin requests must work for all methods.
+
+    Browsers send a preflight OPTIONS request before "non-simple" cross-origin
+    requests (DELETE, PUT, PATCH, JSON POST) and only send the real request if
+    the preflight is answered with the matching Access-Control-Allow-* headers.
+    The actual response must carry Access-Control-Allow-Origin as well.
+    Regression test for https://github.com/pi-hole/FTL/issues/2261.
+    """
+
+    ORIGIN = "http://example.com"
+
+    def test_preflight_returns_cors_headers(self, api_session):
+        """OPTIONS preflight advertises the allowed origin and methods.
+
+        A valid cross-origin preflight (carrying both Origin and
+        Access-Control-Request-Method) is answered by civetweb's built-in CORS
+        handler with a 200 response and the matching Access-Control-Allow-*
+        headers, before the request reaches FTL's own OPTIONS branch.
+        """
+        r = api_session.options(
+            f"{FTL_URL}/api/auth",
+            headers={
+                "Origin": self.ORIGIN,
+                "Access-Control-Request-Method": "DELETE",
+            },
+            timeout=5,
+        )
+        assert r.status_code == 200
+        assert "Access-Control-Allow-Origin" in r.headers
+        assert "DELETE" in r.headers.get("Access-Control-Allow-Methods", "")
+
+    def test_preflight_without_origin_omits_cors_headers(self, api_session):
+        """A bare OPTIONS request (no Origin) is not a CORS preflight.
+
+        Like civetweb's send_cors_header(), we only emit Access-Control-Allow-*
+        when the request carries an Origin header, otherwise we answer with a
+        plain 204 and just the RFC 7231 Allow header.
+        """
+        r = api_session.options(f"{FTL_URL}/api/auth", timeout=5)
+        assert r.status_code == 204
+        assert "Allow" in r.headers
+        assert "Access-Control-Allow-Origin" not in r.headers
+
+    def test_error_response_carries_cors_header(self, api_session):
+        """Non-200 responses include Access-Control-Allow-Origin too.
+
+        DELETE endpoints answer with 204 No Content, which - like this 404 - is
+        sent via the same code path.
+        """
+        r = api_session.get(
+            f"{FTL_URL}/api/undefined",
+            headers={"Origin": self.ORIGIN},
+            timeout=5,
+        )
+        assert r.status_code == 404
+        assert "Access-Control-Allow-Origin" in r.headers
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +656,7 @@ class TestStatsSummary:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/summary", timeout=5), dump="stats_summary")
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 49
+        assert q["blocked"] == 50
         assert q["forwarded"] == FORWARDED
         assert q["cached"] == 41
         assert q["unique_domains"] == 77
@@ -601,7 +665,7 @@ class TestStatsSummary:
         assert q["status"]["FORWARDED"] == FORWARDED
         assert q["status"]["CACHE"] == 41
         assert q["status"]["REGEX"] == 21
-        assert q["status"]["DENYLIST"] == 4
+        assert q["status"]["DENYLIST"] == 5
         assert q["status"]["SPECIAL_DOMAIN"] == 2
         assert q["types"]["A"] == 69
         assert q["types"]["AAAA"] == 19
@@ -625,7 +689,7 @@ class TestStatsTopDomains:
         assert counts == sorted(counts, reverse=True), \
             f"Not sorted descending: {counts}"
         assert data["total_queries"] == TOTAL
-        assert data["blocked_queries"] == 49
+        assert data["blocked_queries"] == 50
 
     def test_top_domains_blocked(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?blocked=true", timeout=5))
@@ -723,7 +787,7 @@ class TestStatsUpstreams:
         assert data["forwarded_queries"] == FORWARDED
 
         blocklist = next(u for u in upstreams if u["ip"] == "blocklist")
-        assert blocklist["count"] == 49
+        assert blocklist["count"] == 50
         assert blocklist["port"] == -1
 
         cache = next(u for u in upstreams if u["ip"] == "cache")
@@ -741,7 +805,7 @@ class TestStatsQueryTypes:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
             "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
-            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 6,
+            "PTR": 8, "TXT": 11, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
         }, json.dumps(data, indent=2)
@@ -811,15 +875,38 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/upstreams?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "upstreams" in data
         assert isinstance(data["upstreams"], list)
+        # Same status sets as the in-memory endpoint: every stored query is
+        # counted once at most, blocked ones under "blocklist"
+        assert data["total_queries"] == summary["sum_queries"]
+        pseudo = {u["ip"]: u for u in data["upstreams"] if u["port"] == -1}
+        assert set(pseudo) == {"cache", "blocklist"}, json.dumps(data, indent=2)
+        assert pseudo["blocklist"]["count"] == summary["sum_blocked"]
+        real = [u for u in data["upstreams"] if u["port"] != -1]
+        assert sum(u["count"] for u in real) == data["forwarded_queries"]
+        assert sum(u["count"] for u in data["upstreams"]) <= data["total_queries"]
+        for u in real:
+            assert not u["ip"].isdigit(), json.dumps(u, indent=2)
 
     def test_database_query_types_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "types" in data
         assert isinstance(data["types"], dict)
+        # Every stored query has exactly one type, OTHER included
+        assert set(data["types"]) == {
+            "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR", "MX",
+            "DS", "RRSIG", "DNSKEY", "NS", "SVCB", "HTTPS", "OTHER"}
+        assert sum(data["types"].values()) == summary["sum_queries"], \
+            json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -877,30 +964,21 @@ class TestMethodNotAllowed:
             f"Expected 405, got {r.status_code} {r.text}"
         assert self._allow(r) == ["GET", "OPTIONS", "POST"]
 
-    def test_allow_only_names_methods_this_uri_shape_takes(self, api_session):
-        """Rows sharing a URI are told apart by their parameters, not just the URI.
+    def test_allow_names_the_methods_of_every_row_of_the_uri(self, api_session):
+        """Rows sharing a URI are not told apart, Allow is the union of them.
 
-        /api/domains has four table rows. Without arguments only the GET one
-        applies, so DELETE - which needs /{type}/{kind}/{domain} - must not be
-        advertised, and with two arguments POST must be.
+        The table describes the documented shapes of a URI, the handlers
+        accept more than that, e.g., PATCH /api/config/<element>.
         """
-        r = api_session.patch(f"{FTL_URL}/api/domains", json={}, timeout=5)
-        assert r.status_code == 405, \
-            f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS"]
+        union = ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
+        for uri in ("/api/domains", "/api/domains/deny/exact"):
+            r = api_session.patch(f"{FTL_URL}{uri}", json={}, timeout=5)
+            assert r.status_code == 405, \
+                f"Expected 405, got {r.status_code} {r.text}"
+            assert self._allow(r) == union, f"{uri}: {self._allow(r)}"
 
-        r = api_session.patch(f"{FTL_URL}/api/domains/deny/exact", json={}, timeout=5)
-        assert r.status_code == 405, \
-            f"Expected 405, got {r.status_code} {r.text}"
-        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
-
-    def test_trailing_slash_does_not_shift_the_path(self, api_session):
-        """A trailing slash must not count as another path component.
-
-        /api/domains/deny/ addresses the same row as /api/domains/deny, so it
-        has to advertise the same methods rather than those of the row one
-        level deeper.
-        """
+    def test_trailing_slash_does_not_change_the_answer(self, api_session):
+        """/api/domains/deny/ is the same resource as /api/domains/deny."""
         plain = api_session.patch(f"{FTL_URL}/api/domains/deny", json={}, timeout=5)
         slash = api_session.patch(f"{FTL_URL}/api/domains/deny/", json={}, timeout=5)
         assert plain.status_code == 405, \
@@ -909,6 +987,24 @@ class TestMethodNotAllowed:
             f"Expected 405, got {slash.status_code} {slash.text}"
         assert self._allow(slash) == self._allow(plain), \
             f"{self._allow(slash)} != {self._allow(plain)}"
+
+    def test_uri_with_slashes_in_its_last_part(self, api_session):
+        """A config element, a list address and the docs carry further slashes."""
+        r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
+
+        address = quote("https://pytest.example.com/list.txt", safe="")
+        r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
+
+        r = api_session.post(f"{FTL_URL}/api/docs/index.html", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
 
     def test_handler_asking_for_404_still_gets_one(self, api_session):
         """api_docs() returns 0 for a file it does not have, which is a 404.
@@ -1029,7 +1125,8 @@ class TestNetwork:
         devices = data["devices"]
         hwaddrs = [d["hwaddr"] for d in devices]
         assert "aa:bb:cc:dd:ee:ff" in hwaddrs, json.dumps(hwaddrs, indent=2)
-        assert "ip-127.0.0.1" in hwaddrs
+        ips = [ip["ip"] for d in devices for ip in d["ips"]]
+        assert "127.0.0.1" in ips, json.dumps(devices, indent=2)
 
     def test_network_interfaces(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/network/interfaces", timeout=5))
@@ -1076,11 +1173,11 @@ class TestPADD:
         assert data["gravity_size"] == 8
         assert data["active_clients"] == 11
         assert data["top_domain"] == TOP_DOMAIN
-        assert data["top_blocked"] == "gravity.ftl"
+        assert data["top_blocked"] == "denied.ftl"
         assert data["top_client"] == "127.0.0.1"
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 49
+        assert q["blocked"] == 50
         cache = data["cache"]
         assert cache["size"] == 10000
 
@@ -1346,6 +1443,18 @@ class TestHistoryDatabase:
             f"{FTL_URL}/api/history/database/clients?from=1&until=9999999999", timeout=5))
         assert "history" in data
         assert "clients" in data
+        clients = data["clients"]
+        # history[].data and clients share their keys, and the per-slot
+        # counts of a client add up to its total
+        totals = {}
+        for slot in data["history"]:
+            for client, count in slot["data"].items():
+                assert client in clients, json.dumps(data, indent=2)
+                totals[client] = totals.get(client, 0) + count
+        for client, item in clients.items():
+            assert "name" in item and "total" in item, json.dumps(item, indent=2)
+            assert totals.get(client, 0) == item["total"], \
+                json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------

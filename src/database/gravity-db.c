@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// set_event()
+#include "events.h"
 #include "sqlite3.h"
 #include "gravity-db.h"
 // struct config
@@ -35,9 +37,19 @@
 #include "common.h"
 // pthread_mutex_t
 #include <pthread.h>
+// sleepms()
+#include "timers.h"
+// main_pid()
+#include "signals.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
+
+// How long a domain lookup waits for a busy database, and in which steps [ms]
+#define GRAVITY_BUSY_WAIT 100u
+#define GRAVITY_BUSY_STEP 5u
+// How long lookups do not wait again after a wait was in vain [s]
+#define GRAVITY_BUSY_BACKOFF 1
 
 // Process-private prepared statements are used to support multiple forks (might
 // be TCP workers) to use the database simultaneously without corrupting the
@@ -526,6 +538,54 @@ bool gravityDB_reopen(void)
 
 	// Re-open gravity database
 	return gravityDB_open();
+}
+
+// Longest wait between two attempts to reopen a shut gravity database
+#define GRAVITY_REOPEN_BACKOFF_MAX 60
+
+// Make sure the gravity database is open before a lookup gives up on it.
+//
+// A reload whose reopen failed leaves the database shut and the four shared
+// statements NULL. The lookups test those statements before they reach
+// gravityDB_prepare_client_statements(), which holds the only other retry on
+// that path, so without this one nothing reopens until the next
+// RELOAD_GRAVITY and, on the default dns.replyWhenBusy, nothing is blocked
+// meanwhile.
+//
+// Attempts back off from a second up to GRAVITY_REOPEN_BACKOFF_MAX, doubling
+// after each failure and resetting once the database is back. A failed
+// gravityDB_open() stats the file and warns, and gravity.db can be away for
+// minutes at a time - a gravity run rebuilding it - so a fixed retry would fill
+// the log from a path that used to say nothing at all
+static bool gravity_ensure_open(void)
+{
+	if(gravityDB_opened)
+		return true;
+
+	static time_t next_attempt = 0;
+	static unsigned int backoff = 1;
+	const time_t now = time(NULL);
+	if(now < next_attempt)
+		return false;
+
+	if(!gravityDB_open())
+	{
+		next_attempt = now + backoff;
+		backoff = backoff < GRAVITY_REOPEN_BACKOFF_MAX / 2
+		        ? backoff * 2
+		        : GRAVITY_REOPEN_BACKOFF_MAX;
+		return false;
+	}
+
+	backoff = 1;
+	next_attempt = 0;
+
+	// The reopen brings back the statements and the gravity_has_exact_*
+	// flags; the reload brings back the regexes, the counters->database.*
+	// fields and the per-client domain cache
+	set_event(RELOAD_GRAVITY);
+
+	return true;
 }
 
 // Determine whether to show IP or hardware address
@@ -1161,12 +1221,17 @@ void gravityDB_close(void)
 	if(!gravityDB_opened)
 		return;
 
-	// Finalize prepared list statements for all clients
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	// Finalize prepared list statements for all clients. The client data
+	// lives in shared memory and is owned by the main process, a forked
+	// TCP worker closing its private connection leaves it untouched
+	if(main_pid() == getpid())
 	{
-		clientsData *client = getClient(clientID, true);
-		if(client != NULL)
-			gravityDB_finalize_client_statements(client);
+		for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			clientsData *client = getClient(clientID, true);
+			if(client != NULL)
+				gravityDB_finalize_client_statements(client);
+		}
 	}
 
 	// Reset carray bind cache (statements are about to be finalized)
@@ -1417,8 +1482,23 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 		return LIST_NOT_AVAILABLE;
 	}
 
-	// Perform step
+	// Perform step. A list write from the API holds the database only while
+	// it commits, so wait that out before treating the list as unavailable
+	// Lookups run under the SHM lock, so after one wait was in vain the next
+	// ones do not wait again for GRAVITY_BUSY_BACKOFF seconds
+	static time_t last_busy_timeout = 0;
 	rc = sqlite3_step(stmt);
+	if(rc == SQLITE_BUSY && time(NULL) - last_busy_timeout >= GRAVITY_BUSY_BACKOFF)
+	{
+		for(unsigned int waited = 0; rc == SQLITE_BUSY && waited < GRAVITY_BUSY_WAIT; waited += GRAVITY_BUSY_STEP)
+		{
+			sqlite3_reset(stmt);
+			sleepms(GRAVITY_BUSY_STEP);
+			rc = sqlite3_step(stmt);
+		}
+		if(rc == SQLITE_BUSY)
+			last_busy_timeout = time(NULL);
+	}
 	if(rc == SQLITE_BUSY)
 	{
 		// Database is busy
@@ -1466,6 +1546,12 @@ void gravityDB_reload_groups(clientsData *client)
 
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client)
 {
+	// Before anything else: the flags and statements checked below are set
+	// up by gravityDB_open(), so a database that is shut has to be given a
+	// chance to come back rather than being read as "no entries"
+	if(!gravity_ensure_open())
+		return LIST_NOT_AVAILABLE;
+
 	// Skip when no exact allowlist entries exist (common for most users)
 	if(!gravity_has_exact_allowlist)
 		return NOT_FOUND;
@@ -1646,6 +1732,10 @@ static void gen_abp_offsets(const char *domain, struct abp_patterns *abp)
 
 enum db_result in_gravity(const char *domain, struct abp_patterns *abp, clientsData *client, const bool antigravity, int *domain_id)
 {
+	// See in_allowlist()
+	if(!gravity_ensure_open())
+		return LIST_NOT_AVAILABLE;
+
 	// Skip antigravity check entirely when no allow-adlists exist
 	if(antigravity && !gravity_has_antigravity)
 		return NOT_FOUND;
@@ -1735,6 +1825,10 @@ enum db_result in_gravity(const char *domain, struct abp_patterns *abp, clientsD
 
 enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsData *client)
 {
+	// See in_allowlist()
+	if(!gravity_ensure_open())
+		return LIST_NOT_AVAILABLE;
+
 	// Skip when no exact denylist entries exist (common for most users)
 	if(!gravity_has_exact_denylist)
 		return NOT_FOUND;
@@ -1957,7 +2051,7 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	{	// Create new or replace existing entry, no error if existing
 		// We UPSERT here to avoid violating FOREIGN KEY constraints
 		if(listtype == GRAVITY_GROUPS)
-			if(row->name == NULL)
+			if(row->name == NULL || strcmp(row->name, row->item) == 0)
 			{
 				// Name is not to be changed
 				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
@@ -1977,7 +2071,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
+			// The row is inserted at the type named in the URI unless
+			// the request points at an existing row of another type,
+			// which the conflict clause then moves to the URI type
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,"\
+			           "CASE WHEN EXISTS (SELECT 1 FROM domainlist WHERE domain = :item AND type = :oldtype) THEN :oldtype ELSE :type END,"\
+			           ":enabled,:comment) "\
 			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
@@ -2112,8 +2211,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
-		// Domain added/modified
-		okay = true;
+		// A rename updates the group named in the URI, so a statement
+		// that changed no row found no such group
+		if(name_idx > 0 && sqlite3_changes(db) == 0)
+			*message = "Group not found";
+		else
+			okay = true;
 	}
 	else
 	{

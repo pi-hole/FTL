@@ -25,6 +25,8 @@
 #include "api/api.h"
 // readEnvValue()
 #include "config/env.h"
+// log_teleporter_skipped()
+#include "database/message-table.h"
 
 // Private prototypes
 static bool parseTOML(toml_result_t *toml, const unsigned int version);
@@ -200,10 +202,27 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 	return restart;
 }
 
+// Settings the last Teleporter import left alone, see readFTLtoml()
+static const char *teleporter_skipped[16] = { NULL };
+static unsigned int n_teleporter_skipped = 0;
+
+// Tell the user about them once the import went through, forget them otherwise
+void report_teleporter_skipped(const bool imported)
+{
+	for(unsigned int i = 0; imported && i < n_teleporter_skipped; i++)
+		log_teleporter_skipped(teleporter_skipped[i]);
+	n_teleporter_skipped = 0;
+}
+
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_datum_t toml, const bool verbose, bool *restart,
-                 const unsigned int version, const bool teleporter)
+                 const unsigned int version, const bool teleporter,
+                 char err[VALIDATOR_ERRBUF_LEN])
 {
+	// A config reload running next to an import must not empty its list
+	if(teleporter)
+		n_teleporter_skipped = 0;
+
 	// Parse lines in the config file if we did not receive a pointer to a TOML
 	// table from an imported Teleporter file
 	toml_result_t result = { 0 };
@@ -291,6 +310,53 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		if(!item_available)
 			continue;
 
+		// An option the API may not set is equally not settable by uploading a
+		// file through the API. A Teleporter archive carries a whole
+		// pihole.toml, so without this it would be a way around
+		// FLAG_API_READ_ONLY - in the same file that may name a program for
+		// dnsmasq to run. Everything else in the archive is imported as usual
+		// and the value configured on this host is kept, so restoring a backup
+		// taken elsewhere does not fail, it just does not carry these over.
+		// The message table entry makes that visible in the web interface
+		// rather than only in the log.
+		//
+		// Importing the same archive with "pihole-FTL --teleporter <file>" does
+		// apply them: that already requires access to the host, which is the
+		// whole point of the distinction.
+		//
+		// A value forced through an environment variable is kept either way:
+		// the environment wins over pihole.toml on every start, so the
+		// archive's value would only hold until the restart the import
+		// itself triggers, and PATCH /api/config refuses it too.
+		if(teleporter && ((!cli_mode && new_conf_item->f & (FLAG_API_READ_ONLY | FLAG_API_CLI_READ_ONLY)) ||
+		                  new_conf_item->f & FLAG_ENV_VAR))
+		{
+			// Parse into a scratch copy so the archive's value can be looked
+			// at without replacing the one we keep. Only a real difference is
+			// worth reporting - an archive exported on this host carries these
+			// items unchanged, and warning about those would be pure noise.
+			struct conf_item scratch = *new_conf_item;
+			if(scratch.t == CONF_JSON_STRING_ARRAY)
+				scratch.v.json = cJSON_Duplicate(scratch.v.json, true);
+			else if(scratch.t == CONF_STRING_ALLOCATED)
+				scratch.v.s = strdup(scratch.v.s);
+
+			readTOMLvalue(&scratch, scratch.p[level-1], table[level-2], newconf);
+
+			// Reported by the caller once the whole archive is accepted
+			if(!compare_config_item(scratch.t, &scratch.v, &new_conf_item->v) &&
+			   n_teleporter_skipped < ArraySize(teleporter_skipped))
+				teleporter_skipped[n_teleporter_skipped++] = new_conf_item->k;
+
+			// The type may have been promoted to an allocated one while parsing
+			if(scratch.t == CONF_JSON_STRING_ARRAY)
+				cJSON_Delete(scratch.v.json);
+			else if(scratch.t == CONF_STRING_ALLOCATED)
+				free(scratch.v.s);
+
+			continue;
+		}
+
 		// Try to parse config item
 		readTOMLvalue(new_conf_item, new_conf_item->p[level-1], table[level-2], newconf);
 
@@ -327,11 +393,25 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	// Print FTL environment variables (if used)
 	printFTLenv();
 
-	// Free memory allocated by the TOML parser and return success
+	// Hold what we just read to the same rules the API, the CLI and environment
+	// variables obey. readTOMLvalue() only parses, so this is what stops a value
+	// no other path accepts - an embedded newline carrying a second dnsmasq
+	// directive, say - from reaching the running configuration through a file.
+	//
+	// It runs here rather than per item above because the migrations assign
+	// values of their own after the loop, and because the rules spanning
+	// several items need the whole file read first.
+	//
+	// An archive is refused outright, naming the offending item. Doing the same
+	// for the config file would take DNS down for the entire network over a
+	// single bad value, so there the item goes back to its default instead.
+	const bool valid = validate_config(newconf, !teleporter, err);
+
+	// Free memory allocated by the TOML parser and return
 	if(!teleporter)
 		toml_free(result);
 	cJSON_Delete(env_vars);
-	return true;
+	return valid;
 }
 
 // Parse TOML config file
