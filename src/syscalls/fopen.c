@@ -12,8 +12,6 @@
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "log.h"
 
-static uint8_t already_writing = 0;
-
 #undef fopen
 FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
 {
@@ -32,14 +30,11 @@ FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *m
 	const int _errno = errno;
 
 	// Final error checking (may have failed for some other reason then an
-	// EINTR = interrupted system call)
-	// The already_writing counter prevents a possible infinite loop
-	if(file_ptr == NULL && (already_writing++) == 1)
+	// EINTR = interrupted system call). A missing file is left to the caller,
+	// many of them probe for optional files.
+	if(file_ptr == NULL && _errno != ENOENT)
 		log_warn("Could not fopen(\"%s\", \"%s\") in %s() (%s:%i): %s",
-		         pathname, mode, func, file, line, strerror(errno));
-
-	// Decrement warning counter
-	already_writing--;
+		         pathname, mode, func, file, line, strerror(_errno));
 
 	// Restore errno value
 	errno = _errno;
