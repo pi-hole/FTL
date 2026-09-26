@@ -865,6 +865,7 @@ const char * const thread_names[THREADS_MAX] = {
 	"webserver",
 	"dotdoh",
 	"dotdoh-dot",
+	"dotdoh-doq",
 };
 
 // Private prototypes

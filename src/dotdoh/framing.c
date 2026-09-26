@@ -81,7 +81,7 @@ ssize_t doh_build_request(const char *host, const char *path,
 	if(!clean_header_value(host) || !clean_header_value(path))
 		return -1;
 
-	// An IPv6 literal in the Host header must be bracketed (RFC 7230 Sec. 5.4);
+	// An IPv6 literal in the Host header must be bracketed (RFC 9110 Sec. 7.2);
 	// a hostname never contains ':', so a colon reliably marks an IPv6 literal.
 	char hostbuf[256];
 	const char *hosthdr = host;
@@ -184,7 +184,7 @@ ssize_t doh_parse_response(const uint8_t *buf, size_t buflen,
 	const uint8_t *cl = mem_findci(buf, hlen, "\r\ncontent-length:");
 	if(cl == NULL)
 		return -1;
-	// Reject a second Content-Length (RFC 7230 Sec. 3.3.3 message smuggling)
+	// Reject a second Content-Length (RFC 9112 Sec. 6.3 message smuggling)
 	// and any Transfer-Encoding: either lets the real body length differ from
 	// the parsed one, leaving unconsumed bytes that desync the pooled
 	// connection for the following queries.
@@ -194,9 +194,9 @@ ssize_t doh_parse_response(const uint8_t *buf, size_t buflen,
 	if(mem_findci(buf, hlen, "\r\ntransfer-encoding:") != NULL)
 		return -1;
 
-	// RFC 8484 Sec. 5: DoH responses MUST include Content-Type:
-	// application/dns-message. Require it so a malformed or non-DoH HTTP
-	// response is rejected before it can desync the pooled connection.
+	// application/dns-message is the only DoH response type (RFC 8484 Sec. 4.2).
+	// Require it so a malformed or non-DoH HTTP response is rejected before it
+	// can desync the pooled connection.
 	const uint8_t *ct = mem_findci(buf, hlen, "\r\ncontent-type:");
 	if(ct == NULL)
 		return -1;

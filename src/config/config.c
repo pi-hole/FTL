@@ -593,7 +593,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or quic://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
@@ -613,6 +613,13 @@ void initConfig(struct config *conf)
 	conf->dns.dot.d.b = true;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
+
+	conf->dns.doq.k = "dns.doq";
+	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
+	conf->dns.doq.t = CONF_BOOL;
+	conf->dns.doq.d.b = true;
+	conf->dns.doq.f = FLAG_RESTART_FTL;
+	conf->dns.doq.c = validate_stub;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
@@ -674,7 +681,7 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options blockingmode[] =
 		{
-			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
+			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2." },
 			{ get_blocking_mode_str(MODE_IP_NODATA_AAAA), "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
 			{ get_blocking_mode_str(MODE_IP), "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
 			{ get_blocking_mode_str(MODE_NX), "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
