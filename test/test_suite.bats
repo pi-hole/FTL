@@ -719,7 +719,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,9443s,192.0.2.1:9444s,44s3,443xs"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -1102,12 +1102,12 @@ setup() {
 
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
+  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/" "https://pi.hole:9443/api/"'
 }
 
 @test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
   run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/"'
+  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/" "https://[::1]:9443/api/"'
 }
 
 @test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
