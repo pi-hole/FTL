@@ -26,9 +26,11 @@
 #include "log.h"
 // config.webserver.proxySecret
 #include "config/config.h"
+// proxy_secret_valid(), PROXY_SECRET_LEN
+#include "config/validator.h"
 
 // Length of the secret authenticating PROXY v2 headers to the CivetWeb backend
-#define PROXY_TOKEN_LEN 16u
+#define PROXY_TOKEN_LEN (PROXY_SECRET_LEN / 2u)
 
 // Decode webserver.proxySecret into tok. Returns 1 if it is set and valid, 0 if
 // it is unset, and -1 (logged) if it is not 2 * PROXY_TOKEN_LEN hex digits.
@@ -37,8 +39,7 @@ static int config_proxy_secret(unsigned char tok[PROXY_TOKEN_LEN])
 	const char *cfg = config.webserver.proxySecret.v.s;
 	if(cfg == NULL || cfg[0] == '\0')
 		return 0;
-	if(strlen(cfg) != 2 * PROXY_TOKEN_LEN ||
-	   strspn(cfg, "0123456789abcdefABCDEF") != 2 * PROXY_TOKEN_LEN)
+	if(!proxy_secret_valid(cfg))
 	{
 		log_err("webserver.proxySecret must be %u hexadecimal characters, ignoring it",
 		        2 * PROXY_TOKEN_LEN);
@@ -4324,11 +4325,14 @@ cleanup:
 	return NULL;
 }
 
-// Accept everything pending on one ready listener, handing each connection to a
-// detached handler. Returns false if the listener is gone and we should stop.
+// Accept up to ACCEPT_BUDGET connections pending on one ready listener, handing
+// each to a detached handler. poll() is level-triggered, so a listener with a
+// backlog left is serviced again on the next pass, after the others had their
+// turn. Returns false if the listener is gone and we should stop.
+#define ACCEPT_BUDGET 32
 static bool accept_ready(int lfd, pthread_attr_t *attr)
 {
-	for(;;)
+	for(unsigned budget = ACCEPT_BUDGET; budget > 0; budget--)
 	{
 		struct sockaddr_storage peer;
 		socklen_t plen = sizeof(peer);
@@ -4396,6 +4400,7 @@ static bool accept_ready(int lfd, pthread_attr_t *attr)
 			close(client_fd);
 		}
 	}
+	return true;
 }
 
 // Accept loop thread: poll every public TLS listener and service whichever are

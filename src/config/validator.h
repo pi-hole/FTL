@@ -32,6 +32,8 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_proxy_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+#define PROXY_SECRET_LEN 32u
+bool proxy_secret_valid(const char *s) __attribute__((pure));
 void sanitize_dns_hosts(union conf_value *val);
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_str_no_newline(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);

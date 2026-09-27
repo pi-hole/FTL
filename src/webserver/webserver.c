@@ -740,11 +740,17 @@ static bool get_server_ports(void)
 	// The mirroring above only ever advertises the primary TLS port. Register
 	// the remaining ones so /info and the web interface report every port the
 	// terminator was asked to serve, and whether it could.
-	for(unsigned t = 0; t < n_tls_listeners && n < MAXPORTS; t++)
+	for(unsigned t = 0; t < n_tls_listeners; t++)
 	{
 		if(t == tls_primary)
 			continue;
 		const char *a = tls_listeners[t].addr;
+		if(n >= MAXPORTS)
+		{
+			log_warn("Cannot list TLS port %d on %s, at most %d ports are supported",
+			         tls_listeners[t].port, a[0] == '\0' ? "all interfaces" : a, MAXPORTS);
+			continue;
+		}
 		// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
 		// A bare entry is dual-stack; report it as IPv6, matching how the
 		// terminator binds it (one AF_INET6 socket also serving IPv4).
@@ -1189,6 +1195,7 @@ void http_init(void)
 	terminator_addr[0] = '\0';
 	tls_primary = 0;
 	terminator_bound = false;
+	n_tls_listeners = 0;
 	if(tls_used)
 	{
 		n_tls_listeners = split_terminator_ports(config.webserver.port.v.s,
