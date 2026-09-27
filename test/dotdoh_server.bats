@@ -257,6 +257,16 @@ setup_file() {
   assert_output "HTTP 426"
 }
 
+@test "dotdoh-server: an invalid webserver.proxySecret is rejected when set" {
+  run ./pihole-FTL --config webserver.proxySecret 0011223344556677
+  assert_line --index 0 'Invalid value: webserver.proxySecret: must be 32 hexadecimal characters or empty'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.proxySecret 00112233445566778899aabbccddeefg
+  assert_line --index 0 'Invalid value: webserver.proxySecret: must be 32 hexadecimal characters or empty'
+  assert_failure 3
+}
+
 @test "dotdoh-server: DoH rejects a non-POST/GET method (405)" {
   local ca; ca="$(pwd)/test/test_ca.crt"
   run curl -s -o /dev/null -w '%{http_code}' --cacert "$ca" \

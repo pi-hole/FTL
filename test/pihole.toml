@@ -1045,7 +1045,8 @@
   # forwarded by the proxy are attributed to the real client instead of to the proxy.
   # Only a proxy that knows the secret is believed, which is why an unauthenticated
   # X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an
-  # internal per-boot secret for its own TLS terminator only.
+  # internal per-boot secret for its own TLS terminator only. This setting is
+  # write-only, the secret itself cannot be read back.
   #
   # Allowed values are:
   #     A shared secret of 32 hexadecimal characters, or an empty string

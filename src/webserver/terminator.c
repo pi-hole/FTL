@@ -234,11 +234,9 @@ static bool ensure_proxy_token(void)
 	return true;
 }
 
-// Hex-encode the per-boot token into out (needs 2*PROXY_TOKEN_LEN+1 bytes),
-// generating it if necessary. webserver.c passes this to the loopback backend
-// as its "proxy_protocol_secret", the shared secret the backend uses to
-// authenticate our PROXY headers. Returns false if out is too small or the RNG
-// fails.
+// Hex-encode the PROXY v2 secret into out (needs 2*PROXY_TOKEN_LEN+1 bytes):
+// webserver.proxySecret if set, else the per-boot token. Returns false if out
+// is too small, webserver.proxySecret is invalid, or the RNG fails.
 bool terminator_proxy_token_hex(char *out, size_t outsz)
 {
 	if(outsz < 2 * PROXY_TOKEN_LEN + 1 || !ensure_proxy_token())

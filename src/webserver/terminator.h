@@ -40,10 +40,11 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 // Stop the terminator and free all resources. Safe to call if never started or already stopped.
 void terminator_stop(void);
 
-// Hex-encode the per-boot token (generating it if needed) into out, which must
-// hold at least 33 bytes. webserver.c passes it to the loopback CivetWeb backend
-// as "proxy_protocol_secret", the shared secret the backend uses to authenticate
-// our PROXY v2 headers. Returns false if out is too small or the RNG fails.
+// Hex-encode the PROXY v2 secret into out, which must hold at least 33 bytes:
+// webserver.proxySecret if set, else a per-boot token generated on first use.
+// webserver.c passes it to the CivetWeb backend as "proxy_protocol_secret".
+// Returns false if out is too small, webserver.proxySecret is invalid, or the
+// RNG fails.
 bool terminator_proxy_token_hex(char *out, size_t outsz);
 
 #endif // WEBSERVER_TERMINATOR_H

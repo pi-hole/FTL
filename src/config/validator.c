@@ -812,6 +812,21 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 	return true;
 }
 
+bool validate_proxy_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Empty disables the external proxy secret
+	if(val->s == NULL || val->s[0] == '\0')
+		return true;
+
+	if(strlen(val->s) != 32 || strspn(val->s, "0123456789abcdefABCDEF") != 32)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be 32 hexadecimal characters or empty", key);
+		return false;
+	}
+
+	return true;
+}
+
 // Sanitize the dns.hosts array
 // This function normalizes whitespace formatting in the dns.hosts entries
 // to ensure consistent formatting when saving to pihole.toml

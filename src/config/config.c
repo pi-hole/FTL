@@ -1088,12 +1088,12 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.proxySecret.k = "webserver.proxySecret";
-	conf->webserver.proxySecret.h = "Shared secret authenticating a trusted reverse proxy in front of Pi-hole. When set, FTL accepts a PROXY protocol v2 header carrying this secret and takes the client address (and TLS status) it announces in place of the transport peer, so requests forwarded by the proxy are attributed to the real client instead of to the proxy. Only a proxy that knows the secret is believed, which is why an unauthenticated X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an internal per-boot secret for its own TLS terminator only.";
+	conf->webserver.proxySecret.h = "Shared secret authenticating a trusted reverse proxy in front of Pi-hole. When set, FTL accepts a PROXY protocol v2 header carrying this secret and takes the client address (and TLS status) it announces in place of the transport peer, so requests forwarded by the proxy are attributed to the real client instead of to the proxy. Only a proxy that knows the secret is believed, which is why an unauthenticated X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an internal per-boot secret for its own TLS terminator only. This setting is write-only, the secret itself cannot be read back.";
 	conf->webserver.proxySecret.a = cJSON_CreateStringReference("A shared secret of 32 hexadecimal characters, or an empty string");
 	conf->webserver.proxySecret.t = CONF_STRING;
 	conf->webserver.proxySecret.f = FLAG_RESTART_FTL | FLAG_WRITE_ONLY;
 	conf->webserver.proxySecret.d.s = (char*)"";
-	conf->webserver.proxySecret.c = validate_stub;
+	conf->webserver.proxySecret.c = validate_proxy_secret;
 
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
