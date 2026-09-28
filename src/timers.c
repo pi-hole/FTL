@@ -15,6 +15,8 @@
 #include "signals.h"
 // set_blockingmode()
 #include "config/config.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 static struct timespec t0[NUMTIMERS];
 
@@ -123,11 +125,21 @@ void *timer(void *val)
 		}
 		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
-			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
-			          timer_target_status ? "enabled" : "disabled");
+			// set_blockingstatus() needs the SHM lock, which the API
+			// takes before timer_lock. Take them in the same order and
+			// check again, the API may have set a new timer in between
+			pthread_mutex_unlock(&timer_lock);
+			lock_shm();
+			pthread_mutex_lock(&timer_lock);
+			if(timer_delay <= 0.0 && timer_delay > -1.0)
+			{
+				log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+				          timer_target_status ? "enabled" : "disabled");
 
-			set_blockingstatus(timer_target_status);
-			timer_delay = -1.0;
+				set_blockingstatus(timer_target_status);
+				timer_delay = -1.0;
+			}
+			unlock_shm();
 		}
 		pthread_mutex_unlock(&timer_lock);
 		thread_sleepms(TIMER, SLEEPING_TIME * 1000);

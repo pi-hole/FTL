@@ -14,6 +14,8 @@ Usage:
 """
 
 import json
+import subprocess
+import time
 from urllib.parse import quote
 
 import pytest
@@ -765,7 +767,69 @@ class TestBatchDeleteLists:
 # ===========================================================================
 
 
+def _dig(name):
+    """Resolve an A record through FTL and return the first answer."""
+    out = subprocess.run(["dig", "+short", "@127.0.0.1", name, "A"],
+                         capture_output=True, text=True, timeout=10).stdout
+    return out.split("\n")[0]
+
+
+def _last_status(api_session, domain):
+    """Status of the newest query for domain once the query log has it."""
+    for _ in range(20):
+        data = _j(api_session.get(f"{FTL_URL}/api/queries",
+                                  params={"domain": domain, "length": 1},
+                                  timeout=5))
+        if data["queries"]:
+            return data["queries"][0]["status"], data["queries"][0]["id"]
+        time.sleep(0.25)
+    return None, None
+
+
 class TestDNSBlockingToggle:
+
+    def test_toggle_applies_without_flushing_cache(self, api_session):
+        """Toggling blocking changes the answer at once and keeps the cache."""
+        # The blocked reply depends on the blocking mode set earlier
+        blocked = _dig("gravity.ftl")
+        assert blocked not in ("", "192.168.1.2")
+        _dig("a.ftl")
+
+        r = api_session.post(f"{FTL_URL}/api/dns/blocking",
+                             json={"blocking": False}, timeout=10)
+        assert r.status_code == 200
+        # The real answer is now cached as well
+        assert _dig("gravity.ftl") == "192.168.1.2"
+
+        # a.ftl was cached before the toggle and is still answered from cache
+        _, before = _last_status(api_session, "a.ftl")
+        assert _dig("a.ftl") == "192.168.1.1"
+        for _ in range(20):
+            status, newest = _last_status(api_session, "a.ftl")
+            if newest != before:
+                break
+            time.sleep(0.25)
+        assert newest != before
+        assert status == "CACHE"
+
+        r = api_session.post(f"{FTL_URL}/api/dns/blocking",
+                             json={"blocking": True}, timeout=10)
+        assert r.status_code == 200
+        # Blocked again even though dnsmasq has the real answer cached and
+        # FTL recorded the query as not blocked while blocking was off
+        assert _dig("gravity.ftl") == blocked
+
+        # A gravity reload between the two toggles resets the same state and
+        # would hide a stale verdict, so go round twice more
+        for _ in range(2):
+            r = api_session.post(f"{FTL_URL}/api/dns/blocking",
+                                 json={"blocking": False}, timeout=10)
+            assert r.status_code == 200
+            assert _dig("gravity.ftl") == "192.168.1.2"
+            r = api_session.post(f"{FTL_URL}/api/dns/blocking",
+                                 json={"blocking": True}, timeout=10)
+            assert r.status_code == 200
+            assert _dig("gravity.ftl") == blocked
 
     def test_disable_and_reenable_blocking(self, api_session):
         """POST /api/dns/blocking toggles blocking on and off."""

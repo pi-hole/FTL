@@ -23,6 +23,8 @@
 #include "config/dnsmasq_config.h"
 // lock_shm(), unlock_shm()
 #include "shmem.h"
+// FTL_reset_per_client_domain_data()
+#include "datastructure.h"
 // dnsmasq_failed
 #include "daemon.h"
 // delete_all_sessions()
@@ -2094,6 +2096,7 @@ enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }
 
+// The caller holds the SHM lock
 void set_blockingstatus(bool enabled)
 {
 	// If dnsmasq failed to start, we do not allow to change the blocking status
@@ -2101,8 +2104,15 @@ void set_blockingstatus(bool enabled)
 		return;
 
 	config.dns.blocking.active.v.b = enabled;
+
+	// Queries answered while blocking was disabled were recorded as not
+	// blocked. Drop the per-client verdicts together with the switch.
+	// dnsmasq's cache and the lists need no reload, FTL_check_blocking()
+	// runs before the cache is consulted
+	FTL_reset_per_client_domain_data();
+
 	writeFTLtoml(true, NULL);
-	raise(SIGHUP);
+	log_info("Blocking status is %s", enabled ? "enabled" : "disabled");
 }
 
 const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type)
