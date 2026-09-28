@@ -51,7 +51,7 @@ int api_history_database(struct ftl_conn *api)
 		                       NULL);
 
 	// Build SQL string
-	const char *querystr = "SELECT (timestamp/:interval)*:interval interval,status,COUNT(*) FROM query_storage "
+	const char *querystr = "SELECT (CAST(timestamp AS INTEGER)/:interval)*:interval interval,status,COUNT(*) FROM query_storage "
 	                       "WHERE (status != 0) AND timestamp >= :from AND timestamp <= :until "
 	                       "GROUP by interval,status ORDER by interval";
 
