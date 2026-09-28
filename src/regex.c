@@ -16,6 +16,8 @@
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
+// dbopen()
+#include "database/common.h"
 // add_per_client_regex_client()
 #include "shmem.h"
 #include "database/message-table.h"
@@ -703,7 +705,7 @@ void free_regex(void)
 //   1. Allocate additional memory if required
 //   2. Reset all regex to false for this client
 //   3. Load regex enabled/disabled state
-void reload_per_client_regex(clientsData *client)
+void reload_per_client_regex(clientsData *client, sqlite3 *ftl_db)
 {
 	// Ensure there is enough memory in the shared memory object
 	add_per_client_regex(client->id);
@@ -715,13 +717,13 @@ void reload_per_client_regex(clientsData *client)
 	if(num_regex[REGEX_DENY] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_DENY],
 		                                  deny_regex, REGEX_DENY,
-		                                  "vw_regex_denylist");
+		                                  "vw_regex_denylist", ftl_db);
 
 	// Load regex per-group allow regex for this client
 	if(num_regex[REGEX_ALLOW] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_ALLOW],
 		                                  allow_regex, REGEX_ALLOW,
-		                                  "vw_regex_allowlist");
+		                                  "vw_regex_allowlist", ftl_db);
 }
 
 static void read_regex_table(const enum regex_type regexid)
@@ -837,6 +839,9 @@ void read_regex_from_database(void)
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
 	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
+	// One pihole-FTL.db connection for the network table lookups of all
+	// clients rather than one per lookup. NULL lets each lookup open its own
+	sqlite3 *ftl_db = dbopen(false, false);
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -845,8 +850,10 @@ void read_regex_from_database(void)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		reload_per_client_regex(client);
+		reload_per_client_regex(client, ftl_db);
 	}
+	if(ftl_db != NULL)
+		dbclose(&ftl_db);
 
 	// This process is now up to date with the shared regex generation
 	regex_change = counters->regex_change;
