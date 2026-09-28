@@ -454,7 +454,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	//         during history reading get their enabled regexs reloaded
 	//         in the initial call to FTL_reload_all_domainlists()
 	if(!startup && !aliasclient)
-		reload_per_client_regex(client);
+		reload_per_client_regex(client, NULL);
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
