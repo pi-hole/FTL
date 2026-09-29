@@ -4265,6 +4265,36 @@ static bool terminator_handshake(SSL *ssl, int fd)
 	return ok;
 }
 
+// How long a closing connection keeps discarding what the client still sends
+#define LINGER_MS 1000
+
+// Stop sending, then discard the client's remaining data for a moment before
+// closing. Unread data at close() makes the kernel answer with a reset, which
+// can destroy an error response the client has not read yet (e.g., a 413).
+static void lingering_close(const int fd)
+{
+	shutdown(fd, SHUT_WR);
+	const int fl = fcntl(fd, F_GETFL, 0);
+	if(fl >= 0)
+		fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	const uint64_t deadline = mono_ms() + LINGER_MS;
+	char sink[4096];
+	for(;;)
+	{
+		const ssize_t n = read(fd, sink, sizeof(sink));
+		if(n > 0)
+			continue;
+		if(n == 0 || (!WOULDBLOCK(errno) && errno != EINTR))
+			break;
+		const uint64_t now = mono_ms();
+		if(now >= deadline)
+			break;
+		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+		poll(&pfd, 1, (int)(deadline - now));
+	}
+	close(fd);
+}
+
 // Per-connection handler, run in a detached thread.
 static void *handle_conn(void *arg)
 {
@@ -4328,7 +4358,7 @@ cleanup:
 	}
 	if(be_fd >= 0)
 		close(be_fd);
-	close(client_fd);
+	lingering_close(client_fd);
 	SSL_CTX_free(ctx); // release our reference (keeps the ctx alive across stop)
 	ip_release(ipkey);
 	atomic_fetch_sub(&active_handlers, 1);
