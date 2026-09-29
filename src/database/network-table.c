@@ -472,47 +472,58 @@ static bool add_netDB_network_address(sqlite3 *db, const int network_id, const c
 	log_debug(DEBUG_ARP, "add_netDB_network_address(%i, \"%s\")", network_id, ip);
 
 	bool success = false;
+	int rc = SQLITE_OK;
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "INSERT OR REPLACE INTO network_addresses "
-	                        "(network_id,ip,lastSeen,name,nameUpdated) VALUES "
-	                        "(?1,?2,(cast(strftime('%s', 'now') as int)),"
-	                        "(SELECT name FROM network_addresses "
-	                                "WHERE ip = ?2),"
-	                        "(SELECT nameUpdated FROM network_addresses "
-	                                "WHERE ip = ?2));";
+	// Move the address to another device only when it changed, then insert it
+	// or refresh lastSeen in place. Assigning a column rewrites its index
+	// entries even when the value stays the same
+	const char *querystrs[] = {
+		"UPDATE network_addresses SET network_id = ?1 "
+		"WHERE ip = ?2 AND network_id IS NOT ?1;",
+		"INSERT INTO network_addresses (network_id,ip,lastSeen) "
+		"VALUES (?1,?2,(cast(strftime('%s', 'now') as int))) "
+		"ON CONFLICT(ip) DO UPDATE SET lastSeen = excluded.lastSeen;"
+	};
 
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
-	if(rc != SQLITE_OK)
+	for(unsigned int i = 0; i < ArraySize(querystrs); i++)
 	{
-		log_err("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
+		const char *querystr = querystrs[i];
+		rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
 
-	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
-		     querystr, network_id, ip);
+		log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
+			     querystr, network_id, ip);
 
-	// Bind network_id to prepared statement (1st argument)
-	if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
-	// Bind ip to prepared statement (2nd argument)
-	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
+		// Bind network_id to prepared statement (1st argument)
+		if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
+		// Bind ip to prepared statement (2nd argument)
+		if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
 
-	// Perform step
-	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
+		// Perform step
+		if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
+
+		sqlite3_finalize(query_stmt);
+		query_stmt = NULL;
 	}
 
 	success = true;
