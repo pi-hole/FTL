@@ -297,27 +297,20 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 
 	if(is_post)
 	{
-		// RFC 8484: body media type application/dns-message (trailing ";..." ok).
-		const char *ctype = mg_get_header(conn, "Content-Type");
-		if(ctype == NULL || strncasecmp(ctype, "application/dns-message",
-		                                sizeof("application/dns-message") - 1) != 0)
-		{
-			mg_send_http_error(conn, 415, "%s", "expected application/dns-message");
-			return 415;
-		}
+		// mg_get_header() returns only the first Content-Type, so count them
+		unsigned ctype_count = 0;
+		for(int i = 0; i < ri->num_headers; i++)
+			if(strcasecmp(ri->http_headers[i].name, "Content-Type") == 0)
+				ctype_count++;
 		// Reject an oversized or unknown-length body outright rather than
 		// truncating it: a partial read would leave bytes in the stream and
 		// desync the next request on a keep-alive connection.
 		const long long clen = ri->content_length;
-		if(clen < 0)
+		const int st = doh_post_check(mg_get_header(conn, "Content-Type"), ctype_count, clen);
+		if(st != 0)
 		{
-			mg_send_http_error(conn, 411, "%s", "Content-Length required");
-			return 411;
-		}
-		if(clen == 0 || (size_t)clen > sizeof(query))
-		{
-			mg_send_http_error(conn, 413, "%s", "DoH query too large");
-			return 413;
+			mg_send_http_error(conn, st, "%s", "malformed DoH request");
+			return st;
 		}
 		// mg_read() may return short; loop until the whole body is in.
 		size_t got = 0;
@@ -351,8 +344,8 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 	                                           (size_t)qlen, answer, sizeof(answer));
 	if(alen <= 0)
 	{
-		mg_send_http_error(conn, 502, "%s", "resolver failed");
-		return 502;
+		mg_send_http_error(conn, 500, "%s", "resolver failed");
+		return 500;
 	}
 
 	// private: the answer depends on the client's groups, so a shared cache
@@ -388,7 +381,17 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 	const struct mg_request_info *ri = mg_get_request_info(conn);
 	if(ri == NULL || !ri->is_ssl || !config.dns.dohReverseProxy.v.b)
 	{
-		mg_send_http_error(conn, 426, "%s", "DoH requires HTTPS");
+		// A 426 must name the required protocol (RFC 9110 15.5.22, RFC 2817 4.2)
+		static const char msg[] = "DoH requires HTTPS\n";
+		mg_response_header_start(conn, 426);
+		mg_response_header_add(conn, "Upgrade", "TLS/1.3, HTTP/1.1", -1);
+		mg_response_header_add(conn, "Connection", "Upgrade", -1);
+		mg_response_header_add(conn, "Content-Type", "text/plain", -1);
+		char len[8];
+		snprintf(len, sizeof(len), "%zu", sizeof(msg) - 1);
+		mg_response_header_add(conn, "Content-Length", len, -1);
+		mg_response_header_send(conn);
+		mg_write(conn, msg, sizeof(msg) - 1);
 		return 426;
 	}
 	if(!dotdoh_doh_enabled())

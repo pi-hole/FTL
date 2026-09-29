@@ -182,6 +182,12 @@ setup_file() {
   assert_output "426"
 }
 
+@test "dotdoh-server: the 426 names the required protocol" {
+  run bash -c 'curl -s -D - -o /dev/null "http://127.0.0.1/dns-query" | tr -d "\r"'
+  assert_line "Upgrade: TLS/1.3, HTTP/1.1"
+  assert_line "Connection: Upgrade"
+}
+
 @test "dotdoh-server: every configured TLS port is served" {
   # test/pihole.toml adds 9443s next to the default 443
   run curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:9443/api/info/login"
@@ -283,6 +289,42 @@ setup_file() {
            -H 'content-type: text/plain' --data-binary "@$q" \
            "https://pi.hole/dns-query"
   assert_output "415"
+}
+
+@test "dotdoh-server: DoH POST rejects a Content-Type that only starts right (415)" {
+  local ca q v ct; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/err_q.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  for v in --http1.1 --http2; do
+    for ct in 'application/dns-messagefoobar' 'application/dns-message junk'; do
+      run curl -s -o /dev/null -w '%{http_code}' "$v" --cacert "$ca" \
+               --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+               -H "content-type: $ct" --data-binary "@$q" \
+               "https://pi.hole/dns-query"
+      assert_output "415"
+    done
+  done
+}
+
+@test "dotdoh-server: DoH POST with two Content-Type lines is rejected (400)" {
+  local ca q v; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/err_q.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  for v in --http1.1 --http2; do
+    run curl -s -o /dev/null -w '%{http_code}' "$v" --cacert "$ca" \
+             --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+             -H 'content-type: application/dns-message' -H 'content-type: text/plain' \
+             --data-binary "@$q" "https://pi.hole/dns-query"
+    assert_output "400"
+  done
+}
+
+@test "dotdoh-server: DoH POST over HTTP/1.1 with a body above 65535 octets is refused (413)" {
+  local ca big; ca="$(pwd)/test/test_ca.crt"; big="${BATS_FILE_TMPDIR}/big.bin"
+  head -c 70000 /dev/zero > "$big"
+  run curl -s -o /dev/null -w '%{http_code}' --http1.1 --cacert "$ca" \
+           --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' --data-binary "@$big" \
+           "https://pi.hole/dns-query"
+  assert_output "413"
 }
 
 @test "dotdoh-server: DoH GET rejects a malformed dns parameter (400)" {

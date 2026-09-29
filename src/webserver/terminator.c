@@ -857,6 +857,7 @@ struct h1_req {
 	char method[8];
 	char path[2048];
 	char ctype[64];
+	unsigned ctype_count; // Content-Type field lines seen
 	long content_length;  // -1 if absent
 	bool conn_close;      // client asked to close (Connection: close or HTTP/1.0)
 	bool has_te;          // Transfer-Encoding present (chunked framing, not Content-Length)
@@ -909,6 +910,7 @@ static int h1_parse_head(const char *buf, size_t len, struct h1_req *r)
 			{
 				const size_t c = vl < sizeof(r->ctype) - 1 ? vl : sizeof(r->ctype) - 1;
 				memcpy(r->ctype, v, c); r->ctype[c] = '\0';
+				r->ctype_count++;
 			}
 			else if(nl == 10 && strncasecmp(p, "connection", 10) == 0 &&
 			        vl >= 5 && strncasecmp(v, "close", 5) == 0)
@@ -934,6 +936,19 @@ static void h1_doh_error(SSL *ssl, const char *status_line, const char *extra)
 	                       status_line, extra != NULL ? extra : "");
 	if(n > 0 && (size_t)n < sizeof(resp))
 		write_all_ssl(ssl, resp, (size_t)n);
+}
+
+// Status code and line for a doh_post_check() result
+#if defined(HAVE_HTTP2) || defined(HAVE_HTTP3)
+static const char *doh_status3(const int code)
+{
+	return code == 413 ? "413" : code == 415 ? "415" : "400";
+}
+#endif
+static const char *doh_status_line(const int code)
+{
+	return code == 413 ? "413 Content Too Large" :
+	       code == 415 ? "415 Unsupported Media Type" : "400 Bad Request";
 }
 
 // One non-blocking SSL_read bounded by an absolute deadline. A blocking read with
@@ -1038,7 +1053,7 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		// so its body is consumed by CivetWeb and cannot desync the next keep-alive
 		// request.
 		if(!(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
-		     ((is_get && rq.content_length <= 0) || (is_post && rq.content_length >= 0))))
+		     ((is_get && rq.content_length <= 0) || is_post)))
 		{
 			const int be = connect_backend();
 			if(be < 0) { h1_doh_error(ssl, "502 Bad Gateway", NULL); return; }
@@ -1053,13 +1068,11 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		size_t consumed = head_len;
 		if(is_post)
 		{
-			const size_t ctl = sizeof("application/dns-message") - 1;
-			if(strncasecmp(rq.ctype, "application/dns-message", ctl) != 0 ||
-			   (rq.ctype[ctl] != '\0' && rq.ctype[ctl] != ';' &&
-			    rq.ctype[ctl] != ' ' && rq.ctype[ctl] != '\t'))
-			{ h1_doh_error(ssl, "415 Unsupported Media Type", NULL); return; }
-			if(rq.content_length == 0 || rq.content_length > DNS_MSG_MAX)
-			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
+			// Without Content-Length or Transfer-Encoding the body is empty
+			const int st = doh_post_check(rq.ctype_count > 0 ? rq.ctype : NULL,
+			                              rq.ctype_count, rq.content_length);
+			if(st != 0)
+			{ h1_doh_error(ssl, doh_status_line(st), NULL); return; }
 			const size_t blen = (size_t)rq.content_length;
 			size_t in_buf = have - head_len;
 			if(in_buf > blen)
@@ -1116,7 +1129,7 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 		                                           query, qlen, answer, sizeof(answer));
 		if(alen <= 0)
-		{ h1_doh_error(ssl, "502 Bad Gateway", NULL); return; }
+		{ h1_doh_error(ssl, "500 Internal Server Error", NULL); return; }
 
 		char rhead[256];
 		const int hn = snprintf(rhead, sizeof(rhead),
@@ -1486,6 +1499,7 @@ struct h2_stream {
 	bool content_length_seen;
 	bool oversize;           // a pseudo-header did not fit -> answer 414, do not forward
 	char ctype[64];          // request Content-Type (for the native DoH POST check)
+	unsigned ctype_count;    // Content-Type field lines seen
 
 	// Inbound DoH served natively in the terminator (no backend). The POST body /
 	// GET dns= query accrues in be.req_out; the DNS answer is pushed to be.body_buf.
@@ -1723,15 +1737,11 @@ static void h2_doh_serve(struct h2_stream *s)
 
 	if(strcmp(s->method, "POST") == 0)
 	{
-		// RFC 8484: body media type application/dns-message (exact, trailing ";..." ok).
-		const size_t ctl = sizeof("application/dns-message") - 1;
-		if(strncasecmp(s->ctype, "application/dns-message", ctl) != 0 ||
-		   (s->ctype[ctl] != '\0' && s->ctype[ctl] != ';' &&
-		    s->ctype[ctl] != ' ' && s->ctype[ctl] != '\t'))
-		{ h2_gateway_error(s, "415"); return; }
 		const size_t blen = s->be.req_out_len - s->be.req_out_off;
-		if(blen == 0 || blen > DNS_MSG_MAX)
-		{ h2_gateway_error(s, "400"); return; }
+		const int st = doh_post_check(s->ctype_count > 0 ? s->ctype : NULL,
+		                              s->ctype_count, (long long)blen);
+		if(st != 0)
+		{ h2_gateway_error(s, doh_status3(st)); return; }
 		memcpy(query, s->be.req_out + s->be.req_out_off, blen);
 		qlen = blen;
 	}
@@ -1785,7 +1795,7 @@ static void h2_doh_serve(struct h2_stream *s)
 	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 	                                           query, qlen, answer, sizeof(answer));
 	if(alen <= 0)
-	{ h2_gateway_error(s, "502"); return; }
+	{ h2_gateway_error(s, "500"); return; }
 
 	if(be_body_push(&s->be, (const char *)answer, (size_t)alen) != 0)
 	{ h2_gateway_error(s, "500"); return; }
@@ -2154,6 +2164,7 @@ static int h2_on_header(nghttp2_session *session, const nghttp2_frame *frame,
 		const size_t cl = valuelen < sizeof(s->ctype) - 1 ? valuelen : sizeof(s->ctype) - 1;
 		memcpy(s->ctype, v, cl);
 		s->ctype[cl] = '\0';
+		s->ctype_count++;
 	}
 	return 0;
 }
@@ -2564,6 +2575,7 @@ struct h3_stream {
 	size_t reqhdr_len;
 	bool content_length_seen;
 	char ctype[64];          // request Content-Type (for the native DoH POST check)
+	unsigned ctype_count;    // Content-Type field lines seen
 
 	// Native DoH served in the terminator (resolve off-loaded to a worker).
 	bool is_doh;
@@ -2806,14 +2818,11 @@ static void h3_doh_dispatch(struct h3_stream *s)
 
 	if(strcmp(s->method, "POST") == 0)
 	{
-		const size_t ctl = sizeof("application/dns-message") - 1;
-		if(strncasecmp(s->ctype, "application/dns-message", ctl) != 0 ||
-		   (s->ctype[ctl] != '\0' && s->ctype[ctl] != ';' &&
-		    s->ctype[ctl] != ' ' && s->ctype[ctl] != '\t'))
-		{ h3_gateway_error(s, "415"); return; }
 		const size_t blen = s->be.req_out_len - s->be.req_out_off;
-		if(blen == 0 || blen > DNS_MSG_MAX)
-		{ h3_gateway_error(s, "400"); return; }
+		const int st = doh_post_check(s->ctype_count > 0 ? s->ctype : NULL,
+		                              s->ctype_count, (long long)blen);
+		if(st != 0)
+		{ h3_gateway_error(s, doh_status3(st)); return; }
 		memcpy(query, s->be.req_out + s->be.req_out_off, blen);
 		qlen = blen;
 	}
@@ -3232,6 +3241,7 @@ static int h3_cb_recv_header(nghttp3_conn *h3, int64_t stream_id, int32_t token,
 	{
 		const size_t ctl = vl < sizeof(s->ctype) - 1 ? vl : sizeof(s->ctype) - 1;
 		memcpy(s->ctype, v, ctl); s->ctype[ctl] = '\0';
+		s->ctype_count++;
 	}
 	return 0;
 }
@@ -3741,7 +3751,7 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
 				else if(job->alen <= 0)
-					h3_gateway_error(s, "502");
+					h3_gateway_error(s, "500");
 				else if(s->ssl != NULL && SSL_get_stream_write_state(s->ssl) != SSL_STREAM_STATE_OK)
 					// The client RESET/STOP_SENDING this stream while the resolve was
 					// in flight. Submitting a response we can no longer send would
