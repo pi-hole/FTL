@@ -221,7 +221,7 @@ void *DB_thread(void *val)
 		// Do this once per second
 		if(now > before)
 		{
-			TIMED_DB_OP(queries_to_database());
+			TIMED_DB_OP(queries_to_database(false));
 			before = now;
 
 			// Check if we need to reload gravity
