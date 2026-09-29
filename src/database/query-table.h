@@ -61,11 +61,9 @@
 #define CREATE_QUERY_STORAGE_DOMAIN_INDEX		"CREATE INDEX idx_query_storage_domain ON query_storage (domain);"
 #define CREATE_QUERY_STORAGE_CLIENT_INDEX		"CREATE INDEX idx_query_storage_client ON query_storage (client);"
 #define CREATE_QUERY_STORAGE_FORWARD_INDEX		"CREATE INDEX idx_query_storage_forward ON query_storage (forward);"
-#define CREATE_QUERY_STORAGE_ADDITIONAL_INFO_INDEX	"CREATE INDEX idx_query_storage_additional_info ON query_storage (additional_info);"
 #define CREATE_QUERY_STORAGE_REPLY_TYPE_INDEX		"CREATE INDEX idx_query_storage_reply_type ON query_storage (reply_type);"
 #define CREATE_QUERY_STORAGE_REPLY_TIME_INDEX		"CREATE INDEX idx_query_storage_reply_time ON query_storage (reply_time);"
 #define CREATE_QUERY_STORAGE_DNSSEC_INDEX		"CREATE INDEX idx_query_storage_dnssec ON query_storage (dnssec);"
-#define CREATE_QUERY_STORAGE_LIST_ID_INDEX		"CREATE INDEX idx_query_storage_list_id ON query_storage (list_id);"
 
 #define CREATE_DOMAINS_BY_ID "CREATE TABLE domain_by_id (id INTEGER PRIMARY KEY, domain TEXT NOT NULL);"
 #define CREATE_CLIENTS_BY_ID "CREATE TABLE client_by_id (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT);"
@@ -93,11 +91,9 @@ const char *index_creation[] = {
 	CREATE_QUERY_STORAGE_DOMAIN_INDEX,
 	CREATE_QUERY_STORAGE_CLIENT_INDEX,
 	CREATE_QUERY_STORAGE_FORWARD_INDEX,
-	CREATE_QUERY_STORAGE_ADDITIONAL_INFO_INDEX,
 	CREATE_QUERY_STORAGE_REPLY_TYPE_INDEX,
 	CREATE_QUERY_STORAGE_REPLY_TIME_INDEX,
 	CREATE_QUERY_STORAGE_DNSSEC_INDEX,
-	CREATE_QUERY_STORAGE_LIST_ID_INDEX,
 	CREATE_DOMAIN_BY_ID_DOMAIN_INDEX,
 	CREATE_CLIENTS_BY_ID_IPNAME_INDEX,
 	CREATE_FORWARD_BY_ID_FORWARD_INDEX,
