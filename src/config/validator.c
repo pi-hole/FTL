@@ -284,6 +284,32 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	return true;
 }
 
+bool validate_cidr_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json->child; item != NULL; item = item->next, i++)
+	{
+		char ikey[128];
+		snprintf(ikey, sizeof(ikey), "%s[%d]", key, i);
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a string", ikey);
+			return false;
+		}
+		union conf_value v = { .s = item->valuestring };
+		if(!validate_cidr(&v, ikey, err))
+			return false;
+	}
+
+	return true;
+}
+
 // Validate a netmask
 // The one-bits have to be contiguous and leading, anything else describes no
 // subnet and has neither a network nor a broadcast address. 0.0.0.0 is allowed

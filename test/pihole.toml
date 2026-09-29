@@ -278,12 +278,12 @@
 
   # Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The
   # client-facing connection stays HTTPS; the proxy handles the encryption and forwards
-  # plain HTTP to Pi-hole. This requires webserver.proxySecret to be set and the proxy
-  # to send a PROXY protocol v2 header carrying that secret as a custom TLV, which
-  # HAProxy and Envoy can do: only an authenticated proxy is believed, and the client
-  # address it announces is used to attribute the query. A plain HTTP request that is
-  # not authenticated this way is still refused, so enabling this alone never exposes
-  # DNS queries in cleartext.
+  # plain HTTP to Pi-hole. This requires the proxy to either send a PROXY protocol v2
+  # header carrying webserver.proxySecret as a custom TLV, which HAProxy and Envoy can
+  # do, or to be listed in webserver.trustedProxies: only such a proxy is believed, and
+  # the client address it announces is used to attribute the query. A plain HTTP request
+  # that is not authenticated this way is still refused, so enabling this alone never
+  # exposes DNS queries in cleartext.
   #
   # Allowed values are:
   #     true or false
@@ -1043,14 +1043,30 @@
   # FTL accepts a PROXY protocol v2 header carrying this secret and takes the client
   # address (and TLS status) it announces in place of the transport peer, so requests
   # forwarded by the proxy are attributed to the real client instead of to the proxy.
-  # Only a proxy that knows the secret is believed, which is why an unauthenticated
-  # X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an
-  # internal per-boot secret for its own TLS terminator only. This setting is
-  # write-only, the secret itself cannot be read back.
+  # Only a proxy that knows the secret is believed. For proxies that cannot send it, see
+  # webserver.trustedProxies. Leave empty to disable; FTL then uses an internal per-boot
+  # secret for its own TLS terminator only. This setting is write-only, the secret
+  # itself cannot be read back.
   #
   # Allowed values are:
   #     A shared secret of 32 hexadecimal characters, or an empty string
   proxySecret = "00112233445566778899aabbccddeeff" ### CHANGED, default = ""
+
+  # Reverse proxies whose X-Forwarded-For and X-Forwarded-Proto headers are believed, for
+  # proxies that cannot send webserver.proxySecret (e.g., nginx, Traefik or Caddy). With
+  # dns.dohReverseProxy enabled, a DoH request from one of these addresses is served if
+  # X-Forwarded-Proto is "https", and it is attributed to the client X-Forwarded-For
+  # names instead of to the proxy. The headers of any other peer are ignored. A proxy on
+  # the same host connects from 127.0.0.1 or ::1, and trusting those lets every local
+  # process choose the client its queries are attributed to.
+  #
+  # Example: [ "192.168.1.10", "10.0.0.0/24" ]
+  #
+  # Allowed values are:
+  #     Array of IP addresses and/or subnets in CIDR notation
+  trustedProxies = [
+    "127.0.0.4"
+  ] ### CHANGED, default = []
 
   [webserver.session]
     # Session timeout in seconds.
@@ -1813,8 +1829,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 172 total entries out of which 113 entries are default
-# --> 59 entries are modified
+# 173 total entries out of which 113 entries are default
+# --> 60 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

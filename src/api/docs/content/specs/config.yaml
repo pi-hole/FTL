@@ -483,6 +483,10 @@ components:
                   type: array
                   items:
                     type: string
+                trustedProxies:
+                  type: array
+                  items:
+                    type: string
                 session:
                   type: object
                   properties:
@@ -895,6 +899,7 @@ components:
             serve_all: false
             advancedOpts:
               - "ssl_protocol_version=4"
+            trustedProxies: []
             session:
               timeout: 300
               restore: true
