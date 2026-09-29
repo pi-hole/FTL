@@ -2023,7 +2023,11 @@ static void requeue_snapshots(const struct query_snap *snaps, const unsigned int
 	}
 }
 
-bool queries_to_database(void)
+// Start of the last run that visited every query it had to, the reply horizon
+// counts back from there so a run of skipped exports cannot lose late replies
+static double last_export_start = 0.0;
+
+bool queries_to_database(const bool final)
 {
 	int rc;
 	unsigned int added = 0, updated = 0;
@@ -2040,6 +2044,7 @@ bool queries_to_database(void)
 		// Queries recorded now must not be exported once the level drops
 		lock_shm();
 		export_floor = counters->queries + get_queries_removed();
+		last_export_start = double_time();
 		unlock_shm();
 		return true;
 	}
@@ -2066,7 +2071,9 @@ bool queries_to_database(void)
 	// useless as the client will have already timed out this particular
 	// query and retried or failed. Queries no export has visited yet are
 	// always included, however old
-	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
+	const double run_start = double_time();
+	const double limit_timestamp = (last_export_start > 0.0 && last_export_start < run_start ?
+	                                last_export_start : run_start) - REPLY_TIMEOUT;
 	const unsigned int unvisited = get_export_floor();
 	// last_query ends up as the first query to export
 	unsigned int last_query = counters->queries;
@@ -2098,6 +2105,7 @@ bool queries_to_database(void)
 	// Skip early if no queries are to be stored (no queries immediately after start)
 	if(last_query == counters->queries)
 	{
+		last_export_start = run_start;
 		unlock_shm();
 		return true;
 	}
@@ -2145,6 +2153,20 @@ bool queries_to_database(void)
 	bool phase1_error = false;
 	int64_t changes = 0;
 	sqlite3_int64 rowid = 0;
+
+	// An API request can hold the connection for seconds inside a single
+	// step. Never wait for it under the SHM lock, skip this run instead.
+	// The final run at shutdown waits, there is no later run to catch up
+	sqlite3_mutex *memdb_mutex = sqlite3_db_mutex(memdb);
+	if(memdb_mutex != NULL && final)
+		sqlite3_mutex_enter(memdb_mutex);
+	else if(memdb_mutex != NULL && sqlite3_mutex_try(memdb_mutex) != SQLITE_OK)
+	{
+		log_debug(DEBUG_DATABASE, "In-memory database busy, storing queries in the next run");
+		free(snaps);
+		unlock_shm();
+		return true;
+	}
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
 	// mostly skipped due to in_database caching). SQL_bool() cannot be used
@@ -2404,6 +2426,8 @@ bool queries_to_database(void)
 	// Commit linking table transaction
 	if(!memdb_exec(memdb, "END", "commit the linking table transaction"))
 		goto rollback_unlock_fail;
+	if(memdb_mutex != NULL)
+		sqlite3_mutex_leave(memdb_mutex);
 
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
@@ -2495,6 +2519,8 @@ bool queries_to_database(void)
 	// Advance the floor past everything visited, but not past a requeued query
 	export_floor = removed_before + (succeeded < snap_count ?
 	                                 snaps[succeeded].queryID : last_query + window);
+	if(succeeded == snap_count)
+		last_export_start = run_start;
 
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
@@ -2552,6 +2578,8 @@ bool queries_to_database(void)
 rollback_unlock_fail:
 	dbquery(memdb, "ROLLBACK");
 unlock_fail:
+	if(memdb_mutex != NULL)
+		sqlite3_mutex_leave(memdb_mutex);
 	// Nothing was committed, so give the snapshotted queries their changed
 	// flag back and let the next run pick them up. The lock is still ours
 	requeue_snapshots(snaps, 0, snap_count, removed_before);
