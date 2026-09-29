@@ -612,7 +612,7 @@ void initConfig(struct config *conf)
 	conf->dns.doh.c = validate_stub;
 
 	conf->dns.dohReverseProxy.k = "dns.dohReverseProxy";
-	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole (nginx, Traefik, Caddy, HAProxy, ...). The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires webserver.proxySecret to be set and the proxy to send a PROXY protocol v2 header carrying that secret: only an authenticated proxy is believed, and the client address it announces is used to attribute the query. A plain HTTP request that is not authenticated this way is still refused, so enabling this alone never exposes DNS queries in cleartext.";
+	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires webserver.proxySecret to be set and the proxy to send a PROXY protocol v2 header carrying that secret as a custom TLV, which HAProxy and Envoy can do: only an authenticated proxy is believed, and the client address it announces is used to attribute the query. A plain HTTP request that is not authenticated this way is still refused, so enabling this alone never exposes DNS queries in cleartext.";
 	conf->dns.dohReverseProxy.t = CONF_BOOL;
 	conf->dns.dohReverseProxy.d.b = false;
 	conf->dns.dohReverseProxy.f = FLAG_RESTART_FTL;
