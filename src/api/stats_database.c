@@ -233,20 +233,22 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		if(blocked)
 		{
 			// Get top domains by count of queries (blocked)
-			querystr = "SELECT COUNT(*) AS cnt,d.domain FROM query_storage q "
-			           "JOIN domain_by_id d ON d.id = q.domain "
-			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND " FILTER_STATUS_BLOCKED " "
-			           "GROUP BY q.domain ORDER BY cnt DESC LIMIT :count";
+			querystr = "SELECT q.cnt,d.domain FROM "
+			           "(SELECT domain,COUNT(*) AS cnt FROM query_storage "
+			            "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND " FILTER_STATUS_BLOCKED " "
+			            "GROUP BY domain) q "
+			           "JOIN domain_by_id d ON d.id = q.domain ORDER BY q.cnt DESC LIMIT :count";
 		}
 		else
 		{
 			// Get top domains by count of queries (not blocked)
-			querystr = "SELECT COUNT(*) AS cnt,d.domain FROM query_storage q "
-			           "JOIN domain_by_id d ON d.id = q.domain "
-			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND " FILTER_STATUS_NOT_BLOCKED " "
-			           "GROUP BY q.domain ORDER BY cnt DESC LIMIT :count";
+			querystr = "SELECT q.cnt,d.domain FROM "
+			           "(SELECT domain,COUNT(*) AS cnt FROM query_storage "
+			            "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND " FILTER_STATUS_NOT_BLOCKED " "
+			            "GROUP BY domain) q "
+			           "JOIN domain_by_id d ON d.id = q.domain ORDER BY q.cnt DESC LIMIT :count";
 		}
 
 		// Count total number of queries for domains
@@ -263,20 +265,22 @@ int api_stats_database_top_items(struct ftl_conn *api)
 		if(blocked)
 		{
 			// Get top clients by count of queries (blocked)
-			querystr = "SELECT COUNT(*) AS cnt,c.ip,c.name FROM query_storage q "
-			           "JOIN client_by_id c ON c.id = q.client "
-			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND " FILTER_STATUS_BLOCKED " "
-			           "GROUP BY q.client ORDER BY cnt DESC LIMIT :count";
+			querystr = "SELECT q.cnt,c.ip,c.name FROM "
+			           "(SELECT client,COUNT(*) AS cnt FROM query_storage "
+			            "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND " FILTER_STATUS_BLOCKED " "
+			            "GROUP BY client) q "
+			           "JOIN client_by_id c ON c.id = q.client ORDER BY q.cnt DESC LIMIT :count";
 		}
 		else
 		{
 			// Get top clients by count of queries (not blocked)
-			querystr = "SELECT COUNT(*) AS cnt,c.ip,c.name FROM query_storage q "
-			           "JOIN client_by_id c ON c.id = q.client "
-			           "WHERE timestamp >= :from AND timestamp <= :until "
-			           "AND " FILTER_STATUS_NOT_BLOCKED " "
-			           "GROUP BY q.client ORDER BY cnt DESC LIMIT :count";
+			querystr = "SELECT q.cnt,c.ip,c.name FROM "
+			           "(SELECT client,COUNT(*) AS cnt FROM query_storage "
+			            "WHERE timestamp >= :from AND timestamp <= :until "
+			            "AND " FILTER_STATUS_NOT_BLOCKED " "
+			            "GROUP BY client) q "
+			           "JOIN client_by_id c ON c.id = q.client ORDER BY q.cnt DESC LIMIT :count";
 		}
 
 		// Count total number of queries for clients
@@ -486,9 +490,11 @@ int api_history_database_clients(struct ftl_conn *api)
 	// Key clients by IP address like the in-memory endpoint does. The same
 	// address can have several client_by_id rows (one per name seen), so
 	// group by the address and prefer a non-empty name
-	const char *querystr = "SELECT ip,MAX(name),COUNT(*) FROM query_storage "
-	                       "JOIN client_by_id ON client_by_id.id = client "
-	                       "WHERE timestamp >= :from AND timestamp <= :until "
+	const char *querystr = "SELECT ip,MAX(name),SUM(cnt) FROM "
+	                       "(SELECT client,COUNT(*) AS cnt FROM query_storage "
+	                        "WHERE timestamp >= :from AND timestamp <= :until "
+	                        "GROUP BY client) q "
+	                       "JOIN client_by_id ON client_by_id.id = q.client "
 	                       "GROUP BY ip ORDER BY ip";
 
 	// Prepare SQLite statement
@@ -545,10 +551,12 @@ int api_history_database_clients(struct ftl_conn *api)
 
 	// Build SQL string. The timestamp is stored with a fractional part, so
 	// it needs to be truncated for the integer division to form slots
-	querystr = "SELECT (CAST(timestamp AS INTEGER)/:interval)*:interval interval,ip,COUNT(*) FROM query_storage "
-	           "JOIN client_by_id ON client_by_id.id = client "
-	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "GROUP BY interval,ip ORDER BY interval DESC, ip";
+	querystr = "SELECT q.interval,ip,SUM(cnt) FROM "
+	           "(SELECT (CAST(timestamp AS INTEGER)/:interval)*:interval AS interval,client,COUNT(*) AS cnt "
+	            "FROM query_storage WHERE timestamp >= :from AND timestamp <= :until "
+	            "GROUP BY interval,client) q "
+	           "JOIN client_by_id ON client_by_id.id = q.client "
+	           "GROUP BY q.interval,ip ORDER BY q.interval DESC, ip";
 
 	// Prepare SQLite statement
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
@@ -802,11 +810,12 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 	// Count only the queries an upstream answered (or is retrying), like
 	// the in-memory upstream counters: a forwarded query that ended up
 	// blocked keeps its upstream for the record but is not counted here
-	querystr = "SELECT f.forward,COUNT(*) FROM query_storage q "
-	           "JOIN forward_by_id f ON q.forward = f.id "
-	           "WHERE timestamp >= :from AND timestamp <= :until "
-	           "AND " FILTER_STATUS_FORWARDED " "
-	           "GROUP BY q.forward ORDER BY q.forward";
+	querystr = "SELECT f.forward,q.cnt FROM "
+	           "(SELECT forward,COUNT(*) AS cnt FROM query_storage "
+	            "WHERE timestamp >= :from AND timestamp <= :until "
+	            "AND " FILTER_STATUS_FORWARDED " "
+	            "GROUP BY forward) q "
+	           "JOIN forward_by_id f ON q.forward = f.id ORDER BY q.forward";
 
 	// Prepare SQLite statement
 	sqlite3_stmt *stmt = NULL;
