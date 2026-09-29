@@ -714,10 +714,12 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 	if(db == NULL)
 		db = get_memdb();
 
-	// Build query string based on whether we need the earliest timestamp too
-	const size_t buflen = 38 + strlen(tablename);
+	// Two subqueries so that COUNT(*) and MIN() each get SQLite's fast path,
+	// combined in one SELECT they fall back to reading every row
+	const size_t buflen = 64 + 2*strlen(tablename);
 	char *querystr = calloc(buflen, sizeof(char));
-	snprintf(querystr, buflen, "SELECT COUNT(*), MIN(timestamp) FROM %s", tablename);
+	snprintf(querystr, buflen, "SELECT (SELECT COUNT(*) FROM %s), (SELECT MIN(timestamp) FROM %s)",
+	         tablename, tablename);
 
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
