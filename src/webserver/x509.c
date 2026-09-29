@@ -29,7 +29,7 @@
 #endif
 
 #define RSA_KEY_SIZE 4096
-#define EC_KEY_CURVE "P-384"
+#define EC_KEY_CURVE "P-256"
 #define PIHOLE_ISSUER_CN "pi.hole"
 #define PIHOLE_ISSUER_O "Pi-hole"
 #define PIHOLE_ISSUER_C "DE"

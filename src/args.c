@@ -1412,7 +1412,7 @@ void parse_args(int argc, char *argv[])
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");
 			printf("    and store it in %soutfile%s.\n\n", cyan, normal);
 			printf("    By default, this new certificate is based on the elliptic\n");
-			printf("    curve secp384r1 (NIST P-384). If the optional flag %s[rsa]%s is specified,\n", purple, normal);
+			printf("    curve prime256v1 (NIST P-256). If the optional flag %s[rsa]%s is specified,\n", purple, normal);
 			printf("    an RSA (4096 bit) key will be generated instead.\n\n");
 			printf("    An optional %s[domain]%s can be given to specify the domain\n", blue, normal);
 			printf("    for which the certificate is valid. If omitted, the domain\n");
