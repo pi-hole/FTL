@@ -780,6 +780,17 @@ static int drive_read(struct doq_stream *s)
 		return -1;    // FIN before a full query, a reset, or a hard error
 	}
 
+	// RFC 9250 Sec. 4.2.1: the Message ID MUST be 0, a non-zero one is a protocol
+	// error (Sec. 4.3.3). A message too short to carry an ID is not DNS at all.
+	if((size_t)qlen < DNS_HEADER_LEN || s->rbuf[off] != 0 || s->rbuf[off + 1] != 0)
+	{
+		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s was too short or had a non-zero "
+		          "Message ID, closing the connection", s->conn->client);
+		doq_close_conn(s->conn->ssl, DOQ_PROTOCOL_ERROR);
+		s->conn->dead = true;
+		return -1;
+	}
+
 	// RFC 9250 Sec. 4.3.3: edns-tcp-keepalive is a protocol error on DoQ.
 	if(edns_has_option(s->rbuf + off, (size_t)qlen, EDNS_OPT_TCP_KEEPALIVE))
 	{
@@ -804,7 +815,14 @@ static int drive_read(struct doq_stream *s)
 	                                          s->conn->dest[0] != '\0' ? s->conn->dest : NULL,
 	                                          s->wbuf, WBUF_SZ);
 	if(flen < 0)
+	{
+		// Not forwarded unattributed (see dotdoh_prepare_query()), so this is our
+		// failure to serve it: say so, as a bare teardown reads as DOQ_NO_ERROR
+		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s could not be attributed, "
+		          "resetting the stream", s->conn->client);
+		doq_reset_stream(s->ssl, DOQ_INTERNAL_ERROR);
 		return -1;
+	}
 	s->wlen = (size_t)flen;
 	s->woff = 0;
 

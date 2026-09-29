@@ -201,6 +201,22 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: DoQ closes the connection on a non-zero Message ID or a runt query" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # RFC 9250 Sec. 4.3.3: DOQ_PROTOCOL_ERROR (0x2)
+  run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 msgid "$CLIENT" close:2
+  assert_output "OK"
+  run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 short "$CLIENT" close:2
+  assert_output "OK"
+}
+
+@test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # RFC 9250 Sec. 4.3.2: DOQ_INTERNAL_ERROR (0x1), not DOQ_NO_ERROR
+  run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 unattributable "$CLIENT" reset:1
+  assert_output "OK"
+}
+
 @test "dotdoh-server: a DoQ query over IPv6 resolves" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   ipv6_loopback_available || skip "IPv6 loopback not available in this environment"

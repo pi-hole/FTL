@@ -324,9 +324,10 @@ def _doq_import():
 
 
 def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.hole",
-                 timeout=20.0):
+                 timeout=20.0, outcome=None):
     """Send each wire message in `queries` on its own QUIC stream and return the
-    list of answers, in the order the queries were submitted."""
+    list of answers, in the order the queries were submitted. With `outcome`, a
+    stream reset or connection close is recorded there instead of failing."""
     import select
     import time
 
@@ -354,6 +355,7 @@ def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.h
     streams = []          # submitted stream ids, in order
     bufs = {}             # stream id -> accumulated bytes
     answers = {}          # stream id -> answer
+    resets = {}           # stream id -> application error code
     handshaked = False
     deadline = now() + timeout
     terminated = None
@@ -364,7 +366,7 @@ def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.h
 
     try:
         flush()
-        while now() < deadline and len(answers) < len(queries):
+        while now() < deadline and len(answers) + len(resets) < len(queries):
             timer = conn.get_timer()
             wait = min(deadline, timer) - now() if timer is not None else deadline - now()
             r, _, _ = select.select([sock], [], [], max(0.0, min(wait, 1.0)))
@@ -389,6 +391,8 @@ def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.h
                     terminated = event
                     deadline = 0.0
                     break
+                elif isinstance(event, quic_events.StreamReset):
+                    resets[event.stream_id] = event.error_code
                 elif isinstance(event, quic_events.StreamDataReceived):
                     buf = bufs.setdefault(event.stream_id, bytearray())
                     buf.extend(event.data)
@@ -411,6 +415,10 @@ def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.h
     finally:
         sock.close()
 
+    if outcome is not None:
+        outcome["resets"] = list(resets.values())
+        outcome["closed"] = terminated.error_code if terminated is not None else None
+        return [answers[sid] for sid in streams if sid in answers]
     if terminated is not None and len(answers) < len(queries):
         sys.exit("DoQ: connection terminated (%s: %s)"
                  % (terminated.error_code, terminated.reason_phrase))
@@ -435,7 +443,7 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
 def main():
     if len(sys.argv) < 2:
         sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|"
-                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqalpn> ...")
+                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -526,6 +534,29 @@ def main():
                 raise
             # No answer (or a reset stream) is a perfectly good outcome here; the
             # follow-up query in the bats test proves the listener still serves.
+        print("OK")
+    elif cmd == "doqerror":
+        # RFC 9250 Sec. 4.3: a query the server cannot serve gets a stream reset
+        # or connection close with a DoQ error code, never a bare teardown
+        _, _, host, port, kind, source, expected = sys.argv[:7]
+        query = b"\x00\x00" + build_query("a.ftl")[2:]
+        if kind == "msgid":
+            query = b"\x12\x34" + query[2:]   # Sec. 4.2.1: the ID MUST be 0
+        elif kind == "short":
+            query = query[:4]                  # shorter than a DNS header
+        elif kind == "unattributable":
+            # An OPT RR that is not the last record cannot carry the client option
+            query = query[:10] + struct.pack("!H", 2) + query[12:]
+            query += b"\x00" + struct.pack("!HHIH", 41, 4096, 0, 0)
+            query += b"\x00" + struct.pack("!HHIH", 1, 1, 0, 4) + bytes([1, 2, 3, 4])
+        else:
+            sys.exit("unknown kind: %s" % kind)
+        outcome = {}
+        doq_exchange(host, int(port), [query], source=source, timeout=8.0, outcome=outcome)
+        got = ("reset:%d" % outcome["resets"][0]) if outcome["resets"] else \
+              ("close:%d" % outcome["closed"]) if outcome["closed"] is not None else "none"
+        if got != expected:
+            sys.exit("DoQ: got %s, expected %s" % (got, expected))
         print("OK")
     elif cmd == "doqalpn":
         # QUIC mandates ALPN and RFC 9250 Sec. 4.1 defines exactly one token for

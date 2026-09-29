@@ -94,7 +94,7 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
                              const char *client, const char *dest,
                              uint8_t *framed, size_t framed_cap)
 {
-	if(qlen == 0 || framed_cap < 2 || qlen > framed_cap - 2)
+	if(qlen < DNS_HEADER_LEN || framed_cap < 2 || qlen > framed_cap - 2)
 		return -1;
 	// Inject in place after the 2-byte length prefix, so no separate scratch or
 	// self-overlapping copy is needed to frame the result.
