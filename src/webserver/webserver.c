@@ -598,6 +598,46 @@ static bool find_backend_port(void)
 	return true;
 }
 
+// Fill a port table row for a terminator listener from its own bind address
+// ("" = all interfaces), not from an unrelated plaintext socket
+static void tls_port_row(struct serverports *row, const char *a, const int port, const bool bound)
+{
+	// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
+	// A bare entry is dual-stack; report it as IPv6, matching how the
+	// terminator binds it (one AF_INET6 socket also serving IPv4).
+	const bool v6 = a[0] == '\0' || strchr(a, ':') != NULL;
+	memset(row, 0, sizeof(*row));
+	if(a[0] == '\0')
+		strncpy(row->addr, "[::]", sizeof(row->addr) - 1);
+	else if(v6)
+		snprintf(row->addr, sizeof(row->addr), "[%s]", a);
+	else
+		strncpy(row->addr, a, sizeof(row->addr) - 1);
+	row->port = port;
+	row->is_secure = true;
+	row->is_bound = bound;
+	row->protocol = v6 ? 3 : 1;
+}
+
+// Whether the primary TLS listener also answers on a plaintext row's address
+// ("a.b.c.d" or "[v6]"): a bare entry is one dual-stack socket serving every
+// address, an address-scoped one only its own
+static bool terminator_covers(const char *row_addr)
+{
+	if(terminator_addr[0] == '\0')
+		return true;
+	char a[INET6_ADDRSTRLEN] = { 0 };
+	const size_t rl = strlen(row_addr);
+	if(row_addr[0] == '[' && rl > 2 && rl - 2 < sizeof(a))
+		memcpy(a, row_addr + 1, rl - 2);
+	else
+		strncpy(a, row_addr, sizeof(a) - 1);
+	const int af = strchr(terminator_addr, ':') != NULL ? AF_INET6 : AF_INET;
+	unsigned char x[sizeof(struct in6_addr)], y[sizeof(struct in6_addr)];
+	return inet_pton(af, terminator_addr, x) == 1 && inet_pton(af, a, y) == 1 &&
+	       memcmp(x, y, af == AF_INET6 ? sizeof(struct in6_addr) : sizeof(struct in_addr)) == 0;
+}
+
 /**
  * @brief Retrieves and logs the server ports configuration.
  *
@@ -691,9 +731,10 @@ static bool get_server_ports(void)
 		n++;
 
 		// Mirror each public plaintext (non-redirect) port with the terminator's
-		// TLS port on the same address.
+		// TLS port on the same address, if the terminator answers there too
 		if(terminator_port > 0 && !mgports[i].is_ssl &&
-		   !mgports[i].is_redirect && n < MAXPORTS)
+		   !mgports[i].is_redirect && n < MAXPORTS &&
+		   terminator_covers(server_ports[n - 1].addr))
 		{
 			server_ports[n] = server_ports[n - 1];
 			server_ports[n].port = terminator_port;
@@ -720,14 +761,7 @@ static bool get_server_ports(void)
 	// certificate auto-renewal (letting an FTL-generated cert silently expire).
 	if(terminator_port > 0 && !mirrored && n < MAXPORTS)
 	{
-		memset(&server_ports[n], 0, sizeof(server_ports[n]));
-		strncpy(server_ports[n].addr,
-		        terminator_addr[0] != '\0' ? terminator_addr : "0.0.0.0",
-		        sizeof(server_ports[n].addr) - 1);
-		server_ports[n].port = (in_port_t)terminator_port;
-		server_ports[n].is_secure = true;
-		server_ports[n].is_bound = terminator_bound;
-		server_ports[n].protocol = 1;
+		tls_port_row(&server_ports[n], terminator_addr, terminator_port, terminator_bound);
 		if(terminator_bound)
 			https_port = (in_port_t)terminator_port;
 		log_info("  - %s:%d (HTTPS, terminator, %s)",
@@ -751,21 +785,7 @@ static bool get_server_ports(void)
 			         tls_listeners[t].port, a[0] == '\0' ? "all interfaces" : a, MAXPORTS);
 			continue;
 		}
-		// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
-		// A bare entry is dual-stack; report it as IPv6, matching how the
-		// terminator binds it (one AF_INET6 socket also serving IPv4).
-		const bool v6 = a[0] == '\0' || strchr(a, ':') != NULL;
-		memset(&server_ports[n], 0, sizeof(server_ports[n]));
-		if(a[0] == '\0')
-			strncpy(server_ports[n].addr, "[::]", sizeof(server_ports[n].addr) - 1);
-		else if(v6)
-			snprintf(server_ports[n].addr, sizeof(server_ports[n].addr), "[%s]", a);
-		else
-			strncpy(server_ports[n].addr, a, sizeof(server_ports[n].addr) - 1);
-		server_ports[n].port = (in_port_t)tls_listeners[t].port;
-		server_ports[n].is_secure = true;
-		server_ports[n].is_bound = tls_listeners[t].bound;
-		server_ports[n].protocol = v6 ? 3 : 1;
+		tls_port_row(&server_ports[n], a, tls_listeners[t].port, tls_listeners[t].bound);
 		log_info("  - %s:%d (HTTPS, terminator, %s)",
 		         server_ports[n].addr, server_ports[n].port,
 		         tls_listeners[t].bound ? "OK" : "NOT bound");
