@@ -1941,7 +1941,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 	    return STAT_INSECURE;
 	}
 
-      if (name_start == 0)
+      if (name_start <= 1)
 	break;
 
       for (p = &name[name_start-2]; (*p != '.') && (p != name); p--);
