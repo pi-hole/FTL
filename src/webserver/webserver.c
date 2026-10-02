@@ -129,8 +129,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			const char *pos = strchr(host, ']');
 			if (!pos)
 			{
-				// Malformed hostname starts with '[', but no ']' found
-				log_err("Host name format error: Found '[' without ']'");
+				// Malformed hostname starts with '[', but no ']' found. Any
+				// client can send this, so it is logged at debug level only.
+				log_debug(DEBUG_API, "Host name format error: Found '[' without ']'");
 				return request_handler(conn, input);
 			}
 			/* terminate after ']' */
