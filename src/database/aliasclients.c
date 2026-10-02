@@ -137,6 +137,9 @@ bool import_aliasclients(sqlite3 *db)
 			return false;
 		}
 
+		// Make room for this client, the lock is held for the entire import
+		shm_ensure_client_size();
+
 		// Try to open existing client
 		const int clientID = findClientID(aliasclient_str, false, true, now);
 

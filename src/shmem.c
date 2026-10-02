@@ -1404,6 +1404,32 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
+// Enlarge shared memory to be able to hold at least one new client. This is
+// also called with the lock held by code that adds many clients at once
+void shm_ensure_client_size(void)
+{
+	if(counters->clients >= counters->clients_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients = enlarge_shmem_struct(CLIENTS, 1);
+		if(clients == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
+		if(clients_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 // Enlarge shared memory to be able to hold at least one new record
 static void shm_ensure_size(void)
 {
@@ -1441,16 +1467,7 @@ static void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->clients >= counters->clients_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients = enlarge_shmem_struct(CLIENTS, 1);
-		if(clients == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
+	shm_ensure_client_size();
 	if(counters->domains >= counters->domains_MAX-1)
 	{
 		// Have to reallocate shared memory
@@ -1484,16 +1501,6 @@ static void shm_ensure_size(void)
 	{
 		// Have to reallocate shared memory
 		if(enlarge_shmem_struct(INTARRAYS, 1) == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
-	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
-		if(clients_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);

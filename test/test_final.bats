@@ -83,6 +83,24 @@ load 'bats_helper.bash'
   assert_line --index 0 "1"
 }
 
+@test "Reimporting more alias-clients than the clients array holds" {
+  # 600 new alias-clients are added under one lock, more than one allocation
+  # step of the clients array on any architecture. Runs late as they change
+  # the client counts
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
+  assert_success
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN+3 "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Imported 601 alias-clients' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Trying to access client ID'"
+  assert_line --index 0 "0"
+  run bash -c 'kill -0 "$(cat /run/pihole-FTL.pid)"'
+  assert_success
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
