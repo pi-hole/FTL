@@ -332,6 +332,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Check if the file contains a valid configuration for Pi-hole by parsing it into
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
+	lock_config();
 	duplicate_config(&teleporter_config, &config);
 	// readFTLtoml() holds every value in the archive to the validator its config
 	// item declares. An import is not a lesser path than PATCH /api/config: it
@@ -342,6 +343,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	{
 		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
+		unlock_config();
 		toml_free(toml);
 
 		// The buffer names the offending item when a value was refused, and
@@ -360,6 +362,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	{
 		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
+		unlock_config();
 		toml_free(toml);
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid dnsmasq configuration";
 	}
@@ -379,6 +382,7 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	rotate_files(GLOBALTOMLPATH, NULL);
 	writeFTLtoml(true, NULL);
 	write_custom_list();
+	unlock_config();
 
 	toml_free(toml);
 	return NULL;
