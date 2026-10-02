@@ -178,8 +178,9 @@ static int pihole_fileversion(lua_State *L) {
 	log_debug(DEBUG_API, "File \"%s\" -> \"%s\" last modified at %lld",
 	          abspath, relpath, (long long)filestat.st_mtime);
 
-	// Return filename + modification time
-	lua_pushfstring(L, "%s?v=%d", relpath, filestat.st_mtime);
+	// Return filename + modification time (%I takes a lua_Integer, which
+	// holds a 64-bit time_t also on 32-bit systems)
+	lua_pushfstring(L, "%s?v=%I", relpath, (lua_Integer)filestat.st_mtime);
 	return 1; // number of results
 }
 
