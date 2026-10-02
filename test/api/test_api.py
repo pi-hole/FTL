@@ -454,6 +454,19 @@ class TestLuaServerPages:
         lines = r.text.splitlines()
         assert lines[0] == "Hello, world 1!", f"Unexpected response:\n{r.text}"
 
+    def test_lp_redirect_stays_on_host(self):
+        """The .lp redirect never points to another host (serve_all is on)."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("//evil.example/x.lp", "/%5Cevil.example/x.lp"):
+            raw = _raw_http(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            "Connection: close\r\n\r\n".encode())
+            head = raw.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+            location = [line.split(":", 1)[1].strip()
+                        for line in head.split("\r\n")[1:]
+                        if line.lower().startswith("location:")]
+            assert location, f"No redirect for {path}:\n{head}"
+            assert not location[0].startswith(("//", "/\\")), location[0]
+
 
 # ---------------------------------------------------------------------------
 # URI control-character / CRLF injection rejection

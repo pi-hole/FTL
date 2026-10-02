@@ -422,9 +422,10 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
 {
-	// Get requested URI
+	// Use the normalized URI: the raw one may start with "//" or a slash and a
+	// backslash, which browsers resolve to another host in a Location header
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
+	const char *uri = request->local_uri;
 	const size_t uri_len = strlen(uri);
 
 	// Check if we are allowed to serve this directory by checking the
