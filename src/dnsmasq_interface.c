@@ -879,12 +879,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	// Set when clientIP comes from EDNS(0) rather than the packet source
+	bool edns_client = false;
 	ednsData *edns = getEDNS();
 	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
+		edns_client = true;
 	}
 	else if(addr)
 	{
@@ -1157,8 +1160,22 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// block all other threads (API, database, GC, TCP workers).
 		unlock_shm();
 
+		// Look up the address the client is identified by: for an
+		// EDNS(0)-provided client, the packet source is the forwarder
+		union mysockaddr mac_addr = { 0 };
+		if(edns_client)
+		{
+			if(inet_pton(AF_INET, clientIP, &mac_addr.in.sin_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET;
+			else if(inet_pton(AF_INET6, clientIP, &mac_addr.in6.sin6_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET6;
+		}
+		else if(addr)
+			mac_addr = *addr;
+
 		unsigned char hwaddr[16] = {0};
-		const int hwlen = find_mac(addr, hwaddr, 1, time(NULL));
+		const int hwlen = mac_addr.sa.sa_family == AF_UNSPEC ? 0 :
+		                  find_mac(&mac_addr, hwaddr, 1, time(NULL));
 
 		// Reacquire lock and re-fetch client pointer (SHM may have
 		// been remapped while we were unlocked)
