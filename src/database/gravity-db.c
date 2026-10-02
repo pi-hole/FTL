@@ -700,12 +700,26 @@ static bool get_client_groupids(clientsData *client)
 
 	// If we didn't find an IP address match above, try with MAC address matches
 	// 1. Look up MAC address of this client
-	//   1.1. Look up IP address in network_addresses table
-	//   1.2. Get MAC address from this network_id
+	//   1.1. Use the MAC known in-memory (kernel neighbor cache, EDNS(0) or
+	//        the last neighbor cache parse) if there is one
+	//   1.2. Otherwise look up the IP address in the network_addresses
+	//        table and get the MAC address from this network_id
 	// 2. If found -> Get groups by looking up MAC address in client table
 	char hwaddr[MAXMACLEN] = { 0 };
 	bool got_hwaddr = false;
-	if(chosen_match_id < 0 && config.resolver.macNames.v.b)
+	if(chosen_match_id < 0 && config.resolver.macNames.v.b && client->hwlen == 6)
+	{
+		// The in-memory MAC is updated as soon as a new one is seen, the
+		// network_addresses table only when the neighbor cache parse that
+		// saw it commits, so it is the fresher of the two
+		snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
+		         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+		         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+		got_hwaddr = true;
+
+		log_debug(DEBUG_CLIENTS, "--> Obtained %s from internal ARP cache", hwaddr);
+	}
+	else if(chosen_match_id < 0 && config.resolver.macNames.v.b)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
@@ -724,8 +738,9 @@ static bool get_client_groupids(clientsData *client)
 			got_hwaddr = false;
 		}
 
-		// Set MAC address from database information if available and the MAC address is not already set
-		else if(client->hwlen != 6)
+		// Set MAC address from database information as no MAC address is
+		// known in-memory so far
+		else
 		{
 			// Proper MAC parsing
 			unsigned char data[6];
@@ -739,23 +754,6 @@ static bool get_client_groupids(clientsData *client)
 				memcpy(client->hwaddr, data, sizeof(data));
 				client->hwlen = sizeof(data);
 			}
-		}
-
-		// MAC address fallback: Try to synthesize MAC address from internal buffer
-		if(!got_hwaddr && client->hwlen == 6)
-		{
-			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
-			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-
-			// Mark the MAC as obtained so the gravity client table is
-			// actually queried for it below. Without this, the synthesized
-			// address is logged but never used, and a client whose new IP
-			// is not yet in the network_addresses table falls back to the
-			// default group despite its MAC being known in-memory (#2912).
-			got_hwaddr = true;
-
-			log_debug(DEBUG_CLIENTS, "--> Obtained %s from internal ARP cache", hwaddr);
 		}
 	}
 
