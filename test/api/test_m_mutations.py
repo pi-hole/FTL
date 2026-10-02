@@ -248,6 +248,40 @@ class TestDeleteConfigArrayItem:
 
 
 # ---------------------------------------------------------------------------
+# PATCH config strings that need escaping in pihole.toml
+# ---------------------------------------------------------------------------
+
+class TestConfigStringEscaping:
+
+    def test_del_character_is_escaped_in_pihole_toml(self, api_session):
+        """A DEL (0x7F) in a string is written as \\u007F, never raw.
+
+        TOML forbids a raw DEL in strings, so a raw one makes pihole.toml
+        and every backup rotated from it unparsable for FTL itself.
+        """
+        value = "pytest\x7fdel"
+        url = f"{FTL_URL}/api/config/webserver/api/excludeDomains?restart=false"
+
+        def _patch(domains):
+            payload = {"config": {"webserver": {"api": {"excludeDomains": domains}}}}
+            r = api_session.patch(url, json=payload, timeout=10)
+            assert r.status_code == 200, \
+                f"PATCH failed: {r.status_code} {r.text}"
+            return _j(r)["config"]["webserver"]["api"]["excludeDomains"]
+
+        try:
+            stored = _patch([value])
+            assert stored == [value], f"{value!r} not stored: {stored}"
+            with open("/etc/pihole/pihole.toml", "rb") as f:
+                toml_bytes = f.read()
+            assert b"\x7f" not in toml_bytes, "raw DEL byte written to pihole.toml"
+            assert b'"pytest\\u007Fdel"' in toml_bytes, \
+                "escaped DEL not found in pihole.toml"
+        finally:
+            _patch([])
+
+
+# ---------------------------------------------------------------------------
 # DELETE network devices (404 only -- deleting real devices would break
 # other tests)
 # ---------------------------------------------------------------------------
