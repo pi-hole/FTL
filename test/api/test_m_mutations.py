@@ -886,3 +886,31 @@ class TestBatchAddDomains:
             r = api_session.delete(f"{url}/{domain}", timeout=10)
             assert r.status_code == 204, \
                 f"Cleanup of {domain} failed: {r.status_code} {r.text}"
+
+
+# ---------------------------------------------------------------------------
+# Group names are echoed in the Location header
+# ---------------------------------------------------------------------------
+
+class TestGroupRenameNewlines:
+
+    def test_rename_with_newline_returns_400(self, api_session):
+        name = "_pytest_rename_crlf"
+        url = f"{FTL_URL}/api/groups/{name}"
+        r = api_session.put(url, json={"comment": "x"}, timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url,
+                            json={"name": "x\r\nX-Injected: 1", "comment": "x"},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert "X-Injected" not in r.headers
+
+        # The group keeps its name
+        r = api_session.get(url, timeout=5)
+        assert r.status_code == 200
+        assert _j(r)["groups"][0]["name"] == name
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
