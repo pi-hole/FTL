@@ -136,6 +136,14 @@ static inline void store_addinfo_id(const int type, const int key, const int db_
 	}
 }
 
+// Forget all cached addinfo_by_id row IDs. CNAME entries are keyed on SHM
+// domain IDs, so this has to be called when domain IDs are recycled. Call it
+// with the SHM lock held, as queries_to_database() uses the cache under it
+void clear_addinfo_id_cache(void)
+{
+	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
+}
+
 // Private prototypes
 static bool count_queries_on_disk(sqlite3 *memdb);
 static void init_disk_db_idx(sqlite3 *memdb);
@@ -408,7 +416,7 @@ bool init_memory_database(void)
 	}
 
 	// Clear process-local addinfo ID cache
-	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
+	clear_addinfo_id_cache();
 
 	// The IFNULL() is needed to handle the case when there are no queries
 	// in the on-disk database yet. In this case, we want to copy all
