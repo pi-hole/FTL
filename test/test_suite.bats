@@ -1755,6 +1755,10 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config -t database.DBinterval 0'
+  assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
+  assert_failure 3
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
