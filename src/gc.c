@@ -528,14 +528,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		removed++;
 	}
 
-	// Remove query from queries table (temp), we can release the lock for this
-	// action to prevent blocking the DNS service too long
-	if(!flush)
-		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
-		lock_shm();
-
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
 	{
@@ -555,6 +547,16 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
 	}
+
+	// Remove query from queries table (temp), we can release the lock for this
+	// action to prevent blocking the DNS service too long. The processed
+	// queries are already shifted out above, so a runGC() from a log flush
+	// in this window cannot process them again
+	if(!flush)
+		unlock_shm();
+	delete_old_queries_from_db(true, mintime);
+	if(!flush)
+		lock_shm();
 
 	// Recycle old clients and domains
 	recycle();
