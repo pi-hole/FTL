@@ -1216,6 +1216,30 @@ setup() {
   assert_line --index 0 "1"
 }
 
+@test "EDNS(0) option longer than its OPT RR in a query is not a warning" {
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # COOKIE option claiming 8 bytes in an OPT RR with RDLEN 8 (4 + 4 bytes).
+  # Without a question the query is not counted, keeping the pytest totals.
+  python3 -c '
+import socket, struct
+q = struct.pack(">HHHHHH", 0x4242, 0x0100, 0, 0, 0, 1)
+opt = b"\x00" + struct.pack(">HHIH", 41, 1232, 0, 8) + b"\x00\x0a\x00\x08" + b"\x01" * 4
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(1)
+s.sendto(q + opt, ("127.0.0.1", 53))
+try:
+    s.recv(4096)
+except socket.timeout:
+    pass'
+
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  run bash -c "grep -c \"Found malicious EDNS payload\"" <<< "${log}"
+  assert_line --index 0 "1"
+  run bash -c "grep -c \"WARNING: Found malicious EDNS payload\"" <<< "${log}"
+  assert_line --index 0 "0"
+}
+
 @test "EDNS(0) MAC groups ECS addresses in network table" {
   mac="02:00:00:00:00:01"
   ipv4="192.168.47.97"
