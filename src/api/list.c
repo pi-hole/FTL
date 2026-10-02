@@ -380,6 +380,18 @@ static int api_list_write(struct ftl_conn *api,
 		}
 	}
 
+	// A group rename echoes the new name in the Location response header,
+	// so it is held to the same newline rule as the items below
+	if(row.name != NULL && strpbrk(row.name, "\r\n") != NULL)
+	{
+		if(allocated_json)
+			cJSON_Delete(row.items);
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "bad_request",
+		                       "Newlines and carriage returns are not allowed in any input",
+		                       row.name);
+	}
+
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
