@@ -225,6 +225,149 @@ static int redirect_admin_handler(struct mg_connection *conn, void *input)
 	return 1;
 }
 
+// Plaintext entries of webserver.port in terminator mode. CivetWeb has no TLS
+// listener a redirect ("...r") entry could point to, so these entries reach it
+// without the 'r' and begin_request_handler() redirects them to the terminator.
+#define MAX_PLAIN_PORTS 16
+static struct plain_port
+{
+	int port;
+	int af; // AF_INET, AF_INET6 or 0 for a dual-stack "+port" entry
+	unsigned char addr[sizeof(struct in6_addr)]; // all zero for any address
+	bool redirect;
+} plain_ports[MAX_PLAIN_PORTS];
+static unsigned int n_plain_ports = 0;
+
+#ifdef HAVE_TLS
+// Parse a plaintext entry ("80", "+80", "1.2.3.4:80", "[::1]:80", plus flags)
+// the way CivetWeb binds it
+static bool parse_plain_port(const char *ent, struct plain_port *pp)
+{
+	memset(pp, 0, sizeof(*pp));
+	char a[INET6_ADDRSTRLEN] = "";
+	const char *p = ent;
+	pp->af = AF_INET;
+	if(*p == '+')
+	{
+		pp->af = 0;
+		p++;
+	}
+	else if(*p == '[')
+	{
+		const char *end = strstr(p, "]:");
+		if(end == NULL || (size_t)(end - p - 1) >= sizeof(a))
+			return false;
+		memcpy(a, p + 1, (size_t)(end - p - 1));
+		pp->af = AF_INET6;
+		p = end + 2;
+	}
+	else if(strchr(p, ':') != NULL)
+	{
+		const char *end = strchr(p, ':');
+		if((size_t)(end - p) >= sizeof(a))
+			return false;
+		memcpy(a, p, (size_t)(end - p));
+		p = end + 1;
+	}
+	if(a[0] != '\0' && inet_pton(pp->af, a, pp->addr) != 1)
+		return false;
+	pp->port = atoi(p);
+	pp->redirect = strchr(p, 'r') != NULL;
+	return pp->port > 0;
+}
+#endif /* HAVE_TLS */
+
+// Whether a plaintext request on the given local address and port arrived on a
+// redirect entry. An entry for that exact address wins over an any-address
+// entry, as it does when the kernel picks the listening socket. An address that
+// cannot be parsed redirects if any entry for that port does.
+static bool on_redirect_port(const char *server_addr, const int server_port)
+{
+	// Drop the scope of a link-local IPv6 address ("fe80::1%eth0")
+	char a[INET6_ADDRSTRLEN] = "";
+	strncpy(a, server_addr, sizeof(a) - 1);
+	char *scope = strchr(a, '%');
+	if(scope != NULL)
+		*scope = '\0';
+
+	unsigned char addr[sizeof(struct in6_addr)] = { 0 };
+	int af = AF_INET;
+	if(inet_pton(AF_INET, a, addr) != 1)
+	{
+		af = AF_INET6;
+		if(inet_pton(AF_INET6, a, addr) != 1)
+		{
+			for(unsigned int i = 0; i < n_plain_ports; i++)
+				if(plain_ports[i].port == server_port && plain_ports[i].redirect)
+					return true;
+			return false;
+		}
+	}
+	const size_t alen = af == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr);
+	static const unsigned char any[sizeof(struct in6_addr)] = { 0 };
+
+	int wildcard = -1;
+	for(unsigned int i = 0; i < n_plain_ports; i++)
+	{
+		const struct plain_port *pp = &plain_ports[i];
+		if(pp->port != server_port)
+			continue;
+		if(pp->af == af && memcmp(pp->addr, addr, alen) == 0)
+			return pp->redirect;
+		if(memcmp(pp->addr, any, sizeof(any)) == 0 && (pp->af == 0 || pp->af == af))
+			wildcard = (int)i;
+	}
+	return wildcard >= 0 && plain_ports[wildcard].redirect;
+}
+
+// 308 to the same path on the terminator's TLS port, built like CivetWeb's
+// redirect_to_https_port(): https://<webserver.domain>[:port]<uri>[?query]
+static int redirect_to_terminator(struct mg_connection *conn, const struct mg_request_info *ri)
+{
+	const in_port_t port = get_https_port();
+	if(port == 0)
+	{
+		mg_send_http_error(conn, 503, "%s", "TLS is not available");
+		return 503;
+	}
+
+	const char *uri = ri->local_uri_raw != NULL ? ri->local_uri_raw : "/";
+	const size_t enc_len = 3 * strlen(uri) + 1;
+	char *enc = calloc(enc_len, sizeof(char));
+	if(enc == NULL)
+	{
+		mg_send_http_error(conn, 500, "Internal Server Error");
+		return 500;
+	}
+	mg_url_encode(uri, enc, enc_len);
+
+	// Keep the path separators
+	char *w = enc;
+	for(const char *r = enc; *r != '\0'; )
+	{
+		if(strncmp(r, "%2f", 3) == 0)
+		{
+			*w++ = '/';
+			r += 3;
+		}
+		else
+			*w++ = *r++;
+	}
+	*w = '\0';
+
+	char portstr[8] = "";
+	if(port != 443)
+		snprintf(portstr, sizeof(portstr), ":%u", (unsigned int)port);
+
+	const char *query = ri->query_string;
+	const int code = ftl_http_redirect(conn, 308, "https://%s%s%s%s%s",
+	                                   config.webserver.domain.v.s, portstr, enc,
+	                                   query != NULL ? "?" : "",
+	                                   query != NULL ? query : "");
+	free(enc);
+	return code > 0 ? code : 500;
+}
+
 static int begin_request_handler(struct mg_connection *conn)
 {
 	// Reject any request whose (URL-decoded) path contains control
@@ -250,6 +393,11 @@ static int begin_request_handler(struct mg_connection *conn)
 			return 400;
 		}
 	}
+
+	// Redirect entries are served here when the terminator owns TLS
+	if(!request->is_ssl && n_plain_ports > 0 &&
+	   on_redirect_port(request->server_addr, request->server_port))
+		return redirect_to_terminator(conn, request);
 
 	// Let CivetWeb process the request normally
 	return 0;
@@ -492,11 +640,14 @@ static bool get_server_ports(void)
 		// 1 = IPv4, 3 = IPv6 (can also be a combo-socket serving both),
 		// the documentation in civetweb.h is wrong
 		char addr[INET6_ADDRSTRLEN + 2] = { 0 };
+		char tmp[INET6_ADDRSTRLEN] = { 0 };
 		if(mgports[i].protocol == 1)
-			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, addr, INET_ADDRSTRLEN);
+		{
+			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, tmp, INET_ADDRSTRLEN);
+			strcpy(addr, tmp);
+		}
 		else if(mgports[i].protocol == 3)
 		{
-			char tmp[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &mgports[i].addr.sa6.sin6_addr, tmp, INET6_ADDRSTRLEN);
 			// Enclose IPv6 address in square brackets
 			snprintf(addr, sizeof(addr), "[%s]", tmp);
@@ -516,11 +667,15 @@ static bool get_server_ports(void)
 			continue;
 		}
 
+		// A redirect entry reaches CivetWeb without its 'r' in terminator mode
+		const bool is_redirect = mgports[i].is_redirect ||
+			(!mgports[i].is_ssl && on_redirect_port(tmp, mgports[i].port));
+
 		// Store the public port
 		strncpy(server_ports[n].addr, addr, sizeof(server_ports[n].addr) - 1);
 		server_ports[n].port = mgports[i].port;
 		server_ports[n].is_secure = mgports[i].is_ssl;
-		server_ports[n].is_redirect = mgports[i].is_redirect;
+		server_ports[n].is_redirect = is_redirect;
 		server_ports[n].is_optional = mgports[i].is_optional;
 		server_ports[n].is_bound = mgports[i].is_bound;
 		server_ports[n].protocol = mgports[i].protocol;
@@ -538,7 +693,7 @@ static bool get_server_ports(void)
 		// Mirror each public plaintext (non-redirect) port with the terminator's
 		// TLS port on the same address.
 		if(terminator_port > 0 && !mgports[i].is_ssl &&
-		   !mgports[i].is_redirect && n < MAXPORTS)
+		   !is_redirect && n < MAXPORTS)
 		{
 			server_ports[n] = server_ports[n - 1];
 			server_ports[n].port = terminator_port;
@@ -818,7 +973,21 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 			continue; // drop from the list handed to CivetWeb
 		}
 
-		// Keep plaintext entries verbatim
+		// Keep plaintext entries, a redirect entry without its 'r' (see
+		// plain_ports). One that cannot be recorded is kept verbatim.
+		char plain[128];
+		struct plain_port pp;
+		if(n_plain_ports < MAX_PLAIN_PORTS && strlen(ent) < sizeof(plain) &&
+		   parse_plain_port(ent, &pp))
+		{
+			plain_ports[n_plain_ports++] = pp;
+			size_t j = 0;
+			for(const char *c = ent; *c != '\0'; c++)
+				if(*c != 'r')
+					plain[j++] = *c;
+			plain[j] = '\0';
+			ent = plain;
+		}
 		if(backend[0] != '\0')
 			str_append(backend, backend_len, ",");
 		str_append(backend, backend_len, ent);
@@ -921,6 +1090,7 @@ void http_init(void)
 	terminator_port = 0;
 	backend_port = 0;
 	terminator_addr[0] = '\0';
+	n_plain_ports = 0;
 	if(tls_used)
 	{
 		terminator_port = split_terminator_ports(config.webserver.port.v.s,
@@ -929,8 +1099,11 @@ void http_init(void)
 		if(terminator_port > 0)
 			listening_ports = backend_ports;
 		else
+		{
+			n_plain_ports = 0;
 			log_err("Could not extract a TLS port from '%s'; the web server will not offer TLS",
 			        config.webserver.port.v.s);
+		}
 	}
 #endif
 
@@ -1207,7 +1380,10 @@ void http_init(void)
 	if(tls_used && terminator_port > 0)
 	{
 		if(backend_port <= 0)
+		{
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
+			https_port = 0; // TLS is not actually available
+		}
 		else if(!terminator_start(terminator_addr, terminator_port, backend_port, config.webserver.tls.cert.v.s))
 		{
 			log_err("Failed to start the TLS terminator on port %d", terminator_port);
