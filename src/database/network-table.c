@@ -817,6 +817,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		if(killed)
 			break;
 
+		// Not every variant below determines a hardware address
+		hwaddr[0] = '\0';
+
 		// Get client pointer
 		lock_shm();
 		clientsData *client = getClient(clientID, true);
