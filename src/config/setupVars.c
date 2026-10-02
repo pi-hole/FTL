@@ -632,7 +632,7 @@ void importsetupVarsConf(void)
 	}
 
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
-	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
+	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
 
