@@ -93,6 +93,9 @@ static sqlite3 *gravity_db = NULL;
 // worker's active statement, leading to use-after-free and random SIGSEGV.
 static _Thread_local sqlite3_stmt* table_stmt = NULL;
 bool gravityDB_opened = false;
+// List generation (counters->regex_change) a forked TCP worker's connection
+// was opened at
+static unsigned int gravity_generation = 0;
 static bool gravity_abp_format = false;
 static bool gravity_has_antigravity = false;
 static bool gravity_has_exact_allowlist = false;
@@ -281,7 +284,8 @@ void gravityDB_forked(void)
 	last_ptr_allowlist = NULL;
 	last_ptr_denylist = NULL;
 
-	// Open the database
+	// Open the database, remembering the list generation it reflects
+	gravity_generation = counters->regex_change;
 	gravityDB_open();
 }
 
@@ -559,6 +563,17 @@ bool gravityDB_reopen(void)
 // the log from a path that used to say nothing at all
 static bool gravity_ensure_open(void)
 {
+	// A forked TCP worker opens its connection, and computes the
+	// gravity_has_* flags, once at fork time and may live for minutes.
+	// Reopen when the main process has reloaded the lists since
+	if(gravityDB_opened && main_pid() != getpid() &&
+	   gravity_generation != counters->regex_change)
+	{
+		log_debug(DEBUG_DATABASE, "Reopening gravity database after a list reload");
+		gravity_generation = counters->regex_change;
+		gravityDB_reopen();
+	}
+
 	if(gravityDB_opened)
 		return true;
 
