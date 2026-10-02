@@ -1186,6 +1186,14 @@ setup() {
   assert_line --partial '_VERSION = "inspect.lua 3.1.0"'
 }
 
+@test "LUA: pihole.fileversion() returns the full modification time" {
+  # 2100-01-01 does not fit into a 32-bit integer
+  touch -d @4102444800 /tmp/fileversion.js
+  run bash -c './pihole-FTL lua -e "print(pihole.fileversion(\"/tmp/fileversion.js\"))"'
+  rm -f /tmp/fileversion.js
+  assert_line --index 0 "/tmp/fileversion.js?v=4102444800"
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
