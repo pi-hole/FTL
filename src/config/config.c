@@ -1280,7 +1280,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
-	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
+	conf->webserver.api.maxHistory.c = validate_max_history;
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
 	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";

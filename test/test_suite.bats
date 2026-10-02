@@ -1721,6 +1721,15 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
 
+  # webserver.api.maxHistory carries FLAG_RESTART_FTL, so check it with -t
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 86401'
+  assert_line --index 0 'Invalid value: webserver.api.maxHistory: cannot be larger than 86400'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 3600'
+  assert_line --index 0 '3600'
+  assert_success
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'

@@ -840,6 +840,19 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 	return true;
 }
 
+bool validate_max_history(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// The overTime array spans MAXLOGAGE hours, the garbage collector
+	// cannot move it forward when asked to keep a longer history
+	if(val->ui > MAXLOGAGE*3600)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than %u", key, MAXLOGAGE*3600);
+		return false;
+	}
+
+	return true;
+}
+
 // Sanitize the dns.hosts array
 // This function normalizes whitespace formatting in the dns.hosts entries
 // to ensure consistent formatting when saving to pihole.toml
