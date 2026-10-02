@@ -1118,13 +1118,15 @@ bool export_queries_to_disk(const bool final)
 	return okay;
 }
 
-// Delete queries older than given timestamp. Used by garbage collection and
-// database thread.
-bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
+// Delete queries with a timestamp up to (recent = false) or from (recent =
+// true) the given timestamp
+static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent)
 {
-	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
-	const char *querystr = "DELETE FROM query_storage WHERE timestamp <= ?";
+	const char *op = recent ? ">=" : "<=";
+	const char *querystr = recent ?
+		"DELETE FROM query_storage WHERE timestamp >= ?" :
+		"DELETE FROM query_storage WHERE timestamp <= ?";
 
 	sqlite3 *db = NULL;
 	if(use_memdb)
@@ -1136,16 +1138,16 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("delete_old_queries_from_db(%s): SQL error prepare: %s",
+		log_err("delete_queries_from_db(%s): SQL error prepare: %s",
 		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
 		if(!use_memdb) dbclose(&db);
 		return false;
 	}
 
 	// Bind index
-	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, timestamp)) != SQLITE_OK)
 	{
-		log_err("delete_old_queries_from_db(%s): Failed to bind mintime: %s",
+		log_err("delete_queries_from_db(%s): Failed to bind timestamp: %s",
 		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		if(!use_memdb) dbclose(&db);
@@ -1157,8 +1159,9 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
 		okay = true;
 	else
-		log_err("delete_old_queries_from_db(%s): Failed to delete queries with timestamp >= %f: %s",
-		        use_memdb ? "memdb" : "disk", mintime, sqlite3_errstr(rc));
+		log_err("delete_queries_from_db(%s): Failed to delete queries with timestamp %s %f: %s",
+		        use_memdb ? "memdb" : "disk", op, timestamp, sqlite3_errstr(rc));
+
 	if(okay)
 	{
 		// Update number of queries in either in-memory or on-disk
@@ -1177,11 +1180,15 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// Update earliest timestamp in the database after deletion
-	if(use_memdb)
-		memdb_earliest_timestamp = mintime;
-	else
-		diskdb_earliest_timestamp = mintime;
+	// Update earliest timestamp in the database after deleting the oldest
+	// queries, deleting the most recent ones leaves it unchanged
+	if(!recent)
+	{
+		if(use_memdb)
+			memdb_earliest_timestamp = timestamp;
+		else
+			diskdb_earliest_timestamp = timestamp;
+	}
 
 	// Add additional logging and close on-disk database if used
 	if(!use_memdb)
@@ -1200,6 +1207,20 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	}
 
 	return okay;
+}
+
+// Delete queries older than given timestamp. Used by garbage collection and
+// database thread.
+bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
+{
+	return delete_queries_from_db(use_memdb, mintime, false);
+}
+
+// Delete queries from the on-disk database that are not older than the given
+// timestamp. Used when flushing the logs.
+bool delete_recent_queries_from_db(const double mintime)
+{
+	return delete_queries_from_db(false, mintime, true);
 }
 
 bool add_additional_info_column(sqlite3 *db)
