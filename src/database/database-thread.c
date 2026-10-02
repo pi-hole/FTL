@@ -274,9 +274,11 @@ void *DB_thread(void *val)
 		// Optimize database once per week
 		if(now - lastAnalyze >= DATABASE_ANALYZE_INTERVAL)
 		{
+			// Update the timer first so an unopenable database does
+			// not keep the loop from reaching the event handling below
+			lastAnalyze = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(analyze_database(db));
-			lastAnalyze = now;
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -288,9 +290,10 @@ void *DB_thread(void *val)
 		// database is not updated very often)
 		if(now  - lastMACVendor >= DATABASE_MACVENDOR_INTERVAL)
 		{
+			// Update the timer first, see above
+			lastMACVendor = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(updateMACVendorRecords(db));
-			lastMACVendor = now;
 			DBCLOSE_OR_BREAK();
 		}
 
