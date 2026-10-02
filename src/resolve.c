@@ -191,9 +191,12 @@ static const char *getDNScode(int code)
 	return "Unknown";
 }
 
-// Validate given hostname
-static bool valid_hostname(char *name, const char *clientip)
+// Validate given hostname, on failure badpos is the offset of the first
+// invalid character
+static bool valid_hostname(char *name, const char *clientip, unsigned int *badpos)
 {
+	*badpos = 0;
+
 	// Check for validity of input
 	if(name == NULL)
 		return false;
@@ -224,6 +227,7 @@ static bool valid_hostname(char *name, const char *clientip)
 			continue;
 
 		// Invalid character found => return hostname being invalid
+		*badpos = i;
 		return false;
 	}
 
@@ -747,7 +751,8 @@ static bool ngethostbyname(const int sock, const bool tcp,
 		          i, answers[i].name, answers[i].rdata);
 
 		// We break out of the loop if this is a valid hostname
-		if(strlen(hostn) > 0 && valid_hostname(hostn, ipaddr))
+		unsigned int badpos = 0;
+		if(strlen(hostn) > 0 && valid_hostname(hostn, ipaddr, &badpos))
 		{
 			free(answers[i].name);
 			free(answers[i].rdata);
@@ -760,7 +765,12 @@ static bool ngethostbyname(const int sock, const bool tcp,
 			log_warn("Resolved PTR \"%s\" on 127.0.0.1#%u (%s) with status %s (%i): answer %u (PTR \"%s\" => \"%s\") is invalid",
 			         host, config.dns.port.v.u16, tcp ? "TCP" : "UDP",
 			         getDNScode(dns.rcode), dns.rcode, i, answers[i].name, escaped_name);
-			log_hostname_warning(ipaddr, escaped_name, i);
+			// Valid characters are never escaped, so badpos is the
+			// same in escaped_name (where a non-printable invalid
+			// byte starts its \xNN escape). An empty name has no
+			// invalid character to report
+			if(strlen(hostn) > 0)
+				log_hostname_warning(ipaddr, escaped_name, badpos);
 
 			// Discard this answer: free memory and set name to NULL
 			free(answers[i].name);

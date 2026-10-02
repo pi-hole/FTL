@@ -68,11 +68,16 @@ char *escape_string(const char *input)
 	return copy;
 }
 
+static unsigned int hostname_warnings = 0;
+static char last_warning_name[TEST_MAXDOMAINLEN] = { 0 };
+static unsigned int last_warning_pos = 0;
+
 void log_hostname_warning(const char *ip, const char *name, const unsigned int pos)
 {
 	(void)ip;
-	(void)name;
-	(void)pos;
+	hostname_warnings++;
+	snprintf(last_warning_name, sizeof(last_warning_name), "%s", name);
+	last_warning_pos = pos;
 }
 
 void *FTLcalloc(size_t n, size_t size, const char *file, const char *func, const int line)
@@ -346,6 +351,63 @@ static void *server_main(void *arg)
 	return NULL;
 }
 
+struct single_answer_context {
+	int sock;
+	const char *target;
+};
+
+static void *serve_single_answer(void *arg)
+{
+	const struct single_answer_context *ctx = arg;
+	uint8_t query[512] = { 0 };
+	uint8_t response[512] = { 0 };
+	struct sockaddr_in client = { 0 };
+	socklen_t client_len = sizeof(client);
+
+	const ssize_t len = recvfrom(ctx->sock, query, sizeof(query), 0,
+	                             (struct sockaddr *)&client, &client_len);
+	if(len <= 0)
+		return NULL;
+
+	size_t response_len = 0;
+	if(build_ptr_response(query, (size_t)len, ctx->target,
+	                      response, sizeof(response), &response_len))
+		sendto(ctx->sock, response, response_len, 0,
+		       (const struct sockaddr *)&client, client_len);
+
+	return NULL;
+}
+
+// Resolve addr against a single PTR answer and check the HOSTNAME warning:
+// expect_pos < 0 means no warning is expected
+static bool check_invalid_answer(const int client_sock, const int server_sock,
+                                 const char *addr, const char *target,
+                                 const int expect_pos)
+{
+	struct single_answer_context ctx = { .sock = server_sock, .target = target };
+	pthread_t thread;
+	if(pthread_create(&thread, NULL, serve_single_answer, &ctx) != 0)
+		return false;
+
+	const unsigned int warnings_before = hostname_warnings;
+	char host[TEST_MAXDOMAINLEN] = { 0 };
+	bool truncated = false;
+	resolveHostname(client_sock, false, host, addr, true, &truncated);
+	pthread_join(thread, NULL);
+
+	const bool warned = hostname_warnings == warnings_before + 1;
+	printf("INVALID_ANSWER \"%s\": name=\"%s\" warned=%s pos=%u\n", target,
+	       warned ? last_warning_name : "", warned ? "yes" : "no",
+	       warned ? last_warning_pos : 0);
+
+	if(expect_pos < 0)
+		return hostname_warnings == warnings_before && host[0] == '\0';
+
+	return warned && host[0] == '\0' &&
+	       strcmp(last_warning_name, target) == 0 &&
+	       last_warning_pos == (unsigned int)expect_pos;
+}
+
 int main(void)
 {
 	int server_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -442,6 +504,18 @@ int main(void)
 	pthread_join(thread, NULL);
 	pthread_cond_destroy(&ctx.condition);
 	pthread_mutex_destroy(&ctx.mutex);
+
+	// The HOSTNAME warning has to name the offset of the invalid character,
+	// an empty answer has no invalid character to report
+	bool invalid_ok = true;
+	if(!check_invalid_answer(client_sock, server_sock, "192.0.2.12", "abc!def.example", 3))
+		invalid_ok = false;
+	if(!check_invalid_answer(client_sock, server_sock, "192.0.2.13", "my host.example", 2))
+		invalid_ok = false;
+	if(!check_invalid_answer(client_sock, server_sock, "192.0.2.14", "", -1))
+		invalid_ok = false;
+	printf("HOSTNAME_WARNING_POSITION=%s\n", invalid_ok ? "PASS" : "FAIL");
+
 	close(client_sock);
 	close(server_sock);
 
@@ -449,7 +523,7 @@ int main(void)
 	printf("SECOND_LOOKUP_RESULT=%s\n", second_ok ? host_b : "<failed>");
 	printf("SERVER_SEQUENCE=%s\n", ctx.success ? "PASS" : "FAIL");
 
-	if(first_ok || !second_ok || !ctx.success || strcmp(host_b, "answer-b.example") != 0)
+	if(first_ok || !second_ok || !ctx.success || strcmp(host_b, "answer-b.example") != 0 || !invalid_ok)
 	{
 		printf("PTR_RESPONSE_REGRESSION=FAIL\n");
 		return EXIT_FAILURE;
