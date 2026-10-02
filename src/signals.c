@@ -1243,8 +1243,9 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 {
 	(void)context;
 	(void)signum;
-	// Ignore SIGTERM outside of the main process (TCP forks)
-	if(mpid != getpid())
+	// Ignore SIGTERM outside of the main process (TCP forks). mpid is
+	// still 0 during startup, when this process is the main process
+	if(mpid > 0 && mpid != getpid())
 		return;
 
 	// Save sender info for deferred logging (async-signal-safe: just
