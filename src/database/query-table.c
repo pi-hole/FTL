@@ -29,6 +29,8 @@
 #include "signals.h"
 // file_exists()
 #include "files.h"
+// INFINITY
+#include <math.h>
 
 static sqlite3 *_memdb = NULL;
 static double new_last_timestamp = 0;
@@ -437,9 +439,15 @@ bool init_memory_database(void)
 	// in the on-disk database yet. In this case, we want to copy all
 	// queries from the in-memory database (including the query with ID 0)
 	// to the on-disk database.
+	// Export stops before the lowest not yet exported ID whose timestamp lies
+	// between the cutoff (?1) and now (?2), as the next export continues after
+	// the highest ID on disk and would skip it otherwise. Rows stamped after
+	// now date from before a backwards clock step and do not hold back others
 	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
 	                                      "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
-	                                        "AND timestamp < ?",
+	                                        "AND id < (SELECT IFNULL(MIN(id), 9223372036854775807) FROM query_storage "\
+	                                                  "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
+	                                                    "AND timestamp >= ?1 AND timestamp <= ?2)",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -981,7 +989,8 @@ bool export_queries_to_disk(const bool final)
 	int rc = 0;
 	bool okay = false;
 	unsigned int insertions = 0;
-	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
+	const double now = double_time();
+	const double time = final ? INFINITY : now - REPLY_TIMEOUT;
 
 	// Only try to export to database if it is known to not be broken
 	if(FTLDBerror())
@@ -997,14 +1006,16 @@ bool export_queries_to_disk(const bool final)
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (memdb_queries_maxid = %"PRId64")",
-		          time, memdb_queries_maxid);
+		log_debug(DEBUG_DATABASE, "Storing queries on disk up to the first one with timestamp in [%f, %f] (memdb_queries_maxid = %"PRId64")",
+		          time, now + 1.0, memdb_queries_maxid);
 
-		// Bind upper time limit
+		// Bind time limits
 		// This prevents queries from the last 30 seconds from being stored
 		// immediately on-disk to give them some time to complete before finally
 		// exported. We do not limit anything when storing during termination.
-		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK)
+		// The second of slack keeps rows stamped just now in the window
+		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK ||
+		   (rc = sqlite3_bind_double(queries_to_disk_stmt, 2, now + 1.0)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 			sqlite3_reset(queries_to_disk_stmt);
