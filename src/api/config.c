@@ -1361,9 +1361,19 @@ int api_config(struct ftl_conn *api)
 	// PUT: Replaces the entire config with the provided one (not supported
 	// but PATCH with a full config is the same)
 	else if(api->method == HTTP_PATCH)
-		return api_config_patch(api);
+	{
+		lock_config();
+		const int ret = api_config_patch(api);
+		unlock_config();
+		return ret;
+	}
 	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
-		return api_config_put_delete(api);
+	{
+		lock_config();
+		const int ret = api_config_put_delete(api);
+		unlock_config();
+		return ret;
+	}
 
 	return 0;
 }

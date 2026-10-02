@@ -702,8 +702,8 @@ void *GC_thread(void *val)
 		if(killed)
 			break;
 
-		// Check if pihole.toml has been modified
-		if(check_inotify_event())
+		// Check if pihole.toml has been modified or a reread is pending
+		if(check_inotify_event() || reread_config_deferred())
 		{
 			// Reload config
 			reread_config();
