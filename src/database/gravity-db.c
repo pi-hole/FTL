@@ -1191,11 +1191,10 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		// reads a cached row) and must be rebuilt for the new groups,
 		// otherwise regex allow/deny decisions would keep using the
 		// previous groups after an identity change cleared found_group.
-		// This runs on the DNS query thread and, in check_domain_blocked(),
-		// before the in_regex() checks (in_denylist()/in_allowlist() call
-		// this first). It does not recurse: found_group is set now, so
-		// gravityDB_get_regex_client_groups() will not re-enter
-		// get_client_groupids().
+		// FTL_check_blocking() calls this via gravityDB_ensure_client_groups()
+		// before any list or regex lookup. It does not recurse: found_group
+		// is set now, so gravityDB_get_regex_client_groups() will not
+		// re-enter get_client_groupids().
 		reload_per_client_regex(client);
 	}
 
@@ -1539,6 +1538,17 @@ void gravityDB_reload_groups(clientsData *client)
 	// get_client_groupids() and reload_per_client_regex() for the
 	// (possibly different) group set.
 	gravityDB_finalize_client_statements(client);
+	gravityDB_prepare_client_statements(client);
+}
+
+// Re-resolve the client's groups if an identity change cleared found_group.
+// in_allowlist() and in_denylist() return early when their list is empty, so
+// this must run before the regex checks, which read the per-client regex row
+void gravityDB_ensure_client_groups(clientsData *client)
+{
+	if(client->flags.found_group || !gravity_ensure_open())
+		return;
+
 	gravityDB_prepare_client_statements(client);
 }
 
