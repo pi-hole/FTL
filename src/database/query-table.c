@@ -144,6 +144,21 @@ void clear_addinfo_id_cache(void)
 	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
 }
 
+// Step a statement that changes rows and read sqlite3_changes() and the last
+// inserted rowid for it. The connection mutex is held throughout so that a
+// statement of another thread sharing the connection cannot overwrite them
+static int step_and_count(sqlite3 *db, sqlite3_stmt *stmt, int64_t *changes, sqlite3_int64 *rowid)
+{
+	sqlite3_mutex *mutex = sqlite3_db_mutex(db);
+	sqlite3_mutex_enter(mutex);
+	const int rc = sqlite3_step(stmt);
+	*changes = sqlite3_changes64(db);
+	if(rowid != NULL)
+		*rowid = sqlite3_last_insert_rowid(db);
+	sqlite3_mutex_leave(mutex);
+	return rc;
+}
+
 // Private prototypes
 static bool count_queries_on_disk(sqlite3 *memdb);
 static void init_disk_db_idx(sqlite3 *memdb);
@@ -997,17 +1012,17 @@ bool export_queries_to_disk(const bool final)
 			return false;
 		}
 
-		// Perform step
-		if((rc = sqlite3_step(queries_to_disk_stmt)) == SQLITE_DONE)
+		// Perform step and get the number of queries actually inserted
+		// by the INSERT INTO ... SELECT * FROM ...
+		int64_t changes = 0;
+		if((rc = step_and_count(memdb, queries_to_disk_stmt, &changes, NULL)) == SQLITE_DONE)
 			okay = true;
 		else
 		{
 			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
 			log_info("    with timestamp = %f", time);
 		}
-
-		// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
-		insertions = sqlite3_changes(memdb);
+		insertions = (unsigned int)changes;
 
 		// Finalize statement
 		sqlite3_reset(queries_to_disk_stmt);
@@ -1065,11 +1080,12 @@ bool export_queries_to_disk(const bool final)
 	// Export linking tables
 	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
 	{
-		if((rc = sqlite3_step(subtables_to_disk_stmts[i])) != SQLITE_DONE)
+		int64_t changes = 0;
+		if((rc = step_and_count(memdb, subtables_to_disk_stmts[i], &changes, NULL)) != SQLITE_DONE)
 			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
 			        subtable_names[i], sqlite3_errstr(rc));
 		sqlite3_reset(subtables_to_disk_stmts[i]);
-		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
+		log_debug(DEBUG_DATABASE, "Exported %"PRId64" rows to disk.%s", changes, subtable_names[i]);
 	}
 
 	// End transaction. A bare SQL_bool() would return with the transaction
@@ -1124,13 +1140,12 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	}
 
 	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+	int64_t deleted = 0;
+	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
 		okay = true;
 	else
 		log_err("delete_old_queries_from_db(%s): Failed to delete queries with timestamp >= %f: %s",
 		        use_memdb ? "memdb" : "disk", mintime, sqlite3_errstr(rc));
-
-	const int64_t deleted = sqlite3_changes64(db);
 	if(okay)
 	{
 		// Update number of queries in either in-memory or on-disk
@@ -2046,6 +2061,8 @@ bool queries_to_database(void)
 	unsigned int unchanged = 0u;
 	int64_t next_maxid = memdb_queries_maxid;
 	bool phase1_error = false;
+	int64_t changes = 0;
+	sqlite3_int64 rowid = 0;
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
 	// mostly skipped due to in_database caching). SQL_bool() cannot be used
@@ -2103,7 +2120,7 @@ bool queries_to_database(void)
 		if(domaindata != NULL && !domaindata->flags.in_database)
 		{
 			sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
-			rc = sqlite3_step(domain_stmt);
+			rc = step_and_count(memdb, domain_stmt, &changes, &rowid);
 			if(rc != SQLITE_DONE)
 			{
 				log_err("Encountered error while trying to store domain");
@@ -2113,8 +2130,8 @@ bool queries_to_database(void)
 			}
 			sqlite3_reset(domain_stmt);
 
-			if(sqlite3_changes(memdb) > 0)
-				domaindata->db_id = (int)sqlite3_last_insert_rowid(memdb);
+			if(changes > 0)
+				domaindata->db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(domain_id_stmt, 1, domain, -1, SQLITE_STATIC);
@@ -2135,7 +2152,7 @@ bool queries_to_database(void)
 		{
 			sqlite3_bind_text(client_stmt, 1, clientIP, -1, SQLITE_STATIC);
 			sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
-			rc = sqlite3_step(client_stmt);
+			rc = step_and_count(memdb, client_stmt, &changes, &rowid);
 			sqlite3_reset(client_stmt);
 			if(rc != SQLITE_DONE)
 			{
@@ -2144,8 +2161,8 @@ bool queries_to_database(void)
 				break;
 			}
 
-			if(sqlite3_changes(memdb) > 0)
-				clientdata->db_id = (int)sqlite3_last_insert_rowid(memdb);
+			if(changes > 0)
+				clientdata->db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(client_id_stmt, 1, clientIP, -1, SQLITE_STATIC);
@@ -2173,7 +2190,7 @@ bool queries_to_database(void)
 					if(len > 0 && (size_t)len < sizeof(buffer))
 					{
 						sqlite3_bind_text(forward_stmt, 1, buffer, len, SQLITE_STATIC);
-						rc = sqlite3_step(forward_stmt);
+						rc = step_and_count(memdb, forward_stmt, &changes, &rowid);
 						sqlite3_reset(forward_stmt);
 						if(rc != SQLITE_DONE)
 						{
@@ -2182,8 +2199,8 @@ bool queries_to_database(void)
 							break;
 						}
 
-						if(sqlite3_changes(memdb) > 0)
-							upstream->db_id = (int)sqlite3_last_insert_rowid(memdb);
+						if(changes > 0)
+							upstream->db_id = (int)rowid;
 						else
 						{
 							sqlite3_bind_text(forward_id_stmt, 1, buffer, len, SQLITE_STATIC);
@@ -2213,7 +2230,7 @@ bool queries_to_database(void)
 				const int len = strlen(cname);
 				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_CNAME_DOMAIN);
 				sqlite3_bind_text(addinfo_stmt, 2, cname, len, SQLITE_STATIC);
-				rc = sqlite3_step(addinfo_stmt);
+				rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
 				sqlite3_reset(addinfo_stmt);
 				if(rc != SQLITE_DONE)
 				{
@@ -2222,8 +2239,8 @@ bool queries_to_database(void)
 					break;
 				}
 
-				if(sqlite3_changes(memdb) > 0)
-					aid = (int)sqlite3_last_insert_rowid(memdb);
+				if(changes > 0)
+					aid = (int)rowid;
 				else
 				{
 					sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_CNAME_DOMAIN);
@@ -2252,7 +2269,7 @@ bool queries_to_database(void)
 				{
 					sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
 					sqlite3_bind_int(addinfo_stmt, 2, list_id);
-					rc = sqlite3_step(addinfo_stmt);
+					rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
 					sqlite3_reset(addinfo_stmt);
 					if(rc != SQLITE_DONE)
 					{
@@ -2261,8 +2278,8 @@ bool queries_to_database(void)
 						break;
 					}
 
-					if(sqlite3_changes(memdb) > 0)
-						aid = (int)sqlite3_last_insert_rowid(memdb);
+					if(changes > 0)
+						aid = (int)rowid;
 					else
 					{
 						sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_LIST_ID);
