@@ -1985,9 +1985,10 @@ bool updateMACVendorRecords(sqlite3 *db)
 	{
 		const int id = sqlite3_column_int(stmt, 0);
 
-		// Get vendor for MAC
+		// Get vendor for MAC, keep the stored one if the lookup failed
 		char vendor[MAXVENDORLEN] = { 0 };
-		getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor);
+		if(!getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor))
+			continue;
 
 		// Prepare statement
 		const char *updatestr = "UPDATE network SET macVendor = ?1 WHERE id = ?2";
