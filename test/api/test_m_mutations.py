@@ -889,6 +889,72 @@ class TestBatchAddDomains:
 
 
 # ---------------------------------------------------------------------------
+# Group assignments that cannot be applied
+# ---------------------------------------------------------------------------
+
+class TestGroupAssignmentErrors:
+
+    URL = f"{FTL_URL}/api/domains/deny/exact"
+
+    def _get(self, api_session, domain):
+        r = api_session.get(f"{self.URL}/{domain}", timeout=5)
+        if r.status_code == 404:
+            return None
+        domains = _j(r).get("domains", [])
+        return domains[0] if domains else None
+
+    def test_post_with_unknown_group_leaves_nothing(self, api_session):
+        """An item whose group links fail is not added at all."""
+        domain = "_pytest-badgroup-post.example.com"
+        r = api_session.post(self.URL,
+                             json={"domain": domain, "groups": [0, 99999]},
+                             timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert self._get(api_session, domain) is None, \
+            f"{domain} was stored by a failed POST"
+
+    def test_put_with_unknown_group_keeps_row(self, api_session):
+        """A failed PUT leaves the row and its group links as they were."""
+        domain = "_pytest-badgroup-put.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"comment": "orig", "groups": [0]},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"comment": "changed", "groups": [0, 99999]},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["comment"] == "orig"
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    @pytest.mark.parametrize("groups", [None, ["0"], 0, {"id": 0}])
+    def test_groups_must_be_array_of_ids(self, api_session, groups):
+        """Anything but an array of group IDs is rejected before writing."""
+        domain = "_pytest-badgroup-type.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"groups": [0]}, timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"groups": groups}, timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert r.json()["error"]["key"] == "bad_request"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+
+# ---------------------------------------------------------------------------
 # Group names are echoed in the Location header
 # ---------------------------------------------------------------------------
 
