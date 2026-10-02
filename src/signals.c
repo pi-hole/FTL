@@ -285,6 +285,13 @@ static bool is_executable_address(const struct maps_snapshot *snap, const uintpt
 	return false;
 }
 
+// Mappings snapshot of the last signal-context walk on this thread.
+// Thread-local static storage keeps it off the alternate signal stack while
+// giving each thread its own copy, so two threads taking a fatal signal at
+// once do not corrupt each other's snapshot.  TLS in the executable uses the
+// local-exec model, so it stays usable from the crash handler.
+static _Thread_local struct maps_snapshot signal_maps_snap;
+
 // Try to unwind from signal context using frame pointers.
 // This captures caller frames before the signal trampoline on targets where
 // the frame pointer chain is available.
@@ -317,13 +324,9 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 
 	// Snapshot the mappings once up front.  The frame-pointer walk validates
 	// every candidate address against this snapshot instead of re-parsing
-	// /proc/self/maps per frame (previously O(frames) file opens).  Thread-local
-	// static storage keeps it off the alternate signal stack while giving
-	// each thread its own copy, so two threads taking a fatal signal at once do
-	// not corrupt each other's snapshot.  TLS in the executable uses the
-	// local-exec model, so it stays usable from the crash handler.
-	static _Thread_local struct maps_snapshot snap;
-	capture_maps_snapshot(&snap);
+	// /proc/self/maps per frame (previously O(frames) file opens).
+	struct maps_snapshot *snap = &signal_maps_snap;
+	capture_maps_snapshot(snap);
 
 	int count = 0;
 	// Frame 0 is the faulting instruction pointer straight from the signal
@@ -339,7 +342,7 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 		if((fp & (sizeof(uintptr_t) - 1u)) != 0)
 			break;
 
-		if(!is_readable_range(&snap, fp, 2u*sizeof(uintptr_t)))
+		if(!is_readable_range(snap, fp, 2u*sizeof(uintptr_t)))
 			break;
 
 		const uintptr_t *frame = (const uintptr_t *)fp;
@@ -353,7 +356,7 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 			walk_complete = true;
 			break;
 		}
-		if(!is_executable_address(&snap, ret - 1u))
+		if(!is_executable_address(snap, ret - 1u))
 			break;
 
 		frames[count++] = (void *)(ret - 1u);
@@ -954,7 +957,11 @@ static void generate_backtrace_internal(void *context)
 	// tends to cause the crash), cross-check it against libgcc's DWARF-CFI
 	// unwinder, which can cross frame-pointer-less boundaries the walk cannot.
 	// Only shown when it actually recovers more frames than the truncated walk.
-	if(source == BT_SOURCE_SIGNAL_CONTEXT && !complete && frame_count > 0)
+	// Skipped when the faulting PC is outside any executable mapping: libgcc
+	// would read the instruction bytes there and fault inside this handler.
+	if(source == BT_SOURCE_SIGNAL_CONTEXT && !complete && frame_count > 0 &&
+	   (signal_maps_snap.count == 0 ||
+	    is_executable_address(&signal_maps_snap, (uintptr_t)frames[0])))
 	{
 		void *cross[128];
 		struct unwind_state state = { cross, 0, 128 };
