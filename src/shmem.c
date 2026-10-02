@@ -1548,9 +1548,9 @@ bool get_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("get_per_client_regex(%u, %u): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("get_per_client_regex(%u, %u): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -1581,9 +1581,9 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;
@@ -1594,11 +1594,11 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
 {
 	// Check bounds
-	if(ID > MAXID)
+	if(ID >= MAXID)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID);
+			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID - 1);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;
