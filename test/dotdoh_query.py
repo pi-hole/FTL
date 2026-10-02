@@ -16,6 +16,7 @@
 #   emit  <domain> <outfile>                      write the raw DNS query wire
 #   check <infile> <expected-ip>                  validate a DNS answer file
 #   dot   <host> <port> <domain> <src> <ca> <ip>  full DoT exchange + validate
+#   emitqr <domain> <outfile>                     like emit, but with QR set
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
@@ -371,13 +372,20 @@ def doh3(host, port, qname, expected_ip):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
         with open(outfile, "wb") as f:
             f.write(build_query(domain))
+    elif cmd == "emitqr":
+        # A message with the QR (response) bit set, which is not a query.
+        _, _, domain, outfile = sys.argv[:4]
+        q = bytearray(build_query(domain))
+        q[2] |= 0x80
+        with open(outfile, "wb") as f:
+            f.write(bytes(q))
     elif cmd == "tcpkeep":
         _, _, host, port, count, suffix = sys.argv[:6]
         rcodes = tcp_keep(host, int(port), int(count), suffix)

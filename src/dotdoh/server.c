@@ -89,6 +89,11 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 {
 	if(qlen == 0 || framed_cap < 2 || qlen > framed_cap - 2)
 		return -1;
+	// dnsmasq silently ignores a TCP message with QR set, so the handoff would
+	// only wait for an answer that never comes. The length check guards reading
+	// the header, a shorter message would fail further down as well
+	if(qlen < 12 || (query[2] & 0x80) != 0)
+		return -1;
 	// Inject in place after the 2-byte length prefix, so no separate scratch or
 	// self-overlapping copy is needed to frame the result.
 	memcpy(framed + 2, query, qlen);
@@ -144,12 +149,20 @@ void dotdoh_fd_close_inherited(const int keep_fd)
 	}
 }
 
+// True for an error that means the peer has closed the connection
+static bool peer_closed(const int err)
+{
+	return err == EPIPE || err == ECONNRESET;
+}
+
 // Write an already-framed query (2-byte length prefix + body) on fd and read back
 // the length-prefixed answer. Returns the answer length or -1; bounded by the
-// socket timeouts set on fd by the caller.
+// socket timeouts set on fd by the caller. On failure, *closed tells whether
+// dnsmasq had closed the connection before sending any part of an answer.
 static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
-                                 uint8_t *answer, size_t answer_sz)
+                                 uint8_t *answer, size_t answer_sz, bool *closed)
 {
+	*closed = false;
 	// Write the framed query to dnsmasq, with error checking
 	for(size_t off = 0; off < flen;)
 	{
@@ -159,6 +172,7 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 			if(errno == EINTR)
 				continue;
 			log_debug(DEBUG_RESOLVER, "dotdoh: write to loopback DNS failed: %s", strerror(errno));
+			*closed = peer_closed(errno);
 			return -1;
 		}
 		if(w == 0)
@@ -179,11 +193,13 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 			if(errno == EINTR)
 				continue;
 			log_debug(DEBUG_RESOLVER, "dotdoh: read length from loopback DNS failed: %s", strerror(errno));
+			*closed = got == 0 && peer_closed(errno);
 			return -1;
 		}
 		if(r == 0)
 		{
 			log_debug(DEBUG_RESOLVER, "dotdoh: loopback DNS connection closed");
+			*closed = got == 0;
 			return -1;
 		}
 		got += (size_t)r;
@@ -238,7 +254,10 @@ static int loopback_connect(void)
 	sa.sin_port = htons(config.dns.port.v.u16);
 	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	const struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+	// dnsmasq waits up to 10 s for one upstream exchange, allow a little more so
+	// its answer arrives before we give up. Failover to another server or DNSSEC
+	// validation over TCP can still take longer than this
+	const struct timeval tv = { .tv_sec = 12, .tv_usec = 0 };
 	if(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0 ||
 	   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0 ||
 	   connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
@@ -290,13 +309,16 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 
 	// Reuse a per-thread loopback connection so dnsmasq forks one child per thread
 	// rather than one per query. dnsmasq closes it after its keep-alive limit or an
-	// idle period; a stale connection makes the exchange fail, so drop it and retry
-	// once with a fresh one. The fd (up_fd) is thread-local and closed by a
-	// thread-exit destructor (see above).
+	// idle period. Only that case is retried, once, on a fresh connection: a
+	// reused connection that dnsmasq closed before answering. A timeout or any
+	// other failure is not, as the query may already be on its way upstream.
+	// The fd (up_fd) is thread-local and closed by a thread-exit destructor
+	// (see above).
 	ssize_t alen = -1;
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
-		if(up_fd < 0)
+		const bool reused = up_fd >= 0;
+		if(!reused)
 		{
 			up_fd = loopback_connect();
 			if(up_fd < 0)
@@ -305,11 +327,14 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 			pthread_once(&up_fd_once, up_fd_key_init);
 			pthread_setspecific(up_fd_key, &up_fd);
 		}
-		alen = loopback_exchange(up_fd, framed, (size_t)flen, answer, answer_sz);
+		bool closed = false;
+		alen = loopback_exchange(up_fd, framed, (size_t)flen, answer, answer_sz, &closed);
 		if(alen > 0)
 			break;
 		dotdoh_fd_close(up_fd);
 		up_fd = -1;
+		if(!reused || !closed)
+			break;
 	}
 
 	// RFC 8467 Sec. 4: pad the answer to a 468-octet boundary so its ciphertext

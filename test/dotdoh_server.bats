@@ -256,6 +256,20 @@ setup_file() {
   assert_output "405"
 }
 
+@test "dotdoh-server: a DoH message with the QR bit set is rejected at once" {
+  # dnsmasq never answers a message with QR set, so it is not handed over and
+  # the handler does not wait for an answer that cannot come
+  local ca q
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_qr.bin"
+  python3 test/dotdoh_query.py emitqr "$DOMAIN" "$q"
+  run curl -s -o /dev/null -w '%{http_code}' --max-time 3 --cacert "$ca" \
+           --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' --data-binary "@$q" \
+           "https://pi.hole/dns-query"
+  assert_output "502"
+}
+
 @test "dotdoh-server: inbound queries are attributed to the real downstream client" {
   # The DoH and DoT queries above were both sourced from $CLIENT. If the private
   # EDNS client option survives the loopback handoff, the API must list a.ftl for
