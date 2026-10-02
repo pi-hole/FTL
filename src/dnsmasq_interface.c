@@ -1856,8 +1856,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
-	// Resolve the client's groups first, the allow-regex check below
-	// relies on them even when the exact allowlist is skipped
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
 	gravityDB_ensure_client_groups(client);
 
 	// If this cache record can expire, check if it is still valid and/or if

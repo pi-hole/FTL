@@ -1183,8 +1183,15 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Get associated groups for this client (if defined)
 	if(!client->flags.found_group)
 	{
+		const size_t old_groupspos = client->groupspos;
 		if(!get_client_groupids(client))
 			return false;
+
+		// Decisions cached for this client were taken with its previous
+		// groups. addintarray() deduplicates, so an unchanged group set
+		// keeps its position
+		if(client->groupspos != old_groupspos)
+			FTL_reset_client_domain_data(client->id);
 
 		// The client's groups were just (re-)resolved. The per-client
 		// regex enable/disable state is cached separately (match_regex()
