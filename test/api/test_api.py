@@ -438,6 +438,16 @@ class TestLuaServerPages:
         r = api_session.head(f"{FTL_URL}/broken_lua", timeout=5)
         assert r.status_code == 404
 
+    def test_root_not_served_by_default(self, api_session):
+        """/ under a Host other than webserver.domain follows serve_all too."""
+        set_config(api_session, "webserver.serve_all", False)
+        r = api_session.get(f"{FTL_URL}/", allow_redirects=False, timeout=5)
+        assert r.status_code == 404
+        r = api_session.get(f"{FTL_URL}/", headers={"Host": "pi.hole"},
+                            allow_redirects=False, timeout=5)
+        assert r.status_code == 308
+        assert r.headers["Location"].endswith("/admin/")
+
     def test_lua_page_generates_proper_backtrace(self, api_session):
         """Lua server page generates proper backtrace on error."""
         set_config(api_session, "webserver.serve_all", True)
