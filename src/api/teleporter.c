@@ -413,6 +413,8 @@ static struct teleporter_files {
 	const size_t num_columns; // Number of columns in the table
 	const char *columns[10]; // List of columns in the table
 } teleporter_v5_files[] = {
+	// *_by_group files must follow their primary tables: the tr_*_add triggers put new rows into group 0
+	// and only the later by_group import replaces that with the archived mapping
 	{
 		.filename = "adlist.json",
 		.table_name = "adlist",
@@ -450,12 +452,6 @@ static struct teleporter_files {
 		.num_columns = 2,
 		.columns = { "group_id", "client_id" }
 	},{
-		.filename = "domainlist_by_group.json",
-		.table_name = "domainlist_by_group",
-		.listtype = -1,
-		.num_columns = 2,
-		.columns = { "group_id", "domainlist_id" }
-	},{
 		.filename = "group.json",
 		.table_name = "group",
 		.listtype = -1,
@@ -473,6 +469,12 @@ static struct teleporter_files {
 		.listtype = 2, // GRAVITY_DOMAINLIST_ALLOW_REGEX
 		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
+	},{
+		.filename = "domainlist_by_group.json",
+		.table_name = "domainlist_by_group",
+		.listtype = -1,
+		.num_columns = 2,
+		.columns = { "group_id", "domainlist_id" }
 	}
 };
 

@@ -131,14 +131,94 @@ class TestTeleporter:
             f"Teleporter archive stores DHCP leases under {leases}, " \
             "expected etc/pihole/dhcp.leases"
 
+    def test_teleporter_v5_domainlist_groups(self, ftl):
+        """A v5 archive keeps the group assignments of all four domain lists.
+
+        The tr_domainlist_add trigger puts every imported domain into the
+        Default group (0); the archived domainlist_by_group has to replace
+        that for allow and deny entries alike. This import overwrites the
+        group and domainlist tables and pihole.toml, test_teleporter_import
+        below restores both from the ZIP exported earlier.
+        """
+        import io
+        import json
+        import sqlite3
+        import tarfile
+        import time
+        import requests
+
+        now = int(time.time())
+        def entry(id, domain, type):
+            return {"id": id, "domain": domain, "enabled": 1,
+                    "date_added": now, "date_modified": now,
+                    "comment": "v5 import test", "type": type}
+        files = {
+            "group.json": [
+                {"id": 0, "enabled": 1, "name": "Default", "date_added": now,
+                 "date_modified": now, "description": "The default group"},
+                {"id": 1, "enabled": 1, "name": "iot", "date_added": now,
+                 "date_modified": now, "description": None}],
+            "whitelist.exact.json": [entry(9001, "allowiot.example", 0)],
+            "whitelist.regex.json": [entry(9002, "allowre\\.example$", 2)],
+            "blacklist.exact.json": [entry(9003, "denyiot.example", 1)],
+            "blacklist.regex.json": [entry(9004, "denyre\\.example$", 3)],
+            "domainlist_by_group.json": [
+                {"group_id": 1, "domainlist_id": id}
+                for id in (9001, 9002, 9003, 9004)],
+            # The config migration warns if there is no legacy file to read
+            "pihole-FTL.conf": b"# v5 import test\n",
+        }
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, content in files.items():
+                data = content if isinstance(content, bytes) else json.dumps(content).encode()
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+
+        with open("/var/log/pihole/FTL.log", "r") as f:
+            f.seek(0, 2)
+            log_pos = f.tell()
+
+        response = ftl.POST("/api/teleporter", None, AuthenticationMethods.HEADER,
+                            {"file": ("pi-hole-teleporter.tar.gz", buf.getvalue(),
+                                      "application/gzip")})
+        assert response is not None and "domainlist_by_group.json" in response.get("files", []), \
+            f"v5 Teleporter import failed: {response} {ftl.errors}"
+
+        # The import is written before the reply, the restart follows it
+        with sqlite3.connect("file:/etc/pihole/gravity.db?mode=ro", uri=True) as db:
+            rows = db.execute("SELECT d.domain, group_concat(g.group_id) "
+                              "FROM domainlist d JOIN domainlist_by_group g "
+                              "ON g.domainlist_id = d.id WHERE d.id >= 9001 "
+                              "GROUP BY d.id ORDER BY d.id").fetchall()
+        expected = [("allowiot.example", "1"), ("allowre\\.example$", "1"),
+                    ("denyiot.example", "1"), ("denyre\\.example$", "1")]
+        assert rows == expected, f"domainlist groups after v5 import: {rows}"
+
+        # Wait for the restarted FTL to serve the API again
+        for _ in range(60):
+            time.sleep(0.5)
+            with open("/var/log/pihole/FTL.log", "r") as f:
+                f.seek(log_pos)
+                if "FTL started on" not in f.read():
+                    continue
+            try:
+                r = requests.get("http://127.0.0.1/api/auth", timeout=2)
+                if r.status_code in (200, 401):
+                    return
+            except requests.ConnectionError:
+                continue
+        pytest.fail("FTL did not come back after v5 teleporter import")
+
     def test_teleporter_import(self, openapi, ftl):
         """Re-import the teleporter ZIP archive exported during response tests.
 
         Teleporter import triggers an internal FTL restart (gravity
         database reload, exit code 22). We wait for FTL to come back
         afterwards so subsequent tests (auth, rate limiting) have a
-        working API.  Note: this is the only API call that causes an
-        FTL restart — password hashing (BALLOON-SHA256) and all other
+        working API. Teleporter imports are the only API calls that
+        restart FTL - password hashing (BALLOON-SHA256) and all other
         config changes are fully synchronous and do not restart FTL.
         """
         import time
