@@ -84,8 +84,9 @@ static bool build_webpaths(void)
 		return false;
 	}
 
-	// Construct admin_api_uri path
-	admin_api_uri = append_to_path(prefix_webhome, "api");
+	// Construct admin_api_uri path, compared against request paths, which
+	// never carry the prefix (the reverse proxy strips it)
+	admin_api_uri = append_to_path(config.webserver.paths.webhome.v.s, "api");
 	log_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
 	if(admin_api_uri == NULL)
 	{
@@ -977,19 +978,20 @@ void http_init(void)
 		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
 	}
 
-	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
+	// Register <webhome without trailing slash> -> [<prefix>]<webhome> redirect
+	// handler. The matcher has no prefix as the reverse proxy strips it.
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
 		// Replace trailing slash with end-of-string marker for matcher
-		char *prefix_webhome_matcher = strdup(prefix_webhome);
-		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
+		char *webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
 
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          prefix_webhome, config.webserver.paths.webhome.v.s);
-		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
-		// prefix_webhome_matcher is internally duplicated during
+		          webhome_matcher, prefix_webhome);
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		// webhome_matcher is internally duplicated during
 		// request configuration so it can be freed here
-		free(prefix_webhome_matcher);
+		free(webhome_matcher);
 	}
 
 	// Register **.lp -> ** redirect handler
