@@ -130,7 +130,7 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			{
 				// Malformed hostname starts with '[', but no ']' found
 				log_err("Host name format error: Found '[' without ']'");
-				return 0;
+				return request_handler(conn, input);
 			}
 			/* terminate after ']' */
 			host_len = (size_t)(pos + 1 - host);
@@ -186,7 +186,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// the proxy forwards (configure via WEBSERVER_DOMAIN in pihole.toml).
 	log_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
 	          uri, (int)host_len, host ? host : "", config.webserver.domain.v.s);
-	return 0;
+
+	// Serve "/" under the same rules as every other path (webserver.serve_all)
+	return request_handler(conn, input);
 }
 
 static int redirect_admin_handler(struct mg_connection *conn, void *input)
