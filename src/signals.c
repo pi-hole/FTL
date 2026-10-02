@@ -13,13 +13,13 @@
 #if defined(USE_UNWIND)
 #  include <unwind.h>
 #  include <limits.h>    // PATH_MAX
-#  include <sys/mman.h>  // mmap() - used for the intentional crash test subcommand
 #  include <dlfcn.h>     // dladdr() - dynamic symbol lookup from .dynsym
 #  include <ucontext.h>  // ucontext_t - register snapshot from SA_SIGINFO handlers
 #  include <fcntl.h>     // open() - raw, signal-safe /proc/self/maps reading
 #  include <poll.h>      // poll() - bound the addr2line subprocess wall-clock
 #  include <sys/wait.h>  // waitpid()/WIFEXITED() - reap the addr2line child
 #endif
+#include <sys/mman.h>    // mmap() - alternate signal stack with a guard page
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -318,7 +318,7 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 	// Snapshot the mappings once up front.  The frame-pointer walk validates
 	// every candidate address against this snapshot instead of re-parsing
 	// /proc/self/maps per frame (previously O(frames) file opens).  Thread-local
-	// static storage keeps it off the 16 KiB alternate signal stack while giving
+	// static storage keeps it off the alternate signal stack while giving
 	// each thread its own copy, so two threads taking a fatal signal at once do
 	// not corrupt each other's snapshot.  TLS in the executable uses the
 	// local-exec model, so it stays usable from the crash handler.
@@ -497,7 +497,7 @@ static void find_mapping_name(const void *addr, char *buf, const size_t buflen)
 }
 
 // Per-frame resolution state.  Stored in a fixed static array (not on the
-// 16 KiB alternate signal stack) so the symbolization pass cannot overflow it.
+// alternate signal stack) so the symbolization pass cannot overflow it.
 struct frame_info {
 	void *addr;        // absolute return/instruction address
 	const char *obj;   // object file path for "addr2line -e" ("" if unknown)
@@ -626,7 +626,7 @@ static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
                                          const int *order, const int ng)
 {
 	// argv and the per-address strings.  Thread-local static storage keeps the
-	// 16 KiB alternate signal stack free while giving concurrent callers
+	// alternate signal stack free while giving concurrent callers
 	// (e.g. the lock-debug paths) independent, race-free workspaces.  TLS in
 	// the executable uses the local-exec model: a direct thread-pointer offset,
 	// no lazy allocation, so it stays usable from the crash handler.
@@ -878,7 +878,7 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 // commands for any frame that stayed unresolved.
 static void symbolize_and_render_frames(void **frames, const int frame_count)
 {
-	// Thread-local static storage keeps this off the 16 KiB alternate signal
+	// Thread-local static storage keeps this off the alternate signal
 	// stack while giving concurrent callers (e.g. the lock-debug paths)
 	// independent, race-free workspaces.  TLS in the executable uses the
 	// local-exec model, so it stays usable from the crash handler.
@@ -1364,24 +1364,35 @@ static void terminate(void)
 
 // Register ordinary signals handler
 // Alternate signal stack so the crash handler can run even when the
-// regular stack has overflowed. SIGSTKSZ is not a compile-time constant
-// on glibc >= 2.34, so use a fixed 16 KiB buffer (the minimum required
-// by POSIX is MINSIGSTKSZ which is typically 2-8 KiB; 16 KiB gives
-// ample room for the backtrace/logging calls in our crash handler).
-#define FTL_ALT_STACK_SIZE 16384
-static uint8_t alt_stack_mem[FTL_ALT_STACK_SIZE];
+// regular stack has overflowed. The crash handler runs the backtrace,
+// addr2line and, for the main thread, cleanup() on this stack, so it
+// needs far more than MINSIGSTKSZ. It is mmap()ed with a PROT_NONE guard
+// page below it, so an overrun faults instead of overwriting other data.
+#define FTL_ALT_STACK_SIZE (64u*1024u)
 
 void handle_signals(void)
 {
 	// Install an alternate signal stack for crash handlers. Without
 	// this, a stack overflow fault cannot be diagnosed because the
 	// handler itself would overflow the same stack.
-	stack_t ss = {
-		.ss_sp = alt_stack_mem,
-		.ss_size = FTL_ALT_STACK_SIZE,
-		.ss_flags = 0
-	};
-	sigaltstack(&ss, NULL);
+	const long page = sysconf(_SC_PAGESIZE);
+	const size_t guard = page > 0 ? (size_t)page : 4096u;
+	uint8_t *alt_stack = mmap(NULL, guard + FTL_ALT_STACK_SIZE, PROT_READ | PROT_WRITE,
+	                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(alt_stack != MAP_FAILED)
+	{
+		// The stack grows downwards, so the guard page goes first
+		if(mprotect(alt_stack, guard, PROT_NONE) != 0)
+			log_warn("Cannot protect alternate signal stack guard page: %s", strerror(errno));
+		stack_t ss = {
+			.ss_sp = alt_stack + guard,
+			.ss_size = FTL_ALT_STACK_SIZE,
+			.ss_flags = 0
+		};
+		sigaltstack(&ss, NULL);
+	}
+	else
+		log_warn("Cannot allocate alternate signal stack: %s", strerror(errno));
 
 	struct sigaction old_action;
 

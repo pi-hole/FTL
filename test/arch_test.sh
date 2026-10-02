@@ -124,6 +124,15 @@ check_crash() {
         echo "$output" | grep "Backtrace (" || true
         okay=false
       fi
+      # The handler must run to the end, including cleanup(), on its
+      # alternate signal stack
+      if echo "$output" | grep -q "FTL terminated"; then
+        echo "Crash handler cleanup test: OK (cleanup completed)"
+      else
+        echo "Crash handler cleanup test: FAILED (handler did not reach cleanup)"
+        echo "$output" | tail -n 5
+        okay=false
+      fi
       ;;
   esac
 }
