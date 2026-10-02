@@ -345,6 +345,14 @@ setup() {
   assert_line --index 1 ""
 }
 
+@test "CNAME inspection: CNAME is blocked (TCP)" {
+  run bash -c "dig A cname-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/cname-tcp.ftl -> GRAVITY_CNAME' /var/log/pihole/FTL.log"
+  assert_output "1"
+}
+
 @test "DNSSEC: SECURE domain is resolved" {
   run bash -c "dig A a.dnssec @127.0.0.1"
   assert_line --partial --index 3 "status: NOERROR"
@@ -442,6 +450,14 @@ setup() {
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with ::"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl AAAA ::\""* ]]
+}
+
+@test "Upstream blocked domain: NULL is recognized (TCP)" {
+  run bash -c "dig A null-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/null-tcp.ftl -> EXTERNAL_BLOCKED_NULL' /var/log/pihole/FTL.log"
+  assert_output "1"
 }
 
 @test "Upstream blocked domain: IP is recognized" {
