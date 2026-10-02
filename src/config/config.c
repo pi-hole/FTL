@@ -1022,7 +1022,8 @@ void initConfig(struct config *conf)
 	conf->database.DBinterval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->database.DBinterval.t = CONF_UINT;
 	conf->database.DBinterval.d.ui = 60;
-	conf->database.DBinterval.c = validate_stub; // Only type-based checking
+	// Used as a divisor by the database thread
+	conf->database.DBinterval.c = validate_ui_min_1;
 
 	conf->database.useWAL.k = "database.useWAL";
 	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
