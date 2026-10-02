@@ -47,12 +47,13 @@ setup() {
 }
 
 @test "Denied domain is blocked" {
-  run bash -c "dig denied.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (denylist)"
+  assert_line --index 1 ""
+
+  run bash -c "dig denied.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 
   # A second, different-type hit on denied.ftl so its blocked count stays
@@ -65,12 +66,13 @@ setup() {
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig gravity.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-
+  # The first, uncached answer carries the EDE too
   run bash -c "dig gravity.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
+  assert_line --index 1 ""
+
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -100,12 +102,13 @@ setup() {
 }
 
 @test "Regex denied match is blocked" {
-  run bash -c "dig regex5.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (regex)"
+  assert_line --index 1 ""
+
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -319,9 +322,11 @@ setup() {
 }
 
 @test "CNAME inspection: Shallow CNAME is blocked" {
-  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
+  # One query checks both the EDE of the first, uncached answer and the address
+  run bash -c "dig A cname-1.ftl @127.0.0.1 | grep -e 'EDE: ' -e '^cname-1\.ftl\.'"
+  assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity (CNAME))"
+  assert_line --regexp --index 1 "^cname-1\.ftl\.[[:space:]].*[[:space:]]A[[:space:]]+0\.0\.0\.0$"
+  assert_line --index 2 ""
 }
 
 @test "CNAME inspection: Deep CNAME is blocked" {
