@@ -317,13 +317,16 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
-// The blocking reason and the CNAME target describe one query, so they are
-// dropped on every way out of _FTL_make_answer() below, not only on the path
-// that answered
+// The blocking reason, the CNAME target, the forced reply, the redirecting
+// regex and the cache status describe one query, so they are dropped on every
+// way out of _FTL_make_answer() below and when the next query arrives
 static void unset_blocking_metadata(void)
 {
 	blockingreason = "<not set>";
 	cname_target = NULL;
+	force_next_DNS_reply = REPLY_UNKNOWN;
+	last_regex_idx = -1;
+	cacheStatus = QUERY_UNKNOWN;
 }
 
 // This is inspired by make_local_answer()
@@ -815,6 +818,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
+
+	// Not every query that sets up an answer gets one through
+	// _FTL_make_answer(), so start every client query from a clean state
+	if(proto != INTERNAL)
+		unset_blocking_metadata();
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
