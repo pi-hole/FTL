@@ -2116,6 +2116,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
 	{
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = new_status;
+
 		// Adjust counters
 		query_blocked(query, domain, client, new_status);
 
@@ -2364,6 +2367,9 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 			// Only set status
 			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
+
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = query->status;
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
