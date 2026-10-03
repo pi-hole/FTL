@@ -28,6 +28,8 @@
 #include <errno.h>
 // ctime()
 #include <time.h>
+// adjtimex()
+#include <sys/timex.h>
 // pthread_create
 #include <pthread.h>
 // PR_SET_NAME
@@ -88,12 +90,36 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
                 log_debug(DEBUG_NTP, "Received request has unsupported version");
         }
 
-	// set LI = 0 (no warning about leap seconds), set version-number to
-	// 4 and set mode = 4 ("server")
-	send_buf[0] = (0x04 << 3) + 0x04;
+	// Stratum and reference time come from FTL's NTP client once it has
+	// set the clock
+	uint8_t leap = 0;
+	uint8_t stratum = ntp_stratum;
+	uint64_t ref_time = ntp_last_sync;
+	if(ref_time == 0)
+	{
+		// The NTP client is disabled or cannot set the clock. Serve
+		// the system clock as a secondary server while the kernel
+		// reports it synchronized, otherwise announce that we are
+		// unsynchronized (LI = 3, stratum 16) as RFC 5905 requires
+		struct timex tx = { 0 };
+		const int state = adjtimex(&tx);
+		if(state >= 0 && state != TIME_ERROR)
+		{
+			stratum = 2;
+			ref_time = *recv_time;
+		}
+		else
+		{
+			leap = 3;
+			stratum = 16;
+		}
+	}
+
+	// set LI, set version-number to 4 and set mode = 4 ("server")
+	send_buf[0] = (leap << 6) + (0x04 << 3) + 0x04;
 
 	// Set stratum (one greater than upstream server)
-	send_buf[1] = ntp_stratum;
+	send_buf[1] = stratum;
 
 	// Copy Poll value from client
 	send_buf[2] = recv_buf[2];
@@ -142,7 +168,7 @@ static bool ntp_reply(const int socket_fd, const struct sockaddr *saddr_p, const
 
 	// Time when the system clock was last set or corrected, in NTP
 	// timestamp format.
-	const uint64_t last_sync = hton64(ntp_last_sync);
+	const uint64_t last_sync = hton64(ref_time);
 	memcpy(u32p, &last_sync, sizeof(uint64_t));
 	if(config.debug.ntp.v.b)
 		print_debug_time("Reference Timestamp", u32p, 0);

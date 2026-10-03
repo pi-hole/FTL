@@ -75,7 +75,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
-                                       const unsigned char type, const char* table);
+                                       const unsigned char type, const char* table, sqlite3 *ftl_db);
 
 sqlite3 *gravityDB_open_RO(void);
 void gravityDB_close_RO(sqlite3 *db);
