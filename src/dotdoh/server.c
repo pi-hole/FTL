@@ -485,11 +485,11 @@ ssize_t base64url_decode(const char *in, size_t inlen, uint8_t *out, size_t outc
 // answer records or one that does not parse cleanly.
 __attribute__((pure)) uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len)
 {
-	if(len < 12)
+	if(len < DNS_HEADER_LEN)
 		return 0;
 	const unsigned qdcount = ((unsigned)msg[4] << 8) | msg[5];
 	const unsigned ancount = ((unsigned)msg[6] << 8) | msg[7];
-	size_t pos = 12;
+	size_t pos = DNS_HEADER_LEN;
 
 	// Skip the question section.
 	for(unsigned i = 0; i < qdcount; i++)

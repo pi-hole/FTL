@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "edns_pad.h"
+// DNS_HEADER_LEN
+#include "framing.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -68,13 +70,13 @@ static bool skip_name(const uint8_t *buf, size_t len, size_t *pos)
 // the CLASS field, so this may be called before or after edns_pad_query().
 uint16_t __attribute__((pure)) edns_query_udp_size(const uint8_t *buf, size_t len)
 {
-	if(len < 12)
+	if(len < DNS_HEADER_LEN)
 		return 512;
 	const uint16_t qdcount = (uint16_t)((buf[4] << 8) | buf[5]);
 	const uint16_t ancount = (uint16_t)((buf[6] << 8) | buf[7]);
 	const uint16_t nscount = (uint16_t)((buf[8] << 8) | buf[9]);
 	const uint16_t arcount = (uint16_t)((buf[10] << 8) | buf[11]);
-	size_t pos = 12;
+	size_t pos = DNS_HEADER_LEN;
 	for(uint16_t i = 0; i < qdcount; i++)
 	{
 		if(!skip_name(buf, len, &pos) || pos + 4 > len)
@@ -109,14 +111,14 @@ uint16_t __attribute__((pure)) edns_query_udp_size(const uint8_t *buf, size_t le
 static int find_opt(const uint8_t *buf, size_t len, size_t *rdlen_off,
                     size_t *rdata_off, size_t *rdlen, bool *is_last)
 {
-	if(len < 12)
+	if(len < DNS_HEADER_LEN)
 		return -1;
 	const uint16_t qdcount = (uint16_t)((buf[4] << 8) | buf[5]);
 	const uint16_t ancount = (uint16_t)((buf[6] << 8) | buf[7]);
 	const uint16_t nscount = (uint16_t)((buf[8] << 8) | buf[9]);
 	const uint16_t arcount = (uint16_t)((buf[10] << 8) | buf[11]);
 
-	size_t pos = 12;
+	size_t pos = DNS_HEADER_LEN;
 
 	// Question section: a name followed by QTYPE and QCLASS.
 	for(uint16_t i = 0; i < qdcount; i++)

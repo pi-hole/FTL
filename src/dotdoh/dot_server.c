@@ -336,12 +336,12 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 // length, or -1 if it does not fit.
 static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t outcap)
 {
-	if(qlen < 12 || outcap < 12)
+	if(qlen < DNS_HEADER_LEN || outcap < DNS_HEADER_LEN)
 		return -1;
 
 	// Walk the QNAME. A compression pointer cannot legitimately appear in a
 	// question, so anything that is not a plain label ends the attempt.
-	size_t n = 12;
+	size_t n = DNS_HEADER_LEN;
 	while(n < qlen && q[n] != 0)
 	{
 		if(q[n] > 63)
@@ -357,8 +357,8 @@ static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t 
 	// emit an illegal question, and make each refusal copy up to 64 KiB about
 	// while we are already shedding load.
 	const bool have_q = has_qd && n < qlen && q[n] == 0 && n + 5 <= qlen &&
-	                    n - 11 <= 255;
-	const size_t len = have_q ? n + 5 : 12;
+	                    n + 1 - DNS_HEADER_LEN <= 255;
+	const size_t len = have_q ? n + 5 : DNS_HEADER_LEN;
 	if(len > outcap)
 		return -1;
 

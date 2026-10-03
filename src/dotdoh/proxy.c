@@ -431,10 +431,10 @@ static bool write_full(int fd, const uint8_t *buf, size_t len, uint64_t deadline
 static size_t dns_truncated_response(const uint8_t *answer, size_t alen,
                                      uint8_t *out, size_t out_sz)
 {
-	if(alen < 12)
+	if(alen < DNS_HEADER_LEN)
 		return 0;
 	const unsigned qd = ((unsigned)answer[4] << 8) | answer[5];
-	size_t off = 12;
+	size_t off = DNS_HEADER_LEN;
 	for(unsigned q = 0; q < qd && off < alen; q++)
 	{
 		// Walk the QNAME labels; compression is not legal in a question.

@@ -27,7 +27,7 @@
 // DoQ needs OpenSSL QUIC, but - unlike DoH3 - no HTTP/3 library.
 #if defined(HAVE_TLS) && defined(HAVE_QUIC)
 
-// dot_frame/dot_deframe (RFC 9250 reuses the DoT framing), DNS_MSG_MAX
+// dot_frame/dot_deframe (RFC 9250 reuses the DoT framing), DNS_MSG_MAX, DNS_HEADER_LEN
 #include "framing.h"
 // edns_remove_option()
 #include "edns_pad.h"
@@ -206,7 +206,7 @@ static ssize_t doq_exchange_on_conn(SSL *conn, int fd, const uint8_t *query, siz
 		                                     sizeof(recvbuf), &off, deadline);
 		// A DNS message shorter than the 12-byte header cannot carry the ID we
 		// have to restore, so it is malformed by definition.
-		if(alen >= 12 && (size_t)alen <= answer_sz)
+		if(alen >= DNS_HEADER_LEN && (size_t)alen <= answer_sz)
 		{
 			memcpy(answer, recvbuf + off, (size_t)alen);
 			answer[0] = qid[0];
@@ -227,7 +227,7 @@ ssize_t doq_pool_exchange(struct doq_pool *p, const uint8_t *query, size_t qlen,
 		return -1;
 	// A query shorter than the DNS header has no Message ID to zero and restore
 	// (RFC 9250 Sec. 4.2.1), and is malformed anyway.
-	if(qlen < 12 || qlen > DNS_MSG_MAX)
+	if(qlen < DNS_HEADER_LEN || qlen > DNS_MSG_MAX)
 		return -1;
 
 	const struct upstream_uri *u = &p->u;
