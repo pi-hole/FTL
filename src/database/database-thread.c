@@ -153,9 +153,12 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
-	// Asynchronously import queries from the on-disk database
+	// Asynchronously import queries from the on-disk database. The linking
+	// tables are imported in any case as new queries continue their IDs
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
+	else
+		import_linking_tables_from_disk();
 
 	// Signify that the import is done, so garbage collection will run. An
 	// import that was aborted because FTL terminates is not: main() skips

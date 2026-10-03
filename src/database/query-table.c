@@ -835,6 +835,79 @@ void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 	}
 }
 
+// Import linking tables and current AUTOINCREMENT values from the disk
+// database. Must be called inside a transaction, which is rolled back when FTL
+// is asked to terminate
+static bool import_linking_tables(sqlite3 *memdb)
+{
+	const char *subtable_names[] = {
+		"domain_by_id",
+		"client_by_id",
+		"forward_by_id",
+		"addinfo_by_id",
+		"sqlite_sequence"
+	};
+	const char *subtable_sql[] = {
+		"INSERT INTO domain_by_id SELECT * FROM disk.domain_by_id",
+		"INSERT INTO client_by_id SELECT * FROM disk.client_by_id",
+		"INSERT INTO forward_by_id SELECT * FROM disk.forward_by_id",
+		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
+		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
+	};
+	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
+
+	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
+	{
+		const int rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
+
+		// An interrupt has rolled the transaction back already, the
+		// ROLLBACK covers a termination request between two statements
+		if(killed)
+		{
+			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			return false;
+		}
+
+		if(rc != SQLITE_OK)
+			log_err("import_linking_tables(%s): Cannot import linking table: %s",
+			        subtable_sql[i], sqlite3_errstr(rc));
+		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s",
+		          sqlite3_changes(memdb), subtable_names[i]);
+	}
+
+	return true;
+}
+
+// Import only the linking tables when database.DBimport is disabled. New
+// queries reference rows in these tables by ID, so their IDs have to continue
+// where the disk database left off even when no queries are imported
+bool import_linking_tables_from_disk(void)
+{
+	// Only try to import from database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
+
+	int rc;
+	sqlite3 *memdb = get_memdb();
+	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
+	{
+		log_err("import_linking_tables_from_disk(): Cannot begin transaction: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	if(!import_linking_tables(memdb))
+		return false;
+
+	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
+	{
+		log_err("import_linking_tables_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
+	return true;
+}
+
 // Read queries from the on-disk database into the in-memory database (after
 // restart, etc.). A transaction is already running when this function is called.
 bool import_queries_from_disk(void)
@@ -911,43 +984,9 @@ bool import_queries_from_disk(void)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// Import linking tables and current AUTOINCREMENT values from the disk database
-	const char *subtable_names[] = {
-		"domain_by_id",
-		"client_by_id",
-		"forward_by_id",
-		"addinfo_by_id",
-		"sqlite_sequence"
-	};
-	const char *subtable_sql[] = {
-		"INSERT INTO domain_by_id SELECT * FROM disk.domain_by_id",
-		"INSERT INTO client_by_id SELECT * FROM disk.client_by_id",
-		"INSERT INTO forward_by_id SELECT * FROM disk.forward_by_id",
-		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
-		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
-	};
-	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
-
-	// Import linking tables
-	int imported[ArraySize(subtable_names)] = { 0 };
-	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
-	{
-		rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
-
-		// An interrupt has rolled the transaction back already, the
-		// ROLLBACK covers a termination request between two statements
-		if(killed)
-		{
-			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-			return false;
-		}
-
-		if(rc != SQLITE_OK)
-			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
-			        subtable_sql[i], sqlite3_errstr(rc));
-		imported[i] = sqlite3_changes(memdb);
-		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", imported[i], subtable_names[i]);
-	}
+	// Import linking tables and current AUTOINCREMENT values
+	if(!import_linking_tables(memdb))
+		return false;
 
 	// End transaction
 	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
