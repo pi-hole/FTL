@@ -1025,7 +1025,8 @@ void initConfig(struct config *conf)
 	conf->database.DBinterval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->database.DBinterval.t = CONF_UINT;
 	conf->database.DBinterval.d.ui = 60;
-	conf->database.DBinterval.c = validate_stub; // Only type-based checking
+	// Used as a divisor by the database thread
+	conf->database.DBinterval.c = validate_ui_min_1;
 
 	conf->database.useWAL.k = "database.useWAL";
 	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
@@ -1283,7 +1284,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
-	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
+	conf->webserver.api.maxHistory.c = validate_max_history;
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
 	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";

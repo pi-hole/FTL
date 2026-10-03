@@ -831,6 +831,17 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	return true;
 }
 
+bool validate_ui_min_1(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 1", key);
+		return false;
+	}
+
+	return true;
+}
+
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(val->ui < 7 && val->ui != 0)
@@ -844,6 +855,19 @@ bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VAL
 	if(val->ui > 36500)
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than 36500", key);
+		return false;
+	}
+
+	return true;
+}
+
+bool validate_max_history(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// The overTime array spans MAXLOGAGE hours, the garbage collector
+	// cannot move it forward when asked to keep a longer history
+	if(val->ui > MAXLOGAGE*3600)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than %u", key, MAXLOGAGE*3600);
 		return false;
 	}
 

@@ -816,7 +816,8 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 	if(buffer == NULL)
 		return;
 
-	struct conf_item *debug = get_debug_item(&config, flag);
+	// The debug config items start at DEBUG_DATABASE, one after DEBUG_NONE
+	struct conf_item *debug = get_debug_item(&config, flag - 1);
 
 	// Set bit if value equals "true", clear bit otherwise
 	bool bit = false;
@@ -852,7 +853,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	{
 		// Iterate over all debug flags and set them if they are present
 		// in the config file.
-		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
+		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_MAX; flag++)
 			setDebugOption(fp, debugstr(flag), flag);
 	}
 

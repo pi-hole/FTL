@@ -1856,6 +1856,11 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
+	gravityDB_ensure_client_groups(client);
+
 	// If this cache record can expire, check if it is still valid and/or if
 	// caching is generally disabled
 	if((dns_cache->expires > 0 && ABS_TO_SHM_TIME((time_t)query->timestamp) > dns_cache->expires) ||
@@ -2223,7 +2228,8 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	lock_shm();
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
-	const int queryID = findQueryID(id);
+	// (negative for TCP queries, stored positive by FTL_new_query)
+	const int queryID = findQueryID(id < 0 ? -id : id);
 	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query
@@ -3484,10 +3490,13 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_status, con
 
 int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const union all_addr *addr,
-                     const int id, const char *file, const int line)
+                     const int raw_id, const char *file, const int line)
 {
 	// Get EDE data (if available)
 	const ednsData *edns = getEDNS();
+
+	// The query ID is negative if this is a TCP query
+	const int id = raw_id < 0 ? -raw_id : raw_id;
 
 	// Check if RA and AA bits are unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
