@@ -747,6 +747,21 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 static double import_from = 0.0;
 static double import_until = 0.0;
 static int counted_queries = 0;
+
+// Every query below this index has been visited by an export, counted in
+// absolute terms (index + get_queries_removed()) so the garbage collector
+// removing queries from the front does not invalidate it. Guarded by the SHM
+// lock
+static unsigned int export_floor = 0;
+
+static unsigned int get_export_floor(void)
+{
+	// Both counters wrap at UINT_MAX, their difference does not. A floor the
+	// garbage collector has already removed comes out above the array
+	const unsigned int idx = export_floor - get_queries_removed();
+	return idx <= counters->queries ? idx : 0;
+}
+
 // Start transaction and count number of queries to be imported from disk.
 // We keep the transaction open so that no new queries are written to the disk
 // database until we have copied the data into the in-memory database in
@@ -784,6 +799,9 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 	// enlarges the queries object
 	counters->queries = counted_queries;
 	init_queries_shm_sz();
+	// The slots reserved for the import are already in the database, the
+	// export starts above them
+	export_floor = counted_queries + get_queries_removed();
 	// Unlock shared memory
 	unlock_shm();
 
@@ -1946,6 +1964,10 @@ bool queries_to_database(void)
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database due to privacy level settings");
+		// Queries recorded now must not be exported once the level drops
+		lock_shm();
+		export_floor = counters->queries + get_queries_removed();
+		unlock_shm();
 		return true;
 	}
 	if(counters->queries == 0)
@@ -1969,27 +1991,35 @@ bool queries_to_database(void)
 	// indirectly given by the first query older than 30 seconds - we do not
 	// expect replies to still arrive after 30 seconds - they are anyway
 	// useless as the client will have already timed out this particular
-	// query and retried or failed
+	// query and retried or failed. Queries no export has visited yet are
+	// always included, however old
 	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
-	unsigned int last_query = counters->queries - 1;
+	const unsigned int unvisited = get_export_floor();
+	// last_query ends up as the first query to export
+	unsigned int last_query = counters->queries;
 	while(last_query > 0)
 	{
-		queriesData *query = getQuery(last_query, true);
+		const unsigned int queryID = last_query - 1;
+		queriesData *query = getQuery(queryID, true);
+		// An import slot left empty because the database changed during
+		// the import
+		if(query == NULL && queryID < unvisited)
+			break;
 		if(query == NULL)
 		{
-			log_err("Memory error in queries_to_database() when trying to access query %u", last_query);
+			log_err("Memory error in queries_to_database() when trying to access query %u", queryID);
 			unlock_shm();
 			return false;
 		}
-		if(query->timestamp < limit_timestamp || query->flags.database.imported)
+		if((query->timestamp < limit_timestamp && queryID < unvisited) ||
+		   query->flags.database.imported)
 		{
 			// We found the first query older than our limit or
 			// queries that have been imported (we don't want to
 			// export them again)
-			last_query++;
 			break;
 		}
-		last_query--;
+		last_query = queryID;
 	}
 
 	// Skip early if no queries are to be stored (no queries immediately after start)
@@ -2386,6 +2416,10 @@ bool queries_to_database(void)
 		log_err("Could not store %u queries, they are queued for the next run",
 		        snap_count - succeeded);
 	}
+
+	// Advance the floor past everything visited, but not past a requeued query
+	export_floor = removed_before + (succeeded < snap_count ?
+	                                 snaps[succeeded].queryID : last_query + window);
 
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
