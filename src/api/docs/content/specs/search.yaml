@@ -17,7 +17,7 @@ components:
           Search for domains in Pi-hole's list. The specified domain is automatically converted to lowercase.
           The optional parameters `N` and `partial` limit the maximum number of returned records and whether partial matches should be returned, respectively.
           There is a hard upper limit of `N` defined in FTL (currently set to 10,000) to ensure that the response is not too large.
-          ABP matches are not returned when partial matching is requested.
+          ABP-style entries (`||domain^`) are matched against every parent domain of the search term, for partial and exact searches alike.
           International domains names (IDNs) are internally converted to punycode before matching.
         responses:
           '200':
