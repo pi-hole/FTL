@@ -1604,7 +1604,7 @@ setup() {
 
 @test "Invalid environmental variable is logged (validation failed)" {
   grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (invalid character 0x01 at position 0), using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 
@@ -1720,6 +1720,15 @@ setup() {
 }
 
 @test "Config validation working on the CLI (validator-based checking)" {
+  # URL paths reject what the webserver would see percent-decoded in some checks only
+  run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: not a valid URL path (invalid character 0x25 at position 3)'
+  assert_failure 3
+
+  run bash -c "./pihole-FTL --config webserver.paths.prefix '/pi+hole'"
+  assert_line --index 0 'Invalid value: webserver.paths.prefix: not a valid URL path (invalid character 0x2b at position 3)'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
   assert_failure 3
