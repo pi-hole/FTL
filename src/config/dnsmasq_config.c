@@ -896,7 +896,16 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
-			fprintf(pihole_conf, "dumpfile=%s\n", conf->files.pcap.v.s);
+			// Quoted and escaped: unquoted, '#' after a space starts a
+			// comment, and '"' and '\' are special to dnsmasq's parser
+			fputs("dumpfile=\"", pihole_conf);
+			for(const char *p = conf->files.pcap.v.s; *p != '\0'; p++)
+			{
+				if(*p == '"' || *p == '\\')
+					fputc('\\', pihole_conf);
+				fputc(*p, pihole_conf);
+			}
+			fputs("\"\n", pihole_conf);
 			fputs("\n", pihole_conf);
 		}
 		else

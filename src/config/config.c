@@ -1169,7 +1169,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.t = CONF_STRING;
 	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
-	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
+	conf->webserver.paths.webhome.c = validate_urlpath_two_slash;
 
 	conf->webserver.paths.prefix.k = "webserver.paths.prefix";
 	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
@@ -1177,7 +1177,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.prefix.t = CONF_STRING;
 	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.prefix.d.s = (char*)"";
-	conf->webserver.paths.prefix.c = validate_filepath_empty;
+	conf->webserver.paths.prefix.c = validate_urlpath_empty;
 
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
