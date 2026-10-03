@@ -37,6 +37,8 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// _Atomic
+#include <stdatomic.h>
 
 // Global variables
 struct config config = { 0 };
@@ -233,6 +235,28 @@ unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
 	// MAX_CONFIG_PATH_DEPTH
 	return MAX_CONFIG_PATH_DEPTH;
 
+}
+
+// Serializes every read-modify-write of the live config: whoever takes a copy
+// with duplicate_config() and installs it with replace_config() holds this
+// from before the copy until the result is written to disk, so a concurrent
+// change cannot be overwritten by an outdated copy. Taken before lock_shm().
+// The resolver, housekeeper and timer threads only try it and retry later
+static pthread_mutex_t config_write_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void lock_config(void)
+{
+	pthread_mutex_lock(&config_write_lock);
+}
+
+bool trylock_config(void)
+{
+	return pthread_mutex_trylock(&config_write_lock) == 0;
+}
+
+void unlock_config(void)
+{
+	pthread_mutex_unlock(&config_write_lock);
 }
 
 void duplicate_config(struct config *dst, struct config *src)
@@ -2095,6 +2119,7 @@ enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }
 
+// The caller holds lock_config()
 void set_blockingstatus(bool enabled)
 {
 	// If dnsmasq failed to start, we do not allow to change the blocking status
@@ -2169,14 +2194,32 @@ void replace_config(struct config *newconf)
 	unlock_shm();
 }
 
+// Set when reread_config() found a config change in progress and left the
+// reread to the housekeeper thread
+static _Atomic bool reread_deferred = false;
+
+bool reread_config_deferred(void)
+{
+	return reread_deferred;
+}
+
 void reread_config(void)
 {
+	// Never wait for the config lock here: this also runs in the resolver's
+	// main thread. The housekeeper thread retries until it gets the lock
+	if(!trylock_config())
+	{
+		reread_deferred = true;
+		return;
+	}
+	reread_deferred = false;
 
 	// Create checksum of config file
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!sha256sum(GLOBALTOMLPATH, checksum, false))
 	{
 		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2184,6 +2227,7 @@ void reread_config(void)
 	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
 	{
 		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2236,6 +2280,8 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	unlock_config();
 
 	// If we need to restart FTL, we do so now
 	if(restart)
