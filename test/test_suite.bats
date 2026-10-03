@@ -1771,6 +1771,10 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config -t database.DBinterval 0'
+  assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
+  assert_failure 3
+
   # webserver.api.maxHistory carries FLAG_RESTART_FTL, so check it with -t
   run bash -c './pihole-FTL --config -t webserver.api.maxHistory 86401'
   assert_line --index 0 'Invalid value: webserver.api.maxHistory: cannot be larger than 86400'
