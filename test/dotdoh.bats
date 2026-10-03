@@ -50,6 +50,22 @@ api_patch_dns() {  # $1 = JSON object for "dns", $2 = readiness log marker
   ./pihole-FTL wait-for "$2" /var/log/pihole/FTL.log 30 "$before"
 }
 
+# PATCH a dns config object without waiting for the restart it may trigger, for
+# callers that issue several changes and wait for the collected restart once.
+api_patch_dns_async() {  # $1 = JSON object for "dns"
+  curl -s -o /dev/null --max-time 10 -X PATCH "${FTL_URL}/api/config" \
+       -H "Content-Type: application/json" \
+       -d "{\"config\":{\"dns\":$1}}" || true
+}
+
+# PATCH a misc config object. Nothing under misc used here is RESTART_FTL, so
+# this takes effect live and needs no wait.
+api_patch_misc() {  # $1 = JSON object for "misc"
+  curl -s -o /dev/null --max-time 10 -X PATCH "${FTL_URL}/api/config" \
+       -H "Content-Type: application/json" \
+       -d "{\"config\":{\"misc\":$1}}" || true
+}
+
 ensure_shim() {
   if ! pgrep -f dotdoh_shim.py >/dev/null 2>&1; then
     python3 test/dotdoh_shim.py >"$SHIM_LOG" 2>&1 &
@@ -152,8 +168,25 @@ setup_file() {
 teardown_file() {
   # Restore the plaintext upstream. It arms no proxy, so wait instead for the
   # regex recompile that every (re)start logs to know FTL is back up.
-  api_patch_dns "{\"upstreamCA\":\"\",\"upstreams\":[\"127.0.0.1#5555\"]}" \
-                "deny regex for"
+  #
+  # Both keys are RESTART_FTL settings and we write them in two separate
+  # requests on purpose: with misc.restart_delay armed, FTL has to collect them
+  # into a single restart rather than racing two against each other, which is
+  # what setup_file avoids by batching them into one request.
+  api_patch_misc "{\"restart_delay\":2}"
+
+  local before restarts
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  api_patch_dns_async "{\"upstreamCA\":\"\"}"
+  api_patch_dns_async "{\"upstreams\":[\"127.0.0.1#5555\"]}"
+  ./pihole-FTL wait-for "deny regex for" /var/log/pihole/FTL.log 30 "$before"
+
+  restarts=$(tail -c "+$((before + 1))" /var/log/pihole/FTL.log | grep -c "Restarting FTL" || true)
+  [ "$restarts" -eq 1 ] || \
+    echo "expected 1 restart for the two changes, got $restarts" >&2
+  [ "$restarts" -eq 1 ]
+
+  api_patch_misc "{\"restart_delay\":1}"
 }
 
 @test "dotdoh-client: a malformed tls:// upstream is rejected by the validator" {
