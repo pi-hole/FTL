@@ -88,6 +88,21 @@ load 'bats_helper.bash'
   assert_line --index 0 "1"
 }
 
+@test "Flushing the logs keeps older history and the overTime window" {
+  # Runs after the ID 0 check above as the flush deletes the last 24 hours.
+  # Negative IDs stay below MAX(id) so the export of later queries is unaffected
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"INSERT INTO query_storage (id,timestamp,type,status,domain,client) VALUES (-10,$((now-5*86400)),1,2,0,0),(-11,$((now-3600)),1,2,0,0);\""
+  assert_success
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_line --index 0 "success"
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT group_concat(id) FROM query_storage WHERE id < 0;"'
+  assert_line --index 0 "-10"
+  # The overTime window still ends now and covers the past 24 hours
+  run bash -c "curl -s 127.0.0.1/api/history | jq '.history[0].timestamp < $((now-23*3600)) and .history[-1].timestamp < $((now+2*3600))'"
+  assert_line --index 0 "true"
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests

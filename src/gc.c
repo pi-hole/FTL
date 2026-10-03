@@ -559,8 +559,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Recycle old clients and domains
 	recycle();
 
-	// Determine if overTime memory needs to get moved
-	moveOverTimeMemory(mintime);
+	// Determine if overTime memory needs to get moved. A flush keeps the
+	// current window, the removed queries were already subtracted above
+	if(!flush)
+		moveOverTimeMemory(mintime);
 
 	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
