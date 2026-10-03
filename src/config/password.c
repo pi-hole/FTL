@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_NOFOLLOW
+#include <fcntl.h>
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
@@ -493,9 +495,15 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		free(salt);
 		free(config_hash);
 
-		// Successful logins do not count against rate-limiting
+		// Successful logins do not count against rate-limiting. Take the
+		// same lock the increment above uses - this is a read-modify-write
+		// on a variable that mutex otherwise protects
 		if(result)
+		{
+			pthread_mutex_lock(&rate_limit_lock);
 			num_password_attempts--;
+			pthread_mutex_unlock(&rate_limit_lock);
+		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -521,7 +529,9 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 			}
 
 			// Successful logins do not count against rate-limiting
+			pthread_mutex_lock(&rate_limit_lock);
 			num_password_attempts--;
+			pthread_mutex_unlock(&rate_limit_lock);
 		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
@@ -806,11 +816,17 @@ bool create_cli_password(void)
 		return false;
 	}
 
-	// Store the CLI password in the corresponding file
-	FILE *file = fopen(CLI_PW_FILE, "w");
+	// Create the file 0640 with open() rather than fopen("w") + a later
+	// chmod, which would leave the password world-readable until the chmod
+	// ran. Same pattern write_dnsmasq_config() and generate_certificate() use
+	const int fd = open(CLI_PW_FILE, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW,
+	                    S_IRUSR | S_IWUSR | S_IRGRP);
+	FILE *file = fd >= 0 ? fdopen(fd, "w") : NULL;
 	if(file == NULL)
 	{
 		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
+		if(fd >= 0)
+			close(fd);
 		free(cli_password);
 		cli_password = NULL;
 		return false;
@@ -826,17 +842,8 @@ bool create_cli_password(void)
 		return false;
 	}
 
-	// Close file
+	// Close file. It was created 0640 above, so no chmod is needed
 	fclose(file);
-
-	// Set file permissions to 0640
-	if(chmod(CLI_PW_FILE, S_IRUSR | S_IWUSR | S_IRGRP) < 0)
-	{
-		log_err("Failed to set permissions on CLI password file: %s", strerror(errno));
-		free(cli_password);
-		cli_password = NULL;
-		return false;
-	}
 
 	log_debug(DEBUG_API, "CLI password set and stored in file");
 	return true;
