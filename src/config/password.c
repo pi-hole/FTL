@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_CREAT and friends
+#include <fcntl.h>
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
@@ -22,6 +24,10 @@
 
 // writeFTLtoml()
 #include "config/toml_writer.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
+// lock_shm()
+#include "shmem.h"
 
 // crypto library
 #include <nettle/sha2.h>
@@ -51,6 +57,26 @@
 // the password file. Leaking the password after exit is not a concern as a new
 // password is generated on every start.
 #define CLI_PW_FILE PIHOLE_INSTALL_DIR "/cli_pw"
+
+// Cached content of CLUSTER_SECRET_FILE. Replaced from a webserver thread when
+// this node joins a cluster, while the cluster thread and the other webserver
+// threads are deriving keys from it
+static char *cluster_pw = NULL;
+static pthread_mutex_t cluster_pw_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Publish a secret that is ready to be used. Every assignment goes through here
+// so a reader never sees a pointer that is about to be freed
+static bool publish_cluster_secret(char *secret)
+{
+	pthread_mutex_lock(&cluster_pw_lock);
+	if(cluster_pw != NULL)
+		free(cluster_pw);
+	cluster_pw = secret;
+	const bool okay = cluster_pw != NULL;
+	pthread_mutex_unlock(&cluster_pw_lock);
+
+	return okay;
+}
 static char *cli_password = NULL;
 
 // Convert RAW data into hex representation
@@ -409,6 +435,46 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
+// Replace a stored SHA256^2 hash with a BALLOON one. Called from the login path
+// only, which holds no lock: this frees the string the cluster thread reads to
+// build the credential fingerprint, so it needs the one the API writers take
+static void upgrade_stored_password(const char *password)
+{
+	char *new_hash = create_password(password);
+	if(new_hash == NULL)
+		return;
+
+	log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+
+	// lock_shm(), not the sync lock. The string being freed and replaced is a
+	// live configuration value, and the thread that walks those to build the
+	// credential fingerprint (cluster_config_hash) holds lock_shm while it
+	// does - so the sync lock excluded the wrong thread and the use-after-free
+	// it was added for was still there. The sync lock is held too, because the
+	// two API writers take it around exactly this kind of change; taken in
+	// that order because a webserver thread holding lock_shm cannot wait on a
+	// lock the cluster thread holds while it waits for lock_shm
+	cluster_sync_lock();
+	lock_shm();
+	if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
+		free(config.webserver.api.pwhash.v.s);
+	config.webserver.api.pwhash.v.s = new_hash;
+	config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
+	unlock_shm();
+
+	// The stored hash really changed, and a cluster decides whose credentials
+	// are the newest by the stamp. Without moving it this node publishes a
+	// credential fingerprint nothing accounts for, has the upgrade pushed back
+	// off it by whichever peer ranks newer, and does it again at the next
+	// login - and only where the file took it, since a stamp for a hash that
+	// is not on disk is the same difference pointed the other way
+	const bool saved = config_write();
+	cluster_sync_unlock();
+
+	if(saved)
+		config_stamp_local_change();
+}
+
 enum password_result verify_login(const char *password)
 {
 	// Check if this is the CLI password
@@ -418,13 +484,18 @@ enum password_result verify_login(const char *password)
 			return CLIPASSWORD_CORRECT;
 	}
 
-	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
+	bool legacy = false;
+	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true, &legacy);
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
+
+	// ...and the rewrite here, where no lock is held yet
+	if(legacy)
+		upgrade_stored_password(password);
 
 	// Check if an application password is set and if it matches
 	if(pw == PASSWORD_INCORRECT &&
 	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
-	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, true, NULL) == PASSWORD_CORRECT)
 	{
 		log_debug(DEBUG_API, "App password correct");
 		return APPPASSWORD_CORRECT;
@@ -434,7 +505,13 @@ enum password_result verify_login(const char *password)
 	return pw;
 }
 
-enum password_result verify_password(const char *password, const char *pwhash, const bool rate_limiting)
+// legacy, where given, says the supplied password matched a stored SHA256^2
+// hash and that the caller should rewrite it. Never done here: `PATCH
+// /api/config` reaches this through set_and_check_password() while already
+// holding cluster_sync_lock(), and taking a non-recursive mutex twice wedges
+// the worker with the lock held - which is worse than the race it was for
+enum password_result verify_password(const char *password, const char *pwhash,
+                                     const bool rate_limiting, bool *legacy)
 {
 	// No password set
 	if(pwhash == NULL || pwhash[0] == '\0')
@@ -506,19 +583,14 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		const bool result = strcmp(pwhash, supplied) == 0;
 		free(supplied);
 
-		// Upgrade double-hashed password to BALLOON hash
+		// The hash is a legacy one, and rewriting it needs the lock the two
+		// API writers take - which one of this function's callers is already
+		// holding when it gets here. Reported to the caller instead, so the
+		// rewrite happens on the login path, which holds nothing
 		if(result)
 		{
-			char *new_hash = create_password(password);
-			if(new_hash != NULL)
-			{
-				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
-				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
-					free(config.webserver.api.pwhash.v.s);
-				config.webserver.api.pwhash.v.s = new_hash;
-				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-				writeFTLtoml(true, NULL);
-			}
+			if(legacy != NULL)
+				*legacy = true;
 
 			// Successful logins do not count against rate-limiting
 			num_password_attempts--;
@@ -712,7 +784,7 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	// already empty, or if the newly set password is the same as the old
 	// one
 	if((strlen(password) == 0 && strlen(config.webserver.api.pwhash.v.s) == 0) ||
-	   verify_password(password, config.webserver.api.pwhash.v.s, false) == PASSWORD_CORRECT)
+	   verify_password(password, config.webserver.api.pwhash.v.s, false, NULL) == PASSWORD_CORRECT)
 	{
 		log_debug(DEBUG_CONFIG, "Password unchanged, not updating");
 		return true;
@@ -722,7 +794,7 @@ bool set_and_check_password(struct conf_item *conf_item, const char *password)
 	char *pwhash = strlen(password) > 0 ? create_password(password) : strdup("");
 
 	// Verify that the password hash is valid or that no password is set
-	const enum password_result status = verify_password(password, pwhash, false);
+	const enum password_result status = verify_password(password, pwhash, false, NULL);
 	if(status != PASSWORD_CORRECT && status != NO_PASSWORD_SET)
 	{
 		free(pwhash);
@@ -777,7 +849,7 @@ bool generate_password(char **password, char **pwhash)
 	*pwhash = balloon_password(*password, salt, true);
 
 	// Verify that the password hash is valid
-	if(verify_password(*password, *pwhash, false) != PASSWORD_CORRECT)
+	if(verify_password(*password, *pwhash, false, NULL) != PASSWORD_CORRECT)
 	{
 		free(*password);
 		*password = NULL;
@@ -788,6 +860,154 @@ bool generate_password(char **password, char **pwhash)
 	}
 
 	return true;
+}
+
+// Read the cluster secret, creating it if this node does not have one yet. All
+// nodes of a cluster share the same secret, so the file is copied to the other
+// nodes once - there is nothing per-peer to manage
+// Replace the secret with one handed over by a node we are joining. The file is
+// rewritten rather than merged: a node belongs to one cluster
+bool adopt_cluster_secret(const char *secret)
+{
+	if(secret == NULL || strlen(secret) < CLUSTER_SECRET_MINLEN)
+		return false;
+
+	// Written and renamed, so a node reading it while we write never sees
+	// half a secret and the mode is right before it is in place
+	char tmpfile[sizeof(CLUSTER_SECRET_FILE) + 32] = "";
+	snprintf(tmpfile, sizeof(tmpfile), "%s.%u.tmp", CLUSTER_SECRET_FILE, (unsigned int)getpid());
+	unlink(tmpfile);
+
+	const int fd = open(tmpfile, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+	                    S_IRUSR | S_IWUSR | S_IRGRP);
+	if(fd < 0)
+	{
+		log_err("Failed to create %s: %s", tmpfile, strerror(errno));
+		return false;
+	}
+
+	FILE *file = fdopen(fd, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open %s for writing: %s", tmpfile, strerror(errno));
+		close(fd);
+		unlink(tmpfile);
+		return false;
+	}
+
+	const bool written = fputs(secret, file) != EOF;
+	const bool flushed = fflush(file) == 0 && fsync(fileno(file)) == 0;
+	if(fclose(file) != 0 || !written || !flushed)
+	{
+		log_err("Failed to write the cluster secret: %s", strerror(errno));
+		unlink(tmpfile);
+		return false;
+	}
+
+	if(rename(tmpfile, CLUSTER_SECRET_FILE) != 0)
+	{
+		log_err("Failed to install %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		unlink(tmpfile);
+		return false;
+	}
+
+	log_info("Adopted the cluster secret of the node this one is joining");
+
+	return publish_cluster_secret(strdup(secret));
+}
+
+bool create_cluster_secret(void)
+{
+	publish_cluster_secret(NULL);
+
+	// An existing secret is used as it is
+	FILE *file = fopen(CLUSTER_SECRET_FILE, "r");
+	if(file != NULL)
+	{
+		char buffer[256] = { 0 };
+		const bool okay = fgets(buffer, sizeof(buffer), file) != NULL;
+		fclose(file);
+
+		// Trailing newlines are what an editor adds, not part of the secret
+		size_t len = strlen(buffer);
+		while(len > 0 && (buffer[len - 1] == '\n' || buffer[len - 1] == '\r'))
+			buffer[--len] = '\0';
+
+		// Long enough to be worth deriving a key from. A shorter one would
+		// be taken at startup and then refused on every single request,
+		// with nothing saying why
+		if(okay && len >= CLUSTER_SECRET_MINLEN)
+			return publish_cluster_secret(strdup(buffer));
+
+		if(okay && len > 0)
+			log_warn("Cluster secret in %s is shorter than %d characters, replacing it",
+			         CLUSTER_SECRET_FILE, CLUSTER_SECRET_MINLEN);
+
+		// An empty or unreadable file would make the O_EXCL below fail
+		// forever, so it goes and a fresh secret takes its place
+		log_warn("Cluster secret file %s is unusable, replacing it", CLUSTER_SECRET_FILE);
+		if(unlink(CLUSTER_SECRET_FILE) < 0 && errno != ENOENT)
+		{
+			log_err("Failed to remove %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+			return false;
+		}
+	}
+
+	char *generated = NULL;
+	if(!generate_password(&generated, NULL))
+	{
+		log_err("Failed to generate a cluster secret");
+		return false;
+	}
+
+	// Created with its final permissions right away: FTL runs with umask(0),
+	// so a file opened by name would be world-readable until a later chmod,
+	// which is a window a local user can grab the secret in. O_EXCL because
+	// we only get here when the file does not exist
+	const int fd = open(CLUSTER_SECRET_FILE, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+	                    S_IRUSR | S_IWUSR | S_IRGRP);
+	if(fd < 0)
+	{
+		log_err("Failed to create %s: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		free(generated);
+		return false;
+	}
+
+	file = fdopen(fd, "w");
+	if(file == NULL)
+	{
+		log_err("Failed to open %s for writing: %s", CLUSTER_SECRET_FILE, strerror(errno));
+		close(fd);
+		free(generated);
+		return false;
+	}
+
+	// Both matter: a full disk shows up in either the write or the flush
+	const bool written = fputs(generated, file) != EOF;
+	if(fclose(file) != 0 || !written)
+	{
+		log_err("Failed to write the cluster secret: %s", strerror(errno));
+		unlink(CLUSTER_SECRET_FILE);
+		free(generated);
+		return false;
+	}
+
+	log_info("Generated a cluster secret in %s - copy this file to the other nodes",
+	         CLUSTER_SECRET_FILE);
+
+	return publish_cluster_secret(generated);
+}
+
+bool cluster_secret_copy(char *buf, const size_t buflen)
+{
+	pthread_mutex_lock(&cluster_pw_lock);
+	const size_t len = cluster_pw != NULL ? strlen(cluster_pw) : 0;
+	const bool usable = len >= CLUSTER_SECRET_MINLEN && len < buflen;
+	if(usable)
+		memcpy(buf, cluster_pw, len + 1);
+	pthread_mutex_unlock(&cluster_pw_lock);
+
+	return usable;
 }
 
 bool create_cli_password(void)

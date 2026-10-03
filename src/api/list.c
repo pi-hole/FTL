@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
 #include "webserver/http-common.h"
 #include "webserver/json_macros.h"
 #include "api.h"
@@ -680,6 +682,10 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_AddItemToObject(processed, "success", success);
 
+	// The caller holds the cluster's sync lock, see api_list(): these are the
+	// seven tables that travel between nodes, and an import that lands
+	// mid-batch would replace the rows already written
+
 	// One connection for the whole batch. Adding N items used to open and
 	// close a gravity connection twice per item, once for the item and once
 	// for its groups
@@ -1063,9 +1069,11 @@ static int api_list_remove(struct ftl_conn *api,
 		}
 	}
 
-	// From here on, we can assume the JSON payload is valid
+	// From here on, we can assume the JSON payload is valid. The caller holds
+	// the lock the cluster's import takes, as for the additions
 	unsigned int deleted = 0u;
-	if(gravityDB_delFromTable(listtype, array, &deleted, &sql_msg))
+	const bool removed = gravityDB_delFromTable(listtype, array, &deleted, &sql_msg);
+	if(removed)
 	{
 		// Inform the resolver that it needs to reload gravity
 		set_event(RELOAD_GRAVITY);
@@ -1248,9 +1256,12 @@ int api_list(struct ftl_conn *api)
 			char *reply_item = NULL;
 			cJSON *processed = NULL;
 
+			// Sync lock first, then shm, as every other writer does
+			cluster_sync_lock();
 			lock_shm();
 			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+			cluster_sync_unlock();
 
 			if(ret == 0)
 			{
@@ -1281,9 +1292,12 @@ int api_list(struct ftl_conn *api)
 			char *reply_item = NULL;
 			cJSON *processed = NULL;
 
+			// Sync lock first, then shm, as every other writer does
+			cluster_sync_lock();
 			lock_shm();
 			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+			cluster_sync_unlock();
 
 			if(ret == 0)
 			{
@@ -1297,9 +1311,11 @@ int api_list(struct ftl_conn *api)
 	else if(can_modify && (api->method == HTTP_DELETE || (api->method == HTTP_POST && batchDelete)))
 	{
 		// Delete item from list, under the lock: it writes
+		cluster_sync_lock();
 		lock_shm();
 		const int ret = api_list_remove(api, listtype, api->item);
 		unlock_shm();
+		cluster_sync_unlock();
 		return ret;
 	}
 	else if(!can_modify)

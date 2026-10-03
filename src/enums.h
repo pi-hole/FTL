@@ -160,6 +160,7 @@ enum debug_flag {
 	DEBUG_TIMING,
 	DEBUG_PERFORMANCE,
 	DEBUG_DOTDOH,
+	DEBUG_CLUSTER,
 	DEBUG_MAX
 } __attribute__ ((packed));
 
@@ -228,6 +229,7 @@ enum refresh_hostnames {
 enum api_auth_status {
 	API_AUTH_UNAUTHORIZED  = -1,
 	API_AUTH_EMPTYPASS  = -2,
+	API_AUTH_CLUSTER  = -3,
 } __attribute__ ((packed));
 
 enum db_result {
@@ -255,6 +257,7 @@ enum thread_types {
 	WEBSERVER,
 	DOTDOH,
 	DOTDOH_DOT,
+	CLUSTER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
