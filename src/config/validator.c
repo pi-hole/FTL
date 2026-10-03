@@ -874,6 +874,29 @@ bool validate_max_history(union conf_value *val, const char *key, char err[VALID
 	return true;
 }
 
+// Shared with the terminator, which decodes the secret at runtime
+bool proxy_secret_valid(const char *s)
+{
+	return strlen(s) == PROXY_SECRET_LEN &&
+	       strspn(s, "0123456789abcdefABCDEF") == PROXY_SECRET_LEN;
+}
+
+bool validate_proxy_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Empty disables the external proxy secret
+	if(val->s == NULL || val->s[0] == '\0')
+		return true;
+
+	if(!proxy_secret_valid(val->s))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be %u hexadecimal characters or empty",
+		         key, PROXY_SECRET_LEN);
+		return false;
+	}
+
+	return true;
+}
+
 // Sanitize the dns.hosts array
 // This function normalizes whitespace formatting in the dns.hosts entries
 // to ensure consistent formatting when saving to pihole.toml

@@ -303,9 +303,49 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
+def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
+    """Plaintext DoH request as a reverse proxy sends it: a PROXY v2 header
+    announcing client_ip over TLS, authenticated by the shared secret TLV. POST
+    carries the query as body, any other method as the GET "dns" parameter.
+    Returns (HTTP status, lowercased response headers, body)."""
+    secret = bytes.fromhex(secret_hex)
+    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    # PP2_TYPE_SSL (client=SSL, verify=0) and the secret in custom TLV 0xE0
+    tlvs = bytes([0x20, 0x00, 0x05, 0x01, 0, 0, 0, 0])
+    tlvs += bytes([0xE0]) + struct.pack("!H", len(secret)) + secret
+    body = addrs + tlvs
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    query = build_query(qname)
+    if method == "POST":
+        req = (b"POST /dns-query HTTP/1.1\r\nHost: pi.hole\r\n"
+               b"Content-Type: application/dns-message\r\n"
+               b"Content-Length: " + str(len(query)).encode() + b"\r\n"
+               b"Connection: close\r\n\r\n" + query)
+    else:
+        dns = base64.urlsafe_b64encode(query).rstrip(b"=")
+        req = (method.encode() + b" /dns-query?dns=" + dns + b" HTTP/1.1\r\n"
+               b"Host: pi.hole\r\nConnection: close\r\n\r\n")
+    with socket.create_connection((host, port), timeout=5) as s:
+        s.sendall(hdr + req)
+        resp = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            resp += chunk
+    head, _, payload = resp.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    status = lines[0].split(" ", 2)[1]
+    headers = {}
+    for line in lines[1:]:
+        name, _, value = line.partition(":")
+        headers[name.strip().lower()] = value.strip()
+    return status, headers, payload
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy|dohproxyget|dohproxymethod> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -351,6 +391,23 @@ def main():
         _, _, host, port, source, expected_pem = sys.argv[:6]
         dot_peercert(host, int(port), source, expected_pem)
         print("OK")
+    elif cmd in ("dohproxy", "dohproxyget"):
+        # dohproxyget also prints the Cache-Control header of the answer
+        _, _, host, port, domain, client_ip, secret_hex, expected_ip = sys.argv[:8]
+        method = "GET" if cmd == "dohproxyget" else "POST"
+        status, headers, answer = doh_proxy(host, int(port), domain, client_ip, secret_hex, method)
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
+        if cmd == "dohproxyget":
+            print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd == "dohproxymethod":
+        # Status, Allow header and body length of a request with any method
+        _, _, host, port, method, domain, client_ip, secret_hex = sys.argv[:9]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, secret_hex, method)
+        print("HTTP %s allow=%s body=%d" % (status, headers.get("allow", ""), len(body)))
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]
         doh3(host, int(port), domain, expected_ip)
