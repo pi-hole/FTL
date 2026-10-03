@@ -1264,7 +1264,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.cli_pw.c = validate_stub; // Only type-based checking
 
 	conf->webserver.api.excludeClients.k = "webserver.api.excludeClients";
-	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
+	conf->webserver.api.excludeClients.h = "Array of clients to be excluded from certain API responses (regex):\n - Query Log (/api/queries)\n - Top Clients (/api/stats/top_clients)\n - Client activity (/api/history/clients)\n This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.\n Note that backslashes \"\\\" need to be escaped, i.e. \"\\\\\" in this setting\n\n Example: [ \"^192\\\\.168\\\\.2\\\\.56$\", \"^fe80::341:[0-9a-f]*$\", \"^localhost$\" ]";
 	conf->webserver.api.excludeClients.a = cJSON_CreateStringReference("An array of regular expressions describing clients");
 	conf->webserver.api.excludeClients.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.api.excludeClients.d.json = cJSON_CreateArray();

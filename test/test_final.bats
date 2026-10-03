@@ -42,6 +42,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
+  # pytest: 2x pihole.toml writes (history/clients exclude filter set + reset)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
@@ -51,7 +52,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "33" ]]
+    [[ ${lines[0]} == "35" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
