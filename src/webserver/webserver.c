@@ -32,9 +32,6 @@
 // DNS_MSG_MAX
 #include "dotdoh/framing.h"
 
-// Upper bound on the base64url "dns" value of a plaintext DoH GET, matching the
-// terminator's native path.
-#define DOH_GET_B64_MAX 8192
 // allocate_lua(), free_lua(), init_lua(), request_handler()
 #include "webserver/lua_web.h"
 // log_certificate_domain_mismatch()

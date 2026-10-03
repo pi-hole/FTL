@@ -112,9 +112,6 @@ static void proxy_token_hex(const unsigned char tok[PROXY_TOKEN_LEN], char *out)
 
 // Bidirectional relay buffer size (per direction, per iteration).
 #define RELAY_BUF 16384u
-// Upper bound on the base64url "dns" value of a native DoH GET (ample for a real
-// query, which encodes to a few hundred bytes).
-#define DOH_GET_B64_MAX 8192
 // Socket send/receive timeout so a stuck peer cannot pin a handler thread.
 #define IO_TIMEOUT_SEC 30
 // Cap on concurrent handler threads so a connection flood on the public TLS port
