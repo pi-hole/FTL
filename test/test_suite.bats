@@ -1663,6 +1663,12 @@ setup() {
   assert_failure 2
 }
 
+@test "An empty files.database is rejected" {
+  run bash -c './pihole-FTL --config files.database ""'
+  assert_output --partial 'files.database: must not be empty'
+  assert_failure 3
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {

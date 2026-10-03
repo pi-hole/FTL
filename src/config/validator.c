@@ -315,9 +315,17 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	return true;
 }
 
-// Validate file path
+// Validate file path (empty rejected)
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
+	// An empty path does not name a file. SQLite would even open it as a
+	// private temporary database and lose everything written to it
+	if(strlen(val->s) == 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must not be empty", key);
+		return false;
+	}
+
 	// Check if the path contains only valid characters
 	for(unsigned int i = 0; i < strlen(val->s); i++)
 	{
