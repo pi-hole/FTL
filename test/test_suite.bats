@@ -2151,6 +2151,7 @@ except socket.timeout:
 @test "PTR stale-response regression harness" {
   run ./ptr_response_regression
   assert_success
+  assert_output --partial "HOSTNAME_WARNING_POSITION=PASS"
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
 }
 
