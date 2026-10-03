@@ -39,6 +39,8 @@
 #include <pthread.h>
 // sleepms()
 #include "timers.h"
+// main_pid()
+#include "signals.h"
 
 // Prefix of interface names in the client table
 #define INTERFACE_SEP ":"
@@ -91,6 +93,9 @@ static sqlite3 *gravity_db = NULL;
 // worker's active statement, leading to use-after-free and random SIGSEGV.
 static _Thread_local sqlite3_stmt* table_stmt = NULL;
 bool gravityDB_opened = false;
+// List generation (counters->regex_change) a forked TCP worker's connection
+// was opened at
+static unsigned int gravity_generation = 0;
 static bool gravity_abp_format = false;
 static bool gravity_has_antigravity = false;
 static bool gravity_has_exact_allowlist = false;
@@ -279,7 +284,8 @@ void gravityDB_forked(void)
 	last_ptr_allowlist = NULL;
 	last_ptr_denylist = NULL;
 
-	// Open the database
+	// Open the database, remembering the list generation it reflects
+	gravity_generation = counters->regex_change;
 	gravityDB_open();
 }
 
@@ -557,6 +563,17 @@ bool gravityDB_reopen(void)
 // the log from a path that used to say nothing at all
 static bool gravity_ensure_open(void)
 {
+	// A forked TCP worker opens its connection, and computes the
+	// gravity_has_* flags, once at fork time and may live for minutes.
+	// Reopen when the main process has reloaded the lists since
+	if(gravityDB_opened && main_pid() != getpid() &&
+	   gravity_generation != counters->regex_change)
+	{
+		log_debug(DEBUG_DATABASE, "Reopening gravity database after a list reload");
+		gravity_generation = counters->regex_change;
+		gravityDB_reopen();
+	}
+
 	if(gravityDB_opened)
 		return true;
 
@@ -606,7 +623,9 @@ static const char *show_client_string(const char *hwaddr, const char *hostname,
 }
 
 // Get associated groups for this client (if defined)
-static bool get_client_groupids(clientsData *client)
+// ftl_db is an open pihole-FTL.db handle to use for the network table
+// lookups, or NULL to have each lookup open its own
+static bool get_client_groupids(clientsData *client, sqlite3 *ftl_db)
 {
 	const char *ip = getstr(client->ippos);
 	client->flags.found_group = false;
@@ -698,17 +717,31 @@ static bool get_client_groupids(clientsData *client)
 
 	// If we didn't find an IP address match above, try with MAC address matches
 	// 1. Look up MAC address of this client
-	//   1.1. Look up IP address in network_addresses table
-	//   1.2. Get MAC address from this network_id
+	//   1.1. Use the MAC known in-memory (kernel neighbor cache, EDNS(0) or
+	//        the last neighbor cache parse) if there is one
+	//   1.2. Otherwise look up the IP address in the network_addresses
+	//        table and get the MAC address from this network_id
 	// 2. If found -> Get groups by looking up MAC address in client table
 	char hwaddr[MAXMACLEN] = { 0 };
 	bool got_hwaddr = false;
-	if(chosen_match_id < 0 && config.resolver.macNames.v.b)
+	if(chosen_match_id < 0 && config.resolver.macNames.v.b && client->hwlen == 6)
+	{
+		// The in-memory MAC is updated as soon as a new one is seen, the
+		// network_addresses table only when the neighbor cache parse that
+		// saw it commits, so it is the fresher of the two
+		snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
+		         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
+		         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
+		got_hwaddr = true;
+
+		log_debug(DEBUG_CLIENTS, "--> Obtained %s from internal ARP cache", hwaddr);
+	}
+	else if(chosen_match_id < 0 && config.resolver.macNames.v.b)
 	{
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		got_hwaddr = getMACfromIP(NULL, hwaddr, ip);
+		got_hwaddr = getMACfromIP(ftl_db, hwaddr, ip);
 
 		if(!got_hwaddr)
 		{
@@ -722,8 +755,9 @@ static bool get_client_groupids(clientsData *client)
 			got_hwaddr = false;
 		}
 
-		// Set MAC address from database information if available and the MAC address is not already set
-		else if(client->hwlen != 6)
+		// Set MAC address from database information as no MAC address is
+		// known in-memory so far
+		else
 		{
 			// Proper MAC parsing
 			unsigned char data[6];
@@ -737,23 +771,6 @@ static bool get_client_groupids(clientsData *client)
 				memcpy(client->hwaddr, data, sizeof(data));
 				client->hwlen = sizeof(data);
 			}
-		}
-
-		// MAC address fallback: Try to synthesize MAC address from internal buffer
-		if(!got_hwaddr && client->hwlen == 6)
-		{
-			snprintf(hwaddr, sizeof(hwaddr), "%02X:%02X:%02X:%02X:%02X:%02X",
-			         client->hwaddr[0], client->hwaddr[1], client->hwaddr[2],
-			         client->hwaddr[3], client->hwaddr[4], client->hwaddr[5]);
-
-			// Mark the MAC as obtained so the gravity client table is
-			// actually queried for it below. Without this, the synthesized
-			// address is logged but never used, and a client whose new IP
-			// is not yet in the network_addresses table falls back to the
-			// default group despite its MAC being known in-memory (#2912).
-			got_hwaddr = true;
-
-			log_debug(DEBUG_CLIENTS, "--> Obtained %s from internal ARP cache", hwaddr);
 		}
 	}
 
@@ -840,7 +857,7 @@ static bool get_client_groupids(clientsData *client)
 			// from imported history (no live query yet, so no name)
 			log_debug(DEBUG_CLIENTS, "Querying gravity database for host name of %s...", ip);
 
-			got_name = getNameFromIP(NULL, hostname, ip);
+			got_name = getNameFromIP(ftl_db, hostname, ip);
 			if(!got_name)
 				log_debug(DEBUG_CLIENTS, "--> No result.");
 
@@ -935,7 +952,7 @@ static bool get_client_groupids(clientsData *client)
 			// from imported history (no live query yet, so no interface)
 			log_debug(DEBUG_CLIENTS, "Querying gravity database for interface of %s...", ip);
 
-			got_iface = getIfaceFromIP(NULL, interface, ip);
+			got_iface = getIfaceFromIP(ftl_db, interface, ip);
 
 			if(!got_iface)
 				log_debug(DEBUG_CLIENTS, "--> No result.");
@@ -1183,20 +1200,26 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Get associated groups for this client (if defined)
 	if(!client->flags.found_group)
 	{
-		if(!get_client_groupids(client))
+		const size_t old_groupspos = client->groupspos;
+		if(!get_client_groupids(client, NULL))
 			return false;
+
+		// Decisions cached for this client were taken with its previous
+		// groups. addintarray() deduplicates, so an unchanged group set
+		// keeps its position
+		if(client->groupspos != old_groupspos)
+			FTL_reset_client_domain_data(client->id);
 
 		// The client's groups were just (re-)resolved. The per-client
 		// regex enable/disable state is cached separately (match_regex()
 		// reads a cached row) and must be rebuilt for the new groups,
 		// otherwise regex allow/deny decisions would keep using the
 		// previous groups after an identity change cleared found_group.
-		// This runs on the DNS query thread and, in check_domain_blocked(),
-		// before the in_regex() checks (in_denylist()/in_allowlist() call
-		// this first). It does not recurse: found_group is set now, so
-		// gravityDB_get_regex_client_groups() will not re-enter
-		// get_client_groupids().
-		reload_per_client_regex(client);
+		// FTL_check_blocking() calls this via gravityDB_ensure_client_groups()
+		// before any list or regex lookup. It does not recurse: found_group
+		// is set now, so gravityDB_get_regex_client_groups() will not
+		// re-enter get_client_groupids().
+		reload_per_client_regex(client, NULL);
 	}
 
 	return true;
@@ -1219,12 +1242,17 @@ void gravityDB_close(void)
 	if(!gravityDB_opened)
 		return;
 
-	// Finalize prepared list statements for all clients
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	// Finalize prepared list statements for all clients. The client data
+	// lives in shared memory and is owned by the main process, a forked
+	// TCP worker closing its private connection leaves it untouched
+	if(main_pid() == getpid())
 	{
-		clientsData *client = getClient(clientID, true);
-		if(client != NULL)
-			gravityDB_finalize_client_statements(client);
+		for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+		{
+			clientsData *client = getClient(clientID, true);
+			if(client != NULL)
+				gravityDB_finalize_client_statements(client);
+		}
 	}
 
 	// Reset carray bind cache (statements are about to be finalized)
@@ -1534,6 +1562,17 @@ void gravityDB_reload_groups(clientsData *client)
 	// get_client_groupids() and reload_per_client_regex() for the
 	// (possibly different) group set.
 	gravityDB_finalize_client_statements(client);
+	gravityDB_prepare_client_statements(client);
+}
+
+// Re-resolve the client's groups if an identity change cleared found_group.
+// in_allowlist() and in_denylist() return early when their list is empty, so
+// this must run before the regex checks, which read the per-client regex row
+void gravityDB_ensure_client_groups(clientsData *client)
+{
+	if(client->flags.found_group || !gravity_ensure_open())
+		return;
+
 	gravityDB_prepare_client_statements(client);
 }
 
@@ -1880,11 +1919,11 @@ void gravityDB_dump_perf_stats(void)
 }
 
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
-                                       const unsigned char type, const char* table)
+                                       const unsigned char type, const char* table, sqlite3 *ftl_db)
 {
 	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);
 
-	if(!client->flags.found_group && !get_client_groupids(client))
+	if(!client->flags.found_group && !get_client_groupids(client, ftl_db))
 		return false;
 
 	// Select the appropriate shared statement for this regex type
@@ -2044,7 +2083,7 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	{	// Create new or replace existing entry, no error if existing
 		// We UPSERT here to avoid violating FOREIGN KEY constraints
 		if(listtype == GRAVITY_GROUPS)
-			if(row->name == NULL)
+			if(row->name == NULL || strcmp(row->name, row->item) == 0)
 			{
 				// Name is not to be changed
 				querystr = "INSERT INTO \"group\" (name,enabled,description) VALUES (:item,:enabled,:comment) "
@@ -2064,7 +2103,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 			querystr = "INSERT INTO client (ip,comment) VALUES (:item,:comment) "\
 			           "ON CONFLICT(ip) DO UPDATE SET comment = :comment;";
 		else // domainlist
-			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,:oldtype,:enabled,:comment) "\
+			// The row is inserted at the type named in the URI unless
+			// the request points at an existing row of another type,
+			// which the conflict clause then moves to the URI type
+			querystr = "INSERT INTO domainlist (domain,type,enabled,comment) VALUES (:item,"\
+			           "CASE WHEN EXISTS (SELECT 1 FROM domainlist WHERE domain = :item AND type = :oldtype) THEN :oldtype ELSE :type END,"\
+			           ":enabled,:comment) "\
 			           "ON CONFLICT(domain,type) DO UPDATE SET type = :type, enabled = :enabled, comment = :comment;";
 	}
 
@@ -2199,8 +2243,12 @@ static bool addToTable(sqlite3 *db, const enum gravity_list_type listtype, table
 	bool okay = false;
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 	{
-		// Domain added/modified
-		okay = true;
+		// A rename updates the group named in the URI, so a statement
+		// that changed no row found no such group
+		if(name_idx > 0 && sqlite3_changes(db) == 0)
+			*message = "Group not found";
+		else
+			okay = true;
 	}
 	else
 	{

@@ -19,6 +19,8 @@
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
+// PRIu64
+#include <inttypes.h>
 
 #if 0
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
@@ -271,13 +273,20 @@ int api_queries(struct ftl_conn *api)
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
-		// Minimum structure is
-		// {"queries":[], "cursor": null}
+		// Same keys as the regular reply below, with nothing to show:
+		// there are no queries available, send NULL cursor and zero counts
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *queries = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
-		// There are no more queries available, send NULL cursor
 		JSON_ADD_NULL_TO_OBJECT(json, "cursor");
+		JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", 0);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", 0);
+		int draw = 0;
+		if(api->request->query_string != NULL)
+			get_int_var(api->request->query_string, "draw", &draw);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "draw", draw);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", 0.0);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp_disk", 0.0);
 		JSON_SEND_OBJECT(json);
 	}
 
@@ -308,7 +317,7 @@ int api_queries(struct ftl_conn *api)
 	// We start with the most recent query at the beginning (until the cursor is changed)
 	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
 	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
-	unsigned long cursor = (unsigned long)largest_db_index;
+	uint64_t cursor = (uint64_t)largest_db_index;
 
 	// We send 100 queries (unless the API is asked for a different limit)
 	int length = 100;
@@ -429,7 +438,7 @@ int api_queries(struct ftl_conn *api)
 			// Do not start at the most recent, but at an older
 			// query (so new queries do not show up suddenly in the
 			// log and shift pages)
-			if(unum <= (unsigned long)largest_db_index && msg == NULL)
+			if(unum <= (uint64_t)largest_db_index && msg == NULL)
 			{
 				cursor = unum;
 				cursor_set = true;
@@ -448,9 +457,15 @@ int api_queries(struct ftl_conn *api)
 			}
 		}
 
-		// Query type filtering?
+		// Query type filtering? Unmapped types are stored as 100 + the
+		// DNS type, so OTHER matches everything at or above 100
 		if(GET_STR("type", typename, api->request->query_string) > 0)
-			add_querystr_string(api, querystr, "q.type=", ":type", &where);
+		{
+			if(strcasecmp(typename, "OTHER") == 0)
+				add_querystr_string(api, querystr, "q.type>=", ":type", &where);
+			else
+				add_querystr_string(api, querystr, "q.type=", ":type", &where);
+		}
 
 		// Query status filtering?
 		if(GET_STR("status", statusname, api->request->query_string) > 0)
@@ -712,11 +727,24 @@ int api_queries(struct ftl_conn *api)
 				if(strcasecmp(typename, get_query_type_str(type, NULL, NULL)) == 0)
 					break;
 			}
-			if(type < TYPE_MAX)
+			// Stored value to bind: the enum value for a mapped type, 100
+			// for OTHER (q.type>=100), 100 + nnn for TYPEnnn
+			int type_val = -1;
+			char *endptr = NULL;
+			unsigned long nnn = 0;
+			if(type == TYPE_OTHER)
+				type_val = 100;
+			else if(type < TYPE_MAX)
+				type_val = type;
+			else if(strncasecmp(typename, "TYPE", 4) == 0 && isdigit((unsigned char)typename[4]) &&
+			        (nnn = strtoul(typename + 4, &endptr, 10)) <= UINT16_MAX &&
+			        *endptr == '\0')
+				type_val = 100 + nnn;
+			if(type_val >= 0)
 			{
-				log_web_debug(DEBUG_API, "adding :type = %d to query", type);
+				log_web_debug(DEBUG_API, "adding :type = %d to query", type_val);
 				filtering = true;
-				rc = sqlite3_bind_int(read_stmt, idx, type);
+				rc = sqlite3_bind_int(read_stmt, idx, type_val);
 				if(rc != SQLITE_OK)
 				{
 					ret = send_json_error(api, 500,
@@ -834,7 +862,7 @@ int api_queries(struct ftl_conn *api)
 		idx = sqlite3_bind_parameter_index(read_stmt, ":cursor");
 		if(idx > 0)
 		{
-			log_web_debug(DEBUG_API, "adding :cursor = %lu to query", cursor);
+			log_web_debug(DEBUG_API, "adding :cursor = %"PRIu64" to query", cursor);
 			// Do not set filtering as the cursor is not a filter
 			rc = sqlite3_bind_int64(read_stmt, idx, cursor);
 			if(rc != SQLITE_OK)
@@ -878,7 +906,7 @@ int api_queries(struct ftl_conn *api)
 
 	// Debug logging
 	log_web_debug(DEBUG_API, "SQL: %s", querystr);
-	log_web_debug(DEBUG_API, "  with cursor: %lu, start: %u, length: %d", cursor, start, length);
+	log_web_debug(DEBUG_API, "  with cursor: %"PRIu64", start: %u, length: %d", cursor, start, length);
 
 	cJSON *queries = JSON_NEW_ARRAY();
 	unsigned int added = 0, recordsCounted = 0, regex_skipped = 0;
@@ -1019,7 +1047,15 @@ int api_queries(struct ftl_conn *api)
 		char buffer[20] = { 0 };
 		JSON_ADD_NUMBER_TO_OBJECT(item, "id", sqlite3_column_int64(read_stmt, 0)); // q.id);
 		JSON_ADD_NUMBER_TO_OBJECT(item, "time", sqlite3_column_double(read_stmt, 1)); // timestamp
-		query.type = sqlite3_column_int(read_stmt, 2); // type
+		// Unmapped query types are stored as 100 + the DNS type
+		const int type = sqlite3_column_int(read_stmt, 2); // type
+		if(type >= 100)
+		{
+			query.type = TYPE_OTHER;
+			query.qtype = type - 100;
+		}
+		else
+			query.type = type;
 		query.status = sqlite3_column_int(read_stmt, 3); // status
 		query.reply = sqlite3_column_int(read_stmt, 7); // reply_type
 		query.dnssec = sqlite3_column_int(read_stmt, 9); // dnssec
@@ -1112,7 +1148,7 @@ int api_queries(struct ftl_conn *api)
 	{
 		// Repeat cursor received in the request. This ensures we get a
 		// static result by skipping any newer queries.
-		log_web_debug(DEBUG_API, "Sending cursor %lu", cursor);
+		log_web_debug(DEBUG_API, "Sending cursor %"PRIu64, cursor);
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", cursor);
 	}
 	else

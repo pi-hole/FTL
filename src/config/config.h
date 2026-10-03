@@ -112,7 +112,6 @@ enum conf_type {
 // through the API nor the CLI. For the switch that locks the configuration
 // itself: letting either of them change it would defeat the lock.
 #define FLAG_API_CLI_READ_ONLY     (1 << 6)
-#define FLAG_FTL_LOG               (1 << 7)
 // As above, but the CLI may still set it. For options that hand code to
 // something Pi-hole then runs: configuring those needs access to the host, which
 // everyone with a legitimate use for them already has, and a web session on its

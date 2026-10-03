@@ -77,6 +77,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 // Struct to store the data we want to process
 struct upload_data {
 	bool too_large;
+	bool invalid_import;
 	char *sid;
 	cJSON *import;
 	uint8_t *data;
@@ -194,6 +195,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		if(json == NULL)
 		{
 			log_web(LOG_ERR, "Unable to parse JSON data in API request, error at: %.20s", json_error);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -202,6 +204,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		{
 			log_web(LOG_ERR, "JSON data in API request is not an object");
 			cJSON_Delete(json);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -295,6 +298,17 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid form request",
+		                       NULL);
+	}
+
+	// A rejected import field aborts the form parsing, nothing received
+	// with it may be imported
+	if(data.invalid_import)
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid import JSON",
 		                       NULL);
 	}
 
