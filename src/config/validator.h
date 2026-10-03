@@ -31,6 +31,7 @@ void resolve_config_paths(struct config *conf);
 bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_regex_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_dns_fastRetry(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 void sanitize_dns_hosts(union conf_value *val);
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
