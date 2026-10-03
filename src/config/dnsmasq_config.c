@@ -311,6 +311,20 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
+// dnsmasq creates the PCAP file with its header, but refuses an existing file
+// without one. Check that the path is writable without leaving an empty file
+// behind, and remove an empty one, which is no PCAP file. A named pipe stays.
+static bool pcap_writeable(const char *path)
+{
+	struct stat st;
+	const bool existed = stat(path, &st) == 0;
+	if(!file_writeable(path))
+		return false;
+	if(!existed || (S_ISREG(st.st_mode) && st.st_size == 0))
+		unlink(path);
+	return true;
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
@@ -927,7 +941,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Add option for PCAP file recording
 	if(strlen(conf->files.pcap.v.s) > 0)
 	{
-		if(file_writeable(conf->files.pcap.v.s))
+		if(pcap_writeable(conf->files.pcap.v.s))
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
