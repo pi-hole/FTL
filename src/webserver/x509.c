@@ -360,13 +360,16 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	const int days = validity_days > 0 ? (int)validity_days : 30 * 365;
 
 	// Distinguished names: CA is "CN=pi.hole,O=Pi-hole,C=DE", the server
-	// certificate uses the (optionally custom) domain as its CN.
+	// certificate uses the (optionally custom) domain as its CN. A CN is
+	// limited to 64 characters (ub-common-name), so a longer domain uses
+	// pi.hole instead; clients match the full domain through the SAN below.
+	const char *server_cn = strlen(domain) <= ub_common_name ? domain : "pi.hole";
 	ca_name = X509_NAME_new();
 	server_name = X509_NAME_new();
 	if(ca_name == NULL || server_name == NULL)
 		goto cleanup;
 	if(!set_name(ca_name, PIHOLE_ISSUER_CN, PIHOLE_ISSUER_O, PIHOLE_ISSUER_C) ||
-	   !set_name(server_name, domain, NULL, NULL))
+	   !set_name(server_name, server_cn, NULL, NULL))
 		goto cleanup;
 
 	// 1. Create self-signed CA certificate

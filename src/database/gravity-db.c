@@ -608,7 +608,9 @@ static const char *show_client_string(const char *hwaddr, const char *hostname,
 }
 
 // Get associated groups for this client (if defined)
-static bool get_client_groupids(clientsData *client)
+// ftl_db is an open pihole-FTL.db handle to use for the network table
+// lookups, or NULL to have each lookup open its own
+static bool get_client_groupids(clientsData *client, sqlite3 *ftl_db)
 {
 	const char *ip = getstr(client->ippos);
 	client->flags.found_group = false;
@@ -710,7 +712,7 @@ static bool get_client_groupids(clientsData *client)
 		log_debug(DEBUG_CLIENTS, "Querying gravity database for MAC address of %s...", ip);
 
 		// Do the lookup
-		got_hwaddr = getMACfromIP(NULL, hwaddr, ip);
+		got_hwaddr = getMACfromIP(ftl_db, hwaddr, ip);
 
 		if(!got_hwaddr)
 		{
@@ -842,7 +844,7 @@ static bool get_client_groupids(clientsData *client)
 			// from imported history (no live query yet, so no name)
 			log_debug(DEBUG_CLIENTS, "Querying gravity database for host name of %s...", ip);
 
-			got_name = getNameFromIP(NULL, hostname, ip);
+			got_name = getNameFromIP(ftl_db, hostname, ip);
 			if(!got_name)
 				log_debug(DEBUG_CLIENTS, "--> No result.");
 
@@ -937,7 +939,7 @@ static bool get_client_groupids(clientsData *client)
 			// from imported history (no live query yet, so no interface)
 			log_debug(DEBUG_CLIENTS, "Querying gravity database for interface of %s...", ip);
 
-			got_iface = getIfaceFromIP(NULL, interface, ip);
+			got_iface = getIfaceFromIP(ftl_db, interface, ip);
 
 			if(!got_iface)
 				log_debug(DEBUG_CLIENTS, "--> No result.");
@@ -1185,7 +1187,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	// Get associated groups for this client (if defined)
 	if(!client->flags.found_group)
 	{
-		if(!get_client_groupids(client))
+		if(!get_client_groupids(client, NULL))
 			return false;
 
 		// The client's groups were just (re-)resolved. The per-client
@@ -1198,7 +1200,7 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		// this first). It does not recurse: found_group is set now, so
 		// gravityDB_get_regex_client_groups() will not re-enter
 		// get_client_groupids().
-		reload_per_client_regex(client);
+		reload_per_client_regex(client, NULL);
 	}
 
 	return true;
@@ -1887,11 +1889,11 @@ void gravityDB_dump_perf_stats(void)
 }
 
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
-                                       const unsigned char type, const char* table)
+                                       const unsigned char type, const char* table, sqlite3 *ftl_db)
 {
 	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);
 
-	if(!client->flags.found_group && !get_client_groupids(client))
+	if(!client->flags.found_group && !get_client_groupids(client, ftl_db))
 		return false;
 
 	// Select the appropriate shared statement for this regex type

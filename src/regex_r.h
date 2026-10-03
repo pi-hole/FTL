@@ -49,7 +49,7 @@ bool compile_regex(const char *regexin, regexData *regex, char **message);
 unsigned int get_num_regex(const enum regex_type regexid) __attribute__((pure));
 bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, const enum regex_type regexid);
 void allocate_regex_client_enabled(clientsData *client, const int clientID);
-void reload_per_client_regex(clientsData *client);
+void reload_per_client_regex(clientsData *client, sqlite3 *ftl_db);
 void read_regex_from_database(void);
 bool regex_get_redirect(const int regexID, struct in_addr *addr4, struct in6_addr *addr6);
 void free_regex(void);

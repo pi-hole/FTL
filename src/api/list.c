@@ -494,6 +494,48 @@ static int api_list_write(struct ftl_conn *api,
 		}
 	}
 
+	// A group rename echoes the new name in the Location response header,
+	// so it is held to the same newline rule as the items below
+	if(row.name != NULL && strpbrk(row.name, "\r\n") != NULL)
+	{
+		if(allocated_json)
+			cJSON_Delete(row.items);
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "bad_request",
+		                       "Newlines and carriage returns are not allowed in any input",
+		                       row.name);
+	}
+
+	// "groups" replaces every group link of the items written, so anything
+	// but an array of group IDs would only delete the existing links
+	cJSON *json_groups = NULL;
+	if(listtype != GRAVITY_GROUPS)
+	{
+		json_groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
+		bool groups_okay = json_groups == NULL || cJSON_IsArray(json_groups);
+		cJSON *gid = NULL;
+		if(groups_okay)
+		{
+			cJSON_ArrayForEach(gid, json_groups)
+			{
+				if(!cJSON_IsNumber(gid))
+				{
+					groups_okay = false;
+					break;
+				}
+			}
+		}
+		if(!groups_okay)
+		{
+			if(allocated_json)
+				cJSON_Delete(row.items);
+			return send_json_error(api, 400, // 400 Bad Request
+			                       "bad_request",
+			                       "Invalid request: \"groups\" must be an array of group IDs",
+			                       NULL);
+		}
+	}
+
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
@@ -714,13 +756,19 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
+
+		// Each item gets its own savepoint inside the batch transaction so
+		// that an item reported as failed leaves nothing behind, not even
+		// the row written before its group links failed
+		const bool item_savepoint = in_transaction && sqlite3_get_autocommit(db) == 0 &&
+		                            sqlite3_exec(db, "SAVEPOINT item;", NULL, NULL, NULL) == SQLITE_OK;
+
 		if((okay = gravityDB_addToTable(db, listtype, &row, &sql_msg, api->method)))
 		{
 			if(listtype != GRAVITY_GROUPS)
 			{
-				cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
-				if(groups != NULL)
-					okay = gravityDB_edit_groups(db, listtype, groups, &row, &sql_msg);
+				if(json_groups != NULL)
+					okay = gravityDB_edit_groups(db, listtype, json_groups, &row, &sql_msg);
 				else
 					// The groups array is optional, we still succeed if it
 					// is omitted (groups stay as they are)
@@ -731,6 +779,15 @@ static int api_list_write(struct ftl_conn *api,
 				// Groups cannot be assigned to groups
 				okay = true;
 			}
+		}
+
+		// The savepoint is gone if SQLite has ended the transaction by
+		// itself, the commit below reports that case
+		if(item_savepoint && sqlite3_get_autocommit(db) == 0)
+		{
+			if(!okay)
+				sqlite3_exec(db, "ROLLBACK TO item;", NULL, NULL, NULL);
+			sqlite3_exec(db, "RELEASE item;", NULL, NULL, NULL);
 		}
 
 		cJSON *details = JSON_NEW_OBJECT();
@@ -800,6 +857,11 @@ static int api_list_write(struct ftl_conn *api,
 	// a success response with an empty result set
 	if(cJSON_GetArraySize(success) == 0 && cJSON_GetArraySize(errors) > 0)
 	{
+		// Without the batch transaction there are no savepoints, and a
+		// failed item may have written its row before its groups failed
+		if(!in_transaction)
+			set_event(RELOAD_GRAVITY);
+
 		const int ret = send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not add to gravity database",

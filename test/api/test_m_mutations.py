@@ -252,6 +252,40 @@ class TestDeleteConfigArrayItem:
 
 
 # ---------------------------------------------------------------------------
+# PATCH config strings that need escaping in pihole.toml
+# ---------------------------------------------------------------------------
+
+class TestConfigStringEscaping:
+
+    def test_del_character_is_escaped_in_pihole_toml(self, api_session):
+        """A DEL (0x7F) in a string is written as \\u007F, never raw.
+
+        TOML forbids a raw DEL in strings, so a raw one makes pihole.toml
+        and every backup rotated from it unparsable for FTL itself.
+        """
+        value = "pytest\x7fdel"
+        url = f"{FTL_URL}/api/config/webserver/api/excludeDomains?restart=false"
+
+        def _patch(domains):
+            payload = {"config": {"webserver": {"api": {"excludeDomains": domains}}}}
+            r = api_session.patch(url, json=payload, timeout=10)
+            assert r.status_code == 200, \
+                f"PATCH failed: {r.status_code} {r.text}"
+            return _j(r)["config"]["webserver"]["api"]["excludeDomains"]
+
+        try:
+            stored = _patch([value])
+            assert stored == [value], f"{value!r} not stored: {stored}"
+            with open("/etc/pihole/pihole.toml", "rb") as f:
+                toml_bytes = f.read()
+            assert b"\x7f" not in toml_bytes, "raw DEL byte written to pihole.toml"
+            assert b'"pytest\\u007Fdel"' in toml_bytes, \
+                "escaped DEL not found in pihole.toml"
+        finally:
+            _patch([])
+
+
+# ---------------------------------------------------------------------------
 # DELETE network devices (404 only -- deleting real devices would break
 # other tests)
 # ---------------------------------------------------------------------------
@@ -886,3 +920,97 @@ class TestBatchAddDomains:
             r = api_session.delete(f"{url}/{domain}", timeout=10)
             assert r.status_code == 204, \
                 f"Cleanup of {domain} failed: {r.status_code} {r.text}"
+
+
+# ---------------------------------------------------------------------------
+# Group assignments that cannot be applied
+# ---------------------------------------------------------------------------
+
+class TestGroupAssignmentErrors:
+
+    URL = f"{FTL_URL}/api/domains/deny/exact"
+
+    def _get(self, api_session, domain):
+        r = api_session.get(f"{self.URL}/{domain}", timeout=5)
+        if r.status_code == 404:
+            return None
+        domains = _j(r).get("domains", [])
+        return domains[0] if domains else None
+
+    def test_post_with_unknown_group_leaves_nothing(self, api_session):
+        """An item whose group links fail is not added at all."""
+        domain = "_pytest-badgroup-post.example.com"
+        r = api_session.post(self.URL,
+                             json={"domain": domain, "groups": [0, 99999]},
+                             timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert self._get(api_session, domain) is None, \
+            f"{domain} was stored by a failed POST"
+
+    def test_put_with_unknown_group_keeps_row(self, api_session):
+        """A failed PUT leaves the row and its group links as they were."""
+        domain = "_pytest-badgroup-put.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"comment": "orig", "groups": [0]},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"comment": "changed", "groups": [0, 99999]},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["comment"] == "orig"
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    @pytest.mark.parametrize("groups", [None, ["0"], 0, {"id": 0}])
+    def test_groups_must_be_array_of_ids(self, api_session, groups):
+        """Anything but an array of group IDs is rejected before writing."""
+        domain = "_pytest-badgroup-type.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"groups": [0]}, timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"groups": groups}, timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert r.json()["error"]["key"] == "bad_request"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# Group names are echoed in the Location header
+# ---------------------------------------------------------------------------
+
+class TestGroupRenameNewlines:
+
+    def test_rename_with_newline_returns_400(self, api_session):
+        name = "_pytest_rename_crlf"
+        url = f"{FTL_URL}/api/groups/{name}"
+        r = api_session.put(url, json={"comment": "x"}, timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url,
+                            json={"name": "x\r\nX-Injected: 1", "comment": "x"},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert "X-Injected" not in r.headers
+
+        # The group keeps its name
+        r = api_session.get(url, timeout=5)
+        assert r.status_code == 200
+        assert _j(r)["groups"][0]["name"] == name
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204

@@ -40,12 +40,17 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 	}
 
 	// If the lease time is a raw value (no unit), we assume it is in hours
-	// as this was the standard convention in the past
-	char *new = strdup(setupVarsValue);
-	if(strcmp(key, "DHCP_LEASETIME") == 0 && strchr(new, 'h') == NULL)
+	// as this was the standard convention in the past. v5 used 0 for
+	// infinite leases and an empty value for its default of 24 hours
+	char *new = NULL;
+	const bool leaseTime = strcmp(key, "DHCP_LEASETIME") == 0;
+	if(leaseTime && strcmp(setupVarsValue, "0") == 0)
+		new = strdup("infinite");
+	else if(leaseTime && setupVarsValue[0] == '\0')
+		new = strdup("24h");
+	else if(leaseTime && strchr(setupVarsValue, 'h') == NULL)
 	{
-		int leaseTimeInHours = atoi(new);
-		free(new);
+		int leaseTimeInHours = atoi(setupVarsValue);
 		if((new = calloc(10, sizeof(char))) == NULL)
 		{
 			log_warn("get_conf_string_from_setupVars(%s) failed: Could not allocate memory for new", key);
@@ -53,6 +58,8 @@ static void get_conf_string_from_setupVars(const char *key, struct conf_item *co
 		}
 		snprintf(new, 10, "%dh", leaseTimeInHours);
 	}
+	else
+		new = strdup(setupVarsValue);
 
 	// Free previously allocated memory (if applicable)
 	if(conf_item->t == CONF_STRING_ALLOCATED)
@@ -625,7 +632,7 @@ void importsetupVarsConf(void)
 	}
 
 	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
-	get_conf_bool_from_setupVars("DHCP_RAPID_COMMIT", &config.dhcp.rapidCommit);
+	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dhcp.rapidCommit);
 
 	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
 

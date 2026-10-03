@@ -29,7 +29,7 @@ FTL_URL = "http://127.0.0.1"
 # DNSSEC-dependent counters below flaky.  If you add or remove queries in
 # test_suite.bats, update these.
 
-TOTAL       = 132
+TOTAL       = 134
 FORWARDED   = 41
 DNSKEY      = 4
 TOP_DOMAIN  = "localhost"
@@ -656,10 +656,10 @@ class TestStatsSummary:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/summary", timeout=5), dump="stats_summary")
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 50
+        assert q["blocked"] == 52
         assert q["forwarded"] == FORWARDED
         assert q["cached"] == 41
-        assert q["unique_domains"] == 77
+        assert q["unique_domains"] == 79
         assert q["status"]["UNKNOWN"] == 0
         assert q["status"]["GRAVITY"] == 7
         assert q["status"]["FORWARDED"] == FORWARDED
@@ -667,7 +667,7 @@ class TestStatsSummary:
         assert q["status"]["REGEX"] == 21
         assert q["status"]["DENYLIST"] == 5
         assert q["status"]["SPECIAL_DOMAIN"] == 2
-        assert q["types"]["A"] == 69
+        assert q["types"]["A"] == 71
         assert q["types"]["AAAA"] == 19
 
         assert data["clients"]["active"] == 11
@@ -689,7 +689,7 @@ class TestStatsTopDomains:
         assert counts == sorted(counts, reverse=True), \
             f"Not sorted descending: {counts}"
         assert data["total_queries"] == TOTAL
-        assert data["blocked_queries"] == 50
+        assert data["blocked_queries"] == 52
 
     def test_top_domains_blocked(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?blocked=true", timeout=5))
@@ -787,7 +787,7 @@ class TestStatsUpstreams:
         assert data["forwarded_queries"] == FORWARDED
 
         blocklist = next(u for u in upstreams if u["ip"] == "blocklist")
-        assert blocklist["count"] == 50
+        assert blocklist["count"] == 52
         assert blocklist["port"] == -1
 
         cache = next(u for u in upstreams if u["ip"] == "cache")
@@ -804,7 +804,7 @@ class TestStatsQueryTypes:
     def test_query_types(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
-            "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
+            "A": 71, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
             "PTR": 8, "TXT": 11, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
@@ -1177,7 +1177,7 @@ class TestPADD:
         assert data["top_client"] == "127.0.0.1"
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 50
+        assert q["blocked"] == 52
         cache = data["cache"]
         assert cache["size"] == 10000
 
@@ -1495,3 +1495,30 @@ class TestNTP:
         drift = abs(tx_seconds - now_ntp)
         assert drift <= 2, \
             f"NTP transmit timestamp off by {drift}s (expected ≤2s)"
+
+    def test_ntp_server_stratum(self, api_session):
+        """The NTP server never answers with stratum 0, also when FTL's own
+        NTP client is not running (no CAP_SYS_TIME in the test environment).
+        It either reports itself synchronized with a valid stratum and a
+        reference timestamp, or unsynchronized (LI = 3, stratum 16)."""
+        import socket
+        import struct
+
+        request = b'\x23' + 47 * b'\0'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            sock.sendto(request, ('127.0.0.1', 123))
+            data, _ = sock.recvfrom(1024)
+        finally:
+            sock.close()
+
+        assert len(data) == 48, f"Expected 48-byte NTP packet, got {len(data)}"
+        leap = data[0] >> 6
+        stratum = data[1]
+        ref = struct.unpack('!Q', data[16:24])[0]
+        if leap == 3:
+            assert stratum == 16, f"Unsynchronized reply with stratum {stratum}"
+        else:
+            assert 1 <= stratum <= 15, f"Synchronized reply with stratum {stratum}"
+            assert ref != 0, "Synchronized reply with zero reference timestamp"
