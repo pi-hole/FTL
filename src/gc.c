@@ -183,6 +183,10 @@ keep_domain:
 		memset(domains_lookup + dwrite, 0,
 		       (counters->domains_lookup_size - dwrite) * sizeof(*domains_lookup));
 		counters->domains_lookup_size = dwrite;
+
+		// Cached CNAME addinfo row IDs are keyed on domain IDs that
+		// may now be handed out to other domains
+		clear_addinfo_id_cache();
 	}
 
 	// Recycle cache records
