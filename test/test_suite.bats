@@ -2032,6 +2032,20 @@ setup() {
   assert_success
 }
 
+@test "TLS HTTP/1.1 requests too large for the DoH parser are answered by the web server" {
+  # A request target of 2048+ bytes and a method of 8+ characters are relayed
+  # to CivetWeb, so they get the same answer as over plain HTTP
+  long="/api/domains/deny/regex/$(head -c 2100 /dev/zero | tr '\0' 'a')"
+  tls="curl -s -o /dev/null -w %{http_code} --http1.1 --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1"
+  plain="curl -s -o /dev/null -w %{http_code}"
+  run bash -c "$tls -X DELETE https://pi.hole$long"
+  refute_output "400"
+  assert_output "$($plain -X DELETE http://127.0.0.1$long)"
+  run bash -c "$tls -X PROPFIND https://pi.hole/admin/"
+  refute_output "400"
+  assert_output "$($plain -X PROPFIND http://127.0.0.1/admin/)"
+}
+
 @test "X.509 certificate parser returns expected result" {
   # We are getting the certificate from the config. The verbose output is the
   # OpenSSL X509_print() representation (identical to "openssl x509 -text"). It
