@@ -77,6 +77,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 // Struct to store the data we want to process
 struct upload_data {
 	bool too_large;
+	bool invalid_import;
 	char *sid;
 	cJSON *import;
 	uint8_t *data;
@@ -194,6 +195,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		if(json == NULL)
 		{
 			log_web(LOG_ERR, "Unable to parse JSON data in API request, error at: %.20s", json_error);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -202,6 +204,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		{
 			log_web(LOG_ERR, "JSON data in API request is not an object");
 			cJSON_Delete(json);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -295,6 +298,17 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid form request",
+		                       NULL);
+	}
+
+	// A rejected import field aborts the form parsing, nothing received
+	// with it may be imported
+	if(data.invalid_import)
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid import JSON",
 		                       NULL);
 	}
 
@@ -399,6 +413,8 @@ static struct teleporter_files {
 	const size_t num_columns; // Number of columns in the table
 	const char *columns[10]; // List of columns in the table
 } teleporter_v5_files[] = {
+	// *_by_group files must follow their primary tables: the tr_*_add triggers put new rows into group 0
+	// and only the later by_group import replaces that with the archived mapping
 	{
 		.filename = "adlist.json",
 		.table_name = "adlist",
@@ -436,12 +452,6 @@ static struct teleporter_files {
 		.num_columns = 2,
 		.columns = { "group_id", "client_id" }
 	},{
-		.filename = "domainlist_by_group.json",
-		.table_name = "domainlist_by_group",
-		.listtype = -1,
-		.num_columns = 2,
-		.columns = { "group_id", "domainlist_id" }
-	},{
 		.filename = "group.json",
 		.table_name = "group",
 		.listtype = -1,
@@ -459,6 +469,12 @@ static struct teleporter_files {
 		.listtype = 2, // GRAVITY_DOMAINLIST_ALLOW_REGEX
 		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
+	},{
+		.filename = "domainlist_by_group.json",
+		.table_name = "domainlist_by_group",
+		.listtype = -1,
+		.num_columns = 2,
+		.columns = { "group_id", "domainlist_id" }
 	}
 };
 
@@ -847,6 +863,13 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 		if(file != NULL && fileSize > 0u)
 		{
+			if(i == 1 && !valid_dhcp_leases(file, fileSize))
+			{
+				log_warn("Not importing \"%s\": not a DHCP lease database",
+				         extract_files[i].archive_name);
+				continue;
+			}
+
 			// Write file to disk
 			log_web(LOG_INFO, "Writing file \"%s\" (%zu bytes) to \"%s\"",
 			         extract_files[i].archive_name, fileSize, extract_files[i].destination);

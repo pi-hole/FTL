@@ -53,6 +53,26 @@ components:
               nullable: true
               description: "No additional data available"
               example: null
+    forbidden:
+      type: object
+      description: "Forbidden (the session is authenticated but not allowed to perform this action)"
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "forbidden"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Unable to change configuration (read-only)"
+            hint:
+              type: string
+              nullable: true
+              description: "Further details"
+              example: "The current CLI session is not allowed to modify Pi-hole config settings"
     too_many_requests:
       type: object
       description: "Too many requests (rate limiting)"

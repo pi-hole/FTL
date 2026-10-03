@@ -29,6 +29,8 @@
 #include "signals.h"
 // file_exists()
 #include "files.h"
+// INFINITY
+#include <math.h>
 
 static sqlite3 *_memdb = NULL;
 static double new_last_timestamp = 0;
@@ -134,6 +136,29 @@ static inline void store_addinfo_id(const int type, const int key, const int db_
 		}
 		slot = (slot + 1) & (ADDINFO_CACHE_SLOTS - 1);
 	}
+}
+
+// Forget all cached addinfo_by_id row IDs. CNAME entries are keyed on SHM
+// domain IDs, so this has to be called when domain IDs are recycled. Call it
+// with the SHM lock held, as queries_to_database() uses the cache under it
+void clear_addinfo_id_cache(void)
+{
+	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
+}
+
+// Step a statement that changes rows and read sqlite3_changes() and the last
+// inserted rowid for it. The connection mutex is held throughout so that a
+// statement of another thread sharing the connection cannot overwrite them
+static int step_and_count(sqlite3 *db, sqlite3_stmt *stmt, int64_t *changes, sqlite3_int64 *rowid)
+{
+	sqlite3_mutex *mutex = sqlite3_db_mutex(db);
+	sqlite3_mutex_enter(mutex);
+	const int rc = sqlite3_step(stmt);
+	*changes = sqlite3_changes64(db);
+	if(rowid != NULL)
+		*rowid = sqlite3_last_insert_rowid(db);
+	sqlite3_mutex_leave(mutex);
+	return rc;
 }
 
 // Private prototypes
@@ -408,15 +433,21 @@ bool init_memory_database(void)
 	}
 
 	// Clear process-local addinfo ID cache
-	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
+	clear_addinfo_id_cache();
 
 	// The IFNULL() is needed to handle the case when there are no queries
 	// in the on-disk database yet. In this case, we want to copy all
 	// queries from the in-memory database (including the query with ID 0)
 	// to the on-disk database.
+	// Export stops before the lowest not yet exported ID whose timestamp lies
+	// between the cutoff (?1) and now (?2), as the next export continues after
+	// the highest ID on disk and would skip it otherwise. Rows stamped after
+	// now date from before a backwards clock step and do not hold back others
 	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
 	                                      "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
-	                                        "AND timestamp < ?",
+	                                        "AND id < (SELECT IFNULL(MIN(id), 9223372036854775807) FROM query_storage "\
+	                                                  "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
+	                                                    "AND timestamp >= ?1 AND timestamp <= ?2)",
 	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
@@ -714,10 +745,12 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 	if(db == NULL)
 		db = get_memdb();
 
-	// Build query string based on whether we need the earliest timestamp too
-	const size_t buflen = 38 + strlen(tablename);
+	// Two subqueries so that COUNT(*) and MIN() each get SQLite's fast path,
+	// combined in one SELECT they fall back to reading every row
+	const size_t buflen = 64 + 2*strlen(tablename);
 	char *querystr = calloc(buflen, sizeof(char));
-	snprintf(querystr, buflen, "SELECT COUNT(*), MIN(timestamp) FROM %s", tablename);
+	snprintf(querystr, buflen, "SELECT (SELECT COUNT(*) FROM %s), (SELECT MIN(timestamp) FROM %s)",
+	         tablename, tablename);
 
 	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
@@ -745,6 +778,21 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 static double import_from = 0.0;
 static double import_until = 0.0;
 static int counted_queries = 0;
+
+// Every query below this index has been visited by an export, counted in
+// absolute terms (index + get_queries_removed()) so the garbage collector
+// removing queries from the front does not invalidate it. Guarded by the SHM
+// lock
+static unsigned int export_floor = 0;
+
+static unsigned int get_export_floor(void)
+{
+	// Both counters wrap at UINT_MAX, their difference does not. A floor the
+	// garbage collector has already removed comes out above the array
+	const unsigned int idx = export_floor - get_queries_removed();
+	return idx <= counters->queries ? idx : 0;
+}
+
 // Start transaction and count number of queries to be imported from disk.
 // We keep the transaction open so that no new queries are written to the disk
 // database until we have copied the data into the in-memory database in
@@ -782,6 +830,9 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 	// enlarges the queries object
 	counters->queries = counted_queries;
 	init_queries_shm_sz();
+	// The slots reserved for the import are already in the database, the
+	// export starts above them
+	export_floor = counted_queries + get_queries_removed();
 	// Unlock shared memory
 	unlock_shm();
 
@@ -813,6 +864,79 @@ void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 		if(earliest_timestamp != NULL)
 			*earliest_timestamp = memdb_earliest_timestamp;
 	}
+}
+
+// Import linking tables and current AUTOINCREMENT values from the disk
+// database. Must be called inside a transaction, which is rolled back when FTL
+// is asked to terminate
+static bool import_linking_tables(sqlite3 *memdb)
+{
+	const char *subtable_names[] = {
+		"domain_by_id",
+		"client_by_id",
+		"forward_by_id",
+		"addinfo_by_id",
+		"sqlite_sequence"
+	};
+	const char *subtable_sql[] = {
+		"INSERT INTO domain_by_id SELECT * FROM disk.domain_by_id",
+		"INSERT INTO client_by_id SELECT * FROM disk.client_by_id",
+		"INSERT INTO forward_by_id SELECT * FROM disk.forward_by_id",
+		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
+		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
+	};
+	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
+
+	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
+	{
+		const int rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
+
+		// An interrupt has rolled the transaction back already, the
+		// ROLLBACK covers a termination request between two statements
+		if(killed)
+		{
+			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+			return false;
+		}
+
+		if(rc != SQLITE_OK)
+			log_err("import_linking_tables(%s): Cannot import linking table: %s",
+			        subtable_sql[i], sqlite3_errstr(rc));
+		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s",
+		          sqlite3_changes(memdb), subtable_names[i]);
+	}
+
+	return true;
+}
+
+// Import only the linking tables when database.DBimport is disabled. New
+// queries reference rows in these tables by ID, so their IDs have to continue
+// where the disk database left off even when no queries are imported
+bool import_linking_tables_from_disk(void)
+{
+	// Only try to import from database if it is known to not be broken
+	if(FTLDBerror())
+		return false;
+
+	int rc;
+	sqlite3 *memdb = get_memdb();
+	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
+	{
+		log_err("import_linking_tables_from_disk(): Cannot begin transaction: %s", sqlite3_errstr(rc));
+		return false;
+	}
+
+	if(!import_linking_tables(memdb))
+		return false;
+
+	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
+	{
+		log_err("import_linking_tables_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
+	return true;
 }
 
 // Read queries from the on-disk database into the in-memory database (after
@@ -859,6 +983,15 @@ bool import_queries_from_disk(void)
 		return false;
 	}
 
+	// sqlite3_interrupt() has no effect on a statement that is not running
+	// yet, so do not start the import when FTL is already terminating
+	if(killed)
+	{
+		sqlite3_finalize(stmt);
+		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
+		return false;
+	}
+
 	// Perform step
 	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
 		okay = true;
@@ -882,33 +1015,9 @@ bool import_queries_from_disk(void)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// Import linking tables and current AUTOINCREMENT values from the disk database
-	const char *subtable_names[] = {
-		"domain_by_id",
-		"client_by_id",
-		"forward_by_id",
-		"addinfo_by_id",
-		"sqlite_sequence"
-	};
-	const char *subtable_sql[] = {
-		"INSERT INTO domain_by_id SELECT * FROM disk.domain_by_id",
-		"INSERT INTO client_by_id SELECT * FROM disk.client_by_id",
-		"INSERT INTO forward_by_id SELECT * FROM disk.forward_by_id",
-		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
-		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
-	};
-	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
-
-	// Import linking tables
-	int imported[ArraySize(subtable_names)] = { 0 };
-	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
-	{
-		if((rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL)) != SQLITE_OK)
-			log_err("import_queries_from_disk(%s): Cannot import linking table: %s",
-			        subtable_sql[i], sqlite3_errstr(rc));
-		imported[i] = sqlite3_changes(memdb);
-		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s", imported[i], subtable_names[i]);
-	}
+	// Import linking tables and current AUTOINCREMENT values
+	if(!import_linking_tables(memdb))
+		return false;
 
 	// End transaction
 	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
@@ -939,7 +1048,8 @@ bool export_queries_to_disk(const bool final)
 	int rc = 0;
 	bool okay = false;
 	unsigned int insertions = 0;
-	const double time = double_time() - (final ? 0.0 : REPLY_TIMEOUT);
+	const double now = double_time();
+	const double time = final ? INFINITY : now - REPLY_TIMEOUT;
 
 	// Only try to export to database if it is known to not be broken
 	if(FTLDBerror())
@@ -955,14 +1065,16 @@ bool export_queries_to_disk(const bool final)
 	// Only store queries if database.maxDBdays > 0
 	if(config.database.maxDBdays.v.ui > 0)
 	{
-		log_debug(DEBUG_DATABASE, "Storing queries on disk WHERE timestamp < %f (memdb_queries_maxid = %"PRId64")",
-		          time, memdb_queries_maxid);
+		log_debug(DEBUG_DATABASE, "Storing queries on disk up to the first one with timestamp in [%f, %f] (memdb_queries_maxid = %"PRId64")",
+		          time, now + 1.0, memdb_queries_maxid);
 
-		// Bind upper time limit
+		// Bind time limits
 		// This prevents queries from the last 30 seconds from being stored
 		// immediately on-disk to give them some time to complete before finally
 		// exported. We do not limit anything when storing during termination.
-		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK)
+		// The second of slack keeps rows stamped just now in the window
+		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK ||
+		   (rc = sqlite3_bind_double(queries_to_disk_stmt, 2, now + 1.0)) != SQLITE_OK)
 		{
 			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
 			sqlite3_reset(queries_to_disk_stmt);
@@ -970,17 +1082,17 @@ bool export_queries_to_disk(const bool final)
 			return false;
 		}
 
-		// Perform step
-		if((rc = sqlite3_step(queries_to_disk_stmt)) == SQLITE_DONE)
+		// Perform step and get the number of queries actually inserted
+		// by the INSERT INTO ... SELECT * FROM ...
+		int64_t changes = 0;
+		if((rc = step_and_count(memdb, queries_to_disk_stmt, &changes, NULL)) == SQLITE_DONE)
 			okay = true;
 		else
 		{
 			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
 			log_info("    with timestamp = %f", time);
 		}
-
-		// Get number of queries actually inserted by the INSERT INTO ... SELECT * FROM ...
-		insertions = sqlite3_changes(memdb);
+		insertions = (unsigned int)changes;
 
 		// Finalize statement
 		sqlite3_reset(queries_to_disk_stmt);
@@ -1020,6 +1132,11 @@ bool export_queries_to_disk(const bool final)
 				new_blocked = 0;
 		}
 	}
+	else
+	{
+		// Nothing to store, the linking tables below are still exported
+		okay = true;
+	}
 
 	// Export linking tables and current AUTOINCREMENT values to the disk database
 	const char *subtable_names[SUBTABLE_STMTS] = {
@@ -1033,11 +1150,12 @@ bool export_queries_to_disk(const bool final)
 	// Export linking tables
 	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
 	{
-		if((rc = sqlite3_step(subtables_to_disk_stmts[i])) != SQLITE_DONE)
+		int64_t changes = 0;
+		if((rc = step_and_count(memdb, subtables_to_disk_stmts[i], &changes, NULL)) != SQLITE_DONE)
 			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
 			        subtable_names[i], sqlite3_errstr(rc));
 		sqlite3_reset(subtables_to_disk_stmts[i]);
-		log_debug(DEBUG_DATABASE, "Exported %i rows to disk.%s", sqlite3_changes(memdb), subtable_names[i]);
+		log_debug(DEBUG_DATABASE, "Exported %"PRId64" rows to disk.%s", changes, subtable_names[i]);
 	}
 
 	// End transaction. A bare SQL_bool() would return with the transaction
@@ -1092,13 +1210,12 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	}
 
 	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
+	int64_t deleted = 0;
+	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
 		okay = true;
 	else
 		log_err("delete_old_queries_from_db(%s): Failed to delete queries with timestamp >= %f: %s",
 		        use_memdb ? "memdb" : "disk", mintime, sqlite3_errstr(rc));
-
-	const int64_t deleted = sqlite3_changes64(db);
 	if(okay)
 	{
 		// Update number of queries in either in-memory or on-disk
@@ -1643,7 +1760,8 @@ void DB_read_queries(void)
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
 		query->cacheID = -1;
-		query->id = counters->queries;
+		// No dnsmasq ID belongs to an imported query
+		query->id = -1;
 		query->response = 0;
 		query->flags.response_calculated = reply_time_avail;
 		query->dnssec = dnssec;
@@ -1880,14 +1998,26 @@ struct query_snap {
 	bool blocked;
 };
 
+// Get the query a snapshot was taken of. Its index is rebased by the number of
+// queries the garbage collector removed since, a query that is gone itself
+// yields NULL. The caller holds the SHM lock
+static queriesData *get_snapshot_query(const struct query_snap *snap, const unsigned int removed_before)
+{
+	const unsigned int shift = get_queries_removed() - removed_before;
+	if(snap->queryID < shift)
+		return NULL;
+
+	return getQuery(snap->queryID - shift, true);
+}
+
 // Give the snapshotted queries their changed flag back so a later run picks
 // them up. The caller holds the SHM lock
 static void requeue_snapshots(const struct query_snap *snaps, const unsigned int from,
-                              const unsigned int to)
+                              const unsigned int to, const unsigned int removed_before)
 {
 	for(unsigned int i = from; i < to; i++)
 	{
-		queriesData *query = getQuery(snaps[i].queryID, true);
+		queriesData *query = get_snapshot_query(&snaps[i], removed_before);
 		if(query != NULL)
 			query->flags.database.changed = true;
 	}
@@ -1907,6 +2037,10 @@ bool queries_to_database(void)
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_MAXIMUM)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database due to privacy level settings");
+		// Queries recorded now must not be exported once the level drops
+		lock_shm();
+		export_floor = counters->queries + get_queries_removed();
+		unlock_shm();
 		return true;
 	}
 	if(counters->queries == 0)
@@ -1922,31 +2056,43 @@ bool queries_to_database(void)
 
 	lock_shm();
 
+	// The snapshot indices taken below are rebased against this once the
+	// lock was released in between
+	const unsigned int removed_before = get_queries_removed();
+
 	// The upper bound is the last query in the array, the lower bound is
 	// indirectly given by the first query older than 30 seconds - we do not
 	// expect replies to still arrive after 30 seconds - they are anyway
 	// useless as the client will have already timed out this particular
-	// query and retried or failed
+	// query and retried or failed. Queries no export has visited yet are
+	// always included, however old
 	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
-	unsigned int last_query = counters->queries - 1;
+	const unsigned int unvisited = get_export_floor();
+	// last_query ends up as the first query to export
+	unsigned int last_query = counters->queries;
 	while(last_query > 0)
 	{
-		queriesData *query = getQuery(last_query, true);
+		const unsigned int queryID = last_query - 1;
+		queriesData *query = getQuery(queryID, true);
+		// An import slot left empty because the database changed during
+		// the import
+		if(query == NULL && queryID < unvisited)
+			break;
 		if(query == NULL)
 		{
-			log_err("Memory error in queries_to_database() when trying to access query %u", last_query);
+			log_err("Memory error in queries_to_database() when trying to access query %u", queryID);
 			unlock_shm();
 			return false;
 		}
-		if(query->timestamp < limit_timestamp || query->flags.database.imported)
+		if((query->timestamp < limit_timestamp && queryID < unvisited) ||
+		   query->flags.database.imported)
 		{
 			// We found the first query older than our limit or
 			// queries that have been imported (we don't want to
 			// export them again)
-			last_query++;
 			break;
 		}
-		last_query--;
+		last_query = queryID;
 	}
 
 	// Skip early if no queries are to be stored (no queries immediately after start)
@@ -1997,6 +2143,8 @@ bool queries_to_database(void)
 	unsigned int unchanged = 0u;
 	int64_t next_maxid = memdb_queries_maxid;
 	bool phase1_error = false;
+	int64_t changes = 0;
+	sqlite3_int64 rowid = 0;
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
 	// mostly skipped due to in_database caching). SQL_bool() cannot be used
@@ -2054,7 +2202,7 @@ bool queries_to_database(void)
 		if(domaindata != NULL && !domaindata->flags.in_database)
 		{
 			sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
-			rc = sqlite3_step(domain_stmt);
+			rc = step_and_count(memdb, domain_stmt, &changes, &rowid);
 			if(rc != SQLITE_DONE)
 			{
 				log_err("Encountered error while trying to store domain");
@@ -2064,8 +2212,8 @@ bool queries_to_database(void)
 			}
 			sqlite3_reset(domain_stmt);
 
-			if(sqlite3_changes(memdb) > 0)
-				domaindata->db_id = (int)sqlite3_last_insert_rowid(memdb);
+			if(changes > 0)
+				domaindata->db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(domain_id_stmt, 1, domain, -1, SQLITE_STATIC);
@@ -2086,7 +2234,7 @@ bool queries_to_database(void)
 		{
 			sqlite3_bind_text(client_stmt, 1, clientIP, -1, SQLITE_STATIC);
 			sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
-			rc = sqlite3_step(client_stmt);
+			rc = step_and_count(memdb, client_stmt, &changes, &rowid);
 			sqlite3_reset(client_stmt);
 			if(rc != SQLITE_DONE)
 			{
@@ -2095,8 +2243,8 @@ bool queries_to_database(void)
 				break;
 			}
 
-			if(sqlite3_changes(memdb) > 0)
-				clientdata->db_id = (int)sqlite3_last_insert_rowid(memdb);
+			if(changes > 0)
+				clientdata->db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(client_id_stmt, 1, clientIP, -1, SQLITE_STATIC);
@@ -2124,7 +2272,7 @@ bool queries_to_database(void)
 					if(len > 0 && (size_t)len < sizeof(buffer))
 					{
 						sqlite3_bind_text(forward_stmt, 1, buffer, len, SQLITE_STATIC);
-						rc = sqlite3_step(forward_stmt);
+						rc = step_and_count(memdb, forward_stmt, &changes, &rowid);
 						sqlite3_reset(forward_stmt);
 						if(rc != SQLITE_DONE)
 						{
@@ -2133,8 +2281,8 @@ bool queries_to_database(void)
 							break;
 						}
 
-						if(sqlite3_changes(memdb) > 0)
-							upstream->db_id = (int)sqlite3_last_insert_rowid(memdb);
+						if(changes > 0)
+							upstream->db_id = (int)rowid;
 						else
 						{
 							sqlite3_bind_text(forward_id_stmt, 1, buffer, len, SQLITE_STATIC);
@@ -2164,7 +2312,7 @@ bool queries_to_database(void)
 				const int len = strlen(cname);
 				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_CNAME_DOMAIN);
 				sqlite3_bind_text(addinfo_stmt, 2, cname, len, SQLITE_STATIC);
-				rc = sqlite3_step(addinfo_stmt);
+				rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
 				sqlite3_reset(addinfo_stmt);
 				if(rc != SQLITE_DONE)
 				{
@@ -2173,8 +2321,8 @@ bool queries_to_database(void)
 					break;
 				}
 
-				if(sqlite3_changes(memdb) > 0)
-					aid = (int)sqlite3_last_insert_rowid(memdb);
+				if(changes > 0)
+					aid = (int)rowid;
 				else
 				{
 					sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_CNAME_DOMAIN);
@@ -2203,7 +2351,7 @@ bool queries_to_database(void)
 				{
 					sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
 					sqlite3_bind_int(addinfo_stmt, 2, list_id);
-					rc = sqlite3_step(addinfo_stmt);
+					rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
 					sqlite3_reset(addinfo_stmt);
 					if(rc != SQLITE_DONE)
 					{
@@ -2212,8 +2360,8 @@ bool queries_to_database(void)
 						break;
 					}
 
-					if(sqlite3_changes(memdb) > 0)
-						aid = (int)sqlite3_last_insert_rowid(memdb);
+					if(changes > 0)
+						aid = (int)rowid;
 					else
 					{
 						sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_LIST_ID);
@@ -2338,18 +2486,22 @@ bool queries_to_database(void)
 	// those queries get their changed flag back and are written next time
 	if(succeeded < snap_count)
 	{
-		requeue_snapshots(snaps, succeeded, snap_count);
+		requeue_snapshots(snaps, succeeded, snap_count, removed_before);
 
 		log_err("Could not store %u queries, they are queued for the next run",
 		        snap_count - succeeded);
 	}
+
+	// Advance the floor past everything visited, but not past a requeued query
+	export_floor = removed_before + (succeeded < snap_count ?
+	                                 snaps[succeeded].queryID : last_query + window);
 
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
-		queriesData *query = getQuery(s->queryID, true);
+		queriesData *query = get_snapshot_query(s, removed_before);
 		if(query == NULL)
 			continue;
 
@@ -2402,7 +2554,7 @@ rollback_unlock_fail:
 unlock_fail:
 	// Nothing was committed, so give the snapshotted queries their changed
 	// flag back and let the next run pick them up. The lock is still ours
-	requeue_snapshots(snaps, 0, snap_count);
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
 	unlock_shm();
 	goto fail_free;
 rollback_fail:
@@ -2410,7 +2562,7 @@ rollback_fail:
 fail:
 	// Same restore, but phase 2 runs without the lock
 	lock_shm();
-	requeue_snapshots(snaps, 0, snap_count);
+	requeue_snapshots(snaps, 0, snap_count, removed_before);
 	unlock_shm();
 fail_free:
 	free(snaps);

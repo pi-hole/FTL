@@ -153,12 +153,18 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
-	// Asynchronously import queries from the on-disk database
+	// Asynchronously import queries from the on-disk database. The linking
+	// tables are imported in any case as new queries continue their IDs
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
+	else
+		import_linking_tables_from_disk();
 
-	// Signify that the import is done, so garbage collection will run
-	db_import_done = true;
+	// Signify that the import is done, so garbage collection will run. An
+	// import that was aborted because FTL terminates is not: main() skips
+	// the final export then
+	if(!killed)
+		db_import_done = true;
 
 	// Log some information about the imported queries (if any)
 	log_counter_info();
@@ -271,9 +277,11 @@ void *DB_thread(void *val)
 		// Optimize database once per week
 		if(now - lastAnalyze >= DATABASE_ANALYZE_INTERVAL)
 		{
+			// Update the timer first so an unopenable database does
+			// not keep the loop from reaching the event handling below
+			lastAnalyze = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(analyze_database(db));
-			lastAnalyze = now;
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -285,9 +293,10 @@ void *DB_thread(void *val)
 		// database is not updated very often)
 		if(now  - lastMACVendor >= DATABASE_MACVENDOR_INTERVAL)
 		{
+			// Update the timer first, see above
+			lastMACVendor = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(updateMACVendorRecords(db));
-			lastMACVendor = now;
 			DBCLOSE_OR_BREAK();
 		}
 

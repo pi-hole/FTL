@@ -13,12 +13,15 @@ components:
           - $ref: 'config.yaml#/components/parameters/detailed'
         responses:
           '200':
-            description: OK
+            description: |
+              OK. With `detailed=true`, every configuration item is replaced by a `config_item` object (see schema) and the `topics` and `dns_servers` arrays are added to the response.
             content:
               application/json:
                 schema:
                   allOf:
                     - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'config.yaml#/components/schemas/topics'
+                    - $ref: 'config.yaml#/components/schemas/dns_servers'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   config:
@@ -67,6 +70,25 @@ components:
                 examples:
                   config:
                     $ref: 'config.yaml#/components/examples/config'
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  no_config_object:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/no_config_object'
+                  item_invalid:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/item_invalid'
+                  validation_failed:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/validation_failed'
+                  invalid_configuration:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/invalid_configuration'
+                  read_only_item:
+                    $ref: 'config.yaml#/components/examples/errors/bad_request/read_only_item'
           '401':
             description: Unauthorized
             content:
@@ -75,6 +97,21 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  app_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/app_session'
+                  cli_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/cli_session'
+                  read_only_mode:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/read_only_mode'
     config_elem:
       get:
         summary: Get specific part of current configuration of your Pi-hole
@@ -89,12 +126,15 @@ components:
           - $ref: 'config.yaml#/components/parameters/element'
         responses:
           '200':
-            description: OK
+            description: |
+              OK. With `detailed=true`, every configuration item is replaced by a `config_item` object (see schema) and the `topics` and `dns_servers` arrays are added to the response.
             content:
               application/json:
                 schema:
                   allOf:
                     - $ref: 'config.yaml#/components/schemas/config'
+                    - $ref: 'config.yaml#/components/schemas/topics'
+                    - $ref: 'config.yaml#/components/schemas/dns_servers'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   config:
@@ -114,7 +154,7 @@ components:
           - "Pi-hole configuration"
         operationId: "add_array_item"
         description: |
-          *Note:* There will be no content on success.
+          *Note:* The response carries no data on success, only the processing time.
         parameters:
           - $ref: 'config.yaml#/components/parameters/element'
           - $ref: 'config.yaml#/components/parameters/value'
@@ -122,6 +162,16 @@ components:
         responses:
           '201':
             description: Item created
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
+          '404':
+            description: Config element not found (not a string array)
+            content:
+              application/json:
+                schema:
+                  $ref: 'common.yaml#/components/schemas/took'
           '400':
             description: Bad request
             content:
@@ -143,6 +193,21 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  app_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/app_session'
+                  cli_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/cli_session'
+                  read_only_mode:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/read_only_mode'
       delete:
         summary: Delete config array item
         tags:
@@ -184,6 +249,21 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  app_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/app_session'
+                  cli_session:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/cli_session'
+                  read_only_mode:
+                    $ref: 'config.yaml#/components/examples/errors/forbidden/read_only_mode'
     props:
       get:
         summary: Get special properties of your Pi-hole configuration
@@ -556,8 +636,6 @@ components:
             files:
               type: object
               properties:
-                pid:
-                  type: string
                 database:
                   type: string
                 tmp_db:
@@ -684,11 +762,68 @@ components:
                   type: boolean
                 all:
                   type: boolean
+    config_item:
+      type: object
+      description: |
+        Detailed description of a single configuration item. With `detailed=true`, every leaf of the `config` object is replaced by an object of this shape.
+      properties:
+        description:
+          type: string
+          description: Human-readable description of this item
+        allowed:
+          description: |
+            Allowed values: an array of `item`/`description` pairs when this item is restricted to a set of values, a free-text description of the accepted values otherwise, `null` if there is no restriction
+          oneOf:
+            - type: string
+              nullable: true
+            - type: array
+              items:
+                type: object
+                properties:
+                  item:
+                    description: Allowed value
+                  description:
+                    type: string
+                    description: Meaning of this value
+        type:
+          type: string
+          description: Type of this item (e.g. `boolean`, `string`, `string array`)
+        value:
+          description: Current value of this item (a placeholder for write-only items such as passwords)
+        default:
+          description: Default value of this item
+        modified:
+          type: boolean
+          description: Whether the current value differs from the default
+        flags:
+          type: object
+          properties:
+            restart_dnsmasq:
+              type: boolean
+              description: Changing this item restarts the DNS resolver
+            session_reset:
+              type: boolean
+              description: Changing this item invalidates all sessions
+            env_var:
+              type: boolean
+              description: This item is set through an environment variable and cannot be changed via the API
+      example:
+        description: "Array of upstream DNS servers used by Pi-hole"
+        allowed: "Array of IP addresses and/or hostnames, optionally with a port (#...)"
+        type: "string array"
+        value: [ "127.0.0.1#5353", "8.8.8.8" ]
+        default: []
+        modified: true
+        flags:
+          restart_dnsmasq: true
+          session_reset: false
+          env_var: false
     topics:
       type: object
       properties:
         topics:
           type: array
+          description: Configuration topics (only present with `detailed=true`)
           items:
             type: object
             properties:
@@ -701,11 +836,19 @@ components:
               description:
                 type: string
                 description: A human-readable description of the topic
-    server:
+          example:
+            - name: dns
+              title: DNS
+              description: DNS server settings
+            - name: dhcp
+              title: DHCP
+              description: DHCP server settings
+    dns_servers:
       type: object
       properties:
-        server:
+        dns_servers:
           type: array
+          description: Suggested upstream DNS servers (only present with `detailed=true`)
           items:
             type: object
             properties:
@@ -742,6 +885,21 @@ components:
                   v6:
                     type: string
                     description: "https:// URI pinned to the primary IPv6 address"
+          example:
+            - name: Google (ECS, DNSSEC)
+              v4: ["8.8.8.8", "8.8.4.4"]
+              v6: ["2001:4860:4860:0:0:0:0:8888","2001:4860:4860:0:0:0:0:8844"]
+              dot:
+                v4: "tls://dns.google@8.8.8.8"
+                v6: "tls://dns.google@[2001:4860:4860:0:0:0:0:8888]"
+              doh:
+                v4: "https://dns.google@8.8.8.8/dns-query"
+                v6: "https://dns.google@[2001:4860:4860:0:0:0:0:8888]/dns-query"
+            - name: Level3
+              v4: ["4.2.2.1", "4.2.2.2"]
+              v6: ["2001:4:112::1","2001:4:112::2"]
+              dot: {}
+              doh: {}
     props:
       type: object
       properties:
@@ -921,7 +1079,6 @@ components:
                 limit: 60.0
                 unit: "C"
           files:
-            pid: "/run/pihole-FTL.pid"
             database: "@PIHOLE_INSTALL_DIR@/pihole-FTL.db"
             tmp_db: "@PIHOLE_INSTALL_DIR@/pihole-tmp.db"
             gravity: "@PIHOLE_INSTALL_DIR@/gravity.db"
@@ -998,26 +1155,6 @@ components:
               mozillaCanary: true
           misc:
             nice: -10
-    topics:
-      summary: All topics
-      value:
-        topics:
-          - name: dns
-            title: DNS
-            description: DNS settings
-          - name: dhcp
-            title: DHCP
-            description: DHCP settings
-    server:
-      summary: Several servers being suggested
-      value:
-        server:
-          - name: Google (ECS, DNSSEC)
-            v4: ["8.8.8.8", "8.8.4.4"]
-            v6: ["2001:4860:4860:0:0:0:0:8888","2001:4860:4860:0:0:0:0:8844"]
-          - name: OpenDNS (ECS, DNSSEC)
-            v4: ["208.67.222.222", "208.67.220.220"]
-            v6: ["2620:119:35::35","2620:119:53::53"]
     props:
       summary: All read-only properties
       value:
@@ -1047,11 +1184,77 @@ components:
               message: "Item already present"
               hint: "Uniqueness of items is enforced"
             took: 0.003
+        no_config_object:
+          summary: Payload has no config object
+          value:
+            error:
+              key: "body_error"
+              message: "No \"config\" object in body data"
+              hint: null
+            took: 0.003
+        item_invalid:
+          summary: Config item has the wrong type or format
+          value:
+            error:
+              key: "bad_request"
+              message: "Config item is invalid"
+              hint: "dns.blockTTL: not of type unsigned integer"
+            took: 0.003
+        validation_failed:
+          summary: Config item rejected by its validator
+          value:
+            error:
+              key: "bad_request"
+              message: "Config item validation failed"
+              hint: "dns.hosts[0]: not a valid IP address"
+            took: 0.003
+        invalid_configuration:
+          summary: Resulting configuration does not work
+          value:
+            error:
+              key: "bad_request"
+              message: "Invalid configuration"
+              hint: "dnsmasq: Name does not resolve at line 33 of /etc/pihole/dnsmasq.conf.temp: \"server=not an ip\""
+            took: 0.003
+        read_only_item:
+          summary: Config item cannot be changed via the API
+          value:
+            error:
+              key: "bad_request"
+              message: "Config items set via environment variables cannot be changed via the API"
+              hint: "dns.upstreams"
+            took: 0.003
+      forbidden:
+        app_session:
+          summary: Application session without sudo mode
+          value:
+            error:
+              key: "forbidden"
+              message: "Unable to change configuration (read-only)"
+              hint: "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)"
+            took: 0.003
+        cli_session:
+          summary: CLI session
+          value:
+            error:
+              key: "forbidden"
+              message: "Unable to change configuration (read-only)"
+              hint: "The current CLI session is not allowed to modify Pi-hole config settings"
+            took: 0.003
+        read_only_mode:
+          summary: Config is in read-only mode (misc.readOnly)
+          value:
+            error:
+              key: "forbidden"
+              message: "The config is currently in read-only mode"
+              hint: null
+            took: 0.003
   parameters:
     detailed:
       name: detailed
       in: query
-      description: Return detailed information about the configuration
+      description: |
+        Return detailed information about the configuration. Every configuration item is then replaced by a `config_item` object (description, allowed values, type, current and default value, flags), and the response additionally carries the `topics` and `dns_servers` arrays.
       required: false
       schema:
         type: boolean

@@ -734,7 +734,7 @@
       #
       # Allowed values are:
       #     true or false
-      set = false
+      set = true
 
       # Path to the RTC device to update.
       #
@@ -1008,19 +1008,22 @@
   # Additional options passed directly to the web server.
   #
   # This can be used to set any option supported by the underlying web server
-  # (CivetWeb). See the CivetWeb documentation for a list of supported options. The
-  # options are passed as an array of strings, where each string is an option in the
-  # form "<option>=<value>". Be aware that this is an advanced option and that setting
-  # options here may break the web server if invalid or conflicting with other settings
-  # applied based on other settings in this file. The config options specified here are
-  # added to the end of the passed options. This makes it possible to overwrite settings
-  # set by Pi-hole (only the last values is used when a config option is specified
-  # multiple times). Use with caution.
+  # (CivetWeb). The options are passed as an array of strings, where each string is an
+  # option in the form "<option>=<value>". The config options specified here are added
+  # to the end of the passed options. This makes it possible to overwrite settings set
+  # by Pi-hole (only the last value is used when a config option is specified multiple
+  # times). Use with caution: setting options here may break the web server if they
+  # conflict with other settings applied based on other settings in this file.
   #
-  # Example: [ "ssl_protocol_version=4", "ssl_cipher_list=AES128:!MD5" ]
+  # Options given here reach the web server unchecked, and some of them decide which
+  # files it serves or executes, so this option cannot be set through the API. Set it in
+  # /etc/pihole/pihole.toml, through an environment variable, or with "pihole-FTL
+  # --config" - all of which require access to the host.
+  #
+  # Example: [ "num_threads=8", "max_request_size=32768" ]
   #
   # Allowed values are:
-  #     An array of valid CivetWeb options
+  #     An array of permitted CivetWeb options
   advancedOpts = []
 
   [webserver.session]
@@ -1068,7 +1071,8 @@
     # Number of days the automatically generated self-signed TLS/SSL certificate will be
     # valid for.
     #
-    # Defaults to 47 days. A minimum of 7 days is enforced.
+    # Defaults to 47 days. A minimum of 7 days and a maximum of 36500 days (100 years) are
+    # enforced.
     # Some devices may enforce shorter validity ranges. Note that defining a lower
     # validity range may require you to accept the self-signed certificate more often in
     # your browser.
@@ -1081,13 +1085,25 @@
     validity = 47
 
   [webserver.paths]
-    # Server root on the host
+    # Server root on the host.
+    #
+    # Every file below this directory can be requested over the network once
+    # webserver.serve_all is enabled, so it cannot be "/" or any other directory
+    # containing "/etc/pihole".
+    #
+    # Relocating the document root decides which files the web server serves, so it cannot
+    # be set through the API. Set it in /etc/pihole/pihole.toml, through an environment
+    # variable, or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
-    #     A valid path
+    #     A valid absolute path not containing "/etc/pihole"
     webroot = "/var/www/html"
 
     # Sub-directory of the root containing the web interface
+    #
+    # This decides where the web server serves the interface from, so it cannot be set
+    # through the API. Set it in /etc/pihole/pihole.toml, through an environment variable,
+    # or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
     #     A valid subpath, both slashes are needed!
@@ -1105,6 +1121,10 @@
     # empty. Setting this field to an incorrect value may result in the web interface not
     # being accessible.
     # Don't use this setting if you are not using a reverse proxy!
+    #
+    # This decides where the web server serves the interface from, so it cannot be set
+    # through the API. Set it in /etc/pihole/pihole.toml, through an environment variable,
+    # or with "pihole-FTL --config" - all of which require access to the host.
     #
     # Allowed values are:
     #     A valid URL prefix or empty
@@ -1422,6 +1442,12 @@
   #
   # Use this option with extra care.
   #
+  # dnsmasq directives such as "dhcp-script" and "conf-script" name programs that
+  # dnsmasq then executes, so this option cannot be set through the API. Set it in
+  # /etc/pihole/pihole.toml, through an environment variable, or with "pihole-FTL
+  # --config" - all of which require access to the host, which anyone placing such a
+  # script has anyway.
+  #
   # Example: [ "address=/example.com/192.168.0.1", "address=/example.org/192.168.0.2",
   # "address=/example.net/192.168.0.3" ]
   #
@@ -1707,7 +1733,8 @@
 
   # Temporary flag that may print additional information. This debug flag is meant to be
   # used whenever needed for temporary investigations. The logged content may change
-  # without further notice at any time.
+  # without further notice at any time. Enabling this flag also raises the resolution of
+  # all log timestamps from milliseconds to microseconds.
   #
   # Allowed values are:
   #     true or false

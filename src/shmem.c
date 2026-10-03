@@ -723,13 +723,20 @@ void _lock_shm(const char *func, const int line, const char *file)
 
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
 
-	if(result != 0)
+	// Who held the lock before us, for the recovery messages below
+	const pid_t previous_pid = shmLock->owner.pid;
+	const pid_t previous_tid = shmLock->owner.tid;
+
+	// EOWNERDEAD is recovered from below, e.g., after a TCP worker ran into
+	// its timeout while it was holding the lock
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining outer SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		log_debug(DEBUG_LOCKS, "Owner of outer SHM lock died, making lock consistent");
+		log_info("Owner of outer SHM lock (PID %d, TID %d) died, making lock consistent",
+		         previous_pid, previous_tid);
 
 		result = pthread_mutex_consistent(&shmLock->lock.outer);
 		if(result != 0)
@@ -760,13 +767,14 @@ void _lock_shm(const char *func, const int line, const char *file)
 		log_debug(DEBUG_LOCKS, "Obtained SHM lock for %s() (%s:%i)", func, file, line);
 	}
 
-	if(result != 0)
+	if(result != 0 && result != EOWNERDEAD)
 		log_err("Error when obtaining inner SHM lock: %s", strerror(result));
 
 	if(result == EOWNERDEAD) {
 		// Try to make the lock consistent if the other process died while
 		// holding the lock
-		log_debug(DEBUG_LOCKS, "Owner of inner SHM lock died, making lock consistent");
+		log_info("Owner of inner SHM lock (PID %d, TID %d) died, making lock consistent",
+		         previous_pid, previous_tid);
 
 		result = pthread_mutex_consistent(&shmLock->lock.inner);
 		if(result != 0)
@@ -1396,6 +1404,32 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
+// Enlarge shared memory to be able to hold at least one new client. This is
+// also called with the lock held by code that adds many clients at once
+void shm_ensure_client_size(void)
+{
+	if(counters->clients >= counters->clients_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients = enlarge_shmem_struct(CLIENTS, 1);
+		if(clients == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
+		if(clients_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 // Enlarge shared memory to be able to hold at least one new record
 static void shm_ensure_size(void)
 {
@@ -1433,16 +1467,7 @@ static void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->clients >= counters->clients_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients = enlarge_shmem_struct(CLIENTS, 1);
-		if(clients == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
+	shm_ensure_client_size();
 	if(counters->domains >= counters->domains_MAX-1)
 	{
 		// Have to reallocate shared memory
@@ -1476,16 +1501,6 @@ static void shm_ensure_size(void)
 	{
 		// Have to reallocate shared memory
 		if(enlarge_shmem_struct(INTARRAYS, 1) == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
-	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
-		if(clients_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
@@ -1540,9 +1555,9 @@ bool get_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("get_per_client_regex(%u, %u): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("get_per_client_regex(%u, %u): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -1573,9 +1588,9 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;
@@ -1586,11 +1601,11 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
 {
 	// Check bounds
-	if(ID > MAXID)
+	if(ID >= MAXID)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID);
+			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID - 1);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;

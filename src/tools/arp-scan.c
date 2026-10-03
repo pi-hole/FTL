@@ -25,6 +25,8 @@
 #include <linux/if_arp.h>
 //htons etc
 #include <arpa/inet.h>
+// poll()
+#include <poll.h>
 
 // How many threads do we spawn at maximum?
 // This is also the limit for interfaces
@@ -228,20 +230,6 @@ static int create_arp_socket(const int ifindex, const char *iface, const char **
 		return -1;
 	}
 
-	// Set timeout
-	struct timeval tv;
-	tv.tv_sec = ARP_TIMEOUT;
-	tv.tv_usec = 0;
-	if (setsockopt(arp_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
-	{
-		*error = strerror(errno);
-#ifdef DEBUG
-		printf("Unable to set timeout for ARP communications on interface %s: %s\n", iface, *error);
-#endif
-		close(arp_socket);
-		return -1;
-	}
-
 	return arp_socket;
 }
 
@@ -295,17 +283,48 @@ static ssize_t read_arp(const int fd, struct thread_data *thread_data)
 	ssize_t ret = 0;
 	unsigned char buffer[BUF_SIZE];
 
+	// Stop reading ARP_TIMEOUT seconds from now, no matter how many
+	// unrelated ARP frames keep arriving on the interface
+	struct timespec end = { 0 };
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	end.tv_sec += ARP_TIMEOUT;
+
 	// Read ARP responses
 	while(ret >= 0)
 	{
-		ret = recvfrom(fd, buffer, BUF_SIZE, 0, NULL, NULL);
+		struct timespec now = { 0 };
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		const long remaining_ms = (end.tv_sec - now.tv_sec) * 1000L +
+		                          (end.tv_nsec - now.tv_nsec) / 1000000L;
+		if(remaining_ms <= 0)
+		{
+			// Timeout
+			ret = 0;
+			break;
+		}
+
+		// Wait for the next frame, but not beyond the deadline
+		struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+		const int pret = poll(&pfd, 1, (int)remaining_ms);
+		if(pret == 0 || (pret < 0 && errno == EINTR))
+			continue;
+		if(pret < 0)
+		{
+			// Error
+			ret = -1;
+			thread_data->error = strerror(errno);
+			printf("poll(): %s", thread_data->error);
+			break;
+		}
+
+		ret = recvfrom(fd, buffer, BUF_SIZE, MSG_DONTWAIT, NULL, NULL);
 		if (ret == -1)
 		{
-			if(errno == EAGAIN)
+			if(errno == EAGAIN || errno == EINTR)
 			{
-				// Timeout
+				// Nothing to read (yet)
 				ret = 0;
-				break;
+				continue;
 			}
 
 			// Error
@@ -724,7 +743,7 @@ int run_arp_scan(const bool scan_all, const bool extreme_mode)
 		{
 			// Calculate progress (total number of scans / total number of addresses)
 			// We add 1 to total_scans to avoid division by zero
-			const unsigned int new_progress = 100 * (unsigned int)(num_scans / (total_scans + 1));
+			const unsigned int new_progress = (unsigned int)(100 * num_scans / (total_scans + 1));
 			if(new_progress > progress)
 			{
 				// Print progress
