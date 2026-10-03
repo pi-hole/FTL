@@ -1495,3 +1495,30 @@ class TestNTP:
         drift = abs(tx_seconds - now_ntp)
         assert drift <= 2, \
             f"NTP transmit timestamp off by {drift}s (expected ≤2s)"
+
+    def test_ntp_server_stratum(self, api_session):
+        """The NTP server never answers with stratum 0, also when FTL's own
+        NTP client is not running (no CAP_SYS_TIME in the test environment).
+        It either reports itself synchronized with a valid stratum and a
+        reference timestamp, or unsynchronized (LI = 3, stratum 16)."""
+        import socket
+        import struct
+
+        request = b'\x23' + 47 * b'\0'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            sock.sendto(request, ('127.0.0.1', 123))
+            data, _ = sock.recvfrom(1024)
+        finally:
+            sock.close()
+
+        assert len(data) == 48, f"Expected 48-byte NTP packet, got {len(data)}"
+        leap = data[0] >> 6
+        stratum = data[1]
+        ref = struct.unpack('!Q', data[16:24])[0]
+        if leap == 3:
+            assert stratum == 16, f"Unsynchronized reply with stratum {stratum}"
+        else:
+            assert 1 <= stratum <= 15, f"Synchronized reply with stratum {stratum}"
+            assert ref != 0, "Synchronized reply with zero reference timestamp"
