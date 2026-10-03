@@ -635,6 +635,8 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
+			// Passwords are write-only by type, not by flag
+			JSON_ADD_BOOL_TO_OBJECT(flags, "write_only", (conf_item->f & FLAG_WRITE_ONLY) || conf_item->t == CONF_PASSWORD);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
 
 			// Attach leave object to tree of objects
