@@ -1856,6 +1856,11 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
+	gravityDB_ensure_client_groups(client);
+
 	// If this cache record can expire, check if it is still valid and/or if
 	// caching is generally disabled
 	if((dns_cache->expires > 0 && ABS_TO_SHM_TIME((time_t)query->timestamp) > dns_cache->expires) ||
