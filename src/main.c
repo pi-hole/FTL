@@ -208,6 +208,9 @@ int main (int argc, char *argv[])
 		// executed from here, the restarted FTL withholds it again
 		if(getuid() != 0)
 			restore_capability_for_exec(CAP_CHOWN);
+		// A pending alarm survives execvp(), and SIGALRM terminates the
+		// new image until dnsmasq installs its handler
+		alarm(0);
 		execvp(argv[0], argv);
 	}
 
