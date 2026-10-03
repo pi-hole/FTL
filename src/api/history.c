@@ -134,8 +134,8 @@ int api_history_clients(struct ftl_conn *api)
 		Nc = counters->clients;
 	}
 
-	// Leave out the clients the user does not want to see, as Top Clients
-	// does. A bad regex is logged and filters nothing, as there
+	// Filter out the clients the user does not want to see, as Top Clients
+	// does. A bad regex is logged and filters nothing, as in get_top_clients()
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
 	compile_filter_regex(api, "webserver.api.excludeClients",

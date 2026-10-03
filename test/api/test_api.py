@@ -368,11 +368,14 @@ class TestHistory:
     def test_history_clients_honors_exclude_filter(self, api_session):
         # webserver.api.excludeClients removes a client from the Client
         # activity graph entirely, as it does from Top Clients (#3168)
+        original = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api/excludeClients",
+                                      timeout=5))["config"]["webserver"]["api"]["excludeClients"]
         before = _j(api_session.get(f"{FTL_URL}/api/history/clients?N=0", timeout=5))
         assert "127.0.0.1" in before["clients"], \
             f"test data must contain 127.0.0.1:\n{json.dumps(before['clients'], indent=2)}"
         try:
-            set_config(api_session, "webserver.api.excludeClients", [r"^127\.0\.0\.1$"])
+            set_config(api_session, "webserver.api.excludeClients",
+                       original + [r"^127\.0\.0\.1$"])
             data = _j(api_session.get(f"{FTL_URL}/api/history/clients?N=0", timeout=5))
             assert "127.0.0.1" not in data["clients"], json.dumps(data["clients"], indent=2)
             for slot in data["history"]:
@@ -382,7 +385,7 @@ class TestHistory:
             expected = {ip: c["total"] for ip, c in before["clients"].items() if ip != "127.0.0.1"}
             assert kept == expected, json.dumps(data["clients"], indent=2)
         finally:
-            set_config(api_session, "webserver.api.excludeClients", [])
+            set_config(api_session, "webserver.api.excludeClients", original)
 
 
 # ---------------------------------------------------------------------------
