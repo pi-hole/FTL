@@ -14,6 +14,8 @@
 #include "config/setupVars.h"
 #include "args.h"
 #include "config/config.h"
+// writeFTLtoml()
+#include "config/toml_writer.h"
 // watch_config()
 #include "config/inotify.h"
 #include "main.h"
@@ -90,6 +92,16 @@ int main (int argc, char *argv[])
 	// Check if another FTL process is already running
 	if(another_FTL())
 		return EXIT_FAILURE;
+
+	// FTL always starts with blocking enabled, as a timer that would have
+	// enabled it again does not survive a restart. A value forced through
+	// the environment is left alone
+	if(!config.dns.blocking.active.v.b && !(config.dns.blocking.active.f & FLAG_ENV_VAR))
+	{
+		log_warn("Blocking was disabled, enabling it on startup");
+		config.dns.blocking.active.v.b = true;
+		writeFTLtoml(true, NULL);
+	}
 
 	// Set process priority
 	set_nice();

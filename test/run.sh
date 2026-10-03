@@ -189,6 +189,14 @@ if [ $DOTDOH_SERVER_RET != 0 ]; then
   RET=$DOTDOH_SERVER_RET
 fi
 
+# Restart tests. After pytest and the DoT/DoH suites, as the restarts perturb
+# the query statistics they assert on.
+$BATS -p "test/restart.bats"
+RESTART_RET=$?
+if [ $RESTART_RET != 0 ]; then
+  RET=$RESTART_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.

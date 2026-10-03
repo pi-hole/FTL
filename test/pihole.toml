@@ -377,6 +377,9 @@
   [dns.blocking]
     # Should FTL block queries?
     #
+    # FTL enables blocking again whenever it (re)starts, unless this is set through an
+    # environment variable.
+    #
     # Allowed values are:
     #     true or false
     active = true

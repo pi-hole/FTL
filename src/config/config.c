@@ -664,7 +664,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
-	conf->dns.blocking.active.h = "Should FTL block queries?";
+	conf->dns.blocking.active.h = "Should FTL block queries?\n\n FTL enables blocking again whenever it (re)starts, unless this is set through an environment variable.";
 	conf->dns.blocking.active.t = CONF_BOOL;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
