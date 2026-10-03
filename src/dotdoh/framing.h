@@ -20,6 +20,8 @@
 #include <sys/types.h>
 
 #define DNS_MSG_MAX 65535
+// A DNS message is at least its fixed header (RFC 1035 4.1.1)
+#define DNS_HEADER_LEN 12
 
 // Largest HTTP/1.1 response header block a DoH response may carry before we
  // give up (guards the accumulation buffer against an endless header stream).
