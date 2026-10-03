@@ -338,9 +338,28 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 	return true;
 }
 
-// Validate a file path that needs to have both a slash at the beginning and at
+// A URL path the webserver matches requests against. Some checks see the raw
+// and some the percent-decoded request URI, so allow only characters that read
+// the same in both
+static bool validate_urlpath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < strlen(val->s); i++)
+	{
+		const unsigned char c = val->s[i];
+		if(!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') &&
+		   c != '/' && c != '.' && c != '-' && c != '_' && c != ' ')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid URL path (invalid character 0x%02x at position %u)", key, c, i);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate a URL path that needs to have both a slash at the beginning and at
 // the end
-bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+bool validate_urlpath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if the path starts and ends with a slash
 	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
@@ -350,7 +369,16 @@ bool validate_filepath_two_slash(union conf_value *val, const char *key, char er
 	}
 
 	// Check if the path contains only valid characters
-	return validate_filepath(val, key, err);
+	return validate_urlpath(val, key, err);
+}
+
+// Validate URL path (empty allowed)
+bool validate_urlpath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(strlen(val->s) == 0)
+		return true;
+
+	return validate_urlpath(val, key, err);
 }
 
 // Validate file path (empty allowed)
