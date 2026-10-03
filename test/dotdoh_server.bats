@@ -273,6 +273,57 @@ setup_file() {
   assert_failure 3
 }
 
+# test/pihole.toml trusts 127.0.0.4 in webserver.trustedProxies
+doh_via_trusted_proxy() {
+  local q; q="${BATS_FILE_TMPDIR}/tp_q.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/dns-message' \
+       --data-binary "@$q" "$@" "http://127.0.0.1/dns-query"
+}
+
+@test "dotdoh-server: DoH from a trusted proxy is served and attributed to the forwarded client" {
+  local out i
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-Proto: https' \
+          -H 'X-Forwarded-For: 127.0.0.9, 127.0.0.5'
+  assert_output "200"
+  # The rightmost untrusted hop counts, 127.0.0.9 may have been forged
+  for i in $(seq 1 10); do
+    out=$(curl -s "${FTL_URL}/api/queries?client_ip=127.0.0.5")
+    grep -qF "$DOMAIN" <<< "$out" && break
+    sleep 0.3
+  done
+  run bash -c 'grep -F "$1" <<< "$2"' _ "$DOMAIN" "$out"
+  assert_success
+  run bash -c 'curl -s "$1/api/queries?client_ip=127.0.0.9" | grep -F "$2"' _ "$FTL_URL" "$DOMAIN"
+  assert_failure
+}
+
+@test "dotdoh-server: DoH from a trusted proxy without X-Forwarded-Proto https is refused (426)" {
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-For: 127.0.0.5'
+  assert_output "426"
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-Proto: http' \
+          -H 'X-Forwarded-For: 127.0.0.5'
+  assert_output "426"
+}
+
+@test "dotdoh-server: forwarding headers from an untrusted peer are ignored (426)" {
+  run doh_via_trusted_proxy --interface "$CLIENT" -H 'X-Forwarded-Proto: https' \
+          -H 'X-Forwarded-For: 127.0.0.5'
+  assert_output "426"
+}
+
+@test "dotdoh-server: a malformed X-Forwarded-For from a trusted proxy is rejected (400)" {
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-Proto: https' \
+          -H 'X-Forwarded-For: not-an-address'
+  assert_output "400"
+}
+
+@test "dotdoh-server: an invalid webserver.trustedProxies entry is rejected when set" {
+  run ./pihole-FTL --config webserver.trustedProxies '["10.0.0.0/33"]'
+  assert_line --index 0 'Invalid value: webserver.trustedProxies[0]: not a valid IPv4 CIDR ("33")'
+  assert_failure 3
+}
+
 @test "dotdoh-server: DoH rejects a non-POST/GET method (405)" {
   local ca; ca="$(pwd)/test/test_ca.crt"
   run curl -s -o /dev/null -w '%{http_code}' --cacert "$ca" \
