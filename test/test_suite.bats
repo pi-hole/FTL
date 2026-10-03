@@ -345,6 +345,14 @@ setup() {
   assert_line --index 1 ""
 }
 
+@test "CNAME inspection: CNAME is blocked (TCP)" {
+  run bash -c "dig A cname-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/cname-tcp.ftl -> GRAVITY_CNAME' /var/log/pihole/FTL.log"
+  assert_output "1"
+}
+
 @test "DNSSEC: SECURE domain is resolved" {
   run bash -c "dig A a.dnssec @127.0.0.1"
   assert_line --partial --index 3 "status: NOERROR"
@@ -442,6 +450,14 @@ setup() {
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with ::"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl AAAA ::\""* ]]
+}
+
+@test "Upstream blocked domain: NULL is recognized (TCP)" {
+  run bash -c "dig A null-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/null-tcp.ftl -> EXTERNAL_BLOCKED_NULL' /var/log/pihole/FTL.log"
+  assert_output "1"
 }
 
 @test "Upstream blocked domain: IP is recognized" {
@@ -1759,6 +1775,15 @@ setup() {
   assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
   assert_failure 3
 
+  # webserver.api.maxHistory carries FLAG_RESTART_FTL, so check it with -t
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 86401'
+  assert_line --index 0 'Invalid value: webserver.api.maxHistory: cannot be larger than 86400'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 3600'
+  assert_line --index 0 '3600'
+  assert_success
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
@@ -2039,6 +2064,17 @@ setup() {
   assert_line --index 1 "Certificate does not match domain pi-hole.net"
   assert_line --index 2 ""
   assert_failure
+}
+
+@test "X.509 certificate can be generated for a domain longer than 64 characters" {
+  # A CN holds at most 64 characters, the full domain goes into the SAN
+  domain="$(printf 'a%.0s' {1..63}).$(printf 'b%.0s' {1..63}).example.com"
+  run bash -c "./pihole-FTL --gen-x509 /tmp/long-domain.pem ${domain}"
+  assert_success
+  run bash -c "./pihole-FTL --read-x509 /tmp/long-domain.pem ${domain}"
+  assert_line --index 1 "Certificate matches domain ${domain}"
+  assert_success
+  rm -f /tmp/long-domain.pem /tmp/long-domain.crt /tmp/long-domain_ca.crt
 }
 
 @test "Test embedded GZIP compressor" {
