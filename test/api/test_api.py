@@ -196,11 +196,11 @@ class TestConfigValidationAPIValidator:
 
     def test_files_pcap_rejects_invalid_path(self, api_session):
         data = _j(api_session.patch(f"{FTL_URL}/api/config",
-                                    json={"config": {"files": {"pcap": "%gh4b"}}}, timeout=20))
+                                    json={"config": {"files": {"pcap": "\u0001gh4b"}}}, timeout=20))
         assert data["error"] == {
             "key": "bad_request",
             "message": "Config item validation failed",
-            "hint": 'files.pcap: not a valid file path ("%gh4b")',
+            "hint": "files.pcap: not a valid file path (invalid character 0x01 at position 0)",
         }, json.dumps(data, indent=2)
 
     def test_cnameRecords_rejects_too_few_elements(self, api_session):
