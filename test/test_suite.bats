@@ -1773,6 +1773,9 @@ except socket.timeout:
   # this change and the restore below into a single reload
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
+  # Changed records restart the resolver (dns.hostsLocal), wait for it
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
 
   # Malformed UTF-8: overlong encoding, UTF-16 surrogate, above U+10FFFF,
   # truncated sequence and stray continuation byte
@@ -1796,6 +1799,8 @@ except socket.timeout:
   assert_success
 
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 }
 
