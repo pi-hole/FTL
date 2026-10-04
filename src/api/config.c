@@ -745,7 +745,9 @@ static int api_config_get(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int api_config_patch(struct ftl_conn *api)
+// Sets *send_config when the caller is to answer with the full config, which it
+// does after releasing the config lock
+static int api_config_patch(struct ftl_conn *api, bool *send_config)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -1002,8 +1004,9 @@ static int api_config_patch(struct ftl_conn *api)
 		log_web(LOG_INFO, "No config changes detected");
 	}
 
-	// Return full config after possible changes above
-	return api_config_get(api);
+	// The full config is returned by the caller
+	*send_config = true;
+	return 0;
 }
 
 // Inspired by https://stackoverflow.com/a/32496721
@@ -1363,9 +1366,22 @@ int api_config(struct ftl_conn *api)
 	// PUT: Replaces the entire config with the provided one (not supported
 	// but PATCH with a full config is the same)
 	else if(api->method == HTTP_PATCH)
-		return api_config_patch(api);
+	{
+		// Serializing and sending the full config can be slow with a slow
+		// client, so it happens after the lock is released
+		bool send_config = false;
+		lock_config();
+		const int ret = api_config_patch(api, &send_config);
+		unlock_config();
+		return send_config ? api_config_get(api) : ret;
+	}
 	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
-		return api_config_put_delete(api);
+	{
+		lock_config();
+		const int ret = api_config_put_delete(api);
+		unlock_config();
+		return ret;
+	}
 
 	return 0;
 }
