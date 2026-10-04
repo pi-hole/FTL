@@ -1481,8 +1481,8 @@
   # closed by remote server) to the FTL log file. These warnings can be useful to
   # identify intermittent network problems or general problem with upstream servers.
   # However, in some setups, these warnings may be expected (e.g. due to low-quality
-  # Internet connectivity) and cannot be fixed. Enabling this setting will hide all
-  # connection warnings.
+  # Internet connectivity) and cannot be fixed. Enabling this setting hides them in the
+  # FTL log file, the dnsmasq log is left untouched.
   #
   # Allowed values are:
   #     true or false
