@@ -740,7 +740,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -2238,7 +2238,7 @@ except socket.timeout:
   run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
   run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
@@ -2271,6 +2271,11 @@ except socket.timeout:
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
   run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
+}
+
+@test "Redirect port answers 308 to the TLS port" {
+  run bash -c 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" "http://127.0.0.1:8081/admin/x%20y?a=1"'
+  assert_output "308 https://pi.hole/admin/x%20y?a=1"
 }
 
 @test "Gravity: API write waits for a concurrent reader instead of failing" {
