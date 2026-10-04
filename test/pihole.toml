@@ -941,7 +941,7 @@
   #
   # Allowed values are:
   #     A comma-separated list of <[ip_address:]port>
-  port = "80o,443os,[::]:80o,[::]:443os"
+  port = "80o,443os,[::]:80o,[::]:443os,8081r" ### CHANGED, default = "80o,443os,[::]:80o,[::]:443os"
 
   # Maximum number of worker threads allowed.
   #
@@ -1788,8 +1788,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 114 entries are default
-# --> 56 entries are modified
+# 170 total entries out of which 113 entries are default
+# --> 57 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem
