@@ -2597,7 +2597,7 @@ void FTL_dnsmasq_reload(void)
 	check_capabilities();
 
 	// Report blocking mode
-	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
+	log_info("Blocking status is %s", get_blocking_status_str(get_blockingstatus()));
 
 	// Set resolver as ready
 	resolver_ready = true;

@@ -31,6 +31,7 @@ components:
           The optional `timer` object may used to set a timer. Once this timer elapsed, the opposite blocking mode is automatically set.
           For instance, you can request `{blocking: false, timer: 60}` to disable Pi-hole for one minute.
           Blocking will be automatically resumed afterwards.
+          Such a temporary status is not stored in the configuration (`dns.blocking.active`) and ends when FTL restarts.
 
           You can terminate a possibly running timer by setting `timer` to `null` (the set mode becomes permanent).
         requestBody:
