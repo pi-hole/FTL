@@ -92,13 +92,13 @@ load 'bats_helper.bash'
   fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (8x)
   # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more, and
-  # the config restore after the first v5 Teleporter import clears dns.hosts (10x)
+  # the config restore after the first v5 Teleporter import clears dns.hosts (11x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "7"
+    assert_line --index 0 "8"
   else
-    assert_line --index 0 "10"
+    assert_line --index 0 "11"
   fi
 }
 
