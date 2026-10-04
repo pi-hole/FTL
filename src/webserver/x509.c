@@ -18,6 +18,7 @@
 # endif
 # include <mbedtls/x509_crt.h>
 # include <mbedtls/pk.h>
+# include <mbedtls/oid.h>
 
 // We enforce at least mbedTLS v3.5.0 if we use it
 #if MBEDTLS_VERSION_NUMBER < 0x03050000
@@ -614,6 +615,21 @@ enum cert_check cert_currently_valid(const char *certfile, const time_t valid_fo
 	return CERT_OKAY;
 }
 
+// Check whether the first entry of the given type (OID) of an X.509 name
+// equals value, ignoring case
+static bool name_entry_equals(const mbedtls_x509_name *name, const char *oid,
+                              const size_t oid_len, const char *value)
+{
+	for(; name != NULL; name = name->next)
+	{
+		if(name->oid.len != oid_len || memcmp(name->oid.p, oid, oid_len) != 0)
+			continue;
+		return name->val.len == strlen(value) &&
+		       strncasecmp((const char *)name->val.p, value, name->val.len) == 0;
+	}
+	return false;
+}
+
 bool is_pihole_certificate(const char *certfile)
 {
 	// Check if the file exists and is readable
@@ -632,16 +648,16 @@ bool is_pihole_certificate(const char *certfile)
 		log_err("Cannot parse certificate: Error code %d", rc);
 		return false;
 	}
-	// Check if the issuer is "pi.hole"
-	const bool is_pihole_issuer = strncasecmp((char*)crt.issuer.val.p, "pi.hole", crt.issuer.val.len) == 0;
-	// Check if the subject is "pi.hole"
-	const bool is_pihole_subject = strncasecmp((char*)crt.subject.val.p, "pi.hole", crt.subject.val.len) == 0;
-
+	// Our certificates are signed by the CA generate_certificate() creates, so
+	// the issuer identifies them, the subject follows webserver.domain
+	const bool is_pihole_issuer =
+		name_entry_equals(&crt.issuer, MBEDTLS_OID_AT_CN, MBEDTLS_OID_SIZE(MBEDTLS_OID_AT_CN), "pi.hole") &&
+		name_entry_equals(&crt.issuer, MBEDTLS_OID_AT_ORGANIZATION, MBEDTLS_OID_SIZE(MBEDTLS_OID_AT_ORGANIZATION), "Pi-hole");
 
 	// Free resources
 	mbedtls_x509_crt_free(&crt);
 
-	return is_pihole_issuer && is_pihole_subject;
+	return is_pihole_issuer;
 }
 
 #else
