@@ -1965,6 +1965,41 @@ except socket.timeout:
   assert_line --index 0 '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]'
 }
 
+@test "Custom DNS records: expanded plain names are local as well (dns.expandHosts)" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1 host1.local\", \"10.0.0.1 plainhost\"]"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  # Without expand-hosts, the plain name is only local as itself
+  run bash -c 'grep -c "^local=/plainhost/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/plainhost.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.expandHosts true'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  # dnsmasq now also answers plainhost.lan from the record, names with a dot
+  # are not expanded
+  run bash -c 'grep -c "^local=/plainhost/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/plainhost.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/host1.local.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.expandHosts false'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+}
+
 # NOTE: API config validation, auth, Lua page tests moved to pytest
 # (test/api/test_api.py, test/api/test_z_auth.py)
 

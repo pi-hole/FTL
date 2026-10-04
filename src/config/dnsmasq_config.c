@@ -873,6 +873,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	if(conf->dns.hostsLocal.v.b && cJSON_GetArraySize(conf->dns.hosts.v.json) > 0)
 	{
 		fputs("# Custom DNS records are local, never forward them upstream\n", pihole_conf);
+		// expand-hosts also answers plain names as <name>.<domain>
+		const char *domain = conf->dns.domain.name.v.s;
+		const bool expand = conf->dns.expandHosts.v.b && strlen(domain) > 0;
 		cJSON *entry = NULL;
 		cJSON_ArrayForEach(entry, conf->dns.hosts.v.json)
 		{
@@ -887,7 +890,11 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			for(const char *name = strtok_r(NULL, " \t", &saveptr);
 			    name != NULL && name[0] != '#';
 			    name = strtok_r(NULL, " \t", &saveptr))
+			{
 				fprintf(pihole_conf, "local=/%s/\n", name);
+				if(expand && strchr(name, '.') == NULL)
+					fprintf(pihole_conf, "local=/%s.%s/\n", name, domain);
+			}
 			free(line);
 		}
 		fputs("\n", pihole_conf);
