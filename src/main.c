@@ -189,10 +189,15 @@ int main (int argc, char *argv[])
 		// inside its periodic export on the shared in-memory connection
 		// or the daily cleanup, which locks the disk file. Let it return
 		// before the final export touches either
-		if(!join_db_thread(DB_THREAD_JOIN_TIMEOUT))
+		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
+		if(!joined)
 			log_warn("Database thread still busy after %d seconds, exporting anyway",
 			         DB_THREAD_JOIN_TIMEOUT);
 
+		// Store what the periodic runs have not, then move it to disk. Not
+		// while the database thread may still be inside a run of its own
+		if(joined)
+			queries_to_database(true);
 		if(export_queries_to_disk(true))
 			log_info("Finished final database update");
 		else

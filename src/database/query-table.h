@@ -117,7 +117,7 @@ bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
-bool queries_to_database(void);
+bool queries_to_database(const bool final);
 void clear_addinfo_id_cache(void);
 bool is_memdb(const sqlite3 *db) __attribute__((pure));
 bool get_memdb_size(size_t *memsize, int *queries);
