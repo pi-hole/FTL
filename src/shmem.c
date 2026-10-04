@@ -1653,6 +1653,10 @@ queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const 
 	if(!check_range(physID, counters->queries_MAX, "query", func, line, file))
 		return NULL;
 
+	// A slot the history import left unused holds no query, which is not an error
+	if(checkMagic && queries[physID].magic == MAGICBYTE_UNUSED)
+		return NULL;
+
 	// Check magic byte
 	if(check_magic(physID, checkMagic, queries[physID].magic, "query", func, line, file))
 		return &queries[physID];

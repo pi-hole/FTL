@@ -109,6 +109,8 @@
 
 // Used to check memory integrity in various structs
 #define MAGICBYTE 0x57
+// A query slot the history import reserved but did not fill
+#define MAGICBYTE_UNUSED 0x55
 
 // Some magic database constants
 #define DB_FAILED -2

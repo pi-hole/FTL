@@ -180,3 +180,29 @@ load 'bats_helper.bash'
   printf "disk queries for dbimport-off.ftl: %s\n" "${lines[0]}"
   [[ ${lines[0]} -ge 1 ]]
 }
+
+@test "History rows the import skips leave no memory errors behind" {
+  # Rows the import rejects were counted, and their query slots reserved,
+  # before it ran. Copy the newest stored queries with an invalid status
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"CREATE TEMP TABLE t AS SELECT * FROM query_storage ORDER BY id DESC LIMIT 5; UPDATE t SET id = NULL, status = 999; INSERT INTO query_storage SELECT * FROM t;\""
+  assert_success
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'the others were skipped' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  for i in $(seq 1 10); do
+    dig A skipped-rows.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null
+  done
+  sleep 2
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.skipped-rows.log
+  run bash -c 'grep "magic byte" /tmp/FTL.skipped-rows.log'
+  refute_output
+}

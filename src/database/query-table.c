@@ -1561,7 +1561,7 @@ bool create_addinfo_table(sqlite3 *db)
 }
 
 // Get most recent 24 hours data from long-term database
-void DB_read_queries(void)
+static size_t read_queries(void)
 {
 	// Actually read queries from disk into memory
 	import_queries_from_disk();
@@ -1585,7 +1585,7 @@ void DB_read_queries(void)
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
 	if(FTLDBerror() || killed)
-		return;
+		return 0;
 
 	log_info("Parsing queries in database");
 
@@ -1596,7 +1596,7 @@ void DB_read_queries(void)
 	if( rc != SQLITE_OK )
 	{
 		log_err("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
-		return;
+		return 0;
 	}
 
 	// Loop through returned database rows
@@ -1911,12 +1911,33 @@ void DB_read_queries(void)
 
 	if(!killed && (int)imported_queries < counted_queries)
 	{
-		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu. You may see harmless memory errors in the log.",
-		         config.files.database.v.s, counted_queries, imported_queries);
+		log_warn("Imported %zu of the %i queries counted in %s, the others were skipped",
+		         imported_queries, counted_queries, config.files.database.v.s);
 	}
 
 	// Finalize SQLite3 statement
 	sqlite3_finalize(stmt);
+
+	return imported_queries;
+}
+
+void DB_read_queries(void)
+{
+	const size_t imported = read_queries();
+	if(killed || imported >= (size_t)counted_queries)
+		return;
+
+	// The slots reserved for rows that were skipped, or never read because the
+	// import stopped early, hold no query. Mark them, so lookups pass over them
+	// quietly and the garbage collector drops them with the history around them
+	lock_shm();
+	for(unsigned int i = imported; i < (unsigned int)counted_queries; i++)
+	{
+		queriesData *query = getQuery(i, false);
+		if(query != NULL)
+			query->magic = MAGICBYTE_UNUSED;
+	}
+	unlock_shm();
 }
 
 static void init_disk_db_idx(sqlite3 *memdb)

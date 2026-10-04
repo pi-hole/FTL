@@ -457,7 +457,14 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	{
 		queriesData *query = getQuery(i, true);
 		if(query == NULL)
+		{
+			// Removal advances over a contiguous prefix, so a slot the
+			// history import left unused has to be counted as removed too
+			const queriesData *slot = getQuery(i, false);
+			if(slot != NULL && slot->magic == MAGICBYTE_UNUSED)
+				removed++;
 			continue;
+		}
 
 		// Test if this query is too new
 		if(query->timestamp > mintime)
