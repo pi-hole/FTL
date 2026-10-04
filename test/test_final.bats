@@ -104,7 +104,6 @@ load 'bats_helper.bash'
 
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
-  # Negative IDs stay below MAX(id) so the export of later queries is unaffected
   now=$(date +%s)
   run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"INSERT INTO query_storage (id,timestamp,type,status,domain,client) VALUES (-10,$((now-5*86400)),1,2,0,0),(-11,$((now-3600)),1,2,0,0);\""
   assert_success
