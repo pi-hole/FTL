@@ -402,6 +402,9 @@ bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
+void lock_config(void);
+bool trylock_config(void);
+void unlock_config(void);
 void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
@@ -411,6 +414,7 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default
 void reset_config_default(struct conf_item *conf_item);

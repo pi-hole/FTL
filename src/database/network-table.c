@@ -817,6 +817,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		if(killed)
 			break;
 
+		// Not every variant below determines a hardware address
+		hwaddr[0] = '\0';
+
 		// Get client pointer
 		lock_shm();
 		clientsData *client = getClient(clientID, true);
@@ -927,9 +930,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 					// Skip empty lines
 					if(read == 0)
 						continue;
-					// Skip duid line
+					// DHCPv6 leases (IAID instead of a hardware address)
+					// and extra lease info follow the duid line
 					if(strncmp(line, "duid", 4) == 0)
-						continue;
+						break;
 
 					// Parse line
 					unsigned long expires = 0;
@@ -938,8 +942,8 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 					char lease_name[65] = { 0 };
 					const int ret = sscanf(line, "%lu %47s %45s %64s",
 			                       &expires, lease_hwaddr, lease_ip, lease_name);
-					// Skip invalid lines
-					if(ret != 4)
+					// Skip invalid lines and non-Ethernet hardware addresses
+					if(ret != 4 || !isMAC(lease_hwaddr))
 						continue;
 
 					// Check if this lease matches our client's IP address
@@ -1256,6 +1260,31 @@ static bool clean_network_table(sqlite3 *db)
 }
 
 /**
+ * @brief Removes devices whose hardware address is a DHCPv6 IAID ("1",
+ * "T1") or the bare hardware type of an IPv4 lease without hardware address
+ * ("01-"). Neither identifies a device, so such a row holds unrelated
+ * clients. Their clients are added again like any other client.
+ *
+ * @param db A pointer to the SQLite database connection.
+ * @return true on success, false if a query failed.
+ */
+static bool remove_lease_pseudo_devices(sqlite3 *db)
+{
+#define LEASE_PSEUDO_HWADDR "(((hwaddr GLOB '[0-9]*' OR hwaddr GLOB 'T[0-9]*') " \
+                              "AND substr(hwaddr, 2) NOT GLOB '*[^0-9]*') " \
+                             "OR hwaddr GLOB '[0-9a-fA-F][0-9a-fA-F]-')"
+	int rc = dbquery(db, "DELETE FROM network_addresses WHERE network_id IN "
+	                     "(SELECT id FROM network WHERE "LEASE_PSEUDO_HWADDR");");
+	if(rc != SQLITE_OK)
+		return false;
+
+	rc = dbquery(db, "DELETE FROM network WHERE "LEASE_PSEUDO_HWADDR";");
+#undef LEASE_PSEUDO_HWADDR
+
+	return rc == SQLITE_OK;
+}
+
+/**
  * @brief Flushes the network table by removing all IP addresses and devices.
  *
  * This function opens the database, deletes all entries from the
@@ -1315,6 +1344,13 @@ void parse_neighbor_cache(sqlite3 *db)
 
 	// Delete old entries from network table
 	if(!clean_network_table(db))
+	{
+		dbquery(db, "ROLLBACK");
+		return;
+	}
+
+	// Delete devices that were created from DHCP lease identifiers
+	if(!remove_lease_pseudo_devices(db))
 	{
 		dbquery(db, "ROLLBACK");
 		return;
@@ -1952,9 +1988,10 @@ bool updateMACVendorRecords(sqlite3 *db)
 	{
 		const int id = sqlite3_column_int(stmt, 0);
 
-		// Get vendor for MAC
+		// Get vendor for MAC, keep the stored one if the lookup failed
 		char vendor[MAXVENDORLEN] = { 0 };
-		getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor);
+		if(!getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor))
+			continue;
 
 		// Prepare statement
 		const char *updatestr = "UPDATE network SET macVendor = ?1 WHERE id = ?2";

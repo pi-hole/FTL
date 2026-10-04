@@ -47,12 +47,13 @@ setup() {
 }
 
 @test "Denied domain is blocked" {
-  run bash -c "dig denied.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (denylist)"
+  assert_line --index 1 ""
+
+  run bash -c "dig denied.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 
   # A second, different-type hit on denied.ftl so its blocked count stays
@@ -65,12 +66,13 @@ setup() {
 }
 
 @test "Gravity domain is blocked" {
-  run bash -c "dig gravity.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-
+  # The first, uncached answer carries the EDE too
   run bash -c "dig gravity.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
+  assert_line --index 1 ""
+
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -100,12 +102,13 @@ setup() {
 }
 
 @test "Regex denied match is blocked" {
-  run bash -c "dig regex5.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (regex)"
+  assert_line --index 1 ""
+
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -319,9 +322,11 @@ setup() {
 }
 
 @test "CNAME inspection: Shallow CNAME is blocked" {
-  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
+  # One query checks both the EDE of the first, uncached answer and the address
+  run bash -c "dig A cname-1.ftl @127.0.0.1 | grep -e 'EDE: ' -e '^cname-1\.ftl\.'"
+  assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity (CNAME))"
+  assert_line --regexp --index 1 "^cname-1\.ftl\.[[:space:]].*[[:space:]]A[[:space:]]+0\.0\.0\.0$"
+  assert_line --index 2 ""
 }
 
 @test "CNAME inspection: Deep CNAME is blocked" {
@@ -735,7 +740,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,9443s,192.0.2.1:9444s,44s3,443xs"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r,9443s,192.0.2.1:9444s,44s3,443xs"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -1202,6 +1207,14 @@ setup() {
   assert_line --partial '_VERSION = "inspect.lua 3.1.0"'
 }
 
+@test "LUA: pihole.fileversion() returns the full modification time" {
+  # 2100-01-01 does not fit into a 32-bit integer
+  touch -d @4102444800 /tmp/fileversion.js
+  run bash -c './pihole-FTL lua -e "print(pihole.fileversion(\"/tmp/fileversion.js\"))"'
+  rm -f /tmp/fileversion.js
+  assert_line --index 0 "/tmp/fileversion.js?v=4102444800"
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -1230,6 +1243,30 @@ setup() {
   assert_line --index 0 "1"
   run bash -c "grep -c \"EDNS0: CPE-ID (payload size 6): \\\"ABCDEF\\\" (0x41 0x42 0x43 0x44 0x45 0x46)\"" <<< "${log}"
   assert_line --index 0 "1"
+}
+
+@test "EDNS(0) option longer than its OPT RR in a query is not a warning" {
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+
+  # COOKIE option claiming 8 bytes in an OPT RR with RDLEN 8 (4 + 4 bytes).
+  # Without a question the query is not counted, keeping the pytest totals.
+  python3 -c '
+import socket, struct
+q = struct.pack(">HHHHHH", 0x4242, 0x0100, 0, 0, 0, 1)
+opt = b"\x00" + struct.pack(">HHIH", 41, 1232, 0, 8) + b"\x00\x0a\x00\x08" + b"\x01" * 4
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(1)
+s.sendto(q + opt, ("127.0.0.1", 53))
+try:
+    s.recv(4096)
+except socket.timeout:
+    pass'
+
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  run bash -c "grep -c \"Found malicious EDNS payload\"" <<< "${log}"
+  assert_line --index 0 "1"
+  run bash -c "grep -c \"WARNING: Found malicious EDNS payload\"" <<< "${log}"
+  assert_line --index 0 "0"
 }
 
 @test "EDNS(0) MAC groups ECS addresses in network table" {
@@ -1604,7 +1641,7 @@ setup() {
 
 @test "Invalid environmental variable is logged (validation failed)" {
   grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (invalid character 0x01 at position 0), using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 
@@ -1720,6 +1757,15 @@ setup() {
 }
 
 @test "Config validation working on the CLI (validator-based checking)" {
+  # URL paths reject what the webserver would see percent-decoded in some checks only
+  run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: not a valid URL path (invalid character 0x25 at position 3)'
+  assert_failure 3
+
+  run bash -c "./pihole-FTL --config webserver.paths.prefix '/pi+hole'"
+  assert_line --index 0 'Invalid value: webserver.paths.prefix: not a valid URL path (invalid character 0x2b at position 3)'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
   assert_failure 3
@@ -2036,6 +2082,20 @@ setup() {
   assert_success
 }
 
+@test "TLS HTTP/1.1 requests too large for the DoH parser are answered by the web server" {
+  # A request target of 2048+ bytes and a method of 8+ characters are relayed
+  # to CivetWeb, so they get the same answer as over plain HTTP
+  long="/api/domains/deny/regex/$(head -c 2100 /dev/zero | tr '\0' 'a')"
+  tls="curl -s -o /dev/null -w %{http_code} --http1.1 --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1"
+  plain="curl -s -o /dev/null -w %{http_code}"
+  run bash -c "$tls -X DELETE https://pi.hole$long"
+  refute_output "400"
+  assert_output "$($plain -X DELETE http://127.0.0.1$long)"
+  run bash -c "$tls -X PROPFIND https://pi.hole/admin/"
+  refute_output "400"
+  assert_output "$($plain -X PROPFIND http://127.0.0.1/admin/)"
+}
+
 @test "X.509 certificate parser returns expected result" {
   # We are getting the certificate from the config. The verbose output is the
   # OpenSSL X509_print() representation (identical to "openssl x509 -text"). It
@@ -2114,6 +2174,7 @@ setup() {
 @test "PTR stale-response regression harness" {
   run ./ptr_response_regression
   assert_success
+  assert_output --partial "HOSTNAME_WARNING_POSITION=PASS"
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
 }
 
@@ -2186,7 +2247,7 @@ setup() {
   run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
   run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
@@ -2219,6 +2280,11 @@ setup() {
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
   run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
+}
+
+@test "Redirect port answers 308 to the TLS port" {
+  run bash -c 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" "http://127.0.0.1:8081/admin/x%20y?a=1"'
+  assert_output "308 https://pi.hole/admin/x%20y?a=1"
 }
 
 @test "Gravity: API write waits for a concurrent reader instead of failing" {

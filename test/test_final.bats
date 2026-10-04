@@ -42,6 +42,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
+  # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
@@ -51,7 +52,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "33" ]]
+    [[ ${lines[0]} == "36" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -103,6 +104,24 @@ load 'bats_helper.bash'
   run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Trying to access client ID'"
   assert_line --index 0 "0"
   run bash -c 'kill -0 "$(cat /run/pihole-FTL.pid)"'
+  assert_success
+}
+
+@test "Flushing the logs keeps older history and the overTime window" {
+  # Runs after the ID 0 check above as the flush deletes the last 24 hours.
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"INSERT INTO query_storage (id,timestamp,type,status,domain,client) VALUES (-10,$((now-5*86400)),1,2,0,0),(-11,$((now-3600)),1,2,0,0);\""
+  assert_success
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_line --index 0 "success"
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT group_concat(id) FROM query_storage WHERE id < 0;"'
+  assert_line --index 0 "-10"
+  # The overTime window still ends now and covers the past 24 hours
+  run bash -c "curl -s 127.0.0.1/api/history | jq '.history[0].timestamp < $((now-23*3600)) and .history[-1].timestamp < $((now+2*3600))'"
+  assert_line --index 0 "true"
+  # Leave no negative ID behind, the ids of the restart with database.DBimport
+  # disabled below would otherwise continue from it
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id < 0;"'
   assert_success
 }
 

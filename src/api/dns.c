@@ -118,9 +118,11 @@ int api_dns_blocking(struct ftl_conn *api)
 	}
 	else if(api->method == HTTP_POST)
 	{
+		lock_config();
 		lock_shm();
 		const int ret = set_blocking(api);
 		unlock_shm();
+		unlock_config();
 		return ret;
 	}
 	else

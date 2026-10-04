@@ -196,11 +196,11 @@ class TestConfigValidationAPIValidator:
 
     def test_files_pcap_rejects_invalid_path(self, api_session):
         data = _j(api_session.patch(f"{FTL_URL}/api/config",
-                                    json={"config": {"files": {"pcap": "%gh4b"}}}, timeout=20))
+                                    json={"config": {"files": {"pcap": "\u0001gh4b"}}}, timeout=20))
         assert data["error"] == {
             "key": "bad_request",
             "message": "Config item validation failed",
-            "hint": 'files.pcap: not a valid file path ("%gh4b")',
+            "hint": "files.pcap: not a valid file path (invalid character 0x01 at position 0)",
         }, json.dumps(data, indent=2)
 
     def test_cnameRecords_rejects_too_few_elements(self, api_session):
@@ -246,6 +246,17 @@ class TestEnvvarProtectedConfig:
             "message": "Config items set via environment variables cannot be changed via the API",
             "hint": "misc.nice",
         }, json.dumps(data, indent=2)
+
+
+class TestConfigFlags:
+
+    def test_write_only_flag(self, api_session):
+        """Write-only items are marked as such in the detailed config."""
+        data = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api?detailed=true", timeout=20))
+        api = data["config"]["webserver"]["api"]
+        assert api["password"]["flags"]["write_only"] is True
+        assert api["totp_secret"]["flags"]["write_only"] is True
+        assert api["max_sessions"]["flags"]["write_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +449,16 @@ class TestLuaServerPages:
         r = api_session.head(f"{FTL_URL}/broken_lua", timeout=5)
         assert r.status_code == 404
 
+    def test_root_not_served_by_default(self, api_session):
+        """/ under a Host other than webserver.domain follows serve_all too."""
+        set_config(api_session, "webserver.serve_all", False)
+        r = api_session.get(f"{FTL_URL}/", allow_redirects=False, timeout=5)
+        assert r.status_code == 404
+        r = api_session.get(f"{FTL_URL}/", headers={"Host": "pi.hole"},
+                            allow_redirects=False, timeout=5)
+        assert r.status_code == 308
+        assert r.headers["Location"].endswith("/admin/")
+
     def test_lua_page_generates_proper_backtrace(self, api_session):
         """Lua server page generates proper backtrace on error."""
         set_config(api_session, "webserver.serve_all", True)
@@ -453,6 +474,19 @@ class TestLuaServerPages:
         r = api_session.get(f"{FTL_URL}/broken_lua", timeout=5)
         lines = r.text.splitlines()
         assert lines[0] == "Hello, world 1!", f"Unexpected response:\n{r.text}"
+
+    def test_lp_redirect_stays_on_host(self):
+        """The .lp redirect never points to another host (serve_all is on)."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("//evil.example/x.lp", "/%5Cevil.example/x.lp"):
+            raw = _raw_http(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            "Connection: close\r\n\r\n".encode())
+            head = raw.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+            location = [line.split(":", 1)[1].strip()
+                        for line in head.split("\r\n")[1:]
+                        if line.lower().startswith("location:")]
+            assert location, f"No redirect for {path}:\n{head}"
+            assert not location[0].startswith(("//", "/\\")), location[0]
 
 
 # ---------------------------------------------------------------------------

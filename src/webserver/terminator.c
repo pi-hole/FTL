@@ -923,6 +923,18 @@ static int h1_parse_head(const char *buf, size_t len, struct h1_req *r)
 	return 0;
 }
 
+// Whether the request line in buf names the DoH endpoint, read without the
+// field limits of h1_parse_head()
+static bool h1_targets_doh(const char *buf, size_t len)
+{
+	const char *eol = memmem(buf, len, "\r\n", 2);
+	const char *sp = eol != NULL ? memchr(buf, ' ', (size_t)(eol - buf)) : NULL;
+	if(sp == NULL || eol - sp < 12)
+		return false;
+	return strncmp(sp + 1, "/dns-query", 10) == 0 &&
+	       (sp[11] == '?' || sp[11] == ' ');
+}
+
 // Send a status-only HTTP/1.1 error and close the connection (DoH errors are
 // terminal for the request; a client retries on a fresh connection).
 static void h1_doh_error(SSL *ssl, const char *status_line, const char *extra)
@@ -1024,8 +1036,11 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		}
 		const size_t head_len = (size_t)(eoh - buf) + 4;
 
+		// A head the DoH parser cannot hold (method of 8+ characters, target of
+		// 2048+ bytes) is only an error for DoH; anything else goes to CivetWeb
 		struct h1_req rq;
-		if(h1_parse_head(buf, head_len, &rq) != 0)
+		const bool parsed = h1_parse_head(buf, head_len, &rq) == 0;
+		if(!parsed && dotdoh_doh_enabled() && h1_targets_doh(buf, head_len))
 		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 
 		const bool is_post = strcmp(rq.method, "POST") == 0;
@@ -1049,7 +1064,8 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		// to CivetWeb from here on. A GET with a body is relayed rather than served
 		// so its body is consumed by CivetWeb and cannot desync the next keep-alive
 		// request.
-		if(!(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
+		if(!parsed ||
+		   !(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
 		     ((is_get && rq.content_length <= 0) || is_post)))
 		{
 			const int be = connect_backend();

@@ -24,7 +24,7 @@
 #include "signals.h"
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
-// delete_old_queries_from_db()
+// delete_recent_queries_from_db()
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
@@ -1068,7 +1068,7 @@ bool flush_dnsmasq_log(void)
 		log_err("Could not truncate log file %s: %s", dnsmasq_log.path, strerror(trunc_err));
 
 	// Flush last 24 hours of on-disk database
-	if(!delete_old_queries_from_db(false, mintime))
+	if(!delete_recent_queries_from_db(mintime - 86400.0))
 	{
 		log_err("Could not flush on-disk database");
 		return false;
