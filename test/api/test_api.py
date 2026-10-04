@@ -248,6 +248,17 @@ class TestEnvvarProtectedConfig:
         }, json.dumps(data, indent=2)
 
 
+class TestConfigFlags:
+
+    def test_write_only_flag(self, api_session):
+        """Write-only items are marked as such in the detailed config."""
+        data = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api?detailed=true", timeout=20))
+        api = data["config"]["webserver"]["api"]
+        assert api["password"]["flags"]["write_only"] is True
+        assert api["totp_secret"]["flags"]["write_only"] is True
+        assert api["max_sessions"]["flags"]["write_only"] is False
+
+
 # ---------------------------------------------------------------------------
 # Domain search
 # ---------------------------------------------------------------------------
