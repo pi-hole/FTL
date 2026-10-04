@@ -2240,3 +2240,21 @@ SQL
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
+
+@test "NTP client counts the replies of a server advertising a coarse precision" {
+  # The server advertises 2^-9 s (about 2 ms), coarser than a loopback round
+  # trip. FTL's own NTP server listens on 127.0.0.1 only (test/pihole.toml)
+  python3 test/fakentp.py 127.0.0.5 -9 > "${BATS_TEST_TMPDIR}/fakentp.out" 2>&1 &
+  local pid=$!
+  for i in $(seq 1 50); do
+    grep -q ready "${BATS_TEST_TMPDIR}/fakentp.out" && break
+    sleep 0.1
+  done
+  local got
+  got=$(./pihole-FTL ntp 127.0.0.5 2>&1 | grep -o "Received [0-9]*/[0-9]* valid NTP replies")
+  kill "$pid"
+  printf "%s\n" "${got}"
+  # Every reply counts, none is discarded for being more precise than the server
+  [[ "${got}" =~ Received\ ([0-9]+)/([0-9]+) ]]
+  [[ ${BASH_REMATCH[1]} -gt 0 && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]
+}
