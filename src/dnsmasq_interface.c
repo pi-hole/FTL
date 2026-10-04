@@ -317,13 +317,16 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
-// The blocking reason and the CNAME target describe one query, so they are
-// dropped on every way out of _FTL_make_answer() below, not only on the path
-// that answered
+// The blocking reason, the CNAME target, the forced reply, the redirecting
+// regex and the cache status describe one query, so they are dropped on every
+// way out of _FTL_make_answer() below and when the next query arrives
 static void unset_blocking_metadata(void)
 {
 	blockingreason = "<not set>";
 	cname_target = NULL;
+	force_next_DNS_reply = REPLY_UNKNOWN;
+	last_regex_idx = -1;
+	cacheStatus = QUERY_UNKNOWN;
 }
 
 // This is inspired by make_local_answer()
@@ -816,6 +819,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
+	// Not every query that sets up an answer gets one through
+	// _FTL_make_answer(), so start every client query from a clean state
+	if(proto != INTERNAL)
+		unset_blocking_metadata();
+
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
 	if(querytype != TYPE_NONE && is_pihole_domain(name))
@@ -871,12 +879,15 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	// Set when clientIP comes from EDNS(0) rather than the packet source
+	bool edns_client = false;
 	ednsData *edns = getEDNS();
 	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
+		edns_client = true;
 	}
 	else if(addr)
 	{
@@ -927,12 +938,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
 	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
+		// Log the first rate-limited query for this client in this
+		// interval, after the lock is released below: the message goes
+		// to pihole-FTL.db, and a contended database can hold us in
+		// sqliteBusyCallback() for up to DATABASE_BUSY_TIMEOUT, which
+		// would stall every DNS query and API worker waiting on the
+		// lock. We do not log the blocked domain for privacy reasons
+		unsigned int rate_limit_count = 0;
 		if(!client->flags.rate_limited)
 		{
-			// Log the first rate-limited query for this client in
-			// this interval. We do not log the blocked domain for
-			// privacy reasons
-			logg_rate_limit_message(clientIP, client->rate_limit);
+			rate_limit_count = client->rate_limit;
 			// Reset rate-limiting counter so we can count what
 			// comes within the adjacent interval
 			client->rate_limit = 0;
@@ -952,6 +967,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// inflated for the lifetime of the process.
 		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
+
+		// clientIP is a local buffer, so it stays valid here
+		if(rate_limit_count > 0)
+			logg_rate_limit_message(clientIP, rate_limit_count);
+
 		return true;
 	}
 
@@ -1140,8 +1160,22 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// block all other threads (API, database, GC, TCP workers).
 		unlock_shm();
 
+		// Look up the address the client is identified by: for an
+		// EDNS(0)-provided client, the packet source is the forwarder
+		union mysockaddr mac_addr = { 0 };
+		if(edns_client)
+		{
+			if(inet_pton(AF_INET, clientIP, &mac_addr.in.sin_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET;
+			else if(inet_pton(AF_INET6, clientIP, &mac_addr.in6.sin6_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET6;
+		}
+		else if(addr)
+			mac_addr = *addr;
+
 		unsigned char hwaddr[16] = {0};
-		const int hwlen = find_mac(addr, hwaddr, 1, time(NULL));
+		const int hwlen = mac_addr.sa.sa_family == AF_UNSPEC ? 0 :
+		                  find_mac(&mac_addr, hwaddr, 1, time(NULL));
 
 		// Reacquire lock and re-fetch client pointer (SHM may have
 		// been remapped while we were unlocked)
@@ -1731,6 +1765,11 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
+	gravityDB_ensure_client_groups(client);
+
 	// If this cache record can expire, check if it is still valid and/or if
 	// caching is generally disabled
 	if((dns_cache->expires > 0 && ABS_TO_SHM_TIME((time_t)query->timestamp) > dns_cache->expires) ||
@@ -1743,6 +1782,8 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;
 		dns_cache->list_id = -1;
+		dns_cache->force_reply = REPLY_UNKNOWN;
+		dns_cache->cname_strpos = 0;
 	}
 
 	// Check if the cache record we have applies to the current query
@@ -2020,6 +2061,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
 	{
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = new_status;
+
 		// Adjust counters
 		query_blocked(query, domain, client, new_status);
 
@@ -2109,7 +2153,8 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	lock_shm();
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
-	const int queryID = findQueryID(id);
+	// (negative for TCP queries, stored positive by FTL_new_query)
+	const int queryID = findQueryID(id < 0 ? -id : id);
 	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query
@@ -2250,6 +2295,9 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 			// Only set status
 			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
+
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = query->status;
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
@@ -3042,8 +3090,10 @@ static void query_blocked(queriesData *query, domainsData *domain, clientsData *
 
 	if(is_blocked(new_status))
 	{
-		// Count as blocked query
-		if(domain != NULL)
+		// Count as blocked query. Only the queried domain carries the
+		// count: runGC() hands it back from query->domainID, and a
+		// CNAME hop's domain (FTL_CNAME()) would never get it back
+		if(domain != NULL && domain->id == query->domainID)
 			domain->blockedcount++;
 		if(client != NULL)
 			change_clientcount(client, 0, 1, -1, 0);
@@ -3368,10 +3418,13 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_status, con
 
 int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const union all_addr *addr,
-                     const int id, const char *file, const int line)
+                     const int raw_id, const char *file, const int line)
 {
 	// Get EDE data (if available)
 	const ednsData *edns = getEDNS();
+
+	// The query ID is negative if this is a TCP query
+	const int id = raw_id < 0 ? -raw_id : raw_id;
 
 	// Check if RA and AA bits are unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
@@ -3612,17 +3665,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
-	// Deny CAP_CHOWN to anything FTL executes, before the worker threads below
-	// are created. Capability sets are per-thread and a new thread inherits a
-	// copy of its creator's, so this has to happen before the threads exist:
-	// clearing the ambient and inheritable sets on the main thread once they
-	// are already running would leave them - and the children they exec, such
-	// as a program a Lua page spawns - holding the systemd-granted ambient
-	// CAP_CHOWN. FTL keeps the capability in its permitted and effective sets
-	// for the ownership changes it makes itself (startup, and the RTC device
-	// while ntp.sync.rtc.set is enabled); only the inheritance to children goes.
-	if(getuid() != 0)
-		deny_capability_to_children(CAP_CHOWN);
+	// Take CAP_CHOWN out of use before the worker threads below are created.
+	// Capability sets are per-thread and a new thread inherits a copy of its
+	// creator's, so every thread starts without it in its effective,
+	// inheritable and ambient sets and nothing FTL executes can receive it.
+	// The permitted copy stays: the RTC code raises the capability for the
+	// moment it needs it, and main() hands it to a restarted FTL
+	if(getuid() != 0 && suspend_capability(CAP_CHOWN))
+		log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
 
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
@@ -3734,25 +3784,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
-
-		// The ambient and inheritable sets were cleared before the worker
-		// threads were created (see the deny above), so nothing FTL executes
-		// can inherit CAP_CHOWN, no matter which thread runs it. FTL keeps the
-		// capability in its own permitted and effective sets while starting up;
-		// from here on it chowns files it created itself, which the owning user
-		// may do without any capability. When the RTC is not being set FTL has
-		// no further use for it and takes it out of use on the main thread as
-		// well. The permitted copy stays for FTL's own restart, see main().
-		// Setting the RTC changes ownership of the device repeatedly during
-		// runtime, so that path keeps it.
-		if(config.ntp.sync.rtc.set.v.b)
-		{
-			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
-		}
-		else if(suspend_capability(CAP_CHOWN))
-		{
-			log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
-		}
 	}
 
 	forked = true;

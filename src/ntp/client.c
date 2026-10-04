@@ -212,10 +212,12 @@ static uint64_t get_new_time(struct timeval *unix_time, const double offset)
 	// Get current time
 	gettimeofday(unix_time, NULL);
 
-	// Convert from double to native format (signed) and add to the
+	// Convert from double to native format and add to the
 	// current time.  Note the addition is done in native format to
-	// avoid overflow or loss of precision.
-	const uint64_t ntp_time = U2LFP(*unix_time) + D2LFP(offset);
+	// avoid overflow or loss of precision.  D2LFP() only takes
+	// non-negative values, so a negative offset is subtracted instead.
+	const uint64_t now = U2LFP(*unix_time);
+	const uint64_t ntp_time = offset >= 0 ? now + D2LFP(offset) : now - D2LFP(-offset);
 
 	// Convert NTP to native format
 	unix_time->tv_sec = NTPtoSEC(ntp_time);

@@ -64,7 +64,7 @@ FILE * __attribute((malloc)) __attribute((nonnull(1))) openFTLtoml(const char *m
 	FILE *fp = NULL;
 	if(writing)
 	{
-		const int fd = open(filename, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
+		const int fd = open(filename, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP);
 		if(fd >= 0)
 		{
 			fp = fdopen(fd, "r+");
@@ -179,8 +179,15 @@ static void printTOMLstring(FILE *fp, const char *s, const bool toml)
 	// Print string to file
 	if(toml)
 	{
-		// Print string with quotes
-		fputs(escaped, fp);
+		// Print string with quotes. JSON escaping leaves DEL (0x7F) as
+		// is but TOML forbids it raw in strings, so escape it here
+		for(const char *p = escaped; *p != '\0'; p++)
+		{
+			if(*p == 0x7F)
+				fputs("\\u007F", fp);
+			else
+				fputc(*p, fp);
+		}
 	}
 	else
 	{

@@ -210,9 +210,10 @@ static unsigned int __attribute__((pure)) suggest_bitap(const char *strings[], s
 			// Use the Bitap algorithm to find a match
 			const char *result = bitap_bitwise_search(current, string, string_len, j);
 
-			// If we found a match, add it to the list of results
+			// If we found a match, add the whole string to the
+			// list of results (result points into current)
 			if(result != NULL)
-				results[found++] = (char*)result;
+				results[found++] = (char*)current;
 
 			// If we found enough matches, stop searching
 			if(found >= num_results)

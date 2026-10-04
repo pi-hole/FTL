@@ -87,7 +87,7 @@ components:
               type: string
           - in: query
             name: type
-            description: Filter by specific query type (A, AAAA, ...)
+            description: Filter by specific query type (A, AAAA, ..., OTHER for all types without a name of their own, or TYPEnnn for one of them)
             required: false
             schema:
               type: string
@@ -213,7 +213,7 @@ components:
                     nullable: true
                   time:
                     type: number
-                    description: Time until the response was received (ms, negative if N/A)
+                    description: Time until the response was received (seconds, 0 if not available)
               list_id:
                 type: integer
                 description: ID of corresponding database table (adlist for anti-/gravity, else domainlist) (`NULL` if N/A)
@@ -245,7 +245,7 @@ components:
               dnssec: "INSECURE"
               reply:
                 type: "IP"
-                time: 19
+                time: 0.019
               list_id: NULL
               upstream: "localhost#5353"
               id: 112421354
@@ -263,7 +263,7 @@ components:
               dnssec: "UNKNOWN"
               reply:
                 type: "IP"
-                time: 12.3
+                time: 0.0123
               list_id: NULL
               upstream: "localhost#5353"
               id: 112421355
@@ -272,7 +272,8 @@ components:
                 text: null
         cursor:
           type: integer
-          description: Database ID of most recent query to show
+          nullable: true
+          description: Database ID of most recent query to show (null when there are no queries to show, e.g., at privacy level 3)
           example: 175881
         recordsTotal:
           type: integer

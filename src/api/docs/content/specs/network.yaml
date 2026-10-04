@@ -166,10 +166,12 @@ components:
                 description: Address family
               interface:
                 type: string
-                description: Interface name
+                description: Interface name (`null` for a multipath default route without a single outgoing interface)
+                nullable: true
               address:
                 type: string
-                description: Gateway address
+                description: Gateway address (`null` if the default route has no gateway address, e.g. a route via a point-to-point interface)
+                nullable: true
               local:
                 type: array
                 description: Local interface addresses

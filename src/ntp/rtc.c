@@ -19,6 +19,12 @@
 #include <linux/rtc.h>
 // O_WRONLY
 #include <fcntl.h>
+// opendir(), readdir()
+#include <dirent.h>
+// major(), minor()
+#include <sys/sysmacros.h>
+// use_capability()
+#include "capabilities.h"
 // struct config
 #include "config/config.h"
 
@@ -39,6 +45,38 @@ static void print_tm_time(const char *label, const struct tm *tm)
 	char timestr[TIMESTR_SIZE] = { 0 };
 	strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm);
 	log_info("%s %s", label, timestr);
+}
+
+// Is this device number one of the kernel's RTCs? /sys/class/rtc/<name>/dev
+// holds "major:minor" for each of them
+static bool is_rtc_device(const dev_t rdev)
+{
+	DIR *dir = opendir("/sys/class/rtc");
+	if(dir == NULL)
+		return false;
+
+	bool found = false;
+	struct dirent *ent;
+	while(!found && (ent = readdir(dir)) != NULL)
+	{
+		if(ent->d_name[0] == '.')
+			continue;
+
+		char devpath[PATH_MAX];
+		snprintf(devpath, sizeof(devpath), "/sys/class/rtc/%s/dev", ent->d_name);
+		FILE *fp = fopen(devpath, "r");
+		if(fp == NULL)
+			continue;
+
+		unsigned int maj = 0, min = 0;
+		if(fscanf(fp, "%u:%u", &maj, &min) == 2 &&
+		   maj == major(rdev) && min == minor(rdev))
+			found = true;
+		fclose(fp);
+	}
+	closedir(dir);
+
+	return found;
 }
 
 // Open one RTC device, momentarily taking ownership if the current permissions
@@ -73,28 +111,34 @@ static int open_rtc_device(const char *path)
 		return -1;
 	}
 
-	// It has to be the RTC character device - not, e.g., a regular file whose
+	// It has to be an RTC - not a regular file or another device whose
 	// ownership someone wants handed to the FTL user.
 	struct stat st = { 0 };
-	if(fstat(path_fd, &st) == -1 || !S_ISCHR(st.st_mode))
+	if(fstat(path_fd, &st) == -1 || !S_ISCHR(st.st_mode) || !is_rtc_device(st.st_rdev))
 	{
-		log_debug(DEBUG_NTP, "\"%s\" is not a character device, refusing", path);
+		log_debug(DEBUG_NTP, "\"%s\" is not an RTC device, refusing", path);
 		close(path_fd);
 		return -1;
 	}
 
-	// Refer to the pinned handle through /proc/self/fd so neither the chown nor
-	// the reopen can land on a different file than the one just verified.
+	// The ownership changes act on the pinned handle itself. An O_PATH handle
+	// cannot be read from, so the reopen goes through /proc/self/fd, which
+	// resolves to the very same file
 	char procpath[32] = { 0 };
 	snprintf(procpath, sizeof(procpath), "/proc/self/fd/%d", path_fd);
+
+	// CAP_CHOWN is kept out of use, raise it for the ownership changes only
+	const bool raised = use_capability(CAP_CHOWN, true);
 
 	// Take ownership momentarily
 	const uid_t uid = getuid();
 	const gid_t gid = getgid();
-	if(chown(procpath, uid, gid) == -1)
+	if(fchownat(path_fd, "", uid, gid, AT_EMPTY_PATH) == -1)
 	{
 		log_debug(DEBUG_NTP, "chown(\"%s\", %u, %u) failed: %s", path, uid, gid,
 		          errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
+		if(raised)
+			use_capability(CAP_CHOWN, false);
 		close(path_fd);
 		return -1;
 	}
@@ -102,10 +146,18 @@ static int open_rtc_device(const char *path)
 	// Open it for reading now that we own it
 	rtc_fd = open(procpath, O_RDONLY | O_CLOEXEC);
 
-	// Restore the original owner regardless of whether the reopen succeeded
-	if(chown(procpath, st.st_uid, st.st_gid) == -1)
-		log_debug(DEBUG_NTP, "Restoring owner of \"%s\" failed: %s", path, strerror(errno));
+	// Restore the original owner regardless of whether the reopen succeeded.
+	// A device left with the FTL user is not one to go on working with
+	if(fchownat(path_fd, "", st.st_uid, st.st_gid, AT_EMPTY_PATH) == -1)
+	{
+		log_warn("Cannot restore the owner of \"%s\": %s", path, strerror(errno));
+		if(rtc_fd != -1)
+			close(rtc_fd);
+		rtc_fd = -1;
+	}
 
+	if(raised)
+		use_capability(CAP_CHOWN, false);
 	close(path_fd);
 	return rtc_fd;
 }

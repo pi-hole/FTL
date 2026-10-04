@@ -76,7 +76,7 @@ function loginout(){
 	const docEl = document.getElementById('thedoc');
 	if(docEl.attributes['api-key-value'].value === '-') {
 		const password = document.getElementById('loginpw').value;
-		postData('/api/auth', {password})
+		postData('../auth', {password})
 		.then(data => {
 			if(data.session.valid === true) {
 				loginOk(data.session.sid);
@@ -89,7 +89,7 @@ function loginout(){
 			console.error('Error:', error);
 		});
 	} else {
-		deleteData('/api/auth')
+		deleteData('../auth')
 		.then(logoutOk())
 		.catch((error) => {
 			loginFail();

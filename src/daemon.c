@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// forked
+#include "main.h"
 // sysinfo()
 #include <sys/sysinfo.h>
 #include <errno.h>
@@ -322,6 +324,22 @@ static bool join_thread(const int i, const time_t timeout)
 	return pthread_timedjoin_np(threads[i], NULL, &ts) == 0;
 }
 
+// Wait for the database thread to return, at most timeout seconds. main()
+// calls this once killed is set and before the final export, so the export
+// does not run alongside an operation the thread still has in flight
+bool join_db_thread(const time_t timeout)
+{
+	if(threads[DB] == 0)
+		return true;
+
+	if(!join_thread(DB, timeout))
+		return false;
+
+	// terminate_threads() skips a thread that is already gone
+	threads[DB] = 0;
+	return true;
+}
+
 static void terminate_threads(void)
 {
 	// Terminate threads before closing database connections and finishing shared memory
@@ -427,8 +445,9 @@ void cleanup(const int ret)
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
 
-	// Do proper cleanup only if FTL started successfully
-	if(resolver_ready)
+	// Join the worker threads only when they exist. They are started before
+	// the resolver is ready, and stay running when dnsmasq dies at startup
+	if(forked)
 	{
 		// Terminate threads
 		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
