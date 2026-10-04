@@ -1966,6 +1966,19 @@ setup() {
   assert_failure
 }
 
+@test "X.509 certificate can be generated for a domain longer than 64 characters" {
+  # A CN holds at most 64 characters, the full domain goes into the SAN
+  domain="$(printf 'a%.0s' {1..63}).$(printf 'b%.0s' {1..63}).example.com"
+  run bash -c "./pihole-FTL --gen-x509 /tmp/long-domain.pem ${domain}"
+  assert_success
+  run bash -c "./pihole-FTL --read-x509 /tmp/long-domain.pem"
+  assert_line --index 5 "  subject name      : CN=pi.hole"
+  run bash -c "./pihole-FTL --read-x509 /tmp/long-domain.pem ${domain}"
+  assert_line --index 1 "Certificate matches domain ${domain}"
+  assert_success
+  rm -f /tmp/long-domain.pem /tmp/long-domain.crt /tmp/long-domain_ca.crt
+}
+
 @test "Test embedded GZIP compressor" {
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql'
   assert_success

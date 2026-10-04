@@ -28,6 +28,7 @@
 #define EC_KEY_SIZE 384
 #define BUFFER_SIZE 16000
 #define PIHOLE_ISSUER "CN=pi.hole,O=Pi-hole,C=DE"
+#define UB_COMMON_NAME 64
 
 // Generate private RSA or EC key
 static int generate_private_key(mbedtls_pk_context *pk_key, const bool rsa,
@@ -245,11 +246,14 @@ bool generate_certificate(const char* certfile, bool rsa, const char *domain, co
 	mbedtls_x509write_crt_set_validity(&server_cert, not_before, not_after);
 	mbedtls_x509write_crt_set_basic_constraints(&server_cert, 0, -1);
 
-	// Set subject name depending on the (optionally) specified domain
+	// Set subject name depending on the (optionally) specified domain. A CN
+	// is limited to 64 characters (ub-common-name), so a longer domain uses
+	// pi.hole instead; clients match the full domain through the SAN below.
 	{
-		char *subject_name = calloc(strlen(domain) + 4, sizeof(char));
+		const char *cn = strlen(domain) <= UB_COMMON_NAME ? domain : "pi.hole";
+		char *subject_name = calloc(strlen(cn) + 4, sizeof(char));
 		strcpy(subject_name, "CN=");
-		strcat(subject_name, domain);
+		strcat(subject_name, cn);
 		mbedtls_x509write_crt_set_subject_name(&server_cert, subject_name);
 		free(subject_name);
 	}
