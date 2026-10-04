@@ -575,29 +575,34 @@ bool cluster_adlist_hash(char hash[CLUSTER_HASHLEN])
 // hands it on within 100 ms, so two documents reach a third node moments apart.
 // Without this the later writer installs a copy taken before the earlier one
 // and the earlier change is gone behind a 200. Held across the whole sequence,
-// which lock_shm() could not be - it is taken and released inside it
-static pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
+// which lock_shm() could not be - it is taken and released inside it. It is
+// lock_config(), the lock every other writer of the configuration takes.
 
 // Cancellation is switched off while the lock is held. terminate_threads()
 // cancels the cluster thread where it sleeps, and the writes below reach
 // cancellation points of their own (open, fsync, close) - being cancelled in
 // one of those would leave the lock held forever, with every peer pushing to
-// this node parked behind it and FTL unable to finish stopping
-static int sync_lock_cancelstate = PTHREAD_CANCEL_ENABLE;
+// this node parked behind it and FTL unable to finish stopping. The lock is
+// recursive, so only the outermost hold switches it back on
+static _Thread_local unsigned int sync_lock_depth = 0;
+static _Thread_local int sync_lock_cancelstate = PTHREAD_CANCEL_ENABLE;
 
 void cluster_sync_lock(void)
 {
 	int state = PTHREAD_CANCEL_ENABLE;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &state);
-	pthread_mutex_lock(&sync_lock);
-	sync_lock_cancelstate = state;
+	lock_config();
+	if(sync_lock_depth++ == 0)
+		sync_lock_cancelstate = state;
 }
 
 void cluster_sync_unlock(void)
 {
 	const int state = sync_lock_cancelstate;
-	pthread_mutex_unlock(&sync_lock);
-	pthread_setcancelstate(state, NULL);
+	const bool outermost = --sync_lock_depth == 0;
+	unlock_config();
+	if(outermost)
+		pthread_setcancelstate(state, NULL);
 }
 
 // What this node hands to a peer. It is byte for byte what GET /api/config

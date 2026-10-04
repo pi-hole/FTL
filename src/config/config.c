@@ -247,16 +247,30 @@ unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
 // with duplicate_config() and installs it with replace_config() holds this
 // from before the copy until the result is written to disk, so a concurrent
 // change cannot be overwritten by an outdated copy. Taken before lock_shm().
-// The resolver, housekeeper and timer threads only try it and retry later
-static pthread_mutex_t config_write_lock = PTHREAD_MUTEX_INITIALIZER;
+// The resolver, housekeeper and timer threads only try it and retry later.
+// Recursive, as the cluster takes it around code that takes it again (a
+// Teleporter restore, a peer's PATCH)
+static pthread_mutex_t config_write_lock;
+static pthread_once_t config_write_lock_once = PTHREAD_ONCE_INIT;
+
+static void config_write_lock_init(void)
+{
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&config_write_lock, &attr);
+	pthread_mutexattr_destroy(&attr);
+}
 
 void lock_config(void)
 {
+	pthread_once(&config_write_lock_once, config_write_lock_init);
 	pthread_mutex_lock(&config_write_lock);
 }
 
 bool trylock_config(void)
 {
+	pthread_once(&config_write_lock_once, config_write_lock_init);
 	return pthread_mutex_trylock(&config_write_lock) == 0;
 }
 
