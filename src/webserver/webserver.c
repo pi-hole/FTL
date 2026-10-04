@@ -40,6 +40,8 @@
 #include "config/password.h"
 // thread_names
 #include "signals.h"
+// lock_shm(), guarding the live config
+#include "shmem.h"
 
 #ifdef HAVE_TLS
 #include <openssl/ssl.h>
@@ -413,11 +415,10 @@ static int begin_request_handler(struct mg_connection *conn)
 	return 0;
 }
 
-// Serve one DoH request (RFC 8484) forwarded by a trusted reverse proxy. Only
-// reached for a connection whose PROXY v2 header authenticated with
-// webserver.proxySecret, so ri->remote_addr is the client address the proxy
-// announced rather than the proxy itself, and the query is attributed correctly.
-static int dns_query_plain(struct mg_connection *conn, const struct mg_request_info *ri)
+// Serve one DoH request (RFC 8484) forwarded by a trusted reverse proxy on
+// behalf of client, the address the proxy announced rather than the proxy itself
+static int dns_query_plain(struct mg_connection *conn, const struct mg_request_info *ri,
+                           const char *client)
 {
 	// Thread-local rather than on the stack: a CivetWeb worker stack cannot
 	// carry two 64 KiB buffers. Same reason the terminator does it this way.
@@ -438,7 +439,7 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 		return 405;
 	}
 
-	if(!dotdoh_source_allowed(ri->remote_addr))
+	if(!dotdoh_source_allowed(client))
 	{
 		mg_send_http_error(conn, 403, "%s", "source not allowed");
 		return 403;
@@ -489,7 +490,7 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 		return 400;
 	}
 
-	const ssize_t alen = dotdoh_server_resolve(ri->remote_addr, NULL, query,
+	const ssize_t alen = dotdoh_server_resolve(client, NULL, query,
 	                                           (size_t)qlen, answer, sizeof(answer));
 	if(alen <= 0)
 	{
@@ -511,16 +512,114 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 	return 200;
 }
 
+// Whether the numeric address ip lies in net, an address or CIDR subnet
+static bool addr_in_net(const char *ip, const char *net)
+{
+	char base[INET6_ADDRSTRLEN];
+	const char *slash = strchr(net, '/');
+	const size_t blen = slash != NULL ? (size_t)(slash - net) : strlen(net);
+	if(blen >= sizeof(base))
+		return false;
+	memcpy(base, net, blen);
+	base[blen] = '\0';
+
+	// An IPv4 peer on a dual-stack socket is reported IPv4-mapped
+	if(strncasecmp(ip, "::ffff:", 7) == 0 && strchr(ip, '.') != NULL)
+		ip += 7;
+
+	const int af = strchr(base, ':') != NULL ? AF_INET6 : AF_INET;
+	unsigned char a[16], n[16];
+	if(inet_pton(af, ip, a) != 1 || inet_pton(af, base, n) != 1)
+		return false;
+	const int max = af == AF_INET6 ? 128 : 32;
+	const int bits = slash != NULL ? atoi(slash + 1) : max;
+	if(bits < 0 || bits > max)
+		return false;
+	if(memcmp(a, n, (size_t)(bits / 8)) != 0)
+		return false;
+	const unsigned char mask = (unsigned char)(0xFF << (8 - bits % 8));
+	return bits % 8 == 0 || (a[bits / 8] & mask) == (n[bits / 8] & mask);
+}
+
+// Whether ip is in webserver.trustedProxies. The caller holds lock_shm().
+static bool trusted_proxy(const char *ip)
+{
+	const cJSON *list = config.webserver.trustedProxies.v.json;
+	for(const cJSON *e = list != NULL ? list->child : NULL; e != NULL; e = e->next)
+		if(cJSON_IsString(e) && addr_in_net(ip, e->valuestring))
+			return true;
+	return false;
+}
+
+// Client of a trusted proxy: the rightmost untrusted X-Forwarded-For hop, as
+// anything left of it may be forged. Returns 0, 400 (malformed header) or 426
+// (untrusted peer, or no HTTPS). The caller holds lock_shm().
+static int forwarded_client(struct mg_connection *conn, const struct mg_request_info *ri,
+                            char client[INET6_ADDRSTRLEN])
+{
+	if(!trusted_proxy(ri->remote_addr))
+		return 426;
+
+	// The last hop appends to the list, so its entry is the one that counts
+	const char *proto = mg_get_header(conn, "X-Forwarded-Proto");
+	if(proto == NULL)
+		return 426;
+	const char *last = strrchr(proto, ',');
+	last = last != NULL ? last + 1 : proto;
+	while(*last == ' ' || *last == '\t')
+		last++;
+	if(strncasecmp(last, "https", 5) != 0 || strspn(last + 5, " \t") != strlen(last + 5))
+		return 426;
+
+	// Several header lines form one list, in order (RFC 9110 5.3)
+	char chain[1024] = "";
+	size_t len = 0;
+	for(int i = 0; i < ri->num_headers; i++)
+	{
+		if(strcasecmp(ri->http_headers[i].name, "X-Forwarded-For") != 0)
+			continue;
+		const int n = snprintf(chain + len, sizeof(chain) - len, "%s%s",
+		                       len > 0 ? "," : "", ri->http_headers[i].value);
+		if(n < 0 || (size_t)n >= sizeof(chain) - len)
+			return 400;
+		len += (size_t)n;
+	}
+
+	strncpy(client, ri->remote_addr, INET6_ADDRSTRLEN - 1);
+	client[INET6_ADDRSTRLEN - 1] = '\0';
+	for(char *end = chain + len; end > chain; )
+	{
+		char *start = end;
+		while(start > chain && start[-1] != ',')
+			start--;
+		char *tok = start;
+		while(tok < end && (*tok == ' ' || *tok == '\t'))
+			tok++;
+		char *tend = end;
+		while(tend > tok && (tend[-1] == ' ' || tend[-1] == '\t'))
+			tend--;
+		const size_t tl = (size_t)(tend - tok);
+		unsigned char tmp[16];
+		if(tl == 0 || tl >= INET6_ADDRSTRLEN)
+			return 400;
+		memcpy(client, tok, tl);
+		client[tl] = '\0';
+		if(inet_pton(AF_INET, client, tmp) != 1 && inet_pton(AF_INET6, client, tmp) != 1)
+			return 400;
+		if(!trusted_proxy(client))
+			break;
+		end = start > chain ? start - 1 : chain;
+	}
+	return 0;
+}
+
 // Guard on the CivetWeb /dns-query path. Inbound DoH is normally served natively
 // by the front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query
 // reaching CivetWeb arrived over a plaintext hop.
 //
-// `is_ssl` is set here only when a PROXY v2 header authenticated by
-// webserver.proxySecret announced that the client spoke TLS to a trusted proxy
-// (civetweb rewrites the peer address and TLS status from that header). That is
-// the reverse-proxy deployment dns.dohReverseProxy exists for, and because the
-// proxy authenticated itself the announced client address is trustworthy - an
-// unauthenticated X-Forwarded-For never is, which is why it is not consulted.
+// With dns.dohReverseProxy, a proxy is believed that the client used TLS if its
+// PROXY v2 header carries webserver.proxySecret (civetweb then sets `is_ssl`), or
+// if it is in webserver.trustedProxies and says so in X-Forwarded-Proto.
 //
 // Anything else is a genuinely cleartext request: refuse it with 426, or the
 // client's "encrypted" queries would leak on the wire.
@@ -528,7 +627,23 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 {
 	(void)cbdata;
 	const struct mg_request_info *ri = mg_get_request_info(conn);
-	if(ri == NULL || !ri->is_ssl || !config.dns.dohReverseProxy.v.b)
+	char client[INET6_ADDRSTRLEN] = "";
+	int st = 426;
+	if(ri != NULL && config.dns.dohReverseProxy.v.b)
+	{
+		if(ri->is_ssl)
+		{
+			strncpy(client, ri->remote_addr, sizeof(client) - 1);
+			st = 0;
+		}
+		else
+		{
+			lock_shm();
+			st = forwarded_client(conn, ri, client);
+			unlock_shm();
+		}
+	}
+	if(st == 426)
 	{
 		// A 426 must name the required protocol (RFC 9110 15.5.22, RFC 2817 4.2)
 		static const char msg[] = "DoH requires HTTPS\n";
@@ -548,7 +663,12 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 		mg_send_http_error(conn, 404, "%s", "DoH is disabled");
 		return 404;
 	}
-	return dns_query_plain(conn, ri);
+	if(st != 0)
+	{
+		mg_send_http_error(conn, st, "%s", "malformed X-Forwarded-For");
+		return st;
+	}
+	return dns_query_plain(conn, ri, client);
 }
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
