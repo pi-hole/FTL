@@ -721,6 +721,21 @@ const char *getClientNameString(const queriesData *query)
 		return HIDDEN_CLIENT;
 }
 
+// Forget the blocking decision cached in one per-client DNS cache entry
+static void reset_dns_cache_entry(DNSCacheData *dns_cache)
+{
+	// Reset blocking status
+	dns_cache->blocking_status = QUERY_UNKNOWN;
+	dns_cache->flags.allowed = false;
+	// Reset expiry
+	dns_cache->expires = 0;
+	// Reset domainlist ID
+	dns_cache->list_id = -1;
+	// Reset forced reply and CNAME target of a former regex match
+	dns_cache->force_reply = REPLY_UNKNOWN;
+	dns_cache->cname_strpos = 0;
+}
+
 void FTL_reset_per_client_domain_data(void)
 {
 	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %u", counters->dns_cache_size);
@@ -734,16 +749,21 @@ void FTL_reset_per_client_domain_data(void)
 		if(dns_cache == NULL)
 			continue;
 
-		// Reset blocking status
-		dns_cache->blocking_status = QUERY_UNKNOWN;
-		dns_cache->flags.allowed = false;
-		// Reset expiry
-		dns_cache->expires = 0;
-		// Reset domainlist ID
-		dns_cache->list_id = -1;
-		// Reset forced reply and CNAME target of a former regex match
-		dns_cache->force_reply = REPLY_UNKNOWN;
-		dns_cache->cname_strpos = 0;
+		reset_dns_cache_entry(dns_cache);
+	}
+}
+
+// Forget the blocking decisions cached for one client, they were taken with
+// groups the client is no longer in
+void FTL_reset_client_domain_data(const unsigned int clientID)
+{
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache for client ID %u", clientID);
+
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		if(dns_cache != NULL && dns_cache->clientID == clientID)
+			reset_dns_cache_entry(dns_cache);
 	}
 }
 

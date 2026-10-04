@@ -45,6 +45,7 @@ bool gravityDB_reopen(void);
 void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData *client);
 bool gravityDB_prepare_client_statements(clientsData *client);
+void gravityDB_ensure_client_groups(clientsData *client);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);

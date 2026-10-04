@@ -318,12 +318,19 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 // Validate file path
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
-	// Check if the path contains only valid characters
+	// Accept every printable ASCII character. The range is not widened beyond
+	// it because these paths are handed out as JSON, which has to be UTF-8, and
+	// are written into the generated dnsmasq config, where a control character
+	// would start a second directive. The comparison is explicit rather than
+	// isprint(), which follows the locale FTL picks up from the environment
 	for(unsigned int i = 0; i < strlen(val->s); i++)
 	{
-		if(!isalnum(val->s[i]) && val->s[i] != '/' && val->s[i] != '.' && val->s[i] != '-' && val->s[i] != '_' && val->s[i] != ' ')
+		const unsigned char c = val->s[i];
+		if(c < 0x20 || c > 0x7E)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (\"%s\")", key, val->s);
+			// The byte is reported as hex rather than echoed, which
+			// would break the very line reporting it
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (invalid character 0x%02x at position %u)", key, c, i);
 			return false;
 		}
 	}
@@ -331,9 +338,28 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 	return true;
 }
 
-// Validate a file path that needs to have both a slash at the beginning and at
+// A URL path the webserver matches requests against. Some checks see the raw
+// and some the percent-decoded request URI, so allow only characters that read
+// the same in both
+static bool validate_urlpath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < strlen(val->s); i++)
+	{
+		const unsigned char c = val->s[i];
+		if(!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') &&
+		   c != '/' && c != '.' && c != '-' && c != '_' && c != ' ')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid URL path (invalid character 0x%02x at position %u)", key, c, i);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate a URL path that needs to have both a slash at the beginning and at
 // the end
-bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+bool validate_urlpath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if the path starts and ends with a slash
 	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
@@ -343,7 +369,16 @@ bool validate_filepath_two_slash(union conf_value *val, const char *key, char er
 	}
 
 	// Check if the path contains only valid characters
-	return validate_filepath(val, key, err);
+	return validate_urlpath(val, key, err);
+}
+
+// Validate URL path (empty allowed)
+bool validate_urlpath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(strlen(val->s) == 0)
+		return true;
+
+	return validate_urlpath(val, key, err);
 }
 
 // Validate file path (empty allowed)
@@ -828,6 +863,17 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	}
 
 	// Return success
+	return true;
+}
+
+bool validate_ui_min_1(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 1", key);
+		return false;
+	}
+
 	return true;
 }
 

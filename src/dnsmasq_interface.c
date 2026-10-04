@@ -360,13 +360,16 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
-// The blocking reason and the CNAME target describe one query, so they are
-// dropped on every way out of _FTL_make_answer() below, not only on the path
-// that answered
+// The blocking reason, the CNAME target, the forced reply, the redirecting
+// regex and the cache status describe one query, so they are dropped on every
+// way out of _FTL_make_answer() below and when the next query arrives
 static void unset_blocking_metadata(void)
 {
 	blockingreason = "<not set>";
 	cname_target = NULL;
+	force_next_DNS_reply = REPLY_UNKNOWN;
+	last_regex_idx = -1;
+	cacheStatus = QUERY_UNKNOWN;
 }
 
 // This is inspired by make_local_answer()
@@ -898,6 +901,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
+	// Not every query that sets up an answer gets one through
+	// _FTL_make_answer(), so start every client query from a clean state
+	if(proto != INTERNAL)
+		unset_blocking_metadata();
+
 	// Reset this query's pi.hole connected-address hint. It is populated from the
 	// SINGLE getEDNS() read further down (getEDNS() is consume-once: reading the
 	// EDNS data here would starve the client-attribution/ECS parsing of it), and
@@ -972,6 +980,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	// Set when clientIP comes from EDNS(0) rather than the packet source
+	bool edns_client = false;
 	ednsData *edns = getEDNS();
 	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
 	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
@@ -987,12 +997,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// cannot spoof another client. Not gated on dns.EDNS0ECS.
 		strncpy(clientIP, edns->private_client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
+		edns_client = true;
 	}
 	else if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
+		edns_client = true;
 	}
 	else if(addr)
 	{
@@ -1265,8 +1277,22 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// block all other threads (API, database, GC, TCP workers).
 		unlock_shm();
 
+		// Look up the address the client is identified by: for an
+		// EDNS(0)-provided client, the packet source is the forwarder
+		union mysockaddr mac_addr = { 0 };
+		if(edns_client)
+		{
+			if(inet_pton(AF_INET, clientIP, &mac_addr.in.sin_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET;
+			else if(inet_pton(AF_INET6, clientIP, &mac_addr.in6.sin6_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET6;
+		}
+		else if(addr)
+			mac_addr = *addr;
+
 		unsigned char hwaddr[16] = {0};
-		const int hwlen = find_mac(addr, hwaddr, 1, time(NULL));
+		const int hwlen = mac_addr.sa.sa_family == AF_UNSPEC ? 0 :
+		                  find_mac(&mac_addr, hwaddr, 1, time(NULL));
 
 		// Reacquire lock and re-fetch client pointer (SHM may have
 		// been remapped while we were unlocked)
@@ -1856,6 +1882,11 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
+	gravityDB_ensure_client_groups(client);
+
 	// If this cache record can expire, check if it is still valid and/or if
 	// caching is generally disabled
 	if((dns_cache->expires > 0 && ABS_TO_SHM_TIME((time_t)query->timestamp) > dns_cache->expires) ||
@@ -2116,6 +2147,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
 	{
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = new_status;
+
 		// Adjust counters
 		query_blocked(query, domain, client, new_status);
 
@@ -2365,6 +2399,9 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 			// Only set status
 			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
+
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = query->status;
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)

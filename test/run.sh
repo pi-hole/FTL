@@ -107,7 +107,7 @@ export FTLCONF_misc_nice="-11"
 export FTLCONF_dns_upstrrr="-11"
 export FTLCONF_debug_api="not_a_bool"
 export FTLCONF_MISC_CHECK_SHMEM=91
-export FTLCONF_files_pcap='*123#./test/pcap'
+export FTLCONF_files_pcap=$'\001./test/pcap'
 
 # Start FTL
 if ! su pihole -s /bin/sh -c /home/pihole/pihole-FTL; then

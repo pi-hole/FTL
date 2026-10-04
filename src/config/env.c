@@ -236,19 +236,9 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				log_info("Resetting %s to default (not forced anymore)", conf_item->k);
 
-				// Revert to default
-				if(conf_item->t == CONF_STRING_ALLOCATED)
-				{
-					// Free previously allocated string
-					free(conf_item->v.s);
-					// Make a duplicate of the default value
-					conf_item->v.s = strdup(conf_item->d.s);
-				}
-				else
-				{
-					// Revert to default value
-					memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->v));
-				}
+				// Revert to default, giving allocated strings
+				// and arrays their own copy of the default
+				reset_config_default(conf_item);
 
 				// Mark this environment variable as reset to
 				// default

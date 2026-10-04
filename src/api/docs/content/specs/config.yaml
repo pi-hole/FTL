@@ -807,6 +807,9 @@ components:
             env_var:
               type: boolean
               description: This item is set through an environment variable and cannot be changed via the API
+            write_only:
+              type: boolean
+              description: This item can be set but not read back, `value` is a placeholder
       example:
         description: "Array of upstream DNS servers used by Pi-hole"
         allowed: "Array of IP addresses and/or hostnames, optionally with a port (#...)"
@@ -818,6 +821,7 @@ components:
           restart_dnsmasq: true
           session_reset: false
           env_var: false
+          write_only: false
     topics:
       type: object
       properties:

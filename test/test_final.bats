@@ -43,6 +43,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # pytest: 2x pihole.toml writes (history/clients exclude filter set + reset)
+  # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
@@ -52,7 +53,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "35" ]]
+    [[ ${lines[0]} == "38" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -87,6 +88,24 @@ load 'bats_helper.bash'
     sleep 2
   done
   assert_line --index 0 "1"
+}
+
+@test "Reimporting more alias-clients than the clients array holds" {
+  # 600 new alias-clients are added under one lock, more than one allocation
+  # step of the clients array on any architecture. Runs late as they change
+  # the client counts
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
+  assert_success
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN+3 "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Imported 601 alias-clients' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Trying to access client ID'"
+  assert_line --index 0 "0"
+  run bash -c 'kill -0 "$(cat /run/pihole-FTL.pid)"'
+  assert_success
 }
 
 @test "FTL terminates with message" {
