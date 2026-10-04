@@ -9,14 +9,19 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "docs.h"
+// ftl_http_redirect(), get_api_uri()
+#include "webserver/webserver.h"
 
 int api_docs(struct ftl_conn *api)
 {
 	// Handle resource request by redirecting to "/"
 	if(strcmp(api->request->request_uri, "/api/docs") == 0)
 	{
-		log_debug(DEBUG_API, "Redirecting /api/docs --301--> /api/docs/");
-		mg_send_http_redirect(api->conn, "/api/docs/", 301);
+		// The target carries the prefix like every other redirect we send
+		ftl_http_redirect(api->conn, 301, "%s/docs/", get_api_uri());
+
+		// The redirect is the whole response; return so no 404 follows it
+		return 301;
 	}
 
 	// Handle root request by redirecting to "/"

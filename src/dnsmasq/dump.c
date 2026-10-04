@@ -129,6 +129,23 @@ void dump_packet_icmp(int mask, void *packet, size_t len,
     do_dump_packet(mask, packet, len, src, dst, -1, IPPROTO_ICMP);
 }
 
+static u32 calc_data_checksum(u32 sum, void *packet, size_t len)
+{
+  u32 i;
+  
+  for (i = 0; i < len/2; i++)
+    sum += ((u16 *)packet)[i];
+  if (len & 1) /* last byte, in case length is odd. */
+    sum += ((unsigned char *)packet)[len - 1];
+  while (sum >> 16)
+    sum = (sum & 0xffff) + (sum >> 16);
+
+  if (sum != 0xffff)
+    sum = ~sum;
+  
+  return sum;
+}
+  
 static void do_dump_packet(int mask, void *packet, size_t len,
 			   union mysockaddr *src, union mysockaddr *dst, int port, int proto)
 {
@@ -226,13 +243,9 @@ static void do_dump_packet(int mask, void *packet, size_t len,
 	  udp.uh_dport = dst->in.sin_port;
 	}
       
-      ip.ip_sum = 0;
-      for (sum = 0, i = 0; i < sizeof(struct ip) / 2; i++)
-	sum += ((u16 *)&ip)[i];
-      while (sum >> 16)
-	sum = (sum & 0xffff) + (sum >> 16);  
-      ip.ip_sum = (sum == 0xffff) ? sum : ~sum;
-      
+      ip.ip_sum = 0; /* for the calculation */
+      ip.ip_sum = calc_data_checksum(0, &ip, sizeof(struct ip));
+            
       /* start UDP/ICMP checksum */
       sum = ip.ip_src.s_addr & 0xffff;
       sum += (ip.ip_src.s_addr >> 16) & 0xffff;
@@ -240,9 +253,6 @@ static void do_dump_packet(int mask, void *packet, size_t len,
       sum += (ip.ip_dst.s_addr >> 16) & 0xffff;
     }
   
-  if (len & 1)
-    ((unsigned char *)packet)[len] = 0; /* for checksum, in case length is odd. */
-
   if (proto == IPPROTO_UDP)
     {
       /* Add Remaining part of the pseudoheader. Note that though the
@@ -252,17 +262,12 @@ static void do_dump_packet(int mask, void *packet, size_t len,
       sum += htons(IPPROTO_UDP);
       sum += htons(sizeof(struct udphdr) + len);
       
-      udp.uh_sum = 0;
+      udp.uh_sum = 0; /* for the calculation */
       udp.uh_ulen = htons(sizeof(struct udphdr) + len);
-      
       for (i = 0; i < sizeof(struct udphdr)/2; i++)
 	sum += ((u16 *)&udp)[i];
-      for (i = 0; i < (len + 1) / 2; i++)
-	sum += ((u16 *)packet)[i];
-      while (sum >> 16)
-	sum = (sum & 0xffff) + (sum >> 16);
-      udp.uh_sum = (sum == 0xffff) ? sum : ~sum;
-
+      udp.uh_sum = calc_data_checksum(sum, packet, len);
+      
       pcap_header.incl_len = pcap_header.orig_len = ipsz + sizeof(udp) + len;
     }
   else
@@ -274,12 +279,9 @@ static void do_dump_packet(int mask, void *packet, size_t len,
       sum += htons(proto);
       sum += htons(len);
       
-      icmp->icmp6_cksum = 0;
-      for (i = 0; i < (len + 1) / 2; i++)
-	sum += ((u16 *)packet)[i];
-      while (sum >> 16)
-	sum = (sum & 0xffff) + (sum >> 16);
-      icmp->icmp6_cksum = (sum == 0xffff) ? sum : ~sum;
+      icmp->icmp6_cksum = 0; /* for the calculation */
+      icmp->icmp6_cksum = calc_data_checksum(sum, packet, len);
+      
 
       pcap_header.incl_len = pcap_header.orig_len = ipsz + len;
     }

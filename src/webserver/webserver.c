@@ -84,8 +84,9 @@ static bool build_webpaths(void)
 		return false;
 	}
 
-	// Construct admin_api_uri path
-	admin_api_uri = append_to_path(prefix_webhome, "api");
+	// Construct admin_api_uri path, compared against request paths, which
+	// never carry the prefix (the reverse proxy strips it)
+	admin_api_uri = append_to_path(config.webserver.paths.webhome.v.s, "api");
 	log_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
 	if(admin_api_uri == NULL)
 	{
@@ -128,9 +129,10 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			const char *pos = strchr(host, ']');
 			if (!pos)
 			{
-				// Malformed hostname starts with '[', but no ']' found
-				log_err("Host name format error: Found '[' without ']'");
-				return 0;
+				// Malformed hostname starts with '[', but no ']' found. Any
+				// client can send this, so it is logged at debug level only.
+				log_debug(DEBUG_API, "Host name format error: Found '[' without ']'");
+				return request_handler(conn, input);
 			}
 			/* terminate after ']' */
 			host_len = (size_t)(pos + 1 - host);
@@ -186,7 +188,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// the proxy forwards (configure via WEBSERVER_DOMAIN in pihole.toml).
 	log_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
 	          uri, (int)host_len, host ? host : "", config.webserver.domain.v.s);
-	return 0;
+
+	// Serve "/" under the same rules as every other path (webserver.serve_all)
+	return request_handler(conn, input);
 }
 
 static int redirect_admin_handler(struct mg_connection *conn, void *input)
@@ -238,9 +242,10 @@ static int begin_request_handler(struct mg_connection *conn)
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
 {
-	// Get requested URI
+	// Use the normalized URI: the raw one may start with "//" or a slash and a
+	// backslash, which browsers resolve to another host in a Location header
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
+	const char *uri = request->local_uri;
 	const size_t uri_len = strlen(uri);
 
 	// Check if we are allowed to serve this directory by checking the
@@ -259,23 +264,30 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	const char *query_string = request->query_string;
 	const size_t query_len = query_string != NULL ? strlen(query_string) : 0;
 
-	// We allocate uri_len + query_len - 1 bytes, which is enough for the
-	// new URI. The calculation is as follows:
-	// 1. We are saving three bytes by skipping ".lp" at the end of the URI
-	// 2. We are adding one byte for the trailing '\0'
-	// 3. We are adding query_len bytes for the query string (if present)
-	// 4. We are adding one byte for the '?' between URI and query string
+	// The redirect target carries the configured prefix like every other
+	// redirect we send
+	const char *prefix = config.webserver.paths.prefix.v.s;
+	const size_t prefix_len = strlen(prefix);
+
+	// We allocate prefix_len + uri_len + query_len - 1 bytes, which is enough
+	// for the new URI. The calculation is as follows:
+	// 1. We are adding prefix_len bytes for the prefix
+	// 2. We are saving three bytes by skipping ".lp" at the end of the URI
+	// 3. We are adding one byte for the trailing '\0'
+	// 4. We are adding query_len bytes for the query string (if present)
+	// 5. We are adding one byte for the '?' between URI and query string
 	//    (if present)
-	// Total bytes required: uri_len - 3 + query_len + 1 + 1
-	char *new_uri = calloc(uri_len + query_len - 1, sizeof(char));
+	// Total bytes required: prefix_len + uri_len - 3 + query_len + 1 + 1
+	char *new_uri = calloc(prefix_len + uri_len + query_len - 1, sizeof(char));
 	if(new_uri == NULL)
 	{
 		mg_send_http_error(conn, 500, "Internal Server Error");
 		return 500;
 	}
 
-	// Copy everything from before the ".lp" to the new URI to effectively
-	// remove it
+	// Copy the prefix and everything from before the ".lp" to the new URI to
+	// effectively remove it
+	strcat(new_uri, prefix);
 	strncat(new_uri, uri, uri_len - 3);
 
 	// Append query string to the new URI if present
@@ -967,19 +979,20 @@ void http_init(void)
 		log_warn("Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
 	}
 
-	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
+	// Register <webhome without trailing slash> -> [<prefix>]<webhome> redirect
+	// handler. The matcher has no prefix as the reverse proxy strips it.
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
 		// Replace trailing slash with end-of-string marker for matcher
-		char *prefix_webhome_matcher = strdup(prefix_webhome);
-		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
+		char *webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
 
 		log_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          prefix_webhome, config.webserver.paths.webhome.v.s);
-		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
-		// prefix_webhome_matcher is internally duplicated during
+		          webhome_matcher, prefix_webhome);
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		// webhome_matcher is internally duplicated during
 		// request configuration so it can be freed here
-		free(prefix_webhome_matcher);
+		free(webhome_matcher);
 	}
 
 	// Register **.lp -> ** redirect handler
@@ -1056,9 +1069,10 @@ void FTL_rewrite_pattern(char *filename, unsigned long filename_buf_len)
 		return;
 	}
 
-	// Change last occurrence of "/" to "-" (if any)
+	// Change last occurrence of "/" to "-" (if any), but only if it lies
+	// beyond the webroot so the rewritten path stays inside of it
 	char *last_slash = strrchr(filename_lp, '/');
-	if(last_slash != NULL)
+	if(last_slash != NULL && (size_t)(last_slash - filename_lp) > strlen(config.webserver.paths.webroot.v.s))
 	{
 		*last_slash = '-';
 		if(file_readable(filename_lp))

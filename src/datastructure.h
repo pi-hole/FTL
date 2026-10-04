@@ -216,6 +216,7 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
+void FTL_reset_client_domain_data(const unsigned int clientID);
 
 const char *getDomainString(const queriesData *query);
 const char *getCNAMEDomainString(const queriesData *query);

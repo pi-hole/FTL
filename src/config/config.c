@@ -1022,7 +1022,8 @@ void initConfig(struct config *conf)
 	conf->database.DBinterval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->database.DBinterval.t = CONF_UINT;
 	conf->database.DBinterval.d.ui = 60;
-	conf->database.DBinterval.c = validate_stub; // Only type-based checking
+	// Used as a divisor by the database thread
+	conf->database.DBinterval.c = validate_ui_min_1;
 
 	conf->database.useWAL.k = "database.useWAL";
 	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
@@ -1168,7 +1169,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.t = CONF_STRING;
 	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
-	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
+	conf->webserver.paths.webhome.c = validate_urlpath_two_slash;
 
 	conf->webserver.paths.prefix.k = "webserver.paths.prefix";
 	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
@@ -1176,7 +1177,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.prefix.t = CONF_STRING;
 	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.prefix.d.s = (char*)"";
-	conf->webserver.paths.prefix.c = validate_filepath_empty;
+	conf->webserver.paths.prefix.c = validate_urlpath_empty;
 
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
@@ -1237,7 +1238,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.totp_secret.t = CONF_STRING;
 	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.totp_secret.d.s = (char*)"";
-	conf->webserver.api.totp_secret.c = validate_stub; // Only type-based checking
+	conf->webserver.api.totp_secret.c = validate_totp_secret;
 
 	conf->webserver.api.app_pwhash.k = "webserver.api.app_pwhash";
 	conf->webserver.api.app_pwhash.h = "Pi-hole application password.\n\n After you turn on two-factor (2FA) verification and set up an Authenticator app, you may run into issues if you use apps or other services that don't support two-step verification. In this case, you can create and use an app password to sign in.\n\n An app password is a long, randomly generated password that can be used instead of your regular password + TOTP token when signing in to the API. The app password can be generated through the API and will be shown only once.\n\n You can revoke the app password at any time. If you revoke the app password, be sure to generate a new one and update your app with the new password.";
@@ -1280,7 +1281,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
-	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
+	conf->webserver.api.maxHistory.c = validate_max_history;
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
 	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";
@@ -1866,7 +1867,7 @@ static void get_web_port(struct config *conf)
 	// Determine default webserver ports if not imported from setupVars.conf
 	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
 	{
-		log_info("Webserver ports already imported from setupVars.conf, skipping default port detection");
+		log_info("Webserver ports already imported from legacy config files, skipping default port detection");
 		return;
 	}
 
