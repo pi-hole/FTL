@@ -11,6 +11,7 @@ Usage:
 
 import json
 import re
+from urllib.parse import quote
 
 import pytest
 
@@ -28,7 +29,7 @@ FTL_URL = "http://127.0.0.1"
 # DNSSEC-dependent counters below flaky.  If you add or remove queries in
 # test_suite.bats, update these.
 
-TOTAL       = 131
+TOTAL       = 134
 FORWARDED   = 41
 DNSKEY      = 4
 TOP_DOMAIN  = "localhost"
@@ -100,6 +101,69 @@ class TestHTTPErrors:
 
 
 # ---------------------------------------------------------------------------
+# CORS headers for cross-origin web apps
+# ---------------------------------------------------------------------------
+
+class TestCORS:
+    """Cross-origin requests must work for all methods.
+
+    Browsers send a preflight OPTIONS request before "non-simple" cross-origin
+    requests (DELETE, PUT, PATCH, JSON POST) and only send the real request if
+    the preflight is answered with the matching Access-Control-Allow-* headers.
+    The actual response must carry Access-Control-Allow-Origin as well.
+    Regression test for https://github.com/pi-hole/FTL/issues/2261.
+    """
+
+    ORIGIN = "http://example.com"
+
+    def test_preflight_returns_cors_headers(self, api_session):
+        """OPTIONS preflight advertises the allowed origin and methods.
+
+        A valid cross-origin preflight (carrying both Origin and
+        Access-Control-Request-Method) is answered by civetweb's built-in CORS
+        handler with a 200 response and the matching Access-Control-Allow-*
+        headers, before the request reaches FTL's own OPTIONS branch.
+        """
+        r = api_session.options(
+            f"{FTL_URL}/api/auth",
+            headers={
+                "Origin": self.ORIGIN,
+                "Access-Control-Request-Method": "DELETE",
+            },
+            timeout=5,
+        )
+        assert r.status_code == 200
+        assert "Access-Control-Allow-Origin" in r.headers
+        assert "DELETE" in r.headers.get("Access-Control-Allow-Methods", "")
+
+    def test_preflight_without_origin_omits_cors_headers(self, api_session):
+        """A bare OPTIONS request (no Origin) is not a CORS preflight.
+
+        Like civetweb's send_cors_header(), we only emit Access-Control-Allow-*
+        when the request carries an Origin header, otherwise we answer with a
+        plain 204 and just the RFC 7231 Allow header.
+        """
+        r = api_session.options(f"{FTL_URL}/api/auth", timeout=5)
+        assert r.status_code == 204
+        assert "Allow" in r.headers
+        assert "Access-Control-Allow-Origin" not in r.headers
+
+    def test_error_response_carries_cors_header(self, api_session):
+        """Non-200 responses include Access-Control-Allow-Origin too.
+
+        DELETE endpoints answer with 204 No Content, which - like this 404 - is
+        sent via the same code path.
+        """
+        r = api_session.get(
+            f"{FTL_URL}/api/undefined",
+            headers={"Origin": self.ORIGIN},
+            timeout=5,
+        )
+        assert r.status_code == 404
+        assert "Access-Control-Allow-Origin" in r.headers
+
+
+# ---------------------------------------------------------------------------
 # Config validation via API (type-based)
 # ---------------------------------------------------------------------------
 
@@ -132,11 +196,11 @@ class TestConfigValidationAPIValidator:
 
     def test_files_pcap_rejects_invalid_path(self, api_session):
         data = _j(api_session.patch(f"{FTL_URL}/api/config",
-                                    json={"config": {"files": {"pcap": "%gh4b"}}}, timeout=20))
+                                    json={"config": {"files": {"pcap": "\u0001gh4b"}}}, timeout=20))
         assert data["error"] == {
             "key": "bad_request",
             "message": "Config item validation failed",
-            "hint": 'files.pcap: not a valid file path ("%gh4b")',
+            "hint": "files.pcap: not a valid file path (invalid character 0x01 at position 0)",
         }, json.dumps(data, indent=2)
 
     def test_cnameRecords_rejects_too_few_elements(self, api_session):
@@ -182,6 +246,17 @@ class TestEnvvarProtectedConfig:
             "message": "Config items set via environment variables cannot be changed via the API",
             "hint": "misc.nice",
         }, json.dumps(data, indent=2)
+
+
+class TestConfigFlags:
+
+    def test_write_only_flag(self, api_session):
+        """Write-only items are marked as such in the detailed config."""
+        data = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api?detailed=true", timeout=20))
+        api = data["config"]["webserver"]["api"]
+        assert api["password"]["flags"]["write_only"] is True
+        assert api["totp_secret"]["flags"]["write_only"] is True
+        assert api["max_sessions"]["flags"]["write_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +449,16 @@ class TestLuaServerPages:
         r = api_session.head(f"{FTL_URL}/broken_lua", timeout=5)
         assert r.status_code == 404
 
+    def test_root_not_served_by_default(self, api_session):
+        """/ under a Host other than webserver.domain follows serve_all too."""
+        set_config(api_session, "webserver.serve_all", False)
+        r = api_session.get(f"{FTL_URL}/", allow_redirects=False, timeout=5)
+        assert r.status_code == 404
+        r = api_session.get(f"{FTL_URL}/", headers={"Host": "pi.hole"},
+                            allow_redirects=False, timeout=5)
+        assert r.status_code == 308
+        assert r.headers["Location"].endswith("/admin/")
+
     def test_lua_page_generates_proper_backtrace(self, api_session):
         """Lua server page generates proper backtrace on error."""
         set_config(api_session, "webserver.serve_all", True)
@@ -389,6 +474,19 @@ class TestLuaServerPages:
         r = api_session.get(f"{FTL_URL}/broken_lua", timeout=5)
         lines = r.text.splitlines()
         assert lines[0] == "Hello, world 1!", f"Unexpected response:\n{r.text}"
+
+    def test_lp_redirect_stays_on_host(self):
+        """The .lp redirect never points to another host (serve_all is on)."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("//evil.example/x.lp", "/%5Cevil.example/x.lp"):
+            raw = _raw_http(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            "Connection: close\r\n\r\n".encode())
+            head = raw.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+            location = [line.split(":", 1)[1].strip()
+                        for line in head.split("\r\n")[1:]
+                        if line.lower().startswith("location:")]
+            assert location, f"No redirect for {path}:\n{head}"
+            assert not location[0].startswith(("//", "/\\")), location[0]
 
 
 # ---------------------------------------------------------------------------
@@ -592,18 +690,18 @@ class TestStatsSummary:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/summary", timeout=5), dump="stats_summary")
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 49
+        assert q["blocked"] == 52
         assert q["forwarded"] == FORWARDED
         assert q["cached"] == 41
-        assert q["unique_domains"] == 77
+        assert q["unique_domains"] == 79
         assert q["status"]["UNKNOWN"] == 0
         assert q["status"]["GRAVITY"] == 7
         assert q["status"]["FORWARDED"] == FORWARDED
         assert q["status"]["CACHE"] == 41
         assert q["status"]["REGEX"] == 21
-        assert q["status"]["DENYLIST"] == 4
+        assert q["status"]["DENYLIST"] == 5
         assert q["status"]["SPECIAL_DOMAIN"] == 2
-        assert q["types"]["A"] == 69
+        assert q["types"]["A"] == 71
         assert q["types"]["AAAA"] == 19
 
         assert data["clients"]["active"] == 11
@@ -625,7 +723,7 @@ class TestStatsTopDomains:
         assert counts == sorted(counts, reverse=True), \
             f"Not sorted descending: {counts}"
         assert data["total_queries"] == TOTAL
-        assert data["blocked_queries"] == 49
+        assert data["blocked_queries"] == 52
 
     def test_top_domains_blocked(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?blocked=true", timeout=5))
@@ -723,7 +821,7 @@ class TestStatsUpstreams:
         assert data["forwarded_queries"] == FORWARDED
 
         blocklist = next(u for u in upstreams if u["ip"] == "blocklist")
-        assert blocklist["count"] == 49
+        assert blocklist["count"] == 52
         assert blocklist["port"] == -1
 
         cache = next(u for u in upstreams if u["ip"] == "cache")
@@ -740,8 +838,8 @@ class TestStatsQueryTypes:
     def test_query_types(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
-            "A": 69, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
-            "PTR": 8, "TXT": 10, "NAPTR": 1, "MX": 1, "DS": 6,
+            "A": 71, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
+            "PTR": 8, "TXT": 11, "NAPTR": 1, "MX": 1, "DS": 6,
             "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
             "OTHER": 1,
         }, json.dumps(data, indent=2)
@@ -811,15 +909,38 @@ class TestStatsDatabase:
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/upstreams?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "upstreams" in data
         assert isinstance(data["upstreams"], list)
+        # Same status sets as the in-memory endpoint: every stored query is
+        # counted once at most, blocked ones under "blocklist"
+        assert data["total_queries"] == summary["sum_queries"]
+        pseudo = {u["ip"]: u for u in data["upstreams"] if u["port"] == -1}
+        assert set(pseudo) == {"cache", "blocklist"}, json.dumps(data, indent=2)
+        assert pseudo["blocklist"]["count"] == summary["sum_blocked"]
+        real = [u for u in data["upstreams"] if u["port"] != -1]
+        assert sum(u["count"] for u in real) == data["forwarded_queries"]
+        assert sum(u["count"] for u in data["upstreams"]) <= data["total_queries"]
+        for u in real:
+            assert not u["ip"].isdigit(), json.dumps(u, indent=2)
 
     def test_database_query_types_with_range(self, api_session):
         data = _j(api_session.get(
             f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
             timeout=5))
+        summary = _j(api_session.get(
+            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
+            timeout=5))
         assert "types" in data
         assert isinstance(data["types"], dict)
+        # Every stored query has exactly one type, OTHER included
+        assert set(data["types"]) == {
+            "A", "AAAA", "ANY", "SRV", "SOA", "PTR", "TXT", "NAPTR", "MX",
+            "DS", "RRSIG", "DNSKEY", "NS", "SVCB", "HTTPS", "OTHER"}
+        assert sum(data["types"].values()) == summary["sum_queries"], \
+            json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -846,6 +967,96 @@ class TestEndpoints:
             assert method in eps, f"Missing method '{method}':\n{json.dumps(eps.keys(), indent=2)}"
         # GET should have the most endpoints
         assert len(eps["get"]) > 20
+
+
+# ---------------------------------------------------------------------------
+# Wrong method on an existing endpoint
+# ---------------------------------------------------------------------------
+
+class TestMethodNotAllowed:
+
+    @staticmethod
+    def _allow(response):
+        return sorted(m.strip() for m in response.headers["Allow"].split(","))
+
+    def test_wrong_method_returns_405_with_allow(self, api_session):
+        """DELETE on a GET-only endpoint is a 405 naming the methods that work."""
+        r = api_session.delete(f"{FTL_URL}/api/stats/summary", timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+
+        assert r.headers.get("Allow") is not None, \
+            f"No Allow header, got {dict(r.headers)}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+        assert _j(r)["error"]["key"] == "method_not_allowed"
+
+    def test_allow_lists_every_accepted_method(self, api_session):
+        """An endpoint reached by several methods names all of them."""
+        r = api_session.patch(f"{FTL_URL}/api/dns/blocking", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS", "POST"]
+
+    def test_allow_names_the_methods_of_every_row_of_the_uri(self, api_session):
+        """Rows sharing a URI are not told apart, Allow is the union of them.
+
+        The table describes the documented shapes of a URI, the handlers
+        accept more than that, e.g., PATCH /api/config/<element>.
+        """
+        union = ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
+        for uri in ("/api/domains", "/api/domains/deny/exact"):
+            r = api_session.patch(f"{FTL_URL}{uri}", json={}, timeout=5)
+            assert r.status_code == 405, \
+                f"Expected 405, got {r.status_code} {r.text}"
+            assert self._allow(r) == union, f"{uri}: {self._allow(r)}"
+
+    def test_trailing_slash_does_not_change_the_answer(self, api_session):
+        """/api/domains/deny/ is the same resource as /api/domains/deny."""
+        plain = api_session.patch(f"{FTL_URL}/api/domains/deny", json={}, timeout=5)
+        slash = api_session.patch(f"{FTL_URL}/api/domains/deny/", json={}, timeout=5)
+        assert plain.status_code == 405, \
+            f"Expected 405, got {plain.status_code} {plain.text}"
+        assert slash.status_code == 405, \
+            f"Expected 405, got {slash.status_code} {slash.text}"
+        assert self._allow(slash) == self._allow(plain), \
+            f"{self._allow(slash)} != {self._allow(plain)}"
+
+    def test_uri_with_slashes_in_its_last_part(self, api_session):
+        """A config element, a list address and the docs carry further slashes."""
+        r = api_session.post(f"{FTL_URL}/api/config/dns/cache/size", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "PATCH", "PUT"]
+
+        address = quote("https://pytest.example.com/list.txt", safe="")
+        r = api_session.options(f"{FTL_URL}/api/lists/{address}", timeout=5)
+        assert r.status_code == 204, \
+            f"Expected 204, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["DELETE", "GET", "OPTIONS", "POST", "PUT"]
+
+        r = api_session.post(f"{FTL_URL}/api/docs/index.html", json={}, timeout=5)
+        assert r.status_code == 405, \
+            f"Expected 405, got {r.status_code} {r.text}"
+        assert self._allow(r) == ["GET", "OPTIONS"]
+
+    def test_handler_asking_for_404_still_gets_one(self, api_session):
+        """api_docs() returns 0 for a file it does not have, which is a 404.
+
+        It must not be mistaken for "no method matched" and answered 405 with
+        an Allow header naming the very method that was used.
+        """
+        r = api_session.get(f"{FTL_URL}/api/docs/_pytest_no_such_file.html",
+                            timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+
+    def test_unknown_uri_is_still_404(self, api_session):
+        """A URI that does not exist keeps its 404, no Allow header."""
+        r = api_session.delete(f"{FTL_URL}/api/_pytest_no_such_endpoint", timeout=5)
+        assert r.status_code == 404, \
+            f"Expected 404, got {r.status_code} {r.text}"
+        assert "Allow" not in r.headers
 
 
 # ---------------------------------------------------------------------------
@@ -948,7 +1159,8 @@ class TestNetwork:
         devices = data["devices"]
         hwaddrs = [d["hwaddr"] for d in devices]
         assert "aa:bb:cc:dd:ee:ff" in hwaddrs, json.dumps(hwaddrs, indent=2)
-        assert "ip-127.0.0.1" in hwaddrs
+        ips = [ip["ip"] for d in devices for ip in d["ips"]]
+        assert "127.0.0.1" in ips, json.dumps(devices, indent=2)
 
     def test_network_interfaces(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/network/interfaces", timeout=5))
@@ -995,11 +1207,11 @@ class TestPADD:
         assert data["gravity_size"] == 8
         assert data["active_clients"] == 11
         assert data["top_domain"] == TOP_DOMAIN
-        assert data["top_blocked"] == "gravity.ftl"
+        assert data["top_blocked"] == "denied.ftl"
         assert data["top_client"] == "127.0.0.1"
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 49
+        assert q["blocked"] == 52
         cache = data["cache"]
         assert cache["size"] == 10000
 
@@ -1265,6 +1477,18 @@ class TestHistoryDatabase:
             f"{FTL_URL}/api/history/database/clients?from=1&until=9999999999", timeout=5))
         assert "history" in data
         assert "clients" in data
+        clients = data["clients"]
+        # history[].data and clients share their keys, and the per-slot
+        # counts of a client add up to its total
+        totals = {}
+        for slot in data["history"]:
+            for client, count in slot["data"].items():
+                assert client in clients, json.dumps(data, indent=2)
+                totals[client] = totals.get(client, 0) + count
+        for client, item in clients.items():
+            assert "name" in item and "total" in item, json.dumps(item, indent=2)
+            assert totals.get(client, 0) == item["total"], \
+                json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1305,3 +1529,30 @@ class TestNTP:
         drift = abs(tx_seconds - now_ntp)
         assert drift <= 2, \
             f"NTP transmit timestamp off by {drift}s (expected ≤2s)"
+
+    def test_ntp_server_stratum(self, api_session):
+        """The NTP server never answers with stratum 0, also when FTL's own
+        NTP client is not running (no CAP_SYS_TIME in the test environment).
+        It either reports itself synchronized with a valid stratum and a
+        reference timestamp, or unsynchronized (LI = 3, stratum 16)."""
+        import socket
+        import struct
+
+        request = b'\x23' + 47 * b'\0'
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            sock.sendto(request, ('127.0.0.1', 123))
+            data, _ = sock.recvfrom(1024)
+        finally:
+            sock.close()
+
+        assert len(data) == 48, f"Expected 48-byte NTP packet, got {len(data)}"
+        leap = data[0] >> 6
+        stratum = data[1]
+        ref = struct.unpack('!Q', data[16:24])[0]
+        if leap == 3:
+            assert stratum == 16, f"Unsynchronized reply with stratum {stratum}"
+        else:
+            assert 1 <= stratum <= 15, f"Synchronized reply with stratum {stratum}"
+            assert ref != 0, "Synchronized reply with zero reference timestamp"

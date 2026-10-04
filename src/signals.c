@@ -13,13 +13,13 @@
 #if defined(USE_UNWIND)
 #  include <unwind.h>
 #  include <limits.h>    // PATH_MAX
-#  include <sys/mman.h>  // mmap() - used for the intentional crash test subcommand
 #  include <dlfcn.h>     // dladdr() - dynamic symbol lookup from .dynsym
 #  include <ucontext.h>  // ucontext_t - register snapshot from SA_SIGINFO handlers
 #  include <fcntl.h>     // open() - raw, signal-safe /proc/self/maps reading
 #  include <poll.h>      // poll() - bound the addr2line subprocess wall-clock
 #  include <sys/wait.h>  // waitpid()/WIFEXITED() - reap the addr2line child
 #endif
+#include <sys/mman.h>    // mmap() - alternate signal stack with a guard page
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -285,6 +285,13 @@ static bool is_executable_address(const struct maps_snapshot *snap, const uintpt
 	return false;
 }
 
+// Mappings snapshot of the last signal-context walk on this thread.
+// Thread-local static storage keeps it off the alternate signal stack while
+// giving each thread its own copy, so two threads taking a fatal signal at
+// once do not corrupt each other's snapshot.  TLS in the executable uses the
+// local-exec model, so it stays usable from the crash handler.
+static _Thread_local struct maps_snapshot signal_maps_snap;
+
 // Try to unwind from signal context using frame pointers.
 // This captures caller frames before the signal trampoline on targets where
 // the frame pointer chain is available.
@@ -317,13 +324,9 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 
 	// Snapshot the mappings once up front.  The frame-pointer walk validates
 	// every candidate address against this snapshot instead of re-parsing
-	// /proc/self/maps per frame (previously O(frames) file opens).  Thread-local
-	// static storage keeps it off the 16 KiB alternate signal stack while giving
-	// each thread its own copy, so two threads taking a fatal signal at once do
-	// not corrupt each other's snapshot.  TLS in the executable uses the
-	// local-exec model, so it stays usable from the crash handler.
-	static _Thread_local struct maps_snapshot snap;
-	capture_maps_snapshot(&snap);
+	// /proc/self/maps per frame (previously O(frames) file opens).
+	struct maps_snapshot *snap = &signal_maps_snap;
+	capture_maps_snapshot(snap);
 
 	int count = 0;
 	// Frame 0 is the faulting instruction pointer straight from the signal
@@ -339,7 +342,7 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 		if((fp & (sizeof(uintptr_t) - 1u)) != 0)
 			break;
 
-		if(!is_readable_range(&snap, fp, 2u*sizeof(uintptr_t)))
+		if(!is_readable_range(snap, fp, 2u*sizeof(uintptr_t)))
 			break;
 
 		const uintptr_t *frame = (const uintptr_t *)fp;
@@ -353,7 +356,7 @@ static int collect_from_signal_context(void **frames, const int max_frames, void
 			walk_complete = true;
 			break;
 		}
-		if(!is_executable_address(&snap, ret - 1u))
+		if(!is_executable_address(snap, ret - 1u))
 			break;
 
 		frames[count++] = (void *)(ret - 1u);
@@ -497,7 +500,7 @@ static void find_mapping_name(const void *addr, char *buf, const size_t buflen)
 }
 
 // Per-frame resolution state.  Stored in a fixed static array (not on the
-// 16 KiB alternate signal stack) so the symbolization pass cannot overflow it.
+// alternate signal stack) so the symbolization pass cannot overflow it.
 struct frame_info {
 	void *addr;        // absolute return/instruction address
 	const char *obj;   // object file path for "addr2line -e" ("" if unknown)
@@ -611,7 +614,7 @@ enum a2l_run {
 	A2L_RUN_OK = 0,          // addr2line ran (frames may still lack debug info)
 	A2L_RUN_TIMED_OUT = 1,   // exceeded the wall-clock deadline
 	A2L_RUN_MISSING = -1,    // addr2line could not be executed (exit 127)
-	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/fork() failed (resource exhaustion)
+	A2L_RUN_SPAWN_FAIL = -2, // pipe2()/_Fork() failed (resource exhaustion)
 };
 
 // Spawn "addr2line -f -e <obj> <rel...>" for one object and read its output,
@@ -619,14 +622,17 @@ enum a2l_run {
 // SIGALRM/itimer watchdog this keeps no process-wide signal or timer state and
 // performs no cross-thread siglongjmp(), so it is safe in the multi-threaded
 // daemon.  Spawning directly avoids popen()'s /bin/sh and stdio buffering.
-// This is not async-signal-safe (it uses snprintf(), poll() and execvp());
-// symbolization is a best-effort step that runs only after the raw frame
-// addresses have already been collected and can be logged.
+// _Fork() is used instead of fork() because it is explicitly async-signal-safe
+// and does not call the pthread_atfork() handlers, so a thread holding a log
+// mutex cannot stall us here (see the log_atfork_prepare() handlers in log.c).
+// This function itself is not async-signal-safe (it uses snprintf(), poll(),
+// and execvp()); symbolization is a best-effort step that runs only after the
+// raw frame addresses have already been collected and can be logged.
 static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
                                          const int *order, const int ng)
 {
 	// argv and the per-address strings.  Thread-local static storage keeps the
-	// 16 KiB alternate signal stack free while giving concurrent callers
+	// alternate signal stack free while giving concurrent callers
 	// (e.g. the lock-debug paths) independent, race-free workspaces.  TLS in
 	// the executable uses the local-exec model: a direct thread-pointer offset,
 	// no lazy allocation, so it stays usable from the crash handler.
@@ -648,7 +654,10 @@ static enum a2l_run run_addr2line_object(const char *obj, struct frame_info *fi,
 	if(pipe2(pipefd, O_CLOEXEC) != 0)
 		return A2L_RUN_SPAWN_FAIL;
 
-	const pid_t pid = fork();
+	// _Fork() rather than fork(): _Fork() is async-signal-safe and does not
+	// call the pthread_atfork() handlers registered in log.c, so a thread
+	// parked in write() on a log mutex cannot stall the crash handler here.
+	const pid_t pid = _Fork();
 	if(pid < 0)
 	{
 		close(pipefd[0]);
@@ -881,7 +890,7 @@ static char * __attribute__ ((nonnull (1))) getthread_name(char buffer[16])
 // commands for any frame that stayed unresolved.
 static void symbolize_and_render_frames(void **frames, const int frame_count)
 {
-	// Thread-local static storage keeps this off the 16 KiB alternate signal
+	// Thread-local static storage keeps this off the alternate signal
 	// stack while giving concurrent callers (e.g. the lock-debug paths)
 	// independent, race-free workspaces.  TLS in the executable uses the
 	// local-exec model, so it stays usable from the crash handler.
@@ -957,7 +966,11 @@ static void generate_backtrace_internal(void *context)
 	// tends to cause the crash), cross-check it against libgcc's DWARF-CFI
 	// unwinder, which can cross frame-pointer-less boundaries the walk cannot.
 	// Only shown when it actually recovers more frames than the truncated walk.
-	if(source == BT_SOURCE_SIGNAL_CONTEXT && !complete && frame_count > 0)
+	// Skipped when the faulting PC is outside any executable mapping: libgcc
+	// would read the instruction bytes there and fault inside this handler.
+	if(source == BT_SOURCE_SIGNAL_CONTEXT && !complete && frame_count > 0 &&
+	   (signal_maps_snap.count == 0 ||
+	    is_executable_address(&signal_maps_snap, (uintptr_t)frames[0])))
 	{
 		void *cross[128];
 		struct unwind_state state = { cross, 0, 128 };
@@ -1146,9 +1159,12 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 	}
 	else if(gettid() != getpid())
 	{
-		// This is a thread, signal to the main process to shut down
+		// This is a thread. Stop the DNS service right here rather than
+		// through want_terminate: the thread polling that flag may be
+		// the one that crashed
 		log_info("Shutting down thread...");
-		terminate_error();
+		exit_code = EXIT_FAILURE;
+		terminate();
 
 		// Exit the thread here, it failed anyway
 		pthread_exit(NULL);
@@ -1191,7 +1207,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 		// - allowed domains and regex
 		// - denied domains and regex
 		// WITHOUT wiping the DNS cache itself
-		set_event(RELOAD_GRAVITY);
+		set_event_from_signal(RELOAD_GRAVITY);
 	}
 	else if(rtsig == 2)
 	{
@@ -1201,19 +1217,19 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 3)
 	{
 		// Reimport alias-clients from database
-		set_event(REIMPORT_ALIASCLIENTS);
+		set_event_from_signal(REIMPORT_ALIASCLIENTS);
 	}
 	else if(rtsig == 4)
 	{
 		// Re-resolve all clients and forward destinations
 		// Force refreshing hostnames according to
 		// REFRESH_HOSTNAMES config option
-		set_event(RERESOLVE_HOSTNAMES_FORCE);
+		set_event_from_signal(RERESOLVE_HOSTNAMES_FORCE);
 	}
 	else if(rtsig == 5)
 	{
 		// Parse neighbor cache
-		set_event(PARSE_NEIGHBOR_CACHE);
+		set_event_from_signal(PARSE_NEIGHBOR_CACHE);
 	}
 	// else if(rtsig == 6)
 	// {
@@ -1222,7 +1238,7 @@ static void SIGRT_handler(int signum, siginfo_t *si, void *context)
 	else if(rtsig == 7)
 	{
 		// Search for hash collisions in the lookup tables
-		set_event(SEARCH_LOOKUP_HASH_COLLISIONS);
+		set_event_from_signal(SEARCH_LOOKUP_HASH_COLLISIONS);
 	}
 
 	// SIGRT32: Used internally by valgrind, do not use
@@ -1235,8 +1251,9 @@ static void SIGTERM_handler(int signum, siginfo_t *si, void *context)
 {
 	(void)context;
 	(void)signum;
-	// Ignore SIGTERM outside of the main process (TCP forks)
-	if(mpid != getpid())
+	// Ignore SIGTERM outside of the main process (TCP forks). mpid is
+	// still 0 during startup, when this process is the main process
+	if(mpid > 0 && mpid != getpid())
 		return;
 
 	// Save sender info for deferred logging (async-signal-safe: just
@@ -1273,11 +1290,17 @@ void log_sigterm_info(void)
 	if(fp != NULL)
 	{
 		size_t read = 0;
-		if((read = fread(kill_name, sizeof(char), sizeof(kill_name), fp)) > 0)
+		// One byte short of the buffer, and terminated below: every NUL
+		// separator in cmdline is turned into a space further down, so a
+		// read that filled the buffer completely would leave the string
+		// with no terminator at all for the log line to stop at
+		if((read = fread(kill_name, sizeof(char), sizeof(kill_name) - 1, fp)) > 0)
 		{
+			kill_name[read] = '\0';
+
 			// cmdline contains null-separated arguments - replace
 			// null bytes with spaces for display
-			for(unsigned int i = 0; i < min((size_t)read, sizeof(kill_name)); i++)
+			for(size_t i = 0; i < read; i++)
 			{
 				if(kill_name[i] == '\0')
 					kill_name[i] = ' ';
@@ -1358,24 +1381,35 @@ static void terminate(void)
 
 // Register ordinary signals handler
 // Alternate signal stack so the crash handler can run even when the
-// regular stack has overflowed. SIGSTKSZ is not a compile-time constant
-// on glibc >= 2.34, so use a fixed 16 KiB buffer (the minimum required
-// by POSIX is MINSIGSTKSZ which is typically 2-8 KiB; 16 KiB gives
-// ample room for the backtrace/logging calls in our crash handler).
-#define FTL_ALT_STACK_SIZE 16384
-static uint8_t alt_stack_mem[FTL_ALT_STACK_SIZE];
+// regular stack has overflowed. The crash handler runs the backtrace,
+// addr2line and, for the main thread, cleanup() on this stack, so it
+// needs far more than MINSIGSTKSZ. It is mmap()ed with a PROT_NONE guard
+// page below it, so an overrun faults instead of overwriting other data.
+#define FTL_ALT_STACK_SIZE (64u*1024u)
 
 void handle_signals(void)
 {
 	// Install an alternate signal stack for crash handlers. Without
 	// this, a stack overflow fault cannot be diagnosed because the
 	// handler itself would overflow the same stack.
-	stack_t ss = {
-		.ss_sp = alt_stack_mem,
-		.ss_size = FTL_ALT_STACK_SIZE,
-		.ss_flags = 0
-	};
-	sigaltstack(&ss, NULL);
+	const long page = sysconf(_SC_PAGESIZE);
+	const size_t guard = page > 0 ? (size_t)page : 4096u;
+	uint8_t *alt_stack = mmap(NULL, guard + FTL_ALT_STACK_SIZE, PROT_READ | PROT_WRITE,
+	                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(alt_stack != MAP_FAILED)
+	{
+		// The stack grows downwards, so the guard page goes first
+		if(mprotect(alt_stack, guard, PROT_NONE) != 0)
+			log_warn("Cannot protect alternate signal stack guard page: %s", strerror(errno));
+		stack_t ss = {
+			.ss_sp = alt_stack + guard,
+			.ss_size = FTL_ALT_STACK_SIZE,
+			.ss_flags = 0
+		};
+		sigaltstack(&ss, NULL);
+	}
+	else
+		log_warn("Cannot allocate alternate signal stack: %s", strerror(errno));
 
 	struct sigaction old_action;
 
@@ -1414,6 +1448,26 @@ void handle_signals(void)
 	FTLstarttime = time(NULL);
 }
 
+// SIGUSR2: reopen all log fds (logrotate).
+// Registered after dnsmasq so it replaces dnsmasq's handler for this
+// signal - FTL owns all on-disk logs now.
+static void SIGUSR2_handler(int signum, siginfo_t *si, void *context)
+{
+	(void)signum; (void)si; (void)context;
+	const int _errno = errno;
+
+	// Ignore outside main process (TCP forks)
+	if(mpid != getpid())
+	{
+		errno = _errno;
+		return;
+	}
+
+	mark_log_reopen();
+
+	errno = _errno;
+}
+
 // Register real-time signal handler
 void handle_realtime_signals(void)
 {
@@ -1439,6 +1493,15 @@ void handle_realtime_signals(void)
 		SIGACTION.sa_sigaction = &SIGRT_handler;
 		sigaction(signum, &SIGACTION, NULL);
 	}
+
+	// Register SIGUSR2 for log reopen (replaces dnsmasq's handler).
+	// This must run after dnsmasq has registered its own sig_handler
+	// so that FTL's handler wins for SIGUSR2 specifically.
+	struct sigaction sigact = { 0 };
+	sigact.sa_flags = SA_SIGINFO;
+	sigemptyset(&sigact.sa_mask);
+	sigact.sa_sigaction = &SIGUSR2_handler;
+	sigaction(SIGUSR2, &sigact, NULL);
 }
 
 // Return PID of the main FTL process

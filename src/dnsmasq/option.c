@@ -749,7 +749,7 @@ static int numeric_check(char *a)
 {
   char *p;
 
-  if (!a)
+  if (!a || *a == 0)
     return 0;
 
   unhide_metas(a);
@@ -775,11 +775,14 @@ static int strtoul_check(char *a, u32 *res)
   
   if (!numeric_check(a))
     return 0;
+  
   x = strtoul(a, NULL, 10);
-  if (errno || x > UINT32_MAX) {
-    errno = 0;
-    return 0;
-  }
+  if (errno || x > UINT32_MAX)
+    {
+      errno = 0;
+      return 0;
+    }
+  
   *res = (u32)x;
   return 1;
 }
@@ -1691,7 +1694,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	  parse_hex(comma, new->val, digs, (flags & DHOPT_MATCH) ? &new->u.wildcard_mask : NULL, NULL);
 	  new->flags |= DHOPT_HEX;
 	}
-      else if (is_dec)
+      else if (is_dec && !(opt_len & OT_DHCP6_VENDOR))
 	{
 	  int i, val = atoi(comma);
 	  /* assume numeric arg is 1 byte except for
@@ -1899,7 +1902,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	    {
 	      /* First arg is Enterprise ID (4 bytes)
 		 subsequent are length fields (2 bytes each) + string */
-	      int i, commas = 1;
+	      int enterprise, i, commas = 1;
 	      unsigned char *p, *newp;
 
 	      for (i = 0; comma[i]; i++)
@@ -1911,14 +1914,11 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	      arg = comma;
 	      comma = split(arg);
 
-	      if (arg && *arg)
-	      {
-	      unsigned int enterprise = atoi(arg);
-	      PUTLONG(enterprise, p);
-	      }
+	      if (atoi_check(arg, &enterprise))
+		PUTLONG(enterprise, p);
 	      else
-	      goto_err(_("missing enterprise ID in dhcp-option"));
-
+		goto_err(_("bad or missing enterprise ID in dhcp-option"));
+		  
 	      arg = comma;
 	      comma = split(arg);
 

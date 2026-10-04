@@ -53,6 +53,19 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	if(cpid == -1)
+	{
+		// Without this the parent branch below would waitpid(-1, ...)
+		// and reap some unrelated child of ours - a dnsmasq TCP helper -
+		// then report its exit status as the result of the config test
+		log_err("Cannot fork to test new dnsmasq config: %s", strerror(errno));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		strncpy(errbuf, strerror(errno), ERRBUF_SIZE - 1);
+		errbuf[ERRBUF_SIZE - 1] = '\0';
+		return false;
+	}
+
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
@@ -131,11 +144,15 @@ static bool test_dnsmasq_config(char errbuf[ERRBUF_SIZE])
 
 			// We can ignore EINTR as it just means that the wait
 			// was interrupted, so we just try again. All other
-			// errors are fatal and we break out of the loop
+			// errors are fatal: there is no status to evaluate and
+			// the test counts as failed
 			if(err != EINTR && err != EAGAIN && err != ECHILD)
 			{
 				log_err("Cannot wait for dnsmasq test: %s", strerror(err));
-				break;
+				if(errbuf != NULL)
+					snprintf(errbuf, ERRBUF_SIZE, "Cannot wait for dnsmasq test: %s", strerror(err));
+				code = EXIT_FAILURE;
+				goto check_return;
 			}
 
 			// Check if the child exited too quickly for waitpid to
@@ -250,12 +267,12 @@ static void write_config_header(FILE *fp, const char *description)
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY CHANGES MADE TO THIS FILE WILL BE LOST WHEN THE CONFIGURATION CHANGES");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "IF YOU WISH TO CHANGE ANY OF THESE VALUES, CHANGE THEM IN");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "/etc/pihole/pihole.toml");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "and restart pihole-FTL");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "ANY OTHER CHANGES SHOULD BE MADE IN A SEPARATE CONFIG FILE");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "WITHIN /etc/dnsmasq.d/yourname.conf");
-	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "(make sure misc.etc_dnsmasq_d is set to true in /etc/pihole/pihole.toml)");
+	CONFIG_CENTER(fp, HEADER_WIDTH, "(make sure misc.etc_dnsmasq_d is set to true in %s)", GLOBALTOMLPATH);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "%s", "");
 	CONFIG_CENTER(fp, HEADER_WIDTH, "Last updated: %s", timestring);
 	CONFIG_CENTER(fp, HEADER_WIDTH, "by FTL version %s", get_FTL_version());
@@ -294,7 +311,7 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
-bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE])
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -385,7 +402,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
-		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot open "DNSMASQ_TEMP_CONF" for writing: %s", strerror(errno));
+		log_err("%s, unable to update dnsmasq configuration", errbuf);
 		if(conf_fd >= 0)
 			close(conf_fd);
 		return false;
@@ -434,7 +452,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 				}
 				// Settle on a tuple that actually binds (redrawing on a collision) so
 				// dnsmasq is pointed at the one the proxy will bind; skip for validation.
-				if(!test_config)
+				if(mode == DNSMASQ_INSTALL)
 					dotdoh_tuple_ensure_bindable(enc);
 				char ip[INET_ADDRSTRLEN];
 				dotdoh_tuple_ip(enc, ip, sizeof(ip));
@@ -466,27 +484,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(conf->dns.queryLogging.v.b)
 	{
 		fputs("# Enable query logging\n", pihole_conf);
+		// FTL writes pihole.log synchronously via a cached descriptor, so
+		// dnsmasq's log-async queue is never used
 		if(conf->misc.extraLogging.v.b)
 			fputs("log-queries=proto\n", pihole_conf);
 		else
 			fputs("log-queries\n", pihole_conf);
-		fputs("log-async\n", pihole_conf);
 		fputs("\n", pihole_conf);
 	}
 	else
 	{
 		fputs("# Disable query logging\n", pihole_conf);
 		fputs("#log-queries\n", pihole_conf);
-		fputs("#log-async\n", pihole_conf);
-		fputs("\n", pihole_conf);
-	}
-
-	if(strlen(conf->files.log.dnsmasq.v.s) > 0)
-	{
-		fputs("# Specify the log file to use\n", pihole_conf);
-		fputs("# We set this even if logging is disabled to store warnings\n", pihole_conf);
-		fputs("# and errors in this file. This is useful for debugging.\n", pihole_conf);
-		fprintf(pihole_conf, "log-facility=%s\n", conf->files.log.dnsmasq.v.s);
 		fputs("\n", pihole_conf);
 	}
 
@@ -637,8 +646,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 			fprintf(pihole_conf, "server=/%s/%s\n", domain, target);
 
 			// Check if the configured domain is the same as the main domain
-			if(strlen(config.dns.domain.name.v.s) > 0 &&
-			   strcasecmp(domain, config.dns.domain.name.v.s) == 0)
+			if(strlen(conf->dns.domain.name.v.s) > 0 &&
+			   strcasecmp(domain, conf->dns.domain.name.v.s) == 0)
 				revServer_domain = true;
 
 			// Flag if configured a server for queries for "home.arpa" TLD
@@ -685,7 +694,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_homearpa && !config.dns.domain.local.v.b)
+	else if(domain_homearpa && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"home.arpa\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -712,7 +721,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("# All queries for this domain will be forwarded to this\n", pihole_conf);
 		fputs("# upstream server\n\n", pihole_conf);
 	}
-	else if(domain_internal && !config.dns.domain.local.v.b)
+	else if(domain_internal && !conf->dns.domain.local.v.b)
 	{
 		fputs("# The configured DNS domain is \"internal\" and is explicitly\n", pihole_conf);
 		fputs("# marked non-local. Pi-hole will be forwarding queries for this\n", pihole_conf);
@@ -729,14 +738,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	if(strlen(conf->dns.domain.name.v.s) > 0)
 	{
 		fputs("# DNS domain for both the DNS and DHCP server\n", pihole_conf);
-		if(revServer_domain || !config.dns.domain.local.v.b)
+		if(revServer_domain || !conf->dns.domain.local.v.b)
 		{
 			if(revServer_domain)
 			{
 				fputs("# This DNS domain is also used for reverse lookups\n", pihole_conf);
 				fputs("# It is forwarded to the upstream servers configured above\n", pihole_conf);
 			}
-			else // !config.dns.domain.local.v.b
+			else // !conf->dns.domain.local.v.b
 			{
 				fputs("# This domain is explicitly configured to *not* be local. Ensure\n", pihole_conf);
 				fputs("# that you have configured at least one upstream server for this\n", pihole_conf);
@@ -922,7 +931,16 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
-			fprintf(pihole_conf, "dumpfile=%s\n", conf->files.pcap.v.s);
+			// Quoted and escaped: unquoted, '#' after a space starts a
+			// comment, and '"' and '\' are special to dnsmasq's parser
+			fputs("dumpfile=\"", pihole_conf);
+			for(const char *p = conf->files.pcap.v.s; *p != '\0'; p++)
+			{
+				if(*p == '"' || *p == '\\')
+					fputc('\\', pihole_conf);
+				fputc(*p, pihole_conf);
+			}
+			fputs("\"\n", pihole_conf);
 			fputs("\n", pihole_conf);
 		}
 		else
@@ -957,8 +975,19 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		fputs("#### Additional user configuration - END ####\n\n", pihole_conf);
 	}
 
-	// Flush config file to disk
-	fflush(pihole_conf);
+	// Flush config file to disk and make sure all of it got there. Every
+	// directive above is written without checking, and fclose() reports
+	// success after a short write, so without this a disk that filled up
+	// part-way through would be renamed over the live dnsmasq config as a
+	// truncated file that dnsmasq would happily start from
+	// The reason goes into errbuf as the callers report it as their hint
+	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
+	                          fsync(fileno(pihole_conf)) != 0;
+	if(write_failed)
+	{
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		log_err("%s", errbuf);
+	}
 
 	// Unlock file
 	if(locked)
@@ -967,7 +996,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 	// Close file
 	if(fclose(pihole_conf) != 0)
 	{
+		if(!write_failed)
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot close "DNSMASQ_TEMP_CONF": %s", strerror(errno));
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
+		return false;
+	}
+
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+			log_err("Cannot remove incomplete dnsmasq config file: %s", strerror(errno));
+
 		return false;
 	}
 
@@ -976,7 +1016,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		chown_pihole(DNSMASQ_TEMP_CONF, NULL);
 
 	log_debug(DEBUG_CONFIG, "Testing "DNSMASQ_TEMP_CONF);
-	if(test_config && !test_dnsmasq_config(errbuf))
+	if(mode != DNSMASQ_INSTALL && !test_dnsmasq_config(errbuf))
 	{
 		log_warn("New dnsmasq configuration is not valid (%s), config remains unchanged", errbuf);
 
@@ -996,13 +1036,28 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		return false;
 	}
 
+	// The caller only wanted to know whether the config is valid, so the
+	// file it was tested from goes away again rather than being installed
+	if(mode == DNSMASQ_TEST_ONLY)
+	{
+		if(remove(DNSMASQ_TEMP_CONF) != 0)
+		{
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
+			return false;
+		}
+
+		return true;
+	}
+
 	// Check if the new config file is different from the old one
 	// Skip the first 24 lines as they contain the header
 	if(files_different(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG, 24))
 	{
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
-			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot install "DNSMASQ_PH_CONFIG": %s", strerror(errno));
+			log_err("%s", errbuf);
 
 			// Remove temporary config file
 			if(remove(DNSMASQ_TEMP_CONF) != 0)
@@ -1023,7 +1078,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, boo
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 	}
@@ -1061,8 +1117,10 @@ bool read_legacy_dhcp_static_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "dhcp-host=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "dhcp-host=", sizeof("dhcp-host=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
@@ -1124,8 +1182,10 @@ bool read_legacy_cnames_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "cname=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "cname=", sizeof("cname=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
@@ -1272,6 +1332,14 @@ bool write_custom_list(void)
 	else if(N == 0)
 		fputs("\n# There are currently no entries in this file\n", custom_list);
 
+	// Make sure everything written above actually reached the disk, for the
+	// same reason as in write_dnsmasq_config(): none of the writes is
+	// checked and fclose() succeeds after a short one
+	const bool write_failed = fflush(custom_list) != 0 || ferror(custom_list) != 0 ||
+	                          fsync(fileno(custom_list)) != 0;
+	if(write_failed)
+		log_err("Cannot write custom.list: %s", strerror(errno));
+
 	// Unlock file
 	if(locked)
 		unlock_file(custom_list, DNSMASQ_CUSTOM_LIST_LEGACY".tmp");
@@ -1280,6 +1348,15 @@ bool write_custom_list(void)
 	if(fclose(custom_list) != 0)
 	{
 		log_err("Cannot close custom.list: %s", strerror(errno));
+		return false;
+	}
+
+	// Leave the half-written temporary file behind rather than installing it
+	if(write_failed)
+	{
+		if(remove(DNSMASQ_CUSTOM_LIST_LEGACY".tmp") != 0)
+			log_err("Cannot remove incomplete custom.list: %s", strerror(errno));
+
 		return false;
 	}
 

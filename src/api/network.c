@@ -177,8 +177,11 @@ static int api_network_devices_GET(struct ftl_conn *api)
 	sqlite3 *db = dbopen(true, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_GET()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	const char *sql_msg = NULL;
@@ -231,7 +234,10 @@ static int api_network_devices_GET(struct ftl_conn *api)
 			// Possible error handling
 			if(sql_msg != NULL)
 			{
+				// item is not part of devices yet, so it has
+				// to be released on its own
 				cJSON_Delete(ips);
+				cJSON_Delete(item);
 				cJSON_Delete(devices);
 
 				networkTable_readIPsFinalize(ip_stmt);
@@ -293,8 +299,11 @@ static int api_network_devices_DELETE(struct ftl_conn *api)
 	sqlite3 *db = dbopen(false, false);
 	if(db == NULL)
 	{
-		log_warn("Failed to open database in networkTable_readDevices()");
-		return false;
+		log_warn("Failed to open database in api_network_devices_DELETE()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open the long-term database",
+		                       NULL);
 	}
 
 	// Delete row from network table by ID
@@ -348,15 +357,24 @@ int api_client_suggestions(struct ftl_conn *api)
 		return 0;
 	}
 
-	// Does the user request a custom number of addresses per device to be included?
+	// Does the user request a custom number of suggested clients?
 	unsigned int count = 50;
 	get_uint_var(api->request->query_string, "count", &count);
 
-	bool ipv4_only = true;
-	get_bool_var(api->request->query_string, "ipv4_only", &ipv4_only);
-
 	// Open pihole-FTL.db database file connection
 	sqlite3 *db = dbopen(true, false);
+	if(db == NULL)
+	{
+		// The two sibling handlers in this file check this. Without it
+		// the attach below fails on a NULL handle and answers with that
+		// instead of naming the real problem, and dbclose() takes a
+		// decrement for a connection that was never opened
+		log_err("Failed to open database in api_client_suggestions()");
+		return send_json_error(api, 500,
+		                       "database_error",
+		                       "Could not open long-term database",
+		                       NULL);
+	}
 
 	// Attach gravity database
 	const char *message = "";

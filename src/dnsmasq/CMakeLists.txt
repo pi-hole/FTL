@@ -63,7 +63,7 @@ set(sources
 
 add_library(dnsmasq OBJECT ${sources})
 target_compile_definitions(dnsmasq PRIVATE VERSION=\"${DNSMASQ_VERSION}\")
-target_compile_definitions(dnsmasq PRIVATE CONFFILE=\"/etc/pihole/dnsmasq.conf\")
+target_compile_definitions(dnsmasq PRIVATE CONFFILE=\"${PIHOLE_INSTALL_DIR}/dnsmasq.conf\")
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
     target_compile_options(dnsmasq PRIVATE -Wno-maybe-uninitialized -Wno-sign-compare)
 elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")

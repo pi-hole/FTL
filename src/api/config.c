@@ -14,6 +14,8 @@
 #include "api/api.h"
 // config struct
 #include "config/config.h"
+// validate_config_paths()
+#include "config/validator.h"
 // struct clientsData
 #include "datastructure.h"
 // INT_MIN, INT_MAX, ...
@@ -633,6 +635,8 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			JSON_ADD_BOOL_TO_OBJECT(flags, "restart_dnsmasq", conf_item->f & FLAG_RESTART_FTL);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "session_reset", conf_item->f & FLAG_INVALIDATE_SESSIONS);
 			JSON_ADD_BOOL_TO_OBJECT(flags, "env_var", conf_item->f & FLAG_ENV_VAR);
+			// Passwords are write-only by type, not by flag
+			JSON_ADD_BOOL_TO_OBJECT(flags, "write_only", (conf_item->f & FLAG_WRITE_ONLY) || conf_item->t == CONF_PASSWORD);
 			JSON_ADD_ITEM_TO_OBJECT(leaf, "flags", flags);
 
 			// Attach leave object to tree of objects
@@ -741,7 +745,9 @@ static int api_config_get(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static int api_config_patch(struct ftl_conn *api)
+// Sets *send_config when the caller is to answer with the full config, which it
+// does after releasing the config lock
+static int api_config_patch(struct ftl_conn *api, bool *send_config)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -777,6 +783,8 @@ static int api_config_patch(struct ftl_conn *api)
 
 	// Read all known config items
 	bool config_changed = false;
+	bool privacy_level_decreased = false;
+	bool invalidate_sessions = false;
 	bool dnsmasq_changed = false;
 	bool rewrite_hosts = false;
 	struct config newconf;
@@ -801,7 +809,7 @@ static int api_config_patch(struct ftl_conn *api)
 			continue;
 		}
 
-		if(new_item->f & FLAG_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
+		if(new_item->f & FLAG_API_CLI_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
 		{
 			char *key = strdup(new_item->k);
 			free_config(&newconf, false);
@@ -844,6 +852,23 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Get pointer to memory location of this conf_item (global)
 		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		// Options that hand code to something Pi-hole then runs are not
+		// settable from a web session, see FLAG_API_READ_ONLY.
+		//
+		// Only an actual change is refused. A client sending the whole
+		// configuration back, as the web interface does, mentions every option
+		// including this one, and rejecting it for that alone would make every
+		// save fail.
+		if(new_item->f & FLAG_API_READ_ONLY && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
+		{
+			char *key = strdup(new_item->k);
+			free_config(&newconf, false);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
+			                            key, true, true);
+		}
 
 		// Config items that are set via environment variables cannot be changed
 		// via the API
@@ -893,25 +918,43 @@ static int api_config_patch(struct ftl_conn *api)
 		// If the privacy level was decreased, we need to restart
 		if(new_item == &newconf.misc.privacylevel &&
 		   new_item->v.privacy_level < conf_item->v.privacy_level)
-		{
-			api->ftl.restart_reason = "Privacy level decreased";
-			api->ftl.restart = true;
-		}
+			privacy_level_decreased = true;
 
 		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions
+		// invalidate all currently active sessions. Only note it here:
+		// a later item in this same request can still be rejected, and
+		// so can the dnsmasq test below, and this candidate config is
+		// then thrown away - logging everyone out for a change that
+		// never happened
 		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			delete_all_sessions();
+			invalidate_sessions = true;
 	}
 
 	// Process new config only when at least one value changed
 	if(config_changed)
 	{
+		// Reject a configuration whose paths conflict with each other. The
+		// per-item validators above only see one value at a time, so a request
+		// changing several of them at once has to be checked as a whole. This
+		// runs before the dnsmasq config is generated, as that installs the
+		// generated file as a side effect of testing it.
+		{
+			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(!validate_config_paths(&newconf, errbuf, NULL))
+			{
+				free_config(&newconf, false);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid configuration",
+				                       errbuf);
+			}
+		}
+
 		// Request restart of FTL
 		if(dnsmasq_changed)
 		{
 			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(write_dnsmasq_config(&newconf, true, errbuf))
+			if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 			{
 				api->ftl.restart_reason = "dnsmasq config changed";
 				api->ftl.restart = restart;
@@ -928,6 +971,21 @@ static int api_config_patch(struct ftl_conn *api)
 
 		// Install new configuration
 		replace_config(&newconf);
+
+		// The candidate is the live config now, so the side effects noted
+		// while walking the items can be applied. Doing either earlier
+		// meant a request rejected further down - by a later item, or by
+		// the dnsmasq test above - still logged every session out, or
+		// still left api->ftl.restart set for api.c to act on although
+		// free_config() had thrown the candidate away
+		if(privacy_level_decreased)
+		{
+			api->ftl.restart_reason = "Privacy level decreased";
+			api->ftl.restart = true;
+		}
+
+		if(invalidate_sessions)
+			delete_all_sessions();
 
 		// Reload debug levels
 		set_debug_flags(&config);
@@ -946,8 +1004,9 @@ static int api_config_patch(struct ftl_conn *api)
 		log_web(LOG_INFO, "No config changes detected");
 	}
 
-	// Return full config after possible changes above
-	return api_config_get(api);
+	// The full config is returned by the caller
+	*send_config = true;
+	return 0;
 }
 
 // Inspired by https://stackoverflow.com/a/32496721
@@ -956,10 +1015,27 @@ static int api_config_patch(struct ftl_conn *api)
 //	for (char *current_pos = strchr(str, find); (current_pos = strchr(str+1, find)) != NULL; *current_pos = replace);
 //}
 
+// Upper bound for a value rebuilt out of the request path. No config string
+// array holds anything remotely this long, and a request that exceeds it is
+// answered rather than silently truncated
+#define MAX_CONFIG_VALUE_LEN 1024
+
 static int api_config_put_delete(struct ftl_conn *api)
 {
 	if(api->item == NULL || strlen(api->item) == 0)
 		return 0;
+
+	// Return early if the config is in read-only mode, as api_config_patch()
+	// already does. Without this, PUT and DELETE changed the live config,
+	// 01-pihole.conf and the HOSTS file and restarted FTL, while
+	// writeFTLtoml() deliberately wrote none of it to disk
+	if(config.misc.readOnly.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+	}
 
 	// Users may specify ?restart=false to avoid a restart of dnsmasq
 	// even if the changed config item would require it
@@ -989,7 +1065,12 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
-	char *new_item_str = requested_path[min_level - 1];
+	// Filled in from the requested path once the matching item is known.
+	// The buffer lives out here rather than in the loop below: the pointer
+	// would otherwise outlive the block it points into if this is ever read
+	// after the loop, which is what the value it replaced allowed
+	char value_buf[MAX_CONFIG_VALUE_LEN] = { 0 };
+	const char *new_item_str = NULL;
 
 	// Read all known config items
 	bool dnsmasq_changed = false;
@@ -1014,12 +1095,47 @@ static int api_config_put_delete(struct ftl_conn *api)
 		//  requested was /config/dnsmasq -> skip all entries that do not start in dnsmasq.
 		//  requested was /config/dnsmasq/dhcp -> skip all entries that do not start in dhcp
 		//  etc.
-		if(!check_paths_equal(new_item->p, requested_path, max(min_level - 2, level - 1)))
+		// Compare exactly this item's own path depth. For a value with no
+		// slash in it this is what max(min_level - 2, level - 1) already
+		// worked out to
+		if(!check_paths_equal(new_item->p, requested_path, level - 1))
 			continue;
 
-		// Check if this is a property where we want to add an item
-		if(min_level != level + 1)
+		// The requested path has to reach at least one component past
+		// this item, and everything past it is the value. Taking only
+		// the last component would drop every value containing a slash,
+		// which a string array is free to hold - civetweb has already
+		// decoded %2F by the time we see the path
+		if(min_level < level + 1)
 			continue;
+
+		// Take the value from the request itself, gen_config_path()
+		// stops splitting at MAX_CONFIG_PATH_DEPTH components
+		const char *value = api->item;
+		for(unsigned int c = 0; c < level && value != NULL; c++)
+		{
+			value = strchr(value, '/');
+			if(value != NULL)
+				value++;
+		}
+		if(value == NULL)
+			continue;
+
+		const size_t value_len = strlen(value);
+		if(value_len == 0)
+			continue;
+		if(value_len >= sizeof(value_buf))
+		{
+			free_config(&newconf, false);
+			free_config_path(requested_path);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Item too long",
+			                       NULL);
+		}
+		memcpy(value_buf, value, value_len);
+		value_buf[value_len] = '\0';
+		new_item_str = value_buf;
 
 		// Error when this config item is read-only due to an
 		// environment variable forcing its value
@@ -1034,16 +1150,43 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                            key, true, true);
 		}
 
-		// Check if this entry exists in the array
-		int idx = 0;
-		for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
-		    elem != NULL; elem = elem->next, idx++)
+		// Options that hand code to something Pi-hole then runs are not
+		// settable from a web session, see FLAG_API_READ_ONLY
+		if(new_item->f & FLAG_API_READ_ONLY)
 		{
-			if(elem != NULL && elem->valuestring != NULL &&
-				strcmp(elem->valuestring, new_item_str) == 0)
+			char *key = strdup(new_item->k);
+			free_config(&newconf, false);
+			free_config_path(requested_path);
+			return send_json_error_free(api, 400,
+			                            "bad_request",
+			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
+			                            key, true, true);
+		}
+
+		// Check if this entry exists in the array. The value is taken as it
+		// is, a trailing slash can be part of it ("Location: /"). Only a
+		// DELETE that finds nothing tries again without one, the URI may
+		// simply end in a slash
+		int idx = 0;
+		for(unsigned int attempt = 0; attempt < 2 && !found; attempt++)
+		{
+			if(attempt == 1)
 			{
-				found = true;
-				break;
+				if(api->method != HTTP_DELETE || value_len < 2 || value_buf[value_len - 1] != '/')
+					break;
+				value_buf[value_len - 1] = '\0';
+			}
+
+			idx = 0;
+			for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
+			    elem != NULL; elem = elem->next, idx++)
+			{
+				if(elem->valuestring != NULL &&
+				   strcmp(elem->valuestring, new_item_str) == 0)
+				{
+					found = true;
+					break;
+				}
 			}
 		}
 
@@ -1127,13 +1270,28 @@ static int api_config_put_delete(struct ftl_conn *api)
 		                       hint);
 	}
 
+	// Reject a configuration whose paths conflict with each other. This runs
+	// before the dnsmasq config is generated, as that installs the generated
+	// file as a side effect of testing it.
+	{
+		char pathbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(&newconf, pathbuf, NULL))
+		{
+			free_config(&newconf, false);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid configuration",
+			                       pathbuf);
+		}
+	}
+
 	// We need to build a new config (and carefully test it!) whenever dnsmasq
 	// options have changed that need a restart of the resolver
 	if(dnsmasq_changed)
 	{
 		char errbuf[ERRBUF_SIZE] = { 0 };
 		// Request restart of FTL
-		if(write_dnsmasq_config(&newconf, true, errbuf))
+		if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
 		{
 			api->ftl.restart_reason = "dnsmasq config changed";
 			// Only restart if the user didn't request otherwise
@@ -1142,6 +1300,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		else
 		{
 			// The new config did not work
+			free_config(&newconf, false);
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid configuration",
@@ -1207,9 +1366,22 @@ int api_config(struct ftl_conn *api)
 	// PUT: Replaces the entire config with the provided one (not supported
 	// but PATCH with a full config is the same)
 	else if(api->method == HTTP_PATCH)
-		return api_config_patch(api);
+	{
+		// Serializing and sending the full config can be slow with a slow
+		// client, so it happens after the lock is released
+		bool send_config = false;
+		lock_config();
+		const int ret = api_config_patch(api, &send_config);
+		unlock_config();
+		return send_config ? api_config_get(api) : ret;
+	}
 	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
-		return api_config_put_delete(api);
+	{
+		lock_config();
+		const int ret = api_config_put_delete(api);
+		unlock_config();
+		return ret;
+	}
 
 	return 0;
 }
@@ -1236,10 +1408,15 @@ int api_config_properties(struct ftl_conn *api)
 			reason = "read_only";
 			description = "Config is in read-only mode";
 		}
-		else if(conf_item->f & FLAG_READ_ONLY)
+		else if(conf_item->f & FLAG_API_CLI_READ_ONLY)
 		{
 			reason = "read_only";
 			description = "Variable can only be set in pihole.toml, not via API";
+		}
+		else if(conf_item->f & FLAG_API_READ_ONLY)
+		{
+			reason = "read_only";
+			description = "Variable can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via API";
 		}
 		else
 			continue;

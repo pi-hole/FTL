@@ -15,6 +15,8 @@
 // getpid()
 #include <unistd.h>
 #include <sys/times.h>
+// PATH_MAX
+#include <limits.h>
 // config
 #include "config/config.h"
 // readPID()
@@ -42,16 +44,23 @@ bool get_process_name(const pid_t pid, char name[PROC_PATH_SIZ])
 	snprintf(filename, sizeof(filename), "/proc/%d/exe", pid);
 
 	// Read link destination
-	ssize_t len = readlink(filename, name, PROC_PATH_SIZ - 1);
+	char exe[PATH_MAX] = { 0 };
+	ssize_t len = readlink(filename, exe, sizeof(exe) - 1);
 	if(len > 0)
 	{
 		// If readlink() succeeded, terminate string
-		name[len] = '\0';
+		exe[len] = '\0';
+
+		// The kernel appends " (deleted)" when the binary on disk has
+		// been replaced or removed, strip it
+		const char *deleted = " (deleted)";
+		const size_t dlen = strlen(deleted);
+		if((size_t)len > dlen && strcmp(exe + len - dlen, deleted) == 0)
+			exe[len - dlen] = '\0';
 
 		// Strip path from name
-		char *ptr = strrchr(name, '/');
-		if(ptr != NULL)
-			memmove(name, ptr+1, len - (ptr - name));
+		const char *ptr = strrchr(exe, '/');
+		snprintf(name, PROC_PATH_SIZ, "%s", ptr != NULL ? ptr + 1 : exe);
 
 		return true;
 	}
@@ -284,7 +293,8 @@ double parse_proc_stat(void)
 	if(statfile == NULL)
 		return -1.0;
 
-	unsigned long user, nice, system;
+	// The kernel prints these as unsigned 64-bit values
+	unsigned long long user, nice, system;
 	/*
 	    user   (1) Time spent in user mode. (includes guest and guest_nice time)
 
@@ -324,7 +334,7 @@ double parse_proc_stat(void)
 	{
 		if(strncmp(line, "cpu ", 4) == 0)
 		{
-			if(sscanf(line, "cpu %lu %lu %lu",
+			if(sscanf(line, "cpu %llu %llu %llu",
 			       &user, &nice, &system) != 3)
 			{
 				log_debug(DEBUG_ANY, "Failed to parse CPU line in /proc/stat");
@@ -369,8 +379,8 @@ double parse_proc_self_stat(void)
 		return -1.0;
 
 	// Read utime and stime
-	unsigned long utime = 0, stime = 0;
-	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &utime, &stime) == 2;
+	unsigned long long utime = 0, stime = 0;
+	const bool parsed = fscanf(file, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &utime, &stime) == 2;
 	fclose(file);
 
 	// If we could not parse the file, return -1.0

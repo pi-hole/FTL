@@ -109,6 +109,27 @@ static struct {
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 };
 
+// Format the methods an endpoint accepts as an Allow header value, e.g.
+// "GET, POST, OPTIONS". OPTIONS is answered for every endpoint by the handler
+// itself, so it belongs in a header a client is meant to act on
+static void format_allowed_methods(char *buffer, const size_t size, const enum http_method allowed)
+{
+	size_t len = 0;
+	buffer[0] = '\0';
+	for(enum http_method j = HTTP_GET; j <= HTTP_OPTIONS; j <<= 1)
+	{
+		if(!(allowed & j))
+			continue;
+
+		const int n = snprintf(buffer + len, size - len, "%s%s",
+		                       len > 0 ? ", " : "", get_http_method_str(j));
+		if(n < 0 || (size_t)n >= size - len)
+			break;
+
+		len += n;
+	}
+}
+
 int api_handler(struct mg_connection *conn, void *ignored)
 {
 	// Unused, but required by CivetWeb
@@ -143,33 +164,36 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 	// Loop over all API endpoints and check if the requested URI matches
 	bool unauthorized = false;
+	bool handler_ran = false;
 	enum http_method allowed_methods = 0;
 	for(unsigned int i = 0; i < ArraySize(api_request); i++)
 	{
-		// Check if the requested method is allowed
-		if(!(api_request[i].methods & api.method) && api.method != HTTP_OPTIONS)
-			continue;
-
 		// Check if the requested URI starts with the API endpoint
 		if((api.item = startsWith(api_request[i].uri, &api)) != NULL)
 		{
+			// The URI exists. Remember every method its rows accept, for
+			// OPTIONS and for a 405. The rows describe the documented shapes
+			// of a URI, not all a handler takes, so they are not told apart
+			allowed_methods |= api_request[i].methods | HTTP_OPTIONS;
+
+			// If this is an OPTIONS request, collecting the
+			// methods is all there is to do here
+			if(api.method == HTTP_OPTIONS)
+				continue;
+
+			// Check if the requested method is allowed
+			if(!(api_request[i].methods & api.method))
+				continue;
 
 			// Copy options to API struct
 			memcpy(&api.opts, &api_request[i].opts, sizeof(api.opts));
 
-			// If this is an OPTIONS request, we add the supported
-			// options of this endpoint and continue
-			if(api.method == HTTP_OPTIONS)
-			{
-				allowed_methods |= api_request[i].methods;
-				continue;
-			}
-
 			if(api_request[i].opts.flags & API_PARSE_JSON)
 			{
-				// Allocate memory for the payload
-				api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
-				if(!api.payload.raw)
+				// Read and try to parse payload. The buffer is
+				// allocated in there, and only for a request that
+				// actually carries a body
+				if(!read_and_parse_payload(&api))
 				{
 					log_crit("Cannot handle API request %s %s: %s",
 							api.request->request_method,
@@ -182,9 +206,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 					                      NULL);
 					break;
 				}
-
-				// Read and try to parse payload
-				read_and_parse_payload(&api);
 			}
 
 			// Verify requesting client is allowed to see this resource
@@ -199,6 +220,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			          api.request->request_method,
 			          api.request->local_uri_raw,
 			          api_request[i].uri);
+			handler_ran = true;
 			ret = api_request[i].func(&api);
 			log_web_debug(DEBUG_API, "Done");
 			break;
@@ -241,34 +263,45 @@ int api_handler(struct mg_connection *conn, void *ignored)
 	// See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
 	if(api.method == HTTP_OPTIONS)
 	{
-		// Send Allow header
+		char allow[128];
+		format_allowed_methods(allow, sizeof(allow), allowed_methods);
+
+		// Send Allow header and an empty body
 		mg_printf(conn, "HTTP/1.1 204 No Content\r\n"
-		                "Allow: ");
-
-		// Loop over all possible methods
-		unsigned int m = 0;
-		for(enum http_method j = HTTP_GET; j < HTTP_OPTIONS; j <<= 1)
-		{
-			// Check if this method is allowed for this endpoint
-			if(allowed_methods & j)
-				mg_printf(conn, "%s%s", m++ > 0 ? ", " : "", get_http_method_str(j));
-		}
-
-		// Finish header and send empty body
-		mg_printf(conn, "\r\n"
+		                "Allow: %s\r\n"
 		                "Content-Length: 0\r\n"
-		                "Connection: close\r\n\r\n");
+		                "Connection: close\r\n\r\n", allow);
 		return 204;
 	}
 
-	// Check if we need to return with not found payload
 	if(ret == 0)
 	{
-		// not found or invalid request
-		ret = send_json_error(&api, 404,
-		                      "not_found",
-		                      "Not found",
-		                      api.request->local_uri_raw);
+		// A handler that ran and returned 0 is asking for a 404 of its
+		// own - api_docs() does that for a file it does not have - and
+		// must not be turned into a 405 refusing the method it just
+		// served
+		if(allowed_methods != 0 && !handler_ran)
+		{
+			// The URI exists, the method does not. RFC 9110 section
+			// 15.5.6 requires a 405 to name the methods that do
+			char allow[128];
+			format_allowed_methods(allow, sizeof(allow), allowed_methods);
+			snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers),
+			         "Allow: %s", allow);
+
+			ret = send_json_error(&api, 405,
+			                      "method_not_allowed",
+			                      "Method Not Allowed",
+			                      api.request->request_method);
+		}
+		else
+		{
+			// not found or invalid request
+			ret = send_json_error(&api, 404,
+			                      "not_found",
+			                      "Not found",
+			                      api.request->local_uri_raw);
+		}
 	}
 
 	// Restart FTL if requested

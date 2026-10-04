@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// forked
+#include "main.h"
 // sysinfo()
 #include <sys/sysinfo.h>
 #include <errno.h>
@@ -310,12 +312,46 @@ pid_t FTL_gettid(void)
 #endif // SYS_gettid
 }
 
+// Join a thread, waiting at most timeout seconds for it to terminate
+static bool join_thread(const int i, const time_t timeout)
+{
+	struct timespec ts;
+	memset(&ts, 0, sizeof(ts));
+	if(clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		return false;
+
+	ts.tv_sec += timeout;
+	return pthread_timedjoin_np(threads[i], NULL, &ts) == 0;
+}
+
+// Wait for the database thread to return, at most timeout seconds. main()
+// calls this once killed is set and before the final export, so the export
+// does not run alongside an operation the thread still has in flight
+bool join_db_thread(const time_t timeout)
+{
+	if(threads[DB] == 0)
+		return true;
+
+	if(!join_thread(DB, timeout))
+		return false;
+
+	// terminate_threads() skips a thread that is already gone
+	threads[DB] = 0;
+	return true;
+}
+
 static void terminate_threads(void)
 {
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
+
+	// Abort a long-running statement on the in-memory database (the initial
+	// query import) so its thread can see the flag above and return
+	interrupt_memdb();
+
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
+	bool all_joined = true;
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
 		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
@@ -332,33 +368,29 @@ static void terminate_threads(void)
 			log_info("Thread %s (%d) is idle, terminating it.",
 			         thread_names[i], i);
 			pthread_cancel(threads[i]);
-			continue;
 		}
-
-		// Cancel thread if we cannot set a timeout for joining
-		struct timespec ts;
-		memset(&ts, 0, sizeof(ts));
-		if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		else if(join_thread(i, 2))
 		{
-			log_info("Thread %s (%d) is busy, cancelling it (cannot set timeout).",
-			         thread_names[i], i);
-			pthread_cancel(threads[i]);
+			// Thread terminated on its own
 			continue;
 		}
-
-		// Timeout for joining is 2 seconds for each thread
-		ts.tv_sec += 2;
-
-		// Try to join thread and cancel it if it is still busy
-		if(pthread_timedjoin_np(threads[i], NULL, &ts) != 0)
+		else
 		{
 			log_info("Thread %s (%d) is still busy, cancelling it.",
-			     thread_names[i], i);
+			         thread_names[i], i);
 			pthread_cancel(threads[i]);
-			continue;
+		}
+
+		// Wait for the cancelled thread as well: the caller closes the
+		// databases and removes the shared memory right afterwards
+		if(!join_thread(i, 2))
+		{
+			log_warn("Thread %s (%d) did not terminate", thread_names[i], i);
+			all_joined = false;
 		}
 	}
-	log_info("All threads joined");
+	if(all_joined)
+		log_info("All threads joined");
 }
 
 void set_nice(void)
@@ -413,8 +445,9 @@ void cleanup(const int ret)
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
 
-	// Do proper cleanup only if FTL started successfully
-	if(resolver_ready)
+	// Join the worker threads only when they exist. They are started before
+	// the resolver is ready, and stay running when dnsmasq dies at startup
+	if(forked)
 	{
 		// Terminate threads
 		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
@@ -442,13 +475,16 @@ void cleanup(const int ret)
 	log_debug(DEBUG_ANY, "Terminating: Freeing regex filter memory");
 	free_regex();
 
+	// Terminate HTTP server (if running) before the API it serves. The other
+	// way round, free_api() backed up, zeroed and freed the session table
+	// while civetweb worker threads were still handling requests against it,
+	// since mg_stop() only runs inside http_terminate()
+	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
+	http_terminate();
+
 	// Terminate API
 	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
-
-	// Terminate HTTP server (if running)
-	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
-	http_terminate();
 
 	// Close memory database
 	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
@@ -480,10 +516,6 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
-
-	// Finally, free log config memory
-	if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
-		free(config.files.log.ftl.v.s);
 }
 
 static float ftl_cpu_usage = 0.0f;
@@ -503,7 +535,7 @@ void calc_cpu_usage(const unsigned int interval)
 
 	// Calculate the total CPU usage
 	const double cpu_time = parse_proc_stat();
-	
+
 	// Calculate the CPU usage since the last call to this function
 	static double last_cpu_time = 0.0f;
 	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval / norm_factor;

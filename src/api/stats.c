@@ -112,18 +112,6 @@ static bool matches_filter(const regex_t *regex, const unsigned int N_regex, con
 	return false;
 }
 
-// Release the regexes compiled by compile_filter_regex()
-static void free_filter_regex(regex_t *regex, const unsigned int N_regex)
-{
-	if(N_regex == 0)
-		return;
-
-	for(unsigned int i = 0; i < N_regex; i++)
-		regfree(&regex[i]);
-
-	free(regex);
-}
-
 static int get_query_types_obj(struct ftl_conn *api, cJSON *types)
 {
 	for(unsigned int i = TYPE_A; i < TYPE_MAX; i++)
@@ -246,9 +234,12 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	// Get domains which the user doesn't want to see
 	regex_t *regex_domains = NULL;
 	unsigned int N_regex_domains = 0;
+	// NULL: this function returns a cJSON object and cannot carry an HTTP
+	// status, so compile_filter_regex() logs a bad regex rather than
+	// answering the request behind our back
 	compile_filter_regex(api, "webserver.api.excludeDomains",
 	                     config.webserver.api.excludeDomains.v.json,
-	                     &regex_domains, &N_regex_domains);
+	                     &regex_domains, &N_regex_domains, NULL);
 
 	// Lock shared memory
 	lock_shm();
@@ -292,17 +283,21 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 		if(strcmp(domain_name, HIDDEN_DOMAIN) == 0)
 			continue;
 
-		// Skip domains the user does not want to see. We filter here,
-		// before the heap, so excluded domains cannot occupy heap capacity
-		// and evict genuine top entries (see issue #2946)
-		if(matches_filter(regex_domains, N_regex_domains, domain_name))
-			continue;
-
 		// Use either blocked or total count based on request string
 		const int entry_count = blocked ? domain->blockedcount : domain->count - domain->blockedcount;
 
 		// Skip zero-count entries early
 		if(entry_count < 1)
+			continue;
+
+		// An entry too small for the full heap needs no filtering
+		if(heap_ready && entry_count <= top_domains[0].count)
+			continue;
+
+		// Skip domains the user does not want to see. We filter here,
+		// before the heap, so excluded domains cannot occupy heap capacity
+		// and evict genuine top entries (see issue #2946)
+		if(matches_filter(regex_domains, N_regex_domains, domain_name))
 			continue;
 
 		if(heap_size < heap_cap)
@@ -436,9 +431,10 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	// Get clients which the user doesn't want to see
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
+	// NULL for the same reason as in get_top_domains() above
 	compile_filter_regex(api, "webserver.api.excludeClients",
 	                     config.webserver.api.excludeClients.v.json,
-	                     &regex_clients, &N_regex_clients);
+	                     &regex_clients, &N_regex_clients, NULL);
 
 	// Lock shared memory
 	lock_shm();
@@ -490,6 +486,17 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 			continue;
 		}
 
+		// Use either blocked or total count based on request string
+		const int entry_count = blocked ? client->blockedcount : client->count;
+
+		// Skip zero-count entries early
+		if(entry_count < 1)
+			continue;
+
+		// An entry too small for the full heap needs no filtering
+		if(heap_ready && entry_count <= top_clients[0].count)
+			continue;
+
 		// Skip clients the user does not want to see. We filter here,
 		// before the heap, so excluded clients cannot occupy heap capacity
 		// and evict genuine top entries (see issue #2946)
@@ -500,13 +507,6 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 			log_debug(DEBUG_API, "Skipping client %u because it matches a filter", clientID);
 			continue;
 		}
-
-		// Use either blocked or total count based on request string
-		const int entry_count = blocked ? client->blockedcount : client->count;
-
-		// Skip zero-count entries early
-		if(entry_count < 1)
-			continue;
 
 		if(heap_size < heap_cap)
 		{

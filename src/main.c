@@ -29,6 +29,8 @@
 #include "overTime.h"
 // export_queries_to_disk()
 #include "database/query-table.h"
+// db_import_done
+#include "gc.h"
 // verify_FTL()
 #include "files.h"
 // init_entropy()
@@ -54,7 +56,7 @@ int main (int argc, char *argv[])
 	// it if needed
 	username = getUserName();
 
-	// Obtain log file location
+	// Obtain FTL.log file location
 	getLogFilePath(true);
 
 	// Store binary path and PIE load base address for crash-time backtrace.
@@ -67,8 +69,8 @@ int main (int argc, char *argv[])
 	// to have arg{c,v}_dnsmasq initialized
 	parse_args(argc, argv);
 
-	// Initialize FTL log
-	init_FTL_log();
+	// Open FTL.log early (other logs opened after config parse)
+	open_log_fds(true);
 	// Try to open FTL log
 	init_config_mutex();
 	timer_start(EXIT_TIMER);
@@ -117,9 +119,12 @@ int main (int argc, char *argv[])
 	// Initialize overTime datastructure
 	initOverTime();
 
-	// Check for availability of capabilities in debug mode
-	if(config.debug.caps.v.b)
-		check_capabilities();
+	// Check for availability of capabilities. The per-capability table this
+	// prints is behind DEBUG_CAPS, but the warnings about the ones FTL needs
+	// and does not have are not, and they are the reason to run this at all:
+	// hiding them behind a debug flag means nobody sees them until they
+	// already suspect the problem
+	check_capabilities();
 
 	// Initialize pseudo-random number generator
 	srand(time(NULL) + getpid());
@@ -175,14 +180,44 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database
-	export_queries_to_disk(true);
-	log_info("Finished final database update");
+	// Save new queries to database. The initial import still occupies the
+	// in-memory database when it is not done, and there is nothing to export
+	// before it is. terminate_threads() aborts it
+	if(db_import_done)
+	{
+		// The database thread has seen killed by now but may still be
+		// inside its periodic export on the shared in-memory connection
+		// or the daily cleanup, which locks the disk file. Let it return
+		// before the final export touches either
+		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
+		if(!joined)
+			log_warn("Database thread still busy after %d seconds, exporting anyway",
+			         DB_THREAD_JOIN_TIMEOUT);
+
+		// Store what the periodic runs have not, then move it to disk. Not
+		// while the database thread may still be inside a run of its own
+		if(joined)
+			queries_to_database(true);
+		if(export_queries_to_disk(true))
+			log_info("Finished final database update");
+		else
+			log_err("Final database update failed");
+	}
 
 	cleanup(exit_code);
 
 	if(exit_code == RESTART_FTL_CODE)
+	{
+		// A binary without file capabilities only keeps the ambient set
+		// across execvp(). All threads are gone and nothing else is
+		// executed from here, the restarted FTL withholds it again
+		if(getuid() != 0)
+			restore_capability_for_exec(CAP_CHOWN);
+		// A pending alarm survives execvp(), and SIGALRM terminates the
+		// new image until dnsmasq installs its handler
+		alarm(0);
 		execvp(argv[0], argv);
+	}
 
 	return exit_code;
 }

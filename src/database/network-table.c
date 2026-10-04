@@ -23,7 +23,7 @@
 #include "resolve.h"
 // killed
 #include "signals.h"
-// nlneigh(), nllinks()
+// nlneigh(), nllinks(), nladdrs()
 #include "tools/netlink.h"
 // DHCPLEASESFILE
 #include "config/dnsmasq_config.h"
@@ -235,7 +235,9 @@ static int find_device_by_recent_ip(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT network_id FROM network_addresses "
 	                       "WHERE ip = ?1 AND "
-	                       "lastSeen > (cast(strftime('%%s', 'now') as int)-86400) "
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "lastSeen > (cast(strftime('%s', 'now') as int)-86400) "
 	                       "ORDER BY lastSeen DESC LIMIT 1;";
 
 	// Perform SQL query
@@ -297,7 +299,9 @@ static int find_recent_device_by_mock_hwaddr(sqlite3 *db, const char *ipaddr)
 
 	const char *querystr = "SELECT id FROM network WHERE "
 	                       "hwaddr = concat('ip-',?1) AND "
-	                       "firstSeen > (cast(strftime('%%s', 'now') as int)-3600)";
+	                       // Single %, this string goes to SQLite as it is
+	                       // and is never run through a formatter
+	                       "firstSeen > (cast(strftime('%s', 'now') as int)-3600)";
 
 	// Perform SQL query
 	return db_query_int_str(db, querystr, ipaddr);
@@ -468,47 +472,58 @@ static bool add_netDB_network_address(sqlite3 *db, const int network_id, const c
 	log_debug(DEBUG_ARP, "add_netDB_network_address(%i, \"%s\")", network_id, ip);
 
 	bool success = false;
+	int rc = SQLITE_OK;
 	sqlite3_stmt *query_stmt = NULL;
-	const char querystr[] = "INSERT OR REPLACE INTO network_addresses "
-	                        "(network_id,ip,lastSeen,name,nameUpdated) VALUES "
-	                        "(?1,?2,(cast(strftime('%s', 'now') as int)),"
-	                        "(SELECT name FROM network_addresses "
-	                                "WHERE ip = ?2),"
-	                        "(SELECT nameUpdated FROM network_addresses "
-	                                "WHERE ip = ?2));";
+	// Move the address to another device only when it changed, then insert it
+	// or refresh lastSeen in place. Assigning a column rewrites its index
+	// entries even when the value stays the same
+	const char *querystrs[] = {
+		"UPDATE network_addresses SET network_id = ?1 "
+		"WHERE ip = ?2 AND network_id IS NOT ?1;",
+		"INSERT INTO network_addresses (network_id,ip,lastSeen) "
+		"VALUES (?1,?2,(cast(strftime('%s', 'now') as int))) "
+		"ON CONFLICT(ip) DO UPDATE SET lastSeen = excluded.lastSeen;"
+	};
 
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
-	if(rc != SQLITE_OK)
+	for(unsigned int i = 0; i < ArraySize(querystrs); i++)
 	{
-		log_err("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
+		const char *querystr = querystrs[i];
+		rc = sqlite3_prepare_v2(db, querystr, -1, &query_stmt, NULL);
+		if(rc != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\") - SQL error prepare (%i): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
 
-	log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
-		     querystr, network_id, ip);
+		log_debug(DEBUG_DATABASE, "dbquery: \"%s\" with arguments ?1 = %i and ?2 = \"%s\"",
+			     querystr, network_id, ip);
 
-	// Bind network_id to prepared statement (1st argument)
-	if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
-	// Bind ip to prepared statement (2nd argument)
-	if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
-	}
+		// Bind network_id to prepared statement (1st argument)
+		if((rc = sqlite3_bind_int(query_stmt, 1, network_id)) != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind network_id (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
+		// Bind ip to prepared statement (2nd argument)
+		if((rc = sqlite3_bind_text(query_stmt, 2, ip, -1, SQLITE_STATIC)) != SQLITE_OK)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to bind name (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
 
-	// Perform step
-	if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
-	{
-		log_err("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
-		        network_id, ip, rc, sqlite3_errstr(rc));
-		goto add_netDB_network_address_end;
+		// Perform step
+		if ((rc = sqlite3_step(query_stmt)) != SQLITE_DONE)
+		{
+			log_err("add_netDB_network_address(%i, \"%s\"): Failed to step (error %d): %s",
+			        network_id, ip, rc, sqlite3_errstr(rc));
+			goto add_netDB_network_address_end;
+		}
+
+		sqlite3_finalize(query_stmt);
+		query_stmt = NULL;
 	}
 
 	success = true;
@@ -802,6 +817,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		if(killed)
 			break;
 
+		// Not every variant below determines a hardware address
+		hwaddr[0] = '\0';
+
 		// Get client pointer
 		lock_shm();
 		clientsData *client = getClient(clientID, true);
@@ -912,9 +930,10 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 					// Skip empty lines
 					if(read == 0)
 						continue;
-					// Skip duid line
+					// DHCPv6 leases (IAID instead of a hardware address)
+					// and extra lease info follow the duid line
 					if(strncmp(line, "duid", 4) == 0)
-						continue;
+						break;
 
 					// Parse line
 					unsigned long expires = 0;
@@ -923,8 +942,8 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 					char lease_name[65] = { 0 };
 					const int ret = sscanf(line, "%lu %47s %45s %64s",
 			                       &expires, lease_hwaddr, lease_ip, lease_name);
-					// Skip invalid lines
-					if(ret != 4)
+					// Skip invalid lines and non-Ethernet hardware addresses
+					if(ret != 4 || !isMAC(lease_hwaddr))
 						continue;
 
 					// Check if this lease matches our client's IP address
@@ -1099,6 +1118,14 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 	log_debug(DEBUG_ARP, "Network table: Successfully read links with %i entries",
 	          cJSON_GetArraySize(links));
 
+	// Attach the IP addresses to their links
+	if(!nladdrs(links, false))
+	{
+		log_err("Failed to get addresses, cannot update network table");
+		cJSON_Delete(links);
+		return false;
+	}
+
 	// Parse link information
 	cJSON *link = NULL;
 	cJSON_ArrayForEach(link, links)
@@ -1107,8 +1134,8 @@ static bool add_local_interfaces_to_network_table(sqlite3 *db, time_t now, unsig
 		if(link == NULL)
 			continue;
 
-		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "ifname"));
-		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "mac"));
+		char *iface = cJSON_GetStringValue(cJSON_GetObjectItem(link, "name"));
+		char *hwaddr = cJSON_GetStringValue(cJSON_GetObjectItem(link, "address"));
 
 		// Do not try to read IP addresses when the information above is incomplete
 		if(iface == NULL || strlen(iface) == 0 ||
@@ -1233,6 +1260,31 @@ static bool clean_network_table(sqlite3 *db)
 }
 
 /**
+ * @brief Removes devices whose hardware address is a DHCPv6 IAID ("1",
+ * "T1") or the bare hardware type of an IPv4 lease without hardware address
+ * ("01-"). Neither identifies a device, so such a row holds unrelated
+ * clients. Their clients are added again like any other client.
+ *
+ * @param db A pointer to the SQLite database connection.
+ * @return true on success, false if a query failed.
+ */
+static bool remove_lease_pseudo_devices(sqlite3 *db)
+{
+#define LEASE_PSEUDO_HWADDR "(((hwaddr GLOB '[0-9]*' OR hwaddr GLOB 'T[0-9]*') " \
+                              "AND substr(hwaddr, 2) NOT GLOB '*[^0-9]*') " \
+                             "OR hwaddr GLOB '[0-9a-fA-F][0-9a-fA-F]-')"
+	int rc = dbquery(db, "DELETE FROM network_addresses WHERE network_id IN "
+	                     "(SELECT id FROM network WHERE "LEASE_PSEUDO_HWADDR");");
+	if(rc != SQLITE_OK)
+		return false;
+
+	rc = dbquery(db, "DELETE FROM network WHERE "LEASE_PSEUDO_HWADDR";");
+#undef LEASE_PSEUDO_HWADDR
+
+	return rc == SQLITE_OK;
+}
+
+/**
  * @brief Flushes the network table by removing all IP addresses and devices.
  *
  * This function opens the database, deletes all entries from the
@@ -1292,6 +1344,13 @@ void parse_neighbor_cache(sqlite3 *db)
 
 	// Delete old entries from network table
 	if(!clean_network_table(db))
+	{
+		dbquery(db, "ROLLBACK");
+		return;
+	}
+
+	// Delete devices that were created from DHCP lease identifiers
+	if(!remove_lease_pseudo_devices(db))
 	{
 		dbquery(db, "ROLLBACK");
 		return;
@@ -1929,9 +1988,10 @@ bool updateMACVendorRecords(sqlite3 *db)
 	{
 		const int id = sqlite3_column_int(stmt, 0);
 
-		// Get vendor for MAC
+		// Get vendor for MAC, keep the stored one if the lookup failed
 		char vendor[MAXVENDORLEN] = { 0 };
-		getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor);
+		if(!getMACVendor((char*)sqlite3_column_text(stmt, 1), vendor))
+			continue;
 
 		// Prepare statement
 		const char *updatestr = "UPDATE network SET macVendor = ?1 WHERE id = ?2";
@@ -2325,7 +2385,8 @@ getNameFromIP_end:
 }
 
 // Get most recently seen host name of device identified by MAC address
-bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
+// db may be NULL, in which case a connection is opened just for this lookup
+bool getNameFromMAC(sqlite3 *db, const char *client, char hostn[MAXDOMAINLEN])
 {
 	bool got_name = false;
 
@@ -2340,12 +2401,18 @@ bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
 		return false;
 	}
 
-	// Open pihole-FTL.db database file
-	sqlite3 *db = NULL;
-	if((db = dbopen(false, false)) == NULL)
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
 	{
-		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
-		return false;
+		if((db = dbopen(false, false)) == NULL)
+		{
+			log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
+			return false;
+		}
+
+		// Successful
+		db_opened = true;
 	}
 
 	// Check for a host name associated with the given client as MAC address
@@ -2404,11 +2471,13 @@ getNameFromMAC_end:
 	if(!got_name)
 		checkFTLDBrc(rc);
 
-	// Finalize statement and close database handle
+	// Finalize statement and close database handle (if opened)
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
 
-	dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
+
 	return got_name;
 }
 
@@ -2572,6 +2641,8 @@ bool networkTable_readIPs(sqlite3 *db, sqlite3_stmt **read_stmt, const int id, c
 		*message = sqlite3_errstr(rc);
 		log_err("networkTable_readIPs(%i): Failed to bind domain (error %d) - %s",
 		        id, rc, *message);
+		sqlite3_finalize(*read_stmt);
+		*read_stmt = NULL;
 		return false;
 	}
 

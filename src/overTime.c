@@ -174,11 +174,21 @@ void moveOverTimeMemory(const time_t mintime)
 	log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): IS: %lu, SHOULD: %lu, MOVING: %u",
 	          (unsigned long)oldestOverTimeIS, (unsigned long)oldestOverTimeSHOULD, moveOverTime);
 
-	// Check if the move over amount is valid. This prevents errors if the
-	// function is called before GC is necessary. Also return if there is
-	// nothing to move (moveOverTime == 0).
-	if(!(moveOverTime > 0 && moveOverTime < OVERTIME_SLOTS))
+	// Nothing to move when the table already starts where it should or
+	// when the clock went backwards
+	if(oldestOverTimeSHOULD <= oldestOverTimeIS)
 		return;
+
+	// The whole table lies behind the window now (the clock has been
+	// stepped forward by more than the window): lay it out afresh from
+	// the oldest slot to keep, as initOverTime() does at startup
+	if(moveOverTime >= OVERTIME_SLOTS)
+	{
+		log_info("The over-time statistics are %u intervals behind, re-initializing them", moveOverTime);
+		for(unsigned int i = 0; i < OVERTIME_SLOTS; i++)
+			initSlot(i, oldestOverTimeSHOULD + OVERTIME_INTERVAL * i);
+		return;
+	}
 
 	// Move overTime memory
 	log_debug(DEBUG_OVERTIME, "moveOverTimeMemory(): Moving overTime %u - %u to 0 - %u",

@@ -164,8 +164,8 @@ static bool request(int fd, const char *server, struct addrinfo *saddr, struct n
 }
 
 // Display NTP time in human-readable format
-// This function is similar to get_timestr() in src/log.c but differs in that it
-// includes microseconds whereas get_timestr() only includes milliseconds
+// This function is similar to get_timestr() in src/log.c but always prints
+// microseconds, where get_timestr() does so only when debug.extra is set
 static void format_NTP_time(char time_str[TIMESTR_SIZE], const uint64_t ntp_time)
 {
 	struct timeval client_time;
@@ -212,10 +212,12 @@ static uint64_t get_new_time(struct timeval *unix_time, const double offset)
 	// Get current time
 	gettimeofday(unix_time, NULL);
 
-	// Convert from double to native format (signed) and add to the
+	// Convert from double to native format and add to the
 	// current time.  Note the addition is done in native format to
-	// avoid overflow or loss of precision.
-	const uint64_t ntp_time = U2LFP(*unix_time) + D2LFP(offset);
+	// avoid overflow or loss of precision.  D2LFP() only takes
+	// non-negative values, so a negative offset is subtracted instead.
+	const uint64_t now = U2LFP(*unix_time);
+	const uint64_t ntp_time = offset >= 0 ? now + D2LFP(offset) : now - D2LFP(-offset);
 
 	// Convert NTP to native format
 	unix_time->tv_sec = NTPtoSEC(ntp_time);

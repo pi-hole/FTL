@@ -25,7 +25,7 @@ void logg_subnet_warning(const char *ip, const int matching_count, const char *m
 void log_hostname_warning(const char *ip, const char *name, const unsigned int pos);
 void logg_fatal_dnsmasq_message(const char *message);
 void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit_count);
-void logg_warn_dnsmasq_message(char *message);
+void logg_warn_dnsmasq_message(const char *message);
 void log_resource_shortage(const double load, const int nprocs, const int shmem, const int disk, const char *path, const char *msg);
 void logg_inaccessible_adlist(const int dbindex, const char *address);
 void log_certificate_domain_mismatch(const char *certfile, const char *domain);
@@ -33,5 +33,6 @@ void log_connection_error(const char *server, const char *reason, const char *er
 void log_ntp_message(const bool error, const bool server, const char *message);
 void log_verify_message(const char *expected, const char *actual);
 void log_gravity_restored(const char *status);
+void log_teleporter_skipped(const char *key);
 
 #endif //MESSAGETABLE_H

@@ -109,7 +109,7 @@ components:
           properties:
             log:
               type: array
-              description: Request headers
+              description: Log lines
               items:
                 type: object
                 properties:
@@ -121,17 +121,20 @@ components:
                     description: Log line content
                   prio:
                     type: string
-                    nullable: true
-                    description: Log line priority (if available)
+                    description: Log line priority
               example:
                 - timestamp: 1611729969.0
                   message: "started, version pi-hole-2.84 cachesize 10000"
+                  prio: "INFO"
                 - timestamp: 1611729969.0
-                  message: "reading /etc/resolv.conf"
+                  message: "Working around kernel bug: faulty source address scope for VRF slave br0"
+                  prio: "WARNING"
                 - timestamp: 1611729969.0
-                  message: "read /etc/hosts - 7 addresses"
+                  message: "read /etc/hosts - 7 names"
+                  prio: "INFO"
                 - timestamp: 1611729969.0
                   message: "query[A] connectivity-check.ubuntu.com from 127.0.0.1"
+                  prio: "INFO"
             nextID:
               type: integer
               description: Next ID to query if checking for new log lines

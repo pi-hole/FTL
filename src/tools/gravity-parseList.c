@@ -11,6 +11,8 @@
 #include "tools/gravity-parseList.h"
 #include "args.h"
 #include "database/sqlite3.h"
+// idn2_to_ascii_8z()
+#include <idn2.h>
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
@@ -32,7 +34,8 @@ static const char *false_positives[] = {
 };
 
 // Lookup table containing characters that are valid in domain names
-// Domain must not contain any character other than [a-zA-Z0-9.-_]
+// Domain must not contain any ASCII character other than [a-zA-Z0-9.-_].
+// Names with non-ASCII bytes are checked by valid_idn()
 static const unsigned char valid_domain_char[256] = {
 	['a' ... 'z'] = 1, ['A' ... 'Z'] = 1, ['0' ... '9'] = 1,
 	['-'] = 1, ['.'] = 1, ['_'] = 1,
@@ -56,9 +59,43 @@ static inline bool string_has_within(const char *s, const char character, const 
 // Number of invalid domains to print before skipping the rest
 #define MAX_INVALID_DOMAINS 5
 
-// Validate domain name
-inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only)
+// Validate an internationalized name by converting it the way dnsmasq's
+// canonicalise() does, then applying the ASCII rules to the punycode form.
+// On success, the converted name is handed to the caller through punycode
+static bool valid_idn(const char *domain, const size_t len, const bool fqdn_only, char **punycode)
 {
+	char buf[256];
+	if(memchr(domain, '\0', len) != NULL)
+		return false;
+	memcpy(buf, domain, len);
+	buf[len] = '\0';
+
+	char *ascii = NULL;
+	if(idn2_to_ascii_8z(buf, &ascii, IDN2_NONTRANSITIONAL) != IDN2_OK)
+	{
+		idn2_free(ascii);
+		return false;
+	}
+
+	// Hand out a copy of our own so that the caller frees this and the ABP
+	// pattern built below the same way
+	const bool valid = valid_domain(ascii, strlen(ascii), fqdn_only);
+	if(valid && punycode != NULL)
+		*punycode = strdup(ascii);
+	idn2_free(ascii);
+
+	return valid && (punycode == NULL || *punycode != NULL);
+}
+
+// Validate domain name. Callers that store the name pass punycode to receive
+// the converted form of an internationalized name, which is what a query
+// carries on the wire - the UTF-8 spelling would never match. It stays NULL for
+// a name that is already ASCII, and has to be freed when it is not
+static bool check_domain(const char *domain, const size_t len, const bool fqdn_only, char **punycode)
+{
+	if(punycode != NULL)
+		*punycode = NULL;
+
 	// Domain must not be NULL or empty, and they should not be longer than
 	// 255 characters
 	if(domain == NULL || len == 0 || len > 255)
@@ -70,6 +107,8 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	{
 		// Check for invalid characters
 		unsigned char c = (unsigned char)domain[i];
+		if(c > 0x7f)
+			return valid_idn(domain, len, fqdn_only, punycode);
 		if(!valid_domain_char[c])
 			return false;
 
@@ -119,44 +158,48 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 	return true;
 }
 
-// Validate ABP domain name
-static inline bool __attribute__((pure)) valid_abp_domain(const char *line, const size_t len, const bool antigravity)
+inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t len, const bool fqdn_only)
 {
-	if(antigravity)
-	{
+	return check_domain(domain, len, fqdn_only, NULL);
+}
 
-		// The line must be at least 5 characters long
-		if(len < 5)
-			return false;
+// Validate ABP domain name. As with check_domain(), punycode receives the
+// converted pattern when the name inside it is internationalized
+static bool valid_abp_domain(const char *line, const size_t len, const bool antigravity, char **punycode)
+{
+	*punycode = NULL;
 
-		// First four characters must be "@@||"
-		if(line[0] != '@' || line[1] != '@' || line[2] != '|' || line[3] != '|')
-			return false;
+	// The line is "||domain^", or "@@||domain^" for antigravity, so it must
+	// hold the prefix, at least one character of domain, and the caret
+	const char *prefix = antigravity ? "@@||" : "||";
+	const size_t prefix_len = strlen(prefix);
+	if(len < prefix_len + 2)
+		return false;
 
-		// Last character must be "^"
-		if(line[len-1] != '^')
-			return false;
+	if(strncmp(line, prefix, prefix_len) != 0)
+		return false;
 
-		// Domain must be valid
-		return valid_domain(line+4, len-5, false);
-	}
-	else
-	{
-		// The line must be at least 3 characters long
-		if(len < 3)
-			return false;
+	// Last character must be "^"
+	if(line[len-1] != '^')
+		return false;
 
-		// First two characters must be "||"
-		if(line[0] != '|' || line[1] != '|')
-			return false;
+	// Domain must be valid
+	char *ascii = NULL;
+	if(!check_domain(line + prefix_len, len - prefix_len - 1, false, &ascii))
+		return false;
 
-		// Last character must be "^"
-		if(line[len-1] != '^')
-			return false;
+	if(ascii == NULL)
+		return true;
 
-		// Domain must be valid
-		return valid_domain(line+2, len-3, false);
-	}
+	// Rebuild the pattern around the converted name
+	const int ret = asprintf(punycode, "%s%s^", prefix, ascii);
+	free(ascii);
+
+	// asprintf() leaves the pointer undefined when it fails
+	if(ret < 0)
+		*punycode = NULL;
+
+	return ret > 0;
 }
 
 // Check if a line is a false positive
@@ -381,6 +424,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		char *token = strtok_r(line, " \t", &saveptr);
 		while(token != NULL)
 		{
+			// Set for an internationalized name, freed at next_domain
+			char *punycode = NULL;
+
 			// Skip empty tokens
 			if(token[0] == '\0')
 				goto next_domain;
@@ -421,7 +467,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Validate line
 			if(line[0] != (antigravity ? '@' : '|') &&  // <- Not an ABP-style match
-			   valid_domain(token, token_len, true))
+			   check_domain(token, token_len, true, &punycode))
 			{
 				// Exact match found
 				if(checkOnly)
@@ -431,9 +477,13 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 					goto next_domain;
 				}
 
+				// Store the name a query will be compared against
+				const char *domain = punycode != NULL ? punycode : token;
+				const size_t domain_len = punycode != NULL ? strlen(punycode) : token_len;
+
 				// else: Append domain to database using prepared statement
 				// Append domain to database using prepared statement
-				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
+				if(sqlite3_bind_text(stmt, 1, domain, domain_len, SQLITE_STATIC) != SQLITE_OK)
 				{
 					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
 					over, cross, outfile);
@@ -456,8 +506,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				// Increment counter
 				exact_domains++;
 			}
-			else if(token[0] == (antigravity ? '@' : '|') &&         // <- ABP-style match
-			        valid_abp_domain(token, token_len, antigravity)) // <- Valid ABP domain
+			else if(token[0] == (antigravity ? '@' : '|') &&                   // <- ABP-style match
+			        valid_abp_domain(token, token_len, antigravity, &punycode)) // <- Valid ABP domain
 			{
 				// ABP-style match (see comments above)
 				if(checkOnly)
@@ -467,8 +517,12 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 					goto next_domain;
 				}
 
+				// Store the pattern a query will be compared against
+				const char *domain = punycode != NULL ? punycode : token;
+				const size_t domain_len = punycode != NULL ? strlen(punycode) : token_len;
+
 				// else: Append pattern to database using prepared statement
-				if(sqlite3_bind_text(stmt, 1, token, token_len, SQLITE_STATIC) != SQLITE_OK)
+				if(sqlite3_bind_text(stmt, 1, domain, domain_len, SQLITE_STATIC) != SQLITE_OK)
 				{
 					printf("%s  %s Unable to bind domain to SQL statement to insert domains into database file %s\n",
 					over, cross, outfile);
@@ -550,6 +604,9 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				}
 			}
 next_domain:
+			// Only set for an internationalized name
+			if(punycode != NULL)
+				free(punycode);
 			token = strtok_r(NULL, " \t", &saveptr);
 		}
 

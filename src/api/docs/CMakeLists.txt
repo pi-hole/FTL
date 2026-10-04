@@ -47,14 +47,6 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/hex/specs)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/hex/images)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/hex/external)
 
-# These assets used to be generated into the source tree, where one directory
-# was shared by every branch and every build directory. A file left there by a
-# build of another revision is newer than its input, so nothing regenerated it
-# and the wrong assets were embedded. Remove the old directory once, otherwise
-# docs.h would keep including it: a quoted include is searched next to the
-# including file before the include path
-file(REMOVE_RECURSE ${CMAKE_CURRENT_SOURCE_DIR}/hex)
-
 # Compile files from content/ into hex/
 # The assets are embedded GZIP-compressed and handed to the client as such (see
 # docs.c), which keeps roughly 1.2 MB of JavaScript and YAML out of the binary
@@ -73,6 +65,10 @@ endif()
 file(GLOB_RECURSE COMPILED_RESOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/content" "content/*")
 foreach(INPUT_FILE ${COMPILED_RESOURCES})
     set(IN ${CMAKE_CURRENT_SOURCE_DIR}/content/${INPUT_FILE})
+    if(INPUT_FILE MATCHES "\\.yaml$")
+        configure_file(${IN} ${CMAKE_CURRENT_BINARY_DIR}/content/${INPUT_FILE} @ONLY)
+        set(IN ${CMAKE_CURRENT_BINARY_DIR}/content/${INPUT_FILE})
+    endif()
     string(REPLACE "." "_" INPUT_FILE_MODIFIED ${INPUT_FILE})
     string(REPLACE "/" "_" VARIABLE_NAME ${INPUT_FILE})
     set(OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/hex/${INPUT_FILE_MODIFIED}.h)

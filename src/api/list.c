@@ -17,11 +17,48 @@
 #include "shmem.h"
 // getNameFromIP()
 #include "database/network-table.h"
+// dbopen()
+#include "database/common.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
 // parse_groupIDs()
 #include "webserver/http-common.h"
 #include <idn2.h>
+
+// cJSON_AddStringToObject() that reports a failure rather than returning 500
+// from the middle of a loop that is holding a database handle open
+static bool add_string_to_object(cJSON *object, const char *key, const char *string,
+                                 const bool reference)
+{
+	cJSON *item = NULL;
+	if(string == NULL)
+		item = cJSON_CreateNull();
+	else
+		item = reference ? cJSON_CreateStringReference(string)
+		                 : cJSON_CreateString(string);
+	if(item == NULL)
+		return false;
+
+	cJSON_AddItemToObject(object, key, item);
+	return true;
+}
+
+// The JSON_* macros answer 500 and return where they fail. Inside the row loop
+// of api_list_read() that would strand the statement and the name-resolution
+// connection it holds, so these do the same job and leave through a label that
+// releases both
+#define ROW_COPY_STR(obj, key, str) do { \
+	if(!add_string_to_object(obj, key, str, false)) goto list_read_fail; \
+} while(0)
+#define ROW_REF_STR(obj, key, str) do { \
+	if(!add_string_to_object(obj, key, str, true)) goto list_read_fail; \
+} while(0)
+#define ROW_ADD_NUM(obj, key, num) do { \
+	if(cJSON_AddNumberToObject(obj, key, num) == NULL) goto list_read_fail; \
+} while(0)
+#define ROW_ADD_BOOL(obj, key, val) do { \
+	if(cJSON_AddBoolToObject(obj, key, val) == NULL) goto list_read_fail; \
+} while(0)
 
 static int api_list_read(struct ftl_conn *api,
                          const int code,
@@ -31,61 +68,117 @@ static int api_list_read(struct ftl_conn *api,
 {
 	const char *sql_msg = NULL;
 	sqlite3_stmt *stmt = NULL;
-	if(!gravityDB_readTable(NULL, listtype, item, &sql_msg, true, NULL, &stmt))
+
+	// A read-only connection of our own, as api_search() already takes.
+	// Passing NULL here would borrow the shared handle, which the database
+	// thread closes and rebuilds in gravityDB_reopen() on every gravity
+	// reload - the reason this endpoint used to be wrapped in the global
+	// shared memory lock. With a connection that nobody else can pull away,
+	// that lock is not needed, and it is the lock every DNS query has to
+	// take
+	sqlite3 *gravitydb = gravityDB_open_RO();
+	if(gravitydb == NULL)
 	{
-		return send_json_error(api, 400, // 400 Bad Request
+		JSON_DELETE(processed);
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "database_error",
+		                       "Could not open gravity database",
+		                       NULL);
+	}
+
+	if(!gravityDB_readTable(gravitydb, listtype, item, &sql_msg, true, NULL, &stmt))
+	{
+		gravityDB_close_RO(gravitydb);
+		JSON_DELETE(processed);
+		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
 	}
 
+	// Everything below leaves through list_read_fail, which releases the
+	// statement, the name-resolution connection and the JSON built so far.
+	// ret stays 0 while nothing has been sent yet
+	int ret = 0;
+	cJSON *row = NULL;
+
+	// Resolving a client name reads pihole-FTL.db, and the lookups open
+	// their own connection when they are not handed one. That is once per
+	// returned row, so open it once here and let every row share it. Both
+	// lookups give up on their own config before they touch the database,
+	// so a setup that resolves nothing must not pay an open at all, and the
+	// open waits for the first row that actually wants a name so an empty
+	// client list does not pay one either. A failure is not fatal, the
+	// lookups then fall back to opening their own
+	const bool resolve_names = listtype == GRAVITY_CLIENTS &&
+	                           (config.resolver.resolveIPv4.v.b ||
+	                            config.resolver.resolveIPv6.v.b ||
+	                            config.resolver.macNames.v.b);
+	sqlite3 *namedb = NULL;
+	bool namedb_tried = false;
+
 	tablerow table = { 0 };
 	cJSON *rows = JSON_NEW_ARRAY();
 	while(gravityDB_readTableGetRow(listtype, &table, &sql_msg, stmt))
 	{
-		cJSON *row = JSON_NEW_OBJECT();
+		row = JSON_NEW_OBJECT();
+		if(row == NULL)
+			goto list_read_fail;
 
 		// Special fields
 		if(listtype == GRAVITY_GROUPS)
 		{
-			JSON_COPY_STR_TO_OBJECT(row, "name", table.name);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "name", table.name);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_ADLISTS ||
 		        listtype == GRAVITY_ADLISTS_BLOCK ||
 		        listtype == GRAVITY_ADLISTS_ALLOW)
 		{
-			JSON_COPY_STR_TO_OBJECT(row, "address", table.address);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "address", table.address);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else if(listtype == GRAVITY_CLIENTS)
 		{
 			char name[MAXDOMAINLEN] = { 0 };
-			if(table.client != NULL)
+			if(table.client != NULL && resolve_names)
 			{
-				// Try to obtain hostname
-				if(isValidIPv4(table.client) || isValidIPv6(table.client))
-					getNameFromIP(NULL, name, table.client);
-				else if(isMAC(table.client))
-					getNameFromMAC(table.client, name);
+				const bool is_ip = isValidIPv4(table.client) ||
+				                   isValidIPv6(table.client);
+				if(is_ip || isMAC(table.client))
+				{
+					// First row that needs a name opens the
+					// connection the remaining ones reuse
+					if(!namedb_tried)
+					{
+						namedb = dbopen(false, false);
+						namedb_tried = true;
+					}
+
+					// Try to obtain hostname
+					if(is_ip)
+						getNameFromIP(namedb, name, table.client);
+					else
+						getNameFromMAC(namedb, table.client, name);
+				}
 			}
 
-			JSON_COPY_STR_TO_OBJECT(row, "client", table.client);
-			JSON_COPY_STR_TO_OBJECT(row, "name", name);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+			ROW_COPY_STR(row, "client", table.client);
+			ROW_COPY_STR(row, "name", name);
+			ROW_COPY_STR(row, "comment", table.comment);
 		}
 		else // domainlists
 		{
 			char *unicode = NULL;
 			const int rc = idn2_to_unicode_lzlz(table.domain, &unicode, IDN2_NONTRANSITIONAL);
-			JSON_COPY_STR_TO_OBJECT(row, "domain", table.domain);
+			ROW_COPY_STR(row, "domain", table.domain);
 			if(rc == IDN2_OK)
-				JSON_COPY_STR_TO_OBJECT(row, "unicode", unicode);
+				ROW_COPY_STR(row, "unicode", unicode);
 			else
-				JSON_COPY_STR_TO_OBJECT(row, "unicode", table.domain);
-			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
-			JSON_REF_STR_IN_OBJECT(row, "kind", table.kind);
-			JSON_COPY_STR_TO_OBJECT(row, "comment", table.comment);
+				ROW_COPY_STR(row, "unicode", table.domain);
+			ROW_REF_STR(row, "type", table.type);
+			ROW_REF_STR(row, "kind", table.kind);
+			ROW_COPY_STR(row, "comment", table.comment);
 			if(unicode != NULL)
 				free(unicode);
 		}
@@ -95,13 +188,9 @@ static int api_list_read(struct ftl_conn *api,
 		{
 			if(table.group_ids != NULL)
 			{
-				const int ret = parse_groupIDs(api, &table, row);
+				ret = parse_groupIDs(api, &table, row);
 				if(ret != 0)
-				{
-					JSON_DELETE(rows);
-					gravityDB_readTableFinalize(stmt);
-					return ret;
-				}
+					goto list_read_fail;
 
 			}
 			else
@@ -114,29 +203,34 @@ static int api_list_read(struct ftl_conn *api,
 
 		// Clients don't have the enabled property
 		if(listtype != GRAVITY_CLIENTS)
-			JSON_ADD_BOOL_TO_OBJECT(row, "enabled", table.enabled);
+			ROW_ADD_BOOL(row, "enabled", table.enabled);
 
 		// Add read-only database parameters
-		JSON_ADD_NUMBER_TO_OBJECT(row, "id", table.id);
-		JSON_ADD_NUMBER_TO_OBJECT(row, "date_added", table.date_added);
-		JSON_ADD_NUMBER_TO_OBJECT(row, "date_modified", table.date_modified);
+		ROW_ADD_NUM(row, "id", table.id);
+		ROW_ADD_NUM(row, "date_added", table.date_added);
+		ROW_ADD_NUM(row, "date_modified", table.date_modified);
 
 		// Properties added in https://github.com/pi-hole/pi-hole/pull/3951
 		if(listtype == GRAVITY_ADLISTS ||
 		   listtype == GRAVITY_ADLISTS_BLOCK ||
 		   listtype == GRAVITY_ADLISTS_ALLOW)
 		{
-			JSON_REF_STR_IN_OBJECT(row, "type", table.type);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "date_updated", table.date_updated);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "number", table.number);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "invalid_domains", table.invalid_domains);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "abp_entries", table.abp_entries);
-			JSON_ADD_NUMBER_TO_OBJECT(row, "status", table.status);
+			ROW_REF_STR(row, "type", table.type);
+			ROW_ADD_NUM(row, "date_updated", table.date_updated);
+			ROW_ADD_NUM(row, "number", table.number);
+			ROW_ADD_NUM(row, "invalid_domains", table.invalid_domains);
+			ROW_ADD_NUM(row, "abp_entries", table.abp_entries);
+			ROW_ADD_NUM(row, "status", table.status);
 		}
 
 		JSON_ADD_ITEM_TO_ARRAY(rows, row);
+		row = NULL;
 	}
 	gravityDB_readTableFinalize(stmt);
+	gravityDB_close_RO(gravitydb);
+
+	if(namedb != NULL)
+		dbclose(&namedb);
 
 	if(sql_msg == NULL)
 	{
@@ -164,16 +258,39 @@ static int api_list_read(struct ftl_conn *api,
 	else
 	{
 		JSON_DELETE(rows);
+		JSON_DELETE(processed);
 		return send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not read from gravity database",
 		                       sql_msg);
 	}
+
+list_read_fail:
+	// row is not in rows yet, it is only handed over at the end of the loop
+	JSON_DELETE(row);
+	JSON_DELETE(rows);
+	JSON_DELETE(processed);
+	gravityDB_readTableFinalize(stmt);
+	gravityDB_close_RO(gravitydb);
+
+	if(namedb != NULL)
+		dbclose(&namedb);
+
+	// A non-zero ret means a reply has gone out already
+	return ret != 0 ? ret : send_http_internal_error(api);
 }
 
+// Performs the write and, on success, hands back what the GET-style reply needs
+// rather than rendering it: returns 0 with *code, *reply_item and *processed
+// filled in, and the caller sends the reply once it has dropped the shared
+// memory lock. Rendering in here would open the read-only gravity connection
+// under that lock, and that connection waits on a busy database - so a
+// gravity.db held by someone else would park the resolver along with it.
+// Any other return value is a status this function has already answered with
 static int api_list_write(struct ftl_conn *api,
                           const enum gravity_list_type listtype,
-                          const char *item)
+                          const char *item,
+                          int *code, char **reply_item, cJSON **processed_out)
 {
 	tablerow row = { 0 };
 
@@ -377,6 +494,48 @@ static int api_list_write(struct ftl_conn *api,
 		}
 	}
 
+	// A group rename echoes the new name in the Location response header,
+	// so it is held to the same newline rule as the items below
+	if(row.name != NULL && strpbrk(row.name, "\r\n") != NULL)
+	{
+		if(allocated_json)
+			cJSON_Delete(row.items);
+		return send_json_error(api, 400, // 400 Bad Request
+		                       "bad_request",
+		                       "Newlines and carriage returns are not allowed in any input",
+		                       row.name);
+	}
+
+	// "groups" replaces every group link of the items written, so anything
+	// but an array of group IDs would only delete the existing links
+	cJSON *json_groups = NULL;
+	if(listtype != GRAVITY_GROUPS)
+	{
+		json_groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
+		bool groups_okay = json_groups == NULL || cJSON_IsArray(json_groups);
+		cJSON *gid = NULL;
+		if(groups_okay)
+		{
+			cJSON_ArrayForEach(gid, json_groups)
+			{
+				if(!cJSON_IsNumber(gid))
+				{
+					groups_okay = false;
+					break;
+				}
+			}
+		}
+		if(!groups_okay)
+		{
+			if(allocated_json)
+				cJSON_Delete(row.items);
+			return send_json_error(api, 400, // 400 Bad Request
+			                       "bad_request",
+			                       "Invalid request: \"groups\" must be an array of group IDs",
+			                       NULL);
+		}
+	}
+
 	if(listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX || listtype == GRAVITY_DOMAINLIST_DENY_REGEX)
 	{
 		// Test validity of this regex
@@ -526,8 +685,9 @@ static int api_list_write(struct ftl_conn *api,
 					it->valuestring[i] = tolower((unsigned char)it->valuestring[i]);
 
 				// Validate domain
-				// This will reject domains like äöü{{{.com
-				// which convert to xn--{{{-pla4gpb.com
+				// An internationalized name has to be added in its
+				// punycode form: the query name is matched byte-wise
+				// and always arrives as an A-label
 				if(!valid_domain(it->valuestring, strlen(it->valuestring), false))
 				{
 					if(allocated_json)
@@ -561,16 +721,54 @@ static int api_list_write(struct ftl_conn *api,
 	cJSON *success = JSON_NEW_ARRAY();
 	cJSON_AddItemToObject(processed, "errors", errors);
 	cJSON_AddItemToObject(processed, "success", success);
+
+	// One connection for the whole batch. Adding N items used to open and
+	// close a gravity connection twice per item, once for the item and once
+	// for its groups
+	sqlite3 *db = gravityDB_write_open(&sql_msg);
+	if(db == NULL)
+	{
+		const int ret = send_json_error(api, 500, // 500 Internal Server Error
+		                                "database_error",
+		                                "Could not open gravity database for writing",
+		                                sql_msg);
+		cJSON_Delete(processed);
+		if(allocated_json)
+			cJSON_Delete(row.items);
+		return ret;
+	}
+
+	// And one transaction for the whole batch, so it costs a single commit
+	// rather than one per item. Failing to start it is not fatal, the items
+	// then commit one by one as they did before.
+	//
+	// IMMEDIATE, not the default DEFERRED: a deferred transaction takes only
+	// SHARED and has to promote to RESERVED on the first INSERT, and SQLite
+	// skips the busy handler on that promotion because waiting there could
+	// deadlock. The batch would fail instantly with "database is locked"
+	// during a gravity run, where every item used to get the full
+	// DATABASE_BUSY_TIMEOUT to itself
+	bool in_transaction = sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION;", NULL, NULL, NULL) == SQLITE_OK;
+	if(!in_transaction)
+		log_warn("Could not start transaction for gravity batch add: %s",
+		         sqlite3_errmsg(db));
+
 	cJSON_ArrayForEach(elem, row.items)
 	{
 		row.item = elem->valuestring;
-		if((okay = gravityDB_addToTable(listtype, &row, &sql_msg, api->method)))
+
+		// Each item gets its own savepoint inside the batch transaction so
+		// that an item reported as failed leaves nothing behind, not even
+		// the row written before its group links failed
+		const bool item_savepoint = in_transaction && sqlite3_get_autocommit(db) == 0 &&
+		                            sqlite3_exec(db, "SAVEPOINT item;", NULL, NULL, NULL) == SQLITE_OK;
+
+		if((okay = gravityDB_addToTable(db, listtype, &row, &sql_msg, api->method)))
 		{
 			if(listtype != GRAVITY_GROUPS)
 			{
-				cJSON *groups = cJSON_GetObjectItemCaseSensitive(api->payload.json, "groups");
-				if(groups != NULL)
-					okay = gravityDB_edit_groups(listtype, groups, &row, &sql_msg);
+				if(json_groups != NULL)
+					okay = gravityDB_edit_groups(db, listtype, json_groups, &row, &sql_msg);
 				else
 					// The groups array is optional, we still succeed if it
 					// is omitted (groups stay as they are)
@@ -583,17 +781,87 @@ static int api_list_write(struct ftl_conn *api,
 			}
 		}
 
+		// The savepoint is gone if SQLite has ended the transaction by
+		// itself, the commit below reports that case
+		if(item_savepoint && sqlite3_get_autocommit(db) == 0)
+		{
+			if(!okay)
+				sqlite3_exec(db, "ROLLBACK TO item;", NULL, NULL, NULL);
+			sqlite3_exec(db, "RELEASE item;", NULL, NULL, NULL);
+		}
+
 		cJSON *details = JSON_NEW_OBJECT();
-		JSON_COPY_STR_TO_OBJECT(details, "item", row.item);
-		if(!okay)
-			JSON_COPY_STR_TO_OBJECT(details, "error", sql_msg);
+		if(details == NULL ||
+		   !add_string_to_object(details, "item", row.item, false) ||
+		   (!okay && !add_string_to_object(details, "error", sql_msg, false)))
+		{
+			// Leaving through the JSON macros here would return
+			// from inside the transaction and strand the write
+			// connection, locking gravity.db for good
+			cJSON_Delete(details);
+			goto batch_abort;
+		}
 		cJSON_AddItemToArray(okay ? success : errors, details);
 	}
+
+	// Commit the batch. Nothing above reached the disk before this, so a
+	// failure here has to be reported rather than logged - every item this
+	// response is about to call a success would be lost
+	if(in_transaction)
+	{
+		// SQLite rolls a transaction back by itself on some errors, a
+		// full disk among them, and returns the connection to
+		// autocommit. Items after that point were then written on their
+		// own while the ones before it were undone, so neither the
+		// per-item results above nor a plain commit failure describe
+		// what is in the database
+		// SQLite has ended the transaction itself if the connection is
+		// back in autocommit, which means part of the batch is on disk
+		const bool partially_applied = sqlite3_get_autocommit(db) != 0;
+		const char *commit_msg = partially_applied
+		                       ? "Gravity database batch was only partially applied"
+		                       : NULL;
+
+		char commit_err[256] = { 0 };
+		if(commit_msg == NULL &&
+		   sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK)
+		{
+			// The message belongs to the connection, take a copy
+			// of it before the handle goes away
+			strncpy(commit_err, sqlite3_errmsg(db), sizeof(commit_err) - 1);
+			commit_msg = "Could not commit to gravity database";
+		}
+
+		if(commit_msg != NULL)
+		{
+			gravityDB_write_close(db);
+
+			// A partially applied batch left rows behind that the
+			// resolver has to pick up, a failed commit left none
+			if(partially_applied)
+				set_event(RELOAD_GRAVITY);
+
+			const int ret = send_json_error(api, 500, // 500 Internal Server Error
+			                                "database_error",
+			                                commit_msg,
+			                                commit_err[0] != '\0' ? commit_err : NULL);
+			cJSON_Delete(processed);
+			if(allocated_json)
+				cJSON_Delete(row.items);
+			return ret;
+		}
+	}
+	gravityDB_write_close(db);
 
 	// If all items failed, return a database error instead of
 	// a success response with an empty result set
 	if(cJSON_GetArraySize(success) == 0 && cJSON_GetArraySize(errors) > 0)
 	{
+		// Without the batch transaction there are no savepoints, and a
+		// failed item may have written its row before its groups failed
+		if(!in_transaction)
+			set_event(RELOAD_GRAVITY);
+
 		const int ret = send_json_error(api, 400, // 400 Bad Request
 		                       "database_error",
 		                       "Could not add to gravity database",
@@ -611,8 +879,14 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
+	// A group PUT carrying a name has renamed the group to it, so the
+	// Location header and the reply have to use that name
+	const char *reply_name = row.item;
+	if(api->method == HTTP_PUT && listtype == GRAVITY_GROUPS && row.name != NULL)
+		reply_name = row.name;
+
 	// Add "Location" header to response
-	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, reply_name) >= (int)sizeof(pi_hole_extra_headers))
 	{
 		// This may happen for *extremely* long URLs but is not issue in
 		// itself. Merely add a warning to the log file
@@ -625,14 +899,53 @@ static int api_list_write(struct ftl_conn *api,
 		pi_hole_extra_headers[sizeof(pi_hole_extra_headers)-1] = '\0';
 	}
 
-	// Send GET style reply
-	const int ret = api_list_read(api, response_code, listtype, row.item, processed);
+	// Hand the reply over to the caller, which renders it outside the lock.
+	// reply_name points into row.items (released just below) or the payload
+	*code = response_code;
+	*reply_item = strdup(reply_name);
+	*processed_out = processed;
 
 	// Free allocated memory
 	if(allocated_json)
 		cJSON_Delete(row.items);
 
-	return ret;
+	if(*reply_item == NULL)
+	{
+		cJSON_Delete(processed);
+		*processed_out = NULL;
+		return send_json_error(api, 500, // 500 Internal Server Error
+		                       "internal_error",
+		                       "Memory allocation failed",
+		                       NULL);
+	}
+
+	return 0;
+
+batch_abort:
+	// The response cannot be assembled any more. Undo what this transaction
+	// holds if it is still ours to undo - if SQLite has already ended it,
+	// part of the batch is on disk and the resolver has to hear about it
+	{
+		bool committed = !in_transaction;
+		if(in_transaction)
+		{
+			if(sqlite3_get_autocommit(db) != 0)
+				committed = true;
+			else
+				sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+		}
+
+		gravityDB_write_close(db);
+
+		if(committed)
+			set_event(RELOAD_GRAVITY);
+	}
+
+	cJSON_Delete(processed);
+	if(allocated_json)
+		cJSON_Delete(row.items);
+
+	return send_http_internal_error(api);
 }
 
 static int api_list_remove(struct ftl_conn *api,
@@ -973,12 +1286,8 @@ int api_list(struct ftl_conn *api)
 	if(api->method == HTTP_GET)
 	{
 		// Read list item identified by URI (or read them all)
-		// We would not actually need the SHM lock here, however, we do
-		// this for simplicity to ensure nobody else is editing the
-		// lists while we're doing this here
-		lock_shm();
+		// No lock: api_list_read() reads through a connection of its own
 		const int ret = api_list_read(api, 200, listtype, api->item, NULL);
-		unlock_shm();
 		return ret;
 	}
 	else if(can_modify && api->method == HTTP_PUT)
@@ -993,12 +1302,24 @@ int api_list(struct ftl_conn *api)
 		}
 		else
 		{
-			// We would not actually need the SHM lock here,
-			// however, we do this for simplicity to ensure nobody
-			// else is editing the lists while we're doing this here
+			// The write needs the lock, the reply that follows it does
+			// not - and must not have it, since rendering opens the
+			// read-only gravity connection, which waits on a busy
+			// database and would hold the resolver up with it
+			int code = 0;
+			char *reply_item = NULL;
+			cJSON *processed = NULL;
+
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+
+			if(ret == 0)
+			{
+				ret = api_list_read(api, code, listtype, reply_item, processed);
+				free(reply_item);
+			}
+
 			return ret;
 		}
 	}
@@ -1014,21 +1335,30 @@ int api_list(struct ftl_conn *api)
 		}
 		else
 		{
-			// We would not actually need the SHM lock here,
-			// however, we do this for simplicity to ensure nobody
-			// else is editing the lists while we're doing this here
+			// The write needs the lock, the reply that follows it does
+			// not - and must not have it, since rendering opens the
+			// read-only gravity connection, which waits on a busy
+			// database and would hold the resolver up with it
+			int code = 0;
+			char *reply_item = NULL;
+			cJSON *processed = NULL;
+
 			lock_shm();
-			const int ret = api_list_write(api, listtype, api->item);
+			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+
+			if(ret == 0)
+			{
+				ret = api_list_read(api, code, listtype, reply_item, processed);
+				free(reply_item);
+			}
+
 			return ret;
 		}
 	}
 	else if(can_modify && (api->method == HTTP_DELETE || (api->method == HTTP_POST && batchDelete)))
 	{
-		// Delete item from list
-		// We would not actually need the SHM lock here, however, we do
-		// this for simplicity to ensure nobody else is editing the
-		// lists while we're doing this here
+		// Delete item from list, under the lock: it writes
 		lock_shm();
 		const int ret = api_list_remove(api, listtype, api->item);
 		unlock_shm();

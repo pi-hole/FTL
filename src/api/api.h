@@ -52,7 +52,9 @@ int api_history_database_clients(struct ftl_conn *api);
 // Query methods
 int api_queries(struct ftl_conn *api);
 int api_queries_suggestions(struct ftl_conn *api);
-bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json, regex_t **regex, unsigned int *N_regex);
+bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
+                          regex_t **regex, unsigned int *N_regex, int *ret);
+void free_filter_regex(regex_t *regex, const unsigned int N_regex);
 
 // Statistics methods (database)
 int api_stats_database_top_items(struct ftl_conn *api);

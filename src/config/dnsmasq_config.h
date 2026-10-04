@@ -14,7 +14,14 @@
 
 #define ERRBUF_SIZE 1024
 
-bool write_dnsmasq_config(struct config *conf, bool test_config, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,3)));
+// What write_dnsmasq_config() should do with the file it builds
+enum dnsmasq_write_mode {
+	DNSMASQ_INSTALL,      // install it, no syntax test
+	DNSMASQ_TEST_INSTALL, // test it, install it if the test passes
+	DNSMASQ_TEST_ONLY,    // test it and remove it again
+};
+
+bool write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE]) __attribute__((nonnull(1,3)));
 int get_lineno_from_string(const char *string);
 char *get_dnsmasq_line(const unsigned int lineno);
 bool read_legacy_dhcp_static_config(void);
@@ -22,14 +29,14 @@ bool read_legacy_cnames_config(void);
 bool read_legacy_custom_hosts_config(void);
 bool write_custom_list(void);
 
-#define DNSMASQ_PH_CONFIG "/etc/pihole/dnsmasq.conf"
-#define DNSMASQ_TEMP_CONF "/etc/pihole/dnsmasq.conf.temp"
+#define DNSMASQ_PH_CONFIG PIHOLE_INSTALL_DIR "/dnsmasq.conf"
+#define DNSMASQ_TEMP_CONF PIHOLE_INSTALL_DIR "/dnsmasq.conf.temp"
 #define DNSMASQ_STATIC_LEASES MIGRATION_TARGET_V6"/04-pihole-static-dhcp.conf"
 #define DNSMASQ_CNAMES MIGRATION_TARGET_V6"/05-pihole-custom-cname.conf"
-#define DNSMASQ_HOSTSDIR "/etc/pihole/hosts"
+#define DNSMASQ_HOSTSDIR PIHOLE_INSTALL_DIR "/hosts"
 #define DNSMASQ_CUSTOM_LIST DNSMASQ_HOSTSDIR"/custom.list"
-#define DNSMASQ_CUSTOM_LIST_LEGACY "/etc/pihole/custom.list"
+#define DNSMASQ_CUSTOM_LIST_LEGACY PIHOLE_INSTALL_DIR "/custom.list"
 #define DNSMASQ_CUSTOM_LIST_LEGACY_TARGET MIGRATION_TARGET_V6"/custom.list"
-#define DHCPLEASESFILE "/etc/pihole/dhcp.leases"
+#define DHCPLEASESFILE PIHOLE_INSTALL_DIR "/dhcp.leases"
 
 #endif //DNSMASQ_CONFIG_H

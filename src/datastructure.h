@@ -53,6 +53,10 @@ typedef struct {
 		bool complete :1;
 		bool blocked :1;
 		bool response_calculated :1;
+		// Set while this query holds a count on upstreamID, so the count
+		// is returned exactly once - either by query_blocked() when the
+		// query stops being a forwarded one, or by the GC when it expires
+		bool upstream_counted :1;
 		struct database_flags {
 			bool changed :1;
 			bool imported :1;
@@ -212,6 +216,7 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 
 void FTL_reload_all_domainlists(void);
 void FTL_reset_per_client_domain_data(void);
+void FTL_reset_client_domain_data(const unsigned int clientID);
 
 const char *getDomainString(const queriesData *query);
 const char *getCNAMEDomainString(const queriesData *query);

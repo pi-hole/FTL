@@ -9,6 +9,14 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// isalnum(), isdigit()
+#include <ctype.h>
+// inet_pton()
+#include <arpa/inet.h>
+// LONG_MAX
+#include <limits.h>
+// errno, ERANGE
+#include <errno.h>
 #include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
@@ -43,6 +51,11 @@
 #include "signals.h"
 // sqliteBusyCallback()
 #include "database/common.h"
+
+#define ZIPNAME_TOML "etc/pihole/pihole.toml"
+#define ZIPNAME_DHCPLEASES "etc/pihole/dhcp.leases"
+#define ZIPNAME_GRAVITY "etc/pihole/gravity.db"
+#define ZIPNAME_FTLDB "etc/pihole/pihole-FTL.db"
 
 // Tables to copy from the gravity database to the Teleporter database
 static const char *gravity_tables[] = {
@@ -174,7 +187,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	// Add pihole.toml to the ZIP archive
 	const char *file_comment = "Pi-hole's configuration";
 	const char *file_path = GLOBALTOMLPATH;
-	if(!mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	if(!mz_zip_writer_add_file(zip, ZIPNAME_TOML, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
 	{
 		mz_zip_writer_end(zip);
 		return "Failed to add "GLOBALTOMLPATH" to heap ZIP archive!";
@@ -189,13 +202,13 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 		return "Failed to add /etc/hosts to heap ZIP archive!";
 	}
 
-	// Add /etc/pihole/dhcp.lease to the ZIP archive if it exists
+	// Add the DHCP leases file to the ZIP archive if it exists
 	file_comment = "DHCP leases file";
-	file_path = "/etc/pihole/dhcp.leases";
-	if(file_exists(file_path) && !mz_zip_writer_add_file(zip, file_path+1, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
+	file_path = DHCPLEASESFILE;
+	if(file_exists(file_path) && !mz_zip_writer_add_file(zip, ZIPNAME_DHCPLEASES, file_path, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION))
 	{
 		mz_zip_writer_end(zip);
-		return "Failed to add /etc/pihole/dhcp.leases to heap ZIP archive!";
+		return "Failed to add "DHCPLEASESFILE" to heap ZIP archive!";
 	}
 
 	const char *directory = "/etc/dnsmasq.d";
@@ -235,10 +248,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Add gravity database to ZIP archive
 		file_comment = "Pi-hole's gravity database";
-		file_path = config.files.gravity.v.s;
-		if(file_path[0] == '/')
-			file_path++;
-		if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
+		if(!mz_zip_writer_add_mem_ex(zip, ZIPNAME_GRAVITY, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
 		{
 			sqlite3_free(dbbuf);
 			mz_zip_writer_end(zip);
@@ -256,10 +266,7 @@ const char *generate_teleporter_zip(mz_zip_archive *zip, char filename[128], voi
 	{
 		// Add FTL database to ZIP archive
 		file_comment = "Pi-hole's FTL database";
-		file_path = config.files.database.v.s;
-		if(file_path[0] == '/')
-			file_path++;
-		if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
+		if(!mz_zip_writer_add_mem_ex(zip, ZIPNAME_FTLDB, dbbuf, dbsize, file_comment, (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
 		{
 			sqlite3_free(dbbuf);
 			mz_zip_writer_end(zip);
@@ -324,19 +331,37 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Check if the file contains a valid configuration for Pi-hole by parsing it into
 	// a temporary config struct (teleporter_config)
 	struct config teleporter_config = { 0 };
+	lock_config();
 	duplicate_config(&teleporter_config, &config);
-	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true))
+	// readFTLtoml() holds every value in the archive to the validator its config
+	// item declares. An import is not a lesser path than PATCH /api/config: it
+	// is reachable by anyone holding an admin session and installs a complete
+	// configuration, so a value the API refuses must not get in this way either.
+	char valerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!readFTLtoml(NULL, &teleporter_config, toml.toptab, true, NULL, 0, true, valerr))
 	{
+		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
+		unlock_config();
 		toml_free(toml);
-		return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
+
+		// The buffer names the offending item when a value was refused, and
+		// stays empty when the file could not be read at all
+		if(valerr[0] == '\0')
+			return "File etc/pihole/pihole.toml in ZIP archive contains invalid TOML configuration";
+
+		log_err("Teleporter: %s", valerr);
+		set_hint(hint, valerr);
+		return "File etc/pihole/pihole.toml in ZIP archive contains an invalid value";
 	}
 
 	// Test dnsmasq config in the imported configuration
 	// The dnsmasq configuration will be overwritten if the test succeeds
-	if(!write_dnsmasq_config(&teleporter_config, true, hint))
+	if(!write_dnsmasq_config(&teleporter_config, DNSMASQ_TEST_INSTALL, hint))
 	{
+		report_teleporter_skipped(false);
 		free_config(&teleporter_config, false);
+		unlock_config();
 		toml_free(toml);
 		return "File etc/pihole/pihole.toml in ZIP archive contains invalid dnsmasq configuration";
 	}
@@ -348,23 +373,159 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 	// Install new configuration (takes ownership of teleporter_config)
 	replace_config(&teleporter_config);
 
+	// Only now is there an import the skipped settings belong to
+	report_teleporter_skipped(true);
+
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
 	// Also write the custom list to disk
 	rotate_files(GLOBALTOMLPATH, NULL);
 	writeFTLtoml(true, NULL);
 	write_custom_list();
+	unlock_config();
 
 	toml_free(toml);
 	return NULL;
+}
+
+// Check one token of a lease record: not empty, not longer than dnsmasq reads
+// and made of alphanumeric and the given characters only
+static bool valid_lease_token(const char *tok, const size_t len, const size_t maxlen, const char *allowed)
+{
+	if(len == 0 || len > maxlen)
+		return false;
+
+	// strchr() would find a NUL byte in the terminator of allowed
+	for(size_t i = 0; i < len; i++)
+		if(tok[i] == '\0' ||
+		   (!isalnum((unsigned char)tok[i]) && strchr(allowed, tok[i]) == NULL))
+			return false;
+
+	return true;
+}
+
+// Check a token dnsmasq runs through parse_hex(): hex digits separated by
+// colons, with an optional "<type>-" in front, or "*" for "not set"
+static bool valid_lease_hex(const char *tok, const size_t len, const size_t maxlen)
+{
+	if(len == 1 && tok[0] == '*')
+		return true;
+	if(len == 0 || len > maxlen)
+		return false;
+
+	for(size_t i = 0; i < len; i++)
+		if(!isxdigit((unsigned char)tok[i]) && tok[i] != ':' && tok[i] != '-')
+			return false;
+
+	return true;
+}
+
+// Check that an imported DHCP lease database is one.
+//
+// The archive member is written verbatim to a well-known path dnsmasq parses,
+// so every record has to be one dnsmasq writes itself: "duid <hex>",
+// "vendorclass|agent-info <address> <data>" or
+// "<expiry> <hwaddr|iaid> <address> <hostname|*> <clientid|*>"
+bool valid_dhcp_leases(const char *data, const size_t size)
+{
+	size_t pos = 0;
+	while(pos < size)
+	{
+		// Determine the extent of this line
+		size_t eol = pos;
+		while(eol < size && data[eol] != '\n')
+			eol++;
+
+		// Split the line into its tokens
+		const char *tok[6] = { NULL };
+		size_t toklen[6] = { 0 };
+		unsigned int tokens = 0;
+		size_t i = pos;
+		while(i < eol)
+		{
+			while(i < eol && (data[i] == ' ' || data[i] == '\t'))
+				i++;
+			if(i == eol)
+				break;
+
+			// More tokens than any record has
+			if(tokens == ArraySize(tok))
+				return false;
+
+			tok[tokens] = data + i;
+			while(i < eol && data[i] != ' ' && data[i] != '\t')
+				i++;
+			toklen[tokens] = (size_t)(data + i - tok[tokens]);
+			tokens++;
+		}
+		pos = eol + 1;
+
+		// Accept empty lines
+		if(tokens == 0)
+			continue;
+
+		if(toklen[0] == 4 && strncmp(tok[0], "duid", 4) == 0)
+		{
+			if(tokens != 2 || !valid_lease_hex(tok[1], toklen[1], 764))
+				return false;
+			continue;
+		}
+
+		if((toklen[0] == 11 && strncmp(tok[0], "vendorclass", 11) == 0) ||
+		   (toklen[0] == 10 && strncmp(tok[0], "agent-info", 10) == 0))
+		{
+			if(tokens != 3 ||
+			   !valid_lease_token(tok[1], toklen[1], 64, ".:") ||
+			   !valid_lease_hex(tok[2], toklen[2], 764))
+				return false;
+			continue;
+		}
+
+		// A lease: the expiry is a number dnsmasq reads with atol(), the
+		// address is one
+		char addr[65] = { 0 }, expiry[24] = { 0 };
+		struct in6_addr parsed;
+		if(tokens != 5 || toklen[2] >= sizeof(addr) || toklen[0] >= sizeof(expiry))
+			return false;
+		for(size_t k = 0; k < toklen[0]; k++)
+			if(!isdigit((unsigned char)tok[0][k]))
+				return false;
+		memcpy(expiry, tok[0], toklen[0]);
+		errno = 0;
+		const unsigned long long expires = strtoull(expiry, NULL, 10);
+		if(errno == ERANGE || expires > LONG_MAX)
+			return false;
+		memcpy(addr, tok[2], toklen[2]);
+		if(inet_pton(AF_INET, addr, &parsed) != 1 && inet_pton(AF_INET6, addr, &parsed) != 1)
+			return false;
+		// dnsmasq marks the IAID of a temporary DHCPv6 address with a "T"
+		const bool temporary = toklen[1] > 1 && tok[1][0] == 'T' && strchr(addr, ':') != NULL;
+		if(!valid_lease_hex(tok[1] + (temporary ? 1 : 0), toklen[1] - (temporary ? 1 : 0), 255) ||
+		   !valid_lease_token(tok[3], toklen[3], 255, ".-_*") ||
+		   !valid_lease_hex(tok[4], toklen[4], 764))
+			return false;
+	}
+
+	return true;
 }
 
 static const char *import_dhcp_leases(const void *ptr, size_t size, char * const hint)
 {
 	// We do not check if the file is empty here, as an empty dhcp.leases file is valid
 
-	// When we reach this point, we know that the file is a valid dhcp.leases file.
-	// We can now safely overwrite the current dhcp.leases file with the one from the ZIP archive
-	// Nevertheless, we rotate the current dhcp.leases file to keep a backup of the previous version
+	// Check the content really is a lease database before overwriting the
+	// current one - the bytes come straight from the uploaded archive.
+	//
+	// Skip the file rather than failing the import: pihole.toml is installed
+	// earlier in the same archive, so returning an error here would report
+	// failure for an import that has already changed the configuration. The
+	// TAR.GZ importer skips the same file for the same reason.
+	if(!valid_dhcp_leases(ptr, size))
+	{
+		log_warn("Not importing etc/pihole/dhcp.leases: not a DHCP lease database");
+		return NULL;
+	}
+
+	// Rotate the current dhcp.leases file to keep a backup of the previous version
 
 	// Rotate current dhcp.leases file
 	rotate_files(DHCPLEASESFILE, NULL);
@@ -578,9 +739,9 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 
 		// List of files to process from a Teleporter ZIP archive
 		const char *extract_files[] = {
-			"etc/pihole/pihole.toml",
-			"etc/pihole/dhcp.leases",
-			config.files.gravity.v.s[0] == '/' ? config.files.gravity.v.s + 1 : config.files.gravity.v.s
+			ZIPNAME_TOML,
+			ZIPNAME_DHCPLEASES,
+			ZIPNAME_GRAVITY
 		};
 
 		// Check if this file is one of the files we want to extract and process
@@ -649,6 +810,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported Pi-hole configuration: %s", file_stat.m_filename);
@@ -670,6 +832,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported DHCP leases: %s", file_stat.m_filename);
@@ -721,6 +884,7 @@ const char *read_teleporter_zip(uint8_t *buffer, const size_t buflen, char * con
 			if(err != NULL)
 			{
 				free(ptr);
+				mz_zip_reader_end(&zip);
 				return err;
 			}
 			log_debug(DEBUG_CONFIG, "Imported database: %s", file_stat.m_filename);
@@ -800,19 +964,23 @@ bool write_teleporter_zip_to_disk(void)
 	{
 		log_err("Failed to open %s for writing: %s", filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		free(ptr);
 		return false;
 	}
 	if(fwrite(ptr, 1, size, fp) != size)
 	{
 		log_err("Failed to write %zu bytes to %s: %s", size, filename, strerror(errno));
 		free_teleporter_zip(&zip);
+		free(ptr);
 		fclose(fp);
 		return false;
 	}
 	fclose(fp);
 
-	// Free allocated ZIP memory
+	// Free allocated ZIP memory, including the archive buffer that
+	// mz_zip_writer_finalize_heap_archive() handed over to us
 	free_teleporter_zip(&zip);
+	free(ptr);
 
 	/* Output filename on successful creation */
 	log_info("%s", filename);

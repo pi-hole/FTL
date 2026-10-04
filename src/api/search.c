@@ -41,7 +41,7 @@ static int search_table(struct ftl_conn *api, sqlite3 *db, const char *item,
 	sqlite3_stmt *stmt = NULL;
 	if(!gravityDB_readTable(db, listtype, item, &sql_msg, !partial, ids, &stmt))
 	{
-		return send_json_error(api, 400, // 400 Bad Request
+		return send_json_error(api, 500, // 500 Internal Server Error
 		                       "database_error",
 		                       "Could not read domains from database table",
 		                       sql_msg);
@@ -84,6 +84,9 @@ static int search_table(struct ftl_conn *api, sqlite3 *db, const char *item,
 			const int ret = parse_groupIDs(api, &table, row);
 			if(ret != 0)
 			{
+				// row is only added to the array at the end of
+				// the loop body, so it is ours to free here
+				JSON_DELETE(row);
 				gravityDB_readTableFinalize(stmt);
 				return ret;
 			}
@@ -244,14 +247,18 @@ int api_search(struct ftl_conn *api)
 		                       "Could not open gravity database", NULL);
 	}
 
+	// Everything below is ours until the response takes it, and the failures
+	// leave through search_fail to give it back
 	cJSON *domains = JSON_NEW_ARRAY();
+	cJSON *gravity = NULL;
+	cJSON *gravity_patterns = NULL;
+	cJSON *antigravity_patterns = NULL;
+	cJSON *regex_ids = NULL;
 	unsigned int Nexact = 0u;
 	ret = search_table(api, db, punycode, GRAVITY_DOMAINLIST_ALL_EXACT, NULL, limit, &Nexact, partial, domains);
 	if(ret != 200)
 	{
-		gravityDB_close_RO(db);
-		free(punycode);
-		return ret;
+		goto search_fail;
 	}
 
 	// Match partially against regex filters using LIKE '%term%' matching
@@ -262,37 +269,29 @@ int api_search(struct ftl_conn *api)
 		ret = search_table(api, db, punycode, GRAVITY_DOMAINLIST_ALL_REGEX, NULL, limit, &Nregex, partial, domains);
 		if(ret != 200)
 		{
-			gravityDB_close_RO(db);
-			free(punycode);
-			return ret;
+			goto search_fail;
 		}
 	}
 
 	// Search through gravity
-	cJSON *gravity = JSON_NEW_ARRAY();
-	cJSON *gravity_patterns = NULL;
+	gravity = JSON_NEW_ARRAY();
 	unsigned int Ngravity = 0u;
 	ret = search_gravity(api, db, punycode, gravity, &gravity_patterns, limit, &Ngravity, partial, false);
 	if(ret != 200)
 	{
-		gravityDB_close_RO(db);
-		free(punycode);
-		return ret;
+		goto search_fail;
 	}
 
 	// Search through antigravity
-	cJSON *antigravity_patterns = NULL;
 	unsigned int Nantigravity = 0u;
 	ret = search_gravity(api, db, punycode, gravity, &antigravity_patterns, limit, &Nantigravity, partial, true);
 	if(ret != 200)
 	{
-		gravityDB_close_RO(db);
-		free(punycode);
-		return ret;
+		goto search_fail;
 	}
 
 	// Search through all regex filters
-	cJSON *regex_ids = JSON_NEW_OBJECT();
+	regex_ids = JSON_NEW_OBJECT();
 	check_all_regex(punycode, regex_ids);
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
@@ -305,9 +304,7 @@ int api_search(struct ftl_conn *api)
 		free(allow_list);
 		if(ret != 200)
 		{
-			gravityDB_close_RO(db);
-			free(punycode);
-			return ret;
+			goto search_fail;
 		}
 	}
 
@@ -318,9 +315,7 @@ int api_search(struct ftl_conn *api)
 		free(deny_list);
 		if(ret != 200)
 		{
-			gravityDB_close_RO(db);
-			free(punycode);
-			return ret;
+			goto search_fail;
 		}
 	}
 
@@ -389,4 +384,14 @@ int api_search(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "search", search);
 	JSON_SEND_OBJECT(json);
+
+search_fail:
+	gravityDB_close_RO(db);
+	JSON_DELETE(domains);
+	JSON_DELETE(gravity);
+	JSON_DELETE(gravity_patterns);
+	JSON_DELETE(antigravity_patterns);
+	JSON_DELETE(regex_ids);
+	free(punycode);
+	return ret;
 }
