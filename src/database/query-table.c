@@ -1854,8 +1854,28 @@ void DB_read_queries(void)
 
 	if(!killed && (int)imported_queries < counted_queries)
 	{
-		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu. You may see harmless memory errors in the log.",
+		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu",
 		         config.files.database.v.s, counted_queries, imported_queries);
+
+		// Slots reserved for rows skipped above are still empty. Move
+		// the queries that arrived during the import down so the array
+		// has no gaps the GC or the export would trip over
+		lock_shm();
+		const unsigned int gap = counted_queries - imported_queries;
+		for(unsigned int i = counted_queries; i < counters->queries; i++)
+		{
+			queriesData *src = getQuery(i, false);
+			queriesData *dst = getQuery(i - gap, false);
+			if(src == NULL || dst == NULL)
+				break;
+			*dst = *src;
+			memset(src, 0, sizeof(*src));
+		}
+		counters->queries -= gap;
+
+		// Invalidate the query ID cache since the indices shifted
+		queryIDMap_clear();
+		unlock_shm();
 	}
 
 	// Finalize SQLite3 statement
