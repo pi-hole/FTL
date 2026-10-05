@@ -22,6 +22,8 @@
 #include "signals.h"
 
 #include "proxy.h"
+// dotdoh_fd_track(), dotdoh_fd_close()
+#include "server.h"
 #include "registry.h"
 #include "tls_client.h"
 #include "quic_client.h"
@@ -509,9 +511,10 @@ static void handle_tcp(struct proxy_up *up)
 			poll(NULL, 0, 100);
 		return;
 	}
+	dotdoh_fd_track(cfd);
 	if(!is_loopback_v4(&peer))
 	{
-		close(cfd);
+		dotdoh_fd_close(cfd);
 		return;
 	}
 
@@ -521,7 +524,7 @@ static void handle_tcp(struct proxy_up *up)
 	if(atomic_fetch_add_explicit(&g_tcp_inflight, 1, memory_order_relaxed) >= g_tcp_cap)
 	{
 		atomic_fetch_sub_explicit(&g_tcp_inflight, 1, memory_order_relaxed);
-		close(cfd);
+		dotdoh_fd_close(cfd);
 		return;
 	}
 
@@ -578,7 +581,7 @@ static void handle_tcp(struct proxy_up *up)
 			break;
 		served++;
 	}
-	close(cfd);
+	dotdoh_fd_close(cfd);
 	atomic_fetch_sub_explicit(&g_tcp_inflight, 1, memory_order_relaxed);
 }
 
