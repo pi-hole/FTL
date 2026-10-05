@@ -68,6 +68,15 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
+// Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
+// handoffs). A forked dnsmasq TCP worker inherits them and must close them, or
+// it never sees EOF when FTL closes its end. Track a socket before connect()
+// and close it with dotdoh_fd_close(), which shuts it down and untracks it.
+void dotdoh_fd_track(int fd);
+void dotdoh_fd_close(int fd);
+// Close every tracked socket except keep_fd; only called in a forked TCP worker
+void dotdoh_fd_close_inherited(int keep_fd);
+
 // Port the inbound DoT listener binds
 #define DOT_PORT 853
 

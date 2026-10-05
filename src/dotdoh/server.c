@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 // dotdoh_source_allowed_mode()
@@ -102,6 +103,45 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 	framed[0] = (uint8_t)(blen >> 8);
 	framed[1] = (uint8_t)(blen & 0xFFu);
 	return (ssize_t)(2 + blen);
+}
+
+// Bitmap of the tracked sockets, indexed by fd. It is updated from several
+// threads, so every access is atomic; fds beyond its range are not tracked.
+#define TRACKED_FD_MAX 65536
+#define TRACKED_FD_BITS 32u
+static atomic_uint tracked_fds[TRACKED_FD_MAX / TRACKED_FD_BITS];
+
+void dotdoh_fd_track(const int fd)
+{
+	if(fd < 0 || fd >= TRACKED_FD_MAX)
+		return;
+	atomic_fetch_or(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], 1u << ((unsigned)fd % TRACKED_FD_BITS));
+}
+
+void dotdoh_fd_close(const int fd)
+{
+	if(fd < 0)
+		return;
+	// Send FIN even if a forked worker still holds a copy of this socket
+	shutdown(fd, SHUT_RDWR);
+	if(fd < TRACKED_FD_MAX)
+		atomic_fetch_and(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], ~(1u << ((unsigned)fd % TRACKED_FD_BITS)));
+	close(fd);
+}
+
+void dotdoh_fd_close_inherited(const int keep_fd)
+{
+	for(unsigned int i = 0; i < TRACKED_FD_MAX / TRACKED_FD_BITS; i++)
+	{
+		unsigned int word = atomic_exchange(&tracked_fds[i], 0u);
+		while(word != 0)
+		{
+			const int fd = (int)(i * TRACKED_FD_BITS) + __builtin_ctz(word);
+			word &= word - 1;
+			if(fd != keep_fd)
+				close(fd);
+		}
+	}
 }
 
 // Write an already-framed query (2-byte length prefix + body) on fd and read back
@@ -189,6 +229,8 @@ static int loopback_connect(void)
 	const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
 		return -1;
+	// Tracked before connect(): dnsmasq may fork the worker before connect() returns
+	dotdoh_fd_track(fd);
 
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
@@ -201,7 +243,7 @@ static int loopback_connect(void)
 	   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0 ||
 	   connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		close(fd);
+		dotdoh_fd_close(fd);
 		return -1;
 	}
 	return fd;
@@ -218,7 +260,7 @@ static pthread_once_t up_fd_once = PTHREAD_ONCE_INIT;
 static void up_fd_close(void *arg)
 {
 	(void)arg;
-	if(up_fd >= 0) { close(up_fd); up_fd = -1; }
+	if(up_fd >= 0) { dotdoh_fd_close(up_fd); up_fd = -1; }
 }
 static void up_fd_key_init(void)
 {
@@ -266,7 +308,7 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 		alen = loopback_exchange(up_fd, framed, (size_t)flen, answer, answer_sz);
 		if(alen > 0)
 			break;
-		close(up_fd);
+		dotdoh_fd_close(up_fd);
 		up_fd = -1;
 	}
 

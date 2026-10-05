@@ -4136,6 +4136,11 @@ void FTL_TCP_worker_created(const int confd)
 	// lock, otherwise is_our_lock() would compare against the parent's IDs.
 	reset_lock_owner_cache();
 
+	// Close every inherited FTL-side socket, including the peer of confd, so
+	// this worker sees EOF when FTL closes its end (confd is dnsmasq's side)
+	if(main_pid() != getpid())
+		dotdoh_fd_close_inherited(confd);
+
 	// Print this if debugging is enabled
 	if(config.debug.queries.v.b)
 	{
