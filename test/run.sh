@@ -198,6 +198,14 @@ if [ $DOTDOH_SERVER_RET != 0 ]; then
   RET=$DOTDOH_SERVER_RET
 fi
 
+# webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
+# restarts FTL.
+$BATS -p "test/webserver_acl.bats"
+WEBSERVER_ACL_RET=$?
+if [ $WEBSERVER_ACL_RET != 0 ]; then
+  RET=$WEBSERVER_ACL_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.
