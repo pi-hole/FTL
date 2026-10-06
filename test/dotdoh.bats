@@ -250,6 +250,37 @@ teardown_file() {
   assert_output --partial "25/25 resolved"
 }
 
+# Client A's dnsmasq TCP worker keeps its connection to the proxy open between
+# queries. When the proxy closes that connection after its 5 s idle timeout, A's
+# worker must see EOF and reconnect at once, even though client B's worker was
+# forked while that connection was open. Otherwise A's next query stalls for
+# dnsmasq's 10 s TCP timeout.
+@test "dotdoh-client: a TCP worker sees the proxy's idle close despite later forks" {
+  run python3 -c '
+import random, socket, struct, time
+tag = "%08x" % random.getrandbits(32)
+def ask(s, name):
+    m = struct.pack(">HHHHHH", random.getrandbits(16), 0x0100, 1, 0, 0, 0)
+    m += b"".join(bytes([len(l)]) + l.encode() for l in name.split(".")) + b"\0"
+    m += struct.pack(">HH", 1, 1)
+    s.sendall(struct.pack(">H", len(m)) + m)
+    t = time.monotonic()
+    n = struct.unpack(">H", s.recv(2))[0]
+    while n > 0:
+        n -= len(s.recv(n))
+    return time.monotonic() - t
+a = socket.create_connection(("127.0.0.1", 53), timeout=20)
+ask(a, "a1-%s.dnssec" % tag)
+b = socket.create_connection(("127.0.0.1", 53), timeout=20)
+ask(b, "b-%s.dnssec" % tag)
+time.sleep(6)
+print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
+'
+  assert_success
+  echo "second query on A took ${output} s"
+  [[ "${output%%.*}" -lt 8 ]]
+}
+
 @test "dotdoh-client: debug.dotdoh emits a per-upstream statistics summary" {
   set_debug_dotdoh true
   # Generate some traffic so the counters are non-zero. Never abort the test on a
