@@ -93,7 +93,7 @@ load 'bats_helper.bash'
   # 600 new alias-clients are added under one lock, more than one allocation
   # step of the clients array on any architecture. Runs late as they change
   # the client counts
-  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
   assert_success
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
