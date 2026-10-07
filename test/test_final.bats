@@ -125,6 +125,37 @@ load 'bats_helper.bash'
   assert_success
 }
 
+@test "Gravity action streams NUL bytes, reports a failure and refuses a second run" {
+  # Stand-in for pihole -g: output with a NUL byte in it, then fail after a moment
+  if [ -e /usr/local/bin/pihole ]; then
+    mv /usr/local/bin/pihole /usr/local/bin/pihole.test-backup
+  fi
+  rm -f /tmp/gravity_started
+  printf '#!/bin/sh\ntouch /tmp/gravity_started\nprintf "before\\000after\\n"\nsleep 2\nexit 3\n' > /usr/local/bin/pihole
+  chmod +x /usr/local/bin/pihole
+  curl -s -X POST 127.0.0.1/api/action/gravity -o /tmp/gravity_first.out &
+  first=$!
+  for i in $(seq 1 50); do
+    [ -e /tmp/gravity_started ] && break
+    sleep 0.1
+  done
+  run bash -c 'curl -s -o /tmp/gravity_second.out -w "%{http_code}" -X POST 127.0.0.1/api/action/gravity'
+  wait "${first}"
+  # Once the first run is done, a new one is accepted again
+  third=$(curl -s -o /dev/null -w "%{http_code}" -X POST 127.0.0.1/api/action/gravity)
+  rm -f /usr/local/bin/pihole
+  if [ -e /usr/local/bin/pihole.test-backup ]; then
+    mv /usr/local/bin/pihole.test-backup /usr/local/bin/pihole
+  fi
+  assert_output "409"
+  [ "${third}" = "200" ]
+  run jq -r .error.key /tmp/gravity_second.out
+  assert_output "gravity_running"
+  run bash -c 'tr "\000" "|" < /tmp/gravity_first.out'
+  assert_output --partial "before|after"
+  assert_output --partial "Gravity failed"
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
