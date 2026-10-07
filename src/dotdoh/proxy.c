@@ -96,12 +96,25 @@ static pthread_t g_workers[WORKERS_MAX];
 static int g_nworkers = 0;
 static int g_pool_k = POOLCONN_MIN;
 
-// TCP connections currently pinning a worker in handle_tcp(). Any local process
+// TCP slots: connections pinning a worker in handle_tcp(). Any local process
 // can open the loopback listener and hold its worker up to PROXY_CONN_TIMEOUT_MS,
-// so cap concurrent TCP at g_tcp_cap and drop the rest (dnsmasq reconnects),
-// keeping slow peers from starving the UDP fast path.
-static _Atomic int g_tcp_inflight = 0;
+// so at most g_tcp_cap are served at once, keeping slow peers from starving the
+// UDP fast path. Further connections wait in the listen backlog for a free slot.
+// Bits 0-7: slots taken, 8-15: of those, still before accept4() returned,
+// 16-31: accept4() calls returned (wrapping), all in one word for one CAS.
+static _Atomic uint32_t g_tcp_state = 0;
 static int g_tcp_cap = WORKERS_MIN;
+#define TCP_TAKEN(s)    ((int)((s) & 0xffu))
+#define TCP_PENDING(s)  ((int)(((s) >> 8) & 0xffu))
+#define TCP_ONE_TAKEN   0x00001u
+#define TCP_ONE_PENDING 0x00100u
+#define TCP_ONE_ACCEPT  0x10000u
+_Static_assert(WORKERS_MAX <= 255, "TCP slot counts must fit their 8-bit fields");
+
+// TCP listeners of all armed upstreams. The slots above are shared by all of
+// them, so an idle connection watches every listener for a waiting connection.
+static int g_tcp_lfds[DOTDOH_MAX_UPSTREAMS];
+static int g_n_tcp_lfds = 0;
 
 // Tuple -> upstream lookup, precomputed once at arm time so the per-query hot
 // path (findUpstreamID) is an O(1) array access, not a config walk + URI parse.
@@ -285,10 +298,11 @@ void dotdoh_init(void)
 			continue;
 		set_nonblock(g_ups[i].listener.udp_fd);
 		set_nonblock(g_ups[i].listener.tcp_fd);
+		g_tcp_lfds[g_n_tcp_lfds++] = g_ups[i].listener.tcp_fd;
 	}
 
 	// Reserve roughly a quarter of the workers for the UDP fast path; the
-	// remainder may serve TCP concurrently (see g_tcp_inflight). Publish this
+	// remainder may serve TCP concurrently (see g_tcp_state). Publish this
 	// before any worker is created so a worker cannot read it mid-write.
 	g_tcp_cap = g_nworkers - (g_nworkers / 4 > 0 ? g_nworkers / 4 : 1);
 	if(g_tcp_cap < 1)
@@ -371,6 +385,9 @@ static bool is_loopback_v4(const struct sockaddr_in *sa)
 // pipelining; on hitting either, the connection is closed and dnsmasq reconnects.
 #define PROXY_CONN_MAX_QUERIES 64
 #define PROXY_CONN_TIMEOUT_MS  60000
+
+// How long a kept-alive TCP connection may sit idle between queries.
+#define PROXY_IDLE_TIMEOUT_MS  5000
 
 // Read exactly len bytes (or fail), giving up once deadline passes.
 static bool read_full(int fd, uint8_t *buf, size_t len, uint64_t deadline)
@@ -493,16 +510,106 @@ static void handle_udp(struct proxy_up *up)
 	sendto(up->listener.udp_fd, answer, (size_t)a, 0, (struct sockaddr *)&src, sl);
 }
 
+static bool tcp_slots_full(void)
+{
+	return TCP_TAKEN(atomic_load_explicit(&g_tcp_state, memory_order_relaxed)) >= g_tcp_cap;
+}
+
+// Take a TCP slot for the accept4() that follows, if one is free. The count
+// never goes above the cap, not even briefly.
+static bool take_tcp_slot(void)
+{
+	uint32_t v = atomic_load_explicit(&g_tcp_state, memory_order_relaxed);
+	while(TCP_TAKEN(v) < g_tcp_cap)
+		if(atomic_compare_exchange_weak_explicit(&g_tcp_state, &v, v + TCP_ONE_TAKEN + TCP_ONE_PENDING,
+		                                         memory_order_relaxed, memory_order_relaxed))
+			return true;
+	return false;
+}
+
+// The accept4() after take_tcp_slot() returned; keep the slot only if it
+// produced a connection.
+static void tcp_accept_done(const bool keep_slot)
+{
+	atomic_fetch_add_explicit(&g_tcp_state, TCP_ONE_ACCEPT - TCP_ONE_PENDING -
+	                          (keep_slot ? 0u : TCP_ONE_TAKEN), memory_order_relaxed);
+}
+
+static void release_tcp_slot(void)
+{
+	atomic_fetch_sub_explicit(&g_tcp_state, TCP_ONE_TAKEN, memory_order_relaxed);
+}
+
+// Free the caller's slot for a connection waiting in a backlog in p[0..n-1], if
+// all slots are taken, none awaits accept4() and nothing changed meanwhile.
+static bool yield_tcp_slot(struct pollfd *p, const nfds_t n)
+{
+	uint32_t v = atomic_load_explicit(&g_tcp_state, memory_order_relaxed);
+	if(TCP_TAKEN(v) < g_tcp_cap || TCP_PENDING(v) > 0)
+		return false;
+	if(poll(p, n, 0) <= 0)
+		return false;
+	return atomic_compare_exchange_strong_explicit(&g_tcp_state, &v, v - TCP_ONE_TAKEN,
+	                                               memory_order_relaxed, memory_order_relaxed);
+}
+
+// Wait for the next query on a kept-alive connection that has been answered
+// before (dnsmasq reconnects those silently). Returns false to close it: on idle
+// timeout, on shutdown, or after yielding its slot (then *slot_held is cleared).
+static bool wait_next_query(int cfd, bool *slot_held)
+{
+	struct pollfd p[1 + DOTDOH_MAX_UPSTREAMS];
+	const nfds_t np = 1 + (nfds_t)g_n_tcp_lfds;
+	const uint64_t deadline = now_ms() + PROXY_IDLE_TIMEOUT_MS;
+	while(!killed)
+	{
+		const uint64_t now = now_ms();
+		if(now >= deadline)
+			return false;
+		const uint64_t left = deadline - now;
+		p[0] = (struct pollfd){ .fd = cfd, .events = POLLIN, .revents = 0 };
+		for(int i = 0; i < g_n_tcp_lfds; i++)
+			p[1 + i] = (struct pollfd){ .fd = g_tcp_lfds[i], .events = POLLIN, .revents = 0 };
+		// Wake at least once a second to notice shutdown
+		const int r = poll(p, np, left < 1000 ? (int)left : 1000);
+		if(r < 0 && errno != EINTR)
+			return false;
+		if(r <= 0)
+			continue;
+		if(p[0].revents != 0)
+			return true; // next query (or EOF/error, which the read reports)
+		if(yield_tcp_slot(p + 1, np - 1))
+		{
+			*slot_held = false;
+			return false;
+		}
+		// Another worker accepts the waiting connection; watch only our own
+		// connection for 50 ms rather than spinning on the readable listener
+		p[0].revents = 0;
+		if(poll(p, 1, 50) > 0)
+			return true;
+	}
+	return false;
+}
+
 // A TCP connection from dnsmasq: length-prefixed queries in, length-prefixed
 // answers out, until the peer closes or something fails.
 static void handle_tcp(struct proxy_up *up)
 {
+	// Admission control: keep TCP-pinned workers under a ceiling so a burst of slow
+	// (but valid) loopback peers cannot occupy the whole pool. The slot is taken
+	// before accepting, so a connection over the limit stays queued in the
+	// listen backlog until a slot frees up, instead of being closed unanswered.
+	if(!take_tcp_slot())
+		return;
+
 	struct sockaddr_in peer;
 	socklen_t pl = sizeof(peer);
 	// accept4() with SOCK_CLOEXEC (not inherited from the listener), so the accepted
 	// fd does not leak across FTL's execvp() self-restart. A non-blocking listener
 	// may return EAGAIN if another worker won the accept - just return.
 	const int cfd = accept4(up->listener.tcp_fd, (struct sockaddr *)&peer, &pl, SOCK_CLOEXEC);
+	tcp_accept_done(cfd >= 0);
 	if(cfd < 0)
 	{
 		// On fd exhaustion the connection stays queued and poll() would wake us
@@ -515,16 +622,7 @@ static void handle_tcp(struct proxy_up *up)
 	if(!is_loopback_v4(&peer))
 	{
 		dotdoh_fd_close(cfd);
-		return;
-	}
-
-	// Admission control: keep TCP-pinned workers under a ceiling so a burst of slow
-	// (but valid) loopback peers cannot occupy the whole pool. Over the limit we
-	// close immediately; dnsmasq reconnects or falls back to UDP.
-	if(atomic_fetch_add_explicit(&g_tcp_inflight, 1, memory_order_relaxed) >= g_tcp_cap)
-	{
-		atomic_fetch_sub_explicit(&g_tcp_inflight, 1, memory_order_relaxed);
-		dotdoh_fd_close(cfd);
+		release_tcp_slot();
 		return;
 	}
 
@@ -544,12 +642,15 @@ static void handle_tcp(struct proxy_up *up)
 	// valid queries forever and starve other work. dnsmasq simply reconnects.
 	const uint64_t conn_deadline = now_ms() + PROXY_CONN_TIMEOUT_MS;
 	int served = 0;
+	bool slot_held = true;
 	for(;;)
 	{
 		// A long-lived-but-valid connection must not delay shutdown by up to
 		// PROXY_CONN_TIMEOUT_MS: bail out as soon as terminate is signalled.
 		BREAK_IF_KILLED();
 		if(served >= PROXY_CONN_MAX_QUERIES || now_ms() >= conn_deadline)
+			break;
+		if(served > 0 && !wait_next_query(cfd, &slot_held))
 			break;
 
 		// Separate read and write budgets, each fresh: the upstream exchange
@@ -582,7 +683,8 @@ static void handle_tcp(struct proxy_up *up)
 		served++;
 	}
 	dotdoh_fd_close(cfd);
-	atomic_fetch_sub_explicit(&g_tcp_inflight, 1, memory_order_relaxed);
+	if(slot_held)
+		release_tcp_slot();
 }
 
 // Periodic per-upstream keep-alive/resumption summary, emitted only under
@@ -660,6 +762,12 @@ static void *worker_main(void *val)
 
 	while(!killed)
 	{
+		// While all TCP slots are taken, leave new connections in the listen
+		// backlog rather than waking up for them over and over
+		const short tcp_events = tcp_slots_full() ? 0 : POLLIN;
+		for(nfds_t k = 0; k < n; k++)
+			if(is_tcp[k])
+				fds[k].events = tcp_events;
 		const int r = poll(fds, n, 1000);
 		if(r <= 0)
 		{
@@ -714,6 +822,7 @@ void dotdoh_cleanup(void)
 	}
 	g_nups = 0;
 	g_nactive = 0;
+	g_n_tcp_lfds = 0;
 	g_armed = false;
 	g_uri_count = 0;
 	tls_client_global_free();
