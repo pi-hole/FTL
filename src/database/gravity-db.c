@@ -220,6 +220,7 @@ static sqlite3_stmt *parent_regex_allow_groups_stmt = NULL;
 
 // Private prototypes
 static bool gravityDB_open(void);
+static void gravity_remember_open(const struct stat *st);
 
 // Table names corresponding to the enum defined in gravity-db.h
 static const char* tablename[] = { "vw_gravity", "antigravity", "vw_denylist", "vw_allowlist", "vw_regex_denylist", "vw_regex_allowlist", "client", "group", "adlist", "denied_domains", "allowed_domains", "" };
@@ -529,6 +530,8 @@ static bool gravityDB_open(void)
 	// any entries, allowing us to skip the antigravity check when it's
 	// empty
 	gravity_check_list_presence();
+
+	gravity_remember_open(&st);
 
 	log_debug(DEBUG_DATABASE, "gravityDB_open(): Successfully opened gravity.db");
 
@@ -3330,14 +3333,69 @@ void check_restored_gravity(void)
 	sqlite3_finalize(query_stmt);
 }
 
-// Shared between the DB thread and API/status readers
-static sqlite3_int64 last_updated = -1;
-static pthread_mutex_t last_updated_lock = PTHREAD_MUTEX_INITIALIZER;
-bool gravity_updated(void)
+// The gravity database last loaded, or last reacted to. Shared between the DB
+// thread, the lookups opening the database and API/status readers
+static struct {
+	dev_t dev;
+	ino_t ino;
+	sqlite3_int64 updated;
+} gravity_file = { 0, 0, -1 };
+static pthread_mutex_t gravity_file_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Remember the database gravityDB_open() has just opened, st is its path's stat()
+static void gravity_remember_open(const struct stat *st)
+{
+	// Forked TCP workers do not poll, and must not take a lock their
+	// parent's DB thread may have held at fork time
+	if(main_pid() != getpid())
+		return;
+
+	sqlite3_int64 updated = 0;
+	sqlite3_stmt *stmt = NULL;
+	if(sqlite3_prepare_v2(gravity_db, "SELECT value FROM info WHERE property = 'updated';",
+	                      -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+		updated = sqlite3_column_int64(stmt, 0);
+	sqlite3_finalize(stmt);
+
+	pthread_mutex_lock(&gravity_file_lock);
+	gravity_file.dev = st->st_dev;
+	gravity_file.ino = st->st_ino;
+	gravity_file.updated = updated;
+	pthread_mutex_unlock(&gravity_file_lock);
+}
+
+// Check if the gravity database at the configured path is not the one loaded.
+// A different file is detected on every call, a changed timestamp only with
+// check_timestamp as that needs opening the database
+bool gravity_updated(const bool check_timestamp)
 {
 	bool changed = false;
 	sqlite3 *db = NULL;
 	sqlite3_stmt *query_stmt = NULL;
+
+	// pihole -g swaps in a new file, whatever its timestamp says
+	struct stat st;
+	if(stat(config.files.gravity.v.s, &st) == 0)
+	{
+		pthread_mutex_lock(&gravity_file_lock);
+		const bool replaced = gravity_file.ino != 0 &&
+		                      (st.st_dev != gravity_file.dev || st.st_ino != gravity_file.ino);
+		if(replaced)
+		{
+			gravity_file.dev = st.st_dev;
+			gravity_file.ino = st.st_ino;
+		}
+		pthread_mutex_unlock(&gravity_file_lock);
+
+		if(replaced)
+		{
+			log_info("Gravity database has been replaced, reloading now");
+			return true;
+		}
+	}
+
+	if(!check_timestamp)
+		return false;
 
 	// Check if database is a readable file
 	if(file_readable(config.files.gravity.v.s) == false)
@@ -3392,22 +3450,15 @@ bool gravity_updated(void)
 	// Get timestamp from database
 	const sqlite3_int64 updated = sqlite3_column_int64(query_stmt, 0);
 
-	// Check if timestamp has changed
-	pthread_mutex_lock(&last_updated_lock);
-	const sqlite3_int64 prev_updated = last_updated;
-	if(prev_updated == -1)
+	// Check if timestamp differs from the database loaded
+	pthread_mutex_lock(&gravity_file_lock);
+	if(updated != gravity_file.updated)
 	{
-		// First run, set last_updated
-		last_updated = updated;
-	}
-	else if(prev_updated < updated)
-	{
-		// Gravity database has been updated
-		last_updated = updated;
+		gravity_file.updated = updated;
 		changed = true;
 		log_info("Gravity database has been updated, reloading now");
 	}
-	pthread_mutex_unlock(&last_updated_lock);
+	pthread_mutex_unlock(&gravity_file_lock);
 
 	// Finalize statement
 	sqlite3_finalize(query_stmt);
@@ -3421,8 +3472,8 @@ bool gravity_updated(void)
 // Thread-safe getter for the last updated timestamp of the gravity database
 time_t gravity_last_updated(void)
 {
-	pthread_mutex_lock(&last_updated_lock);
-	const sqlite3_int64 updated = last_updated;
-	pthread_mutex_unlock(&last_updated_lock);
+	pthread_mutex_lock(&gravity_file_lock);
+	const sqlite3_int64 updated = gravity_file.updated;
+	pthread_mutex_unlock(&gravity_file_lock);
 	return updated > 0 ? (time_t)updated : 0;
 }

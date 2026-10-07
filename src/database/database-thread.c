@@ -219,17 +219,19 @@ void *DB_thread(void *val)
 		// If the database is busy, no moving is happening and queries are retained in
 		// here until the next try. This ensures we cannot loose queries.
 		// Do this once per second
-		if(now > before)
+		const bool new_second = now > before;
+		if(new_second)
 		{
 			TIMED_DB_OP(queries_to_database(false));
 			before = now;
+		}
 
-			// Check if we need to reload gravity
-			if(gravity_updated())
-			{
-				// Reload gravity
-				set_event(RELOAD_GRAVITY);
-			}
+		// Check if we need to reload gravity. A swapped database is caught
+		// within one iteration, a changed timestamp once per second
+		if(gravity_updated(new_second))
+		{
+			// Reload gravity
+			set_event(RELOAD_GRAVITY);
 		}
 
 		// Intermediate cancellation-point
