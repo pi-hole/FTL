@@ -25,6 +25,18 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "A leftover world-readable CLI password file is replaced" {
+  # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
+  holder=$(cat /tmp/cli_pw_holder.pid)
+  run cat "/proc/${holder}/fd/0"
+  kill "${holder}"
+  assert_output "stale"
+  run stat -c '%a' /etc/pihole/cli_pw
+  assert_output "640"
+  run cat /etc/pihole/cli_pw
+  refute_output "stale"
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
    assert_output --partial "CRIT: pihole-FTL is already running"
