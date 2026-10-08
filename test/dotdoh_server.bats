@@ -394,7 +394,7 @@ setup_file() {
            --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
            -H 'content-type: application/dns-message' --data-binary "@$q" \
            "https://pi.hole/dns-query"
-  assert_output "502"
+  assert_output "500"
 }
 
 @test "dotdoh-server: inbound queries are attributed to the real downstream client" {
