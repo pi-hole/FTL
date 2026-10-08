@@ -139,6 +139,7 @@ struct doq_stream {
 	struct doq_conn *conn;
 	SSL *ssl;                // OpenSSL QUIC child stream object
 	int64_t id;
+	uint64_t gen;            // tells successive streams in this slot apart
 	enum doq_state st;
 	int upfd;                // loopback resolve socket (-1 when none is open)
 	bool up_pooled;          // upfd came from the shared pool (may be stale)
@@ -455,6 +456,10 @@ static void stream_free(struct doq_stream *s)
 	g_nstreams--;
 }
 
+// Bumped for every stream taken. Stream IDs restart at 0 on each connection, so
+// they cannot tell a reused slot from the stream it held before.
+static uint64_t g_stream_gen = 0;
+
 // Take a stream slot for an accepted QUIC stream. Returns NULL (having freed the
 // stream object) when a cap is reached or an allocation fails.
 static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
@@ -496,6 +501,7 @@ static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
 	s->conn = c;
 	s->ssl = ssl;
 	s->id = (int64_t)SSL_get_stream_id(ssl);
+	s->gen = ++g_stream_gen;
 	s->st = DQ_READ;
 	s->deadline = doq_now() + DOQ_QUERY_TIMEOUT_S;
 	c->nstreams++;
@@ -1171,6 +1177,7 @@ void *dotdoh_doq_thread(void *val)
 		// currently waiting on one.
 		struct pollfd pfd[2 + DOQ_MAX_STREAMS];
 		struct doq_stream *pstream[2 + DOQ_MAX_STREAMS];
+		uint64_t pgen[2 + DOQ_MAX_STREAMS];
 		nfds_t n = 0;
 		for(int i = 0; i < g_nlisten; i++)
 		{
@@ -1180,6 +1187,7 @@ void *dotdoh_doq_thread(void *val)
 				pfd[n].events |= POLLOUT;
 			pfd[n].revents = 0;
 			pstream[n] = NULL;
+			pgen[n] = 0;
 			n++;
 		}
 		// A connection may also need to write; its datagrams leave through a
@@ -1200,6 +1208,7 @@ void *dotdoh_doq_thread(void *val)
 			pfd[n].events = s->up_ev;
 			pfd[n].revents = 0;
 			pstream[n] = s;
+			pgen[n] = s->gen;
 			n++;
 		}
 
@@ -1227,10 +1236,12 @@ void *dotdoh_doq_thread(void *val)
 
 		// Drive every live stream. QUIC readiness is not an fd condition, so the
 		// stream states that read or write on the connection are simply retried
-		// each wake-up; the loopback states only run when their fd is ready.
+		// each wake-up; the loopback states only run when their fd is ready. The
+		// accepts above may have freed a polled slot and handed it to a new stream,
+		// whose fd these revents do not describe, so the generation must match.
 		for(nfds_t i = 0; i < n; i++)
-			if(pstream[i] != NULL && pstream[i]->used && pfd[i].revents != 0 &&
-			   drive_stream(pstream[i]) < 0)
+			if(pstream[i] != NULL && pstream[i]->used && pstream[i]->gen == pgen[i] &&
+			   pfd[i].revents != 0 && drive_stream(pstream[i]) < 0)
 				stream_free(pstream[i]);
 		for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		{
