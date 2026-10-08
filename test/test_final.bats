@@ -90,6 +90,34 @@ load 'bats_helper.bash'
   assert_line --index 0 "1"
 }
 
+@test "New clients skip the alias-client lookup when no alias-client is configured" {
+  # Reimport without the alias-client of the test database, then put it back
+  # for the reimport test below
+  saved="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".mode insert aliasclient" "SELECT * FROM aliasclient;")"
+  [[ -n "${saved}" ]]
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM aliasclient;"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN+3 "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Imported 0 alias-clients' /var/log/pihole/FTL.log 30 ${logsize_before}"
+  imported=$status
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  dig +short +tries=1 +time=2 -b 127.0.0.33 alias-lookup.ftl @127.0.0.1 > /dev/null
+  lookups="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Looking for the alias-client for client 127.0.0.33' || true)"
+  queries="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'query "alias-lookup.ftl" from lo/127.0.0.33#' || true)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "${saved}"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN+3 "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Imported 1 alias-client' /var/log/pihole/FTL.log 30 ${logsize_before}"
+  assert_success
+
+  printf "reimport: %s, queries: %s, lookups: %s\n" "${imported}" "${queries}" "${lookups}"
+  [[ "${imported}" == "0" ]]
+  [[ "${queries}" -ge 1 ]]
+  [[ "${lookups}" == "0" ]]
+}
+
 @test "Reimporting more alias-clients than the clients array holds" {
   # 600 new alias-clients are added under one lock, more than one allocation
   # step of the clients array on any architecture. Runs late as they change
