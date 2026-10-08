@@ -98,7 +98,9 @@ typedef struct {
 	// at offset 60 and straddle the cache line boundary (bytes 60–67),
 	// causing a split load on every client IP comparison.
 	unsigned char magic;
-	char hwlen;
+	// -1 before the first MAC lookup, 0 if it found none. Explicitly signed,
+	// plain char is unsigned on ARM and RISC-V
+	int8_t hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
 		bool new:1;
