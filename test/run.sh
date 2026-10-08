@@ -206,6 +206,14 @@ if [ $WEBSERVER_ACL_RET != 0 ]; then
   RET=$WEBSERVER_ACL_RET
 fi
 
+# Several secure webserver.port entries for the TLS terminator. Also after
+# pytest: every port change restarts FTL.
+$BATS -p "test/webserver_tls_ports.bats"
+WEBSERVER_TLS_PORTS_RET=$?
+if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
+  RET=$WEBSERVER_TLS_PORTS_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.

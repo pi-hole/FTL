@@ -17,12 +17,24 @@
 #include <stdbool.h>
 #include <stddef.h> // size_t
 
-// Start the TLS terminator: bind public_port on bind_addr (NULL/"" = all
-// interfaces, else an IPv4/IPv6 literal), terminate TLS with the PEM (cert + key)
-// at cert_path, and forward accepted connections as plain HTTP/1.1 to
-// 127.0.0.1:backend_port. Spawns an accept thread. Returns true on success; on
-// failure nothing is left running.
-bool terminator_start(const char *bind_addr, int public_port, int backend_port, const char *cert_path);
+// Most secure webserver.port entries the terminator serves
+#define TERMINATOR_MAX_LISTENERS 8
+
+// A secure webserver.port entry: addr is "" for all interfaces, else an IPv4 or
+// IPv6 literal; optional ('o') entries may fail to bind
+struct terminator_listener
+{
+	char addr[64];
+	int port;
+	bool optional;
+};
+
+// Start the TLS terminator: bind every listener (TCP, and UDP for HTTP/3),
+// terminate TLS with the PEM (cert + key) at cert_path, and forward accepted
+// connections as plain HTTP/1.1 to 127.0.0.1:backend_port. Spawns an accept
+// thread per TCP listener. Returns the index of the first entry it serves, or -1
+// if a mandatory entry or every entry cannot be bound; then nothing is left running.
+int terminator_start(const struct terminator_listener *ls, unsigned int n, int backend_port, const char *cert_path);
 
 // Stop the terminator and free all resources. Safe to call if never started or already stopped.
 void terminator_stop(void);

@@ -221,23 +221,27 @@ static uint64_t mono_ms(void)
 // Terminator state. There is a single terminator instance for the whole
 // process, mirroring the single CivetWeb context in webserver.c.
 static SSL_CTX *ssl_ctx = NULL;
-static int listen_fd = -1;
+// One TCP listener per secure webserver.port entry, each with its accept thread
+static int listen_fds[TERMINATOR_MAX_LISTENERS];
+static unsigned int n_listen_fds = 0;
+static pthread_t accept_tids[TERMINATOR_MAX_LISTENERS];
+static unsigned int n_accept_tids = 0;
 static int backend_port = 0;
 static volatile bool running = false;
-static pthread_t accept_tid;
-static bool accept_tid_valid = false;
 
 #ifdef HAVE_HTTP3
 // HTTP/3 (QUIC) listener state, owned by the dedicated event-loop thread below
-// (one UDP socket, one OpenSSL QUIC listener, all connections and streams).
+// (one UDP socket and OpenSSL QUIC listener per secure entry, all connections
+// and streams).
 static SSL_CTX *quic_ctx = NULL;
-static int quic_fd = -1;
+static int quic_fds[TERMINATOR_MAX_LISTENERS];
+// Port of each UDP socket, advertised via Alt-Svc to h2 clients on the same
+// port so h3-capable browsers upgrade to HTTP/3.
+static int quic_ports[TERMINATOR_MAX_LISTENERS];
+static unsigned int n_quic_fds = 0;
 static pthread_t quic_tid;
 static bool quic_tid_valid = false;
 static volatile bool quic_running = false;
-// Public UDP/TCP port the QUIC listener bound to, advertised to h2 clients via
-// Alt-Svc so h3-capable browsers upgrade to HTTP/3.
-static int quic_public_port = 0;
 #endif
 
 // Log the pending OpenSSL error queue at error level, prefixed with context.
@@ -311,8 +315,6 @@ static SSL_CTX *create_server_ctx(const char *cert_path)
 	return c;
 }
 
-// Bind a dual-stack (IPv4 + IPv6) TCP listener on the given port, all
-// interfaces. Returns the fd or -1.
 // Fill a dual-stack sockaddr_in6 for the given bind address and port. addr may be
 // NULL or empty (bind all interfaces), an IPv6 literal, or an IPv4 literal (bound
 // as a v4-mapped address on the IPv6 socket, honouring IPV6_V6ONLY=off). Returns
@@ -341,7 +343,9 @@ static bool fill_bind_addr(struct sockaddr_in6 *sa, const char *addr, int port)
 	return false;
 }
 
-static int bind_listener(const char *addr, int port)
+// Bind a TCP listener for a secure entry, dual-stack unless v6only. Failing to
+// bind is an error unless the entry is optional. Returns the fd or -1.
+static int bind_listener(const char *addr, int port, bool v6only, bool optional)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
 	// where it would keep the port busy and make the new process fail to re-bind.
@@ -354,9 +358,10 @@ static int bind_listener(const char *addr, int port)
 
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	// Accept both IPv4 (as v4-mapped) and IPv6 on this single socket.
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	// Accept both IPv4 (as v4-mapped) and IPv6 on this single socket, unless
+	// an IPv4 entry shares the port.
+	const int v6 = v6only ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6, sizeof(v6));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
@@ -367,8 +372,13 @@ static int bind_listener(const char *addr, int port)
 	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: bind() to %s#%d failed: %s",
-		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		// The 'o' flag: an optional port that cannot be used is not an error
+		if(optional)
+			log_info("Terminator: optional port %s#%d not available: %s",
+			         (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		else
+			log_err("Terminator: bind() to %s#%d failed: %s",
+			        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -379,6 +389,68 @@ static int bind_listener(const char *addr, int port)
 		return -1;
 	}
 	return fd;
+}
+
+// How much of its port a secure entry takes, broadest first: every address (a
+// bare port, or "::" if no IPv4 entry shares the port), all IPv4, all IPv6, one
+enum { SCOPE_ALL, SCOPE_V4, SCOPE_V6, SCOPE_ONE };
+
+// How the terminator binds a secure entry
+struct listener_plan
+{
+	struct sockaddr_in6 sa;
+	bool valid;   // address could be parsed
+	bool v4;      // an IPv4 address
+	bool v6only;  // an IPv6 address on a port an IPv4 entry shares
+	int scope;
+	int fd;       // TCP listener, -1 if not bound
+};
+
+// Work out the address, scope and IPv6-only flag of each of the n entries
+static void plan_listeners(const struct terminator_listener *ls, unsigned int n,
+                           struct listener_plan *p)
+{
+	static const unsigned char v4any[16] = { [10] = 0xff, [11] = 0xff };
+	for(unsigned int i = 0; i < n; i++)
+	{
+		p[i].valid = fill_bind_addr(&p[i].sa, ls[i].addr, ls[i].port);
+		p[i].v4 = p[i].valid && memcmp(&p[i].sa.sin6_addr, v4any, 12) == 0;
+		p[i].fd = -1;
+	}
+	for(unsigned int i = 0; i < n; i++)
+	{
+		bool v4_port = false;
+		for(unsigned int j = 0; j < n; j++)
+			if(ls[j].port == ls[i].port && p[j].v4)
+				v4_port = true;
+		const bool any = memcmp(&p[i].sa.sin6_addr, &in6addr_any, 16) == 0;
+		if(!p[i].valid)
+			p[i].scope = SCOPE_ONE;
+		else if(ls[i].addr[0] == '\0' || (any && !v4_port))
+			p[i].scope = SCOPE_ALL;
+		else if(any)
+			p[i].scope = SCOPE_V6;
+		else if(memcmp(&p[i].sa.sin6_addr, v4any, 16) == 0)
+			p[i].scope = SCOPE_V4;
+		else
+			p[i].scope = SCOPE_ONE;
+		p[i].v6only = p[i].valid && !p[i].v4 && ls[i].addr[0] != '\0' && v4_port;
+	}
+}
+
+// Whether an entry that is bound already serves entry i
+static bool listener_covered(const struct terminator_listener *ls,
+                             const struct listener_plan *p, unsigned int n, unsigned int i)
+{
+	if(!p[i].valid)
+		return false;
+	for(unsigned int j = 0; j < n; j++)
+		if(j != i && p[j].fd >= 0 && ls[j].port == ls[i].port &&
+		   (p[j].scope == SCOPE_ALL || (p[j].scope == SCOPE_V4 && p[i].v4) ||
+		    (p[j].scope == SCOPE_V6 && !p[i].v4) ||
+		    memcmp(&p[j].sa.sin6_addr, &p[i].sa.sin6_addr, 16) == 0))
+			return true;
+	return false;
 }
 
 // Connect a fresh plaintext TCP socket to the CivetWeb backend on loopback.
@@ -1455,6 +1527,7 @@ struct h2_stream {
 struct h2_conn {
 	SSL *ssl;
 	int client_fd;
+	int local_port;            // public port the client connected to (Alt-Svc)
 	nghttp2_session *session;
 	struct h2_stream *streams; // singly linked list of active streams
 
@@ -1760,6 +1833,19 @@ static void h2_add_nv(nghttp2_nv *nva, size_t *nvlen, char *name, char *value)
 	(*nvlen)++;
 }
 
+#ifdef HAVE_HTTP3
+// Whether HTTP/3 is served on this port, so h2 clients on it can be pointed there
+static bool quic_serves_port(int port)
+{
+	if(!quic_running)
+		return false;
+	for(unsigned int i = 0; i < n_quic_fds; i++)
+		if(quic_ports[i] == port)
+			return true;
+	return false;
+}
+#endif
+
 // Parse the HTTP/1.1 response header block hdr[0..hdrlen) (the bytes before the
 // terminating CRLFCRLF), determine the body framing, and submit the HTTP/2
 // response headers with a streaming data provider. nghttp2 copies the header
@@ -1856,14 +1942,15 @@ static int h2_parse_and_submit(struct h2_stream *s, char *hdr, size_t hdrlen)
 
 #ifdef HAVE_HTTP3
 	// Advertise HTTP/3 so an h3-capable browser on this h2 connection upgrades to
-	// it, but only while the QUIC listener is actually up. h2_add_nv() lowercases
-	// the name in place, so both name and value must be writable; nghttp2 copies
-	// the nv, so these stack buffers only need to outlive the submit call below.
+	// it, but only while a QUIC listener is up on the port the client connected
+	// to. h2_add_nv() lowercases the name in place, so both name and value must be
+	// writable; nghttp2 copies the nv, so these stack buffers only need to outlive
+	// the submit call below.
 	char altsvc_name[] = "alt-svc";
 	char altsvc[32];
-	if(quic_running && nvlen < H2_MAX_HDRS)
+	if(quic_serves_port(s->conn->local_port) && nvlen < H2_MAX_HDRS)
 	{
-		snprintf(altsvc, sizeof(altsvc), "h3=\":%d\"; ma=86400", quic_public_port);
+		snprintf(altsvc, sizeof(altsvc), "h3=\":%d\"; ma=86400", s->conn->local_port);
 		h2_add_nv(nva, &nvlen, altsvc_name, altsvc);
 	}
 #endif
@@ -2296,6 +2383,10 @@ static void terminator_h2_serve(SSL *ssl, int client_fd)
 	memset(&conn, 0, sizeof(conn));
 	conn.ssl = ssl;
 	conn.client_fd = client_fd;
+	struct sockaddr_storage local;
+	socklen_t ll = sizeof(local);
+	if(getsockname(client_fd, (struct sockaddr *)&local, &ll) == 0 && local.ss_family == AF_INET6)
+		conn.local_port = ntohs(((struct sockaddr_in6 *)&local)->sin6_port);
 
 	nghttp2_option *opt = NULL;
 	if(nghttp2_option_new(&opt) != 0)
@@ -2525,6 +2616,7 @@ struct h3_stream {
 struct h3_conn {
 	struct h3_conn *next;
 	SSL *ssl;              // OpenSSL QUIC connection object
+	unsigned int lsn;      // index of the listener (and UDP socket) it arrived on
 	nghttp3_conn *h3;
 	struct h3_stream *streams;
 	bool dead;             // scheduled for teardown
@@ -3405,14 +3497,16 @@ static const nghttp3_callbacks h3_callbacks = {
 	.end_stream   = h3_cb_end_stream,
 };
 
-// Set up nghttp3 and the mandatory outgoing control / QPACK streams for a freshly
-// accepted QUIC connection. Returns the connection state or NULL on failure.
-static struct h3_conn *h3_conn_new(SSL *cssl)
+// Set up nghttp3 and the mandatory outgoing control / QPACK streams for a QUIC
+// connection freshly accepted on listener lsn. Returns the connection state or
+// NULL on failure.
+static struct h3_conn *h3_conn_new(SSL *cssl, unsigned int lsn)
 {
 	struct h3_conn *c = calloc(1, sizeof(*c));
 	if(c == NULL)
 		return NULL;
 	c->ssl = cssl;
+	c->lsn = lsn;
 	c->gen = ++h3_gen_ctr; // loop thread only; stable id for off-loop job lookup
 
 	// Capture the real client address so each backend request can announce it
@@ -3450,7 +3544,7 @@ static struct h3_conn *h3_conn_new(SSL *cssl)
 	if(c->have_client_addr)
 	{
 		socklen_t dl = sizeof(c->server_addr);
-		if(getsockname(quic_fd, (struct sockaddr *)&c->server_addr, &dl) != 0)
+		if(getsockname(quic_fds[lsn], (struct sockaddr *)&c->server_addr, &dl) != 0)
 			c->server_addr.ss_family = AF_UNSPEC;
 	}
 
@@ -3573,15 +3667,18 @@ static void h3_conn_reap_streams(struct h3_conn *c)
 
 // Compute how long poll() may sleep before an OpenSSL QUIC timer needs service,
 // capped so a stopping terminator is noticed promptly.
-static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
+static int h3_event_timeout_ms(SSL *const *listeners, unsigned int nl, struct h3_conn *conns)
 {
 	int best = 1000; // cap in milliseconds
 	struct timeval tv;
 	int is_infinite = 0;
-	if(SSL_get_event_timeout(listener, &tv, &is_infinite) == 1 && !is_infinite)
+	for(unsigned int l = 0; l < nl; l++)
 	{
-		int ms = (int)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
-		if(ms < best) best = ms;
+		if(SSL_get_event_timeout(listeners[l], &tv, &is_infinite) == 1 && !is_infinite)
+		{
+			int ms = (int)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
+			if(ms < best) best = ms;
+		}
 	}
 	for(struct h3_conn *c = conns; c != NULL; c = c->next)
 	{
@@ -3688,18 +3785,16 @@ static void h3_drain_resolved(struct h3_conn *conns)
 	}
 }
 
-static void *quic_accept_loop(void *arg)
+// Create a non-blocking QUIC listener on the UDP socket fd. Returns NULL on failure.
+static SSL *quic_listener_new(int fd)
 {
-	(void)arg;
-	prctl(PR_SET_NAME, "terminator-h3", 0, 0, 0);
-
 	SSL *listener = SSL_new_listener(quic_ctx, 0);
 	if(listener == NULL)
 	{
 		log_ssl_errors("SSL_new_listener() failed");
 		return NULL;
 	}
-	BIO *dbio = BIO_new_dgram(quic_fd, BIO_NOCLOSE);
+	BIO *dbio = BIO_new_dgram(fd, BIO_NOCLOSE);
 	if(dbio == NULL)
 	{
 		log_ssl_errors("BIO_new_dgram() failed");
@@ -3714,9 +3809,30 @@ static void *quic_accept_loop(void *arg)
 		SSL_free(listener);
 		return NULL;
 	}
+	return listener;
+}
 
-	// poll() scratch: index 0 is always the shared UDP socket, the rest are the
-	// active per-stream backend sockets. pmap[i] maps pfds[i] back to its stream.
+static void *quic_accept_loop(void *arg)
+{
+	(void)arg;
+	prctl(PR_SET_NAME, "terminator-h3", 0, 0, 0);
+
+	// One QUIC listener per UDP socket: listeners[l] runs on quic_fds[l]
+	SSL *listeners[TERMINATOR_MAX_LISTENERS] = { NULL };
+	const unsigned int nl = n_quic_fds;
+	for(unsigned int l = 0; l < nl; l++)
+	{
+		if((listeners[l] = quic_listener_new(quic_fds[l])) == NULL)
+		{
+			for(unsigned int k = 0; k < l; k++)
+				SSL_free(listeners[k]);
+			return NULL;
+		}
+	}
+
+	// poll() scratch: indices [0, nl) are the UDP sockets, nl is the DoH-resolve
+	// wakeup eventfd, the rest are the active per-stream backend sockets. pmap[i]
+	// maps pfds[i] back to its stream.
 	struct pollfd *pfds = NULL;
 	struct h3_stream **pmap = NULL;
 	size_t pcap = 0;
@@ -3725,9 +3841,9 @@ static void *quic_accept_loop(void *arg)
 	unsigned int h3_live = 0; // live connections on `conns`, capped below
 	while(quic_running)
 	{
-		// Size the poll set: the UDP socket, the DoH-resolve wakeup eventfd, plus
+		// Size the poll set: the UDP sockets, the DoH-resolve wakeup eventfd, plus
 		// every active backend socket.
-		size_t need = 2;
+		size_t need = nl + 1;
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
 				if(s->be_fd >= 0)
@@ -3752,23 +3868,26 @@ static void *quic_accept_loop(void *arg)
 			continue;
 		}
 
-		pfds[0].fd = quic_fd;
-		pfds[0].events = POLLIN;
-		pfds[0].revents = 0;
-		pmap[0] = NULL;
-		if(SSL_net_write_desired(listener))
-			pfds[0].events |= POLLOUT;
+		for(unsigned int l = 0; l < nl; l++)
+		{
+			pfds[l].fd = quic_fds[l];
+			pfds[l].events = POLLIN;
+			pfds[l].revents = 0;
+			pmap[l] = NULL;
+			if(SSL_net_write_desired(listeners[l]))
+				pfds[l].events |= POLLOUT;
+		}
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 			if(SSL_net_write_desired(c->ssl))
-				pfds[0].events |= POLLOUT;
+				pfds[c->lsn].events |= POLLOUT;
 
-		// Slot 1: the eventfd a DoH worker writes when a resolve completes.
-		pfds[1].fd = h3_wake_fd;
-		pfds[1].events = POLLIN;
-		pfds[1].revents = 0;
-		pmap[1] = NULL;
+		// Slot nl: the eventfd a DoH worker writes when a resolve completes.
+		pfds[nl].fd = h3_wake_fd;
+		pfds[nl].events = POLLIN;
+		pfds[nl].revents = 0;
+		pmap[nl] = NULL;
 
-		nfds_t nfds = 2;
+		nfds_t nfds = nl + 1;
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 		{
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
@@ -3801,7 +3920,7 @@ static void *quic_accept_loop(void *arg)
 				break;
 		}
 
-		const int pr = poll(pfds, nfds, h3_event_timeout_ms(listener, conns));
+		const int pr = poll(pfds, nfds, h3_event_timeout_ms(listeners, nl, conns));
 		if(pr < 0)
 		{
 			if(errno == EINTR)
@@ -3810,16 +3929,20 @@ static void *quic_accept_loop(void *arg)
 		}
 
 		// Let OpenSSL process incoming datagrams and fire timers.
-		SSL_handle_events(listener);
+		for(unsigned int l = 0; l < nl; l++)
+			SSL_handle_events(listeners[l]);
 		for(struct h3_conn *c = conns; c != NULL; c = c->next)
 			SSL_handle_events(c->ssl);
 
-		// Accept any freshly handshaked connections.
-		for(;;)
+		// Accept any freshly handshaked connections, listener by listener.
+		for(unsigned int l = 0; l < nl; )
 		{
-			SSL *cs = SSL_accept_connection(listener, SSL_ACCEPT_CONNECTION_NO_BLOCK);
+			SSL *cs = SSL_accept_connection(listeners[l], SSL_ACCEPT_CONNECTION_NO_BLOCK);
 			if(cs == NULL)
-				break;
+			{
+				l++;
+				continue;
+			}
 			// Over the cap: reject the connection but keep draining the accept
 			// queue so a flood cannot pile up inside OpenSSL either.
 			if(h3_live >= TERMINATOR_MAX_H3_CONNS)
@@ -3827,7 +3950,7 @@ static void *quic_accept_loop(void *arg)
 				SSL_free(cs);
 				continue;
 			}
-			struct h3_conn *c = h3_conn_new(cs);
+			struct h3_conn *c = h3_conn_new(cs, l);
 			if(c == NULL)
 			{
 				SSL_free(cs);
@@ -3861,14 +3984,14 @@ static void *quic_accept_loop(void *arg)
 		// Submit answers for DoH resolves completed off-loop. Drain the wakeup
 		// eventfd (an EFD read returns and clears the accumulated count) and run
 		// the drain every iteration so a coalesced/lost wake only adds latency.
-		if(pfds[1].revents & POLLIN)
+		if(pfds[nl].revents & POLLIN)
 		{ uint64_t v; if(read(h3_wake_fd, &v, sizeof(v)) != (ssize_t)sizeof(v)) { /* EAGAIN */ } }
 		h3_drain_resolved(conns);
 
 		// Service the backend sockets first. Streams are reaped only at the end of
 		// the iteration (h3_conn_reap_streams), so the pmap stays valid here; this
 		// may parse a response and submit it, or resume a parked data reader.
-		for(nfds_t i = 1; i < nfds; i++)
+		for(nfds_t i = nl + 1; i < nfds; i++)
 		{
 			struct h3_stream *s = pmap[i];
 			if(s == NULL || s->be_fd < 0)
@@ -3938,7 +4061,8 @@ static void *quic_accept_loop(void *arg)
 	}
 	free(pfds);
 	free(pmap);
-	SSL_free(listener);
+	for(unsigned int l = 0; l < nl; l++)
+		SSL_free(listeners[l]);
 	return NULL;
 }
 
@@ -3986,8 +4110,8 @@ static SSL_CTX *create_quic_server_ctx(const char *cert_path)
 	return c;
 }
 
-// Bind a dual-stack UDP socket on the given port for the QUIC listener.
-static int bind_udp(const char *addr, int port)
+// Bind a UDP socket for the QUIC listener, dual-stack unless v6only.
+static int bind_udp(const char *addr, int port, bool v6only)
 {
 	const int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
@@ -3997,8 +4121,8 @@ static int bind_udp(const char *addr, int port)
 	}
 	const int on = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	const int off = 0;
-	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+	const int v6 = v6only ? 1 : 0;
+	setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &v6, sizeof(v6));
 
 	struct sockaddr_in6 sa;
 	if(!fill_bind_addr(&sa, addr, port))
@@ -4023,22 +4147,36 @@ static int bind_udp(const char *addr, int port)
 	return fd;
 }
 
-// Start the HTTP/3 listener alongside the TCP terminator. HTTP/3 is optional, so
-// a failure here is logged and the terminator keeps serving HTTP/1.1 and HTTP/2.
-static void terminator_quic_start(const char *bind_addr, int public_port, const char *cert_path)
+// Start the HTTP/3 listeners for the entries the TCP terminator bound. HTTP/3 is
+// optional, so a failure here is logged and the terminator keeps serving HTTP/1.1
+// and HTTP/2.
+static void terminator_quic_start(const struct terminator_listener *ls,
+                                  const struct listener_plan *p, unsigned int n,
+                                  const char *cert_path)
 {
 	quic_ctx = create_quic_server_ctx(cert_path);
 	if(quic_ctx == NULL)
 		return;
-	quic_fd = bind_udp(bind_addr, public_port);
-	if(quic_fd < 0)
+	unsigned int entry[TERMINATOR_MAX_LISTENERS] = { 0 };
+	n_quic_fds = 0;
+	for(unsigned int i = 0; i < n && n_quic_fds < TERMINATOR_MAX_LISTENERS; i++)
+	{
+		if(p[i].fd < 0)
+			continue;
+		const int fd = bind_udp(ls[i].addr, ls[i].port, p[i].v6only);
+		if(fd < 0)
+			continue; // bind_udp() logged why
+		entry[n_quic_fds] = i;
+		quic_fds[n_quic_fds] = fd;
+		quic_ports[n_quic_fds++] = ls[i].port;
+	}
+	if(n_quic_fds == 0)
 	{
 		SSL_CTX_free(quic_ctx);
 		quic_ctx = NULL;
 		return;
 	}
 	quic_running = true;
-	quic_public_port = public_port;
 
 	// DoH resolve off-load: a wakeup eventfd plus a small worker pool, both driven
 	// by the event loop below. If either fails to come up, h3_start_backend answers
@@ -4051,9 +4189,10 @@ static void terminator_quic_start(const char *bind_addr, int public_port, const 
 			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker, NULL) == 0)
 				h3_workers_n++;
 
-	if(pthread_create(&quic_tid, NULL, quic_accept_loop, NULL) != 0)
+	const int err = pthread_create(&quic_tid, NULL, quic_accept_loop, NULL);
+	if(err != 0)
 	{
-		log_err("Terminator: failed to start HTTP/3 thread: %s", strerror(errno));
+		log_err("Terminator: failed to start HTTP/3 thread: %s", strerror(err));
 		quic_running = false;
 		pthread_mutex_lock(&h3_jobs_mtx);
 		h3_workers_stop = true;
@@ -4063,14 +4202,17 @@ static void terminator_quic_start(const char *bind_addr, int public_port, const 
 			pthread_join(h3_workers[i], NULL);
 		h3_workers_n = 0;
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
-		close(quic_fd);
-		quic_fd = -1;
+		for(unsigned int i = 0; i < n_quic_fds; i++)
+			close(quic_fds[i]);
+		n_quic_fds = 0;
 		SSL_CTX_free(quic_ctx);
 		quic_ctx = NULL;
 		return;
 	}
 	quic_tid_valid = true;
-	log_info("HTTP/3 (QUIC) listening on UDP port %d", public_port);
+	for(unsigned int i = 0; i < n_quic_fds; i++)
+		log_info("HTTP/3 (QUIC) listening on UDP %s#%d",
+		         ls[entry[i]].addr[0] ? ls[entry[i]].addr : "*", quic_ports[i]);
 }
 
 static void terminator_quic_stop(void)
@@ -4104,11 +4246,9 @@ static void terminator_quic_stop(void)
 		h3_jobs_done = h3_jobs_pending = NULL;
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 	}
-	if(quic_fd >= 0)
-	{
-		close(quic_fd);
-		quic_fd = -1;
-	}
+	for(unsigned int i = 0; i < n_quic_fds; i++)
+		close(quic_fds[i]);
+	n_quic_fds = 0;
 	if(quic_ctx != NULL)
 	{
 		SSL_CTX_free(quic_ctx);
@@ -4223,10 +4363,11 @@ cleanup:
 	return NULL;
 }
 
-// Accept loop thread: hand each accepted connection to a detached handler.
+// Accept loop thread of the TCP listener fd in arg: hand each accepted
+// connection to a detached handler.
 static void *accept_loop(void *arg)
 {
-	(void)arg;
+	const int listen_fd = (int)(intptr_t)arg;
 	prctl(PR_SET_NAME, "terminator", 0, 0, 0);
 
 	pthread_attr_t attr;
@@ -4294,9 +4435,10 @@ static void *accept_loop(void *arg)
 		ha->ctx = ssl_ctx;
 
 		pthread_t tid;
-		if(pthread_create(&tid, &attr, handle_conn, ha) != 0)
+		const int err = pthread_create(&tid, &attr, handle_conn, ha);
+		if(err != 0)
 		{
-			log_err("Terminator: pthread_create() failed: %s", strerror(errno));
+			log_err("Terminator: pthread_create() failed: %s", strerror(err));
 			SSL_CTX_free(ha->ctx);
 			ip_release(ha->ipkey);
 			free(ha);
@@ -4309,15 +4451,15 @@ static void *accept_loop(void *arg)
 	return NULL;
 }
 
-bool terminator_start(const char *bind_addr, int public_port, int be_port, const char *cert_path)
+int terminator_start(const struct terminator_listener *ls, unsigned int n, int be_port, const char *cert_path)
 {
 	if(running)
 	{
 		log_warn("Terminator: already running");
-		return false;
+		return -1;
 	}
-	if(cert_path == NULL || public_port <= 0 || be_port <= 0)
-		return false;
+	if(cert_path == NULL || ls == NULL || n == 0 || n > TERMINATOR_MAX_LISTENERS || be_port <= 0)
+		return -1;
 
 	// Per-boot secret authenticating our PROXY headers to the loopback backend.
 	// Usually already generated by webserver.c (it passes the hex form to the
@@ -4326,44 +4468,74 @@ bool terminator_start(const char *bind_addr, int public_port, int be_port, const
 	if(!ensure_proxy_token())
 	{
 		log_err("Terminator: could not obtain secure randomness, cannot start");
-		return false;
+		return -1;
 	}
 
 	ssl_ctx = create_server_ctx(cert_path);
 	if(ssl_ctx == NULL)
-		return false;
+		return -1;
 
-	listen_fd = bind_listener(bind_addr, public_port);
-	if(listen_fd < 0)
+	// Bind the broadest entries first, so they serve the narrower ones on their
+	// port in any order. A mandatory entry that cannot be bound fails the start.
+	struct listener_plan plan[TERMINATOR_MAX_LISTENERS];
+	plan_listeners(ls, n, plan);
+	bool ok = true;
+	for(int scope = SCOPE_ALL; scope <= SCOPE_ONE && ok; scope++)
+		for(unsigned int i = 0; i < n && ok; i++)
+			if(plan[i].scope == scope && !listener_covered(ls, plan, n, i))
+			{
+				plan[i].fd = bind_listener(ls[i].addr, ls[i].port, plan[i].v6only, ls[i].optional);
+				ok = plan[i].fd >= 0 || ls[i].optional;
+			}
+
+	// The first entry, in configuration order, that is served
+	int first = -1;
+	for(unsigned int i = 0; ok && i < n && first < 0; i++)
+		if(plan[i].fd >= 0 || listener_covered(ls, plan, n, i))
+			first = (int)i;
+	n_listen_fds = 0;
+	for(unsigned int i = 0; i < n; i++)
+	{
+		if(plan[i].fd < 0)
+			continue;
+		if(first < 0)
+			close(plan[i].fd);
+		else
+			listen_fds[n_listen_fds++] = plan[i].fd;
+	}
+	if(first < 0)
 	{
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
-		return false;
+		return -1;
 	}
 
 	backend_port = be_port;
 	running = true;
-	if(pthread_create(&accept_tid, NULL, accept_loop, NULL) != 0)
+	for(n_accept_tids = 0; n_accept_tids < n_listen_fds; n_accept_tids++)
 	{
-		log_err("Terminator: failed to start accept thread: %s", strerror(errno));
-		running = false;
-		close(listen_fd);
-		listen_fd = -1;
-		SSL_CTX_free(ssl_ctx);
-		ssl_ctx = NULL;
-		return false;
+		const int err = pthread_create(&accept_tids[n_accept_tids], NULL, accept_loop,
+		                               (void *)(intptr_t)listen_fds[n_accept_tids]);
+		if(err != 0)
+		{
+			log_err("Terminator: failed to start accept thread: %s", strerror(err));
+			terminator_stop();
+			return -1;
+		}
 	}
-	accept_tid_valid = true;
 
-	log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
-	         (bind_addr && bind_addr[0]) ? bind_addr : "*", public_port, be_port);
+	for(unsigned int i = 0; i < n; i++)
+		if(plan[i].fd >= 0)
+			log_info("TLS terminator listening on %s#%d, forwarding to 127.0.0.1:%d",
+			         ls[i].addr[0] ? ls[i].addr : "*", ls[i].port, be_port);
 
 #ifdef HAVE_HTTP3
-	// Serve HTTP/3 over QUIC on the same public port (UDP). Optional: on failure
-	// the terminator keeps serving HTTP/1.1 and (if built) HTTP/2 over TCP.
-	terminator_quic_start(bind_addr, public_port, cert_path);
+	// Serve HTTP/3 over QUIC on the same public addresses and ports (UDP).
+	// Optional: on failure the terminator keeps serving HTTP/1.1 and (if built)
+	// HTTP/2 over TCP.
+	terminator_quic_start(ls, plan, n, cert_path);
 #endif
-	return true;
+	return first;
 }
 
 void terminator_stop(void)
@@ -4372,23 +4544,19 @@ void terminator_stop(void)
 	terminator_quic_stop();
 #endif
 
-	if(!running && listen_fd < 0 && ssl_ctx == NULL)
+	if(!running && n_listen_fds == 0 && ssl_ctx == NULL)
 		return;
 
 	running = false;
-	// Break the blocking accept4() so the accept thread can exit.
-	if(listen_fd >= 0)
-		shutdown(listen_fd, SHUT_RDWR);
-	if(accept_tid_valid)
-	{
-		pthread_join(accept_tid, NULL);
-		accept_tid_valid = false;
-	}
-	if(listen_fd >= 0)
-	{
-		close(listen_fd);
-		listen_fd = -1;
-	}
+	// Break the blocking accept4() calls so the accept threads can exit.
+	for(unsigned int i = 0; i < n_listen_fds; i++)
+		shutdown(listen_fds[i], SHUT_RDWR);
+	for(unsigned int i = 0; i < n_accept_tids; i++)
+		pthread_join(accept_tids[i], NULL);
+	n_accept_tids = 0;
+	for(unsigned int i = 0; i < n_listen_fds; i++)
+		close(listen_fds[i]);
+	n_listen_fds = 0;
 	if(ssl_ctx != NULL)
 	{
 		// Drops our reference only. Each in-flight handler holds its own ref

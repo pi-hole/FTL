@@ -769,13 +769,16 @@ static struct serverports
 	int protocol; // 1 = IPv4, 3 = IPv6
 } server_ports[MAXPORTS] = { 0 };
 static in_port_t https_port = 0;
-// TLS terminator bookkeeping: the public TLS port it owns and the ephemeral
+// TLS terminator bookkeeping: the first public TLS port it owns and the ephemeral
 // loopback backend port CivetWeb serves it on. Both 0 when TLS is off.
 static int terminator_port = 0;
 static int backend_port = 0;
-// The bind address the operator scoped the secure port to ("" = all interfaces),
-// so the terminator honours it instead of always binding every interface.
-static char terminator_addr[64] = "";
+// Every secure entry with the bind address the operator scoped it to ("" = all
+// interfaces), so the terminator honors it instead of always binding every
+// interface. tls_first is the first entry the terminator serves.
+static struct terminator_listener tls_listeners[TERMINATOR_MAX_LISTENERS];
+static unsigned int n_tls_listeners = 0;
+static unsigned int tls_first = 0;
 /**
  * @brief Retrieves and logs the server ports configuration.
  *
@@ -907,7 +910,8 @@ static bool get_server_ports(void)
 	{
 		memset(&server_ports[n], 0, sizeof(server_ports[n]));
 		strncpy(server_ports[n].addr,
-		        terminator_addr[0] != '\0' ? terminator_addr : "0.0.0.0",
+		        tls_first < n_tls_listeners && tls_listeners[tls_first].addr[0] != '\0' ?
+		            tls_listeners[tls_first].addr : "0.0.0.0",
 		        sizeof(server_ports[n].addr) - 1);
 		server_ports[n].port = (in_port_t)terminator_port;
 		server_ports[n].is_secure = true;
@@ -1098,15 +1102,14 @@ static void str_append(char *dst, size_t dstsz, const char *src)
 }
 
 // Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
-// name public TLS ports the terminator owns, so they are dropped from CivetWeb's
-// list and a loopback plaintext backend (ephemeral port, read back after start)
-// is appended instead. Returns the first secure port, or 0 if none.
-static int split_terminator_ports(const char *cfg, char *backend, size_t backend_len,
-                                  char *tls_addr, size_t tls_addr_len)
+// name public TLS ports the terminator owns, so they are recorded in
+// tls_listeners and dropped from CivetWeb's list, and a loopback plaintext
+// backend (ephemeral port, read back after start) is appended instead. Returns
+// the first secure port, or 0 if none.
+static int split_terminator_ports(const char *cfg, char *backend, size_t backend_len)
 {
 	backend[0] = '\0';
-	tls_addr[0] = '\0';
-	int tls_port = 0;
+	n_tls_listeners = 0;
 
 	char *copy = strdup(cfg);
 	if(copy == NULL)
@@ -1126,12 +1129,15 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 		// A secure entry (carries the 's' flag) is owned by the terminator
 		if(strchr(ent, 's') != NULL)
 		{
-			if(tls_port == 0)
+			if(n_tls_listeners < TERMINATOR_MAX_LISTENERS)
 			{
+				struct terminator_listener *tl = &tls_listeners[n_tls_listeners];
 				// Port digits follow the last ':' ("[::]:443os") or start the
 				// token ("443os"); atoi() stops at the flag letters.
 				const char *p = strrchr(ent, ':');
-				tls_port = atoi(p != NULL ? p + 1 : ent);
+				tl->port = atoi(p != NULL ? p + 1 : ent);
+				tl->optional = strchr(p != NULL ? p + 1 : ent, 'o') != NULL;
+				tl->addr[0] = '\0';
 				// Everything before that ':' is the bind address the operator
 				// scoped the port to; strip the [ ] around an IPv6 literal. No
 				// ':' means a bare port ("443s") -> all interfaces (empty addr).
@@ -1150,13 +1156,18 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 						// truncate it (rather than dropping it, which would
 						// silently fall back to all interfaces) so the terminator's
 						// fill_bind_addr() rejects it and fails closed.
-						if(alen >= tls_addr_len)
-							alen = tls_addr_len - 1;
-						memcpy(tls_addr, astart, alen);
-						tls_addr[alen] = '\0';
+						if(alen >= sizeof(tl->addr))
+							alen = sizeof(tl->addr) - 1;
+						memcpy(tl->addr, astart, alen);
+						tl->addr[alen] = '\0';
 					}
 				}
+				if(tl->port > 0)
+					n_tls_listeners++;
 			}
+			else
+				log_warn("webserver.port: ignoring TLS port %s, at most %d are supported",
+				         ent, TERMINATOR_MAX_LISTENERS);
 			continue; // drop from the list handed to CivetWeb
 		}
 
@@ -1187,7 +1198,7 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 		str_append(backend, backend_len, ",");
 	str_append(backend, backend_len, "127.0.0.1:0");
 
-	return tls_port;
+	return n_tls_listeners > 0 ? tls_listeners[0].port : 0;
 }
 #endif /* HAVE_TLS */
 
@@ -1276,13 +1287,13 @@ void http_init(void)
 	char backend_ports[256];
 	terminator_port = 0;
 	backend_port = 0;
-	terminator_addr[0] = '\0';
+	n_tls_listeners = 0;
+	tls_first = 0;
 	n_plain_ports = 0;
 	if(tls_used)
 	{
 		terminator_port = split_terminator_ports(config.webserver.port.v.s,
-		                                          backend_ports, sizeof(backend_ports),
-		                                          terminator_addr, sizeof(terminator_addr));
+		                                          backend_ports, sizeof(backend_ports));
 		if(terminator_port > 0)
 			listening_ports = backend_ports;
 		else
@@ -1595,10 +1606,23 @@ void http_init(void)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
 			https_port = 0; // TLS is not actually available
 		}
-		else if(!terminator_start(terminator_addr, terminator_port, backend_port, config.webserver.tls.cert.v.s))
+		else
 		{
-			log_err("Failed to start the TLS terminator on port %d", terminator_port);
-			https_port = 0; // TLS is not actually available
+			const int first = terminator_start(tls_listeners, n_tls_listeners, backend_port,
+			                                   config.webserver.tls.cert.v.s);
+			if(first < 0)
+			{
+				log_err("Failed to start the TLS terminator");
+				https_port = 0; // TLS is not actually available
+			}
+			else if(first > 0)
+			{
+				// Optional entries before it could not be bound: report the first
+				// TLS port that is served
+				tls_first = (unsigned int)first;
+				terminator_port = tls_listeners[first].port;
+				get_server_ports();
+			}
 		}
 	}
 #endif
