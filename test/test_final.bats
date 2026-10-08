@@ -206,6 +206,25 @@ load 'bats_helper.bash'
   assert_output "2"
 }
 
+@test "Setting ntp.sync.interval to 0 disables the NTP sync right away" {
+  # FTL restarts and does not start the sync at all, instead of a sync that
+  # is already running going on without any pause between the rounds
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null --max-time 10 -X PATCH http://127.0.0.1/api/config \
+       -d '{"config":{"ntp":{"sync":{"interval":0}}}}' || true
+  # Wait for the end of the restart, the NTP line comes earlier in it
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 60 $logsize_before"
+  assert_success
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'NTP sync is disabled'"
+  assert_output "1"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null --max-time 10 -X PATCH http://127.0.0.1/api/config \
+       -d '{"config":{"ntp":{"sync":{"interval":3600}}}}' || true
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 60 $logsize_before"
+  assert_success
+}
+
 @test "Gravity action streams NUL bytes, reports a failure and refuses a second run" {
   # Stand-in for pihole -g: output with a NUL byte in it, then fail after a moment
   if [ -e /usr/local/bin/pihole ]; then
