@@ -33,6 +33,10 @@
 #include <math.h>
 
 static sqlite3 *_memdb = NULL;
+static bool disk_attached = false;
+// Highest query ID in the disk database, the export continues above it.
+// Guarded by the mutex of the in-memory database connection
+static int64_t exported_maxid = -1;
 static double new_last_timestamp = 0;
 static uint32_t new_total = 0, new_blocked = 0;
 static int64_t memdb_queries_maxid = -1;
@@ -264,6 +268,7 @@ bool init_memory_database(void)
 
 	// Attach disk database. This may fail if the database is unavailable
 	const bool attached = attach_database(_memdb, NULL, config.files.database.v.s, "disk");
+	disk_attached = attached;
 
 	// Enable WAL mode for the on-disk database (pihole-FTL.db) if
 	// configured (default is yes). User may not want to enable WAL
@@ -521,6 +526,7 @@ void close_memory_database(void)
 	}
 
 	// Detach disk database
+	disk_attached = false;
 	if(!detach_database(_memdb, NULL, "disk"))
 		log_err("close_memory_database(): Failed to detach disk database");
 
@@ -1048,6 +1054,8 @@ bool export_queries_to_disk(const bool final)
 	int rc = 0;
 	bool okay = false;
 	unsigned int insertions = 0;
+	int64_t maxid = -1;
+	bool have_maxid = false;
 	const double now = double_time();
 	const double time = final ? INFINITY : now - REPLY_TIMEOUT;
 
@@ -1096,6 +1104,17 @@ bool export_queries_to_disk(const bool final)
 
 		// Finalize statement
 		sqlite3_reset(queries_to_disk_stmt);
+
+		// The next export continues above the highest ID on disk now
+		sqlite3_stmt *maxid_stmt = NULL;
+		if(okay && sqlite3_prepare_v2(memdb, "SELECT IFNULL(MAX(id), -1) FROM disk.query_storage",
+		                              -1, &maxid_stmt, NULL) == SQLITE_OK &&
+		   sqlite3_step(maxid_stmt) == SQLITE_ROW)
+		{
+			maxid = sqlite3_column_int64(maxid_stmt, 0);
+			have_maxid = true;
+		}
+		sqlite3_finalize(maxid_stmt);
 
 		/*
 		 * If there are any insertions, we:
@@ -1169,6 +1188,14 @@ bool export_queries_to_disk(const bool final)
 		return false;
 	}
 
+	// Everything up to this ID may leave the in-memory database now
+	if(have_maxid)
+	{
+		sqlite3_mutex_enter(sqlite3_db_mutex(memdb));
+		exported_maxid = maxid;
+		sqlite3_mutex_leave(sqlite3_db_mutex(memdb));
+	}
+
 	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
 		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
 
@@ -1177,7 +1204,8 @@ bool export_queries_to_disk(const bool final)
 
 // Delete queries with a timestamp up to (recent = false) or from (recent =
 // true) the given timestamp
-static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent)
+static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent,
+                                   const bool keep_unexported)
 {
 	bool okay = false;
 	const char *op = recent ? ">=" : "<=";
@@ -1185,11 +1213,45 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 		"DELETE FROM query_storage WHERE timestamp >= ?" :
 		"DELETE FROM query_storage WHERE timestamp <= ?";
 
+	// Rows the export has not copied to disk yet stay unless they are a day
+	// past the cutoff, so a failing export cannot grow the memdb without bound
+	if(keep_unexported)
+		querystr = "DELETE FROM query_storage WHERE timestamp <= ?1 AND (timestamp <= ?2 OR id <= ?3)";
+
 	sqlite3 *db = NULL;
 	if(use_memdb)
 		db = get_memdb();
 	else
 		db = dbopen(false, false);
+
+	// Taken from the export rather than from disk, which may be locked
+	int64_t maxid = -1;
+	if(keep_unexported)
+	{
+		sqlite3_mutex_enter(sqlite3_db_mutex(db));
+		maxid = exported_maxid;
+		sqlite3_mutex_leave(sqlite3_db_mutex(db));
+	}
+
+	// Count the unexported rows dropped a day past the cutoff and find the
+	// oldest one kept, the earliest query in memory then
+	int64_t dropped = 0;
+	double kept = 0.0;
+	sqlite3_stmt *unexported = NULL;
+	if(keep_unexported &&
+	   sqlite3_prepare_v2(db, "SELECT COUNT(*) FILTER (WHERE timestamp <= ?2), "
+	                          "MIN(timestamp) FILTER (WHERE timestamp > ?2) "
+	                          "FROM query_storage WHERE timestamp <= ?1 AND id > ?3",
+	                      -1, &unexported, NULL) == SQLITE_OK &&
+	   sqlite3_bind_double(unexported, 1, timestamp) == SQLITE_OK &&
+	   sqlite3_bind_double(unexported, 2, timestamp - MAXLOGAGE*3600) == SQLITE_OK &&
+	   sqlite3_bind_int64(unexported, 3, maxid) == SQLITE_OK &&
+	   sqlite3_step(unexported) == SQLITE_ROW)
+	{
+		dropped = sqlite3_column_int64(unexported, 0);
+		kept = sqlite3_column_double(unexported, 1);
+	}
+	sqlite3_finalize(unexported);
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
@@ -1202,7 +1264,9 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 	}
 
 	// Bind index
-	if((rc = sqlite3_bind_double(stmt, 1, timestamp)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, timestamp)) != SQLITE_OK ||
+	   (keep_unexported && ((rc = sqlite3_bind_double(stmt, 2, timestamp - MAXLOGAGE*3600)) != SQLITE_OK ||
+	                        (rc = sqlite3_bind_int64(stmt, 3, maxid)) != SQLITE_OK)))
 	{
 		log_err("delete_queries_from_db(%s): Failed to bind timestamp: %s",
 		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
@@ -1232,6 +1296,10 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 		else
 			diskdb_queries_count = (uint64_t)deleted <= diskdb_queries_count
 			                       ? diskdb_queries_count - (uint64_t)deleted : 0u;
+
+		if(dropped > 0)
+			log_warn("Removed %"PRId64" queries from memory that could not be stored in %s for a day",
+			         dropped, config.files.database.v.s);
 	}
 
 	// Finalize statement
@@ -1242,7 +1310,7 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 	if(!recent)
 	{
 		if(use_memdb)
-			memdb_earliest_timestamp = timestamp;
+			memdb_earliest_timestamp = kept > 0.0 ? kept : timestamp;
 		else
 			diskdb_earliest_timestamp = timestamp;
 	}
@@ -1270,14 +1338,24 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 // database thread.
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 {
-	return delete_queries_from_db(use_memdb, mintime, false);
+	return delete_queries_from_db(use_memdb, mintime, false, false);
+}
+
+// Delete queries older than given timestamp from the in-memory database, but
+// keep those the export has not copied to the disk database yet. Used by
+// garbage collection
+bool delete_exported_queries_from_memdb(const double mintime)
+{
+	const bool exporting = disk_attached && !FTLDBerror() &&
+	                       config.database.maxDBdays.v.ui > 0;
+	return delete_queries_from_db(true, mintime, false, exporting);
 }
 
 // Delete queries from the on-disk database that are not older than the given
 // timestamp. Used when flushing the logs.
 bool delete_recent_queries_from_db(const double mintime)
 {
-	return delete_queries_from_db(false, mintime, true);
+	return delete_queries_from_db(false, mintime, true, false);
 }
 
 bool add_additional_info_column(sqlite3 *db)
@@ -1998,6 +2076,9 @@ static void init_disk_db_idx(sqlite3 *memdb)
 
 	// Finalize statement
 	sqlite3_finalize(stmt);
+
+	// The export continues above the same ID
+	exported_maxid = memdb_queries_maxid;
 
 	log_debug(DEBUG_DATABASE, "Last long-term idx is %"PRId64, memdb_queries_maxid);
 }
