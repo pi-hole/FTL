@@ -712,6 +712,8 @@ static int stream_start_resolve(struct doq_stream *s)
 		dotdoh_loopback_drop(-1);
 		return -1;
 	}
+	// Tracked before connect(): dnsmasq may fork the worker before connect() returns
+	dotdoh_fd_track(s->upfd);
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;

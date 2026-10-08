@@ -435,6 +435,7 @@ static int conn_start_resolve(struct dot_conn *c)
 		dotdoh_loopback_drop(-1);
 		return -1;
 	}
+	dotdoh_fd_track(c->upfd);
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;

@@ -9,7 +9,7 @@ bats_load_library 'bats-assert'
 load 'bats_helper.bash'
 
 @test "No WARNING messages in FTL.log (besides known warnings)" {
-  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token|(Teleporter import skipped )"'
+  run bash -c 'grep "WARNING:" /var/log/pihole/FTL.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)|API: Config item is invalid|API: Config item validation failed|API: Not found|API: Config items set via environment variables|API: Rate-limiting login attempts|API: You need to specify both|API: No request body data|API: Invalid request|API: Rate-limiting 2FA token requests|2FA code has already been used|API: Reused 2FA token|(Teleporter import skipped )|(format_dnsmasq_warn_message\(\): Buffer too small to hold plain message)"'
   refute_output
 }
 
@@ -46,16 +46,17 @@ load 'bats_helper.bash'
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
+  # webserver_acl.bats: 4x pihole.toml writes (three ACLs + restore)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
-  # slow), leaving just the dns.reply.host PATCH. The CLI password set/remove
-  # do not write: the in-memory config already matches, so they log
-  # "pihole.toml unchanged" - which the next assertion below counts.
+  # slow), leaving the dns.reply.host PATCH and webserver_acl.bats. The CLI
+  # password set/remove do not write: the in-memory config already matches, so
+  # they log "pihole.toml unchanged" - which the next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "1"
+    assert_line --index 0 "5"
   else
-    [[ ${lines[0]} == "36" ]]
+    [[ ${lines[0]} == "40" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -102,7 +103,7 @@ load 'bats_helper.bash'
   # 600 new alias-clients are added under one lock, more than one allocation
   # step of the clients array on any architecture. Runs late as they change
   # the client counts
-  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<600) INSERT INTO aliasclient (id, name) SELECT x, 'alias-' || x FROM c;"
   assert_success
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -132,6 +133,37 @@ load 'bats_helper.bash'
   # disabled below would otherwise continue from it
   run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id < 0;"'
   assert_success
+}
+
+@test "Gravity action streams NUL bytes, reports a failure and refuses a second run" {
+  # Stand-in for pihole -g: output with a NUL byte in it, then fail after a moment
+  if [ -e /usr/local/bin/pihole ]; then
+    mv /usr/local/bin/pihole /usr/local/bin/pihole.test-backup
+  fi
+  rm -f /tmp/gravity_started
+  printf '#!/bin/sh\ntouch /tmp/gravity_started\nprintf "before\\000after\\n"\nsleep 2\nexit 3\n' > /usr/local/bin/pihole
+  chmod +x /usr/local/bin/pihole
+  curl -s -X POST 127.0.0.1/api/action/gravity -o /tmp/gravity_first.out &
+  first=$!
+  for i in $(seq 1 50); do
+    [ -e /tmp/gravity_started ] && break
+    sleep 0.1
+  done
+  run bash -c 'curl -s -o /tmp/gravity_second.out -w "%{http_code}" -X POST 127.0.0.1/api/action/gravity'
+  wait "${first}"
+  # Once the first run is done, a new one is accepted again
+  third=$(curl -s -o /dev/null -w "%{http_code}" -X POST 127.0.0.1/api/action/gravity)
+  rm -f /usr/local/bin/pihole
+  if [ -e /usr/local/bin/pihole.test-backup ]; then
+    mv /usr/local/bin/pihole.test-backup /usr/local/bin/pihole
+  fi
+  assert_output "409"
+  [ "${third}" = "200" ]
+  run jq -r .error.key /tmp/gravity_second.out
+  assert_output "gravity_running"
+  run bash -c 'tr "\000" "|" < /tmp/gravity_first.out'
+  assert_output --partial "before|after"
+  assert_output --partial "Gravity failed"
 }
 
 @test "FTL terminates with message" {
@@ -206,4 +238,40 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT COUNT(*) FROM queries WHERE domain = 'dbimport-off.ftl';\""
   printf "disk queries for dbimport-off.ftl: %s\n" "${lines[0]}"
   [[ ${lines[0]} -ge 1 ]]
+}
+
+@test "Pi-hole PTR records are generated once per address, however it is spelled" {
+  # Start FTL afresh so no record exists yet, and ask for a non-canonical
+  # spelling first: the record must still answer the canonical name. Further
+  # spellings (leading zeros, extra leading labels) must not add records
+  addr=$(ip -4 -o address show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+  [ -n "${addr}" ]
+  IFS=. read -r a b c d <<< "${addr}"
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A ptr.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  dig +tries=1 +time=2 PTR "0${d}.0${c}.0${b}.0${a}.in-addr.arpa" @127.0.0.1 > /dev/null
+  run dig +tries=1 +time=2 -x "${addr}" @127.0.0.1 +short
+  assert_output "pi.hole."
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  for name in "00${d}.${c}.${b}.${a}" "9.${d}.${c}.${b}.${a}" "7.9.${d}.${c}.${b}.${a}" "${d}.${c}.${b}.${a}"; do
+    dig +tries=1 +time=2 PTR "${name}.in-addr.arpa" @127.0.0.1 > /dev/null
+  done
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Generating PTR record'"
+  assert_output "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
 }

@@ -105,11 +105,39 @@ assert_padded() {  # $1 = transport (dot|doh)
 # 5300+N is only a getrandom-failure fallback. The last seven "armed on" lines are
 # this run's seven upstreams (DoT, DoH/h2, DoH/h1.1, DoH3, DoQ, DoQ via quic://,
 # DoQ with a mismatched certificate name).
+proxy_tuple() {  # $1 = 1-based slot -> "IP#PORT"
+  grep -oE "armed on 127\.[0-9.]+#[0-9]+" /var/log/pihole/FTL.log |
+    tail -n 7 | sed -n "${1}p" | grep -oE "127\.[0-9.]+#[0-9]+"
+}
+
 proxy_at() {  # $1 = 1-based slot -> "@IP -p PORT"
   local t
-  t=$(grep -oE "armed on 127\.[0-9.]+#[0-9]+" /var/log/pihole/FTL.log |
-      tail -n 7 | sed -n "${1}p" | grep -oE "127\.[0-9.]+#[0-9]+")
+  t=$(proxy_tuple "$1")
   echo "@${t%#*} -p ${t#*#}"
+}
+
+# Number of TCP connections the proxy serves at once: its worker count (from the
+# log) minus the quarter reserved for UDP
+proxy_tcp_cap() {
+  local workers
+  workers=$(grep -oE "armed, [0-9]+ worker" /var/log/pihole/FTL.log | tail -n 1 | grep -oE "[0-9]+")
+  echo $(( workers - (workers / 4 > 0 ? workers / 4 : 1) ))
+}
+
+# Wait up to 8 s until no TCP connection to the first two proxy listeners is
+# established (an idle kept-open one is closed after 5 s), read from /proc/net/tcp
+# as the image has neither ss nor netstat
+wait_proxy_tcp_idle() {
+  local p1 p2 n i
+  p1=$(printf "%04X" "$(proxy_tuple 1 | cut -d'#' -f2)")
+  p2=$(printf "%04X" "$(proxy_tuple 2 | cut -d'#' -f2)")
+  for i in $(seq 1 80); do
+    n=$(awk -v a=":$p1" -v b=":$p2" '$4 == "01" && (substr($2, 9) == a || substr($2, 9) == b)' /proc/net/tcp | wc -l)
+    [ "$n" -eq 0 ] && return 0
+    sleep 0.1
+  done
+  echo "$n TCP connections to the proxy still established" >&2
+  return 1
 }
 
 # Block until the shim's QUIC listener marker $1 appears, else fail loudly with
@@ -311,6 +339,70 @@ teardown_file() {
   run run_concurrent 2 25
   assert_success
   assert_output --partial "25/25 resolved"
+}
+
+# Client A's dnsmasq TCP worker keeps its connection to the proxy open between
+# queries. When the proxy closes that connection after its 5 s idle timeout, A's
+# worker must see EOF and reconnect at once, even though client B's worker was
+# forked while that connection was open. Otherwise A's next query stalls for
+# dnsmasq's 10 s TCP timeout.
+@test "dotdoh-client: a TCP worker sees the proxy's idle close despite later forks" {
+  run python3 -c '
+import random, socket, struct, time
+tag = "%08x" % random.getrandbits(32)
+def ask(s, name):
+    m = struct.pack(">HHHHHH", random.getrandbits(16), 0x0100, 1, 0, 0, 0)
+    m += b"".join(bytes([len(l)]) + l.encode() for l in name.split(".")) + b"\0"
+    m += struct.pack(">HH", 1, 1)
+    s.sendall(struct.pack(">H", len(m)) + m)
+    t = time.monotonic()
+    n = struct.unpack(">H", s.recv(2))[0]
+    while n > 0:
+        n -= len(s.recv(n))
+    return time.monotonic() - t
+a = socket.create_connection(("127.0.0.1", 53), timeout=20)
+ask(a, "a1-%s.dnssec" % tag)
+b = socket.create_connection(("127.0.0.1", 53), timeout=20)
+ask(b, "b-%s.dnssec" % tag)
+time.sleep(6)
+print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
+'
+  assert_success
+  echo "second query on A took ${output} s"
+  [[ "${output%%.*}" -lt 8 ]]
+}
+
+@test "dotdoh-client: kept-open TCP clients beyond the proxy's TCP slots are all answered" {
+  # Every TCP client gets its own dnsmasq child, which keeps its connection to
+  # the proxy open between queries. Open more such clients than the proxy serves
+  # at once, so the last ones have to wait for a slot instead of being refused.
+  # .ftl is pinned to the plaintext recursor, so use names outside it to go
+  # through the proxy. The cap is at most 48 (64 workers), so n stays clear of
+  # dnsmasq's limit of 60 TCP children.
+  local n
+  n=$(( $(proxy_tcp_cap) + 4 ))
+  if [ "$n" -gt 56 ]; then
+    echo "$n TCP clients would come too close to dnsmasq's 60 TCP children" >&2
+    return 1
+  fi
+  run python3 test/dotdoh_query.py tcpkeep 127.0.0.1 53 "$n" "tk${RANDOM}.dotdoh-test"
+  assert_output --partial "${n}/${n} answered"
+}
+
+@test "dotdoh-client: idle proxy connections give their TCP slot up to a waiter on another upstream" {
+  # Fill every TCP slot with idle connections to the DoT listener, each answered
+  # once, then query the DoH listener. One idle connection must give its slot up
+  # to the waiter, at once instead of after its 5 s idle timeout.
+  wait_proxy_tcp_idle
+  run python3 test/dotdoh_query.py tcpcross "$(proxy_tuple 1)" "$(proxy_tuple 2)" "$(proxy_tcp_cap)" a.ftl
+  assert_output --regexp "^waiter rcode 0 after (0|1|2)\.[0-9]+ s, 1 idle closed$"
+}
+
+@test "dotdoh-client: idle proxy connections keep their TCP slot while one is free" {
+  # Same with one slot left free: the waiter takes it and no idle connection closes
+  wait_proxy_tcp_idle
+  run python3 test/dotdoh_query.py tcpcross "$(proxy_tuple 1)" "$(proxy_tuple 2)" "$(( $(proxy_tcp_cap) - 1 ))" a.ftl
+  assert_output --regexp "^waiter rcode 0 after 0\.[0-9]+ s, 0 idle closed$"
 }
 
 @test "dotdoh-client: debug.dotdoh emits a per-upstream statistics summary" {

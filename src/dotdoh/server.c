@@ -31,6 +31,7 @@ unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -96,6 +97,10 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 {
 	if(qlen < DNS_HEADER_LEN || framed_cap < 2 || qlen > framed_cap - 2)
 		return -1;
+	// dnsmasq silently ignores a TCP message with QR set, so the handoff would
+	// only wait for an answer that never comes
+	if((query[2] & 0x80) != 0)
+		return -1;
 	// Inject in place after the 2-byte length prefix, so no separate scratch or
 	// self-overlapping copy is needed to frame the result.
 	memcpy(framed + 2, query, qlen);
@@ -112,12 +117,59 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 	return (ssize_t)(2 + blen);
 }
 
+// Bitmap of the tracked sockets, indexed by fd. It is updated from several
+// threads, so every access is atomic; fds beyond its range are not tracked.
+#define TRACKED_FD_MAX 65536
+#define TRACKED_FD_BITS 32u
+static atomic_uint tracked_fds[TRACKED_FD_MAX / TRACKED_FD_BITS];
+
+void dotdoh_fd_track(const int fd)
+{
+	if(fd < 0 || fd >= TRACKED_FD_MAX)
+		return;
+	atomic_fetch_or(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], 1u << ((unsigned)fd % TRACKED_FD_BITS));
+}
+
+void dotdoh_fd_close(const int fd)
+{
+	if(fd < 0)
+		return;
+	// Send FIN even if a forked worker still holds a copy of this socket
+	shutdown(fd, SHUT_RDWR);
+	if(fd < TRACKED_FD_MAX)
+		atomic_fetch_and(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], ~(1u << ((unsigned)fd % TRACKED_FD_BITS)));
+	close(fd);
+}
+
+void dotdoh_fd_close_inherited(const int keep_fd)
+{
+	for(unsigned int i = 0; i < TRACKED_FD_MAX / TRACKED_FD_BITS; i++)
+	{
+		unsigned int word = atomic_exchange(&tracked_fds[i], 0u);
+		while(word != 0)
+		{
+			const int fd = (int)(i * TRACKED_FD_BITS) + __builtin_ctz(word);
+			word &= word - 1;
+			if(fd != keep_fd)
+				close(fd);
+		}
+	}
+}
+
+// True for an error that means the peer has closed the connection
+static bool peer_closed(const int err)
+{
+	return err == EPIPE || err == ECONNRESET;
+}
+
 // Write an already-framed query (2-byte length prefix + body) on fd and read back
 // the length-prefixed answer. Returns the answer length or -1; bounded by the
-// socket timeouts set on fd by the caller.
+// socket timeouts set on fd by the caller. On failure, *closed tells whether
+// dnsmasq had closed the connection before sending any part of an answer.
 static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
-                                 uint8_t *answer, size_t answer_sz)
+                                 uint8_t *answer, size_t answer_sz, bool *closed)
 {
+	*closed = false;
 	// Write the framed query to dnsmasq, with error checking
 	for(size_t off = 0; off < flen;)
 	{
@@ -127,6 +179,7 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 			if(errno == EINTR)
 				continue;
 			log_debug(DEBUG_RESOLVER, "dotdoh: write to loopback DNS failed: %s", strerror(errno));
+			*closed = peer_closed(errno);
 			return -1;
 		}
 		if(w == 0)
@@ -147,11 +200,13 @@ static ssize_t loopback_exchange(int fd, const uint8_t *framed, size_t flen,
 			if(errno == EINTR)
 				continue;
 			log_debug(DEBUG_RESOLVER, "dotdoh: read length from loopback DNS failed: %s", strerror(errno));
+			*closed = got == 0 && peer_closed(errno);
 			return -1;
 		}
 		if(r == 0)
 		{
 			log_debug(DEBUG_RESOLVER, "dotdoh: loopback DNS connection closed");
+			*closed = got == 0;
 			return -1;
 		}
 		got += (size_t)r;
@@ -217,7 +272,10 @@ static int pool_n = 0;
 
 // Bound on a blocking loopback exchange, so a slow dnsmasq child cannot pin a
 // webserver worker (and a concurrency slot) for its full 300 s lifetime.
-#define LOOPBACK_IO_TIMEOUT_S 5
+// dnsmasq waits up to 10 s for one upstream exchange, allow a little more so
+// its answer arrives before we give up. Failover to another server or DNSSEC
+// validation over TCP can still take longer than this
+#define LOOPBACK_IO_TIMEOUT_S 12
 
 // Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
 // draw on the same pool. Encrypted listeners get the rest.
@@ -288,7 +346,7 @@ int dotdoh_loopback_take(void)
 		const int pr = poll(&pfd, 1, 0);
 		if(pr == 0 || (pr < 0 && errno == EINTR))
 			break; // nothing pending: still healthy as far as we can tell
-		close(fd);
+		dotdoh_fd_close(fd);
 		fd = -1;
 	}
 	pthread_mutex_unlock(&pool_lock);
@@ -305,7 +363,7 @@ void dotdoh_loopback_give(int fd)
 	if(pool_n < (int)pool_keep_max())
 		pool_fds[pool_n++] = fd;
 	else
-		close(fd);
+		dotdoh_fd_close(fd);
 	pthread_mutex_unlock(&pool_lock);
 }
 
@@ -318,8 +376,7 @@ void dotdoh_loopback_drop(int fd)
 	if(inflight > 0)
 		inflight--;
 	pthread_mutex_unlock(&pool_lock);
-	if(fd >= 0)
-		close(fd);
+	dotdoh_fd_close(fd);
 }
 
 // Pooled sockets are non-blocking because the DoT and DoQ reactors drive them
@@ -355,6 +412,8 @@ static int loopback_connect(void)
 	const int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
 		return -1;
+	// Tracked before connect(): dnsmasq may fork the worker before connect() returns
+	dotdoh_fd_track(fd);
 
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
@@ -367,7 +426,7 @@ static int loopback_connect(void)
 	   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0 ||
 	   connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		close(fd);
+		dotdoh_fd_close(fd);
 		return -1;
 	}
 	return fd;
@@ -396,10 +455,10 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 
 	// Borrow a loopback connection for the duration of this query, exactly as the
 	// DoT and DoQ reactors do, so all three share one accounted pool of dnsmasq
-	// children. Holding one per webserver thread instead would pin a child for the
-	// thread's whole life, outside that accounting. dnsmasq closes a connection
-	// after its keep-alive limit or an idle period; a stale one makes the exchange
-	// fail, so drop it and retry once with a fresh one.
+	// children. dnsmasq closes a pooled connection after its keep-alive limit or
+	// an idle period. Only that case is retried, once, on a fresh connection: a
+	// timeout or any other failure is not, as the query may already be on its
+	// way upstream.
 	ssize_t alen = -1;
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
@@ -424,11 +483,14 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 			dotdoh_loopback_drop(fd);
 			continue;
 		}
-		alen = loopback_exchange(fd, framed, (size_t)flen, answer, answer_sz);
+		bool closed = false;
+		alen = loopback_exchange(fd, framed, (size_t)flen, answer, answer_sz, &closed);
 		if(alen <= 0)
 		{
 			dotdoh_loopback_drop(fd);
-			continue; // stale or failed: retry once on a fresh connection
+			if(!pooled || !closed)
+				break;
+			continue;
 		}
 		// Hand it back the way the reactors expect to find it.
 		if(set_blocking(fd, false))
