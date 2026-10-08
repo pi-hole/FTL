@@ -892,6 +892,11 @@
   # list is traversed, and the last (!) match wins. IPv6 addresses may be specified in
   # CIDR-form [a:b::c]/64.
   #
+  # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
+  # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS
+  # queries if dns.doh is enabled and dns.listeningMode allows it, all its other
+  # requests are refused.
+  #
   # Example 1: "+127.0.0.1,+[::1]" ---> deny all access, except from 127.0.0.1 and ::1
   #
   # Example 2: "+192.168.0.0/16" ---> deny all accesses, except from the 192.168.0.0/16
