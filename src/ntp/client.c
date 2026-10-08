@@ -831,8 +831,14 @@ static void *ntp_client_thread(void *arg)
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
-		// Sleep before retrying
-		thread_sleepms(NTP_CLIENT, 1000 * sleep_time);
+		// Sleep before retrying, at most a day at a time as the
+		// milliseconds thread_sleepms() takes are an int
+		while(sleep_time > 0 && !killed)
+		{
+			const unsigned int chunk = sleep_time < 86400 ? sleep_time : 86400;
+			thread_sleepms(NTP_CLIENT, 1000 * chunk);
+			sleep_time -= chunk;
+		}
 	}
 
 	log_info("Terminating NTP thread");
