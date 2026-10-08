@@ -16,6 +16,13 @@
 #   emit  <domain> <outfile>                      write the raw DNS query wire
 #   check <infile> <expected-ip>                  validate a DNS answer file
 #   dot   <host> <port> <domain> <src> <ca> <ip>  full DoT exchange + validate
+#   emitqr <domain> <outfile>                     like emit, but with QR set
+#   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
+#                                                 at a time, keeping each open
+#   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
+#                                                 connections to the first, then
+#                                                 time one query on the second
+#                                                 and count the idle ones closed
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -25,10 +32,12 @@
 # Please see LICENSE file for your rights under this license.
 
 import base64
+import select
 import socket
 import ssl
 import struct
 import sys
+import time
 
 
 def build_query(qname, qtype=1):
@@ -39,6 +48,64 @@ def build_query(qname, qtype=1):
         body += bytes([len(label)]) + label.encode()
     body += b"\x00" + struct.pack("!HH", qtype, 1)  # QTYPE, QCLASS=IN
     return header + body
+
+
+def tcp_keep(host, port, count, suffix):
+    """Send count queries for distinct names under suffix over plain TCP, one
+    connection each and one at a time, keeping every connection open until the
+    end. Each needs its own upstream exchange, so FTL forks a TCP child for each
+    that holds its own connection to the upstream. Returns the rcodes."""
+    socks = []
+    rcodes = []
+    try:
+        for i in range(count):
+            s = socket.create_connection((host, port), timeout=15)
+            socks.append(s)
+            rcodes.append(tcp_ask(s, "tk%d.%s" % (i, suffix)))
+    finally:
+        for s in socks:
+            s.close()
+    return rcodes
+
+
+def tcp_ask(sock, qname):
+    """One length-prefixed query on sock. Returns the rcode, or -1 on EOF or
+    timeout without an answer."""
+    q = build_query(qname)
+    sock.sendall(struct.pack("!H", len(q)) + q)
+    try:
+        n = struct.unpack("!H", recvall(sock, 2))[0]
+        return recvall(sock, n)[3] & 0x0F
+    except (OSError, struct.error, TypeError, IndexError):
+        return -1
+
+
+def tcp_cross(hold, wait, count, qname):
+    """Open count TCP connections to hold, get one answer on each and leave them
+    idle, then time one query on a fresh connection to wait. Returns the rcode,
+    the seconds it took and how many idle connections FTL closed by 0.5 s later."""
+    def addr(t):
+        h, p = t.rsplit("#", 1)
+        return (h, int(p))
+    socks = []
+    try:
+        for _ in range(count):
+            s = socket.create_connection(addr(hold), timeout=15)
+            socks.append(s)
+            tcp_ask(s, qname)
+        time.sleep(0.3)
+        t0 = time.monotonic()
+        s = socket.create_connection(addr(wait), timeout=15)
+        socks.append(s)
+        rcode = tcp_ask(s, qname)
+        secs = time.monotonic() - t0
+        time.sleep(0.5)
+        idle = socks[:count]
+        closed = sum(1 for c in select.select(idle, [], [], 0)[0] if c.recv(1) == b"")
+        return rcode, secs, closed
+    finally:
+        for s in socks:
+            s.close()
 
 
 def build_forged_query(qname, fake_client_ip):
@@ -305,13 +372,30 @@ def doh3(host, port, qname, expected_ip):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
         with open(outfile, "wb") as f:
             f.write(build_query(domain))
+    elif cmd == "emitqr":
+        # A message with the QR (response) bit set, which is not a query.
+        _, _, domain, outfile = sys.argv[:4]
+        q = bytearray(build_query(domain))
+        q[2] |= 0x80
+        with open(outfile, "wb") as f:
+            f.write(bytes(q))
+    elif cmd == "tcpkeep":
+        _, _, host, port, count, suffix = sys.argv[:6]
+        rcodes = tcp_keep(host, int(port), int(count), suffix)
+        # NOERROR or NXDOMAIN came from the upstream, anything else did not
+        ok = sum(1 for r in rcodes if r in (0, 3))
+        print("%d/%d answered %s" % (ok, len(rcodes), rcodes))
+    elif cmd == "tcpcross":
+        _, _, hold, wait, count, domain = sys.argv[:7]
+        rcode, secs, closed = tcp_cross(hold, wait, int(count), domain)
+        print("waiter rcode %d after %.2f s, %d idle closed" % (rcode, secs, closed))
     elif cmd == "emiturl":
         # Unpadded base64url of the query, for a DoH GET ?dns= parameter.
         _, _, domain = sys.argv[:3]

@@ -247,7 +247,7 @@ static void conn_free(struct dot_conn *c)
 	if(c->cfd >= 0)
 		close(c->cfd);
 	if(c->upfd >= 0)
-		close(c->upfd);
+		dotdoh_fd_close(c->upfd);
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
 	uint8_t *rbuf = c->rbuf, *abuf = c->abuf, *wbuf = c->wbuf;
@@ -323,6 +323,7 @@ static int conn_start_resolve(struct dot_conn *c)
 	c->upfd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 	if(c->upfd < 0)
 		return -1;
+	dotdoh_fd_track(c->upfd);
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;
@@ -351,7 +352,7 @@ static int conn_start_resolve(struct dot_conn *c)
 // (advanced, keep driving), 0 (reconnect in flight, yield), -1 (give up).
 static int conn_retry_upstream(struct dot_conn *c)
 {
-	close(c->upfd);
+	dotdoh_fd_close(c->upfd);
 	c->upfd = -1;
 	c->up_reused = false;
 	c->up_retried = true;

@@ -24,6 +24,8 @@
 #include "dotdoh/framing.h"
 // log_err(), log_info(), log_warn()
 #include "log.h"
+// webserver_acl_allows()
+#include "webserver/webserver.h"
 
 // The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
 // the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
@@ -668,6 +670,40 @@ static void sockaddr_numeric(const struct sockaddr_storage *ss, char *out, size_
 			return;
 		inet_ntop(AF_INET, &s4->sin_addr, out, (socklen_t)outlen);
 	}
+}
+
+// Check the real client against webserver.acl before serving it. A v4-mapped
+// peer is checked as IPv4, the form its PROXY header announces to the backend.
+// DoH follows dns.listeningMode instead: a client the ACL refuses is still let
+// through when DoH would serve it, and every other request it sends gets a 403
+// from begin_request_handler(), which sees the client through the PROXY header
+static bool client_acl_allows(const struct sockaddr_storage *peer, const char *proto)
+{
+	struct sockaddr_storage ss = *peer;
+	const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)peer;
+	if(peer->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+	{
+		struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
+		memset(&ss, 0, sizeof(ss));
+		s4->sin_family = AF_INET;
+		s4->sin_port = s6->sin6_port;
+		memcpy(&s4->sin_addr, s6->sin6_addr.s6_addr + 12, 4);
+	}
+	if(webserver_acl_allows(&ss))
+		return true;
+
+	char client[INET6_ADDRSTRLEN] = "";
+	sockaddr_numeric(peer, client, sizeof(client));
+	if(client[0] != '\0' && dotdoh_doh_enabled() && dotdoh_source_allowed(client))
+	{
+		log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is refused by webserver.acl, admitted for DoH only",
+		          proto, client);
+		return true;
+	}
+
+	log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is not allowed to connect (webserver.acl)",
+	          proto, client[0] != '\0' ? client : "(unknown)");
+	return false;
 }
 
 static int hexnib(int c)
@@ -3797,6 +3833,16 @@ static void *quic_accept_loop(void *arg)
 				SSL_free(cs);
 				continue;
 			}
+			// Refuse clients webserver.acl does not allow. A peer whose address
+			// could not be read is checked as an address no ACL entry matches,
+			// so it is refused whenever an ACL is set
+			const struct sockaddr_storage unknown = { 0 };
+			if(c->have_client_addr ? !client_acl_allows(&c->client_addr, "QUIC") :
+			                         !webserver_acl_allows(&unknown))
+			{
+				h3_conn_free(c);
+				continue;
+			}
 			// Per-source cap, shared with the TCP handlers via ip_table so one host
 			// cannot hold every h1/h2/h3 slot. Released in h3_conn_free.
 			ip_key(&c->client_addr, c->ipkey);
@@ -4200,6 +4246,13 @@ static void *accept_loop(void *arg)
 				break; // listener shut down by terminator_stop()
 			// Transient error (e.g. EMFILE); avoid a tight spin.
 			poll(NULL, 0, 100);
+			continue;
+		}
+
+		// Refuse clients webserver.acl does not allow before any TLS work
+		if(!client_acl_allows(&peer, "TCP"))
+		{
+			close(client_fd);
 			continue;
 		}
 

@@ -11,6 +11,9 @@
 #define DAEMON_H
 
 #include "enums.h"
+// atomic_bool
+#include <stdatomic.h>
+
 extern pthread_t threads[THREADS_MAX];
 
 void go_daemon(void);
@@ -57,7 +60,7 @@ ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags);
 
 extern bool resolver_ready;
 extern bool dnsmasq_failed;
-extern volatile sig_atomic_t gravity_running;
+extern atomic_bool gravity_running;
 extern volatile sig_atomic_t want_terminate;
 
 #endif //DAEMON_H
