@@ -153,6 +153,25 @@ load 'bats_helper.bash'
   assert_output "1"
 }
 
+@test "A failed MAC lookup is not repeated right away, and not done for ECS clients" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  for name in mac-1 mac-2; do
+    dig +short +tries=1 +time=2 -b 127.0.0.32 "${name}.ftl" @127.0.0.1 > /dev/null
+    dig +short +tries=1 +time=2 +subnet=10.0.32.1/32 "${name}-ecs.ftl" @127.0.0.1 > /dev/null
+  done
+  # A TCP worker only searches the ARP cache it inherited, its miss must not
+  # keep the main process from asking the kernel on the next UDP query
+  dig +short +tries=1 +time=2 +tcp -b 127.0.0.34 mac-tcp.ftl @127.0.0.1 > /dev/null
+  dig +short +tries=1 +time=2 -b 127.0.0.34 mac-udp-1.ftl @127.0.0.1 > /dev/null
+  dig +short +tries=1 +time=2 -b 127.0.0.34 mac-udp-2.ftl @127.0.0.1 > /dev/null
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'find_mac(\"127.0.0.32\")'"
+  assert_output "1"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'find_mac(\"10.0.32.1\")'"
+  assert_output "0"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'find_mac(\"127.0.0.34\")'"
+  assert_output "2"
+}
+
 @test "Gravity action streams NUL bytes, reports a failure and refuses a second run" {
   # Stand-in for pihole -g: output with a NUL byte in it, then fail after a moment
   if [ -e /usr/local/bin/pihole ]; then
