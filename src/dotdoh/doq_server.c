@@ -324,6 +324,98 @@ static int doq_bind_socket(int family)
 	return fd;
 }
 
+// Format a QUIC peer address (IPv4 or IPv6) as text.
+static bool doq_addr_ntop(const BIO_ADDR *ba, char *out, size_t outlen)
+{
+	unsigned char raw[sizeof(struct in6_addr)];
+	size_t al = sizeof(raw);
+	const int fam = BIO_ADDR_family(ba);
+	if((fam != AF_INET && fam != AF_INET6) || BIO_ADDR_rawaddress(ba, raw, &al) != 1)
+		return false;
+	return inet_ntop(fam, raw, out, (socklen_t)outlen) != NULL;
+}
+
+// Drop datagrams from sources dns.listeningMode does not allow before OpenSSL
+// sees them, so they cost neither a Retry nor a QUIC channel. The pending-conn
+// callback cannot do this, it deadlocks on SSL_get_peer_addr() (OpenSSL 4.0.0).
+static int doq_filter_recvmmsg(BIO *b, BIO_MSG *msg, size_t stride, size_t num_msg,
+                               uint64_t flags, size_t *processed)
+{
+	BIO *next = BIO_next(b);
+	size_t n = 0;
+	*processed = 0;
+	for(size_t reads = 0; reads < num_msg; reads++)
+	{
+		BIO_MSG *m = (BIO_MSG *)(void *)((unsigned char *)msg + n * stride);
+		const size_t cap = m->data_len;
+		size_t got = 0;
+		// Running dry after the first datagram is not an error to report
+		if(n > 0)
+			ERR_set_mark();
+		if(!BIO_recvmmsg(next, m, stride, 1, flags, &got) || got == 0)
+		{
+			if(n > 0)
+				ERR_pop_to_mark();
+			*processed = n;
+			return n > 0;
+		}
+		if(n > 0)
+			ERR_clear_last_mark();
+		char client[INET6_ADDRSTRLEN] = "?";
+		if(m->peer != NULL &&
+		   (!doq_addr_ntop(m->peer, client, sizeof(client)) || !dotdoh_source_allowed(client)))
+		{
+			log_debug(DEBUG_TLS, "dotdoh: dropped DoQ datagram from non-local client %s", client);
+			m->data_len = cap;
+			continue;
+		}
+		n++;
+	}
+	*processed = n;
+	// Everything read was dropped: tell OpenSSL to retry later, not that the socket failed
+	if(n == 0)
+		ERR_raise(ERR_LIB_BIO, BIO_R_NON_FATAL);
+	return n > 0;
+}
+
+static int doq_filter_sendmmsg(BIO *b, BIO_MSG *msg, size_t stride, size_t num_msg,
+                               uint64_t flags, size_t *processed)
+{
+	return BIO_sendmmsg(BIO_next(b), msg, stride, num_msg, flags, processed);
+}
+
+static long doq_filter_ctrl(BIO *b, int cmd, long larg, void *parg)
+{
+	return BIO_ctrl(BIO_next(b), cmd, larg, parg);
+}
+
+static int doq_filter_create(BIO *b)
+{
+	BIO_set_init(b, 1);
+	return 1;
+}
+
+static BIO_METHOD *g_filter_meth = NULL;
+
+static BIO *doq_new_filter(void)
+{
+	if(g_filter_meth == NULL)
+	{
+		g_filter_meth = BIO_meth_new(BIO_get_new_index() | BIO_TYPE_FILTER, "doq source filter");
+		if(g_filter_meth == NULL ||
+		   !BIO_meth_set_recvmmsg(g_filter_meth, doq_filter_recvmmsg) ||
+		   !BIO_meth_set_sendmmsg(g_filter_meth, doq_filter_sendmmsg) ||
+		   !BIO_meth_set_ctrl(g_filter_meth, doq_filter_ctrl) ||
+		   !BIO_meth_set_create(g_filter_meth, doq_filter_create))
+		{
+			BIO_meth_free(g_filter_meth);
+			g_filter_meth = NULL;
+			return NULL;
+		}
+	}
+	return BIO_new(g_filter_meth);
+}
+
 // Wrap a bound socket in an OpenSSL QUIC listener. Address validation (Retry) is
 // on - SSL_LISTENER_FLAG_NO_VALIDATE is deliberately not passed - so an
 // off-path spoofer cannot make us amplify traffic towards a forged source.
@@ -335,14 +427,18 @@ static SSL *doq_make_listener(int fd)
 		log_err("dotdoh: DoQ SSL_new_listener() failed: %s", ossl_err());
 		return NULL;
 	}
-	BIO *bio = BIO_new_dgram(fd, BIO_NOCLOSE);
-	if(bio == NULL)
+	BIO *dgram = BIO_new_dgram(fd, BIO_NOCLOSE);
+	BIO *filter = doq_new_filter();
+	if(dgram == NULL || filter == NULL)
 	{
-		log_err("dotdoh: DoQ BIO_new_dgram() failed: %s", ossl_err());
+		log_err("dotdoh: DoQ listener BIO setup failed: %s", ossl_err());
+		BIO_free(dgram);
+		BIO_free(filter);
 		SSL_free(l);
 		return NULL;
 	}
-	SSL_set_bio(l, bio, bio); // the listener owns the BIO, not the fd
+	BIO *bio = BIO_push(filter, dgram);
+	SSL_set_bio(l, bio, bio); // the listener owns the BIOs, not the fd
 	SSL_set_blocking_mode(l, 0);
 	if(SSL_listen(l) <= 0)
 	{
@@ -535,25 +631,7 @@ static bool conn_peer_ip(SSL *ssl, char *out, size_t outlen)
 	BIO_ADDR *ba = BIO_ADDR_new();
 	if(ba == NULL)
 		return false;
-	bool ok = false;
-	if(SSL_get_peer_addr(ssl, ba) == 1)
-	{
-		const int fam = BIO_ADDR_family(ba);
-		if(fam == AF_INET)
-		{
-			struct in_addr a4;
-			size_t al = sizeof(a4);
-			if(BIO_ADDR_rawaddress(ba, &a4, &al) == 1)
-				ok = inet_ntop(AF_INET, &a4, out, (socklen_t)outlen) != NULL;
-		}
-		else if(fam == AF_INET6)
-		{
-			struct in6_addr a6;
-			size_t al = sizeof(a6);
-			if(BIO_ADDR_rawaddress(ba, &a6, &al) == 1)
-				ok = inet_ntop(AF_INET6, &a6, out, (socklen_t)outlen) != NULL;
-		}
-	}
+	const bool ok = SSL_get_peer_addr(ssl, ba) == 1 && doq_addr_ntop(ba, out, outlen);
 	BIO_ADDR_free(ba);
 	return ok;
 }
@@ -629,7 +707,8 @@ static struct doq_conn *conn_new(SSL *ssl)
 		return NULL;
 	}
 
-	// Apply dns.listeningMode: drop non-local clients unless LISTEN_ALL.
+	// Apply dns.listeningMode: drop non-local clients unless LISTEN_ALL. The
+	// listener's filter BIO already drops them; this is the backstop.
 	if(!dotdoh_source_allowed(client))
 	{
 		log_debug(DEBUG_TLS, "dotdoh: refused DoQ connection from non-local client %s", client);
@@ -1277,6 +1356,8 @@ void *dotdoh_doq_thread(void *val)
 		SSL_CTX_free(g_ctx);
 		g_ctx = NULL;
 	}
+	BIO_meth_free(g_filter_meth);
+	g_filter_meth = NULL;
 	return NULL;
 }
 
