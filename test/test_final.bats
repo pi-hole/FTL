@@ -145,6 +145,14 @@ load 'bats_helper.bash'
   assert_success
 }
 
+@test "A new client's MAC address is looked up on its first query" {
+  # hwlen starts at -1, which must compare below 1 on every architecture
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run dig +tries=1 +time=2 -b 127.0.0.41 A hwlen-lookup.ftl @127.0.0.1
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'find_mac(\"127.0.0.41\")'"
+  assert_output "1"
+}
+
 @test "Gravity action streams NUL bytes, reports a failure and refuses a second run" {
   # Stand-in for pihole -g: output with a NUL byte in it, then fail after a moment
   if [ -e /usr/local/bin/pihole ]; then
