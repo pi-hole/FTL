@@ -42,6 +42,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -661,6 +662,11 @@ static void dot_accept_all(int lfd)
 			nanosleep(&backoff, NULL);
 			return;
 		}
+
+		// Answers are small writes: send each at once instead of letting
+		// Nagle hold it until the client acknowledges the session tickets
+		const int one = 1;
+		setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
 		char client[INET6_ADDRSTRLEN];
 		if(peer.ss_family == AF_INET6)
