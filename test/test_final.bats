@@ -233,19 +233,37 @@ load 'bats_helper.bash'
 
 @test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
   # The garbage collector runs once per minute then and keeps only the
-  # queries that can still receive a reply. All of them still reach the disk
+  # queries that can still receive a reply. All of them still reach the disk,
+  # and a rate-limited client stays limited when none of its queries is left
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 /home/pihole/pihole-FTL"'
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 FTLCONF_dns_rateLimit_count=250 FTLCONF_dns_rateLimit_interval=3600 /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  for i in $(seq 1 30); do
+    if dig A maxhistory-zero-0.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
 
-  # One query per second until a run removed some, the second run after the
-  # first query does at the latest
+  # 127.0.0.2 exceeds the rate limit
+  for i in $(seq 1 251); do
+    dig A "ratelimit-${i}.ftl" -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+  done
+  run bash -c "dig A ratelimit-0.ftl -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 | grep -oE 'status: [A-Z]+'"
+  assert_output "status: REFUSED"
+  limited=$(date +%s)
+
+  # One query per second until a run whose cutoff lies past the burst has
+  # removed queries, the second run after it does at the latest
   for i in $(seq 1 150); do
     dig A "maxhistory-zero-${i}.ftl" @127.0.0.1 +tries=1 +time=1 > /dev/null || true
-    if tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -qE "GC removed [1-9][0-9]* queries"; then
+    if tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | awk -v t="${limited}" '
+         /GC starting, mintime:/ { match($0, /\([0-9]+\)/); past = substr($0, RSTART + 1, RLENGTH - 2) + 0 >= t }
+         /GC removed [1-9][0-9]* queries/ { if(past) done = 1 }
+         END { exit !done }'; then
       break
     fi
     sleep 1
@@ -253,6 +271,10 @@ load 'bats_helper.bash'
   run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'GC (starting|removed)'"
   printf "%s\n" "${lines[@]}"
   assert_output --regexp "GC removed [1-9][0-9]* queries"
+
+  # None of the queries of 127.0.0.2 is left in memory, it is still limited
+  run bash -c "dig A ratelimit-after.ftl -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 | grep -oE 'status: [A-Z]+'"
+  assert_output "status: REFUSED"
 
   # The final export on termination stores what is left in memory
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)

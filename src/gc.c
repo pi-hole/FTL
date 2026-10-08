@@ -101,6 +101,11 @@ static void recycle(void)
 		if(client->flags.aliasclient)
 			goto keep_client;
 
+		// Keep the rate limit of a client until reset_rate_limiting()
+		// ends it, rate-limited queries are not counted above
+		if(client->flags.rate_limited || client->rate_limit > 0)
+			goto keep_client;
+
 		if(config.debug.gc.v.b)
 		{
 			char timestring[TIMESTR_SIZE];
