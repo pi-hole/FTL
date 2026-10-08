@@ -39,6 +39,8 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// cli_mode
+#include "args.h"
 
 // Global variables
 struct config config = { 0 };
@@ -2116,6 +2118,8 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
+	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
 	memcpy(&old_conf, &config, sizeof(struct config));
@@ -2131,6 +2135,11 @@ void replace_config(struct config *newconf)
 
 	// This configuration is live now, so the mbedTLS threshold follows it
 	set_mbedtls_debug_threshold(config.debug.tls.v.b);
+
+	// Drop the cached answers and verdicts of the previous blocking status as
+	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+		raise(SIGHUP);
 }
 
 void reread_config(void)

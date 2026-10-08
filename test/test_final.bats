@@ -71,6 +71,31 @@ load 'bats_helper.bash'
   fi
 }
 
+@test "Blocking enabled through the config drops the verdicts recorded while it was off" {
+  # PATCH /api/config and pihole.toml (written with --config here) change the
+  # blocking status without /api/dns/blocking. Runs after the config file
+  # rotations are counted, each change writes pihole.toml
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  dig +short +tries=1 +time=2 -b 127.0.0.35 a.ftl @127.0.0.1 > /dev/null
+  results=""
+  for via in api cli; do
+    for state in false true; do
+      logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+      if [[ "${via}" == "api" ]]; then
+        curl -s -X PATCH -d "{\"config\":{\"dns\":{\"blocking\":{\"active\":${state}}}}}" 127.0.0.1/api/config > /dev/null
+      else
+        ./pihole-FTL --config dns.blocking.active "${state}" > /dev/null
+      fi
+      # The lists are reloaded and the verdicts reset after a change
+      run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+      results="${results} ${via}-${state}:${status}:$(dig +short +tries=1 +time=2 -b 127.0.0.35 denied.ftl @127.0.0.1)"
+    done
+  done
+  printf "blocked: %s, results:%s\n" "${blocked}" "${results}"
+  [[ -n "${blocked}" && "${blocked}" != "192.168.1.3" ]]
+  [[ "${results}" == " api-false:0:192.168.1.3 api-true:0:${blocked} cli-false:0:192.168.1.3 cli-true:0:${blocked}" ]]
+}
+
 @test "Query with ID 0 has been saved to the database" {
   # FTL exports queries from in-memory DB to disk after a configurable
   # delay (default 30s). Poll up to 60s for the export to complete.
