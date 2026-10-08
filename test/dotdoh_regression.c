@@ -603,6 +603,17 @@ static void test_edns_pad_response(void)
 		EXPECT(edns_pad_response(buf, len, sizeof(buf)) == len,
 		       "already-padded response changed");
 	}
+
+	// A synthesised reply shorter than a header is left alone, with or without
+	// padding, rather than read past its end.
+	for(int pad = 0; pad < 2; pad++)
+	{
+		uint8_t buf[512];
+		memset(buf, 0xAA, sizeof(buf));
+		EXPECT(edns_pad_response_synth(buf, 11, sizeof(buf), false, pad) == 11,
+		       "short synthesised reply (pad=%d) changed length", pad);
+		EXPECT(buf[11] == 0xAA, "short synthesised reply (pad=%d) was written to", pad);
+	}
 }
 
 // The inbound DoT/DoH source filter must serve loopback/local clients yet refuse

@@ -375,7 +375,7 @@ size_t edns_pad_response_synth(uint8_t *buf, size_t len, size_t bufsz, bool set_
 
 	// The query was EDNS but did not pad: it still needs an OPT in the reply
 	// (RFC 6891 Sec. 6.1.1), just an empty one.
-	if(len + 11 > bufsz)
+	if(len < DNS_HEADER_LEN || len + 11 > bufsz)
 		return len;
 	const uint16_t arcount = (uint16_t)((buf[10] << 8) | buf[11]);
 	size_t w = len;
