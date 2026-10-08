@@ -120,6 +120,7 @@ bool delete_recent_queries_from_db(const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 bool queries_to_database(const bool final);
+double get_export_horizon(void) __attribute__((pure));
 void clear_addinfo_id_cache(void);
 bool is_memdb(const sqlite3 *db) __attribute__((pure));
 bool get_memdb_size(size_t *memsize, int *queries);

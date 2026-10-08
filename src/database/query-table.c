@@ -2151,6 +2151,13 @@ static void requeue_snapshots(const struct query_snap *snaps, const unsigned int
 // counts back from there so a run of skipped exports cannot lose late replies
 static double last_export_start = 0.0;
 
+// Queries older than this are stored and no longer updated in the database.
+// Guarded by the SHM lock
+double __attribute__((pure)) get_export_horizon(void)
+{
+	return last_export_start - REPLY_TIMEOUT;
+}
+
 bool queries_to_database(const bool final)
 {
 	int rc;
@@ -2175,6 +2182,10 @@ bool queries_to_database(const bool final)
 	if(counters->queries == 0)
 	{
 		log_debug(DEBUG_DATABASE, "Not storing query in database as there are none");
+		// Nothing waits to be stored, the garbage collector may go ahead
+		lock_shm();
+		last_export_start = double_time();
+		unlock_shm();
 		return true;
 	}
 	if(!db_import_done)

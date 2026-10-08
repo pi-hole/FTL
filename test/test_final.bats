@@ -231,6 +231,50 @@ load 'bats_helper.bash'
   [[ ${lines[0]} -ge 1 ]]
 }
 
+@test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
+  # The garbage collector runs once per minute then and keeps only the
+  # queries that can still receive a reply. All of them still reach the disk
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  # One query per second until a run removed some, the second run after the
+  # first query does at the latest
+  for i in $(seq 1 150); do
+    dig A "maxhistory-zero-${i}.ftl" @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+    if tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -qE "GC removed [1-9][0-9]* queries"; then
+      break
+    fi
+    sleep 1
+  done
+  run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'GC (starting|removed)'"
+  printf "%s\n" "${lines[@]}"
+  assert_output --regexp "GC removed [1-9][0-9]* queries"
+
+  # The final export on termination stores what is left in memory
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  sent=$(tail -c +$((logsize_dnsmasq + 1)) /var/log/pihole/pihole.log | grep -cE "query\[A\] maxhistory-zero-[0-9]+\.ftl ")
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT COUNT(*) FROM queries WHERE domain GLOB 'maxhistory-zero-*.ftl';\""
+  printf "queries sent: %s, stored on disk: %s\n" "${sent}" "${lines[0]}"
+  [[ ${sent} -ge 1 ]]
+  assert_equal "${lines[0]}" "${sent}"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.maxhistory-zero.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.maxhistory-zero.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.maxhistory-zero.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.maxhistory-zero.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
 @test "Pi-hole PTR records are generated once per address, however it is spelled" {
   # Start FTL afresh so no record exists yet, and ask for a non-canonical
   # spelling first: the record must still answer the canonical name. Further
