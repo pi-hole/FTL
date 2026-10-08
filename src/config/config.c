@@ -1117,7 +1117,7 @@ void initConfig(struct config *conf)
 	conf->webserver.proxySecret.c = validate_proxy_secret;
 
 	conf->webserver.acl.k = "webserver.acl";
-	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
+	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
 	conf->webserver.acl.f = FLAG_RESTART_FTL;
 	conf->webserver.acl.t = CONF_STRING;
@@ -1194,7 +1194,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)(PIHOLE_INSTALL_DIR "/tls.pem");
-	conf->webserver.tls.cert.c = validate_filepath;
+	conf->webserver.tls.cert.c = validate_filepath_empty;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";

@@ -383,6 +383,20 @@ setup_file() {
   assert_output "405"
 }
 
+@test "dotdoh-server: a DoH message with the QR bit set is rejected at once" {
+  # dnsmasq never answers a message with QR set, so it is not handed over and
+  # the handler does not wait for an answer that cannot come
+  local ca q
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_qr.bin"
+  python3 test/dotdoh_query.py emitqr "$DOMAIN" "$q"
+  run curl -s -o /dev/null -w '%{http_code}' --max-time 3 --cacert "$ca" \
+           --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' --data-binary "@$q" \
+           "https://pi.hole/dns-query"
+  assert_output "502"
+}
+
 @test "dotdoh-server: inbound queries are attributed to the real downstream client" {
   # The DoH and DoT queries above were both sourced from $CLIENT. If the private
   # EDNS client option survives the loopback handoff, the API must list a.ftl for
@@ -486,4 +500,35 @@ setup_file() {
   assert_success
   run python3 test/dotdoh_query.py check "$a" 127.0.0.3
   assert_output "OK"
+}
+
+# Every loopback handoff forks a dnsmasq TCP worker. Each worker has to see EOF
+# once FTL closes its end, so sequential one-shot clients must not leave workers
+# behind until they fill dnsmasq's MAX_PROCS and stop all TCP, DoT and DoH.
+
+@test "dotdoh-server: sequential one-shot DoT/DoH clients leave no dnsmasq workers behind" {
+  local ca q a main before after i
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/oneshot_q.bin"; a="${BATS_FILE_TMPDIR}/oneshot_a.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  main=$(cat /run/pihole-FTL.pid)
+  before=$(pgrep -P "$main" | wc -l)
+  for i in $(seq 1 20); do
+    run python3 test/dotdoh_query.py dot 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$ca" "$EXPECT_IP"
+    assert_output "OK"
+  done
+  for i in $(seq 1 10); do
+    run curl -s --http1.1 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+             --interface "$CLIENT" -H 'content-type: application/dns-message' \
+             --data-binary "@$q" "https://pi.hole/dns-query" --output "$a"
+    assert_success
+  done
+  # The workers exit asynchronously once they read EOF
+  for i in $(seq 1 25); do
+    after=$(pgrep -P "$main" | wc -l)
+    [[ "$after" -le "$((before + 2))" ]] && break
+    sleep 0.2
+  done
+  echo "dnsmasq TCP workers: before=${before} after=${after}"
+  [[ "$after" -le "$((before + 2))" ]]
 }
