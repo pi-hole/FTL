@@ -4647,9 +4647,9 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 }
 
 /**
- * @brief Retrieves the debug status of dnsmasq.
+ * @brief Retrieves dnsmasq's limit on concurrent TCP children (--max-tcp-connections).
  *
- * @return true if the debug option is enabled, false otherwise.
+ * @return The configured limit, or dnsmasq's default if it is not known yet.
  */
 unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
 {
@@ -4661,6 +4661,11 @@ unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
 	return MAX_PROCS;
 }
 
+/**
+ * @brief Retrieves the debug status of dnsmasq.
+ *
+ * @return true if the debug option is enabled, false otherwise.
+ */
 bool __attribute__ ((pure)) get_dnsmasq_debug(void)
 {
 	return option_bool(OPT_DEBUG);
