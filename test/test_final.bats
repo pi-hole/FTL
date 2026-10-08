@@ -346,3 +346,57 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
 }
+
+@test "Raising misc.privacylevel at runtime hides known domains and clients in the database" {
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  # Queries move into the in-memory database once per second
+  sleep 2
+
+  # Raising the level does not restart FTL. Every query from the next full
+  # second on carries the new level
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":1}}}"'
+  assert_output "200"
+  level1=$(( $(date +%s) + 1 ))
+  sleep 2
+  dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":2}}}"'
+  assert_output "200"
+  level2=$(( $(date +%s) + 1 ))
+  sleep 2
+  dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  sleep 2
+
+  # The final export on termination stores everything on disk
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run ./pihole-FTL --config misc.privacylevel 0
+  assert_success
+
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT (SELECT COUNT(*) FROM queries WHERE domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'hidden'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '127.0.0.1'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '0.0.0.0');\""
+  printf "named, named after level 1, hidden, client after level 2, hidden client: %s\n" "${lines[0]}"
+  IFS='|' read -r named named_hidden hidden client_shown client_hidden <<< "${lines[0]}"
+  [[ ${named} -ge 1 ]]
+  [[ ${named_hidden} == 0 ]]
+  [[ ${hidden} -ge 2 ]]
+  [[ ${client_shown} == 0 ]]
+  [[ ${client_hidden} -ge 1 ]]
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.privacylevel.log
+  run bash -c 'grep "ERROR: " /tmp/FTL.privacylevel.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.privacylevel.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}

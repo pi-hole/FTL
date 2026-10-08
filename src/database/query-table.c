@@ -146,6 +146,10 @@ void clear_addinfo_id_cache(void)
 	memset(addinfo_id_cache, 0, sizeof(addinfo_id_cache));
 }
 
+// Linking table rows shared by all queries whose privacy level hides their
+// domain, client or CNAME domain, 0 until first stored
+static int hidden_domain_db_id = 0, hidden_client_db_id = 0, hidden_cname_db_id = 0;
+
 // Step a statement that changes rows and read sqlite3_changes() and the last
 // inserted rowid for it. The connection mutex is held throughout so that a
 // statement of another thread sharing the connection cannot overwrite them
@@ -2191,11 +2195,18 @@ bool queries_to_database(void)
 		s->ede = query->ede;
 		s->blocked = query->flags.blocked;
 
-		// DOMAIN — handle linking table INSERT if first encounter
+		// DOMAIN - handle linking table INSERT if first encounter. The row
+		// cached with a domain holds its name, a query hiding the domain uses
+		// the row of the hidden domain instead
 		const char *domain = getDomainString(query);
 		domainsData *domaindata = getDomain(query->domainID, true);
+		const bool hide_domain = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
+		const bool store_domain = hide_domain ? hidden_domain_db_id == 0 :
+		                          domaindata != NULL && !domaindata->flags.in_database;
+		int domain_db_id = hide_domain ? hidden_domain_db_id :
+		                   domaindata != NULL ? domaindata->db_id : 0;
 
-		if(domaindata != NULL && !domaindata->flags.in_database)
+		if(store_domain)
 		{
 			sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
 			rc = step_and_count(memdb, domain_stmt, &changes, &rowid);
@@ -2209,24 +2220,37 @@ bool queries_to_database(void)
 			sqlite3_reset(domain_stmt);
 
 			if(changes > 0)
-				domaindata->db_id = (int)rowid;
+				domain_db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(domain_id_stmt, 1, domain, -1, SQLITE_STATIC);
 				if(sqlite3_step(domain_id_stmt) == SQLITE_ROW)
-					domaindata->db_id = sqlite3_column_int(domain_id_stmt, 0);
+					domain_db_id = sqlite3_column_int(domain_id_stmt, 0);
 				sqlite3_reset(domain_id_stmt);
 			}
-			domaindata->flags.in_database = true;
-		}
-		s->domain_db_id = domaindata != NULL ? domaindata->db_id : 0;
 
-		// CLIENT — handle linking table INSERT if first encounter
+			if(hide_domain)
+				hidden_domain_db_id = domain_db_id;
+			else if(domaindata != NULL)
+			{
+				domaindata->db_id = domain_db_id;
+				domaindata->flags.in_database = true;
+			}
+		}
+		s->domain_db_id = domain_db_id;
+
+		// CLIENT - handle linking table INSERT if first encounter. The same
+		// as for the domain applies to a query hiding its client
 		const char *clientIP = getClientIPString(query);
 		const char *clientName = getClientNameString(query);
 		clientsData *clientdata = getClient(query->clientID, true);
+		const bool hide_client = query->privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS;
+		const bool store_client = hide_client ? hidden_client_db_id == 0 :
+		                          clientdata != NULL && !clientdata->flags.in_database;
+		int client_db_id = hide_client ? hidden_client_db_id :
+		                   clientdata != NULL ? clientdata->db_id : 0;
 
-		if(clientdata != NULL && !clientdata->flags.in_database)
+		if(store_client)
 		{
 			sqlite3_bind_text(client_stmt, 1, clientIP, -1, SQLITE_STATIC);
 			sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
@@ -2240,18 +2264,25 @@ bool queries_to_database(void)
 			}
 
 			if(changes > 0)
-				clientdata->db_id = (int)rowid;
+				client_db_id = (int)rowid;
 			else
 			{
 				sqlite3_bind_text(client_id_stmt, 1, clientIP, -1, SQLITE_STATIC);
 				sqlite3_bind_text(client_id_stmt, 2, clientName, -1, SQLITE_STATIC);
 				if(sqlite3_step(client_id_stmt) == SQLITE_ROW)
-					clientdata->db_id = sqlite3_column_int(client_id_stmt, 0);
+					client_db_id = sqlite3_column_int(client_id_stmt, 0);
 				sqlite3_reset(client_id_stmt);
 			}
-			clientdata->flags.in_database = true;
+
+			if(hide_client)
+				hidden_client_db_id = client_db_id;
+			else if(clientdata != NULL)
+			{
+				clientdata->db_id = client_db_id;
+				clientdata->flags.in_database = true;
+			}
 		}
-		s->client_db_id = clientdata != NULL ? clientdata->db_id : 0;
+		s->client_db_id = client_db_id;
 
 		// FORWARD — handle linking table INSERT if first encounter
 		s->has_upstream = false;
@@ -2301,7 +2332,11 @@ bool queries_to_database(void)
 		   query->status == QUERY_DENYLIST_CNAME)
 		{
 			const int cname_domainID = query->CNAME_domainID;
-			int aid = lookup_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID);
+			// The cache holds the row of the CNAME domain's name, a query
+			// hiding its domain uses the row of the hidden domain
+			const bool hide_cname = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
+			int aid = hide_cname ? hidden_cname_db_id :
+			          lookup_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID);
 			if(aid == 0)
 			{
 				const char *cname = getCNAMEDomainString(query);
@@ -2327,7 +2362,10 @@ bool queries_to_database(void)
 						aid = sqlite3_column_int(addinfo_id_stmt, 0);
 					sqlite3_reset(addinfo_id_stmt);
 				}
-				store_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID, aid);
+				if(hide_cname)
+					hidden_cname_db_id = aid;
+				else
+					store_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID, aid);
 			}
 			s->addinfo_id = aid;
 		}
@@ -2543,6 +2581,8 @@ bool queries_to_database(void)
 	// lock taken for good
 rollback_unlock_fail:
 	dbquery(memdb, "ROLLBACK");
+	// The hidden rows may have been stored in this transaction, look them up again
+	hidden_domain_db_id = hidden_client_db_id = hidden_cname_db_id = 0;
 unlock_fail:
 	// Nothing was committed, so give the snapshotted queries their changed
 	// flag back and let the next run pick them up. The lock is still ours
