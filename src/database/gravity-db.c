@@ -629,6 +629,7 @@ static bool get_client_groupids(clientsData *client, sqlite3 *ftl_db)
 {
 	const char *ip = getstr(client->ippos);
 	client->flags.found_group = false;
+	client->flags.groups_looked_up = true;
 	client->groupspos = 0u;
 
 	// Do not proceed when database is not available
@@ -1201,13 +1202,14 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 	if(!client->flags.found_group)
 	{
 		const size_t old_groupspos = client->groupspos;
+		const bool first_lookup = !client->flags.groups_looked_up;
 		if(!get_client_groupids(client, NULL))
 			return false;
 
 		// Decisions cached for this client were taken with its previous
-		// groups. addintarray() deduplicates, so an unchanged group set
-		// keeps its position
-		if(client->groupspos != old_groupspos)
+		// groups, which a first lookup does not have. addintarray()
+		// deduplicates, so an unchanged group set keeps its position
+		if(!first_lookup && client->groupspos != old_groupspos)
 			FTL_reset_client_domain_data(client->id);
 
 		// The client's groups were just (re-)resolved. The per-client
