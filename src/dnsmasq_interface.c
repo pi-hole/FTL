@@ -207,6 +207,10 @@ static struct {
 
 #define HOSTNAME "Pi-hole hostname"
 
+// Seconds before a MAC lookup that found nothing is repeated. dnsmasq answers
+// it from its negative ARP cache record for 90 s anyway (src/dnsmasq/arp.c)
+#define MAC_LOOKUP_RETRY 90u
+
 // Fork-private copy of the interface data the most recent query came from
 static struct {
 	bool haveIPv4;
@@ -982,6 +986,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	// Set when clientIP comes from EDNS(0) rather than the packet source
 	bool edns_client = false;
+	// Set when clientIP comes from ECS, an address behind the forwarder
+	bool ecs_client = false;
 	ednsData *edns = getEDNS();
 	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
 	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
@@ -1005,6 +1011,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
 		edns_client = true;
+		ecs_client = true;
 	}
 	else if(addr)
 	{
@@ -1268,8 +1275,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	// Don't do this for internally generated queries (e.g., DNSSEC), if the
 	// MAC address is already known or if the netlink socket is not available
-	// (e.g., when retrying a query using TCP after UDP truncation)
-	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
+	// (e.g., when retrying a query using TCP after UDP truncation). ECS
+	// clients usually have no neighbor entry here, and a lookup that found
+	// nothing (hwlen 0) is repeated after MAC_LOOKUP_RETRY seconds at most
+	if(!internal_query && !ecs_client && client->hwlen < 1 && daemon->netlinkfd > 0 &&
+	   (client->hwlen != 0 ||
+	    ABS_TO_SHM_TIME((time_t)querytimestamp) - client->lastMACLookup >= MAC_LOOKUP_RETRY))
 	{
 		// find_mac() may trigger a netlink kernel call
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
@@ -1298,7 +1309,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// been remapped while we were unlocked)
 		lock_shm();
 		client = getClient(clientID, true);
-		if(client != NULL)
+		// A forked TCP worker only searches the ARP cache it inherited, so
+		// its miss leaves the lookup to the next query of the main process
+		if(client != NULL && (hwlen > 0 || daemon->pipe_to_parent == -1))
 		{
 			// If a MAC was just learned (this runs only while it was
 			// still unknown), clear found_group so the next query
@@ -1308,6 +1321,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				client->flags.found_group = false;
 			memcpy(client->hwaddr, hwaddr, sizeof(hwaddr));
 			client->hwlen = hwlen;
+			client->lastMACLookup = ABS_TO_SHM_TIME((time_t)querytimestamp);
 		}
 
 		// Re-fetch all SHM pointers as SHM may have been remapped. The
