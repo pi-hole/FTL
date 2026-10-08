@@ -21,44 +21,25 @@
 // fifologData is allocated in shared memory for cross-fork compatibility
 int api_logs(struct ftl_conn *api)
 {
-	unsigned int start = 0u;
+	// The buffer is a ring holding the last LOG_SIZE messages, message number
+	// n is in slot n % LOG_SIZE
+	const unsigned int next_id = fifo_log->logs[api->opts.which].next_id;
+	unsigned int first = next_id > LOG_SIZE ? next_id - LOG_SIZE : 0u;
 	if(api->request->query_string != NULL)
 	{
-		// Does the user request an ID to sent from?
+		// Does the user request an ID to sent from? An ID that is no longer
+		// in the buffer gets all of it, one not reached yet gets nothing
 		unsigned int nextID;
-		if(get_uint_var(api->request->query_string, "nextID", &nextID))
-		{
-			if(nextID >= fifo_log->logs[api->opts.which].next_id)
-			{
-				// Do not return any data
-				start = LOG_SIZE;
-			}
-			else if((fifo_log->logs[api->opts.which].next_id > LOG_SIZE) && nextID < (fifo_log->logs[api->opts.which].next_id) - LOG_SIZE)
-			{
-				// Requested an ID smaller than the lowest one we have
-				// We return the entire buffer
-				start = 0u;
-			}
-			else if(fifo_log->logs[api->opts.which].next_id >= LOG_SIZE)
-			{
-				// Reply with partial buffer, measure from the end
-				// (the log is full)
-				start = LOG_SIZE - (fifo_log->logs[api->opts.which].next_id - nextID);
-			}
-			else
-			{
-				// Reply with partial buffer, measure from the start
-				// (the log is not yet full)
-				start = nextID;
-			}
-		}
+		if(get_uint_var(api->request->query_string, "nextID", &nextID) && nextID > first)
+			first = nextID;
 	}
 
 	// Process data
 	cJSON *json = JSON_NEW_OBJECT();
 	cJSON *log = JSON_NEW_ARRAY();
-	for(unsigned int i = start; i < LOG_SIZE; i++)
+	for(unsigned int id = first; id < next_id; id++)
 	{
+		const unsigned int i = id % LOG_SIZE;
 		if(fifo_log->logs[api->opts.which].timestamp[i] < 1.0)
 		{
 			// Uninitialized buffer entry
@@ -72,7 +53,7 @@ int api_logs(struct ftl_conn *api)
 		JSON_ADD_ITEM_TO_ARRAY(log, entry);
 	}
 	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);
-	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", fifo_log->logs[api->opts.which].next_id);
+	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", next_id);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "pid", main_pid());
 
 	// Add file name

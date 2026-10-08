@@ -986,16 +986,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	if(payload == NULL || length == 0)
 		return;
 
-	unsigned int idx = fifo_log->logs[which].next_id++;
-	if(idx >= LOG_SIZE)
-	{
-		// Log is full, move everything one slot forward to make space for a new record at the end
-		// This pruges the oldest message from the list (it is overwritten by the second message)
-		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
-		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
-		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
-		idx = LOG_SIZE - 1u;
-	}
+	// Ring buffer: message number n goes into slot n % LOG_SIZE, so a full
+	// log overwrites its oldest message without moving the others
+	const unsigned int idx = fifo_log->logs[which].next_id++ % LOG_SIZE;
 
 	// Copy string
 	// We need to use the pre-allocated buffer in shared memory as we share

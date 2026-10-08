@@ -1194,6 +1194,40 @@ class TestLogs:
         data = _j(api_session.get(f"{FTL_URL}/api/logs/webserver", timeout=5))
         assert len(data["log"]) > 0
 
+    def test_dnsmasq_log_wraps(self, api_session):
+        """Once the log has wrapped, it returns its last 515 messages in order
+        and nextID picks up exactly where an earlier reply ended."""
+        import socket
+        import struct
+
+        # dnsmasq logs pi.hole queries but FTL does not count them, so they
+        # fill the log without changing what other tests expect
+        query = struct.pack('!HHHHHH', 0x4242, 0x0100, 1, 0, 0, 0) + \
+            b'\x02pi\x04hole\x00' + struct.pack('!HH', 1, 1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            for _ in range(600):
+                sock.sendto(query, ('127.0.0.1', 53))
+                sock.recvfrom(512)
+        finally:
+            sock.close()
+
+        url = f"{FTL_URL}/api/logs/dnsmasq"
+        data = _j(api_session.get(url, timeout=5))
+        log, next_id = data["log"], data["nextID"]
+        assert len(log) == 515, len(log)
+        stamps = [entry["timestamp"] for entry in log]
+        assert stamps == sorted(stamps)
+
+        # Lines logged in between can only add to the end of these replies
+        tail = _j(api_session.get(f"{url}?nextID={next_id - 10}", timeout=5))["log"]
+        assert tail[:10] == log[-10:], json.dumps(tail[:10], indent=2)
+        oldest = _j(api_session.get(f"{url}?nextID=0", timeout=5))["log"]
+        assert len(oldest) == 515, len(oldest)
+        newer = _j(api_session.get(f"{url}?nextID={next_id}", timeout=5))["log"]
+        assert all(entry["timestamp"] >= stamps[-1] for entry in newer)
+
 
 # ---------------------------------------------------------------------------
 # PADD
