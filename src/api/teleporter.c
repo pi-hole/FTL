@@ -36,6 +36,16 @@
 
 static int api_teleporter_GET(struct ftl_conn *api)
 {
+	// The archive contains the password hashes and the TOTP secret, so only
+	// sessions allowed to change the configuration may export it
+	if(api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to export configuration",
+		                       "The current app session is not allowed to export Pi-hole config settings (webserver.api.app_sudo is false)");
+	}
+
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
 	size_t size = 0u;
