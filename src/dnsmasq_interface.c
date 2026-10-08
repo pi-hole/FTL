@@ -3857,6 +3857,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
+			// Temporary history database (database.forceDisk)
+			if(config.database.forceDisk.v.b)
+				chown_pihole(config.files.tmp_db.v.s, ent_pw);
+
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
 			if(extrafile == NULL)

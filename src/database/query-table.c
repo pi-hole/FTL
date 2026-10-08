@@ -230,6 +230,9 @@ bool init_memory_database(void)
 	if(config.database.forceDisk.v.b)
 	{
 		log_warn("Using on-disk history database. This will reduce performance.");
+		// Same permissions as pihole-FTL.db (0640), set before anything is
+		// written to it or its journal is created
+		chmod_file(db_path, S_IWUSR | S_IRUSR | S_IRGRP);
 		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
 		sqlite3_exec(_memdb, "VACUUM", NULL, NULL, NULL);
 		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 0, 0);
@@ -524,6 +527,11 @@ void close_memory_database(void)
 	if(!detach_database(_memdb, NULL, "disk"))
 		log_err("close_memory_database(): Failed to detach disk database");
 
+	// An on-disk database (database.forceDisk) is removed below, its name is
+	// only available while the connection is open
+	const char *filename = sqlite3_db_filename(_memdb, "main");
+	char *tmp_db = filename != NULL && filename[0] != '\0' ? strdup(filename) : NULL;
+
 	// Close SQLite3 memory database
 	int ret = sqlite3_close(_memdb);
 	if(ret != SQLITE_OK)
@@ -534,6 +542,22 @@ void close_memory_database(void)
 
 	// Set global pointer to NULL
 	_memdb = NULL;
+
+	if(tmp_db == NULL)
+		return;
+
+	// Remove the database together with any journal it may have left behind
+	const char *suffixes[] = { "", "-journal", "-wal", "-shm" };
+	for(unsigned int i = 0; i < ArraySize(suffixes); i++)
+	{
+		char *path = NULL;
+		if(asprintf(&path, "%s%s", tmp_db, suffixes[i]) < 0)
+			continue;
+		if(unlink(path) != 0 && errno != ENOENT)
+			log_warn("Cannot remove %s: %s", path, strerror(errno));
+		free(path);
+	}
+	free(tmp_db);
 }
 
 // Is this the shared in-memory connection? Used to keep dbclose() away from a

@@ -222,6 +222,26 @@ load 'bats_helper.bash'
   assert_output --partial "Gravity failed"
 }
 
+@test "The on-disk history database of database.forceDisk is not world-readable and removed on stop" {
+  # Enabling it restarts FTL, which then keeps the history in files.tmp_db
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"database\":{\"forceDisk\":true}}}"'
+  assert_output "200"
+  run ./pihole-FTL wait-for "Web server ports:" /var/log/pihole/FTL.log 30 "$before"
+  assert_success
+  run stat -c %a /etc/pihole/pihole-tmp.db
+  assert_output "640"
+
+  # Disabling it restarts FTL again, the stopping instance removes the file
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"database\":{\"forceDisk\":false}}}"'
+  assert_output "200"
+  run ./pihole-FTL wait-for "Web server ports:" /var/log/pihole/FTL.log 30 "$before"
+  assert_success
+  run bash -c 'ls /etc/pihole/pihole-tmp.db*'
+  assert_failure
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
