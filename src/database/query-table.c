@@ -1175,6 +1175,74 @@ bool export_queries_to_disk(const bool final)
 	return okay;
 }
 
+// Log the size of the database and how many old queries were deleted from it
+void log_deleted_old_queries(const int64_t deleted, const bool complete)
+{
+	struct stat st;
+	get_FTL_db_stats(&st);
+	log_info("Size of %s is %.2f MB, deleted %"PRId64" of %"PRIu64" rows%s",
+	         config.files.database.v.s, 9.5367431640625e-07*st.st_size,
+	         deleted, diskdb_queries_count, complete ? "" : " (interrupted)");
+}
+
+// Delete the oldest queries with a timestamp up to <until> from the on-disk
+// database, at most DATABASE_DELETE_BATCH per call and each batch committed on
+// its own. <deleted> adds up over the calls. Returns true while more are left
+bool delete_old_queries_batch(sqlite3 *db, const double until, int64_t *deleted)
+{
+	// The database could not be opened
+	if(db == NULL)
+	{
+		log_deleted_old_queries(*deleted, false);
+		return false;
+	}
+
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(db, "DELETE FROM query_storage WHERE id IN "
+	                                "(SELECT id FROM query_storage WHERE timestamp <= ? "
+	                                "ORDER BY timestamp LIMIT ?)",
+	                            -1, &stmt, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("delete_old_queries_batch(): SQL error prepare: %s", sqlite3_errstr(rc));
+		log_deleted_old_queries(*deleted, false);
+		return false;
+	}
+
+	if((rc = sqlite3_bind_double(stmt, 1, until)) != SQLITE_OK ||
+	   (rc = sqlite3_bind_int(stmt, 2, DATABASE_DELETE_BATCH)) != SQLITE_OK)
+	{
+		log_err("delete_old_queries_batch(): Failed to bind: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		log_deleted_old_queries(*deleted, false);
+		return false;
+	}
+
+	rc = sqlite3_step(stmt);
+	const int64_t changes = sqlite3_changes64(db);
+	sqlite3_finalize(stmt);
+	if(rc != SQLITE_DONE)
+	{
+		log_err("delete_old_queries_batch(): Failed to delete queries with timestamp <= %f: %s",
+		        until, sqlite3_errstr(rc));
+		log_deleted_old_queries(*deleted, false);
+		return false;
+	}
+
+	*deleted += changes;
+	diskdb_queries_count = (uint64_t)changes <= diskdb_queries_count ?
+	                       diskdb_queries_count - (uint64_t)changes : 0u;
+	log_debug(DEBUG_DATABASE, "Deleted %"PRId64" queries with timestamp <= %f", changes, until);
+
+	if(changes >= DATABASE_DELETE_BATCH)
+		return true;
+
+	diskdb_earliest_timestamp = until;
+	log_deleted_old_queries(*deleted, true);
+
+	return false;
+}
+
 // Delete queries with a timestamp up to (recent = false) or from (recent =
 // true) the given timestamp
 static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent)
@@ -1266,8 +1334,7 @@ static bool delete_queries_from_db(const bool use_memdb, const double timestamp,
 	return okay;
 }
 
-// Delete queries older than given timestamp. Used by garbage collection and
-// database thread.
+// Delete queries older than given timestamp. Used by garbage collection
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 {
 	return delete_queries_from_db(use_memdb, mintime, false);

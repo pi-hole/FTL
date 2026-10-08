@@ -191,6 +191,52 @@ load 'bats_helper.bash'
   assert_line --partial --index 2 "FTL terminated after"
 }
 
+@test "Queries older than database.maxDBdays are deleted in the first nightly window after the start" {
+  # Start FTL at 03:50 local time, after the random cleaning minute (03:10 to
+  # 03:49), with 25000 queries older than 91 days in the database. They are
+  # deleted 10000 at a time
+  read -r hour minute <<< "$(date -u '+%H %M')"
+  off=$(( (230 - 10#${hour} * 60 - 10#${minute} + 1440) % 1440 ))
+  tz=$(printf 'TST-%02d:%02d' $((off / 60)) $((off % 60)))
+  run bash -c "TZ=${tz} date +%H"
+  assert_output "03"
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<25000) INSERT INTO query_storage (id,timestamp,type,status,domain,client) SELECT -100-x,$((now-100*86400))+x,1,2,0,0 FROM c;\""
+  assert_success
+
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "su pihole -s /bin/sh -c 'TZ=${tz} /home/pihole/pihole-FTL'"
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' MB, deleted ' /var/log/pihole/FTL.log 60 $logsize_restart"
+  logged=$status
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.maxdbdays.log
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  batches=$(grep -c "Deleted [0-9]* queries with timestamp" /tmp/FTL.maxdbdays.log || true)
+  total=$(grep -o " MB, deleted [0-9]* of" /tmp/FTL.maxdbdays.log | head -n 1 || true)
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT COUNT(*) FROM query_storage WHERE id <= -100;"'
+  remaining=${lines[0]}
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id <= -100;"
+  printf "batches: %s, logged: %s, left: %s\n" "${batches}" "${total}" "${remaining}"
+  assert_equal "${logged}" "0"
+  assert_equal "${remaining}" "0"
+  assert_equal "${total}" " MB, deleted 25000 of"
+  [[ ${batches} -ge 3 ]]
+
+  # Its part of the log up to the end of the deletion
+  run bash -c 'grep "WARNING:" /tmp/FTL.maxdbdays.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.maxdbdays.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.maxdbdays.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
 @test "Queries are stored with their own domain when database.DBimport is disabled" {
   # Restart FTL without importing the history. New domains must continue the
   # IDs of disk.domain_by_id instead of reusing those of older domains
