@@ -34,6 +34,10 @@
 #include "config/password.h"
 // thread_names
 #include "signals.h"
+// inet_pton()
+#include <arpa/inet.h>
+// isxdigit()
+#include <ctype.h>
 
 #ifdef HAVE_TLS
 #include <openssl/ssl.h>
@@ -85,8 +89,9 @@ static bool build_webpaths(void)
 		return false;
 	}
 
-	// Construct admin_api_uri path
-	admin_api_uri = append_to_path(prefix_webhome, "api");
+	// Construct admin_api_uri path, compared against request paths, which
+	// never carry the prefix (the reverse proxy strips it)
+	admin_api_uri = append_to_path(config.webserver.paths.webhome.v.s, "api");
 	log_web_debug(DEBUG_API, "Admin API URI path: %s", admin_api_uri);
 	if(admin_api_uri == NULL)
 	{
@@ -147,9 +152,10 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 			const char *pos = strchr(host, ']');
 			if (!pos)
 			{
-				// Malformed hostname starts with '[', but no ']' found
-				log_web(LOG_ERR, "Host name format error: Found '[' without ']'");
-				return 0;
+				// Malformed hostname starts with '[', but no ']' found. Any
+				// client can send this, so it is logged at debug level only.
+				log_web_debug(DEBUG_API, "Host name format error: Found '[' without ']'");
+				return request_handler(conn, input);
 			}
 			/* terminate after ']' */
 			host_len = (size_t)(pos + 1 - host);
@@ -205,7 +211,9 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// the proxy forwards (configure via WEBSERVER_DOMAIN in pihole.toml).
 	log_web_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
 	          uri, (int)host_len, host ? host : "", config.webserver.domain.v.s);
-	return 0;
+
+	// Serve "/" under the same rules as every other path (webserver.serve_all)
+	return request_handler(conn, input);
 }
 
 static int redirect_admin_handler(struct mg_connection *conn, void *input)
@@ -225,8 +233,330 @@ static int redirect_admin_handler(struct mg_connection *conn, void *input)
 	return 1;
 }
 
+// Plaintext entries of webserver.port in terminator mode. CivetWeb has no TLS
+// listener a redirect ("...r") entry could point to, so these entries reach it
+// without the 'r' and begin_request_handler() redirects them to the terminator.
+#define MAX_PLAIN_PORTS 16
+static struct plain_port
+{
+	int port;
+	int af; // AF_INET, AF_INET6 or 0 for a dual-stack "+port" entry
+	unsigned char addr[sizeof(struct in6_addr)]; // all zero for any address
+	bool redirect;
+} plain_ports[MAX_PLAIN_PORTS];
+static unsigned int n_plain_ports = 0;
+
+#ifdef HAVE_TLS
+// Parse a plaintext entry ("80", "+80", "1.2.3.4:80", "[::1]:80", plus flags)
+// the way CivetWeb binds it
+static bool parse_plain_port(const char *ent, struct plain_port *pp)
+{
+	memset(pp, 0, sizeof(*pp));
+	char a[INET6_ADDRSTRLEN] = "";
+	const char *p = ent;
+	pp->af = AF_INET;
+	if(*p == '+')
+	{
+		pp->af = 0;
+		p++;
+	}
+	else if(*p == '[')
+	{
+		const char *end = strstr(p, "]:");
+		if(end == NULL || (size_t)(end - p - 1) >= sizeof(a))
+			return false;
+		memcpy(a, p + 1, (size_t)(end - p - 1));
+		pp->af = AF_INET6;
+		p = end + 2;
+	}
+	else if(strchr(p, ':') != NULL)
+	{
+		const char *end = strchr(p, ':');
+		if((size_t)(end - p) >= sizeof(a))
+			return false;
+		memcpy(a, p, (size_t)(end - p));
+		p = end + 1;
+	}
+	if(a[0] != '\0' && inet_pton(pp->af, a, pp->addr) != 1)
+		return false;
+	pp->port = atoi(p);
+	pp->redirect = strchr(p, 'r') != NULL;
+	return pp->port > 0;
+}
+#endif /* HAVE_TLS */
+
+// Whether a plaintext request on the given local address and port arrived on a
+// redirect entry. An entry for that exact address wins over an any-address
+// entry, as it does when the kernel picks the listening socket. An address that
+// cannot be parsed redirects if any entry for that port does.
+static bool on_redirect_port(const char *server_addr, const int server_port)
+{
+	// Drop the scope of a link-local IPv6 address ("fe80::1%eth0")
+	char a[INET6_ADDRSTRLEN] = "";
+	strncpy(a, server_addr, sizeof(a) - 1);
+	char *scope = strchr(a, '%');
+	if(scope != NULL)
+		*scope = '\0';
+
+	unsigned char addr[sizeof(struct in6_addr)] = { 0 };
+	int af = AF_INET;
+	if(inet_pton(AF_INET, a, addr) != 1)
+	{
+		af = AF_INET6;
+		if(inet_pton(AF_INET6, a, addr) != 1)
+		{
+			for(unsigned int i = 0; i < n_plain_ports; i++)
+				if(plain_ports[i].port == server_port && plain_ports[i].redirect)
+					return true;
+			return false;
+		}
+	}
+	const size_t alen = af == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr);
+	static const unsigned char any[sizeof(struct in6_addr)] = { 0 };
+
+	int wildcard = -1;
+	for(unsigned int i = 0; i < n_plain_ports; i++)
+	{
+		const struct plain_port *pp = &plain_ports[i];
+		if(pp->port != server_port)
+			continue;
+		if(pp->af == af && memcmp(pp->addr, addr, alen) == 0)
+			return pp->redirect;
+		if(memcmp(pp->addr, any, sizeof(any)) == 0 && (pp->af == 0 || pp->af == af))
+			wildcard = (int)i;
+	}
+	return wildcard >= 0 && plain_ports[wildcard].redirect;
+}
+
+// 308 to the same path on the terminator's TLS port, built like CivetWeb's
+// redirect_to_https_port(): https://<webserver.domain>[:port]<uri>[?query]
+static int redirect_to_terminator(struct mg_connection *conn, const struct mg_request_info *ri)
+{
+	const in_port_t port = get_https_port();
+	if(port == 0)
+	{
+		mg_send_http_error(conn, 503, "%s", "TLS is not available");
+		return 503;
+	}
+
+	const char *uri = ri->local_uri_raw != NULL ? ri->local_uri_raw : "/";
+	const size_t enc_len = 3 * strlen(uri) + 1;
+	char *enc = calloc(enc_len, sizeof(char));
+	if(enc == NULL)
+	{
+		mg_send_http_error(conn, 500, "Internal Server Error");
+		return 500;
+	}
+	mg_url_encode(uri, enc, enc_len);
+
+	// Keep the path separators
+	char *w = enc;
+	for(const char *r = enc; *r != '\0'; )
+	{
+		if(strncmp(r, "%2f", 3) == 0)
+		{
+			*w++ = '/';
+			r += 3;
+		}
+		else
+			*w++ = *r++;
+	}
+	*w = '\0';
+
+	char portstr[8] = "";
+	if(port != 443)
+		snprintf(portstr, sizeof(portstr), ":%u", (unsigned int)port);
+
+	const char *query = ri->query_string;
+	const int code = ftl_http_redirect(conn, 308, "https://%s%s%s%s%s",
+	                                   config.webserver.domain.v.s, portstr, enc,
+	                                   query != NULL ? "?" : "",
+	                                   query != NULL ? query : "");
+	free(enc);
+	return code > 0 ? code : 500;
+}
+
+// webserver.acl as of the last http_init(), read by the TLS terminator's
+// accept paths and begin_request_handler()
+static bool acl_configured = false;
+static char *web_acl = NULL;
+// Set when CivetWeb's access_control_list also admits the terminator's loopback
+// source, so begin_request_handler() must apply webserver.acl itself
+static bool acl_per_request = false;
+
+// Match one ACL entry (ptr/len, without its +/- flag) against sa. Returns 1 on
+// a match, 0 on none and -1 if the entry is malformed. Parses exactly like
+// CivetWeb's parse_match_net() so both decide the same way.
+static int acl_match_net(const char *ptr, const size_t len, const struct sockaddr_storage *sa)
+{
+	int n = 0;
+	unsigned int a = 0, b = 0, c = 0, d = 0, slash = 0;
+
+	// Like CivetWeb, sscanf() may read past len, up to the end of the list
+	if(sscanf(ptr, "%u.%u.%u.%u/%u%n", &a, &b, &c, &d, &slash, &n) != 5)
+	{
+		slash = 32;
+		if(sscanf(ptr, "%u.%u.%u.%u%n", &a, &b, &c, &d, &n) != 4)
+			n = 0;
+	}
+
+	if(n > 0 && (size_t)n == len)
+	{
+		if(a < 256 && b < 256 && c < 256 && d < 256 && slash < 33)
+		{
+			if(sa->ss_family != AF_INET)
+				return 0;
+			const uint32_t ip = ntohl(((const struct sockaddr_in *)sa)->sin_addr.s_addr);
+			const uint32_t net = (a << 24) | (b << 16) | (c << 8) | d;
+			const uint32_t mask = slash ? (0xFFFFFFFFu << (32 - slash)) : 0;
+			return (ip & mask) == net;
+		}
+	}
+	else
+	{
+		char ad[50];
+		if(sscanf(ptr, "[%49[^]]]/%u%n", ad, &slash, &n) != 2)
+		{
+			slash = 128;
+			if(sscanf(ptr, "[%49[^]]]%n", ad, &n) != 1)
+				n = 0;
+		}
+
+		// Without square brackets: "addr/x" or a bare address
+		if(n <= 0)
+		{
+			const char *p = strchr(ptr, '/');
+			if(p != NULL && p < ptr + len)
+			{
+				if((size_t)(p - ptr) < sizeof(ad) && sscanf(p, "/%u%n", &slash, &n) == 1)
+				{
+					n += (int)(p - ptr);
+					memcpy(ad, ptr, (size_t)(p - ptr));
+					ad[p - ptr] = '\0';
+				}
+				else
+					n = 0;
+			}
+			else if(len < sizeof(ad))
+			{
+				n = (int)len;
+				slash = 128;
+				memcpy(ad, ptr, len);
+				ad[len] = '\0';
+			}
+		}
+
+		if(n > 0 && (size_t)n == len && slash < 129)
+		{
+			// Zone indexes are unsupported, at least two colons are needed
+			const char *p = ad;
+			unsigned int colons = 0;
+			while(isxdigit((unsigned char)*p) || *p == '.' || *p == ':')
+				if(*(p++) == ':')
+					colons++;
+			struct in6_addr net6;
+			if(*p == '\0' && colons >= 2)
+			{
+				if(sa->ss_family != AF_INET6)
+					return 0;
+				if(inet_pton(AF_INET6, ad, &net6) == 1)
+				{
+					const uint8_t *ip6 = ((const struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
+					for(unsigned int i = 0; i < 16; i++)
+					{
+						uint8_t mask = 0;
+						if(8 * i + 8 < slash)
+							mask = 0xFFu;
+						else if(8 * i < slash)
+							mask = (uint8_t)(0xFFu << (8 * i + 8 - slash));
+						if((ip6[i] & mask) != net6.s6_addr[i])
+							return 0;
+					}
+					return 1;
+				}
+			}
+		}
+	}
+
+	// Malformed
+	return -1;
+}
+
+// Evaluate webserver.acl for sa the way CivetWeb's check_acl() does: deny by
+// default, the last matching entry wins, and a malformed entry denies
+bool webserver_acl_allows(const struct sockaddr_storage *sa)
+{
+	if(!acl_configured)
+		return true;
+	if(web_acl == NULL)
+		return false;
+
+	int allowed = '-';
+	const char *list = web_acl;
+	while(*list != '\0')
+	{
+		// Split off the next comma-separated entry, trimming spaces and tabs
+		while(*list == ' ' || *list == '\t')
+			list++;
+		const char *ptr = list;
+		const char *comma = strchr(ptr, ',');
+		size_t len = comma != NULL ? (size_t)(comma - ptr) : strlen(ptr);
+		list = comma != NULL ? comma + 1 : ptr + len;
+		while(len > 0 && (ptr[len - 1] == ' ' || ptr[len - 1] == '\t'))
+			len--;
+		if(len == 0)
+			continue;
+
+		const int flag = ptr[0];
+		if(flag != '+' && flag != '-')
+			return false;
+		const int matched = acl_match_net(ptr + 1, len - 1, sa);
+		if(matched < 0)
+			return false;
+		if(matched)
+			allowed = flag;
+	}
+
+	return allowed == '+';
+}
+
+// Apply webserver.acl to the client CivetWeb reports for this request (the
+// address from a trusted PROXY header, else the transport peer)
+static bool request_acl_allows(const char *remote_addr)
+{
+	struct sockaddr_storage ss;
+	memset(&ss, 0, sizeof(ss));
+
+	// Drop a zone index ("fe80::1%eth0"), the ACL never matches on it
+	char addr[INET6_ADDRSTRLEN];
+	const size_t alen = strcspn(remote_addr, "%");
+	if(alen >= sizeof(addr))
+		return webserver_acl_allows(&ss);
+	memcpy(addr, remote_addr, alen);
+	addr[alen] = '\0';
+
+	struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&ss;
+	if(inet_pton(AF_INET, addr, &sin->sin_addr) == 1)
+		sin->sin_family = AF_INET;
+	else if(inet_pton(AF_INET6, addr, &sin6->sin6_addr) == 1)
+		sin6->sin6_family = AF_INET6;
+
+	return webserver_acl_allows(&ss);
+}
+
 static int begin_request_handler(struct mg_connection *conn)
 {
+	// CivetWeb admits the terminator's loopback source in terminator mode, so
+	// refuse here whatever webserver.acl does not allow
+	const struct mg_request_info *request = mg_get_request_info(conn);
+	if(acl_per_request && !request_acl_allows(request->remote_addr))
+	{
+		log_web_debug(DEBUG_WEBSERVER, "Rejecting request from %s (webserver.acl)", request->remote_addr);
+		mg_send_http_error(conn, 403, "Forbidden");
+		return 403;
+	}
+
 	// Reject any request whose (URL-decoded) path contains control
 	// characters. CivetWeb decodes local_uri_raw in place, so an encoded
 	// CR/LF (%0d%0a) arrives here as a literal newline. Several handlers
@@ -240,7 +570,6 @@ static int begin_request_handler(struct mg_connection *conn)
 	// trivially flood such requests, and logging each one at warning level
 	// (or logging the URI verbatim) would itself be a log-flooding /
 	// log-injection vector.
-	const struct mg_request_info *request = mg_get_request_info(conn);
 	for(const char *p = request->local_uri_raw; p != NULL && *p != '\0'; p++)
 	{
 		if((unsigned char)*p < 0x20 || (unsigned char)*p == 0x7f)
@@ -250,6 +579,11 @@ static int begin_request_handler(struct mg_connection *conn)
 			return 400;
 		}
 	}
+
+	// Redirect entries are served here when the terminator owns TLS
+	if(!request->is_ssl && n_plain_ports > 0 &&
+	   on_redirect_port(request->server_addr, request->server_port))
+		return redirect_to_terminator(conn, request);
 
 	// Let CivetWeb process the request normally
 	return 0;
@@ -274,9 +608,10 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 
 static int redirect_lp_handler(struct mg_connection *conn, void *input)
 {
-	// Get requested URI
+	// Use the normalized URI: the raw one may start with "//" or a slash and a
+	// backslash, which browsers resolve to another host in a Location header
 	const struct mg_request_info *request = mg_get_request_info(conn);
-	const char *uri = request->local_uri_raw;
+	const char *uri = request->local_uri;
 	const size_t uri_len = strlen(uri);
 
 	// Check if we are allowed to serve this directory by checking the
@@ -492,11 +827,14 @@ static bool get_server_ports(void)
 		// 1 = IPv4, 3 = IPv6 (can also be a combo-socket serving both),
 		// the documentation in civetweb.h is wrong
 		char addr[INET6_ADDRSTRLEN + 2] = { 0 };
+		char tmp[INET6_ADDRSTRLEN] = { 0 };
 		if(mgports[i].protocol == 1)
-			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, addr, INET_ADDRSTRLEN);
+		{
+			inet_ntop(AF_INET, &mgports[i].addr.sa4.sin_addr, tmp, INET_ADDRSTRLEN);
+			strcpy(addr, tmp);
+		}
 		else if(mgports[i].protocol == 3)
 		{
-			char tmp[INET6_ADDRSTRLEN] = { 0 };
 			inet_ntop(AF_INET6, &mgports[i].addr.sa6.sin6_addr, tmp, INET6_ADDRSTRLEN);
 			// Enclose IPv6 address in square brackets
 			snprintf(addr, sizeof(addr), "[%s]", tmp);
@@ -516,11 +854,15 @@ static bool get_server_ports(void)
 			continue;
 		}
 
+		// A redirect entry reaches CivetWeb without its 'r' in terminator mode
+		const bool is_redirect = mgports[i].is_redirect ||
+			(!mgports[i].is_ssl && on_redirect_port(tmp, mgports[i].port));
+
 		// Store the public port
 		strncpy(server_ports[n].addr, addr, sizeof(server_ports[n].addr) - 1);
 		server_ports[n].port = mgports[i].port;
 		server_ports[n].is_secure = mgports[i].is_ssl;
-		server_ports[n].is_redirect = mgports[i].is_redirect;
+		server_ports[n].is_redirect = is_redirect;
 		server_ports[n].is_optional = mgports[i].is_optional;
 		server_ports[n].is_bound = mgports[i].is_bound;
 		server_ports[n].protocol = mgports[i].protocol;
@@ -538,7 +880,7 @@ static bool get_server_ports(void)
 		// Mirror each public plaintext (non-redirect) port with the terminator's
 		// TLS port on the same address.
 		if(terminator_port > 0 && !mgports[i].is_ssl &&
-		   !mgports[i].is_redirect && n < MAXPORTS)
+		   !is_redirect && n < MAXPORTS)
 		{
 			server_ports[n] = server_ports[n - 1];
 			server_ports[n].port = terminator_port;
@@ -818,7 +1160,21 @@ static int split_terminator_ports(const char *cfg, char *backend, size_t backend
 			continue; // drop from the list handed to CivetWeb
 		}
 
-		// Keep plaintext entries verbatim
+		// Keep plaintext entries, a redirect entry without its 'r' (see
+		// plain_ports). One that cannot be recorded is kept verbatim.
+		char plain[128];
+		struct plain_port pp;
+		if(n_plain_ports < MAX_PLAIN_PORTS && strlen(ent) < sizeof(plain) &&
+		   parse_plain_port(ent, &pp))
+		{
+			plain_ports[n_plain_ports++] = pp;
+			size_t j = 0;
+			for(const char *c = ent; *c != '\0'; c++)
+				if(*c != 'r')
+					plain[j++] = *c;
+			plain[j] = '\0';
+			ent = plain;
+		}
 		if(backend[0] != '\0')
 			str_append(backend, backend_len, ",");
 		str_append(backend, backend_len, ent);
@@ -921,6 +1277,7 @@ void http_init(void)
 	terminator_port = 0;
 	backend_port = 0;
 	terminator_addr[0] = '\0';
+	n_plain_ports = 0;
 	if(tls_used)
 	{
 		terminator_port = split_terminator_ports(config.webserver.port.v.s,
@@ -929,8 +1286,11 @@ void http_init(void)
 		if(terminator_port > 0)
 			listening_ports = backend_ports;
 		else
+		{
+			n_plain_ports = 0;
 			log_err("Could not extract a TLS port from '%s'; the web server will not offer TLS",
 			        config.webserver.port.v.s);
+		}
 	}
 #endif
 
@@ -1040,13 +1400,36 @@ void http_init(void)
 	}
 #endif
 	// Add access control list if configured (last two options)
-	if(strlen(config.webserver.acl.v.s) > 0)
+	if(web_acl != NULL)
+		free(web_acl);
+	web_acl = NULL;
+	acl_per_request = false;
+	acl_configured = strlen(config.webserver.acl.v.s) > 0;
+	if(acl_configured)
 	{
+		// Private copy for the terminator and begin_request_handler(), which
+		// must not read the config string while a config change replaces it
+		web_acl = strdup(config.webserver.acl.v.s);
 		conf_opts[idx * 2] = strdup("access_control_list");
-		// Note: The string is duplicated by CivetWeb, so it doesn't matter if
-		//       the original string is freed (config changes) after mg_start()
-		//       returns below.
-		conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
+		if(terminator_port > 0)
+		{
+			// The terminator reaches the backend from 127.0.0.1 and checks
+			// the real client itself, so CivetWeb must admit 127.0.0.1;
+			// begin_request_handler() then applies webserver.acl per request.
+			// Without the private copy webserver_acl_allows() refuses everyone
+			const size_t acl_len = strlen(config.webserver.acl.v.s) + sizeof(",+127.0.0.1");
+			conf_opts[idx * 2 + 1] = calloc(acl_len, sizeof(char));
+			if(conf_opts[idx * 2 + 1] != NULL)
+				snprintf(conf_opts[idx * 2 + 1], acl_len, "%s,+127.0.0.1", config.webserver.acl.v.s);
+			acl_per_request = true;
+		}
+		else
+		{
+			// Note: The string is duplicated by CivetWeb, so it doesn't matter if
+			//       the original string is freed (config changes) after mg_start()
+			//       returns below.
+			conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
+		}
 		idx++;
 	}
 
@@ -1173,19 +1556,20 @@ void http_init(void)
 		log_web(LOG_WARNING, "Webhome is set to root (/) and IP blocking is enabled. This may result in the Pi-hole web interface to display in places where otherwise ads would show up");
 	}
 
-	// Register [prefix]<webhome without trailing slash> -> [<prefix>]<webhome> redirect handler
+	// Register <webhome without trailing slash> -> [<prefix>]<webhome> redirect
+	// handler. The matcher has no prefix as the reverse proxy strips it.
 	if(strlen(config.webserver.paths.webhome.v.s) > 1 && config.webserver.paths.webhome.v.s[strlen(config.webserver.paths.webhome.v.s)-1] == '/')
 	{
 		// Replace trailing slash with end-of-string marker for matcher
-		char *prefix_webhome_matcher = strdup(prefix_webhome);
-		prefix_webhome_matcher[strlen(prefix_webhome_matcher)-1] = '$';
+		char *webhome_matcher = strdup(config.webserver.paths.webhome.v.s);
+		webhome_matcher[strlen(webhome_matcher)-1] = '$';
 
 		log_web_debug(DEBUG_API, "Redirecting %s --308--> %s",
-		          prefix_webhome, config.webserver.paths.webhome.v.s);
-		mg_set_request_handler(ctx, prefix_webhome_matcher, redirect_admin_handler, NULL);
-		// prefix_webhome_matcher is internally duplicated during
+		          webhome_matcher, prefix_webhome);
+		mg_set_request_handler(ctx, webhome_matcher, redirect_admin_handler, NULL);
+		// webhome_matcher is internally duplicated during
 		// request configuration so it can be freed here
-		free(prefix_webhome_matcher);
+		free(webhome_matcher);
 	}
 
 	// Register **.lp -> ** redirect handler
@@ -1207,7 +1591,10 @@ void http_init(void)
 	if(tls_used && terminator_port > 0)
 	{
 		if(backend_port <= 0)
+		{
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
+			https_port = 0; // TLS is not actually available
+		}
 		else if(!terminator_start(terminator_addr, terminator_port, backend_port, config.webserver.tls.cert.v.s))
 		{
 			log_err("Failed to start the TLS terminator on port %d", terminator_port);
@@ -1311,6 +1698,13 @@ void http_terminate(void)
 
 	/* Un-initialize the library */
 	mg_exit_library();
+
+	// Nothing reads the ACL copy once the terminator and CivetWeb are stopped
+	if(web_acl != NULL)
+		free(web_acl);
+	web_acl = NULL;
+	acl_configured = false;
+	acl_per_request = false;
 
 	// Remove CLI password
 	remove_cli_password();

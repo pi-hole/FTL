@@ -25,6 +25,18 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "A leftover world-readable CLI password file is replaced" {
+  # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
+  holder=$(cat /tmp/cli_pw_holder.pid)
+  run cat "/proc/${holder}/fd/0"
+  kill "${holder}"
+  assert_output "stale"
+  run stat -c '%a' /etc/pihole/cli_pw
+  assert_output "640"
+  run cat /etc/pihole/cli_pw
+  refute_output "stale"
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
    assert_output --partial "CRIT: pihole-FTL is already running"
@@ -740,7 +752,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -1308,6 +1320,24 @@ except socket.timeout:
   assert_output "${expected}"
 }
 
+@test "Message truncation is detected at exactly the buffer size" {
+  # "dnsmasq: " + message renders to 1024 (truncated) and 1023 bytes (fits) in plain[1024]
+  pad="$(head -c 999 /dev/zero | tr '\0' a)"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "INSERT INTO message (timestamp, type, message) VALUES (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad}'), (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad:1}');"
+  assert_success
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c 'curl -s 127.0.0.1/api/info/messages'
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log | grep 'Buffer too small to hold'"
+  assert_line --index 0 --partial "format_dnsmasq_warn_message(): Buffer too small to hold plain message"
+  assert_equal "${#lines[@]}" 1
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "DELETE FROM message WHERE message LIKE 'truncation-test-%';"
+  assert_success
+}
+
 @test "Local interfaces are added to the network table" {
   # Use the first interface with a hardware address, fall back to lo
   iface="lo"
@@ -1700,6 +1730,12 @@ except socket.timeout:
   assert_failure 2
 }
 
+@test "An empty files.database is rejected" {
+  run bash -c './pihole-FTL --config files.database ""'
+  assert_output --partial 'files.database: must not be empty'
+  assert_failure 3
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {
@@ -2082,6 +2118,20 @@ except socket.timeout:
   assert_success
 }
 
+@test "TLS HTTP/1.1 requests too large for the DoH parser are answered by the web server" {
+  # A request target of 2048+ bytes and a method of 8+ characters are relayed
+  # to CivetWeb, so they get the same answer as over plain HTTP
+  long="/api/domains/deny/regex/$(head -c 2100 /dev/zero | tr '\0' 'a')"
+  tls="curl -s -o /dev/null -w %{http_code} --http1.1 --cacert /etc/pihole/test.crt --resolve pi.hole:443:127.0.0.1"
+  plain="curl -s -o /dev/null -w %{http_code}"
+  run bash -c "$tls -X DELETE https://pi.hole$long"
+  refute_output "400"
+  assert_output "$($plain -X DELETE http://127.0.0.1$long)"
+  run bash -c "$tls -X PROPFIND https://pi.hole/admin/"
+  refute_output "400"
+  assert_output "$($plain -X PROPFIND http://127.0.0.1/admin/)"
+}
+
 @test "X.509 certificate parser returns expected result" {
   # We are getting the certificate from the config. The verbose output is the
   # OpenSSL X509_print() representation (identical to "openssl x509 -text"). It
@@ -2233,7 +2283,7 @@ except socket.timeout:
   run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
   run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
@@ -2266,6 +2316,11 @@ except socket.timeout:
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
   run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
+}
+
+@test "Redirect port answers 308 to the TLS port" {
+  run bash -c 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" "http://127.0.0.1:8081/admin/x%20y?a=1"'
+  assert_output "308 https://pi.hole/admin/x%20y?a=1"
 }
 
 @test "Gravity: API write waits for a concurrent reader instead of failing" {

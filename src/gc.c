@@ -532,14 +532,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		removed++;
 	}
 
-	// Remove query from queries table (temp), we can release the lock for this
-	// action to prevent blocking the DNS service too long
-	if(!flush)
-		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
-		lock_shm();
-
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
 	{
@@ -560,11 +552,23 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		queryIDMap_clear();
 	}
 
+	// Remove query from queries table (temp), we can release the lock for this
+	// action to prevent blocking the DNS service too long. The processed
+	// queries are already shifted out above, so a runGC() from a log flush
+	// in this window cannot process them again
+	if(!flush)
+		unlock_shm();
+	delete_old_queries_from_db(true, mintime);
+	if(!flush)
+		lock_shm();
+
 	// Recycle old clients and domains
 	recycle();
 
-	// Determine if overTime memory needs to get moved
-	moveOverTimeMemory(mintime);
+	// Determine if overTime memory needs to get moved. A flush keeps the
+	// current window, the removed queries were already subtracted above
+	if(!flush)
+		moveOverTimeMemory(mintime);
 
 	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
@@ -706,8 +710,8 @@ void *GC_thread(void *val)
 		if(killed)
 			break;
 
-		// Check if pihole.toml has been modified
-		if(check_inotify_event())
+		// Check if pihole.toml has been modified or a reread is pending
+		if(check_inotify_event() || reread_config_deferred())
 		{
 			// Reload config
 			reread_config();

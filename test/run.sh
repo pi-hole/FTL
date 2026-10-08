@@ -56,6 +56,15 @@ cp test/test.crt /etc/pihole/test.crt
 cp test/pihole.toml /etc/pihole/pihole.toml
 chown pihole:pihole /etc/pihole/pihole.toml
 
+# Leave a world-readable CLI password file behind, as an interrupted shutdown
+# can, and keep it open like a local reader could. FTL has to replace it rather
+# than write the new password into it
+printf 'stale\n' > /etc/pihole/cli_pw
+chmod 0666 /etc/pihole/cli_pw
+chown pihole:pihole /etc/pihole/cli_pw
+sleep 600 < /etc/pihole/cli_pw > /dev/null 2>&1 &
+echo $! > /tmp/cli_pw_holder.pid
+
 # Prepare 01-pihole-tests.conf
 mkdir -p /etc/dnsmasq.d
 cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
@@ -187,6 +196,14 @@ $BATS -p "test/dotdoh_server.bats"
 DOTDOH_SERVER_RET=$?
 if [ $DOTDOH_SERVER_RET != 0 ]; then
   RET=$DOTDOH_SERVER_RET
+fi
+
+# webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
+# restarts FTL.
+$BATS -p "test/webserver_acl.bats"
+WEBSERVER_ACL_RET=$?
+if [ $WEBSERVER_ACL_RET != 0 ]; then
+  RET=$WEBSERVER_ACL_RET
 fi
 
 # Run final BATS suite — log validation and FTL termination

@@ -471,6 +471,16 @@ class TestLuaServerPages:
         r = api_session.head(f"{FTL_URL}/broken_lua", timeout=5)
         assert r.status_code == 404
 
+    def test_root_not_served_by_default(self, api_session):
+        """/ under a Host other than webserver.domain follows serve_all too."""
+        set_config(api_session, "webserver.serve_all", False)
+        r = api_session.get(f"{FTL_URL}/", allow_redirects=False, timeout=5)
+        assert r.status_code == 404
+        r = api_session.get(f"{FTL_URL}/", headers={"Host": "pi.hole"},
+                            allow_redirects=False, timeout=5)
+        assert r.status_code == 308
+        assert r.headers["Location"].endswith("/admin/")
+
     def test_lua_page_generates_proper_backtrace(self, api_session):
         """Lua server page generates proper backtrace on error."""
         set_config(api_session, "webserver.serve_all", True)
@@ -486,6 +496,19 @@ class TestLuaServerPages:
         r = api_session.get(f"{FTL_URL}/broken_lua", timeout=5)
         lines = r.text.splitlines()
         assert lines[0] == "Hello, world 1!", f"Unexpected response:\n{r.text}"
+
+    def test_lp_redirect_stays_on_host(self):
+        """The .lp redirect never points to another host (serve_all is on)."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("//evil.example/x.lp", "/%5Cevil.example/x.lp"):
+            raw = _raw_http(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            "Connection: close\r\n\r\n".encode())
+            head = raw.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+            location = [line.split(":", 1)[1].strip()
+                        for line in head.split("\r\n")[1:]
+                        if line.lower().startswith("location:")]
+            assert location, f"No redirect for {path}:\n{head}"
+            assert not location[0].startswith(("//", "/\\")), location[0]
 
 
 # ---------------------------------------------------------------------------

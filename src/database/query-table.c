@@ -1175,13 +1175,15 @@ bool export_queries_to_disk(const bool final)
 	return okay;
 }
 
-// Delete queries older than given timestamp. Used by garbage collection and
-// database thread.
-bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
+// Delete queries with a timestamp up to (recent = false) or from (recent =
+// true) the given timestamp
+static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent)
 {
-	// Get time stamp 24 hours (or what was configured) in the past
 	bool okay = false;
-	const char *querystr = "DELETE FROM query_storage WHERE timestamp <= ?";
+	const char *op = recent ? ">=" : "<=";
+	const char *querystr = recent ?
+		"DELETE FROM query_storage WHERE timestamp >= ?" :
+		"DELETE FROM query_storage WHERE timestamp <= ?";
 
 	sqlite3 *db = NULL;
 	if(use_memdb)
@@ -1193,16 +1195,16 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	sqlite3_stmt *stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK ){
-		log_err("delete_old_queries_from_db(%s): SQL error prepare: %s",
+		log_err("delete_queries_from_db(%s): SQL error prepare: %s",
 		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
 		if(!use_memdb) dbclose(&db);
 		return false;
 	}
 
 	// Bind index
-	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
+	if((rc = sqlite3_bind_double(stmt, 1, timestamp)) != SQLITE_OK)
 	{
-		log_err("delete_old_queries_from_db(%s): Failed to bind mintime: %s",
+		log_err("delete_queries_from_db(%s): Failed to bind timestamp: %s",
 		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
 		if(!use_memdb) dbclose(&db);
@@ -1214,8 +1216,9 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
 		okay = true;
 	else
-		log_err("delete_old_queries_from_db(%s): Failed to delete queries with timestamp >= %f: %s",
-		        use_memdb ? "memdb" : "disk", mintime, sqlite3_errstr(rc));
+		log_err("delete_queries_from_db(%s): Failed to delete queries with timestamp %s %f: %s",
+		        use_memdb ? "memdb" : "disk", op, timestamp, sqlite3_errstr(rc));
+
 	if(okay)
 	{
 		// Update number of queries in either in-memory or on-disk
@@ -1234,11 +1237,15 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// Update earliest timestamp in the database after deletion
-	if(use_memdb)
-		memdb_earliest_timestamp = mintime;
-	else
-		diskdb_earliest_timestamp = mintime;
+	// Update earliest timestamp in the database after deleting the oldest
+	// queries, deleting the most recent ones leaves it unchanged
+	if(!recent)
+	{
+		if(use_memdb)
+			memdb_earliest_timestamp = timestamp;
+		else
+			diskdb_earliest_timestamp = timestamp;
+	}
 
 	// Add additional logging and close on-disk database if used
 	if(!use_memdb)
@@ -1257,6 +1264,20 @@ bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
 	}
 
 	return okay;
+}
+
+// Delete queries older than given timestamp. Used by garbage collection and
+// database thread.
+bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
+{
+	return delete_queries_from_db(use_memdb, mintime, false);
+}
+
+// Delete queries from the on-disk database that are not older than the given
+// timestamp. Used when flushing the logs.
+bool delete_recent_queries_from_db(const double mintime)
+{
+	return delete_queries_from_db(false, mintime, true);
 }
 
 bool add_additional_info_column(sqlite3 *db)
@@ -1619,7 +1640,7 @@ void DB_read_queries(void)
 
 		const int type = sqlite3_column_int(stmt, 2);
 		const bool mapped_type = type >= TYPE_NONE && type < TYPE_MAX;
-		const bool offset_type = type > 100 && type < (100 + UINT16_MAX);
+		const bool offset_type = type > 100 && type <= (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{
 			log_warn("Database: TYPE should not be %i", type);
@@ -1911,8 +1932,30 @@ void DB_read_queries(void)
 
 	if(!killed && (int)imported_queries < counted_queries)
 	{
-		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu. You may see harmless memory errors in the log.",
+		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu",
 		         config.files.database.v.s, counted_queries, imported_queries);
+
+		// Slots reserved for rows skipped above are still empty. Move
+		// the queries that arrived during the import down so the array
+		// has no gaps the GC or the export would trip over
+		lock_shm();
+		const unsigned int gap = counted_queries - imported_queries;
+		for(unsigned int i = counted_queries; i < counters->queries; i++)
+		{
+			queriesData *src = getQuery(i, false);
+			queriesData *dst = getQuery(i - gap, false);
+			if(src == NULL || dst == NULL)
+				break;
+			*dst = *src;
+			memset(src, 0, sizeof(*src));
+		}
+		counters->queries -= gap;
+		// The moved queries are not exported yet, keep them above the floor
+		export_floor -= gap;
+
+		// Invalidate the query ID cache since the indices shifted
+		queryIDMap_clear();
+		unlock_shm();
 	}
 
 	// Finalize SQLite3 statement
@@ -2023,7 +2066,11 @@ static void requeue_snapshots(const struct query_snap *snaps, const unsigned int
 	}
 }
 
-bool queries_to_database(void)
+// Start of the last run that visited every query it had to, the reply horizon
+// counts back from there so a run of skipped exports cannot lose late replies
+static double last_export_start = 0.0;
+
+bool queries_to_database(const bool final)
 {
 	int rc;
 	unsigned int added = 0, updated = 0;
@@ -2040,6 +2087,7 @@ bool queries_to_database(void)
 		// Queries recorded now must not be exported once the level drops
 		lock_shm();
 		export_floor = counters->queries + get_queries_removed();
+		last_export_start = double_time();
 		unlock_shm();
 		return true;
 	}
@@ -2066,7 +2114,9 @@ bool queries_to_database(void)
 	// useless as the client will have already timed out this particular
 	// query and retried or failed. Queries no export has visited yet are
 	// always included, however old
-	const double limit_timestamp = double_time() - REPLY_TIMEOUT;
+	const double run_start = double_time();
+	const double limit_timestamp = (last_export_start > 0.0 && last_export_start < run_start ?
+	                                last_export_start : run_start) - REPLY_TIMEOUT;
 	const unsigned int unvisited = get_export_floor();
 	// last_query ends up as the first query to export
 	unsigned int last_query = counters->queries;
@@ -2098,6 +2148,7 @@ bool queries_to_database(void)
 	// Skip early if no queries are to be stored (no queries immediately after start)
 	if(last_query == counters->queries)
 	{
+		last_export_start = run_start;
 		unlock_shm();
 		return true;
 	}
@@ -2145,6 +2196,20 @@ bool queries_to_database(void)
 	bool phase1_error = false;
 	int64_t changes = 0;
 	sqlite3_int64 rowid = 0;
+
+	// An API request can hold the connection for seconds inside a single
+	// step. Never wait for it under the SHM lock, skip this run instead.
+	// The final run at shutdown waits, there is no later run to catch up
+	sqlite3_mutex *memdb_mutex = sqlite3_db_mutex(memdb);
+	if(memdb_mutex != NULL && final)
+		sqlite3_mutex_enter(memdb_mutex);
+	else if(memdb_mutex != NULL && sqlite3_mutex_try(memdb_mutex) != SQLITE_OK)
+	{
+		log_debug(DEBUG_DATABASE, "In-memory database busy, storing queries in the next run");
+		free(snaps);
+		unlock_shm();
+		return true;
+	}
 
 	// Wrap linking table INSERTs in a transaction for efficiency (these are
 	// mostly skipped due to in_database caching). SQL_bool() cannot be used
@@ -2404,6 +2469,8 @@ bool queries_to_database(void)
 	// Commit linking table transaction
 	if(!memdb_exec(memdb, "END", "commit the linking table transaction"))
 		goto rollback_unlock_fail;
+	if(memdb_mutex != NULL)
+		sqlite3_mutex_leave(memdb_mutex);
 
 	// Release SHM lock — all data needed for phase 2 is in the snapshot
 	unlock_shm();
@@ -2495,6 +2562,8 @@ bool queries_to_database(void)
 	// Advance the floor past everything visited, but not past a requeued query
 	export_floor = removed_before + (succeeded < snap_count ?
 	                                 snaps[succeeded].queryID : last_query + window);
+	if(succeeded == snap_count)
+		last_export_start = run_start;
 
 	// Loop through snapshots of successfully committed queries and write
 	// back db indices
@@ -2552,6 +2621,8 @@ bool queries_to_database(void)
 rollback_unlock_fail:
 	dbquery(memdb, "ROLLBACK");
 unlock_fail:
+	if(memdb_mutex != NULL)
+		sqlite3_mutex_leave(memdb_mutex);
 	// Nothing was committed, so give the snapshotted queries their changed
 	// flag back and let the next run pick them up. The lock is still ours
 	requeue_snapshots(snaps, 0, snap_count, removed_before);
