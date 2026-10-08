@@ -148,6 +148,11 @@ class TestTeleporter:
                 info.size = len(data)
                 tar.addfile(info, io.BytesIO(data))
 
+        # The archive has no setupVars.conf, the import only writes one with
+        # WEB_PORTS in it, which must leave the upstreams alone
+        upstreams = ftl.GET("/api/config/dns/upstreams", [], "application/json",
+                            AuthenticationMethods.HEADER)["config"]["dns"]["upstreams"]
+
         with open("/var/log/pihole/FTL.log", "r") as f:
             f.seek(0, 2)
             log_pos = f.tell()
@@ -178,10 +183,88 @@ class TestTeleporter:
             try:
                 r = requests.get("http://127.0.0.1/api/auth", timeout=2)
                 if r.status_code in (200, 401):
-                    return
+                    break
             except requests.ConnectionError:
                 continue
-        pytest.fail("FTL did not come back after v5 teleporter import")
+        else:
+            pytest.fail("FTL did not come back after v5 teleporter import")
+
+        after = ftl.GET("/api/config/dns/upstreams", [], "application/json",
+                        AuthenticationMethods.HEADER)
+        assert after is not None and after["config"]["dns"]["upstreams"] == upstreams, \
+            f"dns.upstreams after a v5 import without setupVars.conf: {after}"
+
+    def test_teleporter_v5_setupvars_replaces_arrays(self, ftl):
+        """A v5 setupVars.conf replaces the config arrays it sets.
+
+        The import migrates into the running config. After two imports, the
+        upstreams, reverse servers and excluded domains have to hold the
+        archive's entries once, not the live ones plus a copy per import.
+        excludeClients, which the archive does not set, keeps its value.
+        test_teleporter_import below restores pihole.toml from the ZIP
+        exported earlier.
+        """
+        import io
+        import tarfile
+        import time
+        import requests
+
+        files = {
+            # The live upstream, so DNS keeps working until the restore
+            "setupVars.conf": b"PIHOLE_DNS_1=127.0.0.1#5555\n"
+                              b"REV_SERVER=true\n"
+                              b"REV_SERVER_CIDR=192.168.0.0/16\n"
+                              b"REV_SERVER_TARGET=192.168.0.1\n"
+                              b"REV_SERVER_DOMAIN=lan\n"
+                              b"API_EXCLUDE_DOMAINS=excluded.example\n",
+            # The config migration warns if there is no legacy file to read
+            "pihole-FTL.conf": b"# v5 import test\n",
+        }
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, data in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+
+        before = ftl.GET("/api/config", [], "application/json", AuthenticationMethods.HEADER)
+        assert before is not None, f"GET /api/config failed: {ftl.errors}"
+        exclude_clients = before["config"]["webserver"]["api"]["excludeClients"]
+
+        for n in (1, 2):
+            with open("/var/log/pihole/FTL.log", "r") as f:
+                f.seek(0, 2)
+                log_pos = f.tell()
+
+            response = ftl.POST("/api/teleporter", None, AuthenticationMethods.HEADER,
+                                {"file": ("pi-hole-teleporter.tar.gz", buf.getvalue(),
+                                          "application/gzip")})
+            assert response is not None and "/etc/pihole/setupVars.conf" in response.get("files", []), \
+                f"v5 Teleporter import {n} failed: {response} {ftl.errors}"
+
+            # Wait for the restarted FTL to serve the API again
+            for _ in range(60):
+                time.sleep(0.5)
+                with open("/var/log/pihole/FTL.log", "r") as f:
+                    f.seek(log_pos)
+                    if "FTL started on" not in f.read():
+                        continue
+                try:
+                    r = requests.get("http://127.0.0.1/api/auth", timeout=2)
+                    if r.status_code in (200, 401):
+                        break
+                except requests.ConnectionError:
+                    continue
+            else:
+                pytest.fail(f"FTL did not come back after v5 teleporter import {n}")
+
+        after = ftl.GET("/api/config", [], "application/json", AuthenticationMethods.HEADER)
+        assert after is not None, f"GET /api/config failed: {ftl.errors}"
+        config = after["config"]
+        assert config["dns"]["upstreams"] == ["127.0.0.1#5555"]
+        assert config["dns"]["revServers"] == ["true,192.168.0.0/16,192.168.0.1,lan"]
+        assert config["webserver"]["api"]["excludeDomains"] == ["^excluded\\.example$"]
+        assert config["webserver"]["api"]["excludeClients"] == exclude_clients
 
     def test_teleporter_import(self, openapi, ftl):
         """Re-import the teleporter ZIP archive exported during response tests.
