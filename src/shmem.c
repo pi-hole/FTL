@@ -46,7 +46,7 @@
 // The sizes are not the same everywhere. size_t members make them follow the
 // word size, and a 32-bit target aligns double to either 8 (ARM EABI) or 4
 // (i386), which moves the members after it again - clientsData is 688 bytes on
-// 64-bit, 672 on armhf and 664 on i386. All three are pinned rather than only
+// 64-bit, 672 on armhf and 668 on i386. All three are pinned rather than only
 // the one this happens to be compiled for. sizeof and _Alignof are constant
 // expressions, so this needs no per-architecture #ifdef
 #define SHM_STRUCT_SIZE(w64, arm32, x86_32) \
@@ -58,7 +58,7 @@
 
 ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
 ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
-ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    668);
 ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
 ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
 // overTimeData is the one of these that ends in a time_t, whose alignment is 8
