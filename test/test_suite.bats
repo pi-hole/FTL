@@ -1853,6 +1853,11 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
   assert_failure 3
 
+  # An NTP sync needs at least one request to the server
+  run bash -c './pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --index 0 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config -t database.DBinterval 0'
   assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
   assert_failure 3
