@@ -71,6 +71,15 @@ def note_proto(transport, proto):
             fh.write("%s-proto %s\n" % (transport, proto))
 
 
+def note_conn(transport):
+    # One "<t>-conn" line per connection, so the suite can tell reuse from reconnects
+    if not PAD_LOG:
+        return
+    with _pad_lock:
+        with open(PAD_LOG, "a") as fh:
+            fh.write("%s-conn\n" % transport)
+
+
 def resolve(wire):
     """Forward a DNS wire message to the plaintext backend and return the reply."""
     if DELAY_S > 0:
@@ -370,6 +379,7 @@ def start_h3_listener():
             super().__init__(*args, **kwargs)
             self._http = None
             self._bodies = {}
+            note_conn("doh3")
 
         def quic_event_received(self, event):
             if isinstance(event, ProtocolNegotiated):

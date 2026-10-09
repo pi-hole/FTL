@@ -363,3 +363,17 @@ print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
   set_debug_dotdoh false
   [ -n "$found" ]
 }
+
+@test "dotdoh-client: uncached queries in a row share one DoH3 connection" {
+  # The connection of the test above may still be open, so at most one is new
+  local conns queries i
+  conns=$(grep -c '^doh3-conn$' "$SHIM_PAD_LOG" || true)
+  queries=$(grep -c '^doh3 ' "$SHIM_PAD_LOG" || true)
+  for i in 1 2 3; do
+    dig +short +tries=1 +time=8 $(proxy_at 4) "h3-reuse-${i}.ftl" > /dev/null
+  done
+  conns=$(( $(grep -c '^doh3-conn$' "$SHIM_PAD_LOG" || true) - conns ))
+  queries=$(( $(grep -c '^doh3 ' "$SHIM_PAD_LOG" || true) - queries ))
+  printf "queries: %s, new connections: %s\n" "${queries}" "${conns}"
+  [[ "${queries}" -ge 3 && "${conns}" -le 1 ]]
+}
