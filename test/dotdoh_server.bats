@@ -257,6 +257,19 @@ setup_file() {
   done
 }
 
+@test "dotdoh-server: a refused DoH client gets a plain-text error, not an error page" {
+  # 203.0.113.7 is not local, so dns.listeningMode = LOCAL refuses it with 403.
+  # Stand in for the dashboard's error page, CI does not install the dashboard
+  local pages="/var/www/html/admin" created=""
+  [[ -d "$pages" ]] || { mkdir -p "$pages"; created=1; }
+  echo "dashboard error page" > "$pages/error403.html"
+  run python3 test/dotdoh_query.py dohproxyerror 127.0.0.1 80 "$DOMAIN" 203.0.113.7 \
+          00112233445566778899aabbccddeeff
+  rm -f "$pages/error403.html"
+  [[ -z "$created" ]] || rmdir "$pages"
+  assert_output "HTTP 403 type=text/plain; charset=utf-8 body=Error 403: Forbidden"
+}
+
 @test "dotdoh-server: DoH behind a proxy with the wrong secret is refused (426)" {
   run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
           ffeeddccbbaa99887766554433221100 "$EXPECT_IP"

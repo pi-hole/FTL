@@ -412,7 +412,7 @@ def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy|dohproxyget|dohproxymethod> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy|dohproxyget|dohproxyerror|dohproxymethod> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -487,6 +487,12 @@ def main():
         print("OK")
         if cmd == "dohproxyget":
             print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd == "dohproxyerror":
+        # Status, Content-Type and first body line of a refused request
+        _, _, host, port, domain, client_ip, secret_hex = sys.argv[:8]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, secret_hex)
+        print("HTTP %s type=%s body=%s" % (status, headers.get("content-type", ""),
+                                          body.decode("latin-1").split("\n")[0]))
     elif cmd == "dohproxymethod":
         # Status, Allow header and body length of a request with any method
         _, _, host, port, method, domain, client_ip, secret_hex = sys.argv[:9]

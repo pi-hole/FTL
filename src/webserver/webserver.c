@@ -799,6 +799,19 @@ static int redirect_lp_handler(struct mg_connection *conn, void *input)
 	return 1;
 }
 
+// The dashboard's error pages are for browsers. Called again from here,
+// mg_send_http_error() skips them and sends CivetWeb's plain-text error
+static int http_error_handler(struct mg_connection *conn, int status, const char *errmsg)
+{
+	const struct mg_request_info *ri = mg_get_request_info(conn);
+	const char *uri = ri != NULL ? ri->local_uri : NULL;
+	if(uri == NULL || strncmp(uri, "/dns-query", 10) != 0 || (uri[10] != '\0' && uri[10] != '/'))
+		return 1;
+
+	mg_send_http_error(conn, status, "%s", errmsg);
+	return 0;
+}
+
 static int log_http_message(const struct mg_connection *conn, const char *message)
 {
 	// CivetWeb calls this callback through its mg_cry() error channel, so the
@@ -1804,6 +1817,7 @@ void http_init(void)
 	struct mg_callbacks callbacks;
 	memset(&callbacks, 0, sizeof(callbacks));
 	callbacks.begin_request = begin_request_handler;
+	callbacks.http_error = http_error_handler;
 	callbacks.log_message = log_http_message;
 	callbacks.log_access  = log_http_access;
 	callbacks.init_lua    = init_lua;
