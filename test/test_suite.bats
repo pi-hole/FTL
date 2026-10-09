@@ -755,6 +755,31 @@ setup() {
   assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r"
 }
 
+@test "Custom DNS records are treated as local (dns.hostsLocal)" {
+  # One local= per hostname configured in dns.hosts, so a type we have no
+  # local record for is not forwarded and answered upstream instead
+  run bash -c 'grep -c "^local=/abc-custom.com/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/def-custom.de/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+
+  # We have an A address for this name but no AAAA, which is answered
+  # locally with NODATA instead of being forwarded
+  run bash -c "dig AAAA abc-custom.com @127.0.0.1"
+  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "ANSWER: 0"
+
+  # Subdomains of a configured name are local as well
+  run bash -c "dig A sub.abc-custom.com @127.0.0.1"
+  assert_line --partial --index 3 "status: NXDOMAIN"
+
+  # Neither of the two left the box
+  run bash -c 'grep -c "forwarded abc-custom.com" /var/log/pihole/pihole.log'
+  assert_line --index 0 "0"
+  run bash -c 'grep -c "forwarded sub.abc-custom.com" /var/log/pihole/pihole.log'
+  assert_line --index 0 "0"
+}
+
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
   run bash -c './pihole-FTL backtrace'
   printf "%s\n" "${lines[@]}"
@@ -1748,6 +1773,9 @@ except socket.timeout:
   # this change and the restore below into a single reload
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
+  # Changed records restart the resolver (dns.hostsLocal), wait for it
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
 
   # Malformed UTF-8: overlong encoding, UTF-16 surrogate, above U+10FFFF,
   # truncated sequence and stray continuation byte
@@ -1771,6 +1799,8 @@ except socket.timeout:
   assert_success
 
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 }
 
@@ -1910,8 +1940,11 @@ except socket.timeout:
   run bash -c './pihole-FTL --config dns.hosts "[\"  192.168.1.1    host1.local  \", \"   10.0.0.1\\t\\thost2.local   host3.local\", \"127.0.0.1     host4.local\\t\\thost5.local\"]"'
   assert_success
 
-  # Wait for change to become effective
+  # Wait for change to become effective. Changed records restart the resolver
+  # (dns.hostsLocal derives local= lines from them), wait for it to be back
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Check that the sanitized entries are properly formatted
@@ -1925,13 +1958,51 @@ except socket.timeout:
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
   assert_success
 
-  # Wait for change to become effective
+  # Wait for change to become effective. Changed records restart the resolver
+  # (dns.hostsLocal derives local= lines from them), wait for it to be back
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Check that the sanitized entries are properly formatted
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 '[ 192.168.1.1 host1.local # this is a comment with  double spaces, 10.0.0.1 host2.local ]'
+}
+
+@test "Custom DNS records: expanded plain names are local as well (dns.expandHosts)" {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1 host1.local\", \"10.0.0.1 plainhost\"]"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  # Without expand-hosts, the plain name is only local as itself
+  run bash -c 'grep -c "^local=/plainhost/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/plainhost.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.expandHosts true'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+
+  # dnsmasq now also answers plainhost.lan from the record, names with a dot
+  # are not expanded
+  run bash -c 'grep -c "^local=/plainhost/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/plainhost.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "1"
+  run bash -c 'grep -c "^local=/host1.local.lan/$" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.expandHosts false'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
 }
 
 # NOTE: API config validation, auth, Lua page tests moved to pytest
