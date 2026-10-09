@@ -60,8 +60,6 @@ static sqlite3_stmt *gravity_shared_stmt = NULL;
 static sqlite3_stmt *antigravity_shared_stmt = NULL;
 static sqlite3_stmt *allowlist_shared_stmt = NULL;
 static sqlite3_stmt *denylist_shared_stmt = NULL;
-static sqlite3_stmt *regex_deny_groups_stmt = NULL;
-static sqlite3_stmt *regex_allow_groups_stmt = NULL;
 
 // Per-statement cache of the last-bound carray groupspos. Since addintarray()
 // deduplicates, clients sharing the same group set share the same groupspos.
@@ -215,8 +213,6 @@ static sqlite3_stmt *parent_gravity_shared_stmt = NULL;
 static sqlite3_stmt *parent_antigravity_shared_stmt = NULL;
 static sqlite3_stmt *parent_allowlist_shared_stmt = NULL;
 static sqlite3_stmt *parent_denylist_shared_stmt = NULL;
-static sqlite3_stmt *parent_regex_deny_groups_stmt = NULL;
-static sqlite3_stmt *parent_regex_allow_groups_stmt = NULL;
 
 // Private prototypes
 static bool gravityDB_open(void);
@@ -269,10 +265,6 @@ void gravityDB_forked(void)
 	allowlist_shared_stmt = NULL;
 	parent_denylist_shared_stmt = denylist_shared_stmt;
 	denylist_shared_stmt = NULL;
-	parent_regex_deny_groups_stmt = regex_deny_groups_stmt;
-	regex_deny_groups_stmt = NULL;
-	parent_regex_allow_groups_stmt = regex_allow_groups_stmt;
-	regex_allow_groups_stmt = NULL;
 
 	// Reset carray bind cache for the new process
 	last_bound_gravity = 0;
@@ -490,14 +482,6 @@ static bool gravityDB_open(void)
 		{ &denylist_shared_stmt,
 		  "SELECT id FROM vw_denylist WHERE domain = ?1 AND group_id IN carray(?2);",
 		  "denylist" },
-		// DISTINCT eliminates duplicate IDs when a regex domain appears in multiple
-		// groups that are all present in the client's carray.
-		{ &regex_deny_groups_stmt,
-		  "SELECT DISTINCT id FROM vw_regex_denylist WHERE group_id IN carray(?1);",
-		  "regex_deny_groups" },
-		{ &regex_allow_groups_stmt,
-		  "SELECT DISTINCT id FROM vw_regex_allowlist WHERE group_id IN carray(?1);",
-		  "regex_allow_groups" },
 	};
 	for(unsigned int i = 0; i < sizeof(shared_stmts)/sizeof(shared_stmts[0]); i++)
 	{
@@ -1209,17 +1193,6 @@ bool gravityDB_prepare_client_statements(clientsData *client)
 		// keeps its position
 		if(client->groupspos != old_groupspos)
 			FTL_reset_client_domain_data(client->id);
-
-		// The client's groups were just (re-)resolved. The per-client
-		// regex enable/disable state is cached separately (match_regex()
-		// reads a cached row) and must be rebuilt for the new groups,
-		// otherwise regex allow/deny decisions would keep using the
-		// previous groups after an identity change cleared found_group.
-		// FTL_check_blocking() calls this via gravityDB_ensure_client_groups()
-		// before any list or regex lookup. It does not recurse: found_group
-		// is set now, so gravityDB_get_regex_client_groups() will not
-		// re-enter get_client_groupids().
-		reload_per_client_regex(client, NULL);
 	}
 
 	return true;
@@ -1269,7 +1242,6 @@ void gravityDB_close(void)
 	sqlite3_stmt **shared[] = {
 		&gravity_shared_stmt, &antigravity_shared_stmt,
 		&allowlist_shared_stmt, &denylist_shared_stmt,
-		&regex_deny_groups_stmt, &regex_allow_groups_stmt,
 	};
 	for(unsigned int i = 0; i < sizeof(shared)/sizeof(shared[0]); i++)
 	{
@@ -1324,9 +1296,9 @@ bool gravityDB_getTable(const unsigned char list)
 	else if(list == EXACT_ALLOW_TABLE)
 		querystr = "SELECT domain, id FROM vw_allowlist GROUP BY id";
 	else if(list == REGEX_DENY_TABLE)
-		querystr = "SELECT domain, id FROM vw_regex_denylist GROUP BY id";
+		querystr = "SELECT domain, id, group_concat(group_id) FROM vw_regex_denylist GROUP BY id";
 	else if(list == REGEX_ALLOW_TABLE)
-		querystr = "SELECT domain, id FROM vw_regex_allowlist GROUP BY id";
+		querystr = "SELECT domain, id, group_concat(group_id) FROM vw_regex_allowlist GROUP BY id";
 
 	// Prepare SQLite3 statement
 	int rc = sqlite3_prepare_v2(gravity_db, querystr, -1, &table_stmt, NULL);
@@ -1377,6 +1349,13 @@ inline const char* gravityDB_getDomain(int *rowid)
 	if(rowid != NULL)
 		*rowid = -1;
 	return NULL;
+}
+
+// Get the comma-separated groups of the regex last returned by
+// gravityDB_getDomain(), NULL if it is in no group
+const char *gravityDB_getGroups(void)
+{
+	return (const char*)sqlite3_column_text(table_stmt, 2);
 }
 
 // Finalize statement of a gravity database transaction
@@ -1557,17 +1536,16 @@ static enum db_result domain_in_list(const char *domain, sqlite3_stmt *stmt, con
 
 void gravityDB_reload_groups(clientsData *client)
 {
-	// Re-resolve the client's groups and rebuild its per-client regex
-	// state. finalize clears found_group so prepare re-runs
-	// get_client_groupids() and reload_per_client_regex() for the
-	// (possibly different) group set.
+	// Re-resolve the client's groups. finalize clears found_group so
+	// prepare re-runs get_client_groupids() for the (possibly different)
+	// group set.
 	gravityDB_finalize_client_statements(client);
 	gravityDB_prepare_client_statements(client);
 }
 
 // Re-resolve the client's groups if an identity change cleared found_group.
 // in_allowlist() and in_denylist() return early when their list is empty, so
-// this must run before the regex checks, which read the per-client regex row
+// this must run before the regex checks, which match the client's groups
 void gravityDB_ensure_client_groups(clientsData *client)
 {
 	if(client->flags.found_group || !gravity_ensure_open())
@@ -1916,71 +1894,6 @@ void gravityDB_dump_perf_stats(void)
 	}
 	// Reset counters for the next 5-minute window
 	memset(gravity_perf, 0, sizeof(gravity_perf));
-}
-
-bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
-                                       const unsigned char type, const char* table, sqlite3 *ftl_db)
-{
-	log_debug(DEBUG_REGEX, "Getting regex client groups for client with ID %u", client->id);
-
-	if(!client->flags.found_group && !get_client_groupids(client, ftl_db))
-		return false;
-
-	// Select the appropriate shared statement for this regex type
-	sqlite3_stmt *query_stmt = (type == REGEX_ALLOW) ? regex_allow_groups_stmt
-	                                                 : regex_deny_groups_stmt;
-	if(query_stmt == NULL)
-	{
-		log_err("gravityDB_get_regex_client_groups(%s): Shared statement not available", table);
-		return false;
-	}
-
-	// Bind client's group_id array via carray (parameter ?1). A client in no
-	// group at all must not reach the step below: the statement is shared
-	// between all clients and sqlite3_reset() keeps bindings, so skipping the
-	// bind would leave the previously processed client's array in place and
-	// hand this client that client's regexes. The gravity, allowlist and
-	// denylist lookups return early here for the same reason
-	int group_count = 0;
-	const int32_t *group_ids = getintarray(client->groupspos, &group_count);
-	if(group_ids == NULL || group_count <= 0)
-	{
-		log_debug(DEBUG_REGEX, "Regex %s: Client %s is in no group, no regex applies",
-		          regextype[type], getstr(client->ippos));
-		return true;
-	}
-
-	sqlite3_carray_bind(query_stmt, 1, (void*)group_ids, group_count,
-	                    SQLITE_CARRAY_INT32, SQLITE_STATIC);
-
-	// Perform query
-	log_debug(DEBUG_REGEX, "Regex %s: Querying associated regexes for client %s (groups: %s)",
-	          regextype[type], getstr(client->ippos), fmt_intarray(client->groupspos, (char[256]){0}, 256));
-	int rc;
-	while((rc = sqlite3_step(query_stmt)) == SQLITE_ROW)
-	{
-		const int result = sqlite3_column_int(query_stmt, 0);
-		for(unsigned int regexID = 0; regexID < numregex; regexID++)
-		{
-			if(regex[regexID].database_id == result)
-			{
-				// Regular expressions are stored in one array
-				if(type == REGEX_ALLOW)
-					regexID += get_num_regex(REGEX_DENY);
-				set_per_client_regex(client->id, regexID, true);
-
-				log_debug(DEBUG_REGEX, "Regex %s: Enabling regex with DB ID %i for client %s",
-				          regextype[type], result, getstr(client->ippos));
-
-				break;
-			}
-		}
-	}
-
-	// Reset statement for reuse (shared, not finalized)
-	sqlite3_reset(query_stmt);
-
-	return true;
 }
 
 // Writes get their own connection. sqlite3_busy_handler() is a property of the

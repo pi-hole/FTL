@@ -16,8 +16,6 @@
 #include "regex_r.h"
 // gravityDB_reopen()
 #include "database/gravity-db.h"
-// bool startup
-#include "main.h"
 // reset_aliasclient()
 #include "database/aliasclients.h"
 // config struct
@@ -461,14 +459,6 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 
 	// Increase counter by one
 	counters->clients++;
-
-	// Give the client a cleared regex row now, sized by the counter above, so
-	// no regex applies before its first query resolves its groups
-	if(!startup && !aliasclient)
-	{
-		add_per_client_regex(clientID);
-		reset_per_client_regex(clientID);
-	}
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
