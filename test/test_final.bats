@@ -14,7 +14,7 @@ load 'bats_helper.bash'
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Terminator: bind\(\) to (192\.0\.2\.1#9444|\*#5443) failed)|(Could not extract a TLS port from .80o,\[::\]:80o,8081r,192\.168\.1\.256:443s,44s3.)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Terminator: bind\(\) to 192\.0\.2\.1#9444 failed)|(Could not extract a TLS port from .80o,\[::\]:80o,8081r,192\.168\.1\.256:443s,44s3.)"'
   refute_output
 }
 
@@ -47,14 +47,14 @@ load 'bats_helper.bash'
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
-  # webserver_tls_ports.bats: 6x pihole.toml writes (five port lists + restore)
+  # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "18"
+      assert_line --index 0 "19"
   else
-    [[ ${lines[0]} == "48" ]]
+    [[ ${lines[0]} == "49" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

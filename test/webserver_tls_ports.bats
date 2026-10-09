@@ -24,7 +24,7 @@ set_ports() {  # $1 = webserver.port, $2 = log line to wait for
 }
 
 # Wait for the HTTP/3 listener the log line $1 names since the last set_ports
-wait_h3() {  # $1 = "HTTP/3 (QUIC) listening on UDP port <port>"
+wait_h3() {  # $1 = "HTTP/3 (QUIC) listening on <address>#<port>"
   ./pihole-FTL wait-for "$1" /var/log/pihole/FTL.log 60 "$LOG_OFFSET"
 }
 
@@ -75,7 +75,7 @@ teardown_file() {
   assert_output "000"
   # HTTP/2 clients are pointed to HTTP/3 on the port they connected to, and
   # HTTP/3 works on both added entries (DoH, as curl in CI has no HTTP/3)
-  wait_h3 "HTTP/3 (QUIC) listening on UDP port 9443"
+  wait_h3 "HTTP/3 (QUIC) listening on 127.0.0.2#9443"
   run altsvc_at 127.0.0.1 4443
   assert_output --partial 'h3=":4443"'
   run altsvc_at 127.0.0.2 9443
@@ -106,6 +106,22 @@ time.sleep(120)' > /dev/null 2>&1 3>&- &
   # and the 'r' port redirects there
   run bash -c 'curl -s -o /dev/null -w "%{redirect_url}" http://127.0.0.1:8081/admin/'
   assert_output "https://pi.hole:4443/admin/"
+  # An optional port that is taken is no error, and the port list marks the
+  # optional entry, not the mandatory one
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -E 'ERROR: .*5443'"
+  refute_output
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -cF 'Terminator: optional TLS port *#5443 not available'"
+  assert_output "1"
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -E ':5443 \(HTTPS[^)]*optional[^)]*NOT bound\)'"
+  assert_success
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -E ':4443 \(HTTPS[^)]*optional'"
+  refute_output
+  # With every TLS entry optional and taken, TLS is unavailable without an error
+  set_ports "80o,[::]:80o,5443os,[::]:5443os" "Web server ports:"
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -E 'ERROR: .*(Terminator|TLS)'"
+  refute_output
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -cF 'None of the optional TLS ports could be bound'"
+  assert_output "1"
   kill "$(cat "${BATS_FILE_TMPDIR}/holder.pid")"
   rm -f "${BATS_FILE_TMPDIR}/holder.pid"
 }
@@ -114,6 +130,9 @@ time.sleep(120)' > /dev/null 2>&1 3>&- &
   set_ports "80o,[::]:80o,8081r,0.0.0.0:4443s,[::]:4443s,127.0.0.1:9443s,9443s"
   run status_at 127.0.0.1 4443 --http2
   assert_output "200"
+  # The rows mirroring the optional plaintext ports keep 4443 mandatory
+  run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep -E ':4443 \(HTTPS[^)]*optional'"
+  refute_output
   # The wildcard 9443 covers 127.0.0.1:9443 and every other address
   run status_at 127.0.0.2 9443 --http2
   assert_output "200"
@@ -123,7 +142,7 @@ time.sleep(120)' > /dev/null 2>&1 3>&- &
     run status_at "[::1]" 9443 --http2
     assert_output "200"
   fi
-  wait_h3 "HTTP/3 (QUIC) listening on UDP port 9443"
+  wait_h3 "HTTP/3 (QUIC) listening on *#9443"
   run python3 test/dotdoh_query.py doh3 127.0.0.1 4443 a.ftl 192.168.1.1
   assert_output "OK"
   if ipv6_loopback_available; then

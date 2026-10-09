@@ -956,7 +956,8 @@ static bool find_backend_port(void)
 
 // Fill a port table row for a terminator listener from its own bind address
 // ("" = all interfaces), not from an unrelated plaintext socket
-static void tls_port_row(struct serverports *row, const char *a, const int port, const bool bound)
+static void tls_port_row(struct serverports *row, const char *a, const int port,
+                         const bool bound, const bool optional)
 {
 	// An IPv6 literal needs brackets, or "::1" + ":443" reads as "::1:443".
 	// A bare entry is dual-stack; report it as IPv6, matching how the
@@ -972,7 +973,18 @@ static void tls_port_row(struct serverports *row, const char *a, const int port,
 	row->port = port;
 	row->is_secure = true;
 	row->is_bound = bound;
+	row->is_optional = optional;
 	row->protocol = v6 ? 3 : 1;
+}
+
+// Whether terminator_port comes from an optional ('o') entry
+static bool terminator_optional(void)
+{
+#ifdef HAVE_TLS
+	return n_tls_listeners > 0 && tls_listeners[tls_primary].optional;
+#else
+	return false;
+#endif
 }
 
 // Whether the primary TLS listener also answers on a plaintext row's address
@@ -1103,6 +1115,7 @@ static bool get_server_ports(void)
 			server_ports[n].port = terminator_port;
 			server_ports[n].is_secure = true;
 			server_ports[n].is_bound = terminator_bound;
+			server_ports[n].is_optional = terminator_optional();
 			if(https_port == 0 && terminator_bound)
 				https_port = (in_port_t)terminator_port;
 			log_info("  - %s:%d (HTTPS, IPv%s%s, terminator, %s)",
@@ -1124,11 +1137,13 @@ static bool get_server_ports(void)
 	// certificate auto-renewal (letting an FTL-generated cert silently expire).
 	if(terminator_port > 0 && !mirrored && n < MAXPORTS)
 	{
-		tls_port_row(&server_ports[n], terminator_addr, terminator_port, terminator_bound);
+		tls_port_row(&server_ports[n], terminator_addr, terminator_port, terminator_bound,
+		             terminator_optional());
 		if(terminator_bound)
 			https_port = (in_port_t)terminator_port;
-		log_info("  - %s:%d (HTTPS, terminator, %s)",
+		log_info("  - %s:%d (HTTPS%s, terminator, %s)",
 		         server_ports[n].addr, server_ports[n].port,
+		         server_ports[n].is_optional ? ", optional" : "",
 		         terminator_bound ? "OK" : "NOT bound");
 		n++;
 	}
@@ -1148,9 +1163,11 @@ static bool get_server_ports(void)
 			         tls_listeners[t].port, a[0] == '\0' ? "all interfaces" : a, MAXPORTS);
 			continue;
 		}
-		tls_port_row(&server_ports[n], a, tls_listeners[t].port, tls_listeners[t].bound);
-		log_info("  - %s:%d (HTTPS, terminator, %s)",
+		tls_port_row(&server_ports[n], a, tls_listeners[t].port, tls_listeners[t].bound,
+		             tls_listeners[t].optional);
+		log_info("  - %s:%d (HTTPS%s, terminator, %s)",
 		         server_ports[n].addr, server_ports[n].port,
+		         tls_listeners[t].optional ? ", optional" : "",
 		         tls_listeners[t].bound ? "OK" : "NOT bound");
 		n++;
 	}
@@ -1348,8 +1365,8 @@ static bool tls_addr_is_wildcard(const char *addr)
 // reach CivetWeb's own check: "[ipv6]:", "ipv4:" or "+" (none of them for a
 // bare port), a port 1-65535, then only the flags 'o', 'r' and 's', each at
 // most once, 's' required and 'r' not with it. addr receives the address
-// without brackets, or "" for all interfaces.
-static bool parse_tls_entry(const char *ent, char addr[64], int *port)
+// without brackets, or "" for all interfaces, optional the 'o' flag.
+static bool parse_tls_entry(const char *ent, char addr[64], int *port, bool *optional)
 {
 	const char *p = ent;
 	addr[0] = '\0';
@@ -1391,6 +1408,7 @@ static bool parse_tls_entry(const char *ent, char addr[64], int *port)
 		*flag = true;
 	}
 	*port = (int)val;
+	*optional = o;
 	return sec && !r;
 }
 
@@ -1430,7 +1448,8 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 			// "443xs") must be rejected here rather than read as a port
 			char addr[64];
 			int port = 0;
-			if(!parse_tls_entry(ent, addr, &port))
+			bool optional = false;
+			if(!parse_tls_entry(ent, addr, &port, &optional))
 			{
 				log_warn("Ignoring malformed TLS entry '%s' in webserver.port", ent);
 				continue;
@@ -1442,20 +1461,31 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 			// covers every address-scoped entry for that port, before or after
 			// it: the first one is widened in place, the others are removed.
 			// Distinct addresses (e.g. "0.0.0.0" and "[::]") each get a socket.
+			// The socket stays mandatory if any entry it serves is.
 			bool dup = false;
-			unsigned k = 0;
+			unsigned k = 0, kept = 0;
 			for(unsigned j = 0; j < n_tls; j++)
 			{
 				if(tls[j].port == port)
 				{
 					if(tls_addr_is_wildcard(tls[j].addr) || strcmp(tls[j].addr, addr) == 0)
+					{
+						tls[j].optional = tls[j].optional && optional;
 						dup = true;
+						kept = k;
+					}
 					else if(tls_addr_is_wildcard(addr))
 					{
 						if(dup)
-							continue; // removed, the widened entry serves it
+						{
+							// removed, the widened entry serves it
+							tls[kept].optional = tls[kept].optional && tls[j].optional;
+							continue;
+						}
 						tls_addrs[j][0] = '\0';
+						tls[j].optional = tls[j].optional && optional;
 						dup = true;
+						kept = k;
 					}
 				}
 				if(k != j)
@@ -1479,6 +1509,7 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 			strcpy(tls_addrs[n_tls], addr);
 			tls[n_tls].addr = tls_addrs[n_tls];
 			tls[n_tls].port = port;
+			tls[n_tls].optional = optional;
 			n_tls++;
 			continue; // drop from the list handed to CivetWeb
 		}
@@ -1936,7 +1967,15 @@ void http_init(void)
 		if(backend_port <= 0)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
 		else if(!terminator_start(tls_listeners, n_tls_listeners, backend_port, config.webserver.tls.cert.v.s))
-			log_err("Failed to start the TLS terminator on port %d", terminator_port);
+		{
+			bool mandatory = false;
+			for(unsigned i = 0; i < n_tls_listeners; i++)
+				mandatory |= !tls_listeners[i].optional;
+			if(mandatory)
+				log_err("Failed to start the TLS terminator on port %d", terminator_port);
+			else
+				log_info("None of the optional TLS ports could be bound, TLS is not available");
+		}
 
 		// Advertise the first TLS port that actually came up
 		for(unsigned i = 0; i < n_tls_listeners; i++)

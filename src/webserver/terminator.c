@@ -282,6 +282,9 @@ static volatile bool quic_running = false;
 // the HTTP/3 ports reachable on the address that connection arrived on.
 static struct sockaddr_in6 quic_addrs[TERMINATOR_MAX_LISTENERS];
 static bool quic_v6only[TERMINATOR_MAX_LISTENERS];
+// The OpenSSL QUIC listener on each socket, created before the event loop
+// starts and freed by it
+static SSL *quic_listeners[TERMINATOR_MAX_LISTENERS];
 
 #ifdef HAVE_HTTP2
 // Build the Alt-Svc value for the TCP connection on fd: every HTTP/3 port whose
@@ -455,7 +458,7 @@ static int set_nonblocking(int fd)
 
 // Bind a TCP listener for the given address and port: dual-stack for a bare
 // port, IPv6-only for an explicit IPv6 literal. Returns the fd or -1.
-static int bind_listener(const char *addr, int port)
+static int bind_listener(const char *addr, int port, bool optional)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
 	// where it would keep the port busy and make the new process fail to re-bind.
@@ -482,8 +485,12 @@ static int bind_listener(const char *addr, int port)
 	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: bind() to %s#%d failed: %s",
-		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		if(optional)
+			log_info("Terminator: optional TLS port %s#%d not available: %s",
+			         (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		else
+			log_err("Terminator: bind() to %s#%d failed: %s",
+			        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -3851,16 +3858,7 @@ static void *quic_accept_loop(void *arg)
 
 	// One QUIC listener per UDP socket, all driven by this loop
 	const unsigned nl = n_quic_fds;
-	SSL *listeners[TERMINATOR_MAX_LISTENERS] = { NULL };
-	for(unsigned l = 0; l < nl; l++)
-	{
-		if(!quic_listen(quic_fds[l], &listeners[l]))
-		{
-			for(unsigned k = 0; k <= l; k++)
-				SSL_free(listeners[k]);
-			return NULL;
-		}
-	}
+	SSL **listeners = quic_listeners;
 
 	// poll() scratch: indices [0, nl) are the UDP sockets, nl is the DoH wakeup
 	// eventfd, the rest are the active per-stream backend sockets. pmap[i] maps
@@ -4094,7 +4092,10 @@ static void *quic_accept_loop(void *arg)
 	free(pfds);
 	free(pmap);
 	for(unsigned l = 0; l < nl; l++)
+	{
 		SSL_free(listeners[l]);
+		listeners[l] = NULL;
+	}
 	return NULL;
 }
 
@@ -4143,7 +4144,7 @@ static SSL_CTX *create_quic_server_ctx(const char *cert_path)
 }
 
 // Bind the UDP socket for the QUIC listener, scoped like bind_listener().
-static int bind_udp(const char *addr, int port)
+static int bind_udp(const char *addr, int port, bool optional)
 {
 	const int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
@@ -4166,8 +4167,12 @@ static int bind_udp(const char *addr, int port)
 	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: QUIC bind() to %s#%d failed: %s",
-		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		if(optional)
+			log_info("Terminator: optional HTTP/3 port %s#%d not available: %s",
+			         (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		else
+			log_err("Terminator: QUIC bind() to %s#%d failed: %s",
+			        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -4191,13 +4196,23 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 	// Serve HTTP/3 on every TLS port the TCP listener came up on, never on one
 	// whose TCP bind failed
 	unsigned nq = 0;
+	const char *names[TERMINATOR_MAX_LISTENERS] = { NULL };
 	for(unsigned i = 0; i < n && nq < TERMINATOR_MAX_LISTENERS; i++)
 	{
 		if(!listeners[i].bound)
 			continue;
-		const int fd = bind_udp(listeners[i].addr, listeners[i].port);
+		const int fd = bind_udp(listeners[i].addr, listeners[i].port, listeners[i].optional);
 		if(fd < 0)
 			continue; // bind_udp() already said why
+		// A listener that cannot be set up leaves out only its own port
+		if(!quic_listen(fd, &quic_listeners[nq]))
+		{
+			SSL_free(quic_listeners[nq]);
+			quic_listeners[nq] = NULL;
+			close(fd);
+			continue;
+		}
+		names[nq] = listeners[i].addr;
 		fill_bind_addr(&quic_addrs[nq], listeners[i].addr, listeners[i].port);
 		quic_v6only[nq] = addr_is_v6_literal(listeners[i].addr);
 		quic_fds[nq++] = fd;
@@ -4235,7 +4250,11 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 		h3_workers_n = 0;
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 		for(unsigned i = 0; i < n_quic_fds; i++)
+		{
+			SSL_free(quic_listeners[i]);
+			quic_listeners[i] = NULL;
 			close(quic_fds[i]);
+		}
 		n_quic_fds = 0;
 		SSL_CTX_free(quic_ctx);
 		quic_ctx = NULL;
@@ -4243,7 +4262,8 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 	}
 	quic_tid_valid = true;
 	for(unsigned i = 0; i < n_quic_fds; i++)
-		log_info("HTTP/3 (QUIC) listening on UDP port %d", ntohs(quic_addrs[i].sin6_port));
+		log_info("HTTP/3 (QUIC) listening on %s#%d",
+		         (names[i] && names[i][0]) ? names[i] : "*", ntohs(quic_addrs[i].sin6_port));
 }
 
 static void terminator_quic_stop(void)
@@ -4584,7 +4604,7 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 	for(unsigned i = 0; i < n_listeners; i++)
 	{
 		listeners[i].bound = false;
-		const int fd = bind_listener(listeners[i].addr, listeners[i].port);
+		const int fd = bind_listener(listeners[i].addr, listeners[i].port, listeners[i].optional);
 		if(fd < 0)
 			continue; // bind_listener() already said why
 		bound[n_listen_fds] = i;

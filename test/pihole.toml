@@ -943,9 +943,9 @@
   # If the port is TLS/SSL, a letter 's' (secure) must be appended, for example,
   # "80,443s" will open port 80 and port 443, and connections on port 443 will be
   # encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in
-  # redirect). Redirected ports will redirect all their traffic to the first configured
-  # SSL port. For example, if webserver.port is "80r,443s", then all HTTP traffic coming
-  # at port 80 will be redirected to HTTPS port 443.
+  # redirect). Redirected ports will redirect all their traffic to the first SSL port
+  # that could be bound. For example, if webserver.port is "80r,443s", then all HTTP
+  # traffic coming at port 80 will be redirected to HTTPS port 443.
   #
   # When specifying 'o' (optional) behind a port, inability to use this port is not
   # considered an error. For instance, specifying "80o,8080o" will allow the webserver
