@@ -255,6 +255,7 @@ enum thread_types {
 	WEBSERVER,
 	DOTDOH,
 	DOTDOH_DOT,
+	LOG_WRITER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
