@@ -214,8 +214,6 @@ struct dot_conn {
 	int upfd;                // loopback resolve socket, borrowed from the shared
 	                         // pool for one query; -1 when none is open
 	bool up_reused;          // upfd came from the shared pool (may be stale)
-	bool up_idle;            // upfd is at a clean message boundary (no exchange
-	                         // in flight), so it may go back into the pool
 	bool up_retried;         // already reconnected once for the current query
 	enum dot_state st;
 	int active_fd;           // fd this connection is currently waiting on
@@ -250,18 +248,10 @@ static void conn_free(struct dot_conn *c)
 	}
 	if(c->cfd >= 0)
 		close(c->cfd);
-	// Hand the loopback socket back only when no exchange is in flight on it.
-	// conn_free() is also the deadline-sweep and shutdown path, which can fire
-	// with a query half-written or an answer not yet read; pooling such a socket
-	// would leave it out of step and serve the pending answer to whoever takes
-	// it next. Anything mid-exchange is closed instead.
+	// A loopback socket still held here is mid-exchange (a completed one goes back
+	// to the pool in drive_up_read()), so it is closed rather than pooled.
 	if(c->upfd >= 0)
-	{
-		if(c->up_idle)
-			dotdoh_loopback_give(c->upfd);
-		else
-			dotdoh_loopback_drop(c->upfd);
-	}
+		dotdoh_loopback_drop(c->upfd);
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
 	uint8_t *rbuf = c->rbuf, *abuf = c->abuf, *wbuf = c->wbuf;
@@ -401,7 +391,6 @@ static int conn_answer_servfail(struct dot_conn *c)
 	c->woff = 0;
 	c->alen = 0; c->agot = 0; c->up_lengot = 0;
 	c->up_reused = false;
-	c->up_idle = false;
 	c->st = DS_WRITE;
 	return 1;
 }
@@ -569,14 +558,6 @@ static int drive_read(struct dot_conn *c)
 // reused connection means dnsmasq closed a kept-alive child; reconnect once.
 static int drive_up_write(struct dot_conn *c)
 {
-	// The socket stops being poolable the moment we start writing, not once the
-	// write finishes: a short write yields with the frame half sent, and a
-	// teardown in that window (either deadline sweep, or shutdown) would
-	// otherwise pool a socket carrying a partial query. dnsmasq is then blocked
-	// waiting for the rest, so nothing is readable and the checkout probe cannot
-	// tell the socket is unusable.
-	c->up_idle = false;
-
 	while(c->woff < c->wlen)
 	{
 		const ssize_t w = write(c->upfd, c->wbuf + c->woff, c->wlen - c->woff);
@@ -628,9 +609,6 @@ static int drive_up_read(struct dot_conn *c)
 		{ c->active_fd = c->upfd; c->active_ev = POLLIN; return 0; }
 		return -1;
 	}
-	// Answer complete: the loopback socket is back at a message boundary.
-	c->up_idle = true;
-
 	// Hand the loopback socket back now that the exchange is complete, rather
 	// than holding it until the connection closes. It stays warm in the pool for
 	// whoever needs it next - including this connection's next query - but an
@@ -641,10 +619,6 @@ static int drive_up_read(struct dot_conn *c)
 	{
 		dotdoh_loopback_give(c->upfd);
 		c->upfd = -1;
-		// Clear the boundary flag with the fd it described: the next query takes a
-		// fresh socket, and leaving it set would let conn_free() pool that one
-		// while it is still connecting.
-		c->up_idle = false;
 		c->up_reused = false;
 		c->up_retried = false;
 	}
