@@ -384,9 +384,9 @@ static int doq_filter_sendmmsg(BIO *b, BIO_MSG *msg, size_t stride, size_t num_m
 	return BIO_sendmmsg(BIO_next(b), msg, stride, num_msg, flags, processed);
 }
 
-static long doq_filter_ctrl(BIO *b, int cmd, long larg, void *parg)
+static long doq_filter_ctrl(BIO *b, int cmd, long num, void *parg)
 {
-	return BIO_ctrl(BIO_next(b), cmd, larg, parg);
+	return BIO_ctrl(BIO_next(b), cmd, num, parg);
 }
 
 static int doq_filter_create(BIO *b)
