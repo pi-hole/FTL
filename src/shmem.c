@@ -36,7 +36,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 18
+#define SHARED_MEMORY_VERSION 19
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -73,7 +73,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        568576, 560352, 560336);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        360,    360,    360);
+ASSERT_SHM_SIZE(countersStruct,        356,    356,    356);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -87,7 +87,6 @@ ASSERT_SHM_SIZE(countersStruct,        360,    360,    360);
 #define SHARED_OVERTIME_NAME "overTime"
 #define SHARED_SETTINGS_NAME "settings"
 #define SHARED_DNS_CACHE "dns-cache"
-#define SHARED_PER_CLIENT_REGEX "per-client-regex"
 #define SHARED_CLIENTS_LOOKUP_NAME "clients-lookup"
 #define SHARED_DOMAINS_LOOKUP_NAME "domains-lookup"
 #define SHARED_DNS_CACHE_LOOKUP_NAME "dns-cache-lookup"
@@ -117,7 +116,6 @@ static SharedMemory shm_upstreams = { 0 };
 static SharedMemory shm_overTime = { 0 };
 static SharedMemory shm_settings = { 0 };
 static SharedMemory shm_dns_cache = { 0 };
-static SharedMemory shm_per_client_regex = { 0 };
 static SharedMemory shm_fifo_log = { 0 };
 static SharedMemory shm_clients_lookup = { 0 };
 static SharedMemory shm_domains_lookup = { 0 };
@@ -135,7 +133,6 @@ static SharedMemory *sharedMemories[] = { &shm_lock,
                                           &shm_overTime,
                                           &shm_settings,
                                           &shm_dns_cache,
-                                          &shm_per_client_regex,
                                           &shm_fifo_log,
                                           &shm_clients_lookup,
                                           &shm_domains_lookup,
@@ -688,9 +685,6 @@ static void remap_shm(void)
 	realloc_shm(&shm_dns_cache, counters->dns_cache_MAX, sizeof(DNSCacheData), false);
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 
-	realloc_shm(&shm_per_client_regex, counters->per_client_regex_MAX, sizeof(bool), false);
-	// per-client-regex bools are not exposed by a global pointer
-
 	realloc_shm(&shm_strings, counters->strings_MAX, sizeof(char), false);
 	// strings are not exposed by a global pointer
 
@@ -956,15 +950,6 @@ bool init_shmem()
 
 	dns_cache = (DNSCacheData*)shm_dns_cache.ptr;
 	counters->dns_cache_MAX = size;
-
-	/****************************** shared per-client regex buffer ******************************/
-	size = pagesize; // Allocate one pagesize initially. This may be expanded later on
-	// Try to create shared memory object
-	create_shm(SHARED_PER_CLIENT_REGEX, &shm_per_client_regex, size);
-	if(shm_per_client_regex.ptr == NULL)
-		return false;
-
-	counters->per_client_regex_MAX = size;
 
 	/****************************** shared fifo_buffer struct ******************************/
 	// Try to create shared memory object
@@ -1529,76 +1514,6 @@ static void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-}
-
-void reset_per_client_regex(const unsigned int clientID)
-{
-	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	for(unsigned int i = 0u; i < num_regex_tot; i++)
-	{
-		// Zero-initialize/reset (= false) all regex (allow + deny)
-		set_per_client_regex(clientID, i, false);
-	}
-}
-
-void add_per_client_regex(const unsigned int clientID)
-{
-	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const size_t size = get_optimal_object_size(1, (size_t)counters->clients * num_regex_tot);
-	if(size > shm_per_client_regex.size &&
-	   realloc_shm(&shm_per_client_regex, 1, size, true))
-	{
-		reset_per_client_regex(clientID);
-		counters->per_client_regex_MAX = size;
-	}
-}
-
-bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID)
-{
-	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const unsigned int id = clientID * num_regex_tot + regexID;
-	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id >= maxval)
-	{
-		log_err("get_per_client_regex(%u, %u): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
-		        clientID, regexID,
-		        id, counters->clients, num_regex_tot, maxval);
-		return false;
-	}
-	return ((bool*) shm_per_client_regex.ptr)[id];
-}
-
-// Returns a pointer to the start of clientID's row in the per-client regex
-// bool array, performing the offset arithmetic and bounds check once.
-// Use this before a per-client regex loop to avoid recomputing the row
-// offset on every iteration. Returns NULL on out-of-bounds.
-const bool *get_client_regex_row(const unsigned int clientID)
-{
-	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX);
-	const unsigned int base = clientID * num_regex_tot;
-	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(base >= maxval)
-	{
-		log_err("get_client_regex_row(%u): base offset %u out of bounds (max %zu)",
-		        clientID, base, maxval);
-		return NULL;
-	}
-	return ((const bool*) shm_per_client_regex.ptr) + base;
-}
-
-void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value)
-{
-	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
-	const unsigned int id = clientID * num_regex_tot + regexID;
-	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id >= maxval)
-	{
-		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
-		        clientID, regexID, value ? "true" : "false",
-		        id, counters->clients, num_regex_tot, maxval);
-		return;
-	}
-	((bool*) shm_per_client_regex.ptr)[id] = value;
 }
 
 static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
