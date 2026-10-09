@@ -869,6 +869,7 @@ const char * const thread_names[THREADS_MAX] = {
 	"dotdoh",
 	"dotdoh-dot",
 	"dotdoh-doq",
+	"log-writer",
 };
 
 // Private prototypes
