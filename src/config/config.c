@@ -2189,7 +2189,7 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
-	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+	const enum blocking_status before = get_blockingstatus();
 
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
@@ -2204,9 +2204,10 @@ void replace_config(struct config *newconf)
 	// Unlock shared memory
 	unlock_shm();
 
-	// Drop the cached answers and verdicts of the previous blocking status as
-	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
-	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+	// Drop the cached answers and verdicts of the previous blocking status. A
+	// temporary status masks the setting, so compare the effective one. The CLI
+	// only writes pihole.toml, FTL rereads it
+	if(!cli_mode && get_blockingstatus() != before)
 		raise(SIGHUP);
 }
 

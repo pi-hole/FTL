@@ -48,6 +48,20 @@ wait_for_blocking() {
   assert_output --partial '"blocking":"enabled","timer":null'
 }
 
+@test "A config change masked by a temporary status does not reload" {
+  run set_blocking '{"blocking":false,"timer":60}'
+  assert_output --partial '"blocking":"disabled","timer":'
+  before=$(stat -c%s "$FTL_LOG")
+  curl -s -o /dev/null -X PATCH -d '{"config":{"dns":{"blocking":{"active":false}}}}' "${FTL_URL}/api/config"
+  run ./pihole-FTL wait-for "Flushing cache and re-reading config" "$FTL_LOG" 3 "$before"
+  assert_failure
+
+  run set_blocking '{"blocking":true}'
+  assert_output --partial '"blocking":"enabled","timer":null'
+  run toml_active
+  assert_output --partial "active = true"
+}
+
 @test "A temporary blocking status ends when FTL restarts" {
   run set_blocking '{"blocking":false,"timer":300}'
   assert_output --partial '"blocking":"disabled"'
