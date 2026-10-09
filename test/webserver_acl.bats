@@ -95,3 +95,31 @@ teardown_file() {
   run status_from 127.0.0.2 --http2 $TLS https://pi.hole/api/auth
   assert_output "403"
 }
+
+@test "webserver.acl: without a TLS port the client a trusted proxy announces is checked" {
+  # No terminator, so CivetWeb itself trusts the PROXY v2 header of a reverse
+  # proxy (webserver.proxySecret). The proxy connects from 127.0.0.1, which the
+  # ACL admits, and only the announced 127.0.0.3 may pass
+  local port acl before i allowed refused
+  port=$(curl -s http://127.0.0.1/api/config/webserver/port | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["port"])')
+  acl=$(curl -s http://127.0.0.1/api/config/webserver/acl | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["acl"])')
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null --max-time 10 -X PATCH "http://127.0.0.1/api/config" -H "Content-Type: application/json" \
+       -d '{"config":{"webserver":{"port":"80o","acl":"+127.0.0.1,+127.0.0.3"}}}' || true
+  ./pihole-FTL wait-for "########## FTL started" /var/log/pihole/FTL.log 30 "$before"
+  for i in $(seq 1 50); do
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1/api/info/login)" == "200" ]] && break
+    sleep 0.2
+  done
+  allowed=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.3 00112233445566778899aabbccddeeff)
+  refused=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.4 00112233445566778899aabbccddeeff)
+
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  # Put back the previous ACL too, teardown_file clears it
+  python3 -c 'import json,sys; print(json.dumps({"config":{"webserver":{"port":sys.argv[1],"acl":sys.argv[2]}}}))' "$port" "$acl" |
+    curl -s -o /dev/null --max-time 10 -X PATCH "http://127.0.0.1/api/config" -H "Content-Type: application/json" -d @- || true
+  ./pihole-FTL wait-for "TLS terminator listening" /var/log/pihole/FTL.log 30 "$before"
+
+  [[ "$allowed" == "HTTP 200" ]]
+  [[ "$refused" == "HTTP 403" ]]
+}

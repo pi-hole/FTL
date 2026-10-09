@@ -17,20 +17,35 @@
 #include <stdbool.h>
 #include <stddef.h> // size_t
 
-// Start the TLS terminator: bind public_port on bind_addr (NULL/"" = all
-// interfaces, else an IPv4/IPv6 literal), terminate TLS with the PEM (cert + key)
-// at cert_path, and forward accepted connections as plain HTTP/1.1 to
-// 127.0.0.1:backend_port. Spawns an accept thread. Returns true on success; on
-// failure nothing is left running.
-bool terminator_start(const char *bind_addr, int public_port, int backend_port, const char *cert_path);
+// Upper bound on the public TLS ports the terminator serves at once. More
+// secure entries than this in webserver.port are reported and ignored.
+#define TERMINATOR_MAX_LISTENERS 8
+
+// One public TLS listener: the port and the address it is scoped to (NULL or ""
+// for all interfaces, else an IPv4/IPv6 literal). terminator_start() sets bound.
+struct terminator_listener {
+	const char *addr;
+	int port;
+	bool optional; // 'o' flag: failing to bind it is not an error
+	bool bound;
+};
+
+// Start the TLS terminator on every entry of listeners: terminate TLS with the
+// PEM (cert + key) at cert_path and forward accepted connections as plain
+// HTTP/1.1 to 127.0.0.1:backend_port. Spawns one accept thread serving all of
+// them, and HTTP/3 on every entry that bound. Returns true if at least
+// one listener came up; on total failure nothing is left running.
+bool terminator_start(struct terminator_listener *listeners, unsigned n_listeners,
+                      int backend_port, const char *cert_path);
 
 // Stop the terminator and free all resources. Safe to call if never started or already stopped.
 void terminator_stop(void);
 
-// Hex-encode the per-boot token (generating it if needed) into out, which must
-// hold at least 33 bytes. webserver.c passes it to the loopback CivetWeb backend
-// as "proxy_protocol_secret", the shared secret the backend uses to authenticate
-// our PROXY v2 headers. Returns false if out is too small or the RNG fails.
+// Hex-encode the PROXY v2 secret into out, which must hold at least 33 bytes:
+// webserver.proxySecret if set, else a per-boot token generated on first use.
+// webserver.c passes it to the CivetWeb backend as "proxy_protocol_secret".
+// Returns false if out is too small, webserver.proxySecret is invalid, or the
+// RNG fails.
 bool terminator_proxy_token_hex(char *out, size_t outsz);
 
 #endif // WEBSERVER_TERMINATOR_H
