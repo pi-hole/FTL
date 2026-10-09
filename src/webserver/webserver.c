@@ -1396,10 +1396,10 @@ static bool parse_tls_entry(const char *ent, char addr[64], int *port)
 
 // Split the webserver port list for TLS-terminator mode. Secure ("...s") entries
 // name public TLS ports the terminator owns, so they are dropped from CivetWeb's
-// list and a loopback plaintext backend (ephemeral port, read back after start)
-// is appended instead. Every secure entry is collected into tls (capacity
-// tls_cap, backed by the caller's tls_addrs storage); returns how many were
-// stored, or 0 if none.
+// list, and a loopback plaintext backend (ephemeral port, read back after start)
+// is appended if any of them is usable. Every usable secure entry is collected
+// into tls (capacity tls_cap, backed by the caller's tls_addrs storage); returns
+// how many were stored, or 0 if none.
 static unsigned split_terminator_ports(const char *cfg, char *backend, size_t backend_len,
                                        struct terminator_listener *tls,
                                        char tls_addrs[][64], unsigned tls_cap)
@@ -1496,9 +1496,12 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 
 	// Append the loopback plaintext backend CivetWeb serves the terminator on.
 	// Port 0 lets the kernel pick a free port; it is read back after mg_start2().
-	if(backend[0] != '\0')
-		str_append(backend, backend_len, ",");
-	str_append(backend, backend_len, "127.0.0.1:0");
+	if(n_tls > 0)
+	{
+		if(backend[0] != '\0')
+			str_append(backend, backend_len, ",");
+		str_append(backend, backend_len, "127.0.0.1:0");
+	}
 
 	return n_tls;
 }
@@ -1606,14 +1609,12 @@ void http_init(void)
 			strncpy(terminator_addr, tls_listeners[0].addr, sizeof(terminator_addr) - 1);
 			terminator_addr[sizeof(terminator_addr) - 1] = '\0';
 		}
-		if(terminator_port > 0)
-			listening_ports = backend_ports;
-		else
-		{
-			n_plain_ports = 0;
+		// CivetWeb never sees a secure entry, not even when none of them is
+		// usable. Redirect entries then answer 503, there is no TLS port
+		listening_ports = backend_ports;
+		if(terminator_port == 0)
 			log_err("Could not extract a TLS port from '%s'; the web server will not offer TLS",
 			        config.webserver.port.v.s);
-		}
 	}
 #endif
 
