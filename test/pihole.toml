@@ -1237,6 +1237,7 @@
     # Array of clients to be excluded from certain API responses (regex):
     # - Query Log (/api/queries)
     # - Top Clients (/api/stats/top_clients)
+    # - Client activity (/api/history/clients)
     # This setting accepts both IP addresses (IPv4 and IPv6) as well as hostnames.
     # Note that backslashes "\" need to be escaped, i.e. "\\" in this setting
     #

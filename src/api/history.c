@@ -61,7 +61,7 @@ int api_history(struct ftl_conn *api)
 	JSON_SEND_OBJECT(json);
 }
 
-static unsigned int build_client_temparray(int *temparray, const int slot)
+static unsigned int build_client_temparray(int *temparray, const int slot, const bool *excluded)
 {
 	// Clear temporary array
 	memset(temparray, 0, 2 * counters->clients * sizeof(int));
@@ -74,6 +74,10 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 
 		// Skip invalid (recycled) clients
 		if(client == NULL)
+			continue;
+
+		// Skip clients matching webserver.api.excludeClients
+		if(excluded != NULL && excluded[clientID])
 			continue;
 
 		// If this client is managed by an alias-client, we substitute
@@ -130,23 +134,46 @@ int api_history_clients(struct ftl_conn *api)
 		Nc = counters->clients;
 	}
 
+	// Filter out the clients the user does not want to see, as Top Clients
+	// does. A bad regex is logged and filters nothing, as in get_top_clients()
+	regex_t *regex_clients = NULL;
+	unsigned int N_regex_clients = 0;
+	compile_filter_regex(api, "webserver.api.excludeClients",
+	                     config.webserver.api.excludeClients.v.json,
+	                     &regex_clients, &N_regex_clients, NULL);
+
 	// Lock shared memory
 	lock_shm();
 
-	// Allocate memory for the temporary buffer for ranking our clients
+	// Allocate memory for the temporary buffer for ranking our clients, and
+	// match the exclude filters once here rather than for every slot
 	int *temparray = calloc(counters->clients, 2 * sizeof(int));
-	if(temparray == NULL)
+	bool *excluded = N_regex_clients > 0 ? calloc(counters->clients, sizeof(bool)) : NULL;
+	if(temparray == NULL || (N_regex_clients > 0 && excluded == NULL))
 	{
 		unlock_shm();
+		if(temparray != NULL)
+			free(temparray);
+		if(excluded != NULL)
+			free(excluded);
+		free_filter_regex(regex_clients, N_regex_clients);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Failed to allocate memory for temporary array",
 		                       NULL);
 	}
+	for(unsigned int clientID = 0; excluded != NULL && clientID < counters->clients; clientID++)
+	{
+		const clientsData *client = getClient(clientID, true);
+		if(client == NULL)
+			continue;
+		excluded[clientID] = matches_filter(regex_clients, N_regex_clients, getstr(client->ippos)) ||
+		                     matches_filter(regex_clients, N_regex_clients, getstr(client->namepos));
+	}
 
 	// Get MAX_CLIENTS clients with the highest number of queries
 	// Skip clients included in others (in alias-clients)
-	unsigned int num_clients = build_client_temparray(temparray, -1);
+	unsigned int num_clients = build_client_temparray(temparray, -1, excluded);
 
 	if(config.webserver.api.client_history_global_max.v.b)
 	{
@@ -182,7 +209,7 @@ int api_history_clients(struct ftl_conn *api)
 		if(!config.webserver.api.client_history_global_max.v.b)
 		{
 			// Collect global client data
-			num_clients = build_client_temparray(temparray, slot);
+			num_clients = build_client_temparray(temparray, slot, excluded);
 
 			// Sort temporary array. Even when the array itself has <counters.clients>
 			// elements, we only sort the first <clients> elements to avoid sorting
@@ -299,6 +326,9 @@ int api_history_clients(struct ftl_conn *api)
 
 	// Free memory
 	free(temparray);
+	if(excluded != NULL)
+		free(excluded);
+	free_filter_regex(regex_clients, N_regex_clients);
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
@@ -315,6 +345,9 @@ oom_unlocked:
 	cJSON_Delete(history);
 	cJSON_Delete(clients);
 	free(temparray);
+	if(excluded != NULL)
+		free(excluded);
+	free_filter_regex(regex_clients, N_regex_clients);
 	send_http_internal_error(api);
 	return 500;
 }
