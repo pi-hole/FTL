@@ -96,6 +96,10 @@ pdnsutil rrset add ftl. ptr.ftl. PTR ptr.ftl.
 # Other testing records
 pdnsutil rrset add ftl. srv.ftl. SRV "0 1 80 a.ftl"
 pdnsutil rrset add ftl. txt.ftl. TXT "\"Some example text\""
+# An answer larger than a 1232-byte UDP reply
+for i in 1 2 3 4 5 6; do
+  pdnsutil rrset add ftl. big.ftl. TXT "\"${i}$(printf '%0249d' 0)\""
+done
 # We want this to output $1 without expansion
 # shellcheck disable=SC2016
 pdnsutil rrset add ftl. naptr.ftl. NAPTR '10 10 "u" "smtp+E2U" "!.*([^\.]+[^\.]+)$!mailto:postmaster@$1!i" .'
