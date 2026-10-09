@@ -17,6 +17,8 @@
 #include "regex_r.h"
 // parse_groupIDs()
 #include "webserver/http-common.h"
+// lock_shm()
+#include "shmem.h"
 #include <idn2.h>
 
 #define MAX_SEARCH_RESULTS 10000u
@@ -290,9 +292,12 @@ int api_search(struct ftl_conn *api)
 		goto search_fail;
 	}
 
-	// Search through all regex filters
+	// Search through all regex filters, under the lock as a list reload frees
+	// and rebuilds them
 	regex_ids = JSON_NEW_OBJECT();
+	lock_shm();
 	check_all_regex(punycode, regex_ids);
+	unlock_shm();
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
 

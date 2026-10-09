@@ -513,7 +513,10 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	union all_addr redirect_addr4 = {}, redirect_addr6 = {};
 	if(last_regex_idx > -1)
 	{
+		// A list reload frees and rebuilds the regex under the lock
+		lock_shm();
 		redirecting = regex_get_redirect(last_regex_idx, &redirect_addr4.addr4, &redirect_addr6.addr6);
+		unlock_shm();
 		// Reset regex redirection forcing
 		last_regex_idx = -1;
 
