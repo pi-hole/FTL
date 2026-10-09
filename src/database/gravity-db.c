@@ -2332,14 +2332,25 @@ static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, con
 		return false;
 	}
 
+	const bool adlists = listtype == GRAVITY_ADLISTS ||
+	                     listtype == GRAVITY_ADLISTS_BLOCK ||
+	                     listtype == GRAVITY_ADLISTS_ALLOW;
 	const bool hasType = listtype == GRAVITY_DOMAINLIST_ALLOW_EXACT ||
 	                     listtype == GRAVITY_DOMAINLIST_DENY_EXACT ||
 	                     listtype == GRAVITY_DOMAINLIST_ALLOW_REGEX ||
 	                     listtype == GRAVITY_DOMAINLIST_DENY_REGEX ||
 	                     listtype == GRAVITY_DOMAINLIST_ALL_ALL ||
-	                     listtype == GRAVITY_ADLISTS ||
-	                     listtype == GRAVITY_ADLISTS_BLOCK ||
-	                     listtype == GRAVITY_ADLISTS_ALLOW;
+	                     adlists;
+
+	// A deleted list leaves its domains behind (see below), which their
+	// foreign key would refuse. The connection is opened for this deletion only
+	if(adlists && sqlite3_exec(db, "PRAGMA foreign_keys = OFF;", NULL, NULL, NULL) != SQLITE_OK)
+	{
+		*message = sqlite3_errmsg(db);
+		log_err("gravityDB_delFromTable(%d): Cannot disable foreign keys: %s",
+		        listtype, *message);
+		return false;
+	}
 
 	// Begin transaction
 	const char *querystr = "BEGIN TRANSACTION;";
@@ -2498,15 +2509,13 @@ static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, con
 	const char *querystrs[4] = {NULL, NULL, NULL, NULL};
 	if(listtype == GRAVITY_GROUPS)
 		querystrs[0] = "DELETE FROM \"group\" WHERE name IN (SELECT item FROM deltable);";
-	else if(listtype == GRAVITY_ADLISTS ||
-	        listtype == GRAVITY_ADLISTS_BLOCK ||
-	        listtype == GRAVITY_ADLISTS_ALLOW)
+	else if(adlists)
 	{
-		// This is actually a four-step deletion to satisfy foreign-key constraints
-		querystrs[0] = "DELETE FROM gravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0));";
-		querystrs[1] = "DELETE FROM antigravity WHERE adlist_id IN (SELECT id FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1));";
-		querystrs[2] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0) AND type = 0;";
-		querystrs[3] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1) AND type = 1;";
+		// Only the lists are deleted. Deleting their domains would scan the
+		// whole gravity table, which has no index on adlist_id. The views skip
+		// domains whose list is gone, and the next gravity run drops them
+		querystrs[0] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 0) AND type = 0;";
+		querystrs[1] = "DELETE FROM adlist WHERE address IN (SELECT item FROM deltable WHERE type = 1) AND type = 1;";
 	}
 	else if(listtype == GRAVITY_CLIENTS)
 		querystrs[0] = "DELETE FROM client WHERE ip IN (SELECT item FROM deltable);";
