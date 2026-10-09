@@ -261,6 +261,9 @@ paths:
   /teleporter:
     $ref: 'teleporter.yaml#/components/paths/teleporter'
 
+  /teleporter/export:
+    $ref: 'teleporter.yaml#/components/paths/teleporter_export'
+
   /action/gravity:
     $ref: 'action.yaml#/components/paths/gravity'
 

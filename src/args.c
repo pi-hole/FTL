@@ -1405,8 +1405,10 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
-			printf("\t                    current directory and print its name\n");
-			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
+			printf("\t                    current directory and print its name.\n");
+			printf("\t                    Asks for an optional password\n");
+			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n", green, cyan, normal, cyan, normal);
+			printf("\t                    (asks for the password if encrypted)\n\n");
 
 			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");

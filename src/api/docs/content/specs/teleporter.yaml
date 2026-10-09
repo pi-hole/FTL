@@ -42,6 +42,10 @@ components:
                   file:
                     type: string
                     format: binary
+                  password:
+                    type: string
+                    maxLength: 1024
+                    description: "Password of an encrypted archive, ignored for unencrypted archives"
                   import:
                     type: object
                     nullable: true
@@ -113,6 +117,10 @@ components:
                     $ref: 'teleporter.yaml#/components/examples/errors/bad_request/invalid_archive'
                   no_file:
                     $ref: 'teleporter.yaml#/components/examples/errors/bad_request/no_file'
+                  password_required:
+                    $ref: 'teleporter.yaml#/components/examples/errors/bad_request/password_required'
+                  wrong_password:
+                    $ref: 'teleporter.yaml#/components/examples/errors/bad_request/wrong_password'
           '401':
             description: Unauthorized
             content:
@@ -134,6 +142,54 @@ components:
                     $ref: 'teleporter.yaml#/components/examples/errors/forbidden/app_session'
                   cli_session:
                     $ref: 'teleporter.yaml#/components/examples/errors/forbidden/cli_session'
+    teleporter_export:
+      post:
+        summary: Export Pi-hole settings, password-protected
+        tags:
+          - "Pi-hole configuration"
+        operationId: "post_teleporter_export"
+        description: |
+          Request an encrypted copy of your Pi-hole's current configuration. The archive is encrypted with AES-256-GCM using a key derived from the given password (Balloon-SHA256), which also detects any modification of the file. Upload it to `POST /teleporter` together with the same password to restore from it.
+          Authentication via header or cookie is required for the endpoint.
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - password
+                properties:
+                  password:
+                    type: string
+                    minLength: 1
+                    maxLength: 1024
+                    description: "Password to encrypt the archive with"
+                    example: "correct horse battery staple"
+        responses:
+          '200':
+            description: OK
+            content:
+              application/octet-stream:
+                schema:
+                  type: string
+                  format: binary
+          '400':
+            description: Bad request
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
   schemas:
     teleporter:
       post:
@@ -179,6 +235,22 @@ components:
               key: "bad_request"
               message: "No ZIP archive received"
               hint: null
+            took: 0.003
+        password_required:
+          summary: The archive is encrypted but no password was given
+          value:
+            error:
+              key: "password_required"
+              message: "Password required"
+              hint: "This Teleporter archive is password-protected"
+            took: 0.003
+        wrong_password:
+          summary: The archive could not be decrypted
+          value:
+            error:
+              key: "bad_request"
+              message: "Unable to decrypt Teleporter archive"
+              hint: "Wrong password or corrupted archive"
             took: 0.003
       forbidden:
         app_session:
