@@ -2155,11 +2155,10 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int aliasclient_id = DB_FAILED;
-	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
+	const char *querystr = "SELECT aliasclient_id FROM network "
+	                       "WHERE aliasclient_id IS NOT NULL AND id = "
 	                       "(SELECT network_id FROM network_addresses "
-	                       "WHERE ip = ? "
-	                             "AND aliasclient_id IS NOT NULL "
-	                       "GROUP BY ip HAVING max(lastSeen));";
+	                       "WHERE ip = ? GROUP BY ip HAVING max(lastSeen));";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
