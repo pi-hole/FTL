@@ -102,6 +102,37 @@ load 'bats_helper.bash'
   [[ "${results}" == " api-false:0:192.168.1.3 api-true:0:${blocked} cli-false:0:192.168.1.3 cli-true:0:${blocked}" ]]
 }
 
+@test "A regex in no group, or only in a disabled group, applies to no client" {
+  # 127.0.0.1 joins the disabled group 1 for this test, a regex only in that
+  # group must still not apply to it. The control regex is in the default group
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" \
+    "INSERT INTO client_by_group (client_id,group_id) VALUES (1,1);" \
+    "INSERT INTO domainlist (type,domain) VALUES (3,'^control-regex\.ftl$'),(3,'^nogroup-regex\.ftl$'),(3,'^disabledgroup-regex\.ftl$');" \
+    "DELETE FROM domainlist_by_group WHERE domainlist_id IN (SELECT id FROM domainlist WHERE domain IN ('^nogroup-regex\.ftl$','^disabledgroup-regex\.ftl$'));" \
+    "INSERT INTO domainlist_by_group (domainlist_id,group_id) SELECT id,1 FROM domainlist WHERE domain = '^disabledgroup-regex\.ftl$';"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  reloaded=$status
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  results=""
+  for name in control nogroup disabledgroup; do
+    results="${results} ${name}:$(dig +short +tries=1 +time=2 ${name}-regex.ftl @127.0.0.1)"
+  done
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" \
+    "DELETE FROM client_by_group WHERE client_id = 1 AND group_id = 1;" \
+    "DELETE FROM domainlist WHERE domain IN ('^control-regex\.ftl$','^nogroup-regex\.ftl$','^disabledgroup-regex\.ftl$');"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  assert_success
+
+  printf "reload: %s, blocked: %s, results:%s\n" "${reloaded}" "${blocked}" "${results}"
+  [[ "${reloaded}" == "0" && -n "${blocked}" ]]
+  [[ "${results}" == " control:${blocked} nogroup: disabledgroup:" ]]
+}
+
 @test "Query with ID 0 has been saved to the database" {
   # FTL exports queries from in-memory DB to disk after a configurable
   # delay (default 30s). Poll up to 60s for the export to complete.

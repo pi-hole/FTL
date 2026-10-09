@@ -16,10 +16,6 @@
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
-// dbopen()
-#include "database/common.h"
-// add_per_client_regex_client()
-#include "shmem.h"
 #include "database/message-table.h"
 // init_shmem()
 #include "shmem.h"
@@ -370,6 +366,17 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 	return true;
 }
 
+// Check if the regex is assigned to any of the given groups
+static bool __attribute__((pure)) regex_in_groups(const regexData *regex, const int32_t *group_ids, const int group_count)
+{
+	for(unsigned int i = 0; i < regex->num_groups; i++)
+		for(int j = 0; j < group_count; j++)
+			if(regex->groups[i] == group_ids[j])
+				return true;
+
+	return false;
+}
+
 static int match_regex(const char *input, DNSCacheData *dns_cache, const int clientID,
                        const enum regex_type regexid, const bool regextest, cJSON *json)
 {
@@ -387,10 +394,16 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 		read_regex_from_database();
 	}
 
-	// Pre-compute pointer to this client's per-regex enabled row.
-	// Avoids repeating the row-offset multiply and bounds check on every
-	// iteration. clientID == -1 means "check all regex" (testing mode).
-	const bool *client_regex_row = (clientID >= 0) ? get_client_regex_row((unsigned int)clientID) : NULL;
+	// Groups of this client, a regex applies if it is in any of them.
+	// clientID == -1 means "check all regex" (testing mode)
+	int group_count = 0;
+	const int32_t *group_ids = NULL;
+	if(clientID >= 0)
+	{
+		const clientsData *client = getClient(clientID, true);
+		if(client != NULL)
+			group_ids = getintarray(client->groupspos, &group_count);
+	}
 
 	// Loop over all configured regex filters of this type
 	for(unsigned int index = 0; index < num_regex[regexid]; index++)
@@ -404,16 +417,8 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 			continue;
 		}
 		// ... and are enabled for this client
-		int regexID = index;
-		if(regexid == REGEX_ALLOW)
-			regexID += num_regex[REGEX_DENY];
-		else if(regexid == REGEX_CLI)
-			regexID += num_regex[REGEX_DENY] +
-			           num_regex[REGEX_ALLOW];
-
-		// Only use regular expressions enabled for this client
 		// We allow clientID = -1 to get all regex (for testing)
-		if(client_regex_row != NULL && !client_regex_row[regexID])
+		if(clientID >= 0 && !regex_in_groups(regex, group_ids, group_count))
 		{
 			if(config.debug.regex.v.b)
 			{
@@ -647,13 +652,6 @@ void free_regex(void)
 		return;
 	}
 
-	// Reset client configuration
-	log_debug(DEBUG_DATABASE, "Resetting per-client regex settings");
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		reset_per_client_regex(clientID);
-	}
-
 	// Free regex datastructure
 	// Loop over regex types
 	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
@@ -692,6 +690,11 @@ void free_regex(void)
 				free(regex[index].ext.cname_target);
 				regex[index].ext.cname_target = NULL;
 			}
+
+			// Also free the list of groups
+			free(regex[index].groups);
+			regex[index].groups = NULL;
+			regex[index].num_groups = 0;
 		}
 
 		log_debug(DEBUG_DATABASE, "Loop done, freeing regex pointer (%p)", regex);
@@ -701,29 +704,35 @@ void free_regex(void)
 	}
 }
 
-// This function does three things:
-//   1. Allocate additional memory if required
-//   2. Reset all regex to false for this client
-//   3. Load regex enabled/disabled state
-void reload_per_client_regex(clientsData *client, sqlite3 *ftl_db)
+// Store the groups a regex is assigned to, given as a comma-separated list. A
+// regex in no group applies to no client
+static void set_regex_groups(regexData *regex, const char *groups)
 {
-	// Ensure there is enough memory in the shared memory object
-	add_per_client_regex(client->id);
+	if(groups == NULL)
+		return;
 
-	// Zero-initialize (or wipe previous) regex
-	reset_per_client_regex(client->id);
+	unsigned int count = 1;
+	for(const char *p = groups; *p != '\0'; p++)
+		if(*p == ',')
+			count++;
 
-	// Load regex per-group deny regex for this client
-	if(num_regex[REGEX_DENY] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_DENY],
-		                                  deny_regex, REGEX_DENY,
-		                                  "vw_regex_denylist", ftl_db);
+	regex->groups = calloc(count, sizeof(*regex->groups));
+	if(regex->groups == NULL)
+	{
+		log_err("Memory allocation failed in set_regex_groups(), regex with DB ID %d applies to no client",
+		        regex->database_id);
+		return;
+	}
 
-	// Load regex per-group allow regex for this client
-	if(num_regex[REGEX_ALLOW] > 0)
-		gravityDB_get_regex_client_groups(client, num_regex[REGEX_ALLOW],
-		                                  allow_regex, REGEX_ALLOW,
-		                                  "vw_regex_allowlist", ftl_db);
+	const char *p = groups;
+	while(regex->num_groups < count)
+	{
+		char *end = NULL;
+		regex->groups[regex->num_groups++] = (int32_t)strtol(p, &end, 10);
+		if(*end != ',')
+			break;
+		p = end + 1;
+	}
 }
 
 static void read_regex_table(const enum regex_type regexid)
@@ -808,6 +817,10 @@ static void read_regex_table(const enum regex_type regexid)
 
 		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
+
+		// Store the groups the regex applies to
+		if(regex[index].available)
+			set_regex_groups(&regex[index], gravityDB_getGroups());
 	}
 
 	// Finalize statement and close gravity database handle
@@ -834,26 +847,6 @@ void read_regex_from_database(void)
 
 	// Read and compile regex whitelist
 	read_regex_table(REGEX_ALLOW);
-
-	// Loop over all clients and ensure we have enough space and load
-	// per-client regex data, not all of the regex read and compiled above
-	// will also be used by all clients
-	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
-	// One pihole-FTL.db connection for the network table lookups of all
-	// clients rather than one per lookup. NULL lets each lookup open its own
-	sqlite3 *ftl_db = dbopen(false, false);
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		// Get client pointer
-		clientsData *client = getClient(clientID, true);
-		// Skip invalid and alias-clients
-		if(client == NULL || client->flags.aliasclient)
-			continue;
-
-		reload_per_client_regex(client, ftl_db);
-	}
-	if(ftl_db != NULL)
-		dbclose(&ftl_db);
 
 	// This process is now up to date with the shared regex generation
 	regex_change = counters->regex_change;
