@@ -1260,11 +1260,14 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// TCP requests.
 	if(resize)
 	{
-		// Allocate shared memory object to specified size
+		// Allocate only the part we are adding, everything below the current
+		// size has already been allocated.
 		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = ftlallocate(sharedMemory->fd, 0U, new_size);
+		int ret = 0;
+		if(new_size > sharedMemory->size)
+			ret = ftlallocate(sharedMemory->fd, sharedMemory->size, new_size - sharedMemory->size);
 		if(ret != 0)
 		{
 			log_crit("realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",
