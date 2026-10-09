@@ -15,6 +15,8 @@
 #include "datastructure.h"
 // file_exists()
 #include "files.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
@@ -24,9 +26,14 @@ char ** setupVarsArray = NULL;
 // imported ones have to replace rather than be added to
 static void clear_conf_array(struct conf_item *conf_item)
 {
-	if(conf_item->v.json != NULL)
-		cJSON_Delete(conf_item->v.json);
-	conf_item->v.json = cJSON_CreateArray();
+	// The API copies these arrays under the SHM lock, so swap the array under
+	// it and free the old one afterwards
+	cJSON *empty = cJSON_CreateArray();
+	lock_shm();
+	cJSON *old = conf_item->v.json;
+	conf_item->v.json = empty;
+	unlock_shm();
+	cJSON_Delete(old);
 }
 
 static void get_conf_string_from_setupVars(const char *key, struct conf_item *conf_item)
