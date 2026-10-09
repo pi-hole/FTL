@@ -1439,24 +1439,34 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 			// Collapse entries that would bind the same socket. The default
 			// "443os,[::]:443os" names the dual-stack listener and then its IPv6
 			// half, and binding both is simply EADDRINUSE. A bare port therefore
-			// supersedes any address-scoped entry for that port, and vice versa;
-			// distinct addresses (e.g. "0.0.0.0" and "[::]") each get a socket.
+			// covers every address-scoped entry for that port, before or after
+			// it: the first one is widened in place, the others are removed.
+			// Distinct addresses (e.g. "0.0.0.0" and "[::]") each get a socket.
 			bool dup = false;
+			unsigned k = 0;
 			for(unsigned j = 0; j < n_tls; j++)
 			{
-				if(tls[j].port != port)
-					continue;
-				if(tls_addr_is_wildcard(tls[j].addr) || tls_addr_is_wildcard(addr) ||
-				   strcmp(tls[j].addr, addr) == 0)
+				if(tls[j].port == port)
 				{
-					// Keep the widest of the two, so "[::1]:443s,443s" still ends
-					// up serving every interface.
-					if(tls_addr_is_wildcard(addr) && !tls_addr_is_wildcard(tls[j].addr))
+					if(tls_addr_is_wildcard(tls[j].addr) || strcmp(tls[j].addr, addr) == 0)
+						dup = true;
+					else if(tls_addr_is_wildcard(addr))
+					{
+						if(dup)
+							continue; // removed, the widened entry serves it
 						tls_addrs[j][0] = '\0';
-					dup = true;
-					break;
+						dup = true;
+					}
 				}
+				if(k != j)
+				{
+					tls[k] = tls[j];
+					strcpy(tls_addrs[k], tls_addrs[j]);
+					tls[k].addr = tls_addrs[k];
+				}
+				k++;
 			}
+			n_tls = k;
 			if(dup)
 				continue; // drop from the list handed to CivetWeb
 
