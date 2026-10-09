@@ -21,6 +21,8 @@
 #include "database/common.h"
 // PRIu64
 #include <inttypes.h>
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 #if 0
 static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
@@ -585,8 +587,7 @@ int api_queries(struct ftl_conn *api)
 	unsigned int N_regex_clients = 0;
 	int regex_ret = 0;
 
-	if(compile_filter_regex(api, "webserver.api.excludeDomains",
-	                        config.webserver.api.excludeDomains.v.json,
+	if(compile_filter_regex(api, &config.webserver.api.excludeDomains,
 	                        &regex_domains, &N_regex_domains, &regex_ret))
 		filtering = true;
 	if(regex_ret != 0)
@@ -595,8 +596,7 @@ int api_queries(struct ftl_conn *api)
 		goto queries_fail;
 	}
 
-	if(compile_filter_regex(api, "webserver.api.excludeClients",
-	                        config.webserver.api.excludeClients.v.json,
+	if(compile_filter_regex(api, &config.webserver.api.excludeClients,
 	                        &regex_clients, &N_regex_clients, &regex_ret))
 		filtering = true;
 	if(regex_ret != 0)
@@ -1210,8 +1210,8 @@ void free_filter_regex(regex_t *regex, const unsigned int N_regex)
 // and get_top_clients() return a cJSON object, not a status - would go on to
 // send a second body on the same connection. Those pass NULL, and a failure is
 // logged and treated as "no filtering" instead.
-bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
-                          regex_t **regex, unsigned int *N_regex, int *ret)
+static bool compile_filter_regex_json(struct ftl_conn *api, const char *path, cJSON *json,
+                                      regex_t **regex, unsigned int *N_regex, int *ret)
 {
 	if(ret != NULL)
 		*ret = 0;
@@ -1298,4 +1298,19 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
 	// We are filtering, so we have to continue to step over the
 	// remaining rows to get the correct number of total records
 	return true;
+}
+
+// Compile the regexes of the string array config item into *regex. A config
+// change frees the previous arrays under the SHM lock, so the array is copied
+// under it rather than read from the live config while it may be replaced
+bool compile_filter_regex(struct ftl_conn *api, const struct conf_item *item,
+                          regex_t **regex, unsigned int *N_regex, int *ret)
+{
+	lock_shm();
+	cJSON *json = cJSON_Duplicate(item->v.json, true);
+	unlock_shm();
+
+	const bool filtering = compile_filter_regex_json(api, item->k, json, regex, N_regex, ret);
+	cJSON_Delete(json);
+	return filtering;
 }
