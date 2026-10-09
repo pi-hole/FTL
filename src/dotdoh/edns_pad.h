@@ -41,10 +41,31 @@ uint16_t edns_query_udp_size(const uint8_t *buf, size_t len) __attribute__((pure
 // EDNS(0) OPT record - a fresh OPT is never synthesised onto an answer. Same
 // in-place semantics, idempotency and fail-open behaviour as edns_pad_query.
 //
-// The caller must gate this on the request having carried a Padding option
-// (RFC 8467 Sec. 4): a server MUST NOT pad a response otherwise. See
+// The caller must gate this on the request having carried a Padding option,
+// which RFC 7830 Sec. 4 makes a MUST and which we treat as the only case. See
 // edns_has_padding_option().
 size_t edns_pad_response(uint8_t *buf, size_t len, size_t bufsz);
+
+// As above, but for a response we built ourselves and which therefore has no OPT
+// yet; only valid when the query carried one.
+size_t edns_pad_response_synth(uint8_t *buf, size_t len, size_t bufsz, bool set_do,
+                               bool pad);
+
+// Whether `buf` carries an OPT RR; *do_bit reports its DO flag when it does.
+bool edns_query_opt(const uint8_t *buf, size_t len, bool *do_bit);
+
+// Whether the DNS message msg carries the given EDNS(0) option code in its OPT
+// RR. Fail-safe: returns false on any malformed input.
+bool edns_has_option(const uint8_t *msg, size_t len, uint16_t code) __attribute__((pure));
+
+// Remove the first EDNS(0) option with the given code from the OPT RR of buf,
+// which holds a len-byte message, and return the new message length. When the
+// message also carries a Padding option, the freed bytes are absorbed into it so
+// the (RFC 8467) padded length is preserved; otherwise the message shrinks.
+// Fail-open: a message without an OPT, without that option, or malformed is
+// returned unchanged. The freed bytes are only absorbed when the OPT RR ends the
+// message and the Padding option ends its RDATA; otherwise the message shrinks.
+size_t edns_remove_option(uint8_t *buf, size_t len, uint16_t code);
 
 // Whether the DNS message msg carries an EDNS(0) Padding option in its OPT RR.
 // Fail-safe: returns false on any malformed input. Used to decide whether a

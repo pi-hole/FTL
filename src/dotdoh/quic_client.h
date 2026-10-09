@@ -30,11 +30,8 @@
 // Per-upstream QUIC connection pool; all state lives in the implementation.
 struct quic_pool; // opaque
 
-// Build / tear down the shared QUIC SSL_CTX (trust store, ca_file NULL = system
-// bundle; fail-closed verify), mirroring tls_client_global_init(). Idempotent;
-// returns false in a build without OpenSSL QUIC + nghttp3. Call before quic_pool_new.
-bool quic_client_global_init(const char *ca_file);
-void quic_client_global_free(void);
+// The shared QUIC client context (quic_client_global_init(), quic_common.h) must
+// be up before a pool is created; without it quic_pool_new() returns NULL.
 
 // Create / destroy a per-upstream DoH3 pool. max_conns bounds concurrent QUIC
 // connections; the pool copies *u. Returns NULL on failure (e.g. no QUIC build).

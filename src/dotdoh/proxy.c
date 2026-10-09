@@ -27,6 +27,8 @@
 #include "registry.h"
 #include "tls_client.h"
 #include "quic_client.h"
+#include "quic_common.h"
+#include "doq_client.h"
 #include "framing.h"
 #include "edns_pad.h"
 // global config
@@ -57,6 +59,7 @@ struct proxy_up {
 	struct proxy_listener listener; // bound UDP+TCP pair
 	struct tls_pool *pool;          // per-upstream TCP pool (DoT/DoH over TLS)
 	struct quic_pool *qpool;        // per-upstream QUIC pool (DoH3 only)
+	struct doq_pool *dpool;         // per-upstream QUIC pool (DoQ only)
 	char target[INET_ADDRSTRLEN + 8]; // "127.47.11.N#P", for logging
 };
 
@@ -67,16 +70,19 @@ static const char *ustype_name(enum ustype t)
 	if(t == UST_DOT)  return "DoT";
 	if(t == UST_DOH)  return "DoH";
 	if(t == UST_DOH3) return "DoH3";
+	if(t == UST_DOQ)  return "DoQ";
 	return "?";
 }
 
-// Route one exchange to this upstream's transport: DoH3 over QUIC, else the TCP
-// TLS pool. Returns the answer length or -1.
+// Route one exchange to this upstream's transport: DoH3 and DoQ over QUIC, else
+// the TCP TLS pool. Returns the answer length or -1.
 static ssize_t up_exchange(struct proxy_up *up, const uint8_t *query, size_t qlen,
                            uint8_t *answer, size_t answer_sz)
 {
 	if(up->uri.type == UST_DOH3)
 		return quic_pool_exchange(up->qpool, query, qlen, answer, answer_sz);
+	if(up->uri.type == UST_DOQ)
+		return doq_pool_exchange(up->dpool, query, qlen, answer, answer_sz);
 	return tls_pool_exchange(up->pool, query, qlen, answer, answer_sz);
 }
 
@@ -199,7 +205,9 @@ void dotdoh_init(void)
 		if(it != NULL && cJSON_IsString(it) && it->valuestring != NULL &&
 		   (strncmp(it->valuestring, "tls://", 6) == 0 ||
 		    strncmp(it->valuestring, "https://", 8) == 0 ||
-		    strncmp(it->valuestring, "h3://", 5) == 0))
+		    strncmp(it->valuestring, "h3://", 5) == 0 ||
+		    strncmp(it->valuestring, "doq://", 6) == 0 ||
+		    strncmp(it->valuestring, "quic://", 7) == 0))
 			n_encrypted++;
 	if(n_encrypted == 0)
 		return; // fail-closed: nothing to arm, no plaintext fallback
@@ -208,9 +216,9 @@ void dotdoh_init(void)
 	if(!tls_ok)
 		log_err("dotdoh: TLS init failed - encrypted upstreams are disabled");
 
-	// Bring up the QUIC context for h3:// (separate OpenSSL ctx, same trust store).
-	// Failure fails closed: h3:// pools stay un-armed, DoT/DoH keep working. No-op
-	// stub without QUIC/nghttp3.
+	// Bring up the QUIC context for h3:// and doq:// (separate OpenSSL ctx, same
+	// trust store). Failure fails closed: the QUIC pools stay un-armed, DoT/DoH
+	// keep working. No-op stub in a build without QUIC.
 	quic_client_global_init(config.dns.upstreamCA.v.s);
 
 	compute_scale(n_encrypted);
@@ -247,12 +255,18 @@ void dotdoh_init(void)
 		// queries fail over, never downgrade to plaintext.
 		if(tls_ok && proxy_listener_bind(enc, &up->listener))
 		{
-			// DoH3 uses the QUIC pool; DoT/DoH share the TCP pool - only one is non-NULL.
+			// DoH3 and DoQ each use their own QUIC pool; DoT/DoH share the TCP
+			// pool - exactly one of the three is non-NULL.
 			bool pool_ok;
 			if(u.type == UST_DOH3)
 			{
 				up->qpool = quic_pool_new(&u, g_pool_k);
 				pool_ok = (up->qpool != NULL);
+			}
+			else if(u.type == UST_DOQ)
+			{
+				up->dpool = doq_pool_new(&u, g_pool_k);
+				pool_ok = (up->dpool != NULL);
 			}
 			else
 			{
@@ -436,10 +450,10 @@ static bool write_full(int fd, const uint8_t *buf, size_t len, uint64_t deadline
 static size_t dns_truncated_response(const uint8_t *answer, size_t alen,
                                      uint8_t *out, size_t out_sz)
 {
-	if(alen < 12)
+	if(alen < DNS_HEADER_LEN)
 		return 0;
 	const unsigned qd = ((unsigned)answer[4] << 8) | answer[5];
-	size_t off = 12;
+	size_t off = DNS_HEADER_LEN;
 	for(unsigned q = 0; q < qd && off < alen; q++)
 	{
 		// Walk the QNAME labels; compression is not legal in a question.
@@ -707,6 +721,12 @@ static void emit_summary(void)
 				continue;
 			quic_pool_get_stats(g_ups[i].qpool, &s);
 		}
+		else if(g_ups[i].uri.type == UST_DOQ)
+		{
+			if(g_ups[i].dpool == NULL)
+				continue;
+			doq_pool_get_stats(g_ups[i].dpool, &s);
+		}
 		else
 		{
 			if(g_ups[i].pool == NULL)
@@ -816,6 +836,8 @@ void dotdoh_cleanup(void)
 			tls_pool_free(g_ups[i].pool);
 		if(g_ups[i].qpool != NULL)
 			quic_pool_free(g_ups[i].qpool);
+		if(g_ups[i].dpool != NULL)
+			doq_pool_free(g_ups[i].dpool);
 		if(g_ups[i].active)
 			proxy_listener_close(&g_ups[i].listener);
 		memset(&g_ups[i], 0, sizeof(g_ups[i]));
