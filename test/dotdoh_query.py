@@ -148,10 +148,18 @@ def dns_udp(host, port, packet, source):
         s.close()
 
 
-def validate(answer, expected_ip):
+def check_id(answer, qid):
+    """Fail unless answer carries the query's message ID."""
+    (aid,) = struct.unpack("!H", answer[:2])
+    if aid != qid:
+        sys.exit("message ID 0x%04x, expected 0x%04x" % (aid, qid))
+
+
+def validate(answer, expected_ip, qid=0x1234):
     """Fail (raise SystemExit) unless answer is a positive reply for expected_ip."""
     if len(answer) < 12:
         sys.exit("answer too short (%d bytes)" % len(answer))
+    check_id(answer, qid)
     flags, _, ancount = struct.unpack("!HHH", answer[2:8])
     if not (flags & 0x8000):
         sys.exit("QR bit not set (not a response)")
@@ -519,8 +527,9 @@ def main():
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
+        qtype = int(sys.argv[4]) if len(sys.argv) > 4 else 1
         with open(outfile, "wb") as f:
-            f.write(build_query(domain))
+            f.write(build_query(domain, qtype))
     elif cmd == "emitqr":
         # A message with the QR (response) bit set, which is not a query.
         _, _, domain, outfile = sys.argv[:4]
@@ -546,6 +555,22 @@ def main():
         _, _, infile, expected_ip = sys.argv[:4]
         with open(infile, "rb") as f:
             validate(f.read(), expected_ip)
+        print("OK")
+    elif cmd == "checkcount":
+        # A complete (not truncated) positive answer with this many records
+        _, _, infile, count = sys.argv[:4]
+        with open(infile, "rb") as f:
+            answer = f.read()
+        if len(answer) < 12:
+            sys.exit("answer too short (%d bytes)" % len(answer))
+        check_id(answer, 0x1234)
+        flags, _, ancount = struct.unpack("!HHH", answer[2:8])
+        if flags & 0x0200:
+            sys.exit("answer is truncated (TC set)")
+        if flags & 0x000F:
+            sys.exit("non-zero RCODE %d" % (flags & 0x000F))
+        if ancount != int(count):
+            sys.exit("%d answer records, expected %s" % (ancount, count))
         print("OK")
     elif cmd == "dot":
         _, _, host, port, domain, source, cafile, expected_ip = sys.argv[:8]
@@ -593,7 +618,7 @@ def main():
         query = build_query(domain)
         query = b"\x00\x00" + query[2:]
         answers = doq_exchange(host, int(port), [query], source=source)
-        validate(answers[0], expected_ip)
+        validate(answers[0], expected_ip, qid=0)
         print("OK")
     elif cmd == "doqnodata":
         # Cross-family pi.hole over DoQ: with the connected-address hint conveyed,
@@ -614,7 +639,7 @@ def main():
         if len(answers) != int(count):
             sys.exit("DoQ: got %d/%s answers" % (len(answers), count))
         for a in answers:
-            validate(a, expected_ip)
+            validate(a, expected_ip, qid=0)
         print("OK")
     elif cmd == "doqgarbage":
         # A framed but non-DNS message must not wedge the listener.
