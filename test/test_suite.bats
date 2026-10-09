@@ -1904,6 +1904,19 @@ except socket.timeout:
   assert_failure 3
 }
 
+@test "files.tmp_db cannot name a file Pi-hole keeps" {
+  # database.forceDisk empties files.tmp_db on every start
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
+  assert_failure 3
+}
+
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
   # Set dns.hosts with various whitespace formatting issues
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
