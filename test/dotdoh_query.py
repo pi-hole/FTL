@@ -375,13 +375,6 @@ def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
     announcing client_ip over TLS, authenticated by the shared secret TLV. POST
     carries the query as body, any other method as the GET "dns" parameter.
     Returns (HTTP status, lowercased response headers, body)."""
-    secret = bytes.fromhex(secret_hex)
-    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
-    # PP2_TYPE_SSL (client=SSL, verify=0) and the secret in custom TLV 0xE0
-    tlvs = bytes([0x20, 0x00, 0x05, 0x01, 0, 0, 0, 0])
-    tlvs += bytes([0xE0]) + struct.pack("!H", len(secret)) + secret
-    body = addrs + tlvs
-    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
     query = build_query(qname)
     if method == "POST":
         req = (b"POST /dns-query HTTP/1.1\r\nHost: pi.hole\r\n"
@@ -392,6 +385,20 @@ def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
         dns = base64.urlsafe_b64encode(query).rstrip(b"=")
         req = (method.encode() + b" /dns-query?dns=" + dns + b" HTTP/1.1\r\n"
                b"Host: pi.hole\r\nConnection: close\r\n\r\n")
+    return proxy_request(host, port, client_ip, secret_hex, req)
+
+
+def proxy_request(host, port, client_ip, secret_hex, req):
+    """Send req behind a PROXY v2 header announcing client_ip over TLS,
+    authenticated by the shared secret TLV. Returns (HTTP status, lowercased
+    response headers, body)."""
+    secret = bytes.fromhex(secret_hex)
+    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    # PP2_TYPE_SSL (client=SSL, verify=0) and the secret in custom TLV 0xE0
+    tlvs = bytes([0x20, 0x00, 0x05, 0x01, 0, 0, 0, 0])
+    tlvs += bytes([0xE0]) + struct.pack("!H", len(secret)) + secret
+    body = addrs + tlvs
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
     with socket.create_connection((host, port), timeout=5) as s:
         s.sendall(hdr + req)
         resp = b""
@@ -412,7 +419,7 @@ def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy|dohproxyget|dohproxyerror|dohproxymethod> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|forge|dotcert|doh3|dohproxy|dohproxyget|dohproxyerror|dohproxymethod|proxyget> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -487,6 +494,12 @@ def main():
         print("OK")
         if cmd == "dohproxyget":
             print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd == "proxyget":
+        # Status of a GET of any path behind the PROXY v2 header
+        _, _, host, port, path, client_ip, secret_hex = sys.argv[:8]
+        req = ("GET %s HTTP/1.1\r\nHost: pi.hole\r\nConnection: close\r\n\r\n" % path).encode()
+        status, _, _ = proxy_request(host, int(port), client_ip, secret_hex, req)
+        print("HTTP %s" % status)
     elif cmd == "dohproxyerror":
         # Status, Content-Type and first body line of a refused request
         _, _, host, port, domain, client_ip, secret_hex = sys.argv[:8]

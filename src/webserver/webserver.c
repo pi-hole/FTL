@@ -386,8 +386,9 @@ static int redirect_to_terminator(struct mg_connection *conn, const struct mg_re
 // accept paths and begin_request_handler()
 static bool acl_configured = false;
 static char *web_acl = NULL;
-// Set when CivetWeb's access_control_list also admits the terminator's loopback
-// source, so begin_request_handler() must apply webserver.acl itself
+// Set when CivetWeb checks webserver.acl only against the TCP peer while a
+// trusted PROXY v2 header can announce another client, so
+// begin_request_handler() must apply webserver.acl itself
 static bool acl_per_request = false;
 
 // Match one ACL entry (ptr/len, without its +/- flag) against sa. Returns 1 on
@@ -553,8 +554,8 @@ static bool request_acl_allows(const char *remote_addr)
 
 static int begin_request_handler(struct mg_connection *conn)
 {
-	// CivetWeb admits the terminator's loopback source in terminator mode, so
-	// refuse here whatever webserver.acl does not allow
+	// CivetWeb only checked the TCP peer: the terminator's loopback source, or a
+	// reverse proxy announcing another client. Refuse what webserver.acl does not allow
 	const struct mg_request_info *request = mg_get_request_info(conn);
 	if(acl_per_request && !request_acl_allows(request->remote_addr))
 	{
@@ -1713,7 +1714,8 @@ void http_init(void)
 	// the terminator running. Generated here so it exists before mg_start2();
 	// terminator_start() reuses the same value.
 	const char *cfg_proxy_secret = config.webserver.proxySecret.v.s;
-	if(terminator_port > 0 || (cfg_proxy_secret != NULL && cfg_proxy_secret[0] != '\0'))
+	const bool proxy_secret_set = cfg_proxy_secret != NULL && cfg_proxy_secret[0] != '\0';
+	if(terminator_port > 0 || proxy_secret_set)
 	{
 		char secret_hex[33]; // 2 * 16-byte token + NUL
 		if(terminator_proxy_token_hex(secret_hex, sizeof(secret_hex)))
@@ -1756,6 +1758,9 @@ void http_init(void)
 			//       the original string is freed (config changes) after mg_start()
 			//       returns below.
 			conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
+			// CivetWeb checks the reverse proxy, the client it announces has
+			// to pass as well
+			acl_per_request = proxy_secret_set;
 		}
 		idx++;
 	}
