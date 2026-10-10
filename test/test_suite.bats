@@ -1963,10 +1963,10 @@ except socket.timeout:
   rm -f /tmp/webroot-link
 
   # A link to an ordinary directory stays configurable
-  ln -s /var/www/html /tmp/webroot-ok
-  run bash -c './pihole-FTL --config -t webserver.paths.webroot /tmp/webroot-ok'
+  ln -s /var/www/html /var/webroot-ok
+  run bash -c './pihole-FTL --config -t webserver.paths.webroot /var/webroot-ok'
   assert_success
-  rm -f /tmp/webroot-ok
+  rm -f /var/webroot-ok
 
   run bash -c './pihole-FTL --config webserver.paths.webroot'
   assert_line --index 0 '/var/www/html'
