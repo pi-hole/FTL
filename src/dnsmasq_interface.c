@@ -3930,6 +3930,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		exit(EXIT_FAILURE);
 	}
 
+	// Start thread writing pihole.log
+	if(dnsmasq_start &&
+	   pthread_create( &threads[LOG_WRITER], &attr, dnsmasq_log_thread, NULL ) != 0)
+	{
+		log_crit("Unable to create log writer thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
 #ifdef HAVE_TLS
 	// Start webserver thread
 	if(pthread_create( &threads[WEBSERVER], &attr, webserver_thread, NULL ) != 0)
