@@ -1195,7 +1195,7 @@ class TestLogs:
         assert len(data["log"]) > 0
 
     def test_dnsmasq_log_wraps(self, api_session):
-        """Once the log has wrapped, it returns its last 515 messages in order
+        """Once the log has wrapped, it returns its last 512 messages in order
         and nextID picks up exactly where an earlier reply ended."""
         import socket
         import struct
@@ -1216,7 +1216,7 @@ class TestLogs:
         url = f"{FTL_URL}/api/logs/dnsmasq"
         data = _j(api_session.get(url, timeout=5))
         log, next_id = data["log"], data["nextID"]
-        assert len(log) == 515, len(log)
+        assert len(log) == 512, len(log)
         stamps = [entry["timestamp"] for entry in log]
         assert stamps == sorted(stamps)
 
@@ -1224,7 +1224,7 @@ class TestLogs:
         tail = _j(api_session.get(f"{url}?nextID={next_id - 10}", timeout=5))["log"]
         assert tail[:10] == log[-10:], json.dumps(tail[:10], indent=2)
         oldest = _j(api_session.get(f"{url}?nextID=0", timeout=5))["log"]
-        assert len(oldest) == 515, len(oldest)
+        assert len(oldest) == 512, len(oldest)
         newer = _j(api_session.get(f"{url}?nextID={next_id}", timeout=5))["log"]
         assert all(entry["timestamp"] >= stamps[-1] for entry in newer)
 
