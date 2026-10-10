@@ -34,6 +34,8 @@
 #include "config/config.h"
 // killed, thread_names
 #include "signals.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 #ifdef HAVE_TLS
 
@@ -143,6 +145,17 @@ fail:
 	return NULL;
 }
 
+// Private copy of the certificate path (or NULL if unset). replace_config()
+// frees the config strings under the SHM lock, so copy it under the same lock.
+static char *dot_cert_path(void)
+{
+	lock_shm();
+	const char *cert = config.webserver.tls.cert.v.s;
+	char *copy = cert != NULL && cert[0] != '\0' ? strdup(cert) : NULL;
+	unlock_shm();
+	return copy;
+}
+
 // Build the initial TLS context. Returns false - quietly - while the certificate
 // is not yet readable, so the DoT thread can wait for the webserver to generate
 // it on a fresh install rather than giving up permanently.
@@ -151,17 +164,24 @@ static bool dot_server_init(void)
 	if(g_ready)
 		return true;
 
-	const char *cert = config.webserver.tls.cert.v.s;
-	if(cert == NULL || cert[0] == '\0' || access(cert, R_OK) != 0)
+	char *cert = dot_cert_path();
+	if(cert == NULL || access(cert, R_OK) != 0)
+	{
+		free(cert);
 		return false; // not written yet; the caller retries
+	}
 
 	g_ctx = dot_build_ctx(cert);
 	if(g_ctx == NULL)
+	{
+		free(cert);
 		return false;
+	}
 
 	struct stat st;
 	g_cert_mtime = stat(cert, &st) == 0 ? st.st_mtime : 0;
 	g_ready = true;
+	free(cert);
 	return true;
 }
 
@@ -171,21 +191,28 @@ static bool dot_server_init(void)
 // reference to the old context and release it when they close.
 static void dot_reload_cert_if_changed(void)
 {
-	const char *cert = config.webserver.tls.cert.v.s;
-	if(cert == NULL || cert[0] == '\0')
+	char *cert = dot_cert_path();
+	if(cert == NULL)
 		return;
 	struct stat st;
 	if(stat(cert, &st) != 0 || st.st_mtime == g_cert_mtime)
+	{
+		free(cert);
 		return;
+	}
 
 	SSL_CTX *nctx = dot_build_ctx(cert);
 	if(nctx == NULL)
+	{
+		free(cert);
 		return; // keep serving the current context; retry on the next change
+	}
 
 	SSL_CTX_free(g_ctx);
 	g_ctx = nctx;
 	g_cert_mtime = st.st_mtime;
 	log_info("dotdoh: reloaded DoT certificate from %s", cert);
+	free(cert);
 }
 
 // Monotonic seconds for connection deadlines: immune to wall-clock steps
