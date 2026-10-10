@@ -459,6 +459,10 @@ components:
               properties:
                 domain:
                   type: string
+                trusted_hosts:
+                  type: array
+                  items:
+                    type: string
                 acl:
                   type: string
                 port:
