@@ -25,6 +25,18 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "A leftover world-readable CLI password file is replaced" {
+  # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
+  holder=$(cat /tmp/cli_pw_holder.pid)
+  run cat "/proc/${holder}/fd/0"
+  kill "${holder}"
+  assert_output "stale"
+  run stat -c '%a' /etc/pihole/cli_pw
+  assert_output "640"
+  run cat /etc/pihole/cli_pw
+  refute_output "stale"
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
    assert_output --partial "CRIT: pihole-FTL is already running"
@@ -47,22 +59,32 @@ setup() {
 }
 
 @test "Denied domain is blocked" {
-  run bash -c "dig denied.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig denied.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (denylist)"
   assert_line --index 1 ""
-}
 
-@test "Gravity domain is blocked" {
-  run bash -c "dig gravity.ftl @127.0.0.1 +short"
+  run bash -c "dig denied.ftl @127.0.0.1 +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 
+  # A second, different-type hit on denied.ftl so its blocked count stays
+  # ahead of gravity.ftl and PADD top_blocked follows from the data rather
+  # than from the order two equal counts happen to be walked in. A blocked
+  # exact deny answers a non-address type with NODATA, so the short reply is
+  # empty
+  run bash -c "dig TXT denied.ftl @127.0.0.1 +short"
+  assert_output ""
+}
+
+@test "Gravity domain is blocked" {
+  # The first, uncached answer carries the EDE too
   run bash -c "dig gravity.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
+  assert_line --index 1 ""
+
+  run bash -c "dig gravity.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -92,12 +114,13 @@ setup() {
 }
 
 @test "Regex denied match is blocked" {
-  run bash -c "dig regex5.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
-  
+  # The first, uncached answer carries the EDE too
   run bash -c "dig regex5.ftl @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (regex)"
+  assert_line --index 1 ""
+
+  run bash -c "dig regex5.ftl @127.0.0.1 +short"
+  assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
 }
 
@@ -311,9 +334,11 @@ setup() {
 }
 
 @test "CNAME inspection: Shallow CNAME is blocked" {
-  run bash -c "dig A cname-1.ftl @127.0.0.1 +short"
-  assert_line --index 0 "0.0.0.0"
-  assert_line --index 1 ""
+  # One query checks both the EDE of the first, uncached answer and the address
+  run bash -c "dig A cname-1.ftl @127.0.0.1 | grep -e 'EDE: ' -e '^cname-1\.ftl\.'"
+  assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity (CNAME))"
+  assert_line --regexp --index 1 "^cname-1\.ftl\.[[:space:]].*[[:space:]]A[[:space:]]+0\.0\.0\.0$"
+  assert_line --index 2 ""
 }
 
 @test "CNAME inspection: Deep CNAME is blocked" {
@@ -335,6 +360,14 @@ setup() {
   run bash -c "dig AAAA aaaa-cname.ftl @127.0.0.1 +short"
   assert_line --index 0 "::"
   assert_line --index 1 ""
+}
+
+@test "CNAME inspection: CNAME is blocked (TCP)" {
+  run bash -c "dig A cname-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/cname-tcp.ftl -> GRAVITY_CNAME' /var/log/pihole/FTL.log"
+  assert_output "1"
 }
 
 @test "DNSSEC: SECURE domain is resolved" {
@@ -434,6 +467,14 @@ setup() {
   [[ ${lines[@]} == *"DEBUG_QUERIES: **** forwarded null.ftl to 127.0.0.1#5555"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES: blocked upstream with ::"* ]]
   [[ ${lines[@]} == *"DEBUG_QUERIES:   Adding RR: \"null.ftl AAAA ::\""* ]]
+}
+
+@test "Upstream blocked domain: NULL is recognized (TCP)" {
+  run bash -c "dig A null-tcp.ftl @127.0.0.1 +tcp +short"
+  assert_line --index 0 "0.0.0.0"
+  assert_line --index 1 ""
+  run bash -c "grep -c 'DNS cache: A/127.0.0.1/null-tcp.ftl -> EXTERNAL_BLOCKED_NULL' /var/log/pihole/FTL.log"
+  assert_output "1"
 }
 
 @test "Upstream blocked domain: IP is recognized" {
@@ -1178,6 +1219,14 @@ setup() {
   assert_line --partial '_VERSION = "inspect.lua 3.1.0"'
 }
 
+@test "LUA: pihole.fileversion() returns the full modification time" {
+  # 2100-01-01 does not fit into a 32-bit integer
+  touch -d @4102444800 /tmp/fileversion.js
+  run bash -c './pihole-FTL lua -e "print(pihole.fileversion(\"/tmp/fileversion.js\"))"'
+  rm -f /tmp/fileversion.js
+  assert_line --index 0 "/tmp/fileversion.js?v=4102444800"
+}
+
 @test "EDNS(0) analysis working as expected" {
   # Get number of lines in the log before the test
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -1237,6 +1286,50 @@ setup() {
 
   query="SELECT lower(n.hwaddr) || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE a.ip IN ('${ipv4}', '${ipv6}') ORDER BY a.ip; SELECT 'mac_rows=' || count(*) FROM network WHERE lower(hwaddr) = '${mac}'; SELECT 'mock_rows=' || count(*) FROM network WHERE lower(hwaddr) IN ('ip-${ipv4}', 'ip-${ipv6}');"
   expected="${mac}|${ipv4}"$'\n'"${mac}|${ipv6}"$'\n'"mac_rows=1"$'\n'"mock_rows=0"
+  for _ in $(seq 1 30); do
+    result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
+    [[ "${result}" == "${expected}" ]] && break
+    sleep 0.1
+  done
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}"
+  assert_output "${expected}"
+}
+
+@test "Message truncation is detected at exactly the buffer size" {
+  # "dnsmasq: " + message renders to 1024 (truncated) and 1023 bytes (fits) in plain[1024]
+  pad="$(head -c 999 /dev/zero | tr '\0' a)"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "INSERT INTO message (timestamp, type, message) VALUES (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad}'), (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad:1}');"
+  assert_success
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c 'curl -s 127.0.0.1/api/info/messages'
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log | grep 'Buffer too small to hold'"
+  assert_line --index 0 --partial "format_dnsmasq_warn_message(): Buffer too small to hold plain message"
+  assert_equal "${#lines[@]}" 1
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "DELETE FROM message WHERE message LIKE 'truncation-test-%';"
+  assert_success
+}
+
+@test "Local interfaces are added to the network table" {
+  # Use the first interface with a hardware address, fall back to lo
+  iface="lo"
+  for dir in /sys/class/net/*; do
+    [[ "$(basename "${dir}")" != "lo" && -s "${dir}/address" ]] || continue
+    iface="$(basename "${dir}")"
+    break
+  done
+  mac="$(cat "/sys/class/net/${iface}/address")"
+  addr="$(curl -s 127.0.0.1/api/network/interfaces | jq -r ".interfaces[] | select(.name == \"${iface}\") | .addresses[0].address")"
+  [[ -n "${mac}" && -n "${addr}" && "${addr}" != "null" ]]
+
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+
+  query="SELECT n.interface || '|' || a.ip FROM network AS n JOIN network_addresses AS a ON a.network_id = n.id WHERE lower(n.hwaddr) = lower('${mac}') AND a.ip = '${addr}';"
+  expected="${iface}|${addr}"
   for _ in $(seq 1 30); do
     result="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "${query}")"
     [[ "${result}" == "${expected}" ]] && break
@@ -1554,7 +1647,7 @@ setup() {
 
 @test "Invalid environmental variable is logged (validation failed)" {
   grep "FTLCONF_files_pcap" /var/log/pihole/FTL.log
-  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (\"\*123#./test/pcap\"), using default instead" /var/log/pihole/FTL.log'
+  run bash -c 'grep -q "FTLCONF_files_pcap files.pcap: not a valid file path (invalid character 0x01 at position 0), using default instead" /var/log/pihole/FTL.log'
   assert_success
 }
 
@@ -1582,6 +1675,12 @@ setup() {
   assert_line --index 0 "Unknown config option misc.privacyLLL, did you mean:"
   assert_line --index 1 " - misc.privacylevel"
   assert_failure 4
+  # A substring of a real key is answered with the whole key
+  run bash -c './pihole-FTL --config upstreams'
+  assert_line --index 0 "Unknown config option upstreams, did you mean:"
+  assert_line --index 1 " - dns.upstreams"
+  refute_line " - upstreams"
+  assert_failure 4
 }
 
 @test "Changing a config option set forced by ENVVAR is not possible via the CLI" {
@@ -1605,6 +1704,12 @@ setup() {
   run bash -c './pihole-FTL --config dns.revServers "abc"'
   assert_line --index 0 'Config setting dns.revServers is invalid: not valid JSON, error at: abc'
   assert_failure 2
+}
+
+@test "An empty files.database is rejected" {
+  run bash -c './pihole-FTL --config files.database ""'
+  assert_output --partial 'files.database: must not be empty'
+  assert_failure 3
 }
 
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
@@ -1638,6 +1743,15 @@ setup() {
 }
 
 @test "Config validation working on the CLI (validator-based checking)" {
+  # URL paths reject what the webserver would see percent-decoded in some checks only
+  run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: not a valid URL path (invalid character 0x25 at position 3)'
+  assert_failure 3
+
+  run bash -c "./pihole-FTL --config webserver.paths.prefix '/pi+hole'"
+  assert_line --index 0 'Invalid value: webserver.paths.prefix: not a valid URL path (invalid character 0x2b at position 3)'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config dns.hosts "[\"111.222.333.444 abc\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[0]: neither a valid IPv4 nor IPv6 address ("111.222.333.444")'
   assert_failure 3
@@ -1681,6 +1795,24 @@ setup() {
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
   assert_failure 3
 
+  # An NTP sync needs at least one request to the server
+  run bash -c './pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --index 0 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
+  # webserver.api.maxHistory carries FLAG_RESTART_FTL, so check it with -t
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 86401'
+  assert_line --index 0 'Invalid value: webserver.api.maxHistory: cannot be larger than 86400'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.maxHistory 3600'
+  assert_line --index 0 '3600'
+  assert_success
+
+  run bash -c './pihole-FTL --config -t database.DBinterval 0'
+  assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
+  assert_failure 3
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
@@ -1700,6 +1832,23 @@ setup() {
   # the current value, so it takes the unchanged branch and no validator runs
   run bash -c './pihole-FTL --config -t dhcp.netmask ""'
   assert_success
+
+  # The TOTP secret has to be something verifyTOTP() can decode
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret 0189'
+  assert_line --index 0 'Invalid value: webserver.api.totp_secret: not a base32 string'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret ABCDEFGHIJKLMNOPQRSTUVWXYZ234567A'
+  assert_line --index 0 'Invalid value: webserver.api.totp_secret: longer than 32 characters'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t webserver.api.totp_secret ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  assert_success
+
+  # The certificate is written with its private key, so it stays out of the webroot
+  run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
+  assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
+  assert_failure 3
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
@@ -1858,6 +2007,19 @@ setup() {
   assert_failure
 }
 
+@test "X.509 certificate can be generated for a domain longer than 64 characters" {
+  # A CN holds at most 64 characters, the full domain goes into the SAN
+  domain="$(printf 'a%.0s' {1..63}).$(printf 'b%.0s' {1..63}).example.com"
+  run bash -c "./pihole-FTL --gen-x509 /tmp/long-domain.pem ${domain}"
+  assert_success
+  run bash -c "./pihole-FTL --read-x509 /tmp/long-domain.pem"
+  assert_line --index 5 "  subject name      : CN=pi.hole"
+  run bash -c "./pihole-FTL --read-x509 /tmp/long-domain.pem ${domain}"
+  assert_line --index 1 "Certificate matches domain ${domain}"
+  assert_success
+  rm -f /tmp/long-domain.pem /tmp/long-domain.crt /tmp/long-domain_ca.crt
+}
+
 @test "Test embedded GZIP compressor" {
   run bash -c './pihole-FTL gzip test/pihole-FTL.db.sql'
   assert_success
@@ -1890,6 +2052,7 @@ setup() {
 @test "PTR stale-response regression harness" {
   run ./ptr_response_regression
   assert_success
+  assert_output --partial "HOSTNAME_WARNING_POSITION=PASS"
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
 }
 

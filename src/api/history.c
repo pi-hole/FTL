@@ -106,11 +106,11 @@ int api_history_clients(struct ftl_conn *api)
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
 		// Minimum structure is
-		// {"history":[], "clients":[]}
+		// {"history":[], "clients":{}}
 		cJSON *json = JSON_NEW_OBJECT();
 		cJSON *history = JSON_NEW_ARRAY();
 		JSON_ADD_ITEM_TO_OBJECT(json, "history", history);
-		cJSON *clients = JSON_NEW_ARRAY();
+		cJSON *clients = JSON_NEW_OBJECT();
 		JSON_ADD_ITEM_TO_OBJECT(json, "clients", clients);
 		JSON_SEND_OBJECT(json);
 	}

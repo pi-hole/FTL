@@ -36,7 +36,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 17
+#define SHARED_MEMORY_VERSION 18
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -46,7 +46,7 @@
 // The sizes are not the same everywhere. size_t members make them follow the
 // word size, and a 32-bit target aligns double to either 8 (ARM EABI) or 4
 // (i386), which moves the members after it again - clientsData is 688 bytes on
-// 64-bit, 672 on armhf and 664 on i386. All three are pinned rather than only
+// 64-bit, 672 on armhf and 668 on i386. All three are pinned rather than only
 // the one this happens to be compiled for. sizeof and _Alignof are constant
 // expressions, so this needs no per-architecture #ifdef
 #define SHM_STRUCT_SIZE(w64, arm32, x86_32) \
@@ -58,7 +58,7 @@
 
 ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
 ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
-ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    668);
 ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
 ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
 // overTimeData is the one of these that ends in a time_t, whose alignment is 8
@@ -1404,6 +1404,32 @@ static size_t get_optimal_object_size(const size_t objsize, const size_t minsize
 	}
 }
 
+// Enlarge shared memory to be able to hold at least one new client. This is
+// also called with the lock held by code that adds many clients at once
+void shm_ensure_client_size(void)
+{
+	if(counters->clients >= counters->clients_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients = enlarge_shmem_struct(CLIENTS, 1);
+		if(clients == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
+	{
+		// Have to reallocate shared memory
+		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
+		if(clients_lookup == NULL)
+		{
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 // Enlarge shared memory to be able to hold at least one new record
 static void shm_ensure_size(void)
 {
@@ -1441,16 +1467,7 @@ static void shm_ensure_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->clients >= counters->clients_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients = enlarge_shmem_struct(CLIENTS, 1);
-		if(clients == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
+	shm_ensure_client_size();
 	if(counters->domains >= counters->domains_MAX-1)
 	{
 		// Have to reallocate shared memory
@@ -1484,16 +1501,6 @@ static void shm_ensure_size(void)
 	{
 		// Have to reallocate shared memory
 		if(enlarge_shmem_struct(INTARRAYS, 1) == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
-	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
-	{
-		// Have to reallocate shared memory
-		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
-		if(clients_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);
@@ -1548,9 +1555,9 @@ bool get_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("get_per_client_regex(%u, %u): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("get_per_client_regex(%u, %u): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID,
 		        id, counters->clients, num_regex_tot, maxval);
 		return false;
@@ -1581,9 +1588,9 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 	const unsigned int num_regex_tot = get_num_regex(REGEX_MAX); // total number
 	const unsigned int id = clientID * num_regex_tot + regexID;
 	const size_t maxval = shm_per_client_regex.size / sizeof(bool);
-	if(id > maxval)
+	if(id >= maxval)
 	{
-		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u > %u * %u, shm_per_client_regex.size = %zu)!",
+		log_err("set_per_client_regex(%u, %u, %s): Out of bounds (%u >= %u * %u, shm_per_client_regex.size = %zu)!",
 		        clientID, regexID, value ? "true" : "false",
 		        id, counters->clients, num_regex_tot, maxval);
 		return;
@@ -1594,11 +1601,11 @@ void set_per_client_regex(const unsigned int clientID, const unsigned int regexI
 static inline bool check_range(unsigned int ID, unsigned int MAXID, const char *type, const char *func, int line, const char *file)
 {
 	// Check bounds
-	if(ID > MAXID)
+	if(ID >= MAXID)
 	{
 		if(debug_flags[DEBUG_ANY])
 		{
-			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID);
+			log_err("Trying to access %s ID %u, but maximum is %u", type, ID, MAXID - 1);
 			log_err("found in %s() (%s:%i)", func, short_path(file), line);
 		}
 		return false;

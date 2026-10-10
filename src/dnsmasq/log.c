@@ -102,27 +102,30 @@ int log_start(struct passwd *ent_pw, int errfd)
       entries_alloced = 1;
     }
 
-  /* If we're running as root and going to change uid later,
-     change the ownership here so that the file is always owned by
-     the dnsmasq user. Then logrotate can just copy the owner.
-     Failure of the chown call is OK, (for instance when started as non-root).
-     
-     If we've created a file with group-id root, we also make
-     the file group-writable. This gives processes in the root group
-     write access to the file and avoids the problem that on some systems,
-     once the file is owned by the dnsmasq user, it can't be written
-     whilst dnsmasq is running as root during startup.
- */
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
       struct stat ls;
-      if (getgid() == 0 && fstat(log_fd, &ls) == 0 && ls.st_gid == 0 &&
-	  (ls.st_mode & S_IWGRP) == 0)
-	(void)fchmod(log_fd, ls.st_mode | S_IWGRP);
-      if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
-	ret = errno;
+      
+      /* Only mess with permissions for regular files, not (eg) /dev/null */
+      if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
+	{
+	  /* If we're running as root and going to change uid later,
+	     change the ownership here so that the file is always owned by
+	     the dnsmasq user. Then logrotate can just copy the owner. */
+	  if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
+	    ret = errno;
+	  
+	  /* If we've created a file with group-id root, we also make
+	     the file group-writable. This gives processes in the root group
+	     write access to the file and avoids the problem that on some systems,
+	     once the file is owned by the dnsmasq user, it can't be written
+	     whilst dnsmasq is running as root during startup.
+	     Failure of the chown call is OK, (for instance when started as non-root). */
+	  if (getgid() == 0 && ls.st_gid == 0 && (ls.st_mode & S_IWGRP) == 0)
+	    (void)fchmod(log_fd, ls.st_mode | S_IWGRP);
+	}
     }
-
+  
   return ret;
 }
 

@@ -255,10 +255,10 @@ static int dhcp6_maybe_relay(struct state *state, unsigned char *inbuff, size_t 
 	      /* the packet data is unaligned, copy to aligned storage */
 	      memcpy(&align, inbuff + 2, IN6ADDRSZ); 
 
-	      /* RFC6221 para 4 says if link_address in encapulation
+	      /* RFC6221 para 4 says if link_address in encapsulation
 		 is zero, ignore it, and, by implication, use the link
 		 address of any enclosing encapsulation or, failing that
-		 of the arrival interface on the the server. */
+		 of the arrival interface on the server. */
 	      if (!dhcp6_maybe_relay(state, opt6_ptr(opt, 0), opt6_len(opt), client_addr,
 				     IN6_IS_ADDR_UNSPECIFIED(&align) ? link_address : &align, now))
 		return 0;

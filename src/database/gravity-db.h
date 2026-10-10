@@ -45,6 +45,7 @@ bool gravityDB_reopen(void);
 void gravityDB_forked(void);
 void gravityDB_reload_groups(clientsData *client);
 bool gravityDB_prepare_client_statements(clientsData *client);
+void gravityDB_ensure_client_groups(clientsData *client);
 void gravityDB_close(void);
 bool gravityDB_getTable(unsigned char list);
 const char* gravityDB_getDomain(int *rowid);
@@ -53,7 +54,7 @@ void gravityDB_finalizeTable(void);
 int gravityDB_count(const enum gravity_tables list, const bool total);
 void check_inaccessible_adlists(void);
 void check_restored_gravity(void);
-bool gravity_updated(void);
+bool gravity_updated(const bool check_timestamp);
 
 cJSON *gen_abp_patterns(const char *domain);
 
@@ -74,7 +75,7 @@ enum db_result in_denylist(const char *domain, DNSCacheData *dns_cache, clientsD
 enum db_result in_allowlist(const char *domain, DNSCacheData *dns_cache, clientsData *client);
 
 bool gravityDB_get_regex_client_groups(clientsData *client, const unsigned int numregex, const regexData *regex,
-                                       const unsigned char type, const char* table);
+                                       const unsigned char type, const char* table, sqlite3 *ftl_db);
 
 sqlite3 *gravityDB_open_RO(void);
 void gravityDB_close_RO(sqlite3 *db);

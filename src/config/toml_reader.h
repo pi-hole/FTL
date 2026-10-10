@@ -13,6 +13,7 @@
 #include "config/config.h"
 #include "tomlc17/tomlc17.h"
 
+void report_teleporter_skipped(const bool imported);
 bool readFTLtoml(struct config *oldconf, struct config *newconf,
                  toml_datum_t toml, const bool verbose, bool *restart,
                  const unsigned int version, const bool teleporter,

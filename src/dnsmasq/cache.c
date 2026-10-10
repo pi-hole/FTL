@@ -234,29 +234,42 @@ static void free_config_crec(struct crec *p)
   config_spare  = p;
 }
 
+static struct nameblock *nameblock_spare = NULL;
+
 static char *store_name(unsigned int namelen, unsigned int index)
 {
   struct nameblock *block;
   char *ret = NULL;
+  int i;
 
   if (namelen > NAMEBLOCK_CHARS)
     return NULL;
-  
-  for (block = hostblocks; block; block = block->next)
-    if (block->index == index && NAMEBLOCK_CHARS - block->last >= namelen)
-      break;
 
-  if (!block && ((block = whine_malloc(sizeof(struct nameblock)))))
-    {
-      block->next = hostblocks;
-      block->index = index;
-      hostblocks = block;
-    }
-  
-  if (block && NAMEBLOCK_CHARS - block->last >= namelen)
+  /* Check the first few blocks for possible space. This allows efficient memory usage
+     without blowing up O(n^2) CPU usage  which the linked list gets long. */
+  for (i = 10, block = hostblocks; i != 0 && block; block = block->next, i--)
+    if (block->index == index && NAMEBLOCK_CHARS - block->last >= namelen)
     {
       ret = &block->data[block->last];
       block->last += namelen;
+      return ret;
+    }
+
+  if (nameblock_spare)
+    {
+      block = nameblock_spare;
+      nameblock_spare = nameblock_spare->next;
+    }
+  else
+    block = whine_malloc(sizeof(struct nameblock));
+
+  if (block)
+    {
+      block->next = hostblocks;
+      block->index = index;
+      block->last = namelen;
+      hostblocks = block;
+      ret = &block->data[0];
     }
 
   return ret;
@@ -264,11 +277,20 @@ static char *store_name(unsigned int namelen, unsigned int index)
 
 static void free_names(unsigned int index)
 {
-  struct nameblock *block;
+  struct nameblock *block, *tmp, **up;
 
-  for (block = hostblocks; block; block = block->next)
-    if (index == UID_NONE || block->index == index)
-      block->last = 0;
+  for (up = &hostblocks, block = hostblocks; block; block = tmp)
+    {
+      tmp = block->next;
+      if (index == UID_NONE || block->index == index)
+	{
+	  *up = tmp;
+	  block->next = nameblock_spare;
+	  nameblock_spare = block;
+	}
+      else
+	up = &block->next;
+    }
 }
 
 /* In most cases, we create the hash table once here by calling this with (hash_table == NULL)
@@ -2427,7 +2449,7 @@ const char *edestr(int ede)
     }
 }
 
-static int error_occured(unsigned int flags) {
+static int error_occurred(unsigned int flags) {
   if (flags & F_RCODE)
     return 1;
   else if (flags & F_NEG)
@@ -2451,10 +2473,10 @@ void _log_query(unsigned int flags, char *name, union all_addr *addr, char *arg,
   if (!option_bool(OPT_LOG))
     return;
 
-  if(option_bool(OPT_LOG_ONLY_FAILED) && !error_occured(flags))
+  if(option_bool(OPT_LOG_ONLY_FAILED) && !error_occurred(flags))
     return;
 
-  /* F_NOERR is reused here to indicate logs arrising from auth queries */ 
+  /* F_NOERR is reused here to indicate logs arising from auth queries */ 
   if (!(flags & F_NOERR) && option_bool(OPT_AUTH_LOG))
     return;
 

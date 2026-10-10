@@ -164,6 +164,10 @@ static struct {
 
 #define HOSTNAME "Pi-hole hostname"
 
+// Seconds before a MAC lookup that found nothing is repeated. dnsmasq answers
+// it from its negative ARP cache record for 90 s anyway (src/dnsmasq/arp.c)
+#define MAC_LOOKUP_RETRY 90u
+
 // Fork-private copy of the interface data the most recent query came from
 static struct {
 	bool haveIPv4;
@@ -317,13 +321,16 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
 
-// The blocking reason and the CNAME target describe one query, so they are
-// dropped on every way out of _FTL_make_answer() below, not only on the path
-// that answered
+// The blocking reason, the CNAME target, the forced reply, the redirecting
+// regex and the cache status describe one query, so they are dropped on every
+// way out of _FTL_make_answer() below and when the next query arrives
 static void unset_blocking_metadata(void)
 {
 	blockingreason = "<not set>";
 	cname_target = NULL;
+	force_next_DNS_reply = REPLY_UNKNOWN;
+	last_regex_idx = -1;
+	cacheStatus = QUERY_UNKNOWN;
 }
 
 // This is inspired by make_local_answer()
@@ -816,6 +823,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Check domain name received from dnsmasq
 	name = check_dnsmasq_name(name);
 
+	// Not every query that sets up an answer gets one through
+	// _FTL_make_answer(), so start every client query from a clean state
+	if(proto != INTERNAL)
+		unset_blocking_metadata();
+
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
 	if(querytype != TYPE_NONE && is_pihole_domain(name))
@@ -871,12 +883,18 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
 	char clientIP[ADDRSTRLEN+1] = { 0 };
+	// Set when clientIP comes from EDNS(0) rather than the packet source
+	bool edns_client = false;
+	// Set when clientIP comes from ECS, an address behind the forwarder
+	bool ecs_client = false;
 	ednsData *edns = getEDNS();
 	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
+		edns_client = true;
+		ecs_client = true;
 	}
 	else if(addr)
 	{
@@ -927,12 +945,16 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
 	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
+		// Log the first rate-limited query for this client in this
+		// interval, after the lock is released below: the message goes
+		// to pihole-FTL.db, and a contended database can hold us in
+		// sqliteBusyCallback() for up to DATABASE_BUSY_TIMEOUT, which
+		// would stall every DNS query and API worker waiting on the
+		// lock. We do not log the blocked domain for privacy reasons
+		unsigned int rate_limit_count = 0;
 		if(!client->flags.rate_limited)
 		{
-			// Log the first rate-limited query for this client in
-			// this interval. We do not log the blocked domain for
-			// privacy reasons
-			logg_rate_limit_message(clientIP, client->rate_limit);
+			rate_limit_count = client->rate_limit;
 			// Reset rate-limiting counter so we can count what
 			// comes within the adjacent interval
 			client->rate_limit = 0;
@@ -952,6 +974,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// inflated for the lifetime of the process.
 		change_clientcount(client, -1, 0, -1, 0);
 		unlock_shm();
+
+		// clientIP is a local buffer, so it stays valid here
+		if(rate_limit_count > 0)
+			logg_rate_limit_message(clientIP, rate_limit_count);
+
 		return true;
 	}
 
@@ -1131,8 +1158,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	// Don't do this for internally generated queries (e.g., DNSSEC), if the
 	// MAC address is already known or if the netlink socket is not available
-	// (e.g., when retrying a query using TCP after UDP truncation)
-	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
+	// (e.g., when retrying a query using TCP after UDP truncation). ECS
+	// clients usually have no neighbor entry here, and a lookup that found
+	// nothing (hwlen 0) is repeated after MAC_LOOKUP_RETRY seconds at most
+	if(!internal_query && !ecs_client && client->hwlen < 1 && daemon->netlinkfd > 0 &&
+	   (client->hwlen != 0 ||
+	    ABS_TO_SHM_TIME((time_t)querytimestamp) - client->lastMACLookup >= MAC_LOOKUP_RETRY))
 	{
 		// find_mac() may trigger a netlink kernel call
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
@@ -1140,14 +1171,30 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// block all other threads (API, database, GC, TCP workers).
 		unlock_shm();
 
+		// Look up the address the client is identified by: for an
+		// EDNS(0)-provided client, the packet source is the forwarder
+		union mysockaddr mac_addr = { 0 };
+		if(edns_client)
+		{
+			if(inet_pton(AF_INET, clientIP, &mac_addr.in.sin_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET;
+			else if(inet_pton(AF_INET6, clientIP, &mac_addr.in6.sin6_addr) == 1)
+				mac_addr.sa.sa_family = AF_INET6;
+		}
+		else if(addr)
+			mac_addr = *addr;
+
 		unsigned char hwaddr[16] = {0};
-		const int hwlen = find_mac(addr, hwaddr, 1, time(NULL));
+		const int hwlen = mac_addr.sa.sa_family == AF_UNSPEC ? 0 :
+		                  find_mac(&mac_addr, hwaddr, 1, time(NULL));
 
 		// Reacquire lock and re-fetch client pointer (SHM may have
 		// been remapped while we were unlocked)
 		lock_shm();
 		client = getClient(clientID, true);
-		if(client != NULL)
+		// A forked TCP worker only searches the ARP cache it inherited, so
+		// its miss leaves the lookup to the next query of the main process
+		if(client != NULL && (hwlen > 0 || daemon->pipe_to_parent == -1))
 		{
 			// If a MAC was just learned (this runs only while it was
 			// still unknown), clear found_group so the next query
@@ -1157,6 +1204,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				client->flags.found_group = false;
 			memcpy(client->hwaddr, hwaddr, sizeof(hwaddr));
 			client->hwlen = hwlen;
+			client->lastMACLookup = ABS_TO_SHM_TIME((time_t)querytimestamp);
 		}
 
 		// Re-fetch all SHM pointers as SHM may have been remapped. The
@@ -1399,29 +1447,63 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	}
 }
 
-static void check_pihole_PTR(char *domain)
-{
-	// Iterate through the already configured PTR entries in dnsmasq's
-	// structure and check if we already have a PTR record for this address
-	// This avoids adding work into defining PTR records that have already
-	// been added but also overwriting PTR records manually added by users
-	// using custom dnsmasq config lines like "ptr-record=<name>,<target>"
-	for(struct ptr_record *ptr = daemon->ptr; ptr; ptr = ptr->next)
-	{
-		log_debug(DEBUG_EXTRA, "Known PTR record %p: %s -> %s (next = %p)", ptr, ptr->name, ptr->ptr, ptr->next);
+// 32 nibble labels of an IPv6 address plus "ip6.arpa"
+#define PTR_NAME_LEN (32*2 + sizeof("ip6.arpa"))
 
-		// DNS names are case-insensitive (RFC 4343), so compare case-
-		// insensitively. A case-sensitive match would let a client add an
-		// unbounded number of near-duplicate PTR records for the same
-		// address by varying the case of the query name.
-		if(ptr->name != NULL && strcasecmp(ptr->name, domain) == 0)
-		{
-			// We already have a PTR record for this address
-			log_debug(DEBUG_QUERIES, "PTR record for %s exists", domain);
-			return;
-		}
+// Addresses we have already generated a PTR record for, keyed on the decoded
+// address rather than the query name (many names decode to one address). An
+// entry is only added for an address of one of our interfaces, so the table
+// holds at most the addresses this host has had
+struct generated_ptr_entry {
+	sa_family_t family;
+	union all_addr addr;
+};
+static struct generated_ptr_entry *generated_ptr = NULL;
+static unsigned int generated_ptrs = 0;
+static unsigned int generated_ptrs_size = 0;
+
+static bool __attribute__((pure)) ptr_generated_for(const int flags, const union all_addr *addr)
+{
+	for(unsigned int i = 0; i < generated_ptrs; i++)
+	{
+		if(flags == F_IPV4 && generated_ptr[i].family == AF_INET &&
+		   generated_ptr[i].addr.addr4.s_addr == addr->addr4.s_addr)
+			return true;
+
+		if(flags == F_IPV6 && generated_ptr[i].family == AF_INET6 &&
+		   IN6_ARE_ADDR_EQUAL(&generated_ptr[i].addr.addr6, &addr->addr6))
+			return true;
 	}
 
+	return false;
+}
+
+// Write the canonical reverse name of addr, the name dnsmasq matches PTR
+// queries against, e.g. 5.1.168.192.in-addr.arpa
+static void ptr_canonical_name(const int flags, const union all_addr *addr, char name[PTR_NAME_LEN])
+{
+	if(flags == F_IPV4)
+	{
+		const unsigned char *b = (const unsigned char *)&addr->addr4.s_addr;
+		snprintf(name, PTR_NAME_LEN, "%u.%u.%u.%u.in-addr.arpa", b[3], b[2], b[1], b[0]);
+		return;
+	}
+
+	// IPv6: one label per nibble, lowest first
+	char *p = name;
+	for(int i = 15; i >= 0; i--)
+	{
+		const unsigned char b = addr->addr6.s6_addr[i];
+		*p++ = "0123456789abcdef"[b & 0x0f];
+		*p++ = '.';
+		*p++ = "0123456789abcdef"[b >> 4];
+		*p++ = '.';
+	}
+	strcpy(p, "ip6.arpa");
+}
+
+static void check_pihole_PTR(char *domain)
+{
 	// Convert PTR request into numeric form
 	union all_addr addr = {};
 	const int flags = in_arpa_name_2_addr(domain, &addr);
@@ -1430,6 +1512,37 @@ static void check_pihole_PTR(char *domain)
 	// specifier. If not, nothing is to be done here and we return early
 	if(flags == 0)
 		return;
+
+	// The record is made for the canonical name, whatever spelling the client
+	// used. dnsmasq matches PTR records by name, so a record under another
+	// spelling would never answer the canonical query
+	char name[PTR_NAME_LEN];
+	ptr_canonical_name(flags, &addr, name);
+
+	// One record per address, however the client spelled it
+	if(ptr_generated_for(flags, &addr))
+	{
+		log_debug(DEBUG_QUERIES, "PTR record for the address behind %s exists", domain);
+		return;
+	}
+
+	// Iterate through the already configured PTR entries in dnsmasq's
+	// structure and check if we already have a PTR record for this name.
+	// This avoids overwriting PTR records manually added by users using
+	// custom dnsmasq config lines like "ptr-record=<name>,<target>"
+	for(struct ptr_record *ptr = daemon->ptr; ptr; ptr = ptr->next)
+	{
+		log_debug(DEBUG_EXTRA, "Known PTR record %p: %s -> %s (next = %p)", ptr, ptr->name, ptr->ptr, ptr->next);
+
+		// DNS names are case-insensitive (RFC 4343), so compare case-
+		// insensitively
+		if(ptr->name != NULL && strcasecmp(ptr->name, name) == 0)
+		{
+			// We already have a PTR record for this name
+			log_debug(DEBUG_QUERIES, "PTR record for %s exists", name);
+			return;
+		}
+	}
 
 	// We do not want to reply with "pi.hole" to loopback PTRs
 	if((flags == F_IPV4 && addr.addr4.s_addr == htonl(INADDR_LOOPBACK)) ||
@@ -1448,10 +1561,37 @@ static void check_pihole_PTR(char *domain)
 			continue;
 
 		// If we reached this point, we have a match between the address the client
+		// asked about and one of our own. Make room to remember the address so
+		// the next spelling of it does not generate a second record
+		if(generated_ptrs == generated_ptrs_size)
+		{
+			const unsigned int size = generated_ptrs_size ? 2 * generated_ptrs_size : 8;
+			struct generated_ptr_entry *grown = realloc(generated_ptr, size * sizeof(*grown));
+			if(grown == NULL)
+			{
+				log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+				return;
+			}
+			generated_ptr = grown;
+			generated_ptrs_size = size;
+		}
+
 		struct ptr_record *pihole_ptr = calloc(1, sizeof(struct ptr_record));
-		// It is okay to use allocate heap memory here as this branch of
-		// the code is only ever called once per interface on demand
-		pihole_ptr->name = strdup(domain);
+		if(pihole_ptr == NULL)
+		{
+			log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+			return;
+		}
+
+		// dnsmasq compares this name without a NULL check
+		pihole_ptr->name = strdup(name);
+		if(pihole_ptr->name == NULL)
+		{
+			log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+			free(pihole_ptr);
+			return;
+		}
+
 		if(family == AF_INET)
 		{
 			// IPv4 supports conditional domains
@@ -1479,6 +1619,10 @@ static void check_pihole_PTR(char *domain)
 			// record as the first one
 			daemon->ptr = pihole_ptr;
 		}
+
+		generated_ptr[generated_ptrs].family = family;
+		generated_ptr[generated_ptrs].addr = addr;
+		generated_ptrs++;
 
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Generating PTR record (%p): %s -> %s", pihole_ptr, pihole_ptr->name, pihole_ptr->ptr);
@@ -1731,6 +1875,11 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// Resolve the client's groups first: a change resets the cached
+	// decisions read below, and the allow-regex check relies on them even
+	// when the exact allowlist is skipped
+	gravityDB_ensure_client_groups(client);
+
 	// If this cache record can expire, check if it is still valid and/or if
 	// caching is generally disabled
 	if((dns_cache->expires > 0 && ABS_TO_SHM_TIME((time_t)query->timestamp) > dns_cache->expires) ||
@@ -1743,6 +1892,8 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		dns_cache->flags.allowed = false;
 		dns_cache->expires = 0;
 		dns_cache->list_id = -1;
+		dns_cache->force_reply = REPLY_UNKNOWN;
+		dns_cache->cname_strpos = 0;
 	}
 
 	// Check if the cache record we have applies to the current query
@@ -2020,6 +2171,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	// Common actions regardless what the possible blocking reason is
 	if(blockDomain)
 	{
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = new_status;
+
 		// Adjust counters
 		query_blocked(query, domain, client, new_status);
 
@@ -2109,7 +2263,8 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	lock_shm();
 
 	// Save status and upstreamID in corresponding query identified by dnsmasq's ID
-	const int queryID = findQueryID(id);
+	// (negative for TCP queries, stored positive by FTL_new_query)
+	const int queryID = findQueryID(id < 0 ? -id : id);
 	if(queryID < 0)
 	{
 		// This may happen e.g. if the original query was a PTR query
@@ -2250,6 +2405,9 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 			// Only set status
 			query_set_status(query, QUERY_DENYLIST_CNAME);
 		}
+
+		// The answer built for this query derives its EDE from cacheStatus
+		cacheStatus = query->status;
 	}
 
 	// Debug logging for deep CNAME inspection (if enabled)
@@ -3042,8 +3200,10 @@ static void query_blocked(queriesData *query, domainsData *domain, clientsData *
 
 	if(is_blocked(new_status))
 	{
-		// Count as blocked query
-		if(domain != NULL)
+		// Count as blocked query. Only the queried domain carries the
+		// count: runGC() hands it back from query->domainID, and a
+		// CNAME hop's domain (FTL_CNAME()) would never get it back
+		if(domain != NULL && domain->id == query->domainID)
 			domain->blockedcount++;
 		if(client != NULL)
 			change_clientcount(client, 0, 1, -1, 0);
@@ -3368,10 +3528,13 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_status, con
 
 int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const union all_addr *addr,
-                     const int id, const char *file, const int line)
+                     const int raw_id, const char *file, const int line)
 {
 	// Get EDE data (if available)
 	const ednsData *edns = getEDNS();
+
+	// The query ID is negative if this is a TCP query
+	const int id = raw_id < 0 ? -raw_id : raw_id;
 
 	// Check if RA and AA bits are unset in DNS header and rcode is NXDOMAIN
 	// If the response code (rcode) is NXDOMAIN, we may be seeing a response from
@@ -3612,17 +3775,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
-	// Deny CAP_CHOWN to anything FTL executes, before the worker threads below
-	// are created. Capability sets are per-thread and a new thread inherits a
-	// copy of its creator's, so this has to happen before the threads exist:
-	// clearing the ambient and inheritable sets on the main thread once they
-	// are already running would leave them - and the children they exec, such
-	// as a program a Lua page spawns - holding the systemd-granted ambient
-	// CAP_CHOWN. FTL keeps the capability in its permitted and effective sets
-	// for the ownership changes it makes itself (startup, and the RTC device
-	// while ntp.sync.rtc.set is enabled); only the inheritance to children goes.
-	if(getuid() != 0)
-		deny_capability_to_children(CAP_CHOWN);
+	// Take CAP_CHOWN out of use before the worker threads below are created.
+	// Capability sets are per-thread and a new thread inherits a copy of its
+	// creator's, so every thread starts without it in its effective,
+	// inheritable and ambient sets and nothing FTL executes can receive it.
+	// The permitted copy stays: the RTC code raises the capability for the
+	// moment it needs it, and main() hands it to a restarted FTL
+	if(getuid() != 0 && suspend_capability(CAP_CHOWN))
+		log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
 
 	// Start NTP sync thread
 	ntp_start_sync_thread(&attr);
@@ -3697,6 +3857,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
+			// Temporary history database (database.forceDisk)
+			if(config.database.forceDisk.v.b)
+				chown_pihole(config.files.tmp_db.v.s, ent_pw);
+
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
 			if(extrafile == NULL)
@@ -3734,25 +3898,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			     current_user->pw_name, (int)current_user->pw_uid);
 		else
 			log_info("Failed to obtain information about FTL user");
-
-		// The ambient and inheritable sets were cleared before the worker
-		// threads were created (see the deny above), so nothing FTL executes
-		// can inherit CAP_CHOWN, no matter which thread runs it. FTL keeps the
-		// capability in its own permitted and effective sets while starting up;
-		// from here on it chowns files it created itself, which the owning user
-		// may do without any capability. When the RTC is not being set FTL has
-		// no further use for it and takes it out of use on the main thread as
-		// well. The permitted copy stays for FTL's own restart, see main().
-		// Setting the RTC changes ownership of the device repeatedly during
-		// runtime, so that path keeps it.
-		if(config.ntp.sync.rtc.set.v.b)
-		{
-			log_debug(DEBUG_CAPS, "Kept CAP_CHOWN for RTC synchronization");
-		}
-		else if(suspend_capability(CAP_CHOWN))
-		{
-			log_debug(DEBUG_CAPS, "Suspended CAP_CHOWN");
-		}
 	}
 
 	forked = true;
