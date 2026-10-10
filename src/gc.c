@@ -101,6 +101,11 @@ static void recycle(void)
 		if(client->flags.aliasclient)
 			goto keep_client;
 
+		// Keep the rate limit of a client until reset_rate_limiting()
+		// ends it, rate-limited queries are not counted above
+		if(client->flags.rate_limited || client->rate_limit > 0)
+			goto keep_client;
+
 		if(config.debug.gc.v.b)
 		{
 			char timestring[TIMESTR_SIZE];
@@ -434,12 +439,30 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	time_t mintime = now;
 	if(!flush)
 	{
-		// Normal GC run
-		mintime -= - GCdelay + config.webserver.api.maxHistory.v.ui;
+		// Normal GC run. Signed, maxHistory may be smaller than GCdelay
+		mintime += (time_t)GCdelay - (time_t)config.webserver.api.maxHistory.v.ui;
 
-		// Align the start time of this GC run to the GCinterval. This will also align with the
-		// oldest overTime interval after GC is done.
+		// Align the start time of this GC run to the GCinterval. Unless one of
+		// the limits below applies, this also aligns with the oldest overTime
+		// interval after GC is done.
 		mintime -= mintime % GCinterval;
+
+		// Keep the queries that may still receive a reply
+		if(mintime > now - REPLY_TIMEOUT)
+			mintime = now - REPLY_TIMEOUT;
+
+		// Keep the queries the database thread has not stored yet, but no
+		// more than the default history keeps. Nothing is stored with a
+		// broken database or at the maximum privacy level
+		const double horizon = get_export_horizon();
+		if(mintime > horizon && !FTLDBerror() &&
+		   config.misc.privacylevel.v.privacy_level < PRIVACY_MAXIMUM)
+		{
+			time_t limit = now + (time_t)GCdelay - (time_t)(MAXLOGAGE*3600);
+			limit -= limit % GCinterval;
+			const time_t keep = max((time_t)horizon, limit);
+			mintime = min(mintime, keep);
+		}
 	}
 
 	if(config.debug.gc.v.b)
@@ -555,12 +578,16 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Remove query from queries table (temp), we can release the lock for this
 	// action to prevent blocking the DNS service too long. The processed
 	// queries are already shifted out above, so a runGC() from a log flush
-	// in this window cannot process them again
-	if(!flush)
+	// in this window cannot process them again. A flush removes every row,
+	// a normal run keeps those the export to disk has not copied yet
+	if(flush)
+		delete_old_queries_from_db(true, mintime);
+	else
+	{
 		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
+		delete_exported_queries_from_memdb(mintime);
 		lock_shm();
+	}
 
 	// Recycle old clients and domains
 	recycle();
