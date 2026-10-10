@@ -36,8 +36,9 @@ struct quic_pool; // opaque
 bool quic_client_global_init(const char *ca_file);
 void quic_client_global_free(void);
 
-// Create / destroy a per-upstream DoH3 pool. max_conns bounds concurrent QUIC
-// connections; the pool copies *u. Returns NULL on failure (e.g. no QUIC build).
+// Create / destroy a per-upstream DoH3 pool. max_conns bounds the QUIC
+// connections kept open between exchanges; the pool copies *u. Returns NULL on
+// failure (e.g. no QUIC build).
 struct quic_pool *quic_pool_new(const struct upstream_uri *u, int max_conns) __attribute__((malloc));
 void quic_pool_free(struct quic_pool *p);
 
