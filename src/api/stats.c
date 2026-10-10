@@ -237,8 +237,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	// NULL: this function returns a cJSON object and cannot carry an HTTP
 	// status, so compile_filter_regex() logs a bad regex rather than
 	// answering the request behind our back
-	compile_filter_regex(api, "webserver.api.excludeDomains",
-	                     config.webserver.api.excludeDomains.v.json,
+	compile_filter_regex(api, &config.webserver.api.excludeDomains,
 	                     &regex_domains, &N_regex_domains, NULL);
 
 	// Lock shared memory
@@ -432,8 +431,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
 	// NULL for the same reason as in get_top_domains() above
-	compile_filter_regex(api, "webserver.api.excludeClients",
-	                     config.webserver.api.excludeClients.v.json,
+	compile_filter_regex(api, &config.webserver.api.excludeClients,
 	                     &regex_clients, &N_regex_clients, NULL);
 
 	// Lock shared memory
