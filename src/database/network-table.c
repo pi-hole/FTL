@@ -865,7 +865,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// NULL or valid-but-wrong. Reading from this snapshot avoids both a
 		// NULL dereference and cross-client contamination; the pointer is only
 		// re-fetched (and NULL-checked) where we must write back to it.
-		const char snap_hwlen = client->hwlen;
+		const int8_t snap_hwlen = client->hwlen;
 		unsigned char snap_hwaddr[6] = { 0 };
 		if(snap_hwlen == 6)
 			memcpy(snap_hwaddr, client->hwaddr, sizeof(snap_hwaddr));

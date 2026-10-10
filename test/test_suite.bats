@@ -25,6 +25,18 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "A leftover world-readable CLI password file is replaced" {
+  # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
+  holder=$(cat /tmp/cli_pw_holder.pid)
+  run cat "/proc/${holder}/fd/0"
+  kill "${holder}"
+  assert_output "stale"
+  run stat -c '%a' /etc/pihole/cli_pw
+  assert_output "640"
+  run cat /etc/pihole/cli_pw
+  refute_output "stale"
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
    assert_output --partial "CRIT: pihole-FTL is already running"
@@ -1284,6 +1296,24 @@ setup() {
   assert_output "${expected}"
 }
 
+@test "Message truncation is detected at exactly the buffer size" {
+  # "dnsmasq: " + message renders to 1024 (truncated) and 1023 bytes (fits) in plain[1024]
+  pad="$(head -c 999 /dev/zero | tr '\0' a)"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "INSERT INTO message (timestamp, type, message) VALUES (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad}'), (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad:1}');"
+  assert_success
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c 'curl -s 127.0.0.1/api/info/messages'
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log | grep 'Buffer too small to hold'"
+  assert_line --index 0 --partial "format_dnsmasq_warn_message(): Buffer too small to hold plain message"
+  assert_equal "${#lines[@]}" 1
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "DELETE FROM message WHERE message LIKE 'truncation-test-%';"
+  assert_success
+}
+
 @test "Local interfaces are added to the network table" {
   # Use the first interface with a hardware address, fall back to lo
   iface="lo"
@@ -1676,6 +1706,12 @@ setup() {
   assert_failure 2
 }
 
+@test "An empty files.database is rejected" {
+  run bash -c './pihole-FTL --config files.database ""'
+  assert_output --partial 'files.database: must not be empty'
+  assert_failure 3
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, malformed UTF-8 is not" {
@@ -1757,6 +1793,11 @@ setup() {
 
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
   assert_line --index 0 'Invalid value: webserver.api.excludeClients[2]: not a valid regex ("[[["): Missing '\'']'\'''
+  assert_failure 3
+
+  # An NTP sync needs at least one request to the server
+  run bash -c './pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --index 0 'Invalid value: ntp.sync.count: cannot be lower than 1'
   assert_failure 3
 
   # webserver.api.maxHistory carries FLAG_RESTART_FTL, so check it with -t

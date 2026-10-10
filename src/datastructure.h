@@ -91,14 +91,16 @@ typedef struct {
 typedef struct {
 	// Hot fields ordered first for cache locality; cold overTime[] array at
 	// end. Contains size_t fields -> size differs by architecture (64-bit:
-	// 684 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
+	// 688 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
 	// On 64-bit, 4 bytes between hash (offset 48) and groupspos (offset
 	// 56) are intentional alignment padding: they ensure ippos lands at
 	// offset 64, the start of cache line 1. Without them, ippos would be
 	// at offset 60 and straddle the cache line boundary (bytes 60–67),
 	// causing a split load on every client IP comparison.
 	unsigned char magic;
-	char hwlen;
+	// -1 before the first MAC lookup, 0 if it found none. Explicitly signed,
+	// plain char is unsigned on ARM and RISC-V
+	int8_t hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
 		bool new:1;
@@ -121,9 +123,10 @@ typedef struct {
 	size_t ifacepos;
 	double firstSeen;
 	double lastQuery;
+	uint32_t lastMACLookup; // last recorded MAC lookup, see SHM_TIME_EPOCH
 	// overTime is accessed only every 10 minutes (cold), so it lives at the
 	// end to keep hot fields within the first two 64-byte cache lines:
-	// line 0 (0–63): magic...hash + groupspos; line 1 (64–127): ippos...lastQuery.
+	// line 0 (0–63): magic...hash + groupspos; line 1 (64–127): ippos...lastMACLookup.
 	int overTime[OVERTIME_SLOTS];
 } clientsData;
 

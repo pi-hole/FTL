@@ -49,7 +49,8 @@
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 bool dnsmasq_failed = false;
-volatile sig_atomic_t gravity_running = 0;
+// Set while a gravity run started through the API is in flight, at most one is
+atomic_bool gravity_running = false;
 volatile sig_atomic_t want_terminate = 0;
 
 void go_daemon(void)
