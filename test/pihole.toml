@@ -877,12 +877,14 @@
 
   # Additional hostnames the web interface may be served on.
   #
-  # When Pi-hole is accessed through a reverse proxy or via multiple DNS names,
-  # the root path redirect to /admin/ only fires when the request Host header
-  # matches webserver.domain. List any additional hostnames here so that users
-  # reaching Pi-hole via those names also get the redirect.
+  # When Pi-hole is accessed through a reverse proxy or via multiple DNS names, the root
+  # path redirect to /admin/ only fires when the request Host header matches
+  # webserver.domain. List any additional hostnames here so that users reaching Pi-hole
+  # via those names also get the redirect.
   #
   # webserver.domain is always implicitly trusted and does not need to be listed.
+  #
+  # Example: [ "pi-hole.lan", "pi-hole.example.com" ]
   #
   # Allowed values are:
   #     An array of valid domain names
@@ -1759,7 +1761,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 167 total entries out of which 112 entries are default
+# 168 total entries out of which 113 entries are default
 # --> 55 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
