@@ -214,7 +214,7 @@ jobs:
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
         name: Upload pihole-FTL binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: ${{ matrix.bin_name }}-binary
           path: '${{ matrix.bin_name }}*'
@@ -229,21 +229,21 @@ jobs:
       -
         name: Upload documentation files
         if: matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'
       -
         name: Upload pihole.toml template
         if: matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: pihole-toml
           path: 'pihole.toml'
       -
         name: Get binaries built in previous jobs
         if: env.DO_DEPLOY == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         id: download
         with:
           path: ftl_builds/
@@ -252,14 +252,14 @@ jobs:
       -
         name: Get documentation files built in previous jobs
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         with:
           path: ftl_builds/
           name: pihole-api-docs
       -
         name: Get pihole.toml built in previous job
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         with:
           path: ftl_builds/
           name: pihole-toml
