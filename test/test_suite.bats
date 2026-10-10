@@ -1871,6 +1871,51 @@ except socket.timeout:
   assert_line --index 0 '3600'
   assert_success
 
+  # The files.pcap writability check must leave no empty file behind, as
+  # dnsmasq refuses one without a PCAP header
+  rm -rf /tmp/pcap
+  mkdir /tmp/pcap
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/new'
+  assert_line --index 0 '/tmp/pcap/new'
+  assert_success
+  run test -e /tmp/pcap/new
+  assert_failure
+
+  mkfifo /tmp/pcap/fifo
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/fifo'
+  assert_line --index 0 '/tmp/pcap/fifo'
+  assert_success
+  run test -p /tmp/pcap/fifo
+  assert_success
+
+  touch /tmp/pcap/target
+  ln -s /tmp/pcap/target /tmp/pcap/link
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/link'
+  assert_line --index 0 '/tmp/pcap/link'
+  assert_success
+  run test -L /tmp/pcap/link
+  assert_success
+  run test -f /tmp/pcap/target
+  assert_success
+
+  # A dangling symlink is not created through
+  ln -s /tmp/pcap/missing /tmp/pcap/dangling
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/dangling'
+  assert_output --partial 'Cannot write to /tmp/pcap/dangling, disabling PCAP recording'
+  run test -L /tmp/pcap/dangling
+  assert_success
+  run test -e /tmp/pcap/missing
+  assert_failure
+
+  # Testing a config does not remove an existing empty file
+  touch /tmp/pcap/empty
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/empty'
+  assert_line --index 0 '/tmp/pcap/empty'
+  assert_success
+  run test -f /tmp/pcap/empty
+  assert_success
+  rm -rf /tmp/pcap
+
   # dhcp.netmask carries FLAG_RESTART_FTL, so check it with -t: writing one and
   # putting it back lets the config watcher restart FTL mid-suite
   run bash -c './pihole-FTL --config -t dhcp.netmask 255.254.255.0'
