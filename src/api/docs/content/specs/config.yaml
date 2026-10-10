@@ -848,6 +848,7 @@ components:
               expire: 365
           webserver:
             domain: pi.hole
+            trusted_hosts: []
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
