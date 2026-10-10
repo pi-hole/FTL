@@ -354,6 +354,36 @@ class TestDomainSearch:
         assert search["results"]["total"] > 0, \
             f"Expected partial matches for 'gravity':\n{json.dumps(data, indent=2)}"
 
+    def test_partial_matching_abp_subdomain(self, api_session):
+        """Partial matching must resolve ABP-style entries like exact matching.
+
+        The gravity table stores "||special.gravity.ftl^", which a plain
+        substring search for a subdomain of it cannot find.
+        """
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert search["results"]["gravity"] == {"allow": 0, "block": 1}, \
+            json.dumps(data, indent=2)
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_antigravity_subdomain(self, api_session):
+        """ABP-style antigravity entries are found for subdomains, too."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_no_duplicates(self, api_session):
+        """The substring hit and the generated ABP pattern must not both count."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # History
