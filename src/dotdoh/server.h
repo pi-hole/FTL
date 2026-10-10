@@ -68,6 +68,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
+// Longest query dnsmasq accepts, over UDP and TCP alike (dnsmasq_interface.c)
+size_t FTL_dnsmasq_query_max(void) __attribute__((pure));
+
 // Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
 // handoffs and the connections accepted by the encrypted-upstream proxy). A
 // forked dnsmasq TCP worker inherits them and must close them, or it never

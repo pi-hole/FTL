@@ -4503,6 +4503,11 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 	query->dnssec = dnssec;
 }
 
+size_t FTL_dnsmasq_query_max(void)
+{
+	return (size_t)daemon->packet_buff_sz;
+}
+
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
 void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {

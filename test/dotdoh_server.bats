@@ -84,6 +84,23 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a DoH answer larger than a UDP reply arrives complete" {
+  # big.ftl has six TXT records of 250 bytes, more than dnsmasq answers over
+  # UDP, so the handoff fetches the answer again over TCP
+  local ca q a
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_big_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_big_a.bin"
+  python3 test/dotdoh_query.py emit big.ftl "$q" 16
+  run curl -s --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py checkcount "$a" 6
+  assert_output "OK"
+}
+
 @test "dotdoh-server: a DoH answer carries a Cache-Control max-age (RFC 8484)" {
   local ca q; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/cc_q.bin"
   python3 test/dotdoh_query.py emit "$DOMAIN" "$q"

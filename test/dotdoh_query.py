@@ -377,8 +377,9 @@ def main():
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
+        qtype = int(sys.argv[4]) if len(sys.argv) > 4 else 1
         with open(outfile, "wb") as f:
-            f.write(build_query(domain))
+            f.write(build_query(domain, qtype))
     elif cmd == "emitqr":
         # A message with the QR (response) bit set, which is not a query.
         _, _, domain, outfile = sys.argv[:4]
@@ -404,6 +405,21 @@ def main():
         _, _, infile, expected_ip = sys.argv[:4]
         with open(infile, "rb") as f:
             validate(f.read(), expected_ip)
+        print("OK")
+    elif cmd == "checkcount":
+        # A complete (not truncated) positive answer with this many records
+        _, _, infile, count = sys.argv[:4]
+        with open(infile, "rb") as f:
+            answer = f.read()
+        if len(answer) < 12:
+            sys.exit("answer too short (%d bytes)" % len(answer))
+        flags, _, ancount = struct.unpack("!HHH", answer[2:8])
+        if flags & 0x0200:
+            sys.exit("answer is truncated (TC set)")
+        if flags & 0x000F:
+            sys.exit("non-zero RCODE %d" % (flags & 0x000F))
+        if ancount != int(count):
+            sys.exit("%d answer records, expected %s" % (ancount, count))
         print("OK")
     elif cmd == "dot":
         _, _, host, port, domain, source, cafile, expected_ip = sys.argv[:8]
