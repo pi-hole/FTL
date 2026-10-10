@@ -687,7 +687,7 @@
     #
     # Allowed values are:
     #     A valid IPv4 address, or empty string (""). For wildcard (0.0.0.0)
-    address = ""
+    address = "127.0.0.1" ### CHANGED, default = ""
 
   [ntp.ipv6]
     # Should FTL act as network time protocol (NTP) server (IPv6)?
