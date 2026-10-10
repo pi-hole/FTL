@@ -254,6 +254,7 @@ struct config {
 
 	struct {
 		struct conf_item domain;
+		struct conf_item trusted_hosts;
 		struct conf_item acl;
 		struct conf_item port;
 		struct conf_item threads;

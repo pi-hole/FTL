@@ -165,9 +165,36 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 	// IP blocking mode where the browser connects using the blocked hostname.
 	// Use an exact-length comparison to prevent a prefix-match false positive
 	// (e.g. host "pi" incorrectly matching domain "pi.hole").
-	const size_t domain_len = strlen(config.webserver.domain.v.s);
-	if(host != NULL && host_len == domain_len &&
-	   strncasecmp(host, config.webserver.domain.v.s, host_len) == 0)
+	bool host_trusted = false;
+	if(host != NULL)
+	{
+		// Check webserver.domain
+		const size_t domain_len = strlen(config.webserver.domain.v.s);
+		if(host_len == domain_len &&
+		   strncasecmp(host, config.webserver.domain.v.s, host_len) == 0)
+		{
+			host_trusted = true;
+		}
+
+		// Check webserver.trusted_hosts array
+		if(!host_trusted && config.webserver.trusted_hosts.v.json != NULL)
+		{
+			cJSON *entry = NULL;
+			cJSON_ArrayForEach(entry, config.webserver.trusted_hosts.v.json)
+			{
+				const char *trusted = cJSON_GetStringValue(entry);
+				if(trusted != NULL &&
+				   host_len == strlen(trusted) &&
+				   strncasecmp(host, trusted, host_len) == 0)
+				{
+					host_trusted = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if(host_trusted)
 	{
 		// 308 Permanent Redirect from http://pi.hole -> http://pi.hole/admin/
 		if(strcmp(uri, "/") == 0 || strcmp(uri, config.webserver.paths.prefix.v.s) == 0)
@@ -179,10 +206,11 @@ static int redirect_root_handler(struct mg_connection *conn, void *input)
 		}
 	}
 
-	// Host did not match webserver.domain — not redirecting. When deployed
-	// behind a reverse proxy, ensure webserver.domain matches the Host header
-	// the proxy forwards (configure via WEBSERVER_DOMAIN in pihole.toml).
-	log_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" != domain: \"%s\")",
+	// Host did not match webserver.domain or webserver.trusted_hosts — not
+	// redirecting. When deployed behind a reverse proxy, ensure webserver.domain
+	// matches the Host header the proxy forwards, or add the hostname to
+	// webserver.trusted_hosts in pihole.toml.
+	log_debug(DEBUG_API, "Not redirecting %s (Host: \"%.*s\" not in domain: \"%s\" or trusted_hosts)",
 	          uri, (int)host_len, host ? host : "", config.webserver.domain.v.s);
 	return 0;
 }

@@ -1053,6 +1053,14 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 	conf->webserver.domain.c = validate_domain;
 
+	conf->webserver.trusted_hosts.k = "webserver.trusted_hosts";
+	conf->webserver.trusted_hosts.h = "Additional hostnames the web interface may be served on.\n\n When Pi-hole is accessed through a reverse proxy or via multiple DNS names, the root path redirect to /admin/ only fires when the request Host header matches webserver.domain. List any additional hostnames here so that users reaching Pi-hole via those names also get the redirect.\n\n webserver.domain is always implicitly trusted and does not need to be listed.\n\n Example: [ \"pi-hole.lan\", \"pi-hole.example.com\" ]";
+	conf->webserver.trusted_hosts.a = cJSON_CreateStringReference("An array of valid domain names");
+	conf->webserver.trusted_hosts.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.trusted_hosts.f = FLAG_RESTART_FTL;
+	conf->webserver.trusted_hosts.d.json = cJSON_CreateArray();
+	conf->webserver.trusted_hosts.c = validate_domain_array;
+
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
