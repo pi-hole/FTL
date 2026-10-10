@@ -17,11 +17,78 @@ Usage:
 import base64
 import os
 import stat
+import subprocess
 
 import pytest
 import requests
 
 FTL_URL = "http://127.0.0.1"
+
+
+def _https_get_status(path, fields):
+    """GET path from the TLS terminator over HTTP/2 with curl, which sends every
+    -H line as its own field; returns "<http_version> <status>"."""
+    cmd = ["curl", "-s", "--http2", "-o", "/dev/null", "-w", "%{http_version} %{http_code}",
+           "--cacert", "/etc/pihole/test.crt", "--resolve", "pi.hole:443:127.0.0.1"]
+    for name, value in fields:
+        cmd += ["-H", f"{name}: {value}"]
+    return subprocess.run(cmd + [f"https://pi.hole{path}"],
+                          capture_output=True, text=True, timeout=10).stdout
+
+
+def _h3_get_status(path, fields):
+    """GET path from the TLS terminator over HTTP/3 with aioquic (curl in CI has
+    no HTTP/3), every entry of fields as its own field; returns the status."""
+    import asyncio
+    import ssl
+    from aioquic.asyncio import connect
+    from aioquic.asyncio.protocol import QuicConnectionProtocol
+    from aioquic.h3.connection import H3Connection
+    from aioquic.h3.events import HeadersReceived
+    from aioquic.quic.configuration import QuicConfiguration
+
+    class H3Client(QuicConnectionProtocol):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.http = H3Connection(self._quic)
+            self.status = None
+            self.done = asyncio.Event()
+
+        def quic_event_received(self, event):
+            for e in self.http.handle_event(event):
+                if isinstance(e, HeadersReceived):
+                    self.status = dict(e.headers).get(b":status", b"").decode()
+                if getattr(e, "stream_ended", False):
+                    self.done.set()
+
+    async def run():
+        cfg = QuicConfiguration(is_client=True, alpn_protocols=["h3"])
+        cfg.verify_mode = ssl.CERT_NONE
+        cfg.server_name = "pi.hole"
+        async with connect("127.0.0.1", 443, configuration=cfg,
+                           create_protocol=H3Client) as client:
+            sid = client._quic.get_next_available_stream_id()
+            headers = [(b":method", b"GET"), (b":scheme", b"https"),
+                       (b":authority", b"pi.hole"), (b":path", path.encode())]
+            headers += [(name.encode(), value.encode()) for name, value in fields]
+            client.http.send_headers(sid, headers, end_stream=True)
+            client.transmit()
+            await asyncio.wait_for(client.done.wait(), timeout=10)
+            return client.status
+
+    return asyncio.run(run())
+
+
+def _login_cookie_fields():
+    """Log in and return the session ID plus the header fields of a browser
+    that holds another cookie for the host and sends the sid cookie second,
+    with another header between the two cookie fields."""
+    r = requests.post(f"{FTL_URL}/api/auth", json={"password": "ABC"}, timeout=5)
+    assert r.status_code == 200
+    session = r.json()["session"]
+    return session["sid"], [("cookie", "other=1"),
+                            ("x-csrf-token", session["csrf"]),
+                            ("cookie", f"sid={session['sid']}")]
 
 
 class TestAuthWorkflow:
@@ -33,6 +100,7 @@ class TestAuthWorkflow:
     05: setting a regular password via API
     06: incorrect password is rejected
     07: correct password is accepted
+    07d/07e: a sid cookie in the second cookie field works over HTTP/2 and HTTP/3
     08: rate limiting is enforced after many wrong attempts
     09: removing the password via API
     10: no password set => session valid again
@@ -256,6 +324,25 @@ class TestAuthWorkflow:
         )
         assert r.status_code == 204, \
             f"Expected 204, got {r.status_code} {r.text}"
+
+    # -- 07d/07e: sid in the second of two cookie fields over HTTP/2 and HTTP/3 --
+
+    def test_07d_split_cookie_fields_http2(self):
+        """The TLS terminator joins HTTP/2 cookie fields into one Cookie header."""
+        sid, fields = _login_cookie_fields()
+        try:
+            assert _https_get_status("/api/auth", fields) == "2 200"
+        finally:
+            requests.delete(f"{FTL_URL}/api/auth", headers={"X-FTL-SID": sid}, timeout=5)
+
+    def test_07e_split_cookie_fields_http3(self):
+        """The TLS terminator joins HTTP/3 cookie fields into one Cookie header."""
+        pytest.importorskip("aioquic")
+        sid, fields = _login_cookie_fields()
+        try:
+            assert _h3_get_status("/api/auth", fields) == "200"
+        finally:
+            requests.delete(f"{FTL_URL}/api/auth", headers={"X-FTL-SID": sid}, timeout=5)
 
     # -- 08: rate limiting enforced --
 
