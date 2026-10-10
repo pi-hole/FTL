@@ -31,10 +31,12 @@
 #include "signals.h"
 // create_migration_target_v6()
 #include "config/config.h"
+// teleporter_decrypt()
+#include "zip/teleporter_crypt.h"
 
 #define MAXFILESIZE (50u*1024*1024)
 
-static int api_teleporter_GET(struct ftl_conn *api)
+static int send_teleporter(struct ftl_conn *api, const char *password)
 {
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
@@ -47,6 +49,20 @@ static int api_teleporter_GET(struct ftl_conn *api)
 		                       error,
 		                       NULL);
 
+	if(password != NULL)
+	{
+		error = encrypt_teleporter_zip(filename, &ptr, &size, password);
+		if(error != NULL)
+		{
+			free_teleporter_zip(&zip);
+			free(ptr);
+			return send_json_error(api, 500,
+			                       "encryption_error",
+			                       error,
+			                       NULL);
+		}
+	}
+
 	// Add header indicating that this is a file to be downloaded and stored as
 	// teleporter.zip (rather than showing the binary data in the browser
 	// window). This client is free to ignore and do whatever it wants with this
@@ -56,7 +72,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 	         filename);
 
 	// Send 200 OK with appropriate headers
-	mg_send_http_ok(api->conn, "application/zip", size);
+	mg_send_http_ok(api->conn, password != NULL ? "application/octet-stream" : "application/zip", size);
 
 	// Clear extra headers
 	pi_hole_extra_headers[0] = '\0';
@@ -69,16 +85,56 @@ static int api_teleporter_GET(struct ftl_conn *api)
 	// so mz_zip_writer_end() inside free_teleporter_zip() releases the
 	// writer but not the archive itself - that is ours now
 	free_teleporter_zip(&zip);
+	explicit_bzero(ptr, size);
 	free(ptr);
 
 	return 200;
+}
+
+static int api_teleporter_GET(struct ftl_conn *api)
+{
+	return send_teleporter(api, NULL);
+}
+
+// A password is mandatory here, a mistyped key must not fall back to an
+// unencrypted export
+int api_teleporter_export(struct ftl_conn *api)
+{
+	const int ret = check_json_payload(api);
+	if(ret != 0)
+		return ret;
+
+	const cJSON *pw = cJSON_GetObjectItemCaseSensitive(api->payload.json, "password");
+	int rc;
+	if(!cJSON_IsString(pw) || pw->valuestring[0] == '\0')
+		rc = send_json_error(api, 400,
+		                     "body_error",
+		                     "No \"password\" string in body data",
+		                     NULL);
+	else if(strlen(pw->valuestring) > TELEPORTER_MAX_PASSWORD_LEN)
+		rc = send_json_error(api, 400,
+		                     "body_error",
+		                     "Password too long",
+		                     "At most " xstr(TELEPORTER_MAX_PASSWORD_LEN) " bytes are allowed");
+	else
+		rc = send_teleporter(api, pw->valuestring);
+
+	// Do not leave the password behind in freed memory
+	if(cJSON_IsString(pw))
+		explicit_bzero(pw->valuestring, strlen(pw->valuestring));
+	if(api->payload.raw != NULL)
+		explicit_bzero(api->payload.raw, api->payload.size);
+
+	return rc;
 }
 
 // Struct to store the data we want to process
 struct upload_data {
 	bool too_large;
 	bool invalid_import;
+	bool password_too_long;
 	char *sid;
+	char *password;
 	cJSON *import;
 	uint8_t *data;
 	char *filename;
@@ -86,6 +142,7 @@ struct upload_data {
 	struct {
 		bool file;
 		bool sid;
+		bool password;
 		bool import;
 	} field;
 };
@@ -111,6 +168,17 @@ static int field_found(const char *key,
 	else if(strcasecmp(key, "sid") == 0)
 	{
 		data->field.sid = true;
+		return MG_FORM_FIELD_STORAGE_GET;
+	}
+	else if(strcasecmp(key, "password") == 0)
+	{
+		// Only a new field lands here, its chunks all go to field_get()
+		if(data->password != NULL)
+		{
+			log_web(LOG_WARNING, "Ignoring repeated password field in teleporter upload");
+			return MG_FORM_FIELD_STORAGE_SKIP;
+		}
+		data->field.password = true;
 		return MG_FORM_FIELD_STORAGE_GET;
 	}
 	else if(strcasecmp(key, "import") == 0)
@@ -180,6 +248,33 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		// Add terminating NULL byte (memcpy does not do this)
 		data->sid[valuelen] = '\0';
 	}
+	else if(data->field.password)
+	{
+		// A long password may arrive in more than one chunk
+		const size_t have = data->password != NULL ? strlen(data->password) : 0u;
+		if(have + valuelen > TELEPORTER_MAX_PASSWORD_LEN)
+		{
+			log_web(LOG_WARNING, "Teleporter password is too long (limit is %d bytes)",
+			        TELEPORTER_MAX_PASSWORD_LEN);
+			data->password_too_long = true;
+			return MG_FORM_FIELD_HANDLE_ABORT;
+		}
+		char *pw = calloc(have + valuelen + 1, sizeof(char));
+		if(pw == NULL)
+		{
+			log_err("Failed to allocate memory for the teleporter password (%zu bytes)",
+			        have + valuelen + 1);
+			return MG_FORM_FIELD_HANDLE_ABORT;
+		}
+		if(data->password != NULL)
+		{
+			memcpy(pw, data->password, have);
+			explicit_bzero(data->password, have);
+			free(data->password);
+		}
+		memcpy(pw + have, value, valuelen);
+		data->password = pw;
+	}
 	else if(data->field.import)
 	{
 		// As above: do not leak an already parsed object by replacing it
@@ -235,6 +330,12 @@ static int free_upload_data(struct upload_data *data)
 	{
 		free(data->sid);
 		data->sid = NULL;
+	}
+	if(data->password)
+	{
+		explicit_bzero(data->password, strlen(data->password));
+		free(data->password);
+		data->password = NULL;
 	}
 	if(data->data)
 	{
@@ -301,6 +402,15 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		                       NULL);
 	}
 
+	if(data.password_too_long)
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Password too long",
+		                       "At most " xstr(TELEPORTER_MAX_PASSWORD_LEN) " bytes are allowed");
+	}
+
 	// A rejected import field aborts the form parsing, nothing received
 	// with it may be imported
 	if(data.invalid_import)
@@ -334,6 +444,46 @@ static int api_teleporter_POST(struct ftl_conn *api)
 
 	// Ensure v6 migration directory exists
 	create_migration_target_v6();
+
+	// Encrypted archives are recognized by their content, the filename is
+	// whatever the user chose to save it as
+	if(teleporter_is_encrypted(data.data, data.filesize))
+	{
+		if(data.password == NULL || data.password[0] == '\0')
+		{
+			free_upload_data(&data);
+			return send_json_error(api, 400,
+			                       "password_required",
+			                       "Password required",
+			                       "This Teleporter archive is password-protected");
+		}
+
+		uint8_t *dec = NULL;
+		size_t declen = 0u;
+		const char *error = teleporter_decrypt(data.data, data.filesize, data.password, &dec, &declen);
+		if(error != NULL)
+		{
+			free_upload_data(&data);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Unable to decrypt Teleporter archive",
+			                       error);
+		}
+
+		free(data.data);
+		data.data = dec;
+		data.filesize = declen;
+
+		if(data.filesize < 40 || memcmp(data.data, "\x50\x4b\x03\x04", 4) != 0)
+		{
+			free_upload_data(&data);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Invalid file",
+			                       "The decrypted file is not a valid Pi-hole Teleporter archive");
+		}
+		return process_received_zip(api, &data);
+	}
 
 	// Check if we received something that claims to be a ZIP archive
 	// - filename should end in ".zip"

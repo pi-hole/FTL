@@ -2245,7 +2245,7 @@ except socket.timeout:
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {
-  run bash -c './pihole-FTL --teleporter'
+  run bash -c 'echo "" | ./pihole-FTL --teleporter'
   assert_success
   # Get filename from last line printed by FTL
   filename="${lines[-1]}"
@@ -2263,6 +2263,22 @@ except socket.timeout:
   assert_line --index -2 "Imported etc/pihole/gravity.db->client"
   assert_line --index -1 "Imported etc/pihole/gravity.db->client_by_group"
   assert_success
+  run bash -c "rm ${filename}"
+}
+
+@test "Create and re-import password-protected Teleporter file via CLI" {
+  run bash -c 'echo "secret pw" | ./pihole-FTL --teleporter'
+  assert_success
+  filename="${lines[-1]}"
+  [[ "${filename}" == *.zip.enc ]]
+  run bash -c "head -c 8 ${filename}"
+  assert_output "PIHOLETP"
+  run bash -c "echo wrong | ./pihole-FTL --teleporter ${filename}"
+  assert_failure
+  assert_line --index -1 --partial "Wrong password or corrupted archive"
+  run bash -c "echo 'secret pw' | ./pihole-FTL --teleporter ${filename}"
+  assert_success
+  assert_line --index -1 "Imported etc/pihole/gravity.db->client_by_group"
   run bash -c "rm ${filename}"
 }
 

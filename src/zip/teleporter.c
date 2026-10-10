@@ -51,6 +51,8 @@
 #include "signals.h"
 // sqliteBusyCallback()
 #include "database/common.h"
+// teleporter_encrypt()
+#include "zip/teleporter_crypt.h"
 
 #define ZIPNAME_TOML "etc/pihole/pihole.toml"
 #define ZIPNAME_DHCPLEASES "etc/pihole/dhcp.leases"
@@ -944,8 +946,35 @@ bool free_teleporter_zip(mz_zip_archive *zip)
 	return mz_zip_writer_end(zip);
 }
 
+// Replace the finalized archive in *ptr by its encrypted form
+const char *encrypt_teleporter_zip(char filename[128], void **ptr, size_t *size, const char *password)
+{
+	uint8_t *enc = NULL;
+	size_t enclen = 0u;
+	// The plaintext holds the secrets being protected, wipe it either way
+	const char *error = teleporter_encrypt(*ptr, *size, password, &enc, &enclen);
+	explicit_bzero(*ptr, *size);
+	if(error != NULL)
+		return error;
+
+	free(*ptr);
+	*ptr = enc;
+	*size = enclen;
+	strncat(filename, TELEPORTER_ENC_EXT, 127 - strlen(filename));
+	return NULL;
+}
+
 bool write_teleporter_zip_to_disk(void)
 {
+	char *password = teleporter_read_password(true);
+	if(password == NULL)
+		return false;
+	if(password[0] == '\0')
+	{
+		free(password);
+		password = NULL;
+	}
+
 	// Generate in-memory ZIP file
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
@@ -955,7 +984,23 @@ bool write_teleporter_zip_to_disk(void)
 	if(error != NULL)
 	{
 		log_err("Failed to create Teleporter ZIP file: %s", error);
+		if(password != NULL)
+			free(password);
 		return false;
+	}
+
+	if(password != NULL)
+	{
+		error = encrypt_teleporter_zip(filename, &ptr, &size, password);
+		explicit_bzero(password, strlen(password));
+		free(password);
+		if(error != NULL)
+		{
+			log_err("Failed to encrypt Teleporter ZIP file: %s", error);
+			free_teleporter_zip(&zip);
+			free(ptr);
+			return false;
+		}
 	}
 
 	// Write file to disk
@@ -1003,7 +1048,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 
 	// Get ZIP archive size
 	fseek(fp, 0, SEEK_END);
-	const size_t size = (size_t)ftell(fp);
+	size_t size = (size_t)ftell(fp);
 	fseek(fp, 0, SEEK_SET);
 	if(size == 0 || size > MAX_TELEPORTER_ZIP_SIZE)
 	{
@@ -1030,6 +1075,29 @@ bool read_teleporter_zip_from_disk(const char *filename)
 		return false;
 	}
 	fclose(fp);
+
+	if(teleporter_is_encrypted(ptr, size))
+	{
+		char *password = teleporter_read_password(false);
+		if(password == NULL)
+		{
+			free(ptr);
+			return false;
+		}
+		uint8_t *dec = NULL;
+		size_t declen = 0u;
+		const char *error = teleporter_decrypt(ptr, size, password, &dec, &declen);
+		explicit_bzero(password, strlen(password));
+		free(password);
+		free(ptr);
+		if(error != NULL)
+		{
+			log_err("Failed to decrypt Teleporter archive: %s", error);
+			return false;
+		}
+		ptr = dec;
+		size = declen;
+	}
 
 	// Process ZIP archive
 	char hint[ERRBUF_SIZE] = "";
