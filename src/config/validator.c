@@ -313,6 +313,33 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	return true;
 }
 
+bool validate_domain_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val == NULL || !cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	for(int i = 0; i < cJSON_GetArraySize(val->json); i++)
+	{
+		cJSON *item = cJSON_GetArrayItem(val->json, i);
+		if(!cJSON_IsString(item))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
+			return false;
+		}
+		if(!valid_domain(item->valuestring, strlen(item->valuestring), false))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a valid domain (\"%s\")",
+			         key, i, item->valuestring);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 // Validate file path
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
