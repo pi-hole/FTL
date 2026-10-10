@@ -315,9 +315,17 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	return true;
 }
 
-// Validate file path
+// Validate file path (empty rejected)
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
+	// An empty path does not name a file. SQLite would even open it as a
+	// private temporary database and lose everything written to it
+	if(strlen(val->s) == 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must not be empty", key);
+		return false;
+	}
+
 	// Accept every printable ASCII character. The range is not widened beyond
 	// it because these paths are handed out as JSON, which has to be UTF-8, and
 	// are written into the generated dnsmasq config, where a control character
@@ -576,6 +584,47 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
 			if(offender != NULL)
 				*offender = written[i];
+			return false;
+		}
+	}
+
+	// With database.forceDisk, files.tmp_db is emptied on every start and
+	// removed on stop, so it must not name a file Pi-hole keeps
+	struct conf_item *tmp_db = &conf->files.tmp_db;
+	char tnorm[NORMALIZED_PATH_LEN];
+	if(tmp_db->v.s != NULL && tmp_db->v.s[0] != '\0' &&
+	   normalize_path(tmp_db->v.s, tnorm, sizeof(tnorm)) > 0)
+	{
+		struct conf_item *kept[ArraySize(written) + 1];
+		size_t n_kept = 0;
+		for(size_t i = 0; i < ArraySize(written); i++)
+			if(written[i] != tmp_db)
+				kept[n_kept++] = written[i];
+		kept[n_kept++] = &conf->files.macvendor;
+
+		for(size_t i = 0; i < n_kept; i++)
+		{
+			char pnorm[NORMALIZED_PATH_LEN];
+			const char *path = kept[i]->v.s;
+			if(path == NULL || path[0] == '\0' ||
+			   normalize_path(path, pnorm, sizeof(pnorm)) == 0 || strcmp(tnorm, pnorm) != 0)
+				continue;
+
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be the same file as %s",
+			         tmp_db->k, tmp_db->v.s, kept[i]->k);
+			// Reset whichever of the two moved away from its default
+			if(offender != NULL)
+				*offender = compare_config_item(tmp_db->t, &tmp_db->v, &tmp_db->d) ? kept[i] : tmp_db;
+			return false;
+		}
+
+		char cnorm[NORMALIZED_PATH_LEN];
+		if(normalize_path(GLOBALTOMLPATH, cnorm, sizeof(cnorm)) > 0 && strcmp(tnorm, cnorm) == 0)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be Pi-hole's configuration file",
+			         tmp_db->k, tmp_db->v.s);
+			if(offender != NULL)
+				*offender = tmp_db;
 			return false;
 		}
 	}

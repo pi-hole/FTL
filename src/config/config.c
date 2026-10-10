@@ -37,6 +37,8 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// cli_mode
+#include "args.h"
 // _Atomic
 #include <stdatomic.h>
 
@@ -954,6 +956,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.f = FLAG_RESTART_FTL;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
 
@@ -962,7 +965,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.a = cJSON_CreateStringReference("A positive integer value");
 	conf->ntp.sync.count.t = CONF_UINT;
 	conf->ntp.sync.count.d.ui = 8;
-	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.count.c = validate_ui_min_1;
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
@@ -1102,7 +1105,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.acl.k = "webserver.acl";
-	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
+	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
 	conf->webserver.acl.f = FLAG_RESTART_FTL;
 	conf->webserver.acl.t = CONF_STRING;
@@ -1179,7 +1182,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)(PIHOLE_INSTALL_DIR "/tls.pem");
-	conf->webserver.tls.cert.c = validate_filepath;
+	conf->webserver.tls.cert.c = validate_filepath_empty;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
@@ -2180,6 +2183,8 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
+	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
 	memcpy(&old_conf, &config, sizeof(struct config));
@@ -2192,6 +2197,11 @@ void replace_config(struct config *newconf)
 
 	// Unlock shared memory
 	unlock_shm();
+
+	// Drop the cached answers and verdicts of the previous blocking status as
+	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+		raise(SIGHUP);
 }
 
 // Set when reread_config() found a config change in progress and left the

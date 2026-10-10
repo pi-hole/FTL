@@ -36,7 +36,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 17
+#define SHARED_MEMORY_VERSION 18
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -46,7 +46,7 @@
 // The sizes are not the same everywhere. size_t members make them follow the
 // word size, and a 32-bit target aligns double to either 8 (ARM EABI) or 4
 // (i386), which moves the members after it again - clientsData is 688 bytes on
-// 64-bit, 672 on armhf and 664 on i386. All three are pinned rather than only
+// 64-bit, 672 on armhf and 668 on i386. All three are pinned rather than only
 // the one this happens to be compiled for. sizeof and _Alignof are constant
 // expressions, so this needs no per-architecture #ifdef
 #define SHM_STRUCT_SIZE(w64, arm32, x86_32) \
@@ -58,7 +58,7 @@
 
 ASSERT_SHM_SIZE(queriesData,            64,     64,     64);
 ASSERT_SHM_SIZE(domainsData,            48,     40,     40);
-ASSERT_SHM_SIZE(clientsData,           688,    672,    664);
+ASSERT_SHM_SIZE(clientsData,           688,    672,    668);
 ASSERT_SHM_SIZE(upstreamsData,          64,     56,     52);
 ASSERT_SHM_SIZE(DNSCacheData,           40,     40,     40);
 // overTimeData is the one of these that ends in a time_t, whose alignment is 8
@@ -73,7 +73,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        568576, 560352, 560336);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        356,    356,    356);
+ASSERT_SHM_SIZE(countersStruct,        360,    360,    360);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -1260,11 +1260,14 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 	// TCP requests.
 	if(resize)
 	{
-		// Allocate shared memory object to specified size
+		// Allocate only the part we are adding, everything below the current
+		// size has already been allocated.
 		// Using f[tl]allocate() will ensure that there's actually space for
 		// this file. Otherwise we end up with a sparse file that can give
 		// SIGBUS if we run out of space while writing to it.
-		const int ret = ftlallocate(sharedMemory->fd, 0U, new_size);
+		int ret = 0;
+		if(new_size > sharedMemory->size)
+			ret = ftlallocate(sharedMemory->fd, sharedMemory->size, new_size - sharedMemory->size);
 		if(ret != 0)
 		{
 			log_crit("realloc_shm(): Failed to resize \"%s\" (%i) to %zu: %s (%i)",

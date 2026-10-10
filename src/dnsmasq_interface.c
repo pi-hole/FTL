@@ -207,6 +207,10 @@ static struct {
 
 #define HOSTNAME "Pi-hole hostname"
 
+// Seconds before a MAC lookup that found nothing is repeated. dnsmasq answers
+// it from its negative ARP cache record for 90 s anyway (src/dnsmasq/arp.c)
+#define MAC_LOOKUP_RETRY 90u
+
 // Fork-private copy of the interface data the most recent query came from
 static struct {
 	bool haveIPv4;
@@ -982,6 +986,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	// Set when clientIP comes from EDNS(0) rather than the packet source
 	bool edns_client = false;
+	// Set when clientIP comes from ECS, an address behind the forwarder
+	bool ecs_client = false;
 	ednsData *edns = getEDNS();
 	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
 	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
@@ -1005,6 +1011,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
 		edns_client = true;
+		ecs_client = true;
 	}
 	else if(addr)
 	{
@@ -1268,8 +1275,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	// Don't do this for internally generated queries (e.g., DNSSEC), if the
 	// MAC address is already known or if the netlink socket is not available
-	// (e.g., when retrying a query using TCP after UDP truncation)
-	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
+	// (e.g., when retrying a query using TCP after UDP truncation). ECS
+	// clients usually have no neighbor entry here, and a lookup that found
+	// nothing (hwlen 0) is repeated after MAC_LOOKUP_RETRY seconds at most
+	if(!internal_query && !ecs_client && client->hwlen < 1 && daemon->netlinkfd > 0 &&
+	   (client->hwlen != 0 ||
+	    ABS_TO_SHM_TIME((time_t)querytimestamp) - client->lastMACLookup >= MAC_LOOKUP_RETRY))
 	{
 		// find_mac() may trigger a netlink kernel call
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
@@ -1298,7 +1309,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// been remapped while we were unlocked)
 		lock_shm();
 		client = getClient(clientID, true);
-		if(client != NULL)
+		// A forked TCP worker only searches the ARP cache it inherited, so
+		// its miss leaves the lookup to the next query of the main process
+		if(client != NULL && (hwlen > 0 || daemon->pipe_to_parent == -1))
 		{
 			// If a MAC was just learned (this runs only while it was
 			// still unknown), clear found_group so the next query
@@ -1308,6 +1321,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				client->flags.found_group = false;
 			memcpy(client->hwaddr, hwaddr, sizeof(hwaddr));
 			client->hwlen = hwlen;
+			client->lastMACLookup = ABS_TO_SHM_TIME((time_t)querytimestamp);
 		}
 
 		// Re-fetch all SHM pointers as SHM may have been remapped. The
@@ -1550,29 +1564,63 @@ void _FTL_iface(struct irec *recviface, const union all_addr *addr, const sa_fam
 	}
 }
 
-static void check_pihole_PTR(char *domain)
-{
-	// Iterate through the already configured PTR entries in dnsmasq's
-	// structure and check if we already have a PTR record for this address
-	// This avoids adding work into defining PTR records that have already
-	// been added but also overwriting PTR records manually added by users
-	// using custom dnsmasq config lines like "ptr-record=<name>,<target>"
-	for(struct ptr_record *ptr = daemon->ptr; ptr; ptr = ptr->next)
-	{
-		log_debug(DEBUG_EXTRA, "Known PTR record %p: %s -> %s (next = %p)", ptr, ptr->name, ptr->ptr, ptr->next);
+// 32 nibble labels of an IPv6 address plus "ip6.arpa"
+#define PTR_NAME_LEN (32*2 + sizeof("ip6.arpa"))
 
-		// DNS names are case-insensitive (RFC 4343), so compare case-
-		// insensitively. A case-sensitive match would let a client add an
-		// unbounded number of near-duplicate PTR records for the same
-		// address by varying the case of the query name.
-		if(ptr->name != NULL && strcasecmp(ptr->name, domain) == 0)
-		{
-			// We already have a PTR record for this address
-			log_debug(DEBUG_QUERIES, "PTR record for %s exists", domain);
-			return;
-		}
+// Addresses we have already generated a PTR record for, keyed on the decoded
+// address rather than the query name (many names decode to one address). An
+// entry is only added for an address of one of our interfaces, so the table
+// holds at most the addresses this host has had
+struct generated_ptr_entry {
+	sa_family_t family;
+	union all_addr addr;
+};
+static struct generated_ptr_entry *generated_ptr = NULL;
+static unsigned int generated_ptrs = 0;
+static unsigned int generated_ptrs_size = 0;
+
+static bool __attribute__((pure)) ptr_generated_for(const int flags, const union all_addr *addr)
+{
+	for(unsigned int i = 0; i < generated_ptrs; i++)
+	{
+		if(flags == F_IPV4 && generated_ptr[i].family == AF_INET &&
+		   generated_ptr[i].addr.addr4.s_addr == addr->addr4.s_addr)
+			return true;
+
+		if(flags == F_IPV6 && generated_ptr[i].family == AF_INET6 &&
+		   IN6_ARE_ADDR_EQUAL(&generated_ptr[i].addr.addr6, &addr->addr6))
+			return true;
 	}
 
+	return false;
+}
+
+// Write the canonical reverse name of addr, the name dnsmasq matches PTR
+// queries against, e.g. 5.1.168.192.in-addr.arpa
+static void ptr_canonical_name(const int flags, const union all_addr *addr, char name[PTR_NAME_LEN])
+{
+	if(flags == F_IPV4)
+	{
+		const unsigned char *b = (const unsigned char *)&addr->addr4.s_addr;
+		snprintf(name, PTR_NAME_LEN, "%u.%u.%u.%u.in-addr.arpa", b[3], b[2], b[1], b[0]);
+		return;
+	}
+
+	// IPv6: one label per nibble, lowest first
+	char *p = name;
+	for(int i = 15; i >= 0; i--)
+	{
+		const unsigned char b = addr->addr6.s6_addr[i];
+		*p++ = "0123456789abcdef"[b & 0x0f];
+		*p++ = '.';
+		*p++ = "0123456789abcdef"[b >> 4];
+		*p++ = '.';
+	}
+	strcpy(p, "ip6.arpa");
+}
+
+static void check_pihole_PTR(char *domain)
+{
 	// Convert PTR request into numeric form
 	union all_addr addr = {};
 	const int flags = in_arpa_name_2_addr(domain, &addr);
@@ -1581,6 +1629,37 @@ static void check_pihole_PTR(char *domain)
 	// specifier. If not, nothing is to be done here and we return early
 	if(flags == 0)
 		return;
+
+	// The record is made for the canonical name, whatever spelling the client
+	// used. dnsmasq matches PTR records by name, so a record under another
+	// spelling would never answer the canonical query
+	char name[PTR_NAME_LEN];
+	ptr_canonical_name(flags, &addr, name);
+
+	// One record per address, however the client spelled it
+	if(ptr_generated_for(flags, &addr))
+	{
+		log_debug(DEBUG_QUERIES, "PTR record for the address behind %s exists", domain);
+		return;
+	}
+
+	// Iterate through the already configured PTR entries in dnsmasq's
+	// structure and check if we already have a PTR record for this name.
+	// This avoids overwriting PTR records manually added by users using
+	// custom dnsmasq config lines like "ptr-record=<name>,<target>"
+	for(struct ptr_record *ptr = daemon->ptr; ptr; ptr = ptr->next)
+	{
+		log_debug(DEBUG_EXTRA, "Known PTR record %p: %s -> %s (next = %p)", ptr, ptr->name, ptr->ptr, ptr->next);
+
+		// DNS names are case-insensitive (RFC 4343), so compare case-
+		// insensitively
+		if(ptr->name != NULL && strcasecmp(ptr->name, name) == 0)
+		{
+			// We already have a PTR record for this name
+			log_debug(DEBUG_QUERIES, "PTR record for %s exists", name);
+			return;
+		}
+	}
 
 	// We do not want to reply with "pi.hole" to loopback PTRs
 	if((flags == F_IPV4 && addr.addr4.s_addr == htonl(INADDR_LOOPBACK)) ||
@@ -1599,10 +1678,37 @@ static void check_pihole_PTR(char *domain)
 			continue;
 
 		// If we reached this point, we have a match between the address the client
+		// asked about and one of our own. Make room to remember the address so
+		// the next spelling of it does not generate a second record
+		if(generated_ptrs == generated_ptrs_size)
+		{
+			const unsigned int size = generated_ptrs_size ? 2 * generated_ptrs_size : 8;
+			struct generated_ptr_entry *grown = realloc(generated_ptr, size * sizeof(*grown));
+			if(grown == NULL)
+			{
+				log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+				return;
+			}
+			generated_ptr = grown;
+			generated_ptrs_size = size;
+		}
+
 		struct ptr_record *pihole_ptr = calloc(1, sizeof(struct ptr_record));
-		// It is okay to use allocate heap memory here as this branch of
-		// the code is only ever called once per interface on demand
-		pihole_ptr->name = strdup(domain);
+		if(pihole_ptr == NULL)
+		{
+			log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+			return;
+		}
+
+		// dnsmasq compares this name without a NULL check
+		pihole_ptr->name = strdup(name);
+		if(pihole_ptr->name == NULL)
+		{
+			log_err("Cannot allocate PTR record for %s: %s", name, strerror(errno));
+			free(pihole_ptr);
+			return;
+		}
+
 		if(family == AF_INET)
 		{
 			// IPv4 supports conditional domains
@@ -1630,6 +1736,10 @@ static void check_pihole_PTR(char *domain)
 			// record as the first one
 			daemon->ptr = pihole_ptr;
 		}
+
+		generated_ptr[generated_ptrs].family = family;
+		generated_ptr[generated_ptrs].addr = addr;
+		generated_ptrs++;
 
 		// Debug logging
 		log_debug(DEBUG_QUERIES, "Generating PTR record (%p): %s -> %s", pihole_ptr, pihole_ptr->name, pihole_ptr->ptr);
@@ -3877,6 +3987,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
 
+			// Temporary history database (database.forceDisk)
+			if(config.database.forceDisk.v.b)
+				chown_pihole(config.files.tmp_db.v.s, ent_pw);
+
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
 			if(extrafile == NULL)
@@ -4135,6 +4249,11 @@ void FTL_TCP_worker_created(const int confd)
 	// lock-owner PID/TID inherited from the parent before we take any SHM
 	// lock, otherwise is_our_lock() would compare against the parent's IDs.
 	reset_lock_owner_cache();
+
+	// Close every inherited FTL-side socket, including the peer of confd, so
+	// this worker sees EOF when FTL closes its end (confd is dnsmasq's side)
+	if(main_pid() != getpid())
+		dotdoh_fd_close_inherited(confd);
 
 	// Print this if debugging is enabled
 	if(config.debug.queries.v.b)

@@ -448,6 +448,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
+	client->lastMACLookup = 0;
 	// This may be an alias-client, the ID is set elsewhere
 	client->flags.aliasclient = aliasclient;
 	client->aliasclient_id = -1;
