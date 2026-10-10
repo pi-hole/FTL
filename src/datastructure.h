@@ -108,6 +108,7 @@ typedef struct {
 		bool aliasclient:1;
 		bool rate_limited:1;
 		bool in_database:1;
+		bool groups_looked_up:1; // get_client_groupids() ran at least once
 	} flags;
 	int count;
 	int blockedcount;
