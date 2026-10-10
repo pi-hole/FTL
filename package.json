@@ -22,7 +22,7 @@
   "devDependencies": {
     "brace-expansion": "^5.0.12",
     "fast-uri": "^4.2.1",
-    "js-yaml": "^5.4.2",
+    "js-yaml": "^5.4.3",
     "openapi-enforcer": "^1.23.0",
     "openapi-examples-validator": "^7.1.0"
   }
