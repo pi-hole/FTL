@@ -1853,6 +1853,11 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
   assert_failure 3
 
+  # An NTP sync needs at least one request to the server
+  run bash -c './pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --index 0 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config -t database.DBinterval 0'
   assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
   assert_failure 3
@@ -1901,6 +1906,19 @@ except socket.timeout:
   # The certificate is written with its private key, so it stays out of the webroot
   run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
   assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
+  assert_failure 3
+}
+
+@test "files.tmp_db cannot name a file Pi-hole keeps" {
+  # database.forceDisk empties files.tmp_db on every start
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
   assert_failure 3
 }
 
