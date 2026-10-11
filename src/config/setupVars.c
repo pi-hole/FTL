@@ -19,6 +19,16 @@
 unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
 
+// Empty an array config item before the values from setupVars.conf are added.
+// A v5 Teleporter import migrates into the running config, whose entries the
+// imported ones have to replace rather than be added to
+static void clear_conf_array(struct conf_item *conf_item)
+{
+	if(conf_item->v.json != NULL)
+		cJSON_Delete(conf_item->v.json);
+	conf_item->v.json = cJSON_CreateArray();
+}
+
 static void get_conf_string_from_setupVars(const char *key, struct conf_item *conf_item)
 {
 	// Verify we are allowed to use this function
@@ -172,6 +182,9 @@ static void get_revServer_from_setupVars(void)
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
+	// The file sets the reverse servers, replace the configured ones
+	clear_conf_array(&config.dns.revServers);
+
 	char *cidr_str = read_setupVarsconf("REV_SERVER_CIDR");
 	if(cidr_str != NULL)
 	{
@@ -264,6 +277,9 @@ static void get_conf_string_array_from_setupVars_regex(const char *key, struct c
 
 	if(array != NULL)
 	{
+		// The file sets this array, replace the configured entries
+		clear_conf_array(conf_item);
+
 		getSetupVarsArray(array);
 		for (unsigned int i = 0; i < setupVarsElements; ++i)
 		{
@@ -348,6 +364,7 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 
 	// Try to import up to 50 servers...
 	#define MAX_SERVERS 50
+	bool cleared = false;
 	for(unsigned int j = 0; j < MAX_SERVERS; j++)
 	{
 		// Get clients which the user doesn't want to see
@@ -358,6 +375,13 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 
 		if(value != NULL)
 		{
+			// The file sets upstream servers, replace the configured ones
+			if(!cleared)
+			{
+				clear_conf_array(conf_item);
+				cleared = true;
+			}
+
 			// Add string to our JSON array
 			cJSON *item = cJSON_CreateString(value);
 			cJSON_AddItemToArray(conf_item->v.json, item);
