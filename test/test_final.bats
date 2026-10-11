@@ -136,6 +136,38 @@ load 'bats_helper.bash'
   assert_success
 }
 
+@test "A client's first group lookup leaves the DNS cache alone, a group change resets it" {
+  # Without regex filters, a new client's groups are looked up on its first
+  # query rather than when the client is created. The regex entries are
+  # disabled for this test and enabled again before the checks below
+  ids="$(./pihole-FTL sqlite3 /etc/pihole/gravity.db "SELECT group_concat(id) FROM domainlist WHERE type IN (2,3) AND enabled = 1;")"
+  [[ -n "${ids}" ]]
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "UPDATE domainlist SET enabled = 0 WHERE id IN (${ids});"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Compiled 0 allow and 0 deny regex' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  first="$(dig +short +tries=1 +time=2 -b 127.0.0.31 denied.ftl @127.0.0.1)"
+  # The MAC puts the client into group 4, which holds no lists
+  second="$(dig +short +tries=1 +time=2 -b 127.0.0.31 +ednsopt=65001:aabbccddeeff denied.ftl @127.0.0.1)"
+  resets="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Resetting per-client DNS cache for client ID' || true)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "UPDATE domainlist SET enabled = 1 WHERE id IN (${ids});"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  printf "blocked: %s, first: %s, second: %s, resets: %s\n" "${blocked}" "${first}" "${second}" "${resets}"
+  [[ -n "${blocked}" && "${blocked}" != "192.168.1.3" ]]
+  [[ "${first}" == "${blocked}" ]]
+  [[ "${second}" == "192.168.1.3" ]]
+  [[ "${resets}" == "1" ]]
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
@@ -283,6 +315,52 @@ load 'bats_helper.bash'
   assert_line --partial --index 0 "Shutting down (exit code"
   assert_line --partial --index 1 "Terminated by"
   assert_line --partial --index 2 "FTL terminated after"
+}
+
+@test "Queries older than database.maxDBdays are deleted in the first nightly window after the start" {
+  # Start FTL at 03:50 local time, after the random cleaning minute (03:10 to
+  # 03:49), with 25000 queries older than 91 days in the database. They are
+  # deleted 10000 at a time
+  read -r hour minute <<< "$(date -u '+%H %M')"
+  off=$(( (230 - 10#${hour} * 60 - 10#${minute} + 1440) % 1440 ))
+  tz=$(printf 'TST-%02d:%02d' $((off / 60)) $((off % 60)))
+  run bash -c "TZ=${tz} date +%H"
+  assert_output "03"
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<25000) INSERT INTO query_storage (id,timestamp,type,status,domain,client) SELECT -100-x,$((now-100*86400))+x,1,2,0,0 FROM c;\""
+  assert_success
+
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "su pihole -s /bin/sh -c 'TZ=${tz} /home/pihole/pihole-FTL'"
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' MB, deleted ' /var/log/pihole/FTL.log 60 $logsize_restart"
+  logged=$status
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.maxdbdays.log
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  batches=$(grep -c "Deleted [0-9]* queries with timestamp" /tmp/FTL.maxdbdays.log || true)
+  total=$(grep -o " MB, deleted [0-9]* of" /tmp/FTL.maxdbdays.log | head -n 1 || true)
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT COUNT(*) FROM query_storage WHERE id <= -100;"'
+  remaining=${lines[0]}
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id <= -100;"
+  printf "batches: %s, logged: %s, left: %s\n" "${batches}" "${total}" "${remaining}"
+  assert_equal "${logged}" "0"
+  assert_equal "${remaining}" "0"
+  assert_equal "${total}" " MB, deleted 25000 of"
+  [[ ${batches} -ge 3 ]]
+
+  # Its part of the log up to the end of the deletion
+  run bash -c 'grep "WARNING:" /tmp/FTL.maxdbdays.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.maxdbdays.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.maxdbdays.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
 }
 
 @test "A gravity database swapped in right after a restart is loaded (#3162)" {
