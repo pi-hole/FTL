@@ -113,6 +113,8 @@ void interrupt_memdb(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
 void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp);
+bool delete_old_queries_batch(sqlite3 *db, const double until, int64_t *deleted);
+void log_deleted_old_queries(const int64_t deleted, const bool complete);
 bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
 bool delete_recent_queries_from_db(const double mintime);
