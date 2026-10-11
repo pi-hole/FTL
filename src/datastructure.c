@@ -441,6 +441,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
 	client->flags.found_group = false;
+	client->flags.groups_looked_up = false;
 	client->groupspos = 0u;
 	client->firstSeen = now;
 	// Interface is not yet known

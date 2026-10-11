@@ -168,6 +168,38 @@ load 'bats_helper.bash'
   assert_success
 }
 
+@test "A client's first group lookup leaves the DNS cache alone, a group change resets it" {
+  # Without regex filters, a new client's groups are looked up on its first
+  # query rather than when the client is created. The regex entries are
+  # disabled for this test and enabled again before the checks below
+  ids="$(./pihole-FTL sqlite3 /etc/pihole/gravity.db "SELECT group_concat(id) FROM domainlist WHERE type IN (2,3) AND enabled = 1;")"
+  [[ -n "${ids}" ]]
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "UPDATE domainlist SET enabled = 0 WHERE id IN (${ids});"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'Compiled 0 allow and 0 deny regex' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  first="$(dig +short +tries=1 +time=2 -b 127.0.0.31 denied.ftl @127.0.0.1)"
+  # The MAC puts the client into group 4, which holds no lists
+  second="$(dig +short +tries=1 +time=2 -b 127.0.0.31 +ednsopt=65001:aabbccddeeff denied.ftl @127.0.0.1)"
+  resets="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Resetting per-client DNS cache for client ID' || true)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "UPDATE domainlist SET enabled = 1 WHERE id IN (${ids});"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  printf "blocked: %s, first: %s, second: %s, resets: %s\n" "${blocked}" "${first}" "${second}" "${resets}"
+  [[ -n "${blocked}" && "${blocked}" != "192.168.1.3" ]]
+  [[ "${first}" == "${blocked}" ]]
+  [[ "${second}" == "192.168.1.3" ]]
+  [[ "${resets}" == "1" ]]
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
