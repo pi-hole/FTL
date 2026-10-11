@@ -208,6 +208,31 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				return false;
 			}
 		}
+
+		// Every alias and the target have to be valid domains. As in dnsmasq,
+		// spaces around the commas are ignored, and the last of at least
+		// three elements is the TTL if it is a number
+		str = strdup(item->valuestring);
+		tmp = str;
+		for(unsigned int k = 0; (s = strsep(&tmp, ",")) != NULL; k++)
+		{
+			while(*s == ' ')
+				s++;
+			size_t slen = strlen(s);
+			while(slen > 0 && s[slen - 1] == ' ')
+				s[--slen] = '\0';
+
+			if(k == j - 1 && j > 2 && slen > 0 && strspn(s, "0123456789") == slen)
+				break;
+
+			if(!valid_domain(s, slen, false))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid domain (\"%s\")", key, i, s);
+				free(str);
+				return false;
+			}
+		}
+		free(str);
 	}
 
 	return true;
