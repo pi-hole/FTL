@@ -555,12 +555,16 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Remove query from queries table (temp), we can release the lock for this
 	// action to prevent blocking the DNS service too long. The processed
 	// queries are already shifted out above, so a runGC() from a log flush
-	// in this window cannot process them again
-	if(!flush)
+	// in this window cannot process them again. A flush removes every row,
+	// a normal run keeps those the export to disk has not copied yet
+	if(flush)
+		delete_old_queries_from_db(true, mintime);
+	else
+	{
 		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
+		delete_exported_queries_from_memdb(mintime);
 		lock_shm();
+	}
 
 	// Recycle old clients and domains
 	recycle();

@@ -117,6 +117,7 @@ bool delete_old_queries_batch(sqlite3 *db, const double until, int64_t *deleted)
 void log_deleted_old_queries(const int64_t deleted, const bool complete);
 bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
+bool delete_exported_queries_from_memdb(const double mintime);
 bool delete_recent_queries_from_db(const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
