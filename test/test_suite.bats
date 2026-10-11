@@ -1836,6 +1836,18 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"al!as.example,target.example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("al!as.example")'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("target example")'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target.example,300\",\"alias2.example,ta*rget.example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[1]: invalid domain ("ta*rget.example")'
+  assert_failure 3
+
   # No dot follows the last label, but its length is capped just the same
   long_label="$(printf 'a%.0s' {1..64})"
   run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
