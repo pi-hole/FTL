@@ -201,12 +201,14 @@ setup_file() {
   assert_output "OK"
 }
 
-@test "dotdoh-server: DoQ closes the connection on a non-zero Message ID or a runt query" {
+@test "dotdoh-server: DoQ closes the connection on a non-zero Message ID, a runt query or QR set" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # RFC 9250 Sec. 4.3.3: DOQ_PROTOCOL_ERROR (0x2)
   run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 msgid "$CLIENT" close:2
   assert_output "OK"
   run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 short "$CLIENT" close:2
+  assert_output "OK"
+  run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 qr "$CLIENT" close:2
   assert_output "OK"
 }
 
@@ -332,6 +334,13 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a DoT message with the QR bit set is answered FORMERR" {
+  local ca
+  ca="$(pwd)/test/test_ca.crt"
+  run python3 test/dotdoh_query.py dotqr 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$ca"
+  assert_output "RCODE=1"
+}
+
 @test "dotdoh-server: DoH POST with an empty body is rejected (400)" {
   local ca
   ca="$(pwd)/test/test_ca.crt"
@@ -360,18 +369,27 @@ setup_file() {
   assert_output "405"
 }
 
-@test "dotdoh-server: a DoH message with the QR bit set is rejected at once" {
+@test "dotdoh-server: a DoH message with the QR bit set or no header is rejected at once (400)" {
   # dnsmasq never answers a message with QR set, so it is not handed over and
   # the handler does not wait for an answer that cannot come
-  local ca q
+  local ca q short http
   ca="$(pwd)/test/test_ca.crt"
   q="${BATS_FILE_TMPDIR}/doh_qr.bin"
+  short="${BATS_FILE_TMPDIR}/doh_short.bin"
   python3 test/dotdoh_query.py emitqr "$DOMAIN" "$q"
-  run curl -s -o /dev/null -w '%{http_code}' --max-time 3 --cacert "$ca" \
-           --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
-           -H 'content-type: application/dns-message' --data-binary "@$q" \
-           "https://pi.hole/dns-query"
-  assert_output "502"
+  head -c 4 "$q" > "$short"
+  for http in --http1.1 --http2; do
+    run curl -s -o /dev/null -w '%{http_code}' --max-time 3 --cacert "$ca" "$http" \
+             --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+             -H 'content-type: application/dns-message' --data-binary "@$q" \
+             "https://pi.hole/dns-query"
+    assert_output "400"
+    run curl -s -o /dev/null -w '%{http_code}' --max-time 3 --cacert "$ca" "$http" \
+             --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+             -H 'content-type: application/dns-message' --data-binary "@$short" \
+             "https://pi.hole/dns-query"
+    assert_output "400"
+  done
 }
 
 @test "dotdoh-server: inbound queries are attributed to the real downstream client" {

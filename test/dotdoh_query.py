@@ -17,6 +17,8 @@
 #   check <infile> <expected-ip>                  validate a DNS answer file
 #   dot   <host> <port> <domain> <src> <ca> <ip>  full DoT exchange + validate
 #   emitqr <domain> <outfile>                     like emit, but with QR set
+#   dotqr <host> <port> <domain> <src> <ca>       DoT query with QR set, print
+#                                                 the RCODE of the reply
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
@@ -197,8 +199,9 @@ def _dot_ctx(cafile):
     return ctx
 
 
-def dot_exchange(host, port, qname, source, cafile, qtype=1):
-    """Send qname over DoT (TLS + 2-byte length prefix) and return the answer."""
+def dot_exchange(host, port, qname, source, cafile, qtype=1, query=None):
+    """Send qname (or the raw query) over DoT (TLS + 2-byte length prefix) and
+    return the answer."""
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     ctx = _dot_ctx(cafile)
     raw = socket.socket(family, socket.SOCK_STREAM)
@@ -210,7 +213,8 @@ def dot_exchange(host, port, qname, source, cafile, qtype=1):
     # though we dial the loopback IP.
     conn = ctx.wrap_socket(raw, server_hostname="pi.hole")
     try:
-        query = build_query(qname, qtype)
+        if query is None:
+            query = build_query(qname, qtype)
         conn.sendall(struct.pack("!H", len(query)) + query)
         hdr = recvall(conn, 2)
         if hdr is None:
@@ -509,7 +513,7 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotmulti|dotgarbage|"
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
                  "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn> ...")
     cmd = sys.argv[1]
 
@@ -548,6 +552,12 @@ def main():
         answer = dot_exchange(host, int(port), domain, source, cafile)
         validate(answer, expected_ip)
         print("OK")
+    elif cmd == "dotqr":
+        _, _, host, port, domain, source, cafile = sys.argv[:7]
+        q = bytearray(build_query(domain))
+        q[2] |= 0x80
+        answer = dot_exchange(host, int(port), domain, source, cafile, query=bytes(q))
+        print("RCODE=%d" % (answer[3] & 0x0F))
     elif cmd == "dotnodata":
         _, _, host, port, domain, source, cafile = sys.argv[:7]
         answer = dot_exchange(host, int(port), domain, source, cafile, qtype=28)
@@ -628,6 +638,8 @@ def main():
             query = b"\x12\x34" + query[2:]   # Sec. 4.2.1: the ID MUST be 0
         elif kind == "short":
             query = query[:4]                  # shorter than a DNS header
+        elif kind == "qr":
+            query = query[:2] + bytes([query[2] | 0x80]) + query[3:]   # not a query
         elif kind == "unattributable":
             # An OPT RR that is not the last record cannot carry the client option
             query = query[:10] + struct.pack("!H", 2) + query[12:]

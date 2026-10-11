@@ -901,6 +901,15 @@ static int drive_read(struct doq_stream *s)
 	                                          s->conn->client,
 	                                          s->conn->dest[0] != '\0' ? s->conn->dest : NULL,
 	                                          s->wbuf, WBUF_SZ);
+	if(flen == DOTDOH_MALFORMED)
+	{
+		// RFC 9250 Sec. 4.3.3: an unexpected message (QR set) is a protocol error
+		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s is not a query, closing the connection",
+		          s->conn->client);
+		doq_close_conn(s->conn->ssl, DOQ_PROTOCOL_ERROR);
+		s->conn->dead = true;
+		return -1;
+	}
 	if(flen < 0)
 	{
 		// Not forwarded unattributed (see dotdoh_prepare_query()), so this is our

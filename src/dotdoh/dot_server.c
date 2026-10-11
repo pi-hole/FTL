@@ -321,10 +321,15 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 	return c;
 }
 
-// Build a SERVFAIL reply to the query `q` in `out`. The question is echoed when
-// it parses, else the reply carries an empty question section. Returns its
+// RFC 1035 Sec. 4.1.1 RCODEs
+#define DOT_RCODE_FORMERR 1
+#define DOT_RCODE_SERVFAIL 2
+
+// Build a reply with `rcode` to the query `q` in `out`. The question is echoed
+// when it parses, else the reply carries an empty question section. Returns its
 // length, or -1 if it does not fit.
-static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t outcap)
+static ssize_t dot_error_reply(const uint8_t *q, size_t qlen, const uint8_t rcode,
+                               uint8_t *out, size_t outcap)
 {
 	if(qlen < DNS_HEADER_LEN || outcap < DNS_HEADER_LEN)
 		return -1;
@@ -356,7 +361,7 @@ static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t 
 	// RFC 1035 Sec. 4.1.1: OPCODE is copied into the response; RFC 4035 Sec. 3.2.2
 	// does the same for CD. AA and TC are ours to clear.
 	out[2] = 0x80 | (q[2] & 0x79);          // QR=1, OPCODE and RD from the query
-	out[3] = 0x80 | (q[3] & 0x10) | 0x02;   // RA=1, CD from the query, RCODE=SERVFAIL
+	out[3] = 0x80 | (q[3] & 0x10) | rcode;  // RA=1, CD from the query
 	out[4] = 0; out[5] = have_q ? 1 : 0;
 	out[6] = 0; out[7] = 0;         // ANCOUNT
 	out[8] = 0; out[9] = 0;         // NSCOUNT
@@ -364,17 +369,17 @@ static ssize_t dot_servfail(const uint8_t *q, size_t qlen, uint8_t *out, size_t 
 	return (ssize_t)len;
 }
 
-// Answer the query kept in c->abuf with SERVFAIL and arm the write, leaving the
+// Answer the query kept in c->abuf with `rcode` and arm the write, leaving the
 // connection up. Returns 1 to keep driving, or -1 if the reply cannot be built.
-static int conn_answer_servfail(struct dot_conn *c)
+static int conn_answer_error(struct dot_conn *c, const uint8_t rcode)
 {
 	c->upfd = -1; // clear the sentinel dotdoh_loopback_take() left behind
-	// Sample the query's EDNS state before dot_servfail() overwrites the buffer
+	// Sample the query's EDNS state before dot_error_reply() overwrites the buffer
 	// it sits in.
 	bool query_do = false;
 	const bool query_edns = edns_query_opt(c->abuf, c->qsave, &query_do);
 
-	ssize_t slen = dot_servfail(c->abuf, c->qsave, c->abuf, ABUF_SZ);
+	ssize_t slen = dot_error_reply(c->abuf, c->qsave, rcode, c->abuf, ABUF_SZ);
 	if(slen < 0)
 		return -1;
 	// RFC 6891 Sec. 6.1.1: answer an EDNS query with an OPT, whether or not it
@@ -462,7 +467,7 @@ static int conn_retry_upstream(struct dot_conn *c)
 	c->alen = 0; c->agot = 0; c->up_lengot = 0;
 	const int rs = conn_start_resolve(c);   // sets DS_UP_WRITE or DS_UP_CONNECT
 	if(rs == -2)
-		return conn_answer_servfail(c); // the slot went elsewhere while we retried
+		return conn_answer_error(c, DOT_RCODE_SERVFAIL); // the slot went elsewhere while we retried
 	if(rs != 0)
 		return -1;
 	return c->st == DS_UP_CONNECT ? 0 : 1;
@@ -515,14 +520,18 @@ static int drive_read(struct dot_conn *c)
 	                                          c->wbuf, WBUF_SZ);
 	if(flen < 0)
 	{
-		// Attribution failed - an OPT we cannot safely rewrite, or no room for the
-		// client option. That is this one query's problem, not the session's.
-		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s could not be attributed, answering SERVFAIL",
-		          c->client);
+		// Not a query (shorter than a header, or QR set), or attribution failed -
+		// an OPT we cannot safely rewrite, or no room for the client option. That
+		// is this one query's problem, not the session's. A message too short to
+		// carry an ID cannot be answered, so that one closes the connection.
+		const bool malformed = flen == DOTDOH_MALFORMED;
+		log_debug(DEBUG_TLS, "dotdoh: DoT query from %s %s, answering %s", c->client,
+		          malformed ? "is not a query" : "could not be attributed",
+		          malformed ? "FORMERR" : "SERVFAIL");
 		const size_t consumed_bad = off + (size_t)qlen;
 		memmove(c->rbuf, c->rbuf + consumed_bad, c->have - consumed_bad);
 		c->have -= consumed_bad;
-		return conn_answer_servfail(c);
+		return conn_answer_error(c, malformed ? DOT_RCODE_FORMERR : DOT_RCODE_SERVFAIL);
 	}
 	c->wlen = (size_t)flen;
 	c->woff = 0;
@@ -542,7 +551,7 @@ static int drive_read(struct dot_conn *c)
 		// At the concurrency limit. Answer SERVFAIL so the client backs off and
 		// keeps its session; tearing the connection down would cost it a fresh
 		// TLS handshake exactly when we are already overloaded.
-		return conn_answer_servfail(c);
+		return conn_answer_error(c, DOT_RCODE_SERVFAIL);
 	}
 	if(rs != 0)
 		return -1;

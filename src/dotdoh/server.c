@@ -95,11 +95,11 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
                              const char *client, const char *dest,
                              uint8_t *framed, size_t framed_cap)
 {
-	if(qlen < DNS_HEADER_LEN || framed_cap < 2 || qlen > framed_cap - 2)
-		return -1;
 	// dnsmasq silently ignores a TCP message with QR set, so the handoff would
 	// only wait for an answer that never comes
-	if((query[2] & 0x80) != 0)
+	if(qlen < DNS_HEADER_LEN || (query[2] & 0x80) != 0)
+		return DOTDOH_MALFORMED;
+	if(framed_cap < 2 || qlen > framed_cap - 2)
 		return -1;
 	// Inject in place after the 2-byte length prefix, so no separate scratch or
 	// self-overlapping copy is needed to frame the result.
@@ -438,7 +438,7 @@ static int loopback_connect(void)
 // handler thread. `client` (the real downstream client) is carried into dnsmasq
 // via a private EDNS option so the query is attributed to it rather than to
 // loopback (see dotdoh_inject_client and FTL_parse_pseudoheaders). Returns the
-// answer length or -1.
+// answer length, DOTDOH_MALFORMED or -1.
 ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz)
@@ -451,7 +451,7 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 	static _Thread_local uint8_t framed[2 + DNS_MSG_MAX];
 	const ssize_t flen = dotdoh_prepare_query(query, qlen, client, dest, framed, sizeof(framed));
 	if(flen < 0)
-		return -1;
+		return flen;
 
 	// Borrow a loopback connection for the duration of this query, exactly as the
 	// DoT and DoQ reactors do, so all three share one accounted pool of dnsmasq

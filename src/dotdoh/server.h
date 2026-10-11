@@ -36,8 +36,10 @@ size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
 // into framed[2..], append the private client/dest attribution options, and
 // write the 2-byte DoT length prefix into framed[0..1]. `framed` must hold at
 // least 2 + DNS_MSG_MAX bytes. Returns the total framed length (2 + attributed
-// query) or -1 on an empty query or insufficient room. The single place the DoT
-// reactor and the DoH handler build the query they hand to dnsmasq.
+// query), DOTDOH_MALFORMED for a message that is not a query (shorter than a
+// header, or QR set), or -1 when it cannot be attributed. The single place the
+// DoT reactor and the DoH handler build the query they hand to dnsmasq.
+#define DOTDOH_MALFORMED (-2)
 ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
                              const char *client, const char *dest,
                              uint8_t *framed, size_t framed_cap);
@@ -81,8 +83,9 @@ uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len) __attribute__((pure)
 // the loopback handoff, injecting the private client option so it is attributed
 // to the real client. `dest` is the local address the client connected to (or
 // NULL), conveyed so pi.hole/<hostname> answers use it instead of the loopback
-// forward address. Returns the answer length in `answer` (capacity `answer_sz`)
-// or -1. Shared by the DoH handler and the DoT listener.
+// forward address. Returns the answer length in `answer` (capacity `answer_sz`),
+// DOTDOH_MALFORMED for a message that is not a query, or -1. Shared by the DoH
+// handler and the DoT listener.
 ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
