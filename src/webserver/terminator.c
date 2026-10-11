@@ -3588,6 +3588,9 @@ static struct h3_conn *h3_conn_new(SSL *cssl, unsigned listener)
 	}
 
 	SSL_set_blocking_mode(cssl, 0);
+	// Inherited by the streams: reads and writes do not tick the QUIC engine,
+	// only the SSL_handle_events() calls in quic_accept_loop() do
+	SSL_set_event_handling_mode(cssl, SSL_VALUE_EVENT_HANDLING_MODE_EXPLICIT);
 	// We accept and drive streams by hand; do not auto-create a default stream.
 	SSL_set_default_stream_mode(cssl, SSL_DEFAULT_STREAM_MODE_NONE);
 	SSL_set_incoming_stream_policy(cssl, SSL_INCOMING_STREAM_POLICY_ACCEPT, 0);
@@ -3702,6 +3705,48 @@ static void h3_conn_reap_streams(struct h3_conn *c)
 			SSL_free(s->ssl);
 		free(s);
 	}
+}
+
+// Whether the event loop reads this stream: one of the client's that has not
+// ended, unless its backend has a large unflushed request backlog (backpressure:
+// QUIC flow control then throttles the client)
+static bool __attribute__((pure)) h3_stream_wants_read(const struct h3_stream *s)
+{
+	if(s->uni_local || s->read_done)
+		return false;
+	return s->be_fd < 0 || (s->be.req_out_len - s->be.req_out_off) < H3_REQ_HIGH_WATER;
+}
+
+// Whether a stream has input the loop has not read: data, a FIN or a reset.
+// Asks OpenSSL without ticking the engine.
+static bool h3_stream_input_pending(SSL *ssl)
+{
+	static const struct timeval zero = { 0, 0 };
+	SSL_POLL_ITEM item = { .desc = SSL_as_poll_descriptor(ssl),
+	                       .events = SSL_POLL_EVENT_R | SSL_POLL_EVENT_ER };
+	size_t ready = 0;
+	return SSL_poll(&item, 1, sizeof(item), &zero, SSL_POLL_FLAG_NO_HANDLE_EVENTS, &ready) == 1 &&
+	       ready > 0;
+}
+
+// Whether the last tick left input the loop has not handled yet: a connection or
+// stream to accept, or input on a stream it reads. poll() must not sleep then.
+static bool h3_input_pending(SSL *const *listeners, unsigned n, struct h3_conn *conns)
+{
+	for(unsigned i = 0; i < n; i++)
+		if(SSL_get_accept_connection_queue_len(listeners[i]) > 0)
+			return true;
+	for(struct h3_conn *c = conns; c != NULL; c = c->next)
+	{
+		if(c->dead)
+			continue;
+		if(SSL_get_accept_stream_queue_len(c->ssl) > 0)
+			return true;
+		for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
+			if(h3_stream_wants_read(s) && h3_stream_input_pending(s->ssl))
+				return true;
+	}
+	return false;
 }
 
 // Compute how long poll() may sleep before an OpenSSL QUIC timer needs service,
@@ -3950,7 +3995,8 @@ static void *quic_accept_loop(void *arg)
 				break;
 		}
 
-		const int pr = poll(pfds, nfds, h3_event_timeout_ms(listeners, nl, conns));
+		const int pr = poll(pfds, nfds, h3_input_pending(listeners, nl, conns) ? 0 :
+		                                h3_event_timeout_ms(listeners, nl, conns));
 		if(pr < 0)
 		{
 			if(errno == EINTR)
@@ -3958,16 +4004,19 @@ static void *quic_accept_loop(void *arg)
 			break;
 		}
 
-		// Let OpenSSL process incoming datagrams and fire timers.
+		// Let OpenSSL process incoming datagrams and fire timers. Every connection
+		// runs on the engine of the listener that accepted it, so one call per
+		// listener services all of them.
 		for(unsigned l = 0; l < nl; l++)
 			SSL_handle_events(listeners[l]);
-		for(struct h3_conn *c = conns; c != NULL; c = c->next)
-			SSL_handle_events(c->ssl);
 
-		// Accept any freshly handshaked connections, draining each listener in turn
+		// Accept new connections, draining each listener in turn.
+		// SSL_accept_connection() ticks the engine when it finds none, so check
+		// the queue first.
 		for(unsigned l = 0; l < nl; )
 		{
-			SSL *cs = SSL_accept_connection(listeners[l], SSL_ACCEPT_CONNECTION_NO_BLOCK);
+			SSL *cs = SSL_get_accept_connection_queue_len(listeners[l]) > 0 ?
+			          SSL_accept_connection(listeners[l], SSL_ACCEPT_CONNECTION_NO_BLOCK) : NULL;
 			if(cs == NULL)
 			{
 				l++;
@@ -4041,13 +4090,7 @@ static void *quic_accept_loop(void *arg)
 			h3_accept_streams(c);
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
 			{
-				if(s->uni_local || s->read_done)
-					continue;
-				// Backpressure: stop reading the request stream while its backend
-				// has a large unflushed request backlog, letting QUIC flow control
-				// throttle the client.
-				if(s->be_fd >= 0 &&
-				   (s->be.req_out_len - s->be.req_out_off) >= H3_REQ_HIGH_WATER)
+				if(!h3_stream_wants_read(s))
 					continue;
 				if(h3_stream_pump_read(s) < 0)
 				{
@@ -4062,6 +4105,10 @@ static void *quic_accept_loop(void *arg)
 			else
 				h3_conn_reap_streams(c); // reclaim finished request streams
 		}
+
+		// Send what the streams queued above
+		for(unsigned l = 0; l < nl; l++)
+			SSL_handle_events(listeners[l]);
 
 		// Reap dead or closed connections.
 		struct h3_conn **pp = &conns;
