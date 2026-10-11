@@ -393,7 +393,7 @@ static void check_load(void)
 			return;
 
 	// Get total number of CPU cores
-	const int nprocs = get_nprocs_conf();
+	const int nprocs = get_present_cpus();
 
 	// Warn if 15 minute average of load exceeds number of available
 	// processors
