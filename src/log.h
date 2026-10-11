@@ -97,8 +97,9 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 
 // How many messages do we keep in memory (FIFO message buffer)?
 // This number multiplied by MAX_MSG_FIFO (see above) gives the total buffer size
-// Defaults to 512 [512 * 256 above = use 128 KB of memory for the log]
-#define LOG_SIZE 515u
+// [512 * 260 = 130 KB per log]. A power of two, so the ring continues seamlessly
+// when the 32-bit message counter wraps
+#define LOG_SIZE 512u
 
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
 

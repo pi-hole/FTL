@@ -1357,23 +1357,65 @@ static void copy_pseudo_header(char *dst, size_t cap, const char *v, size_t vlen
 	dst[vlen] = '\0';
 }
 
+// Append n bytes to out (capacity cap, length *len). Returns false if they do not fit.
+static bool head_append(char *out, size_t cap, size_t *len, const char *data, size_t n)
+{
+	if(*len + n >= cap)
+		return false;
+	memcpy(out + *len, data, n);
+	*len += n;
+	return true;
+}
+
 // Format the plain HTTP/1.1 request head (request line + reconstructed headers)
 // into out. Connection: close is added so responses are cleanly delimited.
 // extra_headers, if non-NULL, is inserted verbatim (e.g. a framing header such
-// as Transfer-Encoding). Returns the snprintf() result: the would-be length,
-// negative on error, >= outcap if truncated.
+// as Transfer-Encoding). The cookie lines of reqhdr become a single line joined
+// with "; ", as HTTP/1.1 allows only one (RFC 9113 8.2.3, RFC 9114 4.2.1).
+// Returns the length, or -1 if the head does not fit.
 static int be_format_request_head(char *out, size_t outcap,
                                          const char *method, const char *path,
                                          const char *authority, const char *reqhdr,
                                          size_t reqhdr_len, const char *extra_headers)
 {
-	return snprintf(out, outcap,
-	                "%s %s HTTP/1.1\r\nHost: %s\r\n%.*s%sConnection: close\r\n\r\n",
-	                method[0] ? method : "GET",
-	                path[0] ? path : "/",
-	                authority[0] ? authority : "pi.hole",
-	                (int)reqhdr_len, reqhdr,
-	                extra_headers ? extra_headers : "");
+	const int n = snprintf(out, outcap, "%s %s HTTP/1.1\r\nHost: %s\r\n",
+	                       method[0] ? method : "GET",
+	                       path[0] ? path : "/",
+	                       authority[0] ? authority : "pi.hole");
+	if(n < 0 || (size_t)n >= outcap)
+		return -1;
+	size_t len = (size_t)n;
+
+	// reqhdr holds "name: value\r\n" lines: copy all other lines on the first
+	// pass, the non-empty cookie values on the second
+	bool ok = true, cookie = false;
+	for(int pass = 0; pass < 2 && ok; pass++)
+	{
+		for(const char *line = reqhdr, *end = reqhdr + reqhdr_len; line < end && ok; )
+		{
+			const char *eol = memchr(line, '\n', (size_t)(end - line));
+			const char *next = eol != NULL ? eol + 1 : end;
+			const size_t ll = (size_t)(next - line);
+			const bool is_cookie = ll >= 10 && strncasecmp(line, "cookie: ", 8) == 0;
+			if(pass == 0 && !is_cookie)
+				ok = head_append(out, outcap, &len, line, ll);
+			else if(pass == 1 && is_cookie && ll > 10)
+			{
+				ok = head_append(out, outcap, &len, cookie ? "; " : "cookie: ", cookie ? 2 : 8) &&
+				     head_append(out, outcap, &len, line + 8, ll - 10);
+				cookie = true;
+			}
+			line = next;
+		}
+	}
+	if(!ok || (cookie && !head_append(out, outcap, &len, "\r\n", 2)))
+		return -1;
+
+	const int m = snprintf(out + len, outcap - len, "%sConnection: close\r\n\r\n",
+	                       extra_headers ? extra_headers : "");
+	if(m < 0 || (size_t)m >= outcap - len)
+		return -1;
+	return (int)(len + (size_t)m);
 }
 #endif /* HAVE_HTTP2 || HAVE_HTTP3 */
 
