@@ -200,18 +200,19 @@ void ls_dir(const char *path)
 			continue;
 		}
 
-		// Get owner's name
-		struct passwd *pwd;
-		char user[256];
-		if ((pwd = getpwuid(st.st_uid)) != NULL)
+		// Get owner's name. The reentrant lookups do not share state with
+		// getpwuid()/getgrgid(), which a crashed thread may have been in
+		struct passwd pwdbuf, *pwd = NULL;
+		char user[256], buf[1024];
+		if (getpwuid_r(st.st_uid, &pwdbuf, buf, sizeof(buf), &pwd) == 0 && pwd != NULL)
 			snprintf(user, sizeof(user), "%s", pwd->pw_name);
 		else
 			snprintf(user, sizeof(user), "%u", st.st_uid);
 
-		struct group *grp;
+		struct group grpbuf, *grp = NULL;
 		char usergroup[256];
 		// Get out group name
-		if ((grp = getgrgid(st.st_gid)) != NULL)
+		if (getgrgid_r(st.st_gid, &grpbuf, buf, sizeof(buf), &grp) == 0 && grp != NULL)
 			snprintf(usergroup, sizeof(usergroup), "%s:%s", user, grp->gr_name);
 		else
 			snprintf(usergroup, sizeof(usergroup), "%s:%u", user, st.st_gid);

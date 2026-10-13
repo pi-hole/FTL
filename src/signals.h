@@ -19,6 +19,7 @@
 #define SIGUSR32 (SIGRTMIN + 32)
 
 void handle_signals(void);
+void start_crash_watchdog(void);
 void handle_realtime_signals(void);
 void log_sigterm_info(void);
 pid_t main_pid(void);
