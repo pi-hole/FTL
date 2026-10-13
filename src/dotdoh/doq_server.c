@@ -59,9 +59,6 @@
 #include <sys/prctl.h>
 #include <time.h>
 
-// RFC 9250 Sec. 4.1.1: DoQ uses UDP port 853 by default - the same number DoT
-// uses on TCP, which does not collide.
-#define DOQ_PORT 853
 // ALPN token for DNS-over-QUIC (RFC 9250 Sec. 4.1). QUIC mandates ALPN, so a
 // client that does not offer it is rejected during the handshake.
 #define DOQ_ALPN_STR "doq"
@@ -138,7 +135,6 @@ struct doq_stream {
 	bool used;
 	struct doq_conn *conn;
 	SSL *ssl;                // OpenSSL QUIC child stream object
-	int64_t id;
 	uint64_t gen;            // tells successive streams in this slot apart
 	enum doq_state st;
 	int upfd;                // loopback resolve socket (-1 when none is open)
@@ -596,7 +592,6 @@ static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
 	s->used = true;
 	s->conn = c;
 	s->ssl = ssl;
-	s->id = (int64_t)SSL_get_stream_id(ssl);
 	s->gen = ++g_stream_gen;
 	s->st = DQ_READ;
 	s->deadline = doq_now() + DOQ_QUERY_TIMEOUT_S;

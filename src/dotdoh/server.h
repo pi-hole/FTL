@@ -103,6 +103,9 @@ void dotdoh_fd_close_inherited(int keep_fd);
 
 // Port the inbound DoT listener binds
 #define DOT_PORT 853
+// RFC 9250 Sec. 4.1.1: DoQ uses UDP port 853 by default - the same number DoT
+// uses on TCP, which does not collide.
+#define DOQ_PORT 853
 
 // FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener on port
 // 853. Runs only when dns.dot is enabled. Terminates TLS itself (DoT is not
