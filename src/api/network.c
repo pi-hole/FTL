@@ -234,7 +234,10 @@ static int api_network_devices_GET(struct ftl_conn *api)
 			// Possible error handling
 			if(sql_msg != NULL)
 			{
+				// item is not part of devices yet, so it has
+				// to be released on its own
 				cJSON_Delete(ips);
+				cJSON_Delete(item);
 				cJSON_Delete(devices);
 
 				networkTable_readIPsFinalize(ip_stmt);
@@ -354,12 +357,9 @@ int api_client_suggestions(struct ftl_conn *api)
 		return 0;
 	}
 
-	// Does the user request a custom number of addresses per device to be included?
+	// Does the user request a custom number of suggested clients?
 	unsigned int count = 50;
 	get_uint_var(api->request->query_string, "count", &count);
-
-	bool ipv4_only = true;
-	get_bool_var(api->request->query_string, "ipv4_only", &ipv4_only);
 
 	// Open pihole-FTL.db database file connection
 	sqlite3 *db = dbopen(true, false);

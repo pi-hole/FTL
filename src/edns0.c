@@ -391,10 +391,15 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 		GETSHORT(optlen, p);
 		offset += 4;
 
-		// Avoid buffer overflow due to an malicious packet
+		// Avoid buffer overflow due to an malicious packet. Every client
+		// allowed to query can send such a query, so only a malformed
+		// upstream reply is logged as a warning.
 		if(offset + optlen > rdlen)
 		{
-			log_warn("Found malicious EDNS payload (payload larger than advertised), skipping record.");
+			if(((const struct dns_header *)(const void *)msg)->hb3 & HB3_QR)
+				log_warn("Found malicious EDNS payload (payload larger than advertised), skipping record.");
+			else
+				log_debug(DEBUG_EDNS0, "Found malicious EDNS payload (payload larger than advertised), skipping record.");
 			break;
 		}
 

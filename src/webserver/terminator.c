@@ -28,6 +28,8 @@
 #include "config/config.h"
 // proxy_secret_valid(), PROXY_SECRET_LEN
 #include "config/validator.h"
+// webserver_acl_allows()
+#include "webserver/webserver.h"
 
 // Length of the secret authenticating PROXY v2 headers to the CivetWeb backend
 #define PROXY_TOKEN_LEN (PROXY_SECRET_LEN / 2u)
@@ -112,9 +114,6 @@ static void proxy_token_hex(const unsigned char tok[PROXY_TOKEN_LEN], char *out)
 
 // Bidirectional relay buffer size (per direction, per iteration).
 #define RELAY_BUF 16384u
-// Upper bound on the base64url "dns" value of a native DoH GET (ample for a real
-// query, which encodes to a few hundred bytes).
-#define DOH_GET_B64_MAX 8192
 // Socket send/receive timeout so a stuck peer cannot pin a handler thread.
 #define IO_TIMEOUT_SEC 30
 // Cap on concurrent handler threads so a connection flood on the public TLS port
@@ -283,6 +282,9 @@ static volatile bool quic_running = false;
 // the HTTP/3 ports reachable on the address that connection arrived on.
 static struct sockaddr_in6 quic_addrs[TERMINATOR_MAX_LISTENERS];
 static bool quic_v6only[TERMINATOR_MAX_LISTENERS];
+// The OpenSSL QUIC listener on each socket, created before the event loop
+// starts and freed by it
+static SSL *quic_listeners[TERMINATOR_MAX_LISTENERS];
 
 #ifdef HAVE_HTTP2
 // Build the Alt-Svc value for the TCP connection on fd: every HTTP/3 port whose
@@ -456,7 +458,7 @@ static int set_nonblocking(int fd)
 
 // Bind a TCP listener for the given address and port: dual-stack for a bare
 // port, IPv6-only for an explicit IPv6 literal. Returns the fd or -1.
-static int bind_listener(const char *addr, int port)
+static int bind_listener(const char *addr, int port, bool optional)
 {
 	// SOCK_CLOEXEC so the fd is not inherited across FTL's execvp() self-restart,
 	// where it would keep the port busy and make the new process fail to re-bind.
@@ -483,8 +485,12 @@ static int bind_listener(const char *addr, int port)
 	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: bind() to %s#%d failed: %s",
-		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		if(optional)
+			log_info("Terminator: optional TLS port %s#%d not available: %s",
+			         (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		else
+			log_err("Terminator: bind() to %s#%d failed: %s",
+			        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -796,6 +802,40 @@ static void sockaddr_numeric(const struct sockaddr_storage *ss, char *out, size_
 	}
 }
 
+// Check the real client against webserver.acl before serving it. A v4-mapped
+// peer is checked as IPv4, the form its PROXY header announces to the backend.
+// DoH follows dns.listeningMode instead: a client the ACL refuses is still let
+// through when DoH would serve it, and every other request it sends gets a 403
+// from begin_request_handler(), which sees the client through the PROXY header
+static bool client_acl_allows(const struct sockaddr_storage *peer, const char *proto)
+{
+	struct sockaddr_storage ss = *peer;
+	const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)peer;
+	if(peer->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+	{
+		struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
+		memset(&ss, 0, sizeof(ss));
+		s4->sin_family = AF_INET;
+		s4->sin_port = s6->sin6_port;
+		memcpy(&s4->sin_addr, s6->sin6_addr.s6_addr + 12, 4);
+	}
+	if(webserver_acl_allows(&ss))
+		return true;
+
+	char client[INET6_ADDRSTRLEN] = "";
+	sockaddr_numeric(peer, client, sizeof(client));
+	if(client[0] != '\0' && dotdoh_doh_enabled() && dotdoh_source_allowed(client))
+	{
+		log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is refused by webserver.acl, admitted for DoH only",
+		          proto, client);
+		return true;
+	}
+
+	log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is not allowed to connect (webserver.acl)",
+	          proto, client[0] != '\0' ? client : "(unknown)");
+	return false;
+}
+
 static int hexnib(int c)
 {
 	if(c >= '0' && c <= '9') return c - '0';
@@ -926,6 +966,18 @@ static int h1_parse_head(const char *buf, size_t len, struct h1_req *r)
 	return 0;
 }
 
+// Whether the request line in buf names the DoH endpoint, read without the
+// field limits of h1_parse_head()
+static bool h1_targets_doh(const char *buf, size_t len)
+{
+	const char *eol = memmem(buf, len, "\r\n", 2);
+	const char *sp = eol != NULL ? memchr(buf, ' ', (size_t)(eol - buf)) : NULL;
+	if(sp == NULL || eol - sp < 12)
+		return false;
+	return strncmp(sp + 1, "/dns-query", 10) == 0 &&
+	       (sp[11] == '?' || sp[11] == ' ');
+}
+
 // Send a status-only HTTP/1.1 error and close the connection (DoH errors are
 // terminal for the request; a client retries on a fresh connection).
 static void h1_doh_error(SSL *ssl, const char *status_line, const char *extra)
@@ -1027,8 +1079,11 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		}
 		const size_t head_len = (size_t)(eoh - buf) + 4;
 
+		// A head the DoH parser cannot hold (method of 8+ characters, target of
+		// 2048+ bytes) is only an error for DoH; anything else goes to CivetWeb
 		struct h1_req rq;
-		if(h1_parse_head(buf, head_len, &rq) != 0)
+		const bool parsed = h1_parse_head(buf, head_len, &rq) == 0;
+		if(!parsed && dotdoh_doh_enabled() && h1_targets_doh(buf, head_len))
 		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 
 		const bool is_post = strcmp(rq.method, "POST") == 0;
@@ -1052,7 +1107,8 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		// to CivetWeb from here on. A GET with a body is relayed rather than served
 		// so its body is consumed by CivetWeb and cannot desync the next keep-alive
 		// request.
-		if(!(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
+		if(!parsed ||
+		   !(dotdoh_doh_enabled() && path_is_doh(rq.path) && !rq.has_te &&
 		     ((is_get && rq.content_length <= 0) || is_post)))
 		{
 			const int be = connect_backend();
@@ -1128,6 +1184,8 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 
 		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 		                                           query, qlen, answer, sizeof(answer));
+		if(alen == DOTDOH_MALFORMED)
+		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 		if(alen <= 0)
 		{ h1_doh_error(ssl, "500 Internal Server Error", NULL); return; }
 
@@ -1427,23 +1485,65 @@ static void copy_pseudo_header(char *dst, size_t cap, const char *v, size_t vlen
 	dst[vlen] = '\0';
 }
 
+// Append n bytes to out (capacity cap, length *len). Returns false if they do not fit.
+static bool head_append(char *out, size_t cap, size_t *len, const char *data, size_t n)
+{
+	if(*len + n >= cap)
+		return false;
+	memcpy(out + *len, data, n);
+	*len += n;
+	return true;
+}
+
 // Format the plain HTTP/1.1 request head (request line + reconstructed headers)
 // into out. Connection: close is added so responses are cleanly delimited.
 // extra_headers, if non-NULL, is inserted verbatim (e.g. a framing header such
-// as Transfer-Encoding). Returns the snprintf() result: the would-be length,
-// negative on error, >= outcap if truncated.
+// as Transfer-Encoding). The cookie lines of reqhdr become a single line joined
+// with "; ", as HTTP/1.1 allows only one (RFC 9113 8.2.3, RFC 9114 4.2.1).
+// Returns the length, or -1 if the head does not fit.
 static int be_format_request_head(char *out, size_t outcap,
                                          const char *method, const char *path,
                                          const char *authority, const char *reqhdr,
                                          size_t reqhdr_len, const char *extra_headers)
 {
-	return snprintf(out, outcap,
-	                "%s %s HTTP/1.1\r\nHost: %s\r\n%.*s%sConnection: close\r\n\r\n",
-	                method[0] ? method : "GET",
-	                path[0] ? path : "/",
-	                authority[0] ? authority : "pi.hole",
-	                (int)reqhdr_len, reqhdr,
-	                extra_headers ? extra_headers : "");
+	const int n = snprintf(out, outcap, "%s %s HTTP/1.1\r\nHost: %s\r\n",
+	                       method[0] ? method : "GET",
+	                       path[0] ? path : "/",
+	                       authority[0] ? authority : "pi.hole");
+	if(n < 0 || (size_t)n >= outcap)
+		return -1;
+	size_t len = (size_t)n;
+
+	// reqhdr holds "name: value\r\n" lines: copy all other lines on the first
+	// pass, the non-empty cookie values on the second
+	bool ok = true, cookie = false;
+	for(int pass = 0; pass < 2 && ok; pass++)
+	{
+		for(const char *line = reqhdr, *end = reqhdr + reqhdr_len; line < end && ok; )
+		{
+			const char *eol = memchr(line, '\n', (size_t)(end - line));
+			const char *next = eol != NULL ? eol + 1 : end;
+			const size_t ll = (size_t)(next - line);
+			const bool is_cookie = ll >= 10 && strncasecmp(line, "cookie: ", 8) == 0;
+			if(pass == 0 && !is_cookie)
+				ok = head_append(out, outcap, &len, line, ll);
+			else if(pass == 1 && is_cookie && ll > 10)
+			{
+				ok = head_append(out, outcap, &len, cookie ? "; " : "cookie: ", cookie ? 2 : 8) &&
+				     head_append(out, outcap, &len, line + 8, ll - 10);
+				cookie = true;
+			}
+			line = next;
+		}
+	}
+	if(!ok || (cookie && !head_append(out, outcap, &len, "\r\n", 2)))
+		return -1;
+
+	const int m = snprintf(out + len, outcap - len, "%sConnection: close\r\n\r\n",
+	                       extra_headers ? extra_headers : "");
+	if(m < 0 || (size_t)m >= outcap - len)
+		return -1;
+	return (int)(len + (size_t)m);
 }
 #endif /* HAVE_HTTP2 || HAVE_HTTP3 */
 
@@ -1794,6 +1894,8 @@ static void h2_doh_serve(struct h2_stream *s)
 
 	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 	                                           query, qlen, answer, sizeof(answer));
+	if(alen == DOTDOH_MALFORMED)
+	{ h2_gateway_error(s, "400"); return; }
 	if(alen <= 0)
 	{ h2_gateway_error(s, "500"); return; }
 
@@ -3532,6 +3634,9 @@ static struct h3_conn *h3_conn_new(SSL *cssl, unsigned listener)
 	}
 
 	SSL_set_blocking_mode(cssl, 0);
+	// Inherited by the streams: reads and writes do not tick the QUIC engine,
+	// only the SSL_handle_events() calls in quic_accept_loop() do
+	SSL_set_event_handling_mode(cssl, SSL_VALUE_EVENT_HANDLING_MODE_EXPLICIT);
 	// We accept and drive streams by hand; do not auto-create a default stream.
 	SSL_set_default_stream_mode(cssl, SSL_DEFAULT_STREAM_MODE_NONE);
 	SSL_set_incoming_stream_policy(cssl, SSL_INCOMING_STREAM_POLICY_ACCEPT, 0);
@@ -3648,6 +3753,48 @@ static void h3_conn_reap_streams(struct h3_conn *c)
 	}
 }
 
+// Whether the event loop reads this stream: one of the client's that has not
+// ended, unless its backend has a large unflushed request backlog (backpressure:
+// QUIC flow control then throttles the client)
+static bool __attribute__((pure)) h3_stream_wants_read(const struct h3_stream *s)
+{
+	if(s->uni_local || s->read_done)
+		return false;
+	return s->be_fd < 0 || (s->be.req_out_len - s->be.req_out_off) < H3_REQ_HIGH_WATER;
+}
+
+// Whether a stream has input the loop has not read: data, a FIN or a reset.
+// Asks OpenSSL without ticking the engine.
+static bool h3_stream_input_pending(SSL *ssl)
+{
+	static const struct timeval zero = { 0, 0 };
+	SSL_POLL_ITEM item = { .desc = SSL_as_poll_descriptor(ssl),
+	                       .events = SSL_POLL_EVENT_R | SSL_POLL_EVENT_ER };
+	size_t ready = 0;
+	return SSL_poll(&item, 1, sizeof(item), &zero, SSL_POLL_FLAG_NO_HANDLE_EVENTS, &ready) == 1 &&
+	       ready > 0;
+}
+
+// Whether the last tick left input the loop has not handled yet: a connection or
+// stream to accept, or input on a stream it reads. poll() must not sleep then.
+static bool h3_input_pending(SSL *const *listeners, unsigned n, struct h3_conn *conns)
+{
+	for(unsigned i = 0; i < n; i++)
+		if(SSL_get_accept_connection_queue_len(listeners[i]) > 0)
+			return true;
+	for(struct h3_conn *c = conns; c != NULL; c = c->next)
+	{
+		if(c->dead)
+			continue;
+		if(SSL_get_accept_stream_queue_len(c->ssl) > 0)
+			return true;
+		for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
+			if(h3_stream_wants_read(s) && h3_stream_input_pending(s->ssl))
+				return true;
+	}
+	return false;
+}
+
 // Compute how long poll() may sleep before an OpenSSL QUIC timer needs service,
 // capped so a stopping terminator is noticed promptly.
 static int h3_event_timeout_ms(SSL *const *listeners, unsigned n, struct h3_conn *conns)
@@ -3750,6 +3897,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
+				else if(job->alen == DOTDOH_MALFORMED)
+					h3_gateway_error(s, "400");
 				else if(job->alen <= 0)
 					h3_gateway_error(s, "500");
 				else if(s->ssl != NULL && SSL_get_stream_write_state(s->ssl) != SSL_STREAM_STATE_OK)
@@ -3802,16 +3951,7 @@ static void *quic_accept_loop(void *arg)
 
 	// One QUIC listener per UDP socket, all driven by this loop
 	const unsigned nl = n_quic_fds;
-	SSL *listeners[TERMINATOR_MAX_LISTENERS] = { NULL };
-	for(unsigned l = 0; l < nl; l++)
-	{
-		if(!quic_listen(quic_fds[l], &listeners[l]))
-		{
-			for(unsigned k = 0; k <= l; k++)
-				SSL_free(listeners[k]);
-			return NULL;
-		}
-	}
+	SSL **listeners = quic_listeners;
 
 	// poll() scratch: indices [0, nl) are the UDP sockets, nl is the DoH wakeup
 	// eventfd, the rest are the active per-stream backend sockets. pmap[i] maps
@@ -3903,7 +4043,8 @@ static void *quic_accept_loop(void *arg)
 				break;
 		}
 
-		const int pr = poll(pfds, nfds, h3_event_timeout_ms(listeners, nl, conns));
+		const int pr = poll(pfds, nfds, h3_input_pending(listeners, nl, conns) ? 0 :
+		                                h3_event_timeout_ms(listeners, nl, conns));
 		if(pr < 0)
 		{
 			if(errno == EINTR)
@@ -3911,16 +4052,19 @@ static void *quic_accept_loop(void *arg)
 			break;
 		}
 
-		// Let OpenSSL process incoming datagrams and fire timers.
+		// Let OpenSSL process incoming datagrams and fire timers. Every connection
+		// runs on the engine of the listener that accepted it, so one call per
+		// listener services all of them.
 		for(unsigned l = 0; l < nl; l++)
 			SSL_handle_events(listeners[l]);
-		for(struct h3_conn *c = conns; c != NULL; c = c->next)
-			SSL_handle_events(c->ssl);
 
-		// Accept any freshly handshaked connections, draining each listener in turn
+		// Accept new connections, draining each listener in turn.
+		// SSL_accept_connection() ticks the engine when it finds none, so check
+		// the queue first.
 		for(unsigned l = 0; l < nl; )
 		{
-			SSL *cs = SSL_accept_connection(listeners[l], SSL_ACCEPT_CONNECTION_NO_BLOCK);
+			SSL *cs = SSL_get_accept_connection_queue_len(listeners[l]) > 0 ?
+			          SSL_accept_connection(listeners[l], SSL_ACCEPT_CONNECTION_NO_BLOCK) : NULL;
 			if(cs == NULL)
 			{
 				l++;
@@ -3937,6 +4081,16 @@ static void *quic_accept_loop(void *arg)
 			if(c == NULL)
 			{
 				SSL_free(cs);
+				continue;
+			}
+			// Refuse clients webserver.acl does not allow. A peer whose address
+			// could not be read is checked as an address no ACL entry matches,
+			// so it is refused whenever an ACL is set
+			const struct sockaddr_storage unknown = { 0 };
+			if(c->have_client_addr ? !client_acl_allows(&c->client_addr, "QUIC") :
+			                         !webserver_acl_allows(&unknown))
+			{
+				h3_conn_free(c);
 				continue;
 			}
 			// Per-source cap, shared with the TCP handlers via ip_table so one host
@@ -3984,13 +4138,7 @@ static void *quic_accept_loop(void *arg)
 			h3_accept_streams(c);
 			for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
 			{
-				if(s->uni_local || s->read_done)
-					continue;
-				// Backpressure: stop reading the request stream while its backend
-				// has a large unflushed request backlog, letting QUIC flow control
-				// throttle the client.
-				if(s->be_fd >= 0 &&
-				   (s->be.req_out_len - s->be.req_out_off) >= H3_REQ_HIGH_WATER)
+				if(!h3_stream_wants_read(s))
 					continue;
 				if(h3_stream_pump_read(s) < 0)
 				{
@@ -4005,6 +4153,10 @@ static void *quic_accept_loop(void *arg)
 			else
 				h3_conn_reap_streams(c); // reclaim finished request streams
 		}
+
+		// Send what the streams queued above
+		for(unsigned l = 0; l < nl; l++)
+			SSL_handle_events(listeners[l]);
 
 		// Reap dead or closed connections.
 		struct h3_conn **pp = &conns;
@@ -4035,7 +4187,10 @@ static void *quic_accept_loop(void *arg)
 	free(pfds);
 	free(pmap);
 	for(unsigned l = 0; l < nl; l++)
+	{
 		SSL_free(listeners[l]);
+		listeners[l] = NULL;
+	}
 	return NULL;
 }
 
@@ -4084,7 +4239,7 @@ static SSL_CTX *create_quic_server_ctx(const char *cert_path)
 }
 
 // Bind the UDP socket for the QUIC listener, scoped like bind_listener().
-static int bind_udp(const char *addr, int port)
+static int bind_udp(const char *addr, int port, bool optional)
 {
 	const int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 	if(fd < 0)
@@ -4107,8 +4262,12 @@ static int bind_udp(const char *addr, int port)
 	}
 	if(bind(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
 	{
-		log_err("Terminator: QUIC bind() to %s#%d failed: %s",
-		        (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		if(optional)
+			log_info("Terminator: optional HTTP/3 port %s#%d not available: %s",
+			         (addr && addr[0]) ? addr : "*", port, strerror(errno));
+		else
+			log_err("Terminator: QUIC bind() to %s#%d failed: %s",
+			        (addr && addr[0]) ? addr : "*", port, strerror(errno));
 		close(fd);
 		return -1;
 	}
@@ -4132,13 +4291,23 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 	// Serve HTTP/3 on every TLS port the TCP listener came up on, never on one
 	// whose TCP bind failed
 	unsigned nq = 0;
+	const char *names[TERMINATOR_MAX_LISTENERS] = { NULL };
 	for(unsigned i = 0; i < n && nq < TERMINATOR_MAX_LISTENERS; i++)
 	{
 		if(!listeners[i].bound)
 			continue;
-		const int fd = bind_udp(listeners[i].addr, listeners[i].port);
+		const int fd = bind_udp(listeners[i].addr, listeners[i].port, listeners[i].optional);
 		if(fd < 0)
 			continue; // bind_udp() already said why
+		// A listener that cannot be set up leaves out only its own port
+		if(!quic_listen(fd, &quic_listeners[nq]))
+		{
+			SSL_free(quic_listeners[nq]);
+			quic_listeners[nq] = NULL;
+			close(fd);
+			continue;
+		}
+		names[nq] = listeners[i].addr;
 		fill_bind_addr(&quic_addrs[nq], listeners[i].addr, listeners[i].port);
 		quic_v6only[nq] = addr_is_v6_literal(listeners[i].addr);
 		quic_fds[nq++] = fd;
@@ -4176,7 +4345,11 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 		h3_workers_n = 0;
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 		for(unsigned i = 0; i < n_quic_fds; i++)
+		{
+			SSL_free(quic_listeners[i]);
+			quic_listeners[i] = NULL;
 			close(quic_fds[i]);
+		}
 		n_quic_fds = 0;
 		SSL_CTX_free(quic_ctx);
 		quic_ctx = NULL;
@@ -4184,7 +4357,8 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 	}
 	quic_tid_valid = true;
 	for(unsigned i = 0; i < n_quic_fds; i++)
-		log_info("HTTP/3 (QUIC) listening on UDP port %d", ntohs(quic_addrs[i].sin6_port));
+		log_info("HTTP/3 (QUIC) listening on %s#%d",
+		         (names[i] && names[i][0]) ? names[i] : "*", ntohs(quic_addrs[i].sin6_port));
 }
 
 static void terminator_quic_stop(void)
@@ -4392,6 +4566,13 @@ static bool accept_ready(int lfd, pthread_attr_t *attr)
 			return true;
 		}
 
+		// Refuse clients webserver.acl does not allow before any TLS work
+		if(!client_acl_allows(&peer, "TCP"))
+		{
+			close(client_fd);
+			continue;
+		}
+
 		// Cap concurrent handlers so a connection flood cannot exhaust the
 		// process. fetch_add reserves a slot; drop the connection if over cap.
 		if(atomic_fetch_add(&active_handlers, 1) >= TERMINATOR_MAX_HANDLERS)
@@ -4518,7 +4699,7 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 	for(unsigned i = 0; i < n_listeners; i++)
 	{
 		listeners[i].bound = false;
-		const int fd = bind_listener(listeners[i].addr, listeners[i].port);
+		const int fd = bind_listener(listeners[i].addr, listeners[i].port, listeners[i].optional);
 		if(fd < 0)
 			continue; // bind_listener() already said why
 		bound[n_listen_fds] = i;

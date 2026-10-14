@@ -595,6 +595,7 @@ find_library(LIBTERMCAP NAMES libtermcap${LIBRARY_SUFFIX} termcap)
 if(LIBREADLINE AND LIBHISTORY AND LIBTERMCAP AND USE_READLINE)
     message(STATUS "Building FTL with readline support: YES")
     target_compile_definitions(lua PRIVATE LUA_USE_READLINE)
+    target_compile_definitions(ftl_lua PRIVATE LUA_USE_READLINE)
     target_compile_definitions(sqlite3 PRIVATE HAVE_READLINE)
     target_link_libraries(pihole-FTL ${LIBREADLINE} ${LIBHISTORY} ${LIBTERMCAP})
 else()
@@ -646,6 +647,17 @@ if(LIBSSL AND LIBCRYPTO AND USE_TLS)
 #endif
 int main(void) { return 0; }
 " OPENSSL_HAS_QUIC_PEER_ADDR)
+
+    # DoQ (RFC 9250) rides on OpenSSL's QUIC alone - it carries DNS directly on
+    # QUIC streams, so unlike DoH3 it needs no HTTP/3 library. Gate it on the
+    # OpenSSL version only, so a build without nghttp3 still speaks DoQ.
+    if(OPENSSL_HAS_QUIC_PEER_ADDR)
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: YES")
+        target_compile_definitions(dotdoh PRIVATE HAVE_QUIC)
+    else()
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: NO (OpenSSL < 4.0)")
+    endif()
+
     find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
     if(LIBNGHTTP3 AND OPENSSL_HAS_QUIC_PEER_ADDR)
         message(STATUS "Building FTL with HTTP/3 support: YES")

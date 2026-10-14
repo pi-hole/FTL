@@ -9,6 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// setrlimit(), RLIMIT_NOFILE
+#include <sys/resource.h>
+// uintmax_t
+#include <inttypes.h>
 #include "daemon.h"
 #include "log.h"
 #include "config/setupVars.h"
@@ -45,6 +49,32 @@ bool startup = true;
 bool forked = false;
 jmp_buf exit_jmp;
 
+// Raise the RLIMIT_NOFILE soft limit to the hard limit
+static void raise_open_file_limit(void)
+{
+	struct rlimit lim;
+	if(getrlimit(RLIMIT_NOFILE, &lim) != 0)
+	{
+		log_warn("Cannot read the open-file limit: %s", strerror(errno));
+		return;
+	}
+
+	if(lim.rlim_cur == lim.rlim_max)
+		return;
+
+	const rlim_t was = lim.rlim_cur;
+	lim.rlim_cur = lim.rlim_max;
+	if(setrlimit(RLIMIT_NOFILE, &lim) != 0)
+	{
+		log_warn("Cannot raise the open-file limit from %ju: %s",
+		         (uintmax_t)was, strerror(errno));
+		return;
+	}
+
+	log_info("Raised the open-file limit from %ju to %ju",
+	         (uintmax_t)was, (uintmax_t)lim.rlim_max);
+}
+
 int main (int argc, char *argv[])
 {
 	// Initialize locale (needed for libidn)
@@ -76,6 +106,10 @@ int main (int argc, char *argv[])
 	timer_start(EXIT_TIMER);
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
+
+	// Give the whole process the fd headroom the platform already permits,
+	// so the webserver cannot exhaust the table out from under the resolver
+	raise_open_file_limit();
 
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
@@ -185,8 +219,23 @@ int main (int argc, char *argv[])
 	// before it is. terminate_threads() aborts it
 	if(db_import_done)
 	{
-		export_queries_to_disk(true);
-		log_info("Finished final database update");
+		// The database thread has seen killed by now but may still be
+		// inside its periodic export on the shared in-memory connection
+		// or the daily cleanup, which locks the disk file. Let it return
+		// before the final export touches either
+		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
+		if(!joined)
+			log_warn("Database thread still busy after %d seconds, exporting anyway",
+			         DB_THREAD_JOIN_TIMEOUT);
+
+		// Store what the periodic runs have not, then move it to disk. Not
+		// while the database thread may still be inside a run of its own
+		if(joined)
+			queries_to_database(true);
+		if(export_queries_to_disk(true))
+			log_info("Finished final database update");
+		else
+			log_err("Final database update failed");
 	}
 
 	cleanup(exit_code);
@@ -198,6 +247,9 @@ int main (int argc, char *argv[])
 		// executed from here, the restarted FTL withholds it again
 		if(getuid() != 0)
 			restore_capability_for_exec(CAP_CHOWN);
+		// A pending alarm survives execvp(), and SIGALRM terminates the
+		// new image until dnsmasq installs its handler
+		alarm(0);
 		execvp(argv[0], argv);
 	}
 

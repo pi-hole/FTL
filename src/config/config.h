@@ -112,7 +112,6 @@ enum conf_type {
 // through the API nor the CLI. For the switch that locks the configuration
 // itself: letting either of them change it would defeat the lock.
 #define FLAG_API_CLI_READ_ONLY     (1 << 6)
-#define FLAG_FTL_LOG               (1 << 7)
 // As above, but the CLI may still set it. For options that hand code to
 // something Pi-hole then runs: configuring those needs access to the host, which
 // everyone with a legitimate use for them already has, and a web session on its
@@ -169,6 +168,7 @@ struct config {
 		struct conf_item doh;
 		struct conf_item dohReverseProxy;
 		struct conf_item dot;
+		struct conf_item doq;
 		struct {
 			struct conf_item name;
 			struct conf_item local;
@@ -404,6 +404,9 @@ bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
+void lock_config(void);
+bool trylock_config(void);
+void unlock_config(void);
 void duplicate_config(struct config *dst, struct config *src);
 void free_config(struct config *conf, const bool terminating);
 bool compare_config_item(const enum conf_type t, const union conf_value *val1, const union conf_value *val2);
@@ -413,6 +416,7 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default
 void reset_config_default(struct conf_item *conf_item);

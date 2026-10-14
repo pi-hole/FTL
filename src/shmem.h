@@ -70,6 +70,7 @@ typedef struct {
 	unsigned int dns_cache_lookup_size;
 	unsigned int intarrays_MAX;
 	unsigned int regex_change;
+	unsigned int aliasclients; // rows of the last alias-client import
 	struct {
 		int gravity;
 		int antigravity;
@@ -168,6 +169,7 @@ extern struct lookup_table *dns_cache_lookup;
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
+void shm_ensure_client_size(void);
 
 // Return if the current mutex locked the SHM lock
 bool is_our_lock(void);

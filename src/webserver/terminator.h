@@ -26,6 +26,7 @@
 struct terminator_listener {
 	const char *addr;
 	int port;
+	bool optional; // 'o' flag: failing to bind it is not an error
 	bool bound;
 };
 

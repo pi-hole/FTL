@@ -153,9 +153,12 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
-	// Asynchronously import queries from the on-disk database
+	// Asynchronously import queries from the on-disk database. The linking
+	// tables are imported in any case as new queries continue their IDs
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
+	else
+		import_linking_tables_from_disk();
 
 	// Signify that the import is done, so garbage collection will run. An
 	// import that was aborted because FTL terminates is not: main() skips
@@ -173,7 +176,12 @@ void *DB_thread(void *val)
 	// to the database
 	time_t before = time(NULL);
 	time_t lastDBsave = before - before%config.database.DBinterval.v.ui;
-	time_t lastDBdelete = before;
+	// Old queries are deleted in the first nightly window after the start
+	time_t lastDBdelete = 0;
+	// Deletion of old queries in progress: its cutoff and the rows deleted
+	bool deleting = false;
+	double delete_until = 0.0;
+	int64_t deleted = 0;
 
 	// Add some randomness (between one and two hours) to these timestamps
 	// to avoid them running at the same time and immediately after FTL was
@@ -218,7 +226,7 @@ void *DB_thread(void *val)
 		// Do this once per second
 		if(now > before)
 		{
-			TIMED_DB_OP(queries_to_database());
+			TIMED_DB_OP(queries_to_database(false));
 			before = now;
 
 			// Check if we need to reload gravity
@@ -265,18 +273,32 @@ void *DB_thread(void *val)
 			// the product was computed in 32-bit arithmetic and wrapped
 			// for large values, turning a long retention into a cutoff
 			// that deletes almost everything
-			const double mintime = now - (double)config.database.maxDBdays.v.ui * 86400.0;
-			DBOPEN_OR_AGAIN();
-			TIMED_DB_OP(delete_old_queries_from_db(false, mintime));
+			delete_until = now - (double)config.database.maxDBdays.v.ui * 86400.0;
+			deleted = 0;
+			deleting = true;
+		}
+
+		// One batch per run of this loop, so the other tasks and the
+		// termination are not held up by a large backlog. Only a batch that
+		// left more to delete continues, an unopenable database ends it
+		if(deleting)
+		{
+			// A database.maxDBdays raised meanwhile lowers the cutoff
+			delete_until = min(delete_until, now - (double)config.database.maxDBdays.v.ui * 86400.0);
+			if(!db)
+				db = dbopen(false, false);
+			TIMED_DB_OP_RESULT(deleting, delete_old_queries_batch(db, delete_until, &deleted));
 			DBCLOSE_OR_BREAK();
 		}
 
 		// Optimize database once per week
 		if(now - lastAnalyze >= DATABASE_ANALYZE_INTERVAL)
 		{
+			// Update the timer first so an unopenable database does
+			// not keep the loop from reaching the event handling below
+			lastAnalyze = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(analyze_database(db));
-			lastAnalyze = now;
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -288,9 +310,10 @@ void *DB_thread(void *val)
 		// database is not updated very often)
 		if(now  - lastMACVendor >= DATABASE_MACVENDOR_INTERVAL)
 		{
+			// Update the timer first, see above
+			lastMACVendor = now;
 			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(updateMACVendorRecords(db));
-			lastMACVendor = now;
 			DBCLOSE_OR_BREAK();
 		}
 
@@ -333,6 +356,10 @@ void *DB_thread(void *val)
 	// Close database handle if still open
 	if(db)
 		dbclose(&db);
+
+	// The termination cut a deletion of old queries short
+	if(deleting)
+		log_deleted_old_queries(deleted, false);
 
 	log_info("Terminating database thread");
 	return NULL;

@@ -39,6 +39,8 @@
 #include "dnsmasq/config.h"
 // get_secure_randomness()
 #include "config/password.h"
+// dotdoh_fd_track(), dotdoh_fd_close()
+#include "dotdoh/server.h"
 
 // Wall-clock budget for a single PTR lookup, used both as the socket-level
 // receive timeout and as the deadline bounding the receive loops below
@@ -191,9 +193,12 @@ static const char *getDNScode(int code)
 	return "Unknown";
 }
 
-// Validate given hostname
-static bool valid_hostname(char *name, const char *clientip)
+// Validate given hostname, on failure badpos is the offset of the first
+// invalid character
+static bool valid_hostname(char *name, const char *clientip, unsigned int *badpos)
 {
+	*badpos = 0;
+
 	// Check for validity of input
 	if(name == NULL)
 		return false;
@@ -224,6 +229,7 @@ static bool valid_hostname(char *name, const char *clientip)
 			continue;
 
 		// Invalid character found => return hostname being invalid
+		*badpos = i;
 		return false;
 	}
 
@@ -260,6 +266,9 @@ int create_socket(bool tcp)
 		log_err("Unable to create DNS resolver socket: %s", strerror(errno));
 		return -1;
 	}
+	// A TCP connection forks a dnsmasq worker, which must not keep this end open
+	if(tcp)
+		dotdoh_fd_track(sock);
 
 	// Set timeout for socket
 	struct timeval tv;
@@ -268,7 +277,10 @@ int create_socket(bool tcp)
 	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
 		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
-		close(sock);
+		if(tcp)
+			dotdoh_fd_close(sock);
+		else
+			close(sock);
 		return -1;
 	}
 
@@ -286,7 +298,10 @@ int create_socket(bool tcp)
 	if(connect(sock, (struct sockaddr*)&dest, sizeof(dest)) < 0)
 	{
 		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
-		close(sock);
+		if(tcp)
+			dotdoh_fd_close(sock);
+		else
+			close(sock);
 		return -1;
 	}
 
@@ -747,7 +762,8 @@ static bool ngethostbyname(const int sock, const bool tcp,
 		          i, answers[i].name, answers[i].rdata);
 
 		// We break out of the loop if this is a valid hostname
-		if(strlen(hostn) > 0 && valid_hostname(hostn, ipaddr))
+		unsigned int badpos = 0;
+		if(strlen(hostn) > 0 && valid_hostname(hostn, ipaddr, &badpos))
 		{
 			free(answers[i].name);
 			free(answers[i].rdata);
@@ -760,7 +776,12 @@ static bool ngethostbyname(const int sock, const bool tcp,
 			log_warn("Resolved PTR \"%s\" on 127.0.0.1#%u (%s) with status %s (%i): answer %u (PTR \"%s\" => \"%s\") is invalid",
 			         host, config.dns.port.v.u16, tcp ? "TCP" : "UDP",
 			         getDNScode(dns.rcode), dns.rcode, i, answers[i].name, escaped_name);
-			log_hostname_warning(ipaddr, escaped_name, i);
+			// Valid characters are never escaped, so badpos is the
+			// same in escaped_name (where a non-printable invalid
+			// byte starts its \xNN escape). An empty name has no
+			// invalid character to report
+			if(strlen(hostn) > 0)
+				log_hostname_warning(ipaddr, escaped_name, badpos);
 
 			// Discard this answer: free memory and set name to NULL
 			free(answers[i].name);
@@ -1118,7 +1139,7 @@ static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos
 			// Only attempt to resolve the hostname if we have a
 			// valid socket
 			resolved = resolveHostname(tcp_sock, true, newname, ipaddr, false, NULL);
-			close(tcp_sock);
+			dotdoh_fd_close(tcp_sock);
 		}
 		else
 			log_warn("Unable to create TCP socket for DNS resolution");

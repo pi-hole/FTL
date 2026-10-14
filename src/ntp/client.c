@@ -212,10 +212,12 @@ static uint64_t get_new_time(struct timeval *unix_time, const double offset)
 	// Get current time
 	gettimeofday(unix_time, NULL);
 
-	// Convert from double to native format (signed) and add to the
+	// Convert from double to native format and add to the
 	// current time.  Note the addition is done in native format to
-	// avoid overflow or loss of precision.
-	const uint64_t ntp_time = U2LFP(*unix_time) + D2LFP(offset);
+	// avoid overflow or loss of precision.  D2LFP() only takes
+	// non-negative values, so a negative offset is subtracted instead.
+	const uint64_t now = U2LFP(*unix_time);
+	const uint64_t ntp_time = offset >= 0 ? now + D2LFP(offset) : now - D2LFP(-offset);
 
 	// Convert NTP to native format
 	unix_time->tv_sec = NTPtoSEC(ntp_time);
@@ -829,8 +831,14 @@ static void *ntp_client_thread(void *arg)
 		// Intermediate cancellation-point
 		BREAK_IF_KILLED();
 
-		// Sleep before retrying
-		thread_sleepms(NTP_CLIENT, 1000 * sleep_time);
+		// Sleep before retrying, at most a day at a time as the
+		// milliseconds thread_sleepms() takes are an int
+		while(sleep_time > 0 && !killed)
+		{
+			const unsigned int chunk = sleep_time < 86400 ? sleep_time : 86400;
+			thread_sleepms(NTP_CLIENT, 1000 * chunk);
+			sleep_time -= chunk;
+		}
 	}
 
 	log_info("Terminating NTP thread");

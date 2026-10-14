@@ -323,7 +323,13 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// Importing the same archive with "pihole-FTL --teleporter <file>" does
 		// apply them: that already requires access to the host, which is the
 		// whole point of the distinction.
-		if(teleporter && !cli_mode && new_conf_item->f & (FLAG_API_READ_ONLY | FLAG_API_CLI_READ_ONLY))
+		//
+		// A value forced through an environment variable is kept either way:
+		// the environment wins over pihole.toml on every start, so the
+		// archive's value would only hold until the restart the import
+		// itself triggers, and PATCH /api/config refuses it too.
+		if(teleporter && ((!cli_mode && new_conf_item->f & (FLAG_API_READ_ONLY | FLAG_API_CLI_READ_ONLY)) ||
+		                  new_conf_item->f & FLAG_ENV_VAR))
 		{
 			// Parse into a scratch copy so the archive's value can be looked
 			// at without replacing the one we keep. Only a real difference is

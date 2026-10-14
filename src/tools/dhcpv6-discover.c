@@ -32,6 +32,9 @@
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
 
+// escape_data()
+#include "log.h"
+
 /**
  * @brief Resolves an IPv6 address by hostname and interface name.
  *
@@ -343,8 +346,6 @@ static int parse_dnssl(const uint8_t *opt)
 
 	for(unsigned int i = 0; i < optlen; i++)
 	{
-		char str[256] = { 0 };
-
 		// Check if the base is empty
 		if (!base[i])
 			break;
@@ -358,15 +359,15 @@ static int parse_dnssl(const uint8_t *opt)
 				return -1;
 			}
 
-			// Copy the domain name to the string
-			memcpy(str, &base[i + 1], base[i]);
-			str[base[i]] = 0;
+			// Escape the label, any host on the link can send it
+			char *label = escape_data((const char *)&base[i + 1], base[i]);
 
 			// Move to the next domain name
 			i += base[i] + 1;
 
 			// Print the domain name
-			printf("%s%s", str, base[i] ? "." : "");
+			printf("%s%s", label != NULL ? label : "?", base[i] ? "." : "");
+			free(label);
 
 		} while(base[i]);
 
@@ -396,6 +397,8 @@ static int parse_pref64(const uint8_t *opt)
 {
 	uint16_t lifetime_plc;
 	memcpy(&lifetime_plc, opt + sizeof(uint16_t), sizeof(uint16_t));
+	// The field is in network byte order (RFC 8781, section 4)
+	lifetime_plc = ntohs(lifetime_plc);
 	// 0x0007: mask for the prefix length code
 	const uint32_t plc = lifetime_plc & 0x0007;
 	// 0xfff8: mask for the lifetime
@@ -412,9 +415,9 @@ static int parse_pref64(const uint8_t *opt)
 	if(inet_ntop(AF_INET6, &pref64, str, sizeof (str)) == NULL)
 		return -1;
 
+	// Prefix length encoded by the prefix length code (RFC 8781, section 4)
 	const uint8_t preflen[] = { 96, 64, 56, 48, 40, 32 };
-	const uint8_t plc_val = (plc < (sizeof(preflen) / sizeof(preflen[0])) - 1) ? plc : 0;
-	printf("  NAT64 prefix: %s/%"PRIu8"\n", str, plc_val);
+	printf("  NAT64 prefix: %s/%"PRIu8"\n", str, preflen[plc]);
 	printf("   Lifetime: %u sec\n", lifetime);
 	return 0;
 }
@@ -464,7 +467,7 @@ static int parse_ra(const uint8_t *buf, size_t len)
 	printf("  Router lifetime: %u s\n", router_lifetime);
 
 	/* ND Reachable time */
-	const uint16_t reachable = ntohs(ra->nd_ra_reachable);
+	const uint32_t reachable = ntohl(ra->nd_ra_reachable);
 	printf("  Reachable time: ");
 	if(reachable != 0)
 		printf("%u ms\n", reachable);
@@ -473,7 +476,7 @@ static int parse_ra(const uint8_t *buf, size_t len)
 
 	/* ND Retransmit time */
 	printf("  Retransmit time: ");
-	const uint16_t retransmit = ntohl (ra->nd_ra_retransmit);
+	const uint32_t retransmit = ntohl(ra->nd_ra_retransmit);
 	if (retransmit != 0)
 		printf("%u ms\n", retransmit);
 	else
@@ -843,6 +846,16 @@ int dhcpv6_discover_iface(const char *ifname, const unsigned int timeout)
 		return 1;
 	}
 
-	errno = errval; /* restore socket() error value */
+	// Report why the socket could not be created (e.g. a kernel without
+	// IPv6) instead of trying to use an invalid descriptor
+	if(fd < 0)
+	{
+		start_lock();
+		printf("Error creating ICMPv6 socket on %s: %s\n",
+		       ifname, strerror(errval));
+		end_lock();
+		return -1;
+	}
+
 	return do_discoverv6(fd, ifname, timeout);
 }

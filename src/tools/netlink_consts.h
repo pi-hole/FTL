@@ -466,6 +466,49 @@ static const char *__attribute__ ((const)) iflaTypeToString(const int ifla_type)
 	}
 }
 
+// Names of the RTAX_* attributes nested in RTA_METRICS (as used by iproute2)
+static const char *__attribute__ ((const)) rtaxTypeToString(const int rtax_type)
+{
+	switch (rtax_type) {
+		case RTAX_LOCK:
+			return "lock";
+		case RTAX_MTU:
+			return "mtu";
+		case RTAX_WINDOW:
+			return "window";
+		case RTAX_RTT:
+			return "rtt";
+		case RTAX_RTTVAR:
+			return "rttvar";
+		case RTAX_SSTHRESH:
+			return "ssthresh";
+		case RTAX_CWND:
+			return "cwnd";
+		case RTAX_ADVMSS:
+			return "advmss";
+		case RTAX_REORDERING:
+			return "reordering";
+		case RTAX_HOPLIMIT:
+			return "hoplimit";
+		case RTAX_INITCWND:
+			return "initcwnd";
+		case RTAX_FEATURES:
+			return "features";
+		case RTAX_RTO_MIN:
+			return "rto_min";
+		case RTAX_INITRWND:
+			return "initrwnd";
+		case RTAX_QUICKACK:
+			return "quickack";
+		case RTAX_CC_ALGO:
+			return "congctl";
+		case RTAX_FASTOPEN_NO_COOKIE:
+			return "fastopen_no_cookie";
+		default:
+			return "unknown";
+	}
+}
+
 static const char *__attribute__ ((const)) family_name(int family)
 {
 	switch(family)

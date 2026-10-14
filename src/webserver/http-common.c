@@ -595,8 +595,9 @@ bool read_and_parse_payload(struct ftl_conn *api)
 	{
 		// If we reached the upper limit of payload size, we have likely
 		// truncated the payload. The only reasonable thing to do here is to
-		// discard the payload altogether
-		log_web(LOG_WARNING, "API: Received too large payload - DISCARDING");
+		// discard the payload altogether. This runs before authentication,
+		// so it is logged at debug level only.
+		log_web_debug(DEBUG_API, "API: Received too large payload - DISCARDING");
 		return true;
 	}
 

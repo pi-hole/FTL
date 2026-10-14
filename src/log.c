@@ -24,7 +24,7 @@
 #include "signals.h"
 // logg_fatal_dnsmasq_message()
 #include "database/message-table.h"
-// delete_old_queries_from_db()
+// delete_recent_queries_from_db()
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
@@ -92,6 +92,10 @@ static void reopen_log_fd(struct log_fd *log)
 	else
 		log->fd = -1;
 }
+
+// The logger writes with the raw write(2): FTLwrite() reports its failures
+// through the logger, which would re-enter here under the lock already held
+#undef write
 
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
@@ -982,16 +986,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	if(payload == NULL || length == 0)
 		return;
 
-	unsigned int idx = fifo_log->logs[which].next_id++;
-	if(idx >= LOG_SIZE)
-	{
-		// Log is full, move everything one slot forward to make space for a new record at the end
-		// This pruges the oldest message from the list (it is overwritten by the second message)
-		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
-		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
-		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
-		idx = LOG_SIZE - 1u;
-	}
+	// Ring buffer: message number n goes into slot n % LOG_SIZE, so a full
+	// log overwrites its oldest message without moving the others
+	const unsigned int idx = fifo_log->logs[which].next_id++ % LOG_SIZE;
 
 	// Copy string
 	// We need to use the pre-allocated buffer in shared memory as we share
@@ -1064,7 +1061,7 @@ bool flush_dnsmasq_log(void)
 		log_err("Could not truncate log file %s: %s", dnsmasq_log.path, strerror(trunc_err));
 
 	// Flush last 24 hours of on-disk database
-	if(!delete_old_queries_from_db(false, mintime))
+	if(!delete_recent_queries_from_db(mintime - 86400.0))
 	{
 		log_err("Could not flush on-disk database");
 		return false;

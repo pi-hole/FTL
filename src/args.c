@@ -443,6 +443,32 @@ void parse_args(int argc, char *argv[])
 			exit(get_config_from_CLI(argv[2], false));
 		else if(argc == 4 && strcmp(argv[2], "-q") == 0)
 			exit(get_config_from_CLI(argv[3], true));
+		else if(argc == 4 && strcmp(argv[3], "-") == 0)
+		{
+			// Read the value from stdin. Used to keep secrets out of argv
+			// (visible via /proc/<pid>/cmdline and `ps -eo args=`).
+			char buf[4096];
+			if(fgets(buf, sizeof(buf), stdin) == NULL)
+			{
+				fprintf(stderr, "Error: Failed to read value from stdin\n");
+				exit(EXIT_FAILURE);
+			}
+			// Strip trailing CR/LF
+			size_t len = strlen(buf);
+			while(len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r'))
+				buf[--len] = '\0';
+			// Reject values that did not fit in the buffer. fgets reads
+			// at most sizeof(buf)-1 characters; if it filled the buffer
+			// without encountering a newline, either the input was
+			// truncated (more data follows) or the user sent an
+			// unterminated value. Both are errors.
+			if(len == sizeof(buf) - 1)
+			{
+				fprintf(stderr, "Error: Stdin value too long (max %zu bytes)\n", sizeof(buf) - 1);
+				exit(EXIT_FAILURE);
+			}
+			exit(set_config_from_CLI(argv[2], buf, false));
+		}
 		else if(argc == 4)
 			exit(set_config_from_CLI(argv[2], argv[3], false));
 
@@ -452,6 +478,7 @@ void parse_args(int argc, char *argv[])
 			printf("Usage: %s --config [<config item key>] [<value>]\n", argv[0]);
 			printf("       %s --config -t <config item key> <value>\n", argv[0]);
 			printf("Example: %s --config dns.CNAMEdeepInspect true\n", argv[0]);
+			printf("         echo 'secret' | %s --config webserver.api.password -\n", argv[0]);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -1356,6 +1383,7 @@ void parse_args(int argc, char *argv[])
 			printf("\t                    Config items with non-default values may\n");
 			printf("\t                    be colored in %sred%s\n", red, normal);
 			printf("\t%s--config %skey %svalue%s  Set new %svalue%s of config item %skey%s\n", green, blue, cyan, normal, cyan, normal, blue, normal);
+			printf("\t%s--config %skey -%s      Set new value of config item %skey%s by reading from stdin\n", green, blue, normal, blue, normal);
 			printf("\t%s--config -t %skey %svalue%s\n", green, blue, cyan, normal);
 			printf("\t                    Check whether %svalue%s would be accepted for\n", cyan, normal);
 			printf("\t                    %skey%s, without applying it or writing the\n", blue, normal);
