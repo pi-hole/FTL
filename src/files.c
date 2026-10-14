@@ -42,6 +42,20 @@
 #include <nettle/sha2.h>
 #include <nettle/version.h>
 
+// Check if a path names an entry directly in /etc/pihole or /var/log/pihole.
+// The path is taken literally, so no symbolic link along it can redirect it
+bool in_pihole_dir(const char *path)
+{
+	const char *slash = strrchr(path, '/');
+	if(slash == NULL || slash[1] == '\0' ||
+	   strcmp(slash + 1, ".") == 0 || strcmp(slash + 1, "..") == 0)
+		return false;
+
+	const size_t dirlen = slash - path;
+	return (dirlen == strlen("/etc/pihole") && strncmp(path, "/etc/pihole", dirlen) == 0) ||
+	       (dirlen == strlen("/var/log/pihole") && strncmp(path, "/var/log/pihole", dirlen) == 0);
+}
+
 // chmod_file() changes the file mode bits of a given file (relative
 // to the directory file descriptor) according to mode. mode is an
 // octal number representing the bit pattern for the new mode bits
