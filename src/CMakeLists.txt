@@ -438,6 +438,43 @@ if(BUILD_PTR_RESPONSE_REGRESSION)
     endif()
 endif()
 
+# Standalone regression harness for cache_make_stat()'s TXT_STAT_SERVERS /
+# TXT_API_* buffer bookkeeping (GHSA-8fc6-q9x4-892v). It compiles the real
+# src/dnsmasq/cache.c a second time and stubs the handful of dnsmasq externals
+# that file needs but this harness does not otherwise provide, including a
+# fake get_api_string() that deliberately shrinks the shared buffer - see
+# test/txt_stat_regression.c for why that fake stands in for the real one.
+# The "TXT stat buffer regression harness" bats test runs the resulting
+# binary. Deliberately NOT given the strict EXTRAWARN/-Werror flags applied
+# to FTL code.
+#
+# Only built on request: `./build.sh test` enables it for local runs and the
+# CI Dockerfile passes -DBUILD_TXT_STAT_REGRESSION=ON at build time.
+option(BUILD_TXT_STAT_REGRESSION "Build the TXT stat buffer regression test harness" OFF)
+if(BUILD_TXT_STAT_REGRESSION)
+    add_executable(txt_stat_regression
+            ${PROJECT_SOURCE_DIR}/test/txt_stat_regression.c
+            ${PROJECT_SOURCE_DIR}/src/dnsmasq/cache.c)
+    target_include_directories(txt_stat_regression PRIVATE
+            ${PROJECT_SOURCE_DIR}/src
+            ${PROJECT_SOURCE_DIR}/src/lua
+            ${PROJECT_SOURCE_DIR}/src/dnsmasq)
+    target_compile_definitions(txt_stat_regression PRIVATE
+            VERSION=\"${DNSMASQ_VERSION}\"
+            CONFFILE=\"/etc/pihole/dnsmasq.conf\"
+            HAVE_POLL_H)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DTXT_STAT_REGRESSION_SANITIZE=ON" test
+    # Off by default so the static (musl) CI builds, where the sanitizer
+    # runtime is not available, keep linking.
+    option(TXT_STAT_REGRESSION_SANITIZE "Build the TXT stat buffer regression test with ASan/UBSan" OFF)
+    if(TXT_STAT_REGRESSION_SANITIZE)
+        target_compile_options(txt_stat_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(txt_stat_regression PRIVATE -fsanitize=address,undefined)
+    endif()
+endif()
+
 # Standalone regression harness for the in-memory gzip parser (zip/gzip.c).
 # It #includes gzip.c directly to reuse implementation-private constants, stubs
 # the few FTL* wrappers gzip.c needs, and reuses the miniz object library. The

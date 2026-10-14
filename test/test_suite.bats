@@ -2095,6 +2095,12 @@ setup() {
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
 }
 
+@test "TXT stat buffer regression harness" {
+  run ./txt_stat_regression
+  assert_success
+  assert_output --partial "TXT_STAT_SERVERS_REGRESSION=PASS"
+}
+
 @test "SHA256 checksum working" {
   run bash -c './pihole-FTL sha256sum test/test.pem'
   assert_line --index 0 "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem"
