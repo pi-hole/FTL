@@ -441,6 +441,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
 	client->flags.found_group = false;
+	client->flags.groups_looked_up = false;
 	client->groupspos = 0u;
 	client->firstSeen = now;
 	// Interface is not yet known
@@ -448,6 +449,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
+	client->lastMACLookup = 0;
 	// This may be an alias-client, the ID is set elsewhere
 	client->flags.aliasclient = aliasclient;
 	client->aliasclient_id = -1;

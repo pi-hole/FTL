@@ -37,6 +37,8 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// cli_mode
+#include "args.h"
 // _Atomic
 #include <stdatomic.h>
 
@@ -617,7 +619,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or quic://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
@@ -637,6 +639,13 @@ void initConfig(struct config *conf)
 	conf->dns.dot.d.b = true;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
+
+	conf->dns.doq.k = "dns.doq";
+	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
+	conf->dns.doq.t = CONF_BOOL;
+	conf->dns.doq.d.b = true;
+	conf->dns.doq.f = FLAG_RESTART_FTL;
+	conf->dns.doq.c = validate_stub;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
@@ -698,7 +707,7 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options blockingmode[] =
 		{
-			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
+			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2." },
 			{ get_blocking_mode_str(MODE_IP_NODATA_AAAA), "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
 			{ get_blocking_mode_str(MODE_IP), "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
 			{ get_blocking_mode_str(MODE_NX), "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
@@ -954,6 +963,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.f = FLAG_RESTART_FTL;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
 
@@ -962,7 +972,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.a = cJSON_CreateStringReference("A positive integer value");
 	conf->ntp.sync.count.t = CONF_UINT;
 	conf->ntp.sync.count.d.ui = 8;
-	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.count.c = validate_ui_min_1;
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
@@ -2180,6 +2190,8 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
+	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
 	memcpy(&old_conf, &config, sizeof(struct config));
@@ -2192,6 +2204,11 @@ void replace_config(struct config *newconf)
 
 	// Unlock shared memory
 	unlock_shm();
+
+	// Drop the cached answers and verdicts of the previous blocking status as
+	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+		raise(SIGHUP);
 }
 
 // Set when reread_config() found a config change in progress and left the
