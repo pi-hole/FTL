@@ -50,6 +50,11 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 // served, so an on-by-default server is not an open resolver. Fails closed.
 bool dotdoh_source_allowed(const char *client_ip);
 
+// Private copy of webserver.tls.cert (or NULL if unset), to be freed by the
+// caller. replace_config() frees the config strings under the SHM lock, so it
+// is copied under the same lock.
+char *dotdoh_cert_path(void) __attribute__((malloc));
+
 // Borrow a connected, non-blocking loopback socket to dnsmasq from the shared
 // pool. Returns the socket, -1 when the pool is empty, or -2 when we already
 // hold as many dnsmasq TCP children as we may - the caller then refuses the

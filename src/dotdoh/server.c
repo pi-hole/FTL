@@ -70,6 +70,15 @@ static void resolve_gateway_iface(void)
 	get_gateway_name(resolved_iface);
 }
 
+char *dotdoh_cert_path(void)
+{
+	lock_shm();
+	const char *cert = config.webserver.tls.cert.v.s;
+	char *copy = cert != NULL && cert[0] != '\0' ? strdup(cert) : NULL;
+	unlock_shm();
+	return copy;
+}
+
 bool dotdoh_source_allowed(const char *client_ip)
 {
 	const enum listening_mode mode = config.dns.listeningMode.v.listeningMode;

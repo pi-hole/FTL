@@ -34,8 +34,6 @@
 #include "config/config.h"
 // killed, thread_names
 #include "signals.h"
-// lock_shm(), unlock_shm()
-#include "shmem.h"
 
 #ifdef HAVE_TLS
 
@@ -145,17 +143,6 @@ fail:
 	return NULL;
 }
 
-// Private copy of the certificate path (or NULL if unset). replace_config()
-// frees the config strings under the SHM lock, so copy it under the same lock.
-static char *dot_cert_path(void)
-{
-	lock_shm();
-	const char *cert = config.webserver.tls.cert.v.s;
-	char *copy = cert != NULL && cert[0] != '\0' ? strdup(cert) : NULL;
-	unlock_shm();
-	return copy;
-}
-
 // Build the initial TLS context. Returns false - quietly - while the certificate
 // is not yet readable, so the DoT thread can wait for the webserver to generate
 // it on a fresh install rather than giving up permanently.
@@ -164,7 +151,7 @@ static bool dot_server_init(void)
 	if(g_ready)
 		return true;
 
-	char *cert = dot_cert_path();
+	char *cert = dotdoh_cert_path();
 	if(cert == NULL || access(cert, R_OK) != 0)
 	{
 		free(cert);
@@ -191,7 +178,7 @@ static bool dot_server_init(void)
 // reference to the old context and release it when they close.
 static void dot_reload_cert_if_changed(void)
 {
-	char *cert = dot_cert_path();
+	char *cert = dotdoh_cert_path();
 	if(cert == NULL)
 		return;
 	struct stat st;
