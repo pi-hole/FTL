@@ -75,6 +75,7 @@ void log_ctrl(bool vlog, bool vstdout);
 void FTL_log_helper(const unsigned int n, ...);
 
 char *escape_string(const char *input) __attribute__ ((malloc));
+char *escape_control_chars(const char *input) __attribute__ ((malloc));
 char *escape_data(const char *src_buf, size_t src_sz) __attribute__((malloc));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));

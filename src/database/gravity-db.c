@@ -2489,7 +2489,12 @@ static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, con
 		{
 			log_debug(DEBUG_API, "SQL: %s", querystr);
 			if(item_idx > 0)
-				log_debug(DEBUG_API, "     :item = \"%s\"", item->valuestring);
+			{
+				char *escaped = escape_control_chars(item->valuestring);
+				log_debug(DEBUG_API, "     :item = \"%s\"",
+				          escaped != NULL ? escaped : "(unable to display)");
+				free(escaped);
+			}
 			if(type_idx > 0)
 				log_debug(DEBUG_API, "     :type = %i", cJSON_IsNumber(type) ? type->valueint : -1);
 		}

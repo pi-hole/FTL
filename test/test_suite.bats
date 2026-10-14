@@ -1905,6 +1905,66 @@ setup() {
   assert_line --index 3 "||xn--ste-sla.com^"
 }
 
+@test "Non-printable characters in a rejected config value are escaped" {
+  # pihole.toml and the CLI are untrusted input, so a value carrying, e.g., an
+  # ANSI escape sequence must not be echoed into FTL.log verbatim: it would
+  # garble the terminal of whoever reads the log. Array items arrive as JSON
+  # ("\u001b"), string items straight from argv (a real ESC byte).
+  esc=$(printf '%b' '\033[2J')
+
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 \u001b[2J\u001bx.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'
+  assert_line --index 0 'Invalid value: dns.revServers[0]: <server> neither a valid domain nor an IPv4 or IPv6 address ("ns\x1B[2Jexample.com")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.api.excludeClients '["\u001b[2J[[["]'
+  assert_line --index 0 'Invalid value: webserver.api.excludeClients[0]: not a valid regex ("\x1B[2J[[["): Missing '\'']'\'''
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.domain.name "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: dns.domain.name: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.domain "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: webserver.domain: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.paths.webhome "${esc}no-slashes"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: file path does not start and end with a slash ("\x1B[2Jno-slashes")'
+  assert_failure 3
+
+  # Only control characters are escaped, a well-formed UTF-8 sequence is left
+  # alone so the domain the user typed stays readable. This one spans the C1
+  # byte range (F0 9F 98 80), which escaping naively would break apart.
+  run ./pihole-FTL --config dns.hosts '[ "1.2.3.4 😀.example" ]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("😀.example")'
+  assert_failure 3
+
+  # A byte that is not part of a well-formed sequence is escaped all the same,
+  # even though it is not an ASCII control character: 0x9B is CSI on a terminal
+  # reading Latin-1.
+  c1=$(printf '%b' '\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x9B[2J.example")'
+  assert_failure 3
+
+  # The same C1 control encoded as a valid UTF-8 sequence (U+009B = C2 9B)
+  # must not pass through verbatim either: a terminal that decodes UTF-8 before
+  # interpreting controls would still act on it. Both bytes get escaped.
+  c1utf8=$(printf '%b' '\302\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1utf8}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\xC2\x9B[2J.example")'
+  assert_failure 3
+
+  # An unknown option name is echoed back as well
+  run ./pihole-FTL --config "${esc}not-an-option"
+  assert_line --index 0 "Unknown config option \x1B[2Jnot-an-option, did you mean:"
+  assert_failure 4
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   # URL paths reject what the webserver would see percent-decoded in some checks only
   run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
