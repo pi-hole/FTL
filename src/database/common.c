@@ -34,7 +34,6 @@
 // _Atomic
 #include <stdatomic.h>
 
-bool DBdeleteoldqueries = false;
 static _Atomic bool DBerror = false;
 static _Atomic int dbopen_cnt = 0; // Number of times the database has been opened
 

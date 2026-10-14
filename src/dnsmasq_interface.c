@@ -207,6 +207,10 @@ static struct {
 
 #define HOSTNAME "Pi-hole hostname"
 
+// Seconds before a MAC lookup that found nothing is repeated. dnsmasq answers
+// it from its negative ARP cache record for 90 s anyway (src/dnsmasq/arp.c)
+#define MAC_LOOKUP_RETRY 90u
+
 // Fork-private copy of the interface data the most recent query came from
 static struct {
 	bool haveIPv4;
@@ -886,8 +890,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		[T_DS]     = TYPE_DS,
 		[T_RRSIG]  = TYPE_RRSIG,
 		[T_DNSKEY] = TYPE_DNSKEY,
-		[64]       = TYPE_SVCB,  // draft-ietf-dnsop-svcb-https
-		[65]       = TYPE_HTTPS, // draft-ietf-dnsop-svcb-https
+		[64]       = TYPE_SVCB,  // RFC 9460
+		[65]       = TYPE_HTTPS, // RFC 9460
 		[T_ANY]    = TYPE_ANY,
 	};
 	enum query_type querytype;
@@ -982,6 +986,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	// Set when clientIP comes from EDNS(0) rather than the packet source
 	bool edns_client = false;
+	// Set when clientIP comes from ECS, an address behind the forwarder
+	bool ecs_client = false;
 	ednsData *edns = getEDNS();
 	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
 	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
@@ -1005,6 +1011,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		strncpy(clientIP, edns->client, ADDRSTRLEN);
 		clientIP[ADDRSTRLEN] = '\0';
 		edns_client = true;
+		ecs_client = true;
 	}
 	else if(addr)
 	{
@@ -1268,8 +1275,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Try to obtain MAC address from dnsmasq's cache (also asks the kernel)
 	// Don't do this for internally generated queries (e.g., DNSSEC), if the
 	// MAC address is already known or if the netlink socket is not available
-	// (e.g., when retrying a query using TCP after UDP truncation)
-	if(!internal_query && client->hwlen < 1 && daemon->netlinkfd > 0)
+	// (e.g., when retrying a query using TCP after UDP truncation). ECS
+	// clients usually have no neighbor entry here, and a lookup that found
+	// nothing (hwlen 0) is repeated after MAC_LOOKUP_RETRY seconds at most
+	if(!internal_query && !ecs_client && client->hwlen < 1 && daemon->netlinkfd > 0 &&
+	   (client->hwlen != 0 ||
+	    ABS_TO_SHM_TIME((time_t)querytimestamp) - client->lastMACLookup >= MAC_LOOKUP_RETRY))
 	{
 		// find_mac() may trigger a netlink kernel call
 		// (iface_enumerate) to refresh the ARP table on a cache miss.
@@ -1298,7 +1309,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		// been remapped while we were unlocked)
 		lock_shm();
 		client = getClient(clientID, true);
-		if(client != NULL)
+		// A forked TCP worker only searches the ARP cache it inherited, so
+		// its miss leaves the lookup to the next query of the main process
+		if(client != NULL && (hwlen > 0 || daemon->pipe_to_parent == -1))
 		{
 			// If a MAC was just learned (this runs only while it was
 			// still unknown), clear found_group so the next query
@@ -1308,6 +1321,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				client->flags.found_group = false;
 			memcpy(client->hwaddr, hwaddr, sizeof(hwaddr));
 			client->hwlen = hwlen;
+			client->lastMACLookup = ABS_TO_SHM_TIME((time_t)querytimestamp);
 		}
 
 		// Re-fetch all SHM pointers as SHM may have been remapped. The
@@ -3944,6 +3958,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			log_crit("Unable to create dotdoh DoT thread. Exiting...");
 			exit(EXIT_FAILURE);
 		}
+
+		// Likewise for the inbound DoQ (DNS-over-QUIC) listener on UDP/853.
+		if(config.dns.doq.v.b &&
+		   pthread_create( &threads[DOTDOH_DOQ], &attr, dotdoh_doq_thread, NULL ) != 0)
+		{
+			log_crit("Unable to create dotdoh DoQ thread. Exiting...");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	// Chown files if FTL started as user root but a dnsmasq config
@@ -3972,6 +3994,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 			// Configured FTL database file
 			chown_pihole(config.files.database.v.s, ent_pw);
+
+			// Temporary history database (database.forceDisk)
+			if(config.database.forceDisk.v.b)
+				chown_pihole(config.files.tmp_db.v.s, ent_pw);
 
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
@@ -4636,6 +4662,21 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 
 	// Restore errno for dnsmaq logging routines
 	errno = errnum;
+}
+
+/**
+ * @brief Retrieves dnsmasq's limit on concurrent TCP children (--max-tcp-connections).
+ *
+ * @return The configured limit, or dnsmasq's default if it is not known yet.
+ */
+unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
+{
+	// Read when the listeners start, i.e. after the config is parsed. Fall back to
+	// dnsmasq's own default if that ordering ever changes, so the derived cap can
+	// never come out as zero and refuse everything.
+	if(daemon != NULL && daemon->max_procs > 0)
+		return (unsigned int)daemon->max_procs;
+	return MAX_PROCS;
 }
 
 /**

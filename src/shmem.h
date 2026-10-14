@@ -70,6 +70,7 @@ typedef struct {
 	unsigned int dns_cache_lookup_size;
 	unsigned int intarrays_MAX;
 	unsigned int regex_change;
+	unsigned int aliasclients; // rows of the last alias-client import
 	struct {
 		int gravity;
 		int antigravity;
