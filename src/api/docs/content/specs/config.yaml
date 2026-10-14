@@ -381,6 +381,8 @@ components:
                   type: boolean
                 dot:
                   type: boolean
+                doq:
+                  type: boolean
                 blocking:
                   type: object
                   properties:
@@ -940,6 +942,7 @@ components:
             doh: true
             dohReverseProxy: false
             dot: true
+            doq: true
             CNAMEdeepInspect: true
             EDNS0ECS: true
             ignoreLocalhost: false

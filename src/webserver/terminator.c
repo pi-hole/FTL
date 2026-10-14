@@ -1184,6 +1184,8 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 
 		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 		                                           query, qlen, answer, sizeof(answer));
+		if(alen == DOTDOH_MALFORMED)
+		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 		if(alen <= 0)
 		{ h1_doh_error(ssl, "500 Internal Server Error", NULL); return; }
 
@@ -1892,6 +1894,8 @@ static void h2_doh_serve(struct h2_stream *s)
 
 	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 	                                           query, qlen, answer, sizeof(answer));
+	if(alen == DOTDOH_MALFORMED)
+	{ h2_gateway_error(s, "400"); return; }
 	if(alen <= 0)
 	{ h2_gateway_error(s, "500"); return; }
 
@@ -3893,6 +3897,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
+				else if(job->alen == DOTDOH_MALFORMED)
+					h3_gateway_error(s, "400");
 				else if(job->alen <= 0)
 					h3_gateway_error(s, "500");
 				else if(s->ssl != NULL && SSL_get_stream_write_state(s->ssl) != SSL_STREAM_STATE_OK)
