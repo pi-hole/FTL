@@ -1406,7 +1406,9 @@ static void *crash_watchdog(void *arg)
 	while((left = sleep(left)) > 0);
 
 	static const char msg[] = "FTL did not shut down after the crash, exiting now\n";
-	if(write(STDERR_FILENO, msg, sizeof(msg) - 1) < 0) { /* nothing left to do */ }
+	// Nothing left to do if this fails, we exit right after
+	const ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+	(void)ret;
 	_exit(EXIT_FAILURE);
 }
 
