@@ -42,3 +42,22 @@ FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *m
 	// Return file pointer
 	return file_ptr;
 }
+
+// Open one of FTL's own log files. Unlike FTLfopen(), a failure is not logged:
+// the warning would be written to FTL.log, which is opened for that again, so a
+// log file that cannot be opened would recurse until the stack runs out. The
+// callers in log.c handle a failed open themselves
+FILE * __attribute__ ((__malloc__)) FTLfopen_nowarn(const char *pathname, const char *mode)
+{
+	FILE *file_ptr = 0;
+	do
+	{
+		// Reset errno before trying to open
+		errno = 0;
+		file_ptr = fopen(pathname, mode);
+	}
+	// Try again if the call was interrupted by an incoming signal
+	while(file_ptr == NULL && errno == EINTR);
+
+	return file_ptr;
+}

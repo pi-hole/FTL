@@ -281,6 +281,31 @@ load 'bats_helper.bash'
   assert_failure
 }
 
+@test "FTL keeps running when it cannot open its log file" {
+  # With a directory in place of FTL.log every open of the file fails and FTL
+  # logs to syslog instead. A list reload makes it log, the in-memory log shows
+  # when the reload is done
+  next=$(curl -s 127.0.0.1/api/logs/ftl | jq .nextID)
+  mv /var/log/pihole/FTL.log /var/log/pihole/FTL.log.moved
+  mkdir /var/log/pihole/FTL.log
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  for i in $(seq 1 60); do
+    if curl -s "127.0.0.1/api/logs/ftl?nextID=${next}" | grep -q 'deny regex for'; then
+      break
+    fi
+    sleep 0.5
+  done
+  run bash -c "curl -s '127.0.0.1/api/logs/ftl?nextID=${next}' | grep -c 'deny regex for'"
+  logged="${output}"
+  run bash -c 'kill -0 "$(cat /run/pihole-FTL.pid)"'
+  alive=${status}
+  rmdir /var/log/pihole/FTL.log
+  mv /var/log/pihole/FTL.log.moved /var/log/pihole/FTL.log
+  printf "reload logged: %s, FTL alive: %s\n" "${logged}" "${alive}"
+  [[ ${logged} -ge 1 ]]
+  [[ ${alive} == 0 ]]
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
