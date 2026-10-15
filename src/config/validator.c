@@ -398,15 +398,16 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
-// Validate file path (dash allowed), used by files.log.dnsmasq
+// Validate file path (dash or empty allowed), used by files.log.dnsmasq
 bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Dash is allowed, this enabled printing to stderr
 	if(strlen(val->s) == 1 && val->s[0] == '-')
 		return true;
 
-	// else:
-	return validate_filepath(val, key, err);
+	// else: an empty value leaves the log-facility line out of the dnsmasq
+	// config, dnsmasq then logs to syslog
+	return validate_filepath_empty(val, key, err);
 }
 
 // Validate the TOTP secret: empty (2FA off) or a base32 string of at most 32

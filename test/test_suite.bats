@@ -1717,6 +1717,11 @@ setup() {
   assert_success
 }
 
+@test "files.log.dnsmasq accepts an empty value for no log file" {
+  run ./pihole-FTL --config -t files.log.dnsmasq ""
+  assert_success
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {
