@@ -485,6 +485,17 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		return process_received_zip(api, &data);
 	}
 
+	// A password asks for an encrypted archive, never import something else
+	// under it
+	if(data.password != NULL && data.password[0] != '\0')
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Teleporter archive is not password-protected",
+		                       "A password was given, but this archive is not encrypted");
+	}
+
 	// Check if we received something that claims to be a ZIP archive
 	// - filename should end in ".zip"
 	// - the data itself

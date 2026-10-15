@@ -17,6 +17,8 @@
 #include <limits.h>
 // errno, ERANGE
 #include <errno.h>
+// open(), O_CREAT
+#include <fcntl.h>
 #include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
@@ -964,9 +966,9 @@ const char *encrypt_teleporter_zip(char filename[128], void **ptr, size_t *size,
 	return NULL;
 }
 
-bool write_teleporter_zip_to_disk(void)
+bool write_teleporter_zip_to_disk(const bool password_stdin)
 {
-	char *password = teleporter_read_password(true);
+	char *password = teleporter_read_password(true, password_stdin);
 	if(password == NULL)
 		return false;
 	if(password[0] == '\0')
@@ -1003,10 +1005,14 @@ bool write_teleporter_zip_to_disk(void)
 		}
 	}
 
-	// Write file to disk
-	FILE *fp = fopen(filename, "w");
+	// Write file to disk, readable by us only: it holds password hashes and
+	// other secrets, encrypted or not
+	const int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+	FILE *fp = fd > -1 ? fdopen(fd, "w") : NULL;
 	if(fp == NULL)
 	{
+		if(fd > -1)
+			close(fd);
 		log_err("Failed to open %s for writing: %s", filename, strerror(errno));
 		free_teleporter_zip(&zip);
 		free(ptr);
@@ -1035,7 +1041,7 @@ bool write_teleporter_zip_to_disk(void)
 
 #define MAX_TELEPORTER_ZIP_SIZE (size_t)(128*1024*1024) // 128 MiB
 
-bool read_teleporter_zip_from_disk(const char *filename)
+bool read_teleporter_zip_from_disk(const char *filename, const bool password_stdin)
 {
 	// Open ZIP archive
 	FILE *fp = fopen(filename, "r");
@@ -1076,9 +1082,18 @@ bool read_teleporter_zip_from_disk(const char *filename)
 	}
 	fclose(fp);
 
+	// A password on stdin asks for an encrypted archive, never import
+	// something else under it
+	if(password_stdin && !teleporter_is_encrypted(ptr, size))
+	{
+		log_err("This Teleporter archive is not password-protected");
+		free(ptr);
+		return false;
+	}
+
 	if(teleporter_is_encrypted(ptr, size))
 	{
-		char *password = teleporter_read_password(false);
+		char *password = teleporter_read_password(false, password_stdin);
 		if(password == NULL)
 		{
 			free(ptr);

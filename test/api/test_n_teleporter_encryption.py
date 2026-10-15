@@ -121,3 +121,23 @@ def test_import_round_trip(api_session, ftl_url, encrypted):
     assert r.status_code == 200, r.text
     assert r.json()["files"] == ["etc/pihole/gravity.db->group"]
     _wait_for_restart(pos)
+
+
+def test_import_plain_archive_with_password(api_session, ftl_url):
+    """A password asks for an encrypted archive, an unencrypted one is refused."""
+    plain = api_session.get(f"{ftl_url}/api/teleporter", timeout=30)
+    assert plain.status_code == 200, plain.text
+    assert plain.content.startswith(b"PK\x03\x04")
+    r = _import(api_session, ftl_url, plain.content, PASSWORD)
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["message"] == "Teleporter archive is not password-protected"
+
+
+@pytest.mark.parametrize("offset,value", [(12, 2 * 65536 + 1), (16, 2 * 3 + 1)], ids=["s_cost", "t_cost"])
+def test_kdf_costs_capped(api_session, ftl_url, encrypted, offset, value):
+    """Costs above twice the defaults are refused before any key derivation."""
+    data = bytearray(encrypted.content)
+    data[offset:offset + 4] = value.to_bytes(4, "big")
+    r = _import(api_session, ftl_url, bytes(data), PASSWORD)
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["hint"] == "Invalid key derivation parameters in encrypted Teleporter archive"

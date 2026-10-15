@@ -45,7 +45,7 @@ components:
                   password:
                     type: string
                     maxLength: 1024
-                    description: "Password of an encrypted archive, ignored for unencrypted archives"
+                    description: "Password of an encrypted archive. An unencrypted archive is refused when a password is given"
                   import:
                     type: object
                     nullable: true

@@ -2240,10 +2240,13 @@ except socket.timeout:
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {
-  run bash -c 'echo "" | ./pihole-FTL --teleporter'
+  # Without --password-stdin, a script exports unencrypted and stdin is not read
+  run bash -c './pihole-FTL --teleporter < /dev/null'
   assert_success
   # Get filename from last line printed by FTL
   filename="${lines[-1]}"
+  run stat -c %a "${filename}"
+  assert_output "600"
 #  run bash -c 'zipinfo ${filename}'
 #  printf "%s\n" "${lines[@]}"
 #  assert_success
@@ -2262,18 +2265,44 @@ except socket.timeout:
 }
 
 @test "Create and re-import password-protected Teleporter file via CLI" {
-  run bash -c 'echo "secret pw" | ./pihole-FTL --teleporter'
+  run bash -c 'echo "secret pw" | ./pihole-FTL --teleporter --password-stdin'
   assert_success
   filename="${lines[-1]}"
   [[ "${filename}" == *.zip.enc ]]
+  run stat -c %a "${filename}"
+  assert_output "600"
   run bash -c "head -c 8 ${filename}"
   assert_output "PIHOLETP"
-  run bash -c "echo wrong | ./pihole-FTL --teleporter ${filename}"
+  run bash -c "echo wrong | ./pihole-FTL --teleporter --password-stdin ${filename}"
   assert_failure
   assert_line --index -1 --partial "Wrong password or corrupted archive"
-  run bash -c "echo 'secret pw' | ./pihole-FTL --teleporter ${filename}"
+  run bash -c "./pihole-FTL --teleporter ${filename} < /dev/null"
+  assert_failure
+  assert_output --partial "pass the password with --password-stdin"
+  run bash -c "echo 'secret pw' | ./pihole-FTL --teleporter --password-stdin ${filename}"
   assert_success
   assert_line --index -1 "Imported etc/pihole/gravity.db->client_by_group"
+  run bash -c "rm ${filename}"
+}
+
+@test "Teleporter CLI waits for a slow password on stdin and refuses a missing one" {
+  run bash -c '(sleep 4; echo "secret pw") | ./pihole-FTL --teleporter --password-stdin'
+  assert_success
+  filename="${lines[-1]}"
+  [[ "${filename}" == *.zip.enc ]]
+  run bash -c "rm ${filename}"
+  run bash -c './pihole-FTL --teleporter --password-stdin < /dev/null'
+  assert_failure
+  assert_output --partial "Error: Empty password on stdin"
+}
+
+@test "Teleporter CLI refuses an unencrypted archive when given a password" {
+  run bash -c './pihole-FTL --teleporter < /dev/null'
+  assert_success
+  filename="${lines[-1]}"
+  run bash -c "echo 'secret pw' | ./pihole-FTL --teleporter --password-stdin ${filename}"
+  assert_failure
+  assert_line --index -1 --partial "This Teleporter archive is not password-protected"
   run bash -c "rm ${filename}"
 }
 

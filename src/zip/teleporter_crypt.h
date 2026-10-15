@@ -22,6 +22,6 @@ const char *teleporter_encrypt(const uint8_t *in, const size_t inlen, const char
                                uint8_t **out, size_t *outlen);
 const char *teleporter_decrypt(const uint8_t *in, const size_t inlen, const char *password,
                                uint8_t **out, size_t *outlen);
-char *teleporter_read_password(const bool export);
+char *teleporter_read_password(const bool export, const bool from_stdin);
 
 #endif // TELEPORTER_CRYPT_H

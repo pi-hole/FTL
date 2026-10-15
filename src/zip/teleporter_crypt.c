@@ -39,10 +39,10 @@
 // uploaded file can make us spend on key derivation
 #define ENC_S_COST 65536u
 #define ENC_T_COST 3u
-#define ENC_MAX_S_COST (1u << 18)
-#define ENC_MAX_T_COST 16u
+#define ENC_MAX_S_COST (2u * ENC_S_COST)
+#define ENC_MAX_T_COST (2u * ENC_T_COST)
 
-#define STDIN_TIMEOUT_MS 3000
+#define STDIN_TIMEOUT_MS 60000
 
 static void put_u32(uint8_t *p, const uint32_t v)
 {
@@ -220,9 +220,9 @@ static char *read_line(const char *prompt)
 		} while(rc < 0 && errno == EINTR);
 		if(rc == 0)
 		{
-			fprintf(stderr, "Warning: No password received on stdin within %d s, assuming none\n",
+			fprintf(stderr, "Error: No password received on stdin within %d s\n",
 			        STDIN_TIMEOUT_MS / 1000);
-			return strdup("");
+			return NULL;
 		}
 	}
 
@@ -253,22 +253,33 @@ static char *read_line(const char *prompt)
 	return pw;
 }
 
-// Prompt without echo on a terminal, otherwise read one line from stdin so
-// scripts can pipe the password in without exposing it in argv. On export, an
-// empty password means no encryption
-char *teleporter_read_password(const bool export)
+// Prompt without echo on a terminal. Scripts pass the password on stdin with
+// --password-stdin rather than in argv; without it, they export unencrypted
+// and cannot import an encrypted archive. An empty password at the prompt means
+// no encryption, one on stdin is an error as encryption was asked for
+char *teleporter_read_password(const bool export, const bool from_stdin)
 {
+	const bool tty = isatty(STDIN_FILENO);
+	if(!tty && !from_stdin)
+	{
+		if(export)
+			return strdup("");
+		fprintf(stderr, "Error: This Teleporter archive is password-protected, pass the password with --password-stdin\n");
+		return NULL;
+	}
+
 	char *pw = read_line(export ? "Teleporter password (empty for none): " : "Teleporter password: ");
-	if(pw == NULL || (pw[0] == '\0' && export))
+	if(pw == NULL || (pw[0] == '\0' && export && !from_stdin))
 		return pw;
 	if(pw[0] == '\0')
 	{
-		fprintf(stderr, "Error: This Teleporter archive is password-protected, a password is required\n");
+		fprintf(stderr, export ? "Error: Empty password on stdin\n" :
+		        "Error: This Teleporter archive is password-protected, a password is required\n");
 		free(pw);
 		return NULL;
 	}
 
-	if(export && isatty(STDIN_FILENO))
+	if(export && tty && !from_stdin)
 	{
 		char *pw2 = read_line("Repeat password: ");
 		const bool match = pw2 != NULL && strcmp(pw, pw2) == 0;
