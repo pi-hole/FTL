@@ -511,7 +511,7 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
     sys.exit("DoQ: handshake with ALPN %r was accepted, expected refusal" % alpn)
 
 
-def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
+def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST", pad=0, drip=0.0):
     """Plaintext DoH request as a reverse proxy sends it: a PROXY v2 header
     announcing client_ip over TLS, authenticated by the shared secret TLV. POST
     carries the query as body, any other method as the GET "dns" parameter.
@@ -526,28 +526,44 @@ def doh_proxy(host, port, qname, client_ip, secret_hex, method="POST"):
         dns = base64.urlsafe_b64encode(query).rstrip(b"=")
         req = (method.encode() + b" /dns-query?dns=" + dns + b" HTTP/1.1\r\n"
                b"Host: pi.hole\r\nConnection: close\r\n\r\n")
-    return proxy_request(host, port, client_ip, secret_hex, req)
+    return proxy_request(host, port, client_ip, secret_hex, req, pad, drip)
 
 
-def proxy_request(host, port, client_ip, secret_hex, req):
+def proxy_request(host, port, client_ip, secret_hex, req, pad=0, drip=0.0):
     """Send req behind a PROXY v2 header announcing client_ip over TLS,
     authenticated by the shared secret TLV. Returns (HTTP status, lowercased
-    response headers, body)."""
+    response headers, body). pad adds another TLV of that many bytes ahead of
+    the secret, drip sends the header after its fixed 16 bytes one byte per
+    drip seconds. A connection closed without an answer reports status "none"."""
     secret = bytes.fromhex(secret_hex)
     addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
     # PP2_TYPE_SSL (client=SSL, verify=0) and the secret in custom TLV 0xE0
     tlvs = bytes([0x20, 0x00, 0x05, 0x01, 0, 0, 0, 0])
+    if pad:
+        tlvs += bytes([0xE1]) + struct.pack("!H", pad) + bytes(pad)
     tlvs += bytes([0xE0]) + struct.pack("!H", len(secret)) + secret
     body = addrs + tlvs
     hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    resp = b""
     with socket.create_connection((host, port), timeout=5) as s:
-        s.sendall(hdr + req)
-        resp = b""
-        while True:
-            chunk = s.recv(65536)
-            if not chunk:
-                break
-            resp += chunk
+        try:
+            if drip:
+                s.sendall(hdr[:16])
+                for i in range(16, len(hdr)):
+                    s.sendall(hdr[i:i + 1])
+                    time.sleep(drip)
+                s.sendall(req)
+            else:
+                s.sendall(hdr + req)
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                resp += chunk
+        except OSError:
+            pass
+    if not resp:
+        return "none", {}, b""
     head, _, payload = resp.partition(b"\r\n\r\n")
     lines = head.decode("latin-1").split("\r\n")
     status = lines[0].split(" ", 2)[1]
@@ -562,7 +578,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
                  "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn|"
-                 "dohproxy|dohproxyget|dohproxyerror|dohproxymethod|proxyget> ...")
+                 "dohproxy|dohproxyget|dohproxypad|dohproxydrip|dohproxyerror|dohproxymethod|proxyget> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -643,6 +659,19 @@ def main():
         print("OK")
         if cmd == "dohproxyget":
             print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd in ("dohproxypad", "dohproxydrip"):
+        # dohproxy with another TLV of <arg> bytes ahead of the secret, or with
+        # the header after its fixed part dripped one byte per <arg> seconds
+        _, _, host, port, domain, client_ip, secret_hex, expected_ip, arg = sys.argv[:10]
+        if cmd == "dohproxypad":
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, secret_hex, pad=int(arg))
+        else:
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, secret_hex, drip=float(arg))
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
     elif cmd == "proxyget":
         # Status of a GET of any path behind the PROXY v2 header
         _, _, host, port, path, client_ip, secret_hex = sys.argv[:8]

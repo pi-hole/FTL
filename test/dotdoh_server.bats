@@ -327,6 +327,22 @@ setup_file() {
   assert_success
 }
 
+@test "dotdoh-server: DoH behind a proxy sending more TLVs than the address block is served" {
+  # HAProxy and Envoy may add authority, SSL and unique-id TLVs, here 300 bytes
+  # ahead of the secret
+  run python3 test/dotdoh_query.py dohproxypad 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          00112233445566778899aabbccddeeff "$EXPECT_IP" 300
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a PROXY header dripped byte by byte is given up on" {
+  # 0.1 s per byte after the fixed 16 bytes never trips a per-read timeout, but
+  # the remaining 39 bytes take longer than the 3 s allowed for the whole header
+  run python3 test/dotdoh_query.py dohproxydrip 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          00112233445566778899aabbccddeeff "$EXPECT_IP" 0.1
+  refute_output "OK"
+}
+
 @test "dotdoh-server: DoH GET behind a reverse proxy is not shared-cacheable" {
   # The answer depends on the client the proxy announced, so it must be private
   run python3 test/dotdoh_query.py dohproxyget 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
