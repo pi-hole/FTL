@@ -1722,6 +1722,13 @@ setup() {
   assert_success
 }
 
+@test "files.log.dnsmasq is quoted in the dnsmasq config" {
+  # The test runs dnsmasq's config check on the generated file: unquoted,
+  # the '"' would be unbalanced and ' #' would start a comment
+  run ./pihole-FTL --config -t files.log.dnsmasq '/var/log/pihole/pi"hole #2\t.log'
+  assert_success
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {
