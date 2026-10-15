@@ -1712,6 +1712,11 @@ setup() {
   assert_failure 3
 }
 
+@test "files.log.dnsmasq accepts \"-\" for logging to stderr" {
+  run ./pihole-FTL --config -t files.log.dnsmasq -
+  assert_success
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {

@@ -573,6 +573,10 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 		if(path == NULL || path[0] == '\0')
 			continue;
 
+		// "-" makes dnsmasq log to stderr, it names no file
+		if(written[i] == &conf->files.log.dnsmasq && strcmp(path, "-") == 0)
+			continue;
+
 		// A relative path is resolved from the working directory and cannot
 		// be compared with the document root
 		if(path[0] != '/')
