@@ -14,7 +14,7 @@ load 'bats_helper.bash'
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)"'
   refute_output
 }
 
@@ -31,6 +31,7 @@ load 'bats_helper.bash'
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
+  # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
@@ -51,13 +52,14 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
-  # slow), leaving the dns.reply.host PATCH and webserver_acl.bats. The CLI
-  # password set/remove do not write: the in-memory config already matches, so
-  # they log "pihole.toml unchanged" - which the next assertion below counts.
+  # slow), leaving the dns.reply.host PATCH, the removed dns.hosts entry and
+  # webserver_acl.bats. The CLI password set/remove do not write: the in-memory
+  # config already matches, so they log "pihole.toml unchanged" - which the
+  # next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "5"
+    assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "44" ]]
+    [[ ${lines[0]} == "45" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -80,12 +82,12 @@ load 'bats_helper.bash'
   fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (5x)
-  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (7x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
+  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (9x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "5"
-  else
     assert_line --index 0 "7"
+  else
+    assert_line --index 0 "9"
   fi
 }
 
