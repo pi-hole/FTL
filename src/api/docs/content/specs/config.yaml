@@ -547,8 +547,6 @@ components:
               properties:
                 domain:
                   type: string
-                proxySecret:
-                  type: string
                 acl:
                   type: string
                 port:
@@ -562,6 +560,10 @@ components:
                 serve_all:
                   type: boolean
                 advancedOpts:
+                  type: array
+                  items:
+                    type: string
+                trustedProxies:
                   type: array
                   items:
                     type: string
@@ -1046,7 +1048,6 @@ components:
               expire: 365
           webserver:
             domain: pi.hole
-            proxySecret: ''
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
@@ -1060,6 +1061,7 @@ components:
             serve_all: false
             advancedOpts:
               - "ssl_protocol_version=4"
+            trustedProxies: []
             session:
               timeout: 300
               restore: true

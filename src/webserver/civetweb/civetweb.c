@@ -2105,6 +2105,7 @@ enum {
 	ADDITIONAL_HEADER,
 	ALLOW_INDEX_SCRIPT_SUB_RES,
 	PROXY_PROTOCOL_SECRET,
+	PROXY_PROTOCOL_TRUSTED_PEERS,
 
 	NUM_OPTIONS
 };
@@ -2272,6 +2273,7 @@ static const struct mg_option config_options[] = {
     {"additional_header", MG_CONFIG_TYPE_STRING_MULTILINE, NULL},
     {"allow_index_script_resource", MG_CONFIG_TYPE_BOOLEAN, "no"},
     {"proxy_protocol_secret", MG_CONFIG_TYPE_STRING, NULL},
+    {"proxy_protocol_trusted_peers", MG_CONFIG_TYPE_STRING, NULL},
 
     {NULL, MG_CONFIG_TYPE_UNKNOWN, NULL}};
 
@@ -16738,41 +16740,54 @@ log_access(const struct mg_connection *conn)
 #endif /* Externally provided function */
 
 
+/* Verify given socket address against a list in the syntax of the
+ * access_control_list option.
+ * Return -1 if the list is malformed, 0 if address is disallowed, 1 if allowed.
+ */
+static int
+check_acl_list(struct mg_context *phys_ctx,
+               const char *list,
+               const union usa *sa)
+{
+	int allowed, flag, matched;
+	struct vec vec;
+
+	/* If any ACL is set, deny by default */
+	allowed = (list == NULL) ? '+' : '-';
+
+	while ((list = next_option(list, &vec, NULL)) != NULL) {
+		flag = vec.ptr[0];
+		matched = -1;
+		if ((vec.len > 0) && ((flag == '+') || (flag == '-'))) {
+			vec.ptr++;
+			vec.len--;
+			matched = parse_match_net(&vec, sa, 1);
+		}
+		if (matched < 0) {
+			mg_cry_ctx_internal(phys_ctx,
+			                    "%s: subnet must be [+|-]IP-addr[/x]",
+			                    __func__);
+			return -1;
+		}
+		if (matched) {
+			allowed = flag;
+		}
+	}
+
+	return allowed == '+';
+}
+
+
 /* Verify given socket address against the ACL.
  * Return -1 if ACL is malformed, 0 if address is disallowed, 1 if allowed.
  */
 static int
 check_acl(struct mg_context *phys_ctx, const union usa *sa)
 {
-	int allowed, flag, matched;
-	struct vec vec;
-
 	if (phys_ctx) {
-		const char *list = phys_ctx->dd.config[ACCESS_CONTROL_LIST];
-
-		/* If any ACL is set, deny by default */
-		allowed = (list == NULL) ? '+' : '-';
-
-		while ((list = next_option(list, &vec, NULL)) != NULL) {
-			flag = vec.ptr[0];
-			matched = -1;
-			if ((vec.len > 0) && ((flag == '+') || (flag == '-'))) {
-				vec.ptr++;
-				vec.len--;
-				matched = parse_match_net(&vec, sa, 1);
-			}
-			if (matched < 0) {
-				mg_cry_ctx_internal(phys_ctx,
-				                    "%s: subnet must be [+|-]IP-addr[/x]",
-				                    __func__);
-				return -1;
-			}
-			if (matched) {
-				allowed = flag;
-			}
-		}
-
-		return allowed == '+';
+		return check_acl_list(phys_ctx,
+		                      phys_ctx->dd.config[ACCESS_CONTROL_LIST],
+		                      sa);
 	}
 	return -1;
 }
@@ -18239,7 +18254,11 @@ set_acl_option(struct mg_context *phys_ctx)
 #else
 	sa.sin.sin_family = AF_INET;
 #endif
-	return check_acl(phys_ctx, &sa) != -1;
+	return (check_acl(phys_ctx, &sa) != -1)
+	       && (check_acl_list(phys_ctx,
+	                          phys_ctx->dd.config[PROXY_PROTOCOL_TRUSTED_PEERS],
+	                          &sa)
+	           != -1);
 }
 
 
@@ -20354,14 +20373,15 @@ produce_socket(struct mg_context *ctx, const struct socket *sp)
 
 /* PROXY protocol v2 support.
  *
- * When the "proxy_protocol_secret" option is set, civetweb parses a PROXY
- * protocol v2 header at the start of each new connection. The header is trusted
- * only if it carries a custom TLV whose value equals the configured secret; a
- * trusted header's announced client address (and TLS status, via the standard
- * PP2_TYPE_SSL TLV) then replaces the transport peer. The shared secret lets a
- * trusted upstream terminator or L4 proxy authenticate itself where source-
+ * When the "proxy_protocol_secret" or "proxy_protocol_trusted_peers" option is
+ * set, civetweb parses a PROXY protocol v2 header at the start of each new
+ * connection. The header is trusted if the connection comes from one of the
+ * trusted peers, or if it carries a custom TLV whose value equals the configured
+ * secret; a trusted header's announced client address (and TLS status, via the
+ * standard PP2_TYPE_SSL TLV) then replaces the transport peer. The shared secret
+ * lets a trusted upstream terminator or L4 proxy authenticate itself where source-
  * address trust is not possible (a loopback backend, a sidecar, a shared host).
- * With no secret configured the parser is a no-op, so normal requests are
+ * With neither option configured the parser is a no-op, so normal requests are
  * unaffected. */
 
 /* Custom PROXY v2 TLV (in the PP2_TYPE_MIN_CUSTOM 0xE0-0xEF range) carrying the
@@ -20439,17 +20459,17 @@ proxy_v2_poll(const struct mg_connection *conn, uint64_t deadline)
 }
 
 /* Parse a PROXY protocol v2 header on a fresh connection and, if it is trusted
- * (carries the configured secret), replace the remote address with the real
- * client the header announces. A no-op when the feature is disabled or no PROXY
+ * (comes from a trusted peer or carries the configured secret), replace the
+ * remote address with the real client the header announces. A no-op when the feature is disabled or no PROXY
  * header is present. */
 static void
 parse_proxy_protocol_v2(struct mg_connection *conn)
 {
 	static const unsigned char sig[12] = {0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D,
 	                                      0x0A, 0x51, 0x55, 0x49, 0x54, 0x0A};
-	const char *secret_hex;
+	const char *secret_hex, *trusted_peers;
 	unsigned char secret[64];
-	int secret_len;
+	int secret_len = 0, peer_trusted = 0;
 	uint64_t deadline;
 	unsigned char hdr[16];
 	unsigned char *buf;
@@ -20463,17 +20483,27 @@ parse_proxy_protocol_v2(struct mg_connection *conn)
 	 * would inherit a stale proxy_is_ssl and be mislabelled as HTTPS. */
 	conn->proxy_is_ssl = 0;
 
-	/* Opt-in: with no configured secret there is nothing to trust, so do not
-	 * touch the connection at all. */
-	secret_hex = (conn->dom_ctx != NULL)
-	                 ? conn->dom_ctx->config[PROXY_PROTOCOL_SECRET]
-	                 : NULL;
-	if (secret_hex == NULL || secret_hex[0] == '\0') {
+	/* Opt-in: with neither a secret nor trusted peers configured there is
+	 * nothing to trust, so do not touch the connection at all. */
+	if (conn->dom_ctx == NULL) {
 		return;
 	}
-	secret_len = proxy_v2_hex_decode(secret_hex, secret, sizeof(secret));
-	if (secret_len <= 0) {
-		return; /* misconfigured secret */
+	secret_hex = conn->dom_ctx->config[PROXY_PROTOCOL_SECRET];
+	trusted_peers = conn->dom_ctx->config[PROXY_PROTOCOL_TRUSTED_PEERS];
+	if (secret_hex != NULL && secret_hex[0] != '\0') {
+		secret_len = proxy_v2_hex_decode(secret_hex, secret, sizeof(secret));
+		if (secret_len <= 0) {
+			return; /* misconfigured secret */
+		}
+	}
+	if (trusted_peers != NULL && trusted_peers[0] != '\0') {
+		/* Checked against the transport peer, before a header replaces it */
+		peer_trusted = (check_acl_list(conn->phys_ctx,
+		                               trusted_peers,
+		                               &conn->client.rsa)
+		                == 1);
+	} else if (secret_len == 0) {
+		return;
 	}
 
 	deadline = proxy_v2_now_ms() + PROXY_V2_TIMEOUT_MS;
@@ -20538,7 +20568,7 @@ parse_proxy_protocol_v2(struct mg_connection *conn)
 
 	a = buf + 16;
 	/* Note the address family/size but do NOT adopt the address yet - the header
-	 * must first prove it is trusted via the secret TLV below. */
+	 * must first prove it is trusted, by its peer or the secret TLV below. */
 	if (hdr[13] == 0x11 && addr_len >= 12) { /* TCP over IPv4 */
 		addr_size = 12;
 	}
@@ -20551,9 +20581,10 @@ parse_proxy_protocol_v2(struct mg_connection *conn)
 		goto done; /* unsupported/short address block */
 	}
 
-	/* Walk the TLVs that follow the address block. Require the shared secret
-	 * (PP2_TYPE_PROXY_SECRET) before trusting the header, and note a
-	 * PP2_TYPE_SSL with PP2_CLIENT_SSL set (the client used TLS to the proxy). */
+	/* Walk the TLVs that follow the address block. Unless the peer is trusted,
+	 * require the shared secret (PP2_TYPE_PROXY_SECRET) before trusting the
+	 * header, and note a PP2_TYPE_SSL with PP2_CLIENT_SSL set (the client used
+	 * TLS to the proxy). */
 	{
 		int token_ok = 0, ssl_flag = 0;
 		size_t off = addr_size;
@@ -20564,7 +20595,8 @@ parse_proxy_protocol_v2(struct mg_connection *conn)
 			if (off + l > addr_len) {
 				break;
 			}
-			if (t == PP2_TYPE_PROXY_SECRET && l == (size_t)secret_len) {
+			if (secret_len > 0 && t == PP2_TYPE_PROXY_SECRET
+			    && l == (size_t)secret_len) {
 				/* Constant-time compare so a co-resident process cannot time
 				 * byte-wise matching to recover the secret. */
 				unsigned char diff = 0;
@@ -20580,8 +20612,8 @@ parse_proxy_protocol_v2(struct mg_connection *conn)
 			}
 			off += l;
 		}
-		if (!token_ok) {
-			goto done; /* secret missing or wrong - ignore the header */
+		if (!peer_trusted && !token_ok) {
+			goto done; /* untrusted peer, secret missing or wrong - ignore */
 		}
 
 		/* Trusted: adopt the real client address and TLS status. */

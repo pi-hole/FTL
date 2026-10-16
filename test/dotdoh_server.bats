@@ -311,12 +311,13 @@ setup_file() {
   assert_failure
 }
 
-@test "dotdoh-server: DoH behind an authenticated reverse proxy is served" {
-  # A PROXY v2 header carrying webserver.proxySecret announces client 127.0.0.3
-  # and TLS, so the plaintext request is served and attributed to that client
+@test "dotdoh-server: DoH behind a trusted reverse proxy is served" {
+  # test/pihole.toml trusts 127.0.0.4, so its PROXY v2 header announcing client
+  # 127.0.0.3 and TLS is believed, and the plaintext request is served and
+  # attributed to that client
   local proxy_client="127.0.0.3" out i
   run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" "$proxy_client" \
-          00112233445566778899aabbccddeeff "$EXPECT_IP"
+          127.0.0.4 "$EXPECT_IP"
   assert_output "OK"
   for i in $(seq 1 10); do
     out=$(curl -s "${FTL_URL}/api/queries?client_ip=${proxy_client}")
@@ -329,24 +330,23 @@ setup_file() {
 
 @test "dotdoh-server: DoH behind a proxy sending more TLVs than the address block is served" {
   # HAProxy and Envoy may add authority, SSL and unique-id TLVs, here 300 bytes
-  # ahead of the secret
   run python3 test/dotdoh_query.py dohproxypad 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
-          00112233445566778899aabbccddeeff "$EXPECT_IP" 300
+          127.0.0.4 "$EXPECT_IP" 300
   assert_output "OK"
 }
 
 @test "dotdoh-server: a PROXY header dripped byte by byte is given up on" {
-  # 0.1 s per byte after the fixed 16 bytes never trips a per-read timeout, but
-  # the remaining 39 bytes take longer than the 3 s allowed for the whole header
+  # 0.2 s per byte after the fixed 16 bytes never trips a per-read timeout, but
+  # the remaining 20 bytes take longer than the 3 s allowed for the whole header
   run python3 test/dotdoh_query.py dohproxydrip 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
-          00112233445566778899aabbccddeeff "$EXPECT_IP" 0.1
+          127.0.0.4 "$EXPECT_IP" 0.2
   refute_output "OK"
 }
 
 @test "dotdoh-server: DoH GET behind a reverse proxy is not shared-cacheable" {
   # The answer depends on the client the proxy announced, so it must be private
   run python3 test/dotdoh_query.py dohproxyget 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
-          00112233445566778899aabbccddeeff "$EXPECT_IP"
+          127.0.0.4 "$EXPECT_IP"
   assert_line --index 0 "OK"
   assert_line --index 1 --regexp '^cache-control: private, max-age=[0-9]+$'
 }
@@ -355,7 +355,7 @@ setup_file() {
   local m
   for m in PUT DELETE HEAD OPTIONS; do
     run python3 test/dotdoh_query.py dohproxymethod 127.0.0.1 80 "$m" "$DOMAIN" 127.0.0.3 \
-            00112233445566778899aabbccddeeff
+            127.0.0.4
     assert_output "HTTP 405 allow=GET, POST body=0"
   done
 }
@@ -367,25 +367,28 @@ setup_file() {
   [[ -d "$pages" ]] || { mkdir -p "$pages"; created=1; }
   echo "dashboard error page" > "$pages/error403.html"
   run python3 test/dotdoh_query.py dohproxyerror 127.0.0.1 80 "$DOMAIN" 203.0.113.7 \
-          00112233445566778899aabbccddeeff
+          127.0.0.4
   rm -f "$pages/error403.html"
   [[ -z "$created" ]] || rmdir "$pages"
   assert_output "HTTP 403 type=text/plain; charset=utf-8 body=Error 403: Forbidden"
 }
 
-@test "dotdoh-server: DoH behind a proxy with the wrong secret is refused (426)" {
-  run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
-          ffeeddccbbaa99887766554433221100 "$EXPECT_IP"
+@test "dotdoh-server: DoH behind a trusted proxy is refused (426) if the client did not use TLS" {
+  run python3 test/dotdoh_query.py dohproxyplain 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          127.0.0.4 "$EXPECT_IP"
   assert_output "HTTP 426"
 }
 
-@test "dotdoh-server: an invalid webserver.proxySecret is rejected when set" {
-  run ./pihole-FTL --config webserver.proxySecret 0011223344556677
-  assert_line --index 0 'Invalid value: webserver.proxySecret: must be 32 hexadecimal characters or empty'
-  assert_failure 3
+@test "dotdoh-server: a PROXY v2 header from an untrusted peer is ignored (426)" {
+  # $CLIENT is not in webserver.trustedProxies, so its request stays plaintext
+  run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          "$CLIENT" "$EXPECT_IP"
+  assert_output "HTTP 426"
+}
 
-  run ./pihole-FTL --config webserver.proxySecret 00112233445566778899aabbccddeefg
-  assert_line --index 0 'Invalid value: webserver.proxySecret: must be 32 hexadecimal characters or empty'
+@test "dotdoh-server: an invalid webserver.trustedProxies entry is rejected when set" {
+  run ./pihole-FTL --config webserver.trustedProxies '["10.0.0.0/33"]'
+  assert_line --index 0 'Invalid value: webserver.trustedProxies[0]: not a valid IPv4 CIDR ("33")'
   assert_failure 3
 }
 

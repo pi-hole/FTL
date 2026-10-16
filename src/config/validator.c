@@ -284,6 +284,32 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	return true;
 }
 
+bool validate_cidr_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json->child; item != NULL; item = item->next, i++)
+	{
+		char ikey[128];
+		snprintf(ikey, sizeof(ikey), "%s[%d]", key, i);
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a string", ikey);
+			return false;
+		}
+		union conf_value v = { .s = item->valuestring };
+		if(!validate_cidr(&v, ikey, err))
+			return false;
+	}
+
+	return true;
+}
+
 // Validate a netmask
 // The one-bits have to be contiguous and leading, anything else describes no
 // subnet and has neither a network nor a broadcast address. 0.0.0.0 is allowed
@@ -952,29 +978,6 @@ bool validate_max_history(union conf_value *val, const char *key, char err[VALID
 	if(val->ui > MAXLOGAGE*3600)
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than %u", key, MAXLOGAGE*3600);
-		return false;
-	}
-
-	return true;
-}
-
-// Shared with the terminator, which decodes the secret at runtime
-bool proxy_secret_valid(const char *s)
-{
-	return strlen(s) == PROXY_SECRET_LEN &&
-	       strspn(s, "0123456789abcdefABCDEF") == PROXY_SECRET_LEN;
-}
-
-bool validate_proxy_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
-{
-	// Empty disables the external proxy secret
-	if(val->s == NULL || val->s[0] == '\0')
-		return true;
-
-	if(!proxy_secret_valid(val->s))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be %u hexadecimal characters or empty",
-		         key, PROXY_SECRET_LEN);
 		return false;
 	}
 

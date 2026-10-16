@@ -279,12 +279,12 @@
 
   # Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The
   # client-facing connection stays HTTPS; the proxy handles the encryption and forwards
-  # plain HTTP to Pi-hole. This requires webserver.proxySecret to be set and the proxy
-  # to send a PROXY protocol v2 header carrying that secret as a custom TLV, which
-  # HAProxy and Envoy can do: only an authenticated proxy is believed, and the client
-  # address it announces is used to attribute the query. A plain HTTP request that is
-  # not authenticated this way is still refused, so enabling this alone never exposes
-  # DNS queries in cleartext.
+  # plain HTTP to Pi-hole. This requires the proxy to be listed in
+  # webserver.trustedProxies and to announce the client's TLS in a PROXY protocol v2
+  # header, e.g., HAProxy with send-proxy-v2-ssl: only such a proxy is believed, and the
+  # client address it announces is used to attribute the query. Any other plain HTTP
+  # request is still refused, so enabling this alone never exposes DNS queries in
+  # cleartext.
   #
   # Allowed values are:
   #     true or false
@@ -1055,18 +1055,20 @@
   #     An array of permitted CivetWeb options
   advancedOpts = []
 
-  # Shared secret authenticating a trusted reverse proxy in front of Pi-hole. When set,
-  # FTL accepts a PROXY protocol v2 header carrying this secret and takes the client
-  # address (and TLS status) it announces in place of the transport peer, so requests
-  # forwarded by the proxy are attributed to the real client instead of to the proxy.
-  # Only a proxy that knows the secret is believed, which is why an unauthenticated
-  # X-Forwarded-For header is never trusted. Leave empty to disable; FTL then uses an
-  # internal per-boot secret for its own TLS terminator only. This setting is
-  # write-only, the secret itself cannot be read back.
+  # Reverse proxies whose PROXY protocol v2 header is believed, e.g., HAProxy with
+  # send-proxy-v2-ssl. Requests over a connection from one of these addresses are
+  # attributed to the client the header announces instead of to the proxy, and they
+  # count as HTTPS if the header says the client used TLS. The header of any other peer
+  # is ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting
+  # those lets every local process choose the client its requests are attributed to.
+  #
+  # Example: [ "192.168.1.10", "10.0.0.0/24" ]
   #
   # Allowed values are:
-  #     A shared secret of 32 hexadecimal characters, or an empty string
-  proxySecret = "00112233445566778899aabbccddeeff" ### CHANGED, default = ""
+  #     Array of IP addresses and/or subnets in CIDR notation
+  trustedProxies = [
+    "127.0.0.4"
+  ] ### CHANGED, default = []
 
   [webserver.session]
     # Session timeout in seconds.
