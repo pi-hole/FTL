@@ -1804,6 +1804,28 @@ except socket.timeout:
   assert_success
 }
 
+@test "An invalid entry of a list in pihole.toml is removed, the others are kept" {
+  # Break one of the two shipped entries in the file itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  sed -i 's|"2.2.2.2 äste.com steä.com"|"2.2.2.2 äste!.com steä.com"|' /etc/pihole/pihole.toml
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c -F -e 'Invalid value: dns.hosts[1]: invalid hostname (\"äste!.com\")' -e '----> dns.hosts[1] has been removed'"
+  assert_output "2"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'dns.hosts has been reset'"
+  assert_output "0"
+  run ./pihole-FTL --config dns.hosts
+  assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de ]"
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
 @test "Gravity stores internationalized domains as punycode" {
   # A query carries the punycode form of a name, so this is what has to end up
   # in the database - the UTF-8 spelling of the list could never match

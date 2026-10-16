@@ -15,7 +15,7 @@
 #include "FTL.h"
 #include "capabilities.h"
 #include "config/config.h"
-// DOT_PORT
+// DOT_PORT, DOQ_PORT
 #include "dotdoh/server.h"
 #include "log.h"
 // prctl(), PR_CAP_AMBIENT
@@ -247,9 +247,10 @@ bool check_capability(const unsigned int cap)
  */
 // Does anything in this configuration want a port below 1024? 1024 itself is
 // the first unprivileged one (net.ipv4.ip_unprivileged_port_start). dns.port,
-// the DoT listener on DOT_PORT and every entry of webserver.port count, the
-// last being a list like "80o,443os,[::]:80o", so the port is what follows the
-// final colon, if any. DoH needs nothing extra, it rides on a webserver port.
+// the DoT and DoQ listeners on DOT_PORT and DOQ_PORT and every entry of
+// webserver.port count, the last being a list like "80o,443os,[::]:80o", so
+// the port is what follows the final colon, if any. DoH needs nothing extra,
+// it rides on a webserver port.
 // The DHCP server has fixed privileged ports (67, 547). The NTP server (123)
 // is active by default and not fatal when it cannot bind, it does not count
 static bool binds_privileged_port(void)
@@ -261,6 +262,9 @@ static bool binds_privileged_port(void)
 		return true;
 
 	if(config.dns.dot.v.b && DOT_PORT < 1024)
+		return true;
+
+	if(config.dns.doq.v.b && DOQ_PORT < 1024)
 		return true;
 
 	const char *list = config.webserver.port.v.s;

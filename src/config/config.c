@@ -626,7 +626,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or quic://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
@@ -646,6 +646,13 @@ void initConfig(struct config *conf)
 	conf->dns.dot.d.b = true;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
+
+	conf->dns.doq.k = "dns.doq";
+	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
+	conf->dns.doq.t = CONF_BOOL;
+	conf->dns.doq.d.b = true;
+	conf->dns.doq.f = FLAG_RESTART_FTL;
+	conf->dns.doq.c = validate_stub;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
@@ -707,7 +714,7 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options blockingmode[] =
 		{
-			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
+			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2." },
 			{ get_blocking_mode_str(MODE_IP_NODATA_AAAA), "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
 			{ get_blocking_mode_str(MODE_IP), "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
 			{ get_blocking_mode_str(MODE_NX), "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
@@ -1846,6 +1853,44 @@ void reset_config_default(struct conf_item *conf_item)
 }
 
 
+// Remove the entries of a list that its validator rejects on their own and
+// return whether what remains passes, leaving the rejection in valerr otherwise
+static bool drop_invalid_entries(struct conf_item *conf_item, char valerr[VALIDATOR_ERRBUF_LEN])
+{
+	cJSON *array = conf_item->v.json;
+	if(!cJSON_IsArray(array))
+		return false;
+
+	// The validator sees a one-element list, so its message names index 0
+	char prefix[128];
+	snprintf(prefix, sizeof(prefix), "%s[0]: ", conf_item->k);
+	const size_t prefix_len = strlen(prefix);
+
+	unsigned int idx = 0;
+	for(cJSON *item = array->child, *next = NULL; item != NULL; item = next, idx++)
+	{
+		next = item->next;
+
+		cJSON *single = cJSON_CreateArray();
+		cJSON_AddItemToArray(single, cJSON_Duplicate(item, true));
+		union conf_value value = { .json = single };
+		char itemerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		const bool valid = conf_item->c(&value, conf_item->k, itemerr);
+		cJSON_Delete(single);
+		if(valid)
+			continue;
+
+		const char *reason = strncmp(itemerr, prefix, prefix_len) == 0 ? itemerr + prefix_len : itemerr;
+		log_err("Invalid value: %s[%u]: %s", conf_item->k, idx, reason);
+		log_err("----> %s[%u] has been removed", conf_item->k, idx);
+		cJSON_Delete(cJSON_DetachItemViaPointer(array, item));
+	}
+
+	// Rules spanning several entries only show on the list as a whole
+	valerr[0] = '\0';
+	return conf_item->c(&conf_item->v, conf_item->k, valerr);
+}
+
 /**
  * @brief Hold a configuration to the same rules every way of setting it obeys.
  *
@@ -1853,8 +1898,9 @@ void reset_config_default(struct conf_item *conf_item)
  * items, which a validator seeing one value at a time cannot express.
  *
  * @param conf Configuration to check
- * @param reset If true, an offending item is reset to its default and the check
- *              continues; if false, the first rejection ends it
+ * @param reset If true, an offending item is reset to its default (a list only
+ *              loses its offending entries) and the check continues; if false,
+ *              the first rejection ends it
  * @param err Buffer receiving the rejection, may be NULL when \p reset is true
  * @return Whether the configuration is acceptable
  */
@@ -1876,6 +1922,10 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
 			return false;
 		}
+
+		// A list loses only the entries that fail, not every entry it holds
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && drop_invalid_entries(conf_item, valerr))
+			continue;
 
 		// The validator's message opens with the key, so it is not repeated
 		log_err("Invalid value: %s", valerr);
