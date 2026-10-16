@@ -800,9 +800,9 @@ static int forwarded_client(struct mg_connection *conn, const struct mg_request_
 // by the front terminator over TLS (HTTP/1.1, HTTP/2, HTTP/3), so a /dns-query
 // reaching CivetWeb arrived over a plaintext hop.
 //
-// With dns.dohReverseProxy, a proxy is believed that the client used TLS if its
-// PROXY v2 header carries webserver.proxySecret (civetweb then sets `is_ssl`), or
-// if it is in webserver.trustedProxies and says so in X-Forwarded-Proto.
+// With dns.dohReverseProxy, a proxy in webserver.trustedProxies is believed that
+// the client used TLS if its PROXY v2 header says so (civetweb then sets `is_ssl`
+// and the announced client), or if it says so in X-Forwarded-Proto.
 //
 // Anything else is a genuinely cleartext request: refuse it with 426, or the
 // client's "encrypted" queries would leak on the wire.
@@ -1668,6 +1668,42 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 }
 #endif /* HAVE_TLS */
 
+// webserver.trustedProxies in the syntax of CivetWeb's access_control_list, or
+// NULL if empty. IPv4 entries are added IPv4-mapped as well, the form an IPv4
+// peer takes on a dual-stack socket
+static char *trusted_proxies_acl(void)
+{
+	const cJSON *list = config.webserver.trustedProxies.v.json;
+	const cJSON *e = NULL;
+	size_t len = 1;
+	cJSON_ArrayForEach(e, list)
+		if(cJSON_IsString(e))
+			len += 2 * strlen(e->valuestring) + 24;
+	if(len == 1)
+		return NULL;
+
+	char *acl = calloc(len, sizeof(char));
+	if(acl == NULL)
+		return NULL;
+	size_t used = 0;
+	cJSON_ArrayForEach(e, list)
+	{
+		if(!cJSON_IsString(e))
+			continue;
+		const char *v = e->valuestring;
+		const char *slash = strchr(v, '/');
+		const int alen = slash != NULL ? (int)(slash - v) : (int)strlen(v);
+		const char *sep = used > 0 ? "," : "";
+		if(strchr(v, ':') != NULL)
+			used += (size_t)snprintf(acl + used, len - used, "%s+[%.*s]%s",
+			                         sep, alen, v, slash != NULL ? slash : "");
+		else
+			used += (size_t)snprintf(acl + used, len - used, "%s+%s,+[::ffff:%.*s]/%d",
+			                         sep, v, alen, v, 96 + (slash != NULL ? atoi(slash + 1) : 32));
+	}
+	return acl;
+}
+
 void http_init(void)
 {
 	// Don't start web server if port is not set
@@ -1811,7 +1847,7 @@ void http_init(void)
 		NULL, NULL, // Optional slots for access control list (ACL)
 		NULL, NULL  // Termination of the array
 	};
-	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json) + 1; // +1: proxy_protocol_secret
+	const size_t opt_size = (ArraySize(static_options) / 2) + cJSON_GetArraySize(config.webserver.advancedOpts.v.json) + 2; // +2: proxy_protocol_secret, proxy_protocol_trusted_peers
 	// We allocate two additional slots for ACL and TLS configuration
 	// which are added later if configured
 	// The last NULL is for the NULL-termination of the array
@@ -1865,19 +1901,13 @@ void http_init(void)
 			        config.webserver.tls.cert.v.s);
 		}
 	}
-#endif
 
-	// Hand CivetWeb the shared secret authenticating PROXY v2 headers, so it
-	// adopts the real client address the header announces. Two independent
-	// reasons to install it: our own front terminator reaches this loopback
-	// backend behind such a header, and an operator-configured
-	// webserver.proxySecret lets an EXTERNAL reverse proxy do the same. The
-	// latter deployment has no local TLS port at all, so it must not be gated on
-	// the terminator running. Generated here so it exists before mg_start2();
-	// terminator_start() reuses the same value.
-	const char *cfg_proxy_secret = config.webserver.proxySecret.v.s;
-	const bool proxy_secret_set = cfg_proxy_secret != NULL && cfg_proxy_secret[0] != '\0';
-	if(terminator_port > 0 || proxy_secret_set)
+	// When the front terminator is active it reaches this loopback backend behind
+	// a PROXY v2 header; hand the backend the shared secret (the per-boot token,
+	// hex-encoded) so it authenticates the header and adopts the real client
+	// address. Generated here so it exists before mg_start2(); terminator_start()
+	// reuses the same token.
+	if(terminator_port > 0)
 	{
 		char secret_hex[33]; // 2 * 16-byte token + NUL
 		if(terminator_proxy_token_hex(secret_hex, sizeof(secret_hex)))
@@ -1888,6 +1918,19 @@ void http_init(void)
 		}
 		else
 			log_err("Terminator: could not derive proxy_protocol_secret; requests will log the loopback address");
+	}
+#endif
+
+	// An external reverse proxy is believed by its address instead. Such a
+	// deployment may have no local TLS port at all, so this does not depend on
+	// the terminator
+	char *trusted_peers = trusted_proxies_acl();
+	const bool trusted_proxies_set = trusted_peers != NULL;
+	if(trusted_proxies_set)
+	{
+		conf_opts[idx * 2] = strdup("proxy_protocol_trusted_peers");
+		conf_opts[idx * 2 + 1] = trusted_peers;
+		idx++;
 	}
 
 	// Add access control list if configured (last two options)
@@ -1922,7 +1965,7 @@ void http_init(void)
 			conf_opts[idx * 2 + 1] = strdup(config.webserver.acl.v.s);
 			// CivetWeb checks the reverse proxy, the client it announces has
 			// to pass as well
-			acl_per_request = proxy_secret_set;
+			acl_per_request = trusted_proxies_set;
 		}
 		idx++;
 	}

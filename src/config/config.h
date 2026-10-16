@@ -274,7 +274,6 @@ struct config {
 		struct conf_item headers;
 		struct conf_item serve_all;
 		struct conf_item advancedOpts;
-		struct conf_item proxySecret;
 		struct conf_item trustedProxies;
 		struct {
 			struct conf_item timeout;

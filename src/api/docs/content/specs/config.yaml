@@ -547,8 +547,6 @@ components:
               properties:
                 domain:
                   type: string
-                proxySecret:
-                  type: string
                 acl:
                   type: string
                 port:
@@ -1050,7 +1048,6 @@ components:
               expire: 365
           webserver:
             domain: pi.hole
-            proxySecret: ''
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
