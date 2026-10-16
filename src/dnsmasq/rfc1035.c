@@ -561,7 +561,7 @@ static int find_soa(struct dns_header *header, size_t qlen, char *name, int *sub
 	  soa_len = strlen(daemon->workspacename);
 
 	  /* SOA must be for the name we're interested in. */
-	  if (soa_len <= name_len && memcmp(daemon->workspacename, name + name_len - soa_len, soa_len) == 0)
+	  if (hostname_issubdomain(daemon->workspacename, name) != 0)
 	    {
 	      int prefix = name_len - soa_len;
 	      
