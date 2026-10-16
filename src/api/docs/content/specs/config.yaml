@@ -545,6 +545,10 @@ components:
               properties:
                 domain:
                   type: string
+                trusted_hosts:
+                  type: array
+                  items:
+                    type: string
                 acl:
                   type: string
                 port:
@@ -1041,6 +1045,7 @@ components:
               expire: 365
           webserver:
             domain: pi.hole
+            trusted_hosts: []
             acl: "+0.0.0.0/0,::/0"
             port: 80,[::]:80
             threads: 0
