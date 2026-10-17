@@ -14,7 +14,7 @@ load 'bats_helper.bash'
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)"'
   refute_output
 }
 
@@ -31,6 +31,7 @@ load 'bats_helper.bash'
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
+  # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
@@ -51,13 +52,14 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
-  # slow), leaving the dns.reply.host PATCH and webserver_acl.bats. The CLI
-  # password set/remove do not write: the in-memory config already matches, so
-  # they log "pihole.toml unchanged" - which the next assertion below counts.
+  # slow), leaving the dns.reply.host PATCH, the removed dns.hosts entry and
+  # webserver_acl.bats. The CLI password set/remove do not write: the in-memory
+  # config already matches, so they log "pihole.toml unchanged" - which the
+  # next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "5"
+    assert_line --index 0 "6"
   else
-    [[ ${lines[0]} == "44" ]]
+    [[ ${lines[0]} == "45" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -80,12 +82,12 @@ load 'bats_helper.bash'
   fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (5x)
-  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (7x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
+  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (9x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "5"
-  else
     assert_line --index 0 "7"
+  else
+    assert_line --index 0 "9"
   fi
 }
 
@@ -438,6 +440,72 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT COUNT(*) FROM queries WHERE domain = 'dbimport-off.ftl';\""
   printf "disk queries for dbimport-off.ftl: %s\n" "${lines[0]}"
   [[ ${lines[0]} -ge 1 ]]
+}
+
+@test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
+  # The garbage collector runs once per minute then and keeps only the
+  # queries that can still receive a reply. All of them still reach the disk,
+  # and a rate-limited client stays limited when none of its queries is left
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 FTLCONF_dns_rateLimit_count=250 FTLCONF_dns_rateLimit_interval=3600 /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A maxhistory-zero-0.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  # 127.0.0.2 exceeds the rate limit
+  for i in $(seq 1 251); do
+    dig A "ratelimit-${i}.ftl" -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+  done
+  run bash -c "dig A ratelimit-0.ftl -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 | grep -oE 'status: [A-Z]+'"
+  assert_output "status: REFUSED"
+  limited=$(date +%s)
+
+  # One query per second until a run whose cutoff lies past the burst has
+  # removed queries, the second run after it does at the latest
+  for i in $(seq 1 150); do
+    dig A "maxhistory-zero-${i}.ftl" @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+    if tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | awk -v t="${limited}" '
+         /GC starting, mintime:/ { match($0, /\([0-9]+\)/); past = substr($0, RSTART + 1, RLENGTH - 2) + 0 >= t }
+         /GC removed [1-9][0-9]* queries/ { if(past) done = 1 }
+         END { exit !done }'; then
+      break
+    fi
+    sleep 1
+  done
+  run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'GC (starting|removed)'"
+  printf "%s\n" "${lines[@]}"
+  assert_output --regexp "GC removed [1-9][0-9]* queries"
+
+  # None of the queries of 127.0.0.2 is left in memory, it is still limited
+  run bash -c "dig A ratelimit-after.ftl -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 | grep -oE 'status: [A-Z]+'"
+  assert_output "status: REFUSED"
+
+  # The final export on termination stores what is left in memory
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  sent=$(tail -c +$((logsize_dnsmasq + 1)) /var/log/pihole/pihole.log | grep -cE "query\[A\] maxhistory-zero-[0-9]+\.ftl ")
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT COUNT(*) FROM queries WHERE domain GLOB 'maxhistory-zero-*.ftl';\""
+  printf "queries sent: %s, stored on disk: %s\n" "${sent}" "${lines[0]}"
+  [[ ${sent} -ge 1 ]]
+  assert_equal "${lines[0]}" "${sent}"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.maxhistory-zero.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.maxhistory-zero.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.maxhistory-zero.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.maxhistory-zero.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
 }
 
 @test "Pi-hole PTR records are generated once per address, however it is spelled" {

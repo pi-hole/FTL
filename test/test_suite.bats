@@ -1774,6 +1774,28 @@ except socket.timeout:
   assert_success
 }
 
+@test "An invalid entry of a list in pihole.toml is removed, the others are kept" {
+  # Break one of the two shipped entries in the file itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  sed -i 's|"2.2.2.2 äste.com steä.com"|"2.2.2.2 äste!.com steä.com"|' /etc/pihole/pihole.toml
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c -F -e 'Invalid value: dns.hosts[1]: invalid hostname (\"äste!.com\")' -e '----> dns.hosts[1] has been removed'"
+  assert_output "2"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'dns.hosts has been reset'"
+  assert_output "0"
+  run ./pihole-FTL --config dns.hosts
+  assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de ]"
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
 @test "Gravity stores internationalized domains as punycode" {
   # A query carries the punycode form of a name, so this is what has to end up
   # in the database - the UTF-8 spelling of the list could never match
@@ -2400,3 +2422,21 @@ SQL
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
+
+@test "NTP client counts the replies of a server advertising a coarse precision" {
+  # The server advertises 2^-9 s (about 2 ms), coarser than a loopback round
+  # trip. FTL's own NTP server listens on 127.0.0.1 only (test/pihole.toml)
+  python3 test/fakentp.py 127.0.0.5 -9 > "${BATS_TEST_TMPDIR}/fakentp.out" 2>&1 &
+  local pid=$!
+  for i in $(seq 1 50); do
+    grep -q ready "${BATS_TEST_TMPDIR}/fakentp.out" && break
+    sleep 0.1
+  done
+  local got
+  got=$(./pihole-FTL ntp 127.0.0.5 2>&1 | grep -o "Received [0-9]*/[0-9]* valid NTP replies")
+  kill "$pid"
+  printf "%s\n" "${got}"
+  # Every reply counts, none is discarded for being more precise than the server
+  [[ "${got}" =~ Received\ ([0-9]+)/([0-9]+) ]]
+  [[ ${BASH_REMATCH[1]} -gt 0 && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]
+}
