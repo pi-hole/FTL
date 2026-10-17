@@ -394,6 +394,7 @@ bool migrate_config_v6(void);
 bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
+bool is_secret_conf_item(const struct conf_item *conf_item) __attribute__((pure));
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void duplicate_config(struct config *dst, struct config *src);

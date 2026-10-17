@@ -710,6 +710,13 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 	return target;
 }
 
+// The lines of pihole.toml holding the password hashes or the TOTP secret are
+// never logged
+static const char * __attribute__((pure)) loggable_line(const char *line)
+{
+	return strstr(line, "pwhash") != NULL || strstr(line, "totp_secret") != NULL ? "(hidden)" : line;
+}
+
 // Returns true if the files have different contents
 // from specifies from which line number the files should be compared
 bool files_different(const char *pathA, const char *pathB, unsigned int from)
@@ -769,8 +776,8 @@ bool files_different(const char *pathA, const char *pathB, unsigned int from)
 			different = true;
 			log_debug(DEBUG_CONFIG, "Files %s and %s differ at line %u",
 			          pathA, pathB, lineno);
-			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
-			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : loggable_line(lineA));
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : loggable_line(lineB));
 			break;
 		}
 	}
@@ -781,8 +788,8 @@ bool files_different(const char *pathA, const char *pathB, unsigned int from)
 		different = true;
 		log_debug(DEBUG_CONFIG, "Files %s and %s differ at the final line %u",
 		          pathA, pathB, lineno);
-		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
-		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : loggable_line(lineA));
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : loggable_line(lineB));
 	}
 
 	// Free memory
