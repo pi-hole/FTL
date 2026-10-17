@@ -45,13 +45,14 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
+  # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
       assert_line --index 0 "2"
   else
-    [[ ${lines[0]} == "36" ]]
+    [[ ${lines[0]} == "42" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -71,11 +72,12 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
-  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (9x)
+  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more, and
+  # the config restore after the first v5 Teleporter import clears dns.hosts (10x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "7"
   else
-    assert_line --index 0 "9"
+    assert_line --index 0 "10"
   fi
 }
 

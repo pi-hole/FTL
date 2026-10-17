@@ -17,6 +17,8 @@
 #include <unistd.h>
 // argv_dnsmasq
 #include "args.h"
+// log_teleporter_skipped()
+#include "database/message-table.h"
 // INT_MAX
 #include <limits.h>
 
@@ -29,6 +31,7 @@ static pthread_mutex_t lock;
 static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
 static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *ptr);
+static void getLockedPath(FILE *fp, const char *option, struct conf_item *item);
 static bool parseBool(const char *option, bool *ptr);
 static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
@@ -275,8 +278,7 @@ const char *readFTLlegacy(struct config *conf)
 	parseBool(buffer, &conf->dns.blockESNI.v.b);
 
 	// WEBROOT
-	conf->webserver.paths.webroot.v.s = getPath(fp, "WEBROOT", conf->webserver.paths.webroot.v.s);
-	conf->webserver.paths.webroot.t = CONF_STRING_ALLOCATED;
+	getLockedPath(fp, "WEBROOT", &conf->webserver.paths.webroot);
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
@@ -296,8 +298,7 @@ const char *readFTLlegacy(struct config *conf)
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
-	conf->webserver.paths.webhome.v.s = getPath(fp, "WEBHOME", conf->webserver.paths.webhome.v.s);
-	conf->webserver.paths.webhome.t = CONF_STRING_ALLOCATED;
+	getLockedPath(fp, "WEBHOME", &conf->webserver.paths.webhome);
 
 	// WEBACL
 	// Default: allow all access
@@ -639,6 +640,26 @@ static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath
 	}
 
 	return val_ptr;
+}
+
+// Read a path into a config item the API may not set. A legacy file reaches
+// this reader either through "pihole-FTL migrate v6" on the host or through a
+// v5 Teleporter archive uploaded to the API, and the second must not be a way
+// around FLAG_API_READ_ONLY (see toml_reader.c for the v6 archive). The value
+// is kept as it is, and the skip is recorded like the v6 import records it.
+static void getLockedPath(FILE *fp, const char *option, struct conf_item *item)
+{
+	char *path = getPath(fp, option, item->v.s);
+	if(cli_mode || !(item->f & FLAG_API_READ_ONLY))
+	{
+		item->v.s = path;
+		item->t = CONF_STRING_ALLOCATED;
+		return;
+	}
+
+	if(strcmp(path, item->v.s) != 0)
+		log_teleporter_skipped(item->k);
+	free(path);
 }
 
 static char *parseFTLconf(FILE *fp, const char * key)
