@@ -311,6 +311,39 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
+// dnsmasq writes the PCAP header itself and refuses an existing empty file, so
+// check writability without leaving one behind. Symlinks and pipes are kept
+static bool pcap_writeable(const char *path, const bool test_only)
+{
+	// O_NONBLOCK keeps a named pipe without a reader from blocking, which
+	// then fails with ENXIO although it is writable
+	const int flags = O_WRONLY | O_APPEND | O_NONBLOCK | O_NOCTTY;
+	bool link = false, created = false;
+	int fd = open(path, flags | O_NOFOLLOW);
+	if(fd < 0 && errno == ELOOP)
+	{
+		// Open through a symlink, but never create its target
+		link = true;
+		fd = open(path, flags);
+	}
+	else if(fd < 0 && errno == ENOENT)
+	{
+		// O_EXCL never follows a symlink created in the meantime
+		created = true;
+		fd = open(path, flags | O_CREAT | O_EXCL, 0644);
+	}
+	if(fd < 0)
+		return errno == ENXIO;
+
+	// Testing a config must not change the filesystem it checks
+	struct stat st;
+	if(created || (!link && !test_only && fstat(fd, &st) == 0 &&
+	               S_ISREG(st.st_mode) && st.st_size == 0))
+		unlink(path);
+	close(fd);
+	return true;
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
@@ -927,7 +960,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Add option for PCAP file recording
 	if(strlen(conf->files.pcap.v.s) > 0)
 	{
-		if(file_writeable(conf->files.pcap.v.s))
+		if(pcap_writeable(conf->files.pcap.v.s, mode == DNSMASQ_TEST_ONLY))
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
