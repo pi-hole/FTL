@@ -36,8 +36,10 @@ size_t dotdoh_inject_client(unsigned char *buf, size_t plen, size_t cap,
 // into framed[2..], append the private client/dest attribution options, and
 // write the 2-byte DoT length prefix into framed[0..1]. `framed` must hold at
 // least 2 + DNS_MSG_MAX bytes. Returns the total framed length (2 + attributed
-// query) or -1 on an empty query or insufficient room. The single place the DoT
-// reactor and the DoH handler build the query they hand to dnsmasq.
+// query), DOTDOH_MALFORMED for a message that is not a query (shorter than a
+// header, or QR set), or -1 when it cannot be attributed. The single place the
+// DoT reactor and the DoH handler build the query they hand to dnsmasq.
+#define DOTDOH_MALFORMED (-2)
 ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
                              const char *client, const char *dest,
                              uint8_t *framed, size_t framed_cap);
@@ -47,6 +49,25 @@ ssize_t dotdoh_prepare_query(const uint8_t *query, size_t qlen,
 // serves every origin; otherwise only loopback and local-subnet clients are
 // served, so an on-by-default server is not an open resolver. Fails closed.
 bool dotdoh_source_allowed(const char *client_ip);
+
+// Borrow a connected, non-blocking loopback socket to dnsmasq from the shared
+// pool. Returns the socket, -1 when the pool is empty, or -2 when we already
+// hold as many dnsmasq TCP children as we may - the caller then refuses the
+// query rather than queueing it.
+//
+// -1 still reserves the slot, so a caller that goes on to open its own socket
+// must release it like any other: with dotdoh_loopback_give() when the socket
+// can be reused, dotdoh_loopback_drop() when it cannot, or drop(-1) if it never
+// got one. Missing that leaks the slot for good.
+//
+// Reusing a socket lets one dnsmasq TCP child serve many client connections and
+// streams instead of one each.
+int dotdoh_loopback_take(void);
+void dotdoh_loopback_give(int fd);
+
+// Release a socket that must not be reused (a failed or half-written exchange),
+// closing it and freeing the in-flight slot dotdoh_loopback_take() reserved.
+void dotdoh_loopback_drop(int fd);
 
 // Whether inbound DoH is enabled (config.dns.doh). Lets the h2/h3 terminator gate
 // its native /dns-query handling without pulling in the config headers.
@@ -62,19 +83,40 @@ uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len) __attribute__((pure)
 // the loopback handoff, injecting the private client option so it is attributed
 // to the real client. `dest` is the local address the client connected to (or
 // NULL), conveyed so pi.hole/<hostname> answers use it instead of the loopback
-// forward address. Returns the answer length in `answer` (capacity `answer_sz`)
-// or -1. Shared by the DoH handler and the DoT listener.
+// forward address. Returns the answer length in `answer` (capacity `answer_sz`),
+// DOTDOH_MALFORMED for a message that is not a query, or -1. Shared by the DoH
+// handler and the DoT listener.
 ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
+// Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
+// handoffs and the connections accepted by the encrypted-upstream proxy). A
+// forked dnsmasq TCP worker inherits them and must close them, or it never
+// sees EOF when FTL closes its end. Track a socket before connect() (or right
+// after accept()) and close it with dotdoh_fd_close(), which shuts it down and
+// untracks it.
+void dotdoh_fd_track(int fd);
+void dotdoh_fd_close(int fd);
+// Close every tracked socket except keep_fd; only called in a forked TCP worker
+void dotdoh_fd_close_inherited(int keep_fd);
+
 // Port the inbound DoT listener binds
 #define DOT_PORT 853
+// RFC 9250 Sec. 4.1.1: DoQ uses UDP port 853 by default - the same number DoT
+// uses on TCP, which does not collide.
+#define DOQ_PORT 853
 
 // FTL worker thread entry for the inbound DoT (DNS-over-TLS) listener on port
 // 853. Runs only when dns.dot is enabled. Terminates TLS itself (DoT is not
 // HTTP, so it needs its own raw-TLS listener) and resolves via
 // dotdoh_server_resolve().
 void *dotdoh_dot_thread(void *val);
+
+// FTL worker thread entry for the inbound DoQ (DNS-over-QUIC, RFC 9250) listener
+// on UDP port 853. Runs only when dns.doq is enabled. Terminates QUIC itself (DoQ
+// is neither HTTP nor TCP) and drives the same loopback handoff to dnsmasq the DoT
+// listener uses, one non-blocking state machine per in-flight query.
+void *dotdoh_doq_thread(void *val);
 
 #endif // DOTDOH_SERVER_H

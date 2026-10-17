@@ -171,6 +171,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				if(regex->ext.query_type != 0)
 				{
 					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -215,6 +217,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
 							log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -301,6 +305,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 						comma++;
 
 						// Copy domain name into buffer
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						regex->ext.cname_target = strdup(comma);
 						if(regex->ext.cname_target == NULL)
 						{
@@ -314,6 +320,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 					{
 						if(asprintf(message, "Missing domain name for CNAME reply") < 1)
 							log_err("Memory allocation failed in compile_regex()");
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						free(buf);
 						free(rgxbuf);
 						return false;
@@ -323,6 +331,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -336,6 +346,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 			{
 				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
 					log_err("Memory allocation failed in compile_regex()");
+				if(regex->ext.cname_target != NULL)
+					free(regex->ext.cname_target);
 				free(buf);
 				free(rgxbuf);
 				return false;
@@ -358,6 +370,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
 		*message = strdup(regex_msg);
 		regex->available = false;
+		if(regex->ext.cname_target != NULL)
+			free(regex->ext.cname_target);
 		free(rgxbuf);
 		return false;
 	}
@@ -674,10 +688,9 @@ void free_regex(void)
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < oldcount; index++)
 		{
-			if(!regex[index].available)
-				continue;
-
-			regfree(&regex[index].regex);
+			// Only a successfully compiled regex has to be freed
+			if(regex[index].available)
+				regfree(&regex[index].regex);
 
 			// Also free buffered regex strings
 			if(regex[index].string != NULL)
