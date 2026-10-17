@@ -151,8 +151,11 @@ int log_reopen(char *log_file)
       
       /* NOTE: umask is set to 022 by the time this gets called */
       
+      /* Pi-hole modification: as root, refuse a symbolic link as the log file,
+	 the pihole user owns the directory it is in */
       if (log_file)
-	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);
+	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND|(geteuid() == 0 ? O_NOFOLLOW : 0),
+		      S_IRUSR|S_IWUSR|S_IRGRP);
       else
 	{
 #if defined(HAVE_SOLARIS_NETWORK) || defined(__ANDROID__)
