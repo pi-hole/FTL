@@ -14,7 +14,7 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
-// reload_per_client_regex()
+// gravityDB_reopen()
 #include "database/gravity-db.h"
 // bool startup
 #include "main.h"
@@ -155,6 +155,10 @@ void queryIDMap_clear(void)
 
 int findQueryID(const int id)
 {
+	// Queries imported from the database carry no dnsmasq ID (-1)
+	if(id < 0)
+		return -1;
+
 	// Try O(1) direct-mapped cache lookup
 	const unsigned int slot = (unsigned int)id & QUERY_ID_MAP_MASK;
 	if(query_id_map[slot].dnsmasq_id == id)
@@ -421,6 +425,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->numQueriesARP = client->count;
 	// Configured groups are yet unknown
 	client->flags.found_group = false;
+	client->flags.groups_looked_up = false;
 	client->groupspos = 0u;
 	client->firstSeen = now;
 	// Interface is not yet known
@@ -428,6 +433,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Set all MAC address bytes to zero
 	client->hwlen = -1;
 	memset(client->hwaddr, 0, sizeof(client->hwaddr));
+	client->lastMACLookup = 0;
 	// This may be an alias-client, the ID is set elsewhere
 	client->flags.aliasclient = aliasclient;
 	client->aliasclient_id = -1;
@@ -441,16 +447,13 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Increase counter by one
 	counters->clients++;
 
-	// Get groups for this client and set enabled regex filters
-	// Note 1: We do this only after increasing the clients counter to
-	//         ensure sufficient shared memory is available in the
-	//         pre_client_regex object.
-	// Note 2: We don't do this before starting up is done as the gravity
-	//         database may not be available. All clients initialized
-	//         during history reading get their enabled regexs reloaded
-	//         in the initial call to FTL_reload_all_domainlists()
+	// Give the client a cleared regex row now, sized by the counter above, so
+	// no regex applies before its first query resolves its groups
 	if(!startup && !aliasclient)
-		reload_per_client_regex(client);
+	{
+		add_per_client_regex(clientID);
+		reset_per_client_regex(clientID);
+	}
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
@@ -701,6 +704,21 @@ const char *getClientNameString(const queriesData *query)
 		return HIDDEN_CLIENT;
 }
 
+// Forget the blocking decision cached in one per-client DNS cache entry
+static void reset_dns_cache_entry(DNSCacheData *dns_cache)
+{
+	// Reset blocking status
+	dns_cache->blocking_status = QUERY_UNKNOWN;
+	dns_cache->flags.allowed = false;
+	// Reset expiry
+	dns_cache->expires = 0;
+	// Reset domainlist ID
+	dns_cache->list_id = -1;
+	// Reset forced reply and CNAME target of a former regex match
+	dns_cache->force_reply = REPLY_UNKNOWN;
+	dns_cache->cname_strpos = 0;
+}
+
 void FTL_reset_per_client_domain_data(void)
 {
 	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache, size is %u", counters->dns_cache_size);
@@ -714,12 +732,21 @@ void FTL_reset_per_client_domain_data(void)
 		if(dns_cache == NULL)
 			continue;
 
-		// Reset blocking status
-		dns_cache->blocking_status = QUERY_UNKNOWN;
-		// Reset expiry
-		dns_cache->expires = 0;
-		// Reset domainlist ID
-		dns_cache->list_id = -1;
+		reset_dns_cache_entry(dns_cache);
+	}
+}
+
+// Forget the blocking decisions cached for one client, they were taken with
+// groups the client is no longer in
+void FTL_reset_client_domain_data(const unsigned int clientID)
+{
+	log_debug(DEBUG_DATABASE, "Resetting per-client DNS cache for client ID %u", clientID);
+
+	for(unsigned int cacheID = 0; cacheID < counters->dns_cache_size; cacheID++)
+	{
+		DNSCacheData *dns_cache = getDNSCache(cacheID, true);
+		if(dns_cache != NULL && dns_cache->clientID == clientID)
+			reset_dns_cache_entry(dns_cache);
 	}
 }
 
@@ -730,8 +757,11 @@ void FTL_reload_all_domainlists(void)
 {
 	lock_shm();
 
-	// (Re-)open gravity database connection
-	gravityDB_reopen();
+	// (Re-)open gravity database connection. A warning rather than an error:
+	// gravityDB_open() has already said its piece, and before the first
+	// pihole -g the file is simply not there yet
+	if(!gravityDB_reopen())
+		log_warn("Reloading the domainlists failed: gravity database could not be reopened");
 
 	// Get size of gravity, number of domains, groups, clients, and lists
 	counters->database.gravity = gravityDB_count(GRAVITY_TABLE, false);
@@ -752,8 +782,10 @@ void FTL_reload_all_domainlists(void)
 	counters->database.domains.denied.regex.total = gravityDB_count(REGEX_DENY_TABLE, true);
 	counters->database.domains.denied.regex.enabled = gravityDB_count(REGEX_DENY_TABLE, false);
 
-	// Read and compile possible regex filters
-	// only after having called gravityDB_reopen()
+	// Advance the shared regex generation so that other forks reload
+	// their regex on their next lookup, then read and compile possible
+	// regex filters (only after having called gravityDB_reopen())
+	counters->regex_change++;
 	read_regex_from_database();
 
 	// Check for inaccessible adlist URLs

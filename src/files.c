@@ -42,25 +42,56 @@
 #include <nettle/sha2.h>
 #include <nettle/version.h>
 
-// chmod_file() changes the file mode bits of a given file (relative
-// to the directory file descriptor) according to mode. mode is an
-// octal number representing the bit pattern for the new mode bits
+// Check if a path names an entry directly in /etc/pihole or /var/log/pihole.
+// The path is taken literally, so no symbolic link along it can redirect it
+bool in_pihole_dir(const char *path)
+{
+	const char *slash = strrchr(path, '/');
+	if(slash == NULL || slash[1] == '\0' ||
+	   strcmp(slash + 1, ".") == 0 || strcmp(slash + 1, "..") == 0)
+		return false;
+
+	const size_t dirlen = slash - path;
+	return (dirlen == strlen("/etc/pihole") && strncmp(path, "/etc/pihole", dirlen) == 0) ||
+	       (dirlen == strlen("/var/log/pihole") && strncmp(path, "/var/log/pihole", dirlen) == 0);
+}
+
+// chmod_file() changes the file mode bits of a given regular file according
+// to mode. mode is an octal number representing the bit pattern for the new
+// mode bits. As root, only files in our own directories are touched
 bool chmod_file(const char *filename, const mode_t mode)
 {
-	if(chmod(filename, mode) < 0)
+	if(geteuid() == 0 && !in_pihole_dir(filename))
 	{
-		log_warn("chmod(%s, %u): chmod() failed: %s",
+		log_warn("Not changing mode of %s, it is outside of /etc/pihole and /var/log/pihole", filename);
+		return false;
+	}
+
+	const int fd = open(filename, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if(fd < 0)
+	{
+		log_warn("chmod(%s, %u): open() failed: %s",
 		         filename, mode, strerror(errno));
 		return false;
 	}
 
 	struct stat st;
-	if(stat(filename, &st) < 0)
+	if(fstat(fd, &st) < 0 || !S_ISREG(st.st_mode) || st.st_nlink > 1)
 	{
-		log_warn("chmod(%s, %u): stat() failed: %s",
-		         filename, mode, strerror(errno));
+		log_warn("chmod(%s, %u): Not a regular file with a single link",
+		         filename, mode);
+		close(fd);
 		return false;
 	}
+
+	if(fchmod(fd, mode) < 0 || fstat(fd, &st) < 0)
+	{
+		log_warn("chmod(%s, %u): fchmod() failed: %s",
+		         filename, mode, strerror(errno));
+		close(fd);
+		return false;
+	}
+	close(fd);
 
 	// We need to apply a bitmask on st.st_mode as the upper bits may contain random data
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number
@@ -448,14 +479,45 @@ bool chown_pihole(const char *path, struct passwd *pwd)
 	struct group *grp = getgrgid(pwd->pw_gid);
 	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
 
-	// Change ownership of file to pihole user
-	if(chown(path, pwd->pw_uid, pwd->pw_gid) < 0)
+	// Pin the path entry itself, without following a final symbolic link, and
+	// act on this handle from here on: the directories these files live in are
+	// writable by the pihole user, and FTL may be running as root
+	const int fd = open(path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+	if(fd < 0)
 	{
 		if(errno == ENOENT) // ENOENT = No such file or directory
 		{
 			log_debug(DEBUG_CONFIG, "File \"%s\" does not exist, not changing ownership", path);
 			return true;
 		}
+		log_warn("Cannot open \"%s\" to change its ownership: %s", path, strerror(errno));
+		return false;
+	}
+
+	// A link would hand somebody else's file to the pihole user
+	struct stat st = { 0 };
+	if(fstat(fd, &st) != 0 || S_ISLNK(st.st_mode) ||
+	   (!S_ISDIR(st.st_mode) && st.st_nlink > 1))
+	{
+		log_warn("Not changing ownership of \"%s\": it is a symbolic link or has several hard links", path);
+		close(fd);
+		return false;
+	}
+
+	// Nothing to do
+	if(st.st_uid == pwd->pw_uid && st.st_gid == pwd->pw_gid)
+	{
+		close(fd);
+		return true;
+	}
+
+	// Change ownership of file to pihole user
+	const int ret = fchownat(fd, "", pwd->pw_uid, pwd->pw_gid, AT_EMPTY_PATH);
+	const int err = errno;
+	close(fd);
+	errno = err;
+	if(ret < 0)
+	{
 		log_warn("Failed to change ownership of \"%s\" to %s:%s (%u:%u): %s",
 		         path, pwd->pw_name, grp_name, pwd->pw_uid, pwd->pw_gid,
 		         errno == EPERM ? "Insufficient permissions (CAP_CHOWN required)" : strerror(errno));
@@ -648,6 +710,13 @@ char * __attribute__((malloc)) get_hwmon_target(const char *path)
 	return target;
 }
 
+// The lines of pihole.toml holding the password hashes or the TOTP secret are
+// never logged
+static const char * __attribute__((pure)) loggable_line(const char *line)
+{
+	return strstr(line, "pwhash") != NULL || strstr(line, "totp_secret") != NULL ? "(hidden)" : line;
+}
+
 // Returns true if the files have different contents
 // from specifies from which line number the files should be compared
 bool files_different(const char *pathA, const char *pathB, unsigned int from)
@@ -707,8 +776,8 @@ bool files_different(const char *pathA, const char *pathB, unsigned int from)
 			different = true;
 			log_debug(DEBUG_CONFIG, "Files %s and %s differ at line %u",
 			          pathA, pathB, lineno);
-			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
-			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : loggable_line(lineA));
+			log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : loggable_line(lineB));
 			break;
 		}
 	}
@@ -719,8 +788,8 @@ bool files_different(const char *pathA, const char *pathB, unsigned int from)
 		different = true;
 		log_debug(DEBUG_CONFIG, "Files %s and %s differ at the final line %u",
 		          pathA, pathB, lineno);
-		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : lineA);
-		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : lineB);
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathA, lineno, readA < 0 ? "<EOF>" : loggable_line(lineA));
+		log_debug(DEBUG_CONFIG, "-> %s:%u = '%s'", pathB, lineno, readB < 0 ? "<EOF>" : loggable_line(lineB));
 	}
 
 	// Free memory

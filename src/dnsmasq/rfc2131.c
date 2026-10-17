@@ -1611,7 +1611,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  lease->extradata_size = lease->extradata_len = 0;
 		  
 		  add_extradata_opt(lease, option_find(mess, sz, OPTION_VENDOR_ID, 1));
-		  add_extradata_opt(lease, option_find(mess, sz, OPTION_HOSTNAME, 1));
+		  lease_add_extradata(lease, (unsigned char *)client_hostname, 
+			      client_hostname ? strlen(client_hostname) : 0, 0);
 		  add_extradata_opt(lease, oui);
 		  add_extradata_opt(lease, serial);
 		  add_extradata_opt(lease, class);

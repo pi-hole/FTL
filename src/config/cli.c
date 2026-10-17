@@ -10,6 +10,8 @@
 
 #include "FTL.h"
 #include "config/cli.h"
+// validate_config_paths()
+#include "config/validator.h"
 #include "config/config.h"
 #include "config/toml_helper.h"
 #include "config/toml_writer.h"
@@ -488,6 +490,16 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 				log_err("Invalid value: %s", errbuf);
 				return 3;
 			}
+		}
+
+		// The path rules span several items and are checked on the
+		// assembled configuration
+		char pathbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+		if(!validate_config_paths(&newconf, pathbuf, NULL))
+		{
+			free_config(&newconf, false);
+			log_err("Invalid value: %s", pathbuf);
+			return 3;
 		}
 
 		// Is this a dnsmasq option we need to check?

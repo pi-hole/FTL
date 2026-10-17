@@ -14,6 +14,8 @@
 #include "tools/gravity-parseList.h"
 // regex
 #include "regex_r.h"
+// PATH_MAX
+#include <limits.h>
 
 // Stub validator for config types that need to dedicated validation as they can
 // be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
@@ -117,7 +119,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 			if(host[0] == '#')
 				break;
 
-			if(!valid_domain(host, strlen(host), false, true))
+			if(!valid_domain(host, strlen(host), false))
 			{
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
 				         key, i, host);
@@ -216,7 +218,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false, true))
+	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -304,7 +306,7 @@ bool validate_netmask(union conf_value *val, const char *key, char err[VALIDATOR
 bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if domain is valid
-	if(!valid_domain(val->s, strlen(val->s), false, true))
+	if(!valid_domain(val->s, strlen(val->s), false))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
 		return false;
@@ -313,15 +315,30 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	return true;
 }
 
-// Validate file path
+// Validate file path (empty rejected)
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
-	// Check if the path contains only valid characters
+	// An empty path does not name a file. SQLite would even open it as a
+	// private temporary database and lose everything written to it
+	if(strlen(val->s) == 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must not be empty", key);
+		return false;
+	}
+
+	// Accept every printable ASCII character. The range is not widened beyond
+	// it because these paths are handed out as JSON, which has to be UTF-8, and
+	// are written into the generated dnsmasq config, where a control character
+	// would start a second directive. The comparison is explicit rather than
+	// isprint(), which follows the locale FTL picks up from the environment
 	for(unsigned int i = 0; i < strlen(val->s); i++)
 	{
-		if(!isalnum(val->s[i]) && val->s[i] != '/' && val->s[i] != '.' && val->s[i] != '-' && val->s[i] != '_' && val->s[i] != ' ')
+		const unsigned char c = val->s[i];
+		if(c < 0x20 || c > 0x7E)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (\"%s\")", key, val->s);
+			// The byte is reported as hex rather than echoed, which
+			// would break the very line reporting it
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid file path (invalid character 0x%02x at position %u)", key, c, i);
 			return false;
 		}
 	}
@@ -329,9 +346,28 @@ bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATO
 	return true;
 }
 
-// Validate a file path that needs to have both a slash at the beginning and at
+// A URL path the webserver matches requests against. Some checks see the raw
+// and some the percent-decoded request URI, so allow only characters that read
+// the same in both
+static bool validate_urlpath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	for(unsigned int i = 0; i < strlen(val->s); i++)
+	{
+		const unsigned char c = val->s[i];
+		if(!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') &&
+		   c != '/' && c != '.' && c != '-' && c != '_' && c != ' ')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid URL path (invalid character 0x%02x at position %u)", key, c, i);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Validate a URL path that needs to have both a slash at the beginning and at
 // the end
-bool validate_filepath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+bool validate_urlpath_two_slash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if the path starts and ends with a slash
 	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
@@ -341,7 +377,16 @@ bool validate_filepath_two_slash(union conf_value *val, const char *key, char er
 	}
 
 	// Check if the path contains only valid characters
-	return validate_filepath(val, key, err);
+	return validate_urlpath(val, key, err);
+}
+
+// Validate URL path (empty allowed)
+bool validate_urlpath_empty(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(strlen(val->s) == 0)
+		return true;
+
+	return validate_urlpath(val, key, err);
 }
 
 // Validate file path (empty allowed)
@@ -355,15 +400,45 @@ bool validate_filepath_empty(union conf_value *val, const char *key, char err[VA
 	return validate_filepath(val, key, err);
 }
 
-// Validate file path (dash allowed), used by files.log.dnsmasq
+// Validate file path (dash or empty allowed), used by files.log.dnsmasq
 bool validate_filepath_dash(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Dash is allowed, this enabled printing to stderr
 	if(strlen(val->s) == 1 && val->s[0] == '-')
 		return true;
 
-	// else:
-	return validate_filepath(val, key, err);
+	// else: an empty value leaves the log-facility line out of the dnsmasq
+	// config, dnsmasq then logs to syslog
+	return validate_filepath_empty(val, key, err);
+}
+
+// Validate the TOTP secret: empty (2FA off) or a base32 string of at most 32
+// characters (the 20 byte secret), which is what verifyTOTP() can decode
+bool validate_totp_secret(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->s == NULL)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: null string", key);
+		return false;
+	}
+
+	const size_t len = strlen(val->s);
+	if(len > 32)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: longer than 32 characters", key);
+		return false;
+	}
+
+	for(size_t i = 0; i < len; i++)
+	{
+		if(strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", toupper((unsigned char)val->s[i])) == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a base32 string", key);
+			return false;
+		}
+	}
+
+	return true;
 }
 
 // Whether two absolute paths are the same or one contains the other. Comparing
@@ -388,10 +463,9 @@ static bool paths_overlap(const char *a, const size_t alen, const char *b)
 // same directory differently - "/." and "//etc/pihole" name the root and the
 // configuration directory just as well as "/" and "/etc/pihole" do.
 //
-// Resolution is lexical, so a symbolic link still points where it points. That
-// is deliberate: realpath() needs the path to exist, which would stop a
-// directory from being configured before it is created, and planting a link in
-// the first place already requires access to the host.
+// Resolution is lexical, so a symbolic link still points where it points: a
+// directory has to be configurable before it exists. Where it does exist,
+// resolve_path() below follows the links as well.
 //
 // Returns the length written, or 0 if the path is not absolute or does not fit,
 // which callers treat as "reject" rather than "skip the check".
@@ -450,15 +524,67 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 	return o;
 }
 
+// Where a path exists, follow its symbolic links and return the target in the
+// same normalized spelling, so a comparison can be repeated on what the name
+// actually leads to. Not every link needs access to the host to plant it: the
+// kernel provides /proc/self/root, which leads to "/" for any process.
+//
+// Returns 0 if the path does not exist or the target does not fit, which
+// callers treat as "nothing to follow": the lexical check stands on its own.
+static size_t resolve_path(const char *path, char *out, const size_t outlen)
+{
+	char resolved[PATH_MAX];
+	if(realpath(path, resolved) == NULL)
+		return 0;
+
+	return normalize_path(resolved, out, outlen);
+}
+
+// Whether the document root stays clear of "/" and of Pi-hole's configuration
+// directory, both as written and where its links lead. On success, norm and
+// real hold the two spellings (rlen is 0 if the path does not exist yet) for
+// the caller's further checks.
+static bool webroot_confined(const char *key, const char *webroot,
+                             char norm[NORMALIZED_PATH_LEN], size_t *nlen,
+                             char real[NORMALIZED_PATH_LEN], size_t *rlen,
+                             char err[VALIDATOR_ERRBUF_LEN])
+{
+	*nlen = normalize_path(webroot, norm, NORMALIZED_PATH_LEN);
+	if(*nlen == 0 || *nlen == 1 || paths_overlap(norm, *nlen, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, CONFIG_DIR);
+		return false;
+	}
+
+	// The configuration directory may be reached through a link as well
+	char confdir[NORMALIZED_PATH_LEN];
+	if(resolve_path(CONFIG_DIR, confdir, sizeof(confdir)) == 0)
+		strcpy(confdir, CONFIG_DIR);
+
+	*rlen = resolve_path(webroot, real, NORMALIZED_PATH_LEN);
+	if(*rlen == 1 || (*rlen > 0 && paths_overlap(real, *rlen, confdir)))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" resolves to \"%s\", which must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, webroot, real, CONFIG_DIR);
+		return false;
+	}
+
+	return true;
+}
+
 // The files Pi-hole writes and therefore must keep out of the document root.
 // Their content follows from what clients send - logged requests, resolved
 // names, imported settings - so serving them hands that straight back out, and a
 // name matching the Lua server-page pattern makes the web server evaluate them
-// rather than serve them.
+// rather than serve them. The TLS certificate is generated with its private key
+// in the same file.
 #define WRITTEN_FILES(conf) { \
 	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
 	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
-	&(conf).files.gravity_tmp, &(conf).files.pcap }
+	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
 
 // Check the path relationships of a complete configuration.
 //
@@ -483,32 +609,91 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 		return false;
 	}
 
-	char wnorm[NORMALIZED_PATH_LEN];
-	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
-	if(wlen == 0 || wlen == 1 || paths_overlap(wnorm, wlen, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         conf->webserver.paths.webroot.k, CONFIG_DIR);
+	char wnorm[NORMALIZED_PATH_LEN], wreal[NORMALIZED_PATH_LEN];
+	size_t wlen, wrlen;
+	if(!webroot_confined(conf->webserver.paths.webroot.k, webroot,
+	                     wnorm, &wlen, wreal, &wrlen, err))
 		return false;
-	}
+
+	// Compare where the names lead once they exist, not only how they are
+	// written: a document root linked to the log directory spans the log
+	const char *weff = wrlen > 0 ? wreal : wnorm;
 
 	struct conf_item *written[] = WRITTEN_FILES(*conf);
 	for(size_t i = 0; i < ArraySize(written); i++)
 	{
 		const char *path = written[i]->v.s;
-		if(path == NULL || path[0] != '/')
+		if(path == NULL || path[0] == '\0')
 			continue;
 
-		char pnorm[NORMALIZED_PATH_LEN];
-		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
-		   paths_overlap(wnorm, wlen, pnorm))
+		// "-" makes dnsmasq log to stderr, it names no file
+		if(written[i] == &conf->files.log.dnsmasq && strcmp(path, "-") == 0)
+			continue;
+
+		// A relative path is resolved from the working directory and cannot
+		// be compared with the document root
+		if(path[0] != '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must be an absolute path",
+			         written[i]->k, path);
+			if(offender != NULL)
+				*offender = written[i];
+			return false;
+		}
+
+		char pnorm[NORMALIZED_PATH_LEN], preal[NORMALIZED_PATH_LEN];
+		const size_t plen = normalize_path(path, pnorm, sizeof(pnorm));
+		const char *peff = resolve_path(path, preal, sizeof(preal)) > 0 ? preal : pnorm;
+		if(plen == 0 ||
+		   paths_overlap(wnorm, wlen, pnorm) ||
+		   paths_overlap(weff, strlen(weff), peff))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s (\"%s\") must not be inside %s (\"%s\")",
 			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
 			if(offender != NULL)
 				*offender = written[i];
+			return false;
+		}
+	}
+
+	// With database.forceDisk, files.tmp_db is emptied on every start and
+	// removed on stop, so it must not name a file Pi-hole keeps
+	struct conf_item *tmp_db = &conf->files.tmp_db;
+	char tnorm[NORMALIZED_PATH_LEN];
+	if(tmp_db->v.s != NULL && tmp_db->v.s[0] != '\0' &&
+	   normalize_path(tmp_db->v.s, tnorm, sizeof(tnorm)) > 0)
+	{
+		struct conf_item *kept[ArraySize(written) + 1];
+		size_t n_kept = 0;
+		for(size_t i = 0; i < ArraySize(written); i++)
+			if(written[i] != tmp_db)
+				kept[n_kept++] = written[i];
+		kept[n_kept++] = &conf->files.macvendor;
+
+		for(size_t i = 0; i < n_kept; i++)
+		{
+			char pnorm[NORMALIZED_PATH_LEN];
+			const char *path = kept[i]->v.s;
+			if(path == NULL || path[0] == '\0' ||
+			   normalize_path(path, pnorm, sizeof(pnorm)) == 0 || strcmp(tnorm, pnorm) != 0)
+				continue;
+
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be the same file as %s",
+			         tmp_db->k, tmp_db->v.s, kept[i]->k);
+			// Reset whichever of the two moved away from its default
+			if(offender != NULL)
+				*offender = compare_config_item(tmp_db->t, &tmp_db->v, &tmp_db->d) ? kept[i] : tmp_db;
+			return false;
+		}
+
+		char cnorm[NORMALIZED_PATH_LEN];
+		if(normalize_path(GLOBALTOMLPATH, cnorm, sizeof(cnorm)) > 0 && strcmp(tnorm, cnorm) == 0)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be Pi-hole's configuration file",
+			         tmp_db->k, tmp_db->v.s);
+			if(offender != NULL)
+				*offender = tmp_db;
 			return false;
 		}
 	}
@@ -539,18 +724,9 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		return false;
 	}
 
-	char norm[NORMALIZED_PATH_LEN];
-	const size_t len = normalize_path(val->s, norm, sizeof(norm));
-
-	if(len == 0 || len == 1 || paths_overlap(norm, len, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         key, CONFIG_DIR);
-		return false;
-	}
-
-	return true;
+	char norm[NORMALIZED_PATH_LEN], real[NORMALIZED_PATH_LEN];
+	size_t nlen, rlen;
+	return webroot_confined(key, val->s, norm, &nlen, real, &rlen, err);
 }
 
 // Validate a single regular expression
@@ -723,7 +899,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				struct in6_addr addr6 = { 0 };
 				const bool server_ipv4 = inet_pton(AF_INET, server, &addr) == 1;
 				const bool server_ipv6 = inet_pton(AF_INET6, server, &addr6) == 1;
-				const bool server_domain = valid_domain(server, strlen(server), false, true);
+				const bool server_domain = valid_domain(server, strlen(server), false);
 
 				// Check if server is valid
 				if(!server_ipv4 && !server_ipv6 && !server_domain)
@@ -754,7 +930,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			// Check if the third element is a valid domain
 			else if(e == 3)
 			{
-				if(!valid_domain(s, strlen(s), false, true))
+				if(!valid_domain(s, strlen(s), false))
 				{
 					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
 					free(str);
@@ -799,11 +975,35 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 	return true;
 }
 
+bool validate_ui_min_1(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui < 1)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 1", key);
+		return false;
+	}
+
+	return true;
+}
+
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(val->ui < 7 && val->ui != 0)
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 7", key);
+		return false;
+	}
+
+	return true;
+}
+
+bool validate_max_history(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// The overTime array spans MAXLOGAGE hours, the garbage collector
+	// cannot move it forward when asked to keep a longer history
+	if(val->ui > MAXLOGAGE*3600)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be larger than %u", key, MAXLOGAGE*3600);
 		return false;
 	}
 
@@ -821,8 +1021,7 @@ void sanitize_dns_hosts(union conf_value *val)
 	// Walk the linked list directly: cJSON_GetArrayItem() is O(index) and
 	// cJSON_GetArraySize() in the loop condition re-walks the whole list
 	// every iteration, which made this loop O(n^2). item->next is O(1).
-	int i = 0;
-	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next, i++)
+	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next)
 	{
 
 		// Check if it's a string
@@ -937,7 +1136,7 @@ void sanitize_dns_hosts(union conf_value *val)
 bool validate_dns_domain_or_ip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// Check if it's a valid domain
-	if(valid_domain(val->s, strlen(val->s), false, true))
+	if(valid_domain(val->s, strlen(val->s), false))
 	{
 		return true;
 	}
@@ -1040,6 +1239,12 @@ void resolve_config_paths(struct config *conf)
 			return;
 
 		log_err("Inconsistent configuration: %s", err);
+
+		// Resetting a file that is at its default already changes
+		// nothing, the document root has to give way then
+		if(compare_config_item(offender->t, &offender->v, &offender->d))
+			offender = &conf->webserver.paths.webroot;
+
 		log_err("----> %s has been reset to its default value", offender->k);
 		reset_config_default(offender);
 	}

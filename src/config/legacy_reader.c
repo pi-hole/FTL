@@ -17,6 +17,8 @@
 #include <unistd.h>
 // argv_dnsmasq
 #include "args.h"
+// log_teleporter_skipped()
+#include "database/message-table.h"
 // INT_MAX
 #include <limits.h>
 
@@ -29,6 +31,7 @@ static pthread_mutex_t lock;
 static char *parseFTLconf(FILE *fp, const char *key);
 static void releaseConfigMemory(void);
 static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *ptr);
+static void getLockedPath(FILE *fp, const char *option, struct conf_item *item);
 static bool parseBool(const char *option, bool *ptr);
 static void readDebugingSettingsLegacy(FILE *fp);
 static void getBlockingModeLegacy(FILE *fp);
@@ -178,7 +181,9 @@ const char *readFTLlegacy(struct config *conf)
 	buffer = parseFTLconf(fp, "DBFILE");
 
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
-	if(!(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s)))
+	if(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s) == 1)
+		conf->files.database.t = CONF_STRING_ALLOCATED;
+	else
 	{
 		// Use standard path if no custom path was obtained from the config file
 		conf->files.database.v.s = conf->files.database.d.s;
@@ -243,9 +248,11 @@ const char *readFTLlegacy(struct config *conf)
 
 	// MACVENDORDB
 	conf->files.macvendor.v.s = getPath(fp, "MACVENDORDB", conf->files.macvendor.v.s);
+	conf->files.macvendor.t = CONF_STRING_ALLOCATED;
 
 	// GRAVITYDB
 	conf->files.gravity.v.s = getPath(fp, "GRAVITYDB", conf->files.gravity.v.s);
+	conf->files.gravity.t = CONF_STRING_ALLOCATED;
 
 	// PARSE_ARP_CACHE
 	// defaults to: true
@@ -271,7 +278,7 @@ const char *readFTLlegacy(struct config *conf)
 	parseBool(buffer, &conf->dns.blockESNI.v.b);
 
 	// WEBROOT
-	conf->webserver.paths.webroot.v.s = getPath(fp, "WEBROOT", conf->webserver.paths.webroot.v.s);
+	getLockedPath(fp, "WEBROOT", &conf->webserver.paths.webroot);
 
 	// WEBPORT
 	// On which port should FTL's API be listening?
@@ -280,12 +287,18 @@ const char *readFTLlegacy(struct config *conf)
 
 	value = 0;
 	if(buffer != NULL && strlen(buffer) > 0)
+	{
 		conf->webserver.port.v.s = strdup(buffer);
+		conf->webserver.port.t = CONF_STRING_ALLOCATED;
+		// Mark the ports as imported so no default port detection
+		// replaces them later on
+		conf->webserver.port.f |= FLAG_CONF_IMPORTED;
+	}
 
 	// WEBHOME
 	// From which sub-directory is the web interface served from?
 	// Defaults to: /admin/ (both slashes are needed!)
-	conf->webserver.paths.webhome.v.s = getPath(fp, "WEBHOME", conf->webserver.paths.webhome.v.s);
+	getLockedPath(fp, "WEBHOME", &conf->webserver.paths.webhome);
 
 	// WEBACL
 	// Default: allow all access
@@ -309,7 +322,10 @@ const char *readFTLlegacy(struct config *conf)
 	//
 	buffer = parseFTLconf(fp, "WEBACL");
 	if(buffer != NULL)
+	{
 		conf->webserver.acl.v.s = strdup(buffer);
+		conf->webserver.acl.t = CONF_STRING_ALLOCATED;
+	}
 
 	// API_SESSION_TIMEOUT
 	// How long should a session be considered valid after login?
@@ -327,6 +343,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// API_INFO_LOG
 	conf->files.log.webserver.v.s = getPath(fp, "API_INFO_LOG", conf->files.log.webserver.v.s);
+	conf->files.log.webserver.t = CONF_STRING_ALLOCATED;
 
 	// NICE
 	// Shall we change the nice of the current process?
@@ -390,6 +407,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// WEBDOMAIN
 	conf->webserver.domain.v.s = getPath(fp, "WEBDOMAIN", conf->webserver.domain.v.s);
+	conf->webserver.domain.t = CONF_STRING_ALLOCATED;
 
 	// RATE_LIMIT
 	// defaults to: 1000 queries / 60 seconds
@@ -624,6 +642,26 @@ static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath
 	return val_ptr;
 }
 
+// Read a path into a config item the API may not set. A legacy file reaches
+// this reader either through "pihole-FTL migrate v6" on the host or through a
+// v5 Teleporter archive uploaded to the API, and the second must not be a way
+// around FLAG_API_READ_ONLY (see toml_reader.c for the v6 archive). The value
+// is kept as it is, and the skip is recorded like the v6 import records it.
+static void getLockedPath(FILE *fp, const char *option, struct conf_item *item)
+{
+	char *path = getPath(fp, option, item->v.s);
+	if(cli_mode || !(item->f & FLAG_API_READ_ONLY))
+	{
+		item->v.s = path;
+		item->t = CONF_STRING_ALLOCATED;
+		return;
+	}
+
+	if(strcmp(path, item->v.s) != 0)
+		log_teleporter_skipped(item->k);
+	free(path);
+}
+
 static char *parseFTLconf(FILE *fp, const char * key)
 {
 	// Return NULL if fp is an invalid file pointer
@@ -804,7 +842,8 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 	if(buffer == NULL)
 		return;
 
-	struct conf_item *debug = get_debug_item(&config, flag);
+	// The debug config items start at DEBUG_DATABASE, one after DEBUG_NONE
+	struct conf_item *debug = get_debug_item(&config, flag - 1);
 
 	// Set bit if value equals "true", clear bit otherwise
 	bool bit = false;
@@ -840,7 +879,7 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	{
 		// Iterate over all debug flags and set them if they are present
 		// in the config file.
-		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_EXTRA; flag <<= 1)
+		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_MAX; flag++)
 			setDebugOption(fp, debugstr(flag), flag);
 	}
 

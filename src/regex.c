@@ -16,6 +16,8 @@
 // data getter functions
 #include "datastructure.h"
 #include "database/gravity-db.h"
+// dbopen()
+#include "database/common.h"
 // add_per_client_regex_client()
 #include "shmem.h"
 #include "database/message-table.h"
@@ -169,6 +171,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				if(regex->ext.query_type != 0)
 				{
 					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -213,6 +217,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
 							log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -299,6 +305,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 						comma++;
 
 						// Copy domain name into buffer
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						regex->ext.cname_target = strdup(comma);
 						if(regex->ext.cname_target == NULL)
 						{
@@ -312,6 +320,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 					{
 						if(asprintf(message, "Missing domain name for CNAME reply") < 1)
 							log_err("Memory allocation failed in compile_regex()");
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						free(buf);
 						free(rgxbuf);
 						return false;
@@ -321,6 +331,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -334,6 +346,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 			{
 				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
 					log_err("Memory allocation failed in compile_regex()");
+				if(regex->ext.cname_target != NULL)
+					free(regex->ext.cname_target);
 				free(buf);
 				free(rgxbuf);
 				return false;
@@ -356,6 +370,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
 		*message = strdup(regex_msg);
 		regex->available = false;
+		if(regex->ext.cname_target != NULL)
+			free(regex->ext.cname_target);
 		free(rgxbuf);
 		return false;
 	}
@@ -452,16 +468,16 @@ static int match_regex(const char *input, DNSCacheData *dns_cache, const int cli
 			// Check possible additional regex settings
 			if(dns_cache != NULL)
 			{
-				// Set special reply type if configured for this regex
-				if(regex->ext.reply != REPLY_UNKNOWN)
-					dns_cache->force_reply = regex->ext.reply;
+				// Set the reply type this regex forces (REPLY_UNKNOWN
+				// when it carries no reply option)
+				dns_cache->force_reply = regex->ext.reply;
 
 				// Store CNAME target in the shared string pool so the
 				// position can be shared safely across process boundaries.
 				// A raw heap pointer cannot be stored in SHM since it is
 				// only valid in the process that wrote it.
-				if(regex->ext.cname_target != NULL)
-					dns_cache->cname_strpos = addstr(regex->ext.cname_target);
+				// 0 = this regex has no CNAME target
+				dns_cache->cname_strpos = regex->ext.cname_target != NULL ? addstr(regex->ext.cname_target) : 0;
 			}
 
 			// Match, return true
@@ -672,10 +688,9 @@ void free_regex(void)
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < oldcount; index++)
 		{
-			if(!regex[index].available)
-				continue;
-
-			regfree(&regex[index].regex);
+			// Only a successfully compiled regex has to be freed
+			if(regex[index].available)
+				regfree(&regex[index].regex);
 
 			// Also free buffered regex strings
 			if(regex[index].string != NULL)
@@ -703,7 +718,7 @@ void free_regex(void)
 //   1. Allocate additional memory if required
 //   2. Reset all regex to false for this client
 //   3. Load regex enabled/disabled state
-void reload_per_client_regex(clientsData *client)
+void reload_per_client_regex(clientsData *client, sqlite3 *ftl_db)
 {
 	// Ensure there is enough memory in the shared memory object
 	add_per_client_regex(client->id);
@@ -715,13 +730,13 @@ void reload_per_client_regex(clientsData *client)
 	if(num_regex[REGEX_DENY] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_DENY],
 		                                  deny_regex, REGEX_DENY,
-		                                  "vw_regex_denylist");
+		                                  "vw_regex_denylist", ftl_db);
 
 	// Load regex per-group allow regex for this client
 	if(num_regex[REGEX_ALLOW] > 0)
 		gravityDB_get_regex_client_groups(client, num_regex[REGEX_ALLOW],
 		                                  allow_regex, REGEX_ALLOW,
-		                                  "vw_regex_allowlist");
+		                                  "vw_regex_allowlist", ftl_db);
 }
 
 static void read_regex_table(const enum regex_type regexid)
@@ -806,9 +821,6 @@ static void read_regex_table(const enum regex_type regexid)
 
 		// Store database ID
 		regex[num_regex[regexid]-1].database_id = rowid;
-
-		// Signal other forks that the regex data has changed and should be updated
-		regex_change = ++counters->regex_change;
 	}
 
 	// Finalize statement and close gravity database handle
@@ -840,6 +852,9 @@ void read_regex_from_database(void)
 	// per-client regex data, not all of the regex read and compiled above
 	// will also be used by all clients
 	log_debug(DEBUG_DATABASE, "Loading per-client regex data");
+	// One pihole-FTL.db connection for the network table lookups of all
+	// clients rather than one per lookup. NULL lets each lookup open its own
+	sqlite3 *ftl_db = dbopen(false, false);
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get client pointer
@@ -848,8 +863,13 @@ void read_regex_from_database(void)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		reload_per_client_regex(client);
+		reload_per_client_regex(client, ftl_db);
 	}
+	if(ftl_db != NULL)
+		dbclose(&ftl_db);
+
+	// This process is now up to date with the shared regex generation
+	regex_change = counters->regex_change;
 
 	// Print message to FTL's log after reloading regex filters
 	log_info("Compiled %u allow and %u deny regex for %u client%s in %.1f msec",

@@ -269,7 +269,8 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.s = strdup(elem->valuestring);
 			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
-			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, conf_item->v.s);
+			log_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k,
+			          is_secret_conf_item(conf_item) ? "(hidden)" : conf_item->v.s);
 			break;
 		}
 		case CONF_PASSWORD:
@@ -472,6 +473,10 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 
 int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 {
+	// App sessions without app_sudo may not change the configuration, so they
+	// do not get the password hashes either
+	const bool read_only = api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b;
+
 	// Create root config object
 	cJSON *config_j = JSON_NEW_OBJECT();
 
@@ -544,8 +549,9 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 			const char *typestr = get_conf_type_str(conf_item->t);
 			JSON_REF_STR_IN_OBJECT(leaf, "type", typestr);
 
-			// Special case: write-only values
-			if(conf_item->f & FLAG_WRITE_ONLY)
+			// Special case: write-only values, and secrets for sessions
+			// that may not change the configuration
+			if((conf_item->f & FLAG_WRITE_ONLY) || (read_only && is_secret_conf_item(conf_item)))
 				JSON_REF_STR_IN_OBJECT(leaf, "value", PASSWORD_VALUE);
 			else
 			{
@@ -584,8 +590,9 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 		}
 		else
 		{
-			// Special case: write-only values
-			if(conf_item->f & FLAG_WRITE_ONLY)
+			// Special case: write-only values, and secrets for sessions
+			// that may not change the configuration
+			if((conf_item->f & FLAG_WRITE_ONLY) || (read_only && is_secret_conf_item(conf_item)))
 				JSON_REF_STR_IN_OBJECT(parent, conf_item->p[level - 1], PASSWORD_VALUE);
 			else
 			{
@@ -1040,12 +1047,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(value == NULL)
 			continue;
 
-		size_t value_len = strlen(value);
-		// A trailing slash only belongs to the value where it can mean
-		// something, e.g., local=/lan/ in misc.dnsmasq_lines
-		if(value_len > 0 && value[value_len - 1] == '/' &&
-		   new_item != &newconf.misc.dnsmasq_lines)
-			value_len--;
+		const size_t value_len = strlen(value);
 		if(value_len == 0)
 			continue;
 		if(value_len >= sizeof(value_buf))
@@ -1087,16 +1089,30 @@ static int api_config_put_delete(struct ftl_conn *api)
 			                            key, true, true);
 		}
 
-		// Check if this entry exists in the array
+		// Check if this entry exists in the array. The value is taken as it
+		// is, a trailing slash can be part of it ("Location: /"). Only a
+		// DELETE that finds nothing tries again without one, the URI may
+		// simply end in a slash
 		int idx = 0;
-		for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
-		    elem != NULL; elem = elem->next, idx++)
+		for(unsigned int attempt = 0; attempt < 2 && !found; attempt++)
 		{
-			if(elem != NULL && elem->valuestring != NULL &&
-				strcmp(elem->valuestring, new_item_str) == 0)
+			if(attempt == 1)
 			{
-				found = true;
-				break;
+				if(api->method != HTTP_DELETE || value_len < 2 || value_buf[value_len - 1] != '/')
+					break;
+				value_buf[value_len - 1] = '\0';
+			}
+
+			idx = 0;
+			for(const cJSON *elem = new_item->v.json != NULL ? new_item->v.json->child : NULL;
+			    elem != NULL; elem = elem->next, idx++)
+			{
+				if(elem->valuestring != NULL &&
+				   strcmp(elem->valuestring, new_item_str) == 0)
+				{
+					found = true;
+					break;
+				}
 			}
 		}
 

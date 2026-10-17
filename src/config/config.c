@@ -39,6 +39,8 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// cli_mode
+#include "args.h"
 
 // Global variables
 struct config config = { 0 };
@@ -205,6 +207,16 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 	}
 	return true;
 }
+// Passwords, write-only items and the password hashes are never logged, and
+// only sessions allowed to change the configuration may read the hashes
+bool is_secret_conf_item(const struct conf_item *conf_item)
+{
+	return conf_item->t == CONF_PASSWORD ||
+	       (conf_item->f & FLAG_WRITE_ONLY) ||
+	       strcmp(conf_item->k, "webserver.api.pwhash") == 0 ||
+	       strcmp(conf_item->k, "webserver.api.app_pwhash") == 0;
+}
+
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 {
 	// Sanity check
@@ -546,7 +558,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_FTL;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
-	
+
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("A string in the format \"<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]\"");
@@ -658,7 +670,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
@@ -726,7 +738,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
-	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");	
+	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
@@ -927,6 +939,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.f = FLAG_RESTART_FTL;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
 
@@ -935,7 +948,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.a = cJSON_CreateStringReference("A positive integer value");
 	conf->ntp.sync.count.t = CONF_UINT;
 	conf->ntp.sync.count.d.ui = 8;
-	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.count.c = validate_ui_min_1;
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
@@ -1022,7 +1035,8 @@ void initConfig(struct config *conf)
 	conf->database.DBinterval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->database.DBinterval.t = CONF_UINT;
 	conf->database.DBinterval.d.ui = 60;
-	conf->database.DBinterval.c = validate_stub; // Only type-based checking
+	// Used as a divisor by the database thread
+	conf->database.DBinterval.c = validate_ui_min_1;
 
 	conf->database.useWAL.k = "database.useWAL";
 	conf->database.useWAL.h = "Should FTL enable Write-Ahead Log (WAL) mode for the on-disk query database (configured via files.database)?\n\n It is recommended to leave this setting enabled for performance reasons. About the only reason to disable WAL mode is if you are experiencing specific issues with it, e.g., when using a database that is accessed from multiple hosts via a network share. When this setting is disabled, FTL will use SQLite3's default journal mode (rollback journal in DELETE mode).";
@@ -1151,7 +1165,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)"/etc/pihole/tls.pem";
-	conf->webserver.tls.cert.c = validate_filepath;
+	conf->webserver.tls.cert.c = validate_filepath_empty;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
@@ -1168,7 +1182,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.webhome.t = CONF_STRING;
 	conf->webserver.paths.webhome.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.webhome.d.s = (char*)"/admin/";
-	conf->webserver.paths.webhome.c = validate_filepath_two_slash;
+	conf->webserver.paths.webhome.c = validate_urlpath_two_slash;
 
 	conf->webserver.paths.prefix.k = "webserver.paths.prefix";
 	conf->webserver.paths.prefix.h = "Prefix where the web interface is served\n\n This is useful when you are using a reverse proxy serving the web interface, e.g., at http://<ip>/pihole/admin/ instead of http://<ip>/admin/. In this example, the prefix would be \"/pihole\". Note that the prefix has to be stripped away by the reverse proxy, e.g., for traefik:\n - traefik.http.routers.pihole.rule=PathPrefix(`/pihole`)\n - traefik.http.middlewares.piholehttp.stripprefix.prefixes=/pihole\n The prefix should start with a slash. If you don't use a prefix, leave this field empty. Setting this field to an incorrect value may result in the web interface not being accessible.\n Don't use this setting if you are not using a reverse proxy!\n\n This decides where the web server serves the interface from, so it cannot be set through the API. Set it in "GLOBALTOMLPATH", through an environment variable, or with \"pihole-FTL --config\" - all of which require access to the host.";
@@ -1176,7 +1190,7 @@ void initConfig(struct config *conf)
 	conf->webserver.paths.prefix.t = CONF_STRING;
 	conf->webserver.paths.prefix.f = FLAG_RESTART_FTL | FLAG_API_READ_ONLY;
 	conf->webserver.paths.prefix.d.s = (char*)"";
-	conf->webserver.paths.prefix.c = validate_filepath_empty;
+	conf->webserver.paths.prefix.c = validate_urlpath_empty;
 
 	// sub-struct interface
 	conf->webserver.interface.boxed.k = "webserver.interface.boxed";
@@ -1237,7 +1251,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.totp_secret.t = CONF_STRING;
 	conf->webserver.api.totp_secret.f = FLAG_WRITE_ONLY | FLAG_INVALIDATE_SESSIONS;
 	conf->webserver.api.totp_secret.d.s = (char*)"";
-	conf->webserver.api.totp_secret.c = validate_stub; // Only type-based checking
+	conf->webserver.api.totp_secret.c = validate_totp_secret;
 
 	conf->webserver.api.app_pwhash.k = "webserver.api.app_pwhash";
 	conf->webserver.api.app_pwhash.h = "Pi-hole application password.\n\n After you turn on two-factor (2FA) verification and set up an Authenticator app, you may run into issues if you use apps or other services that don't support two-step verification. In this case, you can create and use an app password to sign in.\n\n An app password is a long, randomly generated password that can be used instead of your regular password + TOTP token when signing in to the API. The app password can be generated through the API and will be shown only once.\n\n You can revoke the app password at any time. If you revoke the app password, be sure to generate a new one and update your app with the new password.";
@@ -1280,7 +1294,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.maxHistory.t = CONF_UINT;
 	conf->webserver.api.maxHistory.f = FLAG_RESTART_FTL; // Restart FTL to import more data in case of enlarging of this value
 	conf->webserver.api.maxHistory.d.ui = MAXLOGAGE*3600;
-	conf->webserver.api.maxHistory.c = validate_stub; // Only type-based checking
+	conf->webserver.api.maxHistory.c = validate_max_history;
 
 	conf->webserver.api.maxClients.k = "webserver.api.maxClients";
 	conf->webserver.api.maxClients.h = "Up to how many clients should be returned in the activity graph endpoint (/api/history/clients)?\n\n This setting can be overwritten at run-time using the parameter N. Setting this to 0 will always send all clients. Be aware that this may be challenging for the GUI if you have many (think > 1.000 clients) in your network";
@@ -1802,6 +1816,44 @@ void reset_config_default(struct conf_item *conf_item)
 }
 
 
+// Remove the entries of a list that its validator rejects on their own and
+// return whether what remains passes, leaving the rejection in valerr otherwise
+static bool drop_invalid_entries(struct conf_item *conf_item, char valerr[VALIDATOR_ERRBUF_LEN])
+{
+	cJSON *array = conf_item->v.json;
+	if(!cJSON_IsArray(array))
+		return false;
+
+	// The validator sees a one-element list, so its message names index 0
+	char prefix[128];
+	snprintf(prefix, sizeof(prefix), "%s[0]: ", conf_item->k);
+	const size_t prefix_len = strlen(prefix);
+
+	unsigned int idx = 0;
+	for(cJSON *item = array->child, *next = NULL; item != NULL; item = next, idx++)
+	{
+		next = item->next;
+
+		cJSON *single = cJSON_CreateArray();
+		cJSON_AddItemToArray(single, cJSON_Duplicate(item, true));
+		union conf_value value = { .json = single };
+		char itemerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		const bool valid = conf_item->c(&value, conf_item->k, itemerr);
+		cJSON_Delete(single);
+		if(valid)
+			continue;
+
+		const char *reason = strncmp(itemerr, prefix, prefix_len) == 0 ? itemerr + prefix_len : itemerr;
+		log_err("Invalid value: %s[%u]: %s", conf_item->k, idx, reason);
+		log_err("----> %s[%u] has been removed", conf_item->k, idx);
+		cJSON_Delete(cJSON_DetachItemViaPointer(array, item));
+	}
+
+	// Rules spanning several entries only show on the list as a whole
+	valerr[0] = '\0';
+	return conf_item->c(&conf_item->v, conf_item->k, valerr);
+}
+
 /**
  * @brief Hold a configuration to the same rules every way of setting it obeys.
  *
@@ -1809,8 +1861,9 @@ void reset_config_default(struct conf_item *conf_item)
  * items, which a validator seeing one value at a time cannot express.
  *
  * @param conf Configuration to check
- * @param reset If true, an offending item is reset to its default and the check
- *              continues; if false, the first rejection ends it
+ * @param reset If true, an offending item is reset to its default (a list only
+ *              loses its offending entries) and the check continues; if false,
+ *              the first rejection ends it
  * @param err Buffer receiving the rejection, may be NULL when \p reset is true
  * @return Whether the configuration is acceptable
  */
@@ -1832,6 +1885,10 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
 			return false;
 		}
+
+		// A list loses only the entries that fail, not every entry it holds
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && drop_invalid_entries(conf_item, valerr))
+			continue;
 
 		// The validator's message opens with the key, so it is not repeated
 		log_err("Invalid value: %s", valerr);
@@ -1866,7 +1923,7 @@ static void get_web_port(struct config *conf)
 	// Determine default webserver ports if not imported from setupVars.conf
 	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
 	{
-		log_info("Webserver ports already imported from setupVars.conf, skipping default port detection");
+		log_info("Webserver ports already imported from legacy config files, skipping default port detection");
 		return;
 	}
 
@@ -2025,6 +2082,29 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	return false;
 }
 
+static bool getLogFilePathENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_ftl");
+	if(val == NULL)
+		return false;
+
+	// Validate the path the same way the regular config load does. The
+	// rejection is not reported here: logging is not available yet at this
+	// early stage, but the regular env parse reports the same issue later on.
+	union conf_value tmp = { .s = (char *)val };
+	char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_filepath(&tmp, config.files.log.ftl.k, err))
+		return false;
+
+	char *copy = strdup(val);
+	if(copy == NULL)
+		return false;
+
+	config.files.log.ftl.v.s = copy;
+	config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+	return true;
+}
+
 bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
@@ -2040,8 +2120,8 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Check if the config file contains a different path
-	if(try_read && !getLogFilePathTOML())
+	// Try sources in priority order: ENV > TOML > legacy
+	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;
@@ -2115,6 +2195,8 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
+	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
 	memcpy(&old_conf, &config, sizeof(struct config));
@@ -2130,6 +2212,11 @@ void replace_config(struct config *newconf)
 
 	// This configuration is live now, so the mbedTLS threshold follows it
 	set_mbedtls_debug_threshold(config.debug.tls.v.b);
+
+	// Drop the cached answers and verdicts of the previous blocking status as
+	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+		raise(SIGHUP);
 }
 
 void reread_config(void)

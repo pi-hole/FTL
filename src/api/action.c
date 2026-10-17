@@ -14,6 +14,8 @@
 #include "api/api.h"
 // wait()
 #include <sys/wait.h>
+// O_CLOEXEC
+#include <fcntl.h>
 // reboot()
 #include <sys/reboot.h>
 #include <unistd.h>
@@ -40,6 +42,21 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		                       strerror(errno));
 	}
 
+	// dnsmasq reaps every child of this process on SIGCHLD, so the exit
+	// status of the command comes back through a pipe of its own
+	int statusfd[2];
+	if(pipe2(statusfd, O_CLOEXEC) != 0)
+	{
+		const int err = errno;
+		log_err("Cannot create status pipe while running gravity action: %s", strerror(err));
+		close(pipefd[0]);
+		close(pipefd[1]);
+		return send_json_error(api, 500,
+		                       "server_error",
+		                       "Cannot create pipe",
+		                       strerror(err));
+	}
+
 	// Fork!
 	pid_t cpid = fork();
 	int code = -1;
@@ -57,6 +74,8 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		log_err("Cannot fork to run command: %s", strerror(err));
 		close(pipefd[0]);
 		close(pipefd[1]);
+		close(statusfd[0]);
+		close(statusfd[1]);
 		return send_json_error(api, 500,
 		                       "server_error",
 		                       "Cannot fork to run command",
@@ -66,8 +85,9 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	if (cpid == 0)
 	{
 		/*** CHILD ***/
-		// Close the reading end of the pipe
+		// Close the reading ends of the pipes
 		close(pipefd[0]);
+		close(statusfd[0]);
 
 		// Disable logging
 		log_ctrl(false, false);
@@ -95,59 +115,76 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// custom handlers which are reset to SIG_DFL.
 		signal(SIGTERM, SIG_IGN);
 
-		// Run pihole -g
-		execv(path, (char *const *)args);
+		// Run the command in a child of our own, which nobody else can
+		// reap, and hand its exit status to the parent
+		const pid_t gpid = fork();
+		if(gpid == 0)
+		{
+			// Run pihole -g
+			execv(path, (char *const *)args);
 
-		// execv() only returns if it failed, so the command never ran.
-		// Exit non-zero so the parent reports the action as failed.
-		exit(EXIT_FAILURE);
+			// execv() only returns if it failed, so the command never ran.
+			// Exit non-zero so the parent reports the action as failed.
+			_exit(EXIT_FAILURE);
+		}
+
+		int gstatus = -1;
+		if(gpid > 0)
+		{
+			pid_t waited;
+			do
+				waited = waitpid(gpid, &gstatus, 0);
+			while(waited == -1 && errno == EINTR);
+			if(waited == -1)
+				gstatus = -1;
+		}
+
+		const ssize_t written = write(statusfd[1], &gstatus, sizeof(gstatus));
+		_exit(written == sizeof(gstatus) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 	else
 	{
 		/*** PARENT ***/
-		// Close the writing end of the pipe
+		// Close the writing ends of the pipes
 		close(pipefd[1]);
+		close(statusfd[1]);
 
 		// Send 200 OK with chunked size (-1)
 		mg_send_http_ok(api->conn, "text/plain", -1);
 
-		// Read readirected STDOUT/STDERR until EOF
-		// We are only interested in the last pipe line
-		char errbuf[1024] = "";
+		// Stream the redirected STDOUT/STDERR until EOF
+		char buf[1024];
 		ssize_t nread;
-		while((nread = read(pipefd[0], errbuf, sizeof(errbuf) - 1)) > 0)
+		while((nread = read(pipefd[0], buf, sizeof(buf))) > 0)
 		{
-			// NUL-terminate what we just read so the string
-			// operations below cannot read past the buffer
-			errbuf[nread] = '\0';
-			// Send chunked data
-			// The chunked size is the length of the string in hex and has to be
-			// transferred in advance, followed by \r\n as line separator and
-			// followed by a chunk of data (the string itself) of the specified
-			// size
-			mg_printf(api->conn, "%zX\r\n%s\r\n", strlen(errbuf), errbuf);
-
-			// Reset buffer
-			memset(errbuf, 0, sizeof(errbuf));
+			// Send what read() returned as one chunk, the output may
+			// contain NUL bytes
+			mg_send_chunk(api->conn, buf, (unsigned int)nread);
 		}
 
-		// Wait until child has exited to get its return code
-		// dnsmasq reaps every child on SIGCHLD and may have been faster,
-		// the exit status is unknown then and the streamed output is all
-		// there is to judge the run by
-		int status = 0;
+		// Get the exit status of the command from the status pipe
+		int status = -1;
+		ssize_t got;
+		do
+			got = read(statusfd[0], &status, sizeof(status));
+		while(got == -1 && errno == EINTR);
+		close(statusfd[0]);
+
+		// Reap the helper, dnsmasq may have been faster
 		pid_t waited;
 		do
-			waited = waitpid(cpid, &status, 0);
+			waited = waitpid(cpid, NULL, 0);
 		while(waited == -1 && errno == EINTR);
-		if(waited == -1)
-		{
-			log_debug(DEBUG_API, "Cannot wait for child: %s", strerror(errno));
-			status = 0;
-		}
-		code = WEXITSTATUS(status);
 
-		if(WIFSIGNALED(status))
+		// An unknown exit status is not a success
+		if(got != sizeof(status) || status == -1)
+		{
+			log_err("Cannot get the exit status of the command");
+			code = EXIT_FAILURE;
+		}
+		else if(WIFEXITED(status))
+			code = WEXITSTATUS(status);
+		else if(WIFSIGNALED(status))
 		{
 			crashed = true;
 			log_err("gravity failed with signal %d %s",
@@ -161,16 +198,21 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		close(pipefd[0]);
 	}
 
-	// Send final chunk of size 0 showing end of data
+	// Report a failure inside the stream, while it can still reach the client.
+	// The response is already committed as 200 chunked text/plain, so a status
+	// sent from here is dropped by civetweb and the caller would see success
+	// whatever happened
+	if(code != EXIT_SUCCESS || crashed)
+	{
+		const char *const failmsg = "Gravity failed\n";
+		mg_send_chunk(api->conn, failmsg, (unsigned int)strlen(failmsg));
+	}
+
+	// Send final chunk of size 0 showing end of data. Nothing may be written
+	// after it - the message ends here
 	mg_printf(api->conn, "0\r\n\r\n");
 
-	if(code == EXIT_SUCCESS && !crashed)
-		return send_json_success(api);
-	else
-		return send_json_error(api, 500,
-		                       "server_error",
-		                       "Gravity failed",
-		                       NULL);
+	return (code == EXIT_SUCCESS && !crashed) ? 200 : 500;
 }
 
 int api_action_gravity(struct ftl_conn *api)
@@ -184,9 +226,17 @@ int api_action_gravity(struct ftl_conn *api)
 
 	const char *extra_env = color ? "FORCE_COLOR" : NULL;
 
-	gravity_running = 1;
+	// Refuse a second run while one is in flight, both would rebuild the same
+	// database
+	bool idle = false;
+	if(!atomic_compare_exchange_strong(&gravity_running, &idle, true))
+		return send_json_error(api, 409,
+		                       "gravity_running",
+		                       "Gravity is already running",
+		                       NULL);
+
 	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
-	gravity_running = 0;
+	atomic_store(&gravity_running, false);
 
 	// If a termination/restart was requested while gravity was running,
 	// act on it now rather than waiting up to ~1s for the GC thread to pick it up

@@ -151,6 +151,16 @@
 // Default: 86400 (once per day)
 #define DATABASE_DELETE_OLD_QUERIES_INTERVAL 86400
 
+// How many old queries should be deleted from the database at once? The
+// database thread continues with the rest after its other tasks
+// Default: 10000
+#define DATABASE_DELETE_BATCH 10000
+
+// How long does main() wait for the database thread to finish its current
+// operation before it runs the final export at shutdown? [seconds]
+// Default: 30
+#define DB_THREAD_JOIN_TIMEOUT 30
+
 // Over how many seconds should the query-per-second (QPS) value be averaged?
 // Default: 30 (seconds)
 #define QPS_AVGLEN 30

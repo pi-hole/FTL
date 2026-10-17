@@ -306,6 +306,21 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
+// Write a key="value" line for a file path. Quoted and escaped: unquoted, '#'
+// after a space starts a comment, and '"' and '\' are special to dnsmasq's
+// parser, which removes the quotes and the escapes again
+static void write_quoted_path(FILE *fp, const char *key, const char *path)
+{
+	fprintf(fp, "%s=\"", key);
+	for(const char *p = path; *p != '\0'; p++)
+	{
+		if(*p == '"' || *p == '\\')
+			fputc('\\', fp);
+		fputc(*p, fp);
+	}
+	fputs("\"\n", fp);
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
@@ -392,7 +407,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Return early if opening failed
 	if(!pihole_conf)
 	{
-		log_err("Cannot open "DNSMASQ_TEMP_CONF" for writing, unable to update dnsmasq configuration: %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot open "DNSMASQ_TEMP_CONF" for writing: %s", strerror(errno));
+		log_err("%s, unable to update dnsmasq configuration", errbuf);
 		return false;
 	}
 
@@ -459,7 +475,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("# Specify the log file to use\n", pihole_conf);
 		fputs("# We set this even if logging is disabled to store warnings\n", pihole_conf);
 		fputs("# and errors in this file. This is useful for debugging.\n", pihole_conf);
-		fprintf(pihole_conf, "log-facility=%s\n", conf->files.log.dnsmasq.v.s);
+		write_quoted_path(pihole_conf, "log-facility", conf->files.log.dnsmasq.v.s);
 		fputs("\n", pihole_conf);
 	}
 
@@ -895,7 +911,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
-			fprintf(pihole_conf, "dumpfile=%s\n", conf->files.pcap.v.s);
+			write_quoted_path(pihole_conf, "dumpfile", conf->files.pcap.v.s);
 			fputs("\n", pihole_conf);
 		}
 		else
@@ -935,10 +951,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// success after a short write, so without this a disk that filled up
 	// part-way through would be renamed over the live dnsmasq config as a
 	// truncated file that dnsmasq would happily start from
+	// The reason goes into errbuf as the callers report it as their hint
 	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
 	                          fsync(fileno(pihole_conf)) != 0;
 	if(write_failed)
-		log_err("Cannot write dnsmasq config file: %s", strerror(errno));
+	{
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		log_err("%s", errbuf);
+	}
 
 	// Unlock file
 	if(locked)
@@ -947,6 +967,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Close file
 	if(fclose(pihole_conf) != 0)
 	{
+		if(!write_failed)
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot close "DNSMASQ_TEMP_CONF": %s", strerror(errno));
 		log_err("Cannot close dnsmasq config file: %s", strerror(errno));
 		return false;
 	}
@@ -991,7 +1013,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 
@@ -1004,7 +1027,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	{
 		if(rename(DNSMASQ_TEMP_CONF, DNSMASQ_PH_CONFIG) != 0)
 		{
-			log_err("Cannot install dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot install "DNSMASQ_PH_CONFIG": %s", strerror(errno));
+			log_err("%s", errbuf);
 
 			// Remove temporary config file
 			if(remove(DNSMASQ_TEMP_CONF) != 0)
@@ -1021,7 +1045,8 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		// Remove temporary config file
 		if(remove(DNSMASQ_TEMP_CONF) != 0)
 		{
-			log_err("Cannot remove temporary dnsmasq config file: %s", strerror(errno));
+			snprintf(errbuf, ERRBUF_SIZE, "Cannot remove "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+			log_err("%s", errbuf);
 			return false;
 		}
 	}
@@ -1059,8 +1084,10 @@ bool read_legacy_dhcp_static_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "dhcp-host=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "dhcp-host=", sizeof("dhcp-host=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer
@@ -1122,8 +1149,10 @@ bool read_legacy_cnames_config(void)
 		if(linebuffer == NULL)
 			break;
 
-		// Skip lines with other keys
-		if((strstr(linebuffer, "cname=")) == NULL)
+		// Skip comments and lines with other keys, the key has to
+		// start the line
+		const char *line = linebuffer + strspn(linebuffer, " \t");
+		if(strncmp(line, "cname=", sizeof("cname=") - 1) != 0)
 			continue;
 
 		// Note: value is still a pointer into the linebuffer

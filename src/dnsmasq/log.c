@@ -19,6 +19,7 @@
 #include "log.h"
 #include "dnsmasq_interface.h"
 #include "main.h"
+#include "files.h"
 /************************************/
 
 #ifdef __ANDROID__
@@ -102,27 +103,42 @@ int log_start(struct passwd *ent_pw, int errfd)
       entries_alloced = 1;
     }
 
-  /* If we're running as root and going to change uid later,
-     change the ownership here so that the file is always owned by
-     the dnsmasq user. Then logrotate can just copy the owner.
-     Failure of the chown call is OK, (for instance when started as non-root).
-     
-     If we've created a file with group-id root, we also make
-     the file group-writable. This gives processes in the root group
-     write access to the file and avoids the problem that on some systems,
-     once the file is owned by the dnsmasq user, it can't be written
-     whilst dnsmasq is running as root during startup.
- */
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
-      struct stat ls;
-      if (getgid() == 0 && fstat(log_fd, &ls) == 0 && ls.st_gid == 0 &&
-	  (ls.st_mode & S_IWGRP) == 0)
-	(void)fchmod(log_fd, ls.st_mode | S_IWGRP);
-      if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
-	ret = errno;
+      struct stat ls, ps;
+      int own_file = 0;
+      
+      /* Only mess with permissions for regular files, not (eg) /dev/null */
+      if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
+	{
+	  /* Pi-hole modification: the path comes from the pihole-owned config,
+	     so only touch a file in our own directories and never a link target */
+	  own_file = in_pihole_dir(daemon->log_file) && lstat(daemon->log_file, &ps) == 0 &&
+	    S_ISREG(ps.st_mode) && ps.st_dev == ls.st_dev && ps.st_ino == ls.st_ino &&
+	    ls.st_nlink == 1;
+	  if (!own_file)
+	    log_warn("Not changing ownership of %s, it is not a regular file in /etc/pihole or /var/log/pihole",
+		     daemon->log_file);
+	}
+      if (own_file)
+	{
+	  /* If we're running as root and going to change uid later,
+	     change the ownership here so that the file is always owned by
+	     the dnsmasq user. Then logrotate can just copy the owner. */
+	  if (fchown(log_fd, ent_pw->pw_uid, -1) != 0)
+	    ret = errno;
+	  
+	  /* If we've created a file with group-id root, we also make
+	     the file group-writable. This gives processes in the root group
+	     write access to the file and avoids the problem that on some systems,
+	     once the file is owned by the dnsmasq user, it can't be written
+	     whilst dnsmasq is running as root during startup.
+	     Failure of the chown call is OK, (for instance when started as non-root). */
+	  if (getgid() == 0 && ls.st_gid == 0 && (ls.st_mode & S_IWGRP) == 0)
+	    (void)fchmod(log_fd, ls.st_mode | S_IWGRP);
+	}
     }
-
+  
   return ret;
 }
 
@@ -135,8 +151,11 @@ int log_reopen(char *log_file)
       
       /* NOTE: umask is set to 022 by the time this gets called */
       
+      /* Pi-hole modification: as root, refuse a symbolic link as the log file,
+	 the pihole user owns the directory it is in */
       if (log_file)
-	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);
+	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND|(geteuid() == 0 ? O_NOFOLLOW : 0),
+		      S_IRUSR|S_IWUSR|S_IRGRP);
       else
 	{
 #if defined(HAVE_SOLARIS_NETWORK) || defined(__ANDROID__)

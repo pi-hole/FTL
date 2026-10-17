@@ -36,6 +36,16 @@
 
 static int api_teleporter_GET(struct ftl_conn *api)
 {
+	// The archive contains the password hashes and the TOTP secret, so only
+	// sessions allowed to change the configuration may export it
+	if(api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to export configuration",
+		                       "The current app session is not allowed to export Pi-hole config settings (webserver.api.app_sudo is false)");
+	}
+
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
 	size_t size = 0u;
@@ -77,6 +87,7 @@ static int api_teleporter_GET(struct ftl_conn *api)
 // Struct to store the data we want to process
 struct upload_data {
 	bool too_large;
+	bool invalid_import;
 	char *sid;
 	cJSON *import;
 	uint8_t *data;
@@ -194,6 +205,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		if(json == NULL)
 		{
 			log_err("Unable to parse JSON data in API request, error at: %.20s", json_error);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -202,6 +214,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		{
 			log_err("JSON data in API request is not an object");
 			cJSON_Delete(json);
+			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
 
@@ -295,6 +308,17 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid form request",
+		                       NULL);
+	}
+
+	// A rejected import field aborts the form parsing, nothing received
+	// with it may be imported
+	if(data.invalid_import)
+	{
+		free_upload_data(&data);
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid import JSON",
 		                       NULL);
 	}
 
@@ -399,6 +423,8 @@ static struct teleporter_files {
 	const size_t num_columns; // Number of columns in the table
 	const char *columns[10]; // List of columns in the table
 } teleporter_v5_files[] = {
+	// *_by_group files must follow their primary tables: the tr_*_add triggers put new rows into group 0
+	// and only the later by_group import replaces that with the archived mapping
 	{
 		.filename = "adlist.json",
 		.table_name = "adlist",
@@ -436,12 +462,6 @@ static struct teleporter_files {
 		.num_columns = 2,
 		.columns = { "group_id", "client_id" }
 	},{
-		.filename = "domainlist_by_group.json",
-		.table_name = "domainlist_by_group",
-		.listtype = -1,
-		.num_columns = 2,
-		.columns = { "group_id", "domainlist_id" }
-	},{
 		.filename = "group.json",
 		.table_name = "group",
 		.listtype = -1,
@@ -459,6 +479,12 @@ static struct teleporter_files {
 		.listtype = 2, // GRAVITY_DOMAINLIST_ALLOW_REGEX
 		.num_columns = 7,
 		.columns = { "id", "domain", "enabled", "date_added", "date_modified", "comment", "type" }
+	},{
+		.filename = "domainlist_by_group.json",
+		.table_name = "domainlist_by_group",
+		.listtype = -1,
+		.num_columns = 2,
+		.columns = { "group_id", "domainlist_id" }
 	}
 };
 

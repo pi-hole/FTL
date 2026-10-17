@@ -236,19 +236,9 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				log_info("Resetting %s to default (not forced anymore)", conf_item->k);
 
-				// Revert to default
-				if(conf_item->t == CONF_STRING_ALLOCATED)
-				{
-					// Free previously allocated string
-					free(conf_item->v.s);
-					// Make a duplicate of the default value
-					conf_item->v.s = strdup(conf_item->d.s);
-				}
-				else
-				{
-					// Revert to default value
-					memcpy(&conf_item->v, &conf_item->d, sizeof(conf_item->v));
-				}
+				// Revert to default, giving allocated strings
+				// and arrays their own copy of the default
+				reset_config_default(conf_item);
 
 				// Mark this environment variable as reset to
 				// default
@@ -269,7 +259,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	// else: We found an environment variable with the given key
 	const char *envvar = item != NULL ? item->value : NULL;
 
-	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e, envvar);
+	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e,
+	          is_secret_conf_item(conf_item) ? "(hidden)" : envvar);
 
 	// Snapshot the previous value and type before the type switch commits
 	// the new value into conf_item->v. If the validator below rejects the
@@ -550,6 +541,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				// Special case: empty string -> 0.0.0.0
 				conf_item->v.in_addr.s_addr = INADDR_ANY;
+				item->valid = true;
 			}
 			else if(inet_pton(AF_INET, envvar, &addr4))
 			{
@@ -570,6 +562,7 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			{
 				// Special case: empty string -> ::
 				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
+				item->valid = true;
 			}
 			else if(inet_pton(AF_INET6, envvar, &addr6))
 			{

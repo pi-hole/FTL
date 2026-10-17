@@ -81,6 +81,7 @@ pdnsutil rrset add ftl. cname-5.ftl. CNAME cname-4.ftl.
 pdnsutil rrset add ftl. cname-6.ftl. CNAME cname-5.ftl.
 pdnsutil rrset add ftl. cname-7.ftl. CNAME cname-6.ftl.
 pdnsutil rrset add ftl. cname-ok.ftl. CNAME a.ftl.
+pdnsutil rrset add ftl. cname-tcp.ftl. CNAME gravity.ftl.
 
 # Create CNAME for SOA test domain
 pdnsutil rrset add ftl. soa.ftl. CNAME ftl.
@@ -135,6 +136,7 @@ pdnsutil rrset add ftl. umbrella-multi.ftl. A 8.8.8.8
 # Null address
 pdnsutil rrset add ftl. null.ftl. A 0.0.0.0
 pdnsutil rrset add ftl. null.ftl. AAAA ::
+pdnsutil rrset add ftl. null-tcp.ftl. A 0.0.0.0
 
 # Serve Apple's iCloud Private Relay domains locally (unsigned) instead of
 # recursing to the public internet. The bats suite resolves mask.icloud.com
