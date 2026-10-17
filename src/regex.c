@@ -27,6 +27,8 @@
 #include "config/config.h"
 // cli_stuff()
 #include "args.h"
+// set_event()
+#include "events.h"
 
 const char *regextype[REGEX_MAX] = { "deny", "allow", "CLI" };
 // Safety-measure for future extensions
@@ -567,9 +569,27 @@ bool in_regex(const char *domain, DNSCacheData *dns_cache, const int clientID, c
 	return false;
 }
 
-// Resolve CNAME targets for regex entries
+// A regex CNAME target being resolved outside the lock
+struct cname_job {
+	enum regex_type regexid;
+	unsigned int index;
+	int database_id;
+	char *target;
+	bool resolved4, resolved6;
+	struct in_addr addr4;
+	struct in6_addr addr6;
+};
+
+// Resolve CNAME targets for regex entries. getaddrinfo() can block for long, so
+// the targets are copied under the lock, resolved without it, and only stored if
+// no list reload replaced the regex in between
 void resolve_regex_cnames(void)
 {
+	struct cname_job *jobs = NULL;
+	unsigned int num_jobs = 0, max_jobs = 0;
+
+	lock_shm();
+	const unsigned int generation = counters->regex_change;
 	// Loop over all regex types
 	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)
 	{
@@ -583,58 +603,119 @@ void resolve_regex_cnames(void)
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < num_regex[regexid]; index++)
 		{
-			if(!regex[index].available)
-				continue;
-
 			// Check if this regex has a CNAME target
-			if(regex[index].ext.cname_target == NULL)
+			if(!regex[index].available || regex[index].ext.cname_target == NULL)
 				continue;
 
-			log_debug(DEBUG_REGEX, "Resolving CNAME target \"%s\" for regex filter %i",
-			          regex[index].ext.cname_target, regex[index].database_id);
-
-			// Prepare hints for getaddrinfo()
-			struct addrinfo hints;
-			memset(&hints, 0, sizeof(hints));
-			hints.ai_family = AF_INET;
-			hints.ai_socktype = SOCK_STREAM;
-
-			// Resolve CNAME target to IPv4 address using getaddrinfo()
-			struct addrinfo *result = NULL;
-			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0)
+			// Grow geometrically, the lock is held while collecting
+			if(num_jobs == max_jobs)
 			{
-				if(result->ai_family == AF_INET)
+				const unsigned int grow_to = max_jobs > 0 ? 2 * max_jobs : 8;
+				struct cname_job *grown = realloc(jobs, grow_to * sizeof(*jobs));
+				if(grown == NULL)
 				{
-					regex[index].ext.custom_ip4 = true;
-					struct sockaddr_in *addr_in = (void *)result->ai_addr;
-					memcpy(&regex[index].ext.addr4, &addr_in->sin_addr, sizeof(regex[index].ext.addr4));
-					char buffer[INET_ADDRSTRLEN];
-					log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv4 address %s for regex filter %i",
-					          regex[index].ext.cname_target, inet_ntop(AF_INET, &regex[index].ext.addr4, buffer, INET_ADDRSTRLEN), regex[index].database_id);
+					log_err("Memory allocation failed in resolve_regex_cnames()");
+					break;
 				}
-				freeaddrinfo(result);
+				jobs = grown;
+				max_jobs = grow_to;
 			}
-
-			// Prepare hints for getaddrinfo()
-			hints.ai_family = AF_INET6;
-
-			// Resolve CNAME target to IPv6 address using getaddrinfo()
-			result = NULL;
-			if(getaddrinfo(regex[index].ext.cname_target, NULL, &hints, &result) == 0)
+			memset(&jobs[num_jobs], 0, sizeof(jobs[num_jobs]));
+			jobs[num_jobs].target = strdup(regex[index].ext.cname_target);
+			if(jobs[num_jobs].target == NULL)
 			{
-				if(result->ai_family == AF_INET6)
-				{
-					regex[index].ext.custom_ip6 = true;
-					struct sockaddr_in6 *addr_in = (void *)(result->ai_addr);
-					memcpy(&regex[index].ext.addr6, &addr_in->sin6_addr, sizeof(regex[index].ext.addr6));
-					char buffer[INET6_ADDRSTRLEN];
-					log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv6 address %s for regex filter %i",
-					          regex[index].ext.cname_target, inet_ntop(AF_INET6, &regex[index].ext.addr6, buffer, INET6_ADDRSTRLEN), regex[index].database_id);
-				}
-				freeaddrinfo(result);
+				log_err("Memory allocation failed in resolve_regex_cnames()");
+				break;
+			}
+			jobs[num_jobs].regexid = regexid;
+			jobs[num_jobs].index = index;
+			jobs[num_jobs].database_id = regex[index].database_id;
+			num_jobs++;
+		}
+	}
+	unlock_shm();
+
+	for(unsigned int i = 0; i < num_jobs; i++)
+	{
+		struct cname_job *job = &jobs[i];
+		log_debug(DEBUG_REGEX, "Resolving CNAME target \"%s\" for regex filter %i",
+		          job->target, job->database_id);
+
+		// Prepare hints for getaddrinfo()
+		struct addrinfo hints;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+
+		// Resolve CNAME target to IPv4 address using getaddrinfo()
+		struct addrinfo *result = NULL;
+		if(getaddrinfo(job->target, NULL, &hints, &result) == 0)
+		{
+			if(result->ai_family == AF_INET)
+			{
+				job->resolved4 = true;
+				struct sockaddr_in *addr_in = (void *)result->ai_addr;
+				memcpy(&job->addr4, &addr_in->sin_addr, sizeof(job->addr4));
+				char buffer[INET_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv4 address %s for regex filter %i",
+				          job->target, inet_ntop(AF_INET, &job->addr4, buffer, INET_ADDRSTRLEN), job->database_id);
+			}
+			freeaddrinfo(result);
+		}
+
+		// Prepare hints for getaddrinfo()
+		hints.ai_family = AF_INET6;
+
+		// Resolve CNAME target to IPv6 address using getaddrinfo()
+		result = NULL;
+		if(getaddrinfo(job->target, NULL, &hints, &result) == 0)
+		{
+			if(result->ai_family == AF_INET6)
+			{
+				job->resolved6 = true;
+				struct sockaddr_in6 *addr_in = (void *)(result->ai_addr);
+				memcpy(&job->addr6, &addr_in->sin6_addr, sizeof(job->addr6));
+				char buffer[INET6_ADDRSTRLEN];
+				log_debug(DEBUG_REGEX, "Resolved CNAME target \"%s\" to IPv6 address %s for regex filter %i",
+				          job->target, inet_ntop(AF_INET6, &job->addr6, buffer, INET6_ADDRSTRLEN), job->database_id);
+			}
+			freeaddrinfo(result);
+		}
+	}
+
+	lock_shm();
+	if(counters->regex_change == generation)
+	{
+		for(unsigned int i = 0; i < num_jobs; i++)
+		{
+			const struct cname_job *job = &jobs[i];
+			regexData *regex = get_regex_ptr(job->regexid);
+			if(regex == NULL || job->index >= num_regex[job->regexid] ||
+			   regex[job->index].database_id != job->database_id)
+				continue;
+
+			if(job->resolved4)
+			{
+				regex[job->index].ext.custom_ip4 = true;
+				memcpy(&regex[job->index].ext.addr4, &job->addr4, sizeof(job->addr4));
+			}
+			if(job->resolved6)
+			{
+				regex[job->index].ext.custom_ip6 = true;
+				memcpy(&regex[job->index].ext.addr6, &job->addr6, sizeof(job->addr6));
 			}
 		}
 	}
+	else
+	{
+		// The regex were reloaded while resolving, resolve the new ones
+		set_event(RESOLVE_NEW_HOSTNAMES);
+	}
+	unlock_shm();
+
+	for(unsigned int i = 0; i < num_jobs; i++)
+		free(jobs[i].target);
+	free(jobs);
 }
 
 void free_regex(void)
