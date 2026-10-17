@@ -519,6 +519,30 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
 }
 
+// Count the CPUs present in the system. musl's get_nprocs_conf() returns the
+// size of our CPU affinity mask, which is a container's share of the host
+int get_present_cpus(void)
+{
+	FILE *fp = fopen("/sys/devices/system/cpu/present", "r");
+	if(fp == NULL)
+		return get_nprocs_conf();
+
+	// The file holds a list of ranges, e.g., "0-3" or "0,2-5"
+	int cpus = 0, first = 0, last = 0;
+	char sep = ',';
+	while(sep == ',' && fscanf(fp, "%d", &first) == 1)
+	{
+		last = first;
+		if((sep = fgetc(fp)) == '-' && fscanf(fp, "%d", &last) == 1)
+			sep = fgetc(fp);
+		if(last >= first)
+			cpus += last - first + 1;
+	}
+	fclose(fp);
+
+	return cpus > 0 ? cpus : get_nprocs_conf();
+}
+
 static float ftl_cpu_usage = 0.0f;
 static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)
