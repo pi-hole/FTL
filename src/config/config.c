@@ -634,7 +634,7 @@ void initConfig(struct config *conf)
 	conf->dns.doh.c = validate_stub;
 
 	conf->dns.dohReverseProxy.k = "dns.dohReverseProxy";
-	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires the proxy to be listed in webserver.trustedProxies and to announce the client's TLS in a PROXY protocol v2 header, e.g., HAProxy with send-proxy-v2-ssl: only such a proxy is believed, and the client address it announces is used to attribute the query. Any other plain HTTP request is still refused, so enabling this alone never exposes DNS queries in cleartext.";
+	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires the proxy to be listed in webserver.trustedProxies and to announce the client's TLS, in a PROXY protocol v2 header (e.g., HAProxy with send-proxy-v2-ssl) or with X-Forwarded-Proto (e.g., nginx, Traefik or Caddy): only such a proxy is believed, and the client address it announces is used to attribute the query. Any other plain HTTP request is still refused, so enabling this alone never exposes DNS queries in cleartext.";
 	conf->dns.dohReverseProxy.t = CONF_BOOL;
 	conf->dns.dohReverseProxy.d.b = false;
 	conf->dns.dohReverseProxy.f = FLAG_RESTART_FTL;
@@ -1119,7 +1119,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.trustedProxies.k = "webserver.trustedProxies";
-	conf->webserver.trustedProxies.h = "Reverse proxies whose PROXY protocol v2 header is believed, e.g., HAProxy with send-proxy-v2-ssl. Requests over a connection from one of these addresses are attributed to the client the header announces instead of to the proxy, and they count as HTTPS if the header says the client used TLS. The header of any other peer is ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting those lets every local process choose the client its requests are attributed to.\n\n Example: [ \"192.168.1.10\", \"10.0.0.0/24\" ]";
+	conf->webserver.trustedProxies.h = "Reverse proxies trusted to name the client. Over a connection from one of these addresses, a PROXY protocol v2 header (e.g., HAProxy with send-proxy-v2-ssl) names the client of all its requests and whether that client used TLS. With dns.dohReverseProxy enabled, a DoH request from such a proxy without that header is served if X-Forwarded-Proto is \"https\" (e.g., nginx, Traefik or Caddy), and it is attributed to the client X-Forwarded-For names. The headers of any other peer are ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting those lets every local process choose the client its requests are attributed to.\n\n Example: [ \"192.168.1.10\", \"10.0.0.0/24\" ]";
 	conf->webserver.trustedProxies.a = cJSON_CreateStringReference("Array of IP addresses and/or subnets in CIDR notation");
 	conf->webserver.trustedProxies.t = CONF_JSON_STRING_ARRAY;
 	conf->webserver.trustedProxies.f = FLAG_RESTART_FTL;
