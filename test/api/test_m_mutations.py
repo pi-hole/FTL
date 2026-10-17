@@ -1014,3 +1014,42 @@ class TestGroupRenameNewlines:
 
         r = api_session.delete(url, timeout=10)
         assert r.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# Regression: a failing regex array element must not crash the worker
+# (GHSA-mqr7-j2p5-5495)
+# ---------------------------------------------------------------------------
+
+class TestRegexArrayValidation:
+    """A rejected regex array returns a clean 400 and leaves FTL running.
+
+    A single failing element used to re-free a `regexData` reused across the
+    array, dropping the connection instead of answering. Each body below has a
+    valid first element and a second that fails in a ";"-extension path, the
+    two vectors from the report.
+    """
+
+    # Each body has a valid first element and a second that fails in a
+    # ";"-extension path. The failing element used to run cleanup over a
+    # `regexData` the first element had already populated: a double free of
+    # the compiled regex, or a free of a dangling string. Both reach it: an
+    # unknown option, and an unknown querytype after a querytype was set.
+    BAD_BODIES = [
+        {"domain": ["abc", "def;bogus"]},
+        {"domain": ["ghi;querytype=A", "jkl;querytype=BOGUS"]},
+    ]
+
+    @pytest.mark.parametrize("body", BAD_BODIES,
+                             ids=["invalid-option", "unknown-querytype"])
+    def test_invalid_regex_array_returns_400(self, api_session, body):
+        r = api_session.post(f"{FTL_URL}/api/domains/deny/regex",
+                             json=body, timeout=5)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+
+        # The worker must still be there to answer the next request; before the
+        # fix the double free took it, and the resolver, down
+        r = api_session.get(f"{FTL_URL}/api/domains/deny/regex", timeout=5)
+        assert r.status_code == 200, \
+            f"FTL did not answer after a rejected regex array: {r.status_code}"

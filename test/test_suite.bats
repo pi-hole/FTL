@@ -1948,6 +1948,30 @@ except socket.timeout:
   assert_failure 3
 }
 
+@test "Config validation: a document root that resolves to the root is rejected" {
+  # Lexically /proc/self/root is a directory of its own, but it is a link
+  # the kernel plants to /, so it has to be judged by where it leads
+  run bash -c './pihole-FTL --config webserver.paths.webroot /proc/self/root'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/proc/self/root" resolves to "/", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+
+  # A link into the configuration directory is caught the same way
+  ln -s /etc/pihole /tmp/webroot-link
+  run bash -c './pihole-FTL --config webserver.paths.webroot /tmp/webroot-link'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/tmp/webroot-link" resolves to "/etc/pihole", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+  rm -f /tmp/webroot-link
+
+  # A link to an ordinary directory stays configurable
+  ln -s /var/www/html /var/webroot-ok
+  run bash -c './pihole-FTL --config -t webserver.paths.webroot /var/webroot-ok'
+  assert_success
+  rm -f /var/webroot-ok
+
+  run bash -c './pihole-FTL --config webserver.paths.webroot'
+  assert_line --index 0 '/var/www/html'
+}
+
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
   # Set dns.hosts with various whitespace formatting issues
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -2256,6 +2280,12 @@ except socket.timeout:
   assert_success
   assert_output --partial "HOSTNAME_WARNING_POSITION=PASS"
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
+}
+
+@test "TXT stat buffer regression harness" {
+  run ./txt_stat_regression
+  assert_success
+  assert_output --partial "TXT_STAT_SERVERS_REGRESSION=PASS"
 }
 
 @test "SHA256 checksum working" {

@@ -638,15 +638,18 @@ void parse_args(int argc, char *argv[])
 		// pihole-FTL gravity parseList <infile> <outfile> <adlistID> [<source URL>]
 		if((argc == 6 || argc == 7) && strcasecmp(argv[2], "parseList") == 0)
 		{
+			// The optional source URL lets us suppress the invalid-entry
+			// sample for local (file://) lists, whose contents must not leak
+			const char *source_url = argc == 7 ? argv[6] : NULL;
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity, source_url));
 		}
 
 		// pihole-FTL gravity checkList <infile>
 		if(argc == 4 && strcasecmp(argv[2], "checkList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
+			exit(gravity_parseList(argv[3], "", "-1", true, antigravity, NULL));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");
