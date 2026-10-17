@@ -5,6 +5,7 @@ components:
       summary: Modify group
       parameters:
         - $ref: 'groups.yaml#/components/parameters/name'
+        - $ref: 'common.yaml#/components/parameters/item'
       get:
         summary: Get groups
         tags:
@@ -36,7 +37,7 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      put:
+      put: &group_put
         summary: Replace group
         tags:
           - "Group management"
@@ -77,6 +78,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'groups.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/item_mismatch'
                   no_payload:
                     $ref: 'groups.yaml#/components/examples/errors/bad_request/no_payload'
                   duplicate:
@@ -89,7 +92,7 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
-      delete:
+      delete: &group_delete
         summary: Delete group
         tags:
           - "Group management"
@@ -116,6 +119,8 @@ components:
                 examples:
                   item_missing:
                     $ref: 'groups.yaml#/components/examples/errors/uri_error/item_missing'
+                  item_mismatch:
+                    $ref: 'groups.yaml#/components/examples/errors/bad_request/item_mismatch'
           '401':
             description: Unauthorized
             content:
@@ -206,6 +211,24 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+      put:
+        <<: *group_put
+        operationId: "replace_group_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `PUT /api/groups/{name}`, except that the group is named by the `item` query parameter instead of by a path segment.
+
+          This is the only way to reach a group called `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      delete:
+        <<: *group_delete
+        operationId: "delete_group_by_item"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_required'
+        description: |
+          Identical to `DELETE /api/groups/{name}`, except that the group is named by the `item` query parameter instead of by a path segment.
+
+          *Note:* There will be no content on success.
     batchDelete:
       post:
         summary: Delete multiple groups
@@ -420,6 +443,14 @@ components:
               key: "bad_request"
               message: "Invalid request body data (no valid JSON)"
               hint: null
+            took: 0.003
+        item_mismatch:
+          summary: URI path and "item" query parameter name different groups
+          value:
+            error:
+              key: "bad_request"
+              message: 'Invalid request: The item in the URI path and the "item" query parameter disagree'
+              hint: "/api/groups/my_group"
             took: 0.003
       database_error:
         duplicate:
