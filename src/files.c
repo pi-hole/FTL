@@ -42,25 +42,56 @@
 #include <nettle/sha2.h>
 #include <nettle/version.h>
 
-// chmod_file() changes the file mode bits of a given file (relative
-// to the directory file descriptor) according to mode. mode is an
-// octal number representing the bit pattern for the new mode bits
+// Check if a path names an entry directly in /etc/pihole or /var/log/pihole.
+// The path is taken literally, so no symbolic link along it can redirect it
+bool in_pihole_dir(const char *path)
+{
+	const char *slash = strrchr(path, '/');
+	if(slash == NULL || slash[1] == '\0' ||
+	   strcmp(slash + 1, ".") == 0 || strcmp(slash + 1, "..") == 0)
+		return false;
+
+	const size_t dirlen = slash - path;
+	return (dirlen == strlen("/etc/pihole") && strncmp(path, "/etc/pihole", dirlen) == 0) ||
+	       (dirlen == strlen("/var/log/pihole") && strncmp(path, "/var/log/pihole", dirlen) == 0);
+}
+
+// chmod_file() changes the file mode bits of a given regular file according
+// to mode. mode is an octal number representing the bit pattern for the new
+// mode bits. As root, only files in our own directories are touched
 bool chmod_file(const char *filename, const mode_t mode)
 {
-	if(chmod(filename, mode) < 0)
+	if(geteuid() == 0 && !in_pihole_dir(filename))
 	{
-		log_warn("chmod(%s, %u): chmod() failed: %s",
+		log_warn("Not changing mode of %s, it is outside of /etc/pihole and /var/log/pihole", filename);
+		return false;
+	}
+
+	const int fd = open(filename, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if(fd < 0)
+	{
+		log_warn("chmod(%s, %u): open() failed: %s",
 		         filename, mode, strerror(errno));
 		return false;
 	}
 
 	struct stat st;
-	if(stat(filename, &st) < 0)
+	if(fstat(fd, &st) < 0 || !S_ISREG(st.st_mode) || st.st_nlink > 1)
 	{
-		log_warn("chmod(%s, %u): stat() failed: %s",
-		         filename, mode, strerror(errno));
+		log_warn("chmod(%s, %u): Not a regular file with a single link",
+		         filename, mode);
+		close(fd);
 		return false;
 	}
+
+	if(fchmod(fd, mode) < 0 || fstat(fd, &st) < 0)
+	{
+		log_warn("chmod(%s, %u): fchmod() failed: %s",
+		         filename, mode, strerror(errno));
+		close(fd);
+		return false;
+	}
+	close(fd);
 
 	// We need to apply a bitmask on st.st_mode as the upper bits may contain random data
 	// 0x1FF = 0b111_111_111 corresponding to the three-digit octal mode number

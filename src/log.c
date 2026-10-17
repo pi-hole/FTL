@@ -52,7 +52,7 @@ void init_FTL_log(const char *name)
 	if(config.files.log.ftl.v.s != NULL)
 	{
 		FILE *logfile = NULL;
-		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
+		if((logfile = FTLfopen_nowarn(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
 			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
 			       config.files.log.ftl.v.s, strerror(errno));
@@ -301,8 +301,9 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		bool logged = false;
 		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
 		{
-			// Open log file
-			FILE *logfile = fopen(config.files.log.ftl.v.s, "a+");
+			// Open log file, a failure is handled below and must not be
+			// logged into this very file
+			FILE *logfile = FTLfopen_nowarn(config.files.log.ftl.v.s, "a+");
 
 			// Write to log file
 			if(logfile != NULL)
@@ -360,7 +361,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	const long pid = (long)getpid();
 
 	// Open web log file
-	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
+	FILE *weblog = FTLfopen_nowarn(config.files.log.webserver.v.s, "a+");
 
 	// Write to web log file
 	if(weblog != NULL)
@@ -736,16 +737,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	if(payload == NULL || length == 0)
 		return;
 
-	unsigned int idx = fifo_log->logs[which].next_id++;
-	if(idx >= LOG_SIZE)
-	{
-		// Log is full, move everything one slot forward to make space for a new record at the end
-		// This pruges the oldest message from the list (it is overwritten by the second message)
-		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
-		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
-		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
-		idx = LOG_SIZE - 1u;
-	}
+	// Ring buffer: message number n goes into slot n % LOG_SIZE, so a full
+	// log overwrites its oldest message without moving the others
+	const unsigned int idx = fifo_log->logs[which].next_id++ % LOG_SIZE;
 
 	// Copy string
 	// We need to use the pre-allocated buffer in shared memory as we share
@@ -785,7 +779,7 @@ bool flush_dnsmasq_log(void)
 	lock_shm();
 
 	// Open file in write mode to truncate it
-	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
+	FILE *logfile = FTLfopen_nowarn(config.files.log.dnsmasq.v.s, "w");
 	if(!logfile)
 	{
 		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));

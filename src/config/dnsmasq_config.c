@@ -306,6 +306,21 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
+// Write a key="value" line for a file path. Quoted and escaped: unquoted, '#'
+// after a space starts a comment, and '"' and '\' are special to dnsmasq's
+// parser, which removes the quotes and the escapes again
+static void write_quoted_path(FILE *fp, const char *key, const char *path)
+{
+	fprintf(fp, "%s=\"", key);
+	for(const char *p = path; *p != '\0'; p++)
+	{
+		if(*p == '"' || *p == '\\')
+			fputc('\\', fp);
+		fputc(*p, fp);
+	}
+	fputs("\"\n", fp);
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
@@ -460,7 +475,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("# Specify the log file to use\n", pihole_conf);
 		fputs("# We set this even if logging is disabled to store warnings\n", pihole_conf);
 		fputs("# and errors in this file. This is useful for debugging.\n", pihole_conf);
-		fprintf(pihole_conf, "log-facility=%s\n", conf->files.log.dnsmasq.v.s);
+		write_quoted_path(pihole_conf, "log-facility", conf->files.log.dnsmasq.v.s);
 		fputs("\n", pihole_conf);
 	}
 
@@ -896,16 +911,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");
-			// Quoted and escaped: unquoted, '#' after a space starts a
-			// comment, and '"' and '\' are special to dnsmasq's parser
-			fputs("dumpfile=\"", pihole_conf);
-			for(const char *p = conf->files.pcap.v.s; *p != '\0'; p++)
-			{
-				if(*p == '"' || *p == '\\')
-					fputc('\\', pihole_conf);
-				fputc(*p, pihole_conf);
-			}
-			fputs("\"\n", pihole_conf);
+			write_quoted_path(pihole_conf, "dumpfile", conf->files.pcap.v.s);
 			fputs("\n", pihole_conf);
 		}
 		else

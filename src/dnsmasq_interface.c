@@ -3742,6 +3742,17 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	set_response_time(query, now);
 }
 
+// Hand a file to the pihole user only when it sits directly in /etc/pihole or
+// /var/log/pihole. The path comes from the pihole-owned config while we still
+// run as root, and the pihole user cannot swap out either directory
+static void chown_pihole_own_dir(const char *path, struct passwd *pwd)
+{
+	if(in_pihole_dir(path))
+		chown_pihole(path, pwd);
+	else
+		log_warn("Not changing ownership of %s, it is outside of /etc/pihole and /var/log/pihole", path);
+}
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 {
 	// Going into daemon mode involves storing the
@@ -3852,14 +3863,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			chown_all_shmem(ent_pw);
 
 			// Configured FTL log file
-			chown_pihole(config.files.log.ftl.v.s, ent_pw);
+			chown_pihole_own_dir(config.files.log.ftl.v.s, ent_pw);
 
 			// Configured FTL database file
-			chown_pihole(config.files.database.v.s, ent_pw);
+			chown_pihole_own_dir(config.files.database.v.s, ent_pw);
 
 			// Temporary history database (database.forceDisk)
 			if(config.database.forceDisk.v.b)
-				chown_pihole(config.files.tmp_db.v.s, ent_pw);
+				chown_pihole_own_dir(config.files.tmp_db.v.s, ent_pw);
 
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
@@ -3873,13 +3884,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-wal");
 			if(file_exists(extrafile))
-				chown_pihole(extrafile, ent_pw);
+				chown_pihole_own_dir(extrafile, ent_pw);
 
 			// Check <database>-shm file (mmapped shared memory)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-shm");
 			if(file_exists(extrafile))
-				chown_pihole(extrafile, ent_pw);
+				chown_pihole_own_dir(extrafile, ent_pw);
 
 			// Free allocated memory
 			free(extrafile);

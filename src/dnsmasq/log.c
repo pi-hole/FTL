@@ -19,6 +19,7 @@
 #include "log.h"
 #include "dnsmasq_interface.h"
 #include "main.h"
+#include "files.h"
 /************************************/
 
 #ifdef __ANDROID__
@@ -104,10 +105,22 @@ int log_start(struct passwd *ent_pw, int errfd)
 
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
-      struct stat ls;
+      struct stat ls, ps;
+      int own_file = 0;
       
       /* Only mess with permissions for regular files, not (eg) /dev/null */
       if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
+	{
+	  /* Pi-hole modification: the path comes from the pihole-owned config,
+	     so only touch a file in our own directories and never a link target */
+	  own_file = in_pihole_dir(daemon->log_file) && lstat(daemon->log_file, &ps) == 0 &&
+	    S_ISREG(ps.st_mode) && ps.st_dev == ls.st_dev && ps.st_ino == ls.st_ino &&
+	    ls.st_nlink == 1;
+	  if (!own_file)
+	    log_warn("Not changing ownership of %s, it is not a regular file in /etc/pihole or /var/log/pihole",
+		     daemon->log_file);
+	}
+      if (own_file)
 	{
 	  /* If we're running as root and going to change uid later,
 	     change the ownership here so that the file is always owned by
@@ -138,8 +151,11 @@ int log_reopen(char *log_file)
       
       /* NOTE: umask is set to 022 by the time this gets called */
       
+      /* Pi-hole modification: as root, refuse a symbolic link as the log file,
+	 the pihole user owns the directory it is in */
       if (log_file)
-	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);
+	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND|(geteuid() == 0 ? O_NOFOLLOW : 0),
+		      S_IRUSR|S_IWUSR|S_IRGRP);
       else
 	{
 #if defined(HAVE_SOLARIS_NETWORK) || defined(__ANDROID__)

@@ -223,7 +223,7 @@ setup() {
   assert_line --index 0 "11"
 }
 
-@test "Client 6: Client is recognized by interface name" {
+@test "Client 6: Client is matched by the interface its query arrives on" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.6 @127.0.0.1 +short"
 
@@ -234,18 +234,22 @@ setup() {
   assert_line --index 0 "1"
   run bash -c "grep -c \"There is no record for 00:11:22:33:44:55 in the client table\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
+  # The query arrives on lo, which takes precedence over enp0s123 from the
+  # network table. There is no client :lo, so the default group applies
+  run bash -c "grep -c \"Using in-memory interface :lo of 127.0.0.6\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "1"
   run bash -c "grep -c \"Found database interface 127.0.0.6 -> enp0s123\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "0"
+  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 not found. Using default group.\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
-  assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "2"
+  assert_line --index 0 "0"
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "11"
+  assert_line --index 0 "0"
 }
 
 @test "Normal query (A) is not blocked" {
@@ -1712,9 +1716,26 @@ setup() {
   assert_failure 3
 }
 
+@test "files.log.dnsmasq accepts \"-\" for logging to stderr" {
+  run ./pihole-FTL --config -t files.log.dnsmasq -
+  assert_success
+}
+
+@test "files.log.dnsmasq accepts an empty value for no log file" {
+  run ./pihole-FTL --config -t files.log.dnsmasq ""
+  assert_success
+}
+
+@test "files.log.dnsmasq is quoted in the dnsmasq config" {
+  # The test runs dnsmasq's config check on the generated file: unquoted,
+  # the '"' would be unbalanced and ' #' would start a comment
+  run ./pihole-FTL --config -t files.log.dnsmasq '/var/log/pihole/pi"hole #2\t.log'
+  assert_success
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
-@test "Internationalized domain names are accepted, malformed UTF-8 is not" {
+@test "Internationalized domain names are accepted, invalid ones are not" {
   # dnsmasq is built with libidn2 and converts these to punycode itself
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run ./pihole-FTL --config dns.hosts '[ "2.2.2.2 äste.com", "3.3.3.3 日本.example", "4.4.4.4 𐍈.example" ]'
@@ -1725,10 +1746,18 @@ setup() {
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
 
-  # Only sequences a decoder accepts: no overlong encoding, no UTF-16 surrogate,
-  # nothing above U+10FFFF, no truncated sequence and no stray continuation byte
+  # Malformed UTF-8: overlong encoding, UTF-16 surrogate, above U+10FFFF,
+  # truncated sequence and stray continuation byte
   for seq in '\xc0\x80' '\xed\xa0\x80' '\xf5\x80\x80\x80' '\xe2\x82' '\xff'; do
     run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 $(printf '%b' "$seq").com\" ]"
+    assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
+    assert_failure 3
+  done
+
+  # Valid UTF-8 that IDNA2008 rejects: a label whose punycode form exceeds 63
+  # characters, mixed left-to-right and right-to-left scripts, and an emoji
+  for name in '一伀倀儀刀匀吀唀嘀圀堀夀娀嬀尀崀帀开怀愀帀开帀开.example' 'aمثال.example' '😀.example'; do
+    run ./pihole-FTL --config dns.hosts "[ \"2.2.2.2 ${name}\" ]"
     assert_line --index 0 --partial 'Invalid value: dns.hosts[0]: invalid hostname'
     assert_failure 3
   done
@@ -1740,6 +1769,46 @@ setup() {
 
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
+}
+
+@test "An invalid entry of a list in pihole.toml is removed, the others are kept" {
+  # Break one of the two shipped entries in the file itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  sed -i 's|"2.2.2.2 äste.com steä.com"|"2.2.2.2 äste!.com steä.com"|' /etc/pihole/pihole.toml
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c -F -e 'Invalid value: dns.hosts[1]: invalid hostname (\"äste!.com\")' -e '----> dns.hosts[1] has been removed'"
+  assert_output "2"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'dns.hosts has been reset'"
+  assert_output "0"
+  run ./pihole-FTL --config dns.hosts
+  assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de ]"
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
+@test "Gravity stores internationalized domains as punycode" {
+  # A query carries the punycode form of a name, so this is what has to end up
+  # in the database - the UTF-8 spelling of the list could never match
+  run bash -c 'rm -f /tmp/idn.db && ./pihole-FTL sqlite3 /tmp/idn.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/idn.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'äste.com\n||steä.com^\nexample.com\n日本.example\n' > /tmp/idn.list
+  run ./pihole-FTL gravity parseList /tmp/idn.list /tmp/idn.db 1
+  assert_success
+
+  run bash -c './pihole-FTL sqlite3 /tmp/idn.db "SELECT domain FROM gravity ORDER BY domain;"'
+  assert_success
+  assert_line --index 0 "example.com"
+  assert_line --index 1 "xn--ste-pla.com"
+  assert_line --index 2 "xn--wgv71a.example"
+  assert_line --index 3 "||xn--ste-sla.com^"
 }
 
 @test "Config validation working on the CLI (validator-based checking)" {
@@ -2250,3 +2319,21 @@ SQL
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
+
+@test "NTP client counts the replies of a server advertising a coarse precision" {
+  # The server advertises 2^-9 s (about 2 ms), coarser than a loopback round
+  # trip. FTL's own NTP server listens on 127.0.0.1 only (test/pihole.toml)
+  python3 test/fakentp.py 127.0.0.5 -9 > "${BATS_TEST_TMPDIR}/fakentp.out" 2>&1 &
+  local pid=$!
+  for i in $(seq 1 50); do
+    grep -q ready "${BATS_TEST_TMPDIR}/fakentp.out" && break
+    sleep 0.1
+  done
+  local got
+  got=$(./pihole-FTL ntp 127.0.0.5 2>&1 | grep -o "Received [0-9]*/[0-9]* valid NTP replies")
+  kill "$pid"
+  printf "%s\n" "${got}"
+  # Every reply counts, none is discarded for being more precise than the server
+  [[ "${got}" =~ Received\ ([0-9]+)/([0-9]+) ]]
+  [[ ${BASH_REMATCH[1]} -gt 0 && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]
+}

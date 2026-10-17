@@ -548,7 +548,7 @@ void initConfig(struct config *conf)
 	conf->dns.interface.f = FLAG_RESTART_FTL;
 	conf->dns.interface.d.s = (char*)"";
 	conf->dns.interface.c = validate_str_no_newline;
-	
+
 	conf->dns.hostRecord.k = "dns.hostRecord";
 	conf->dns.hostRecord.h = "Add an A, AAAA and PTR record to the DNS. This adds a singular name to the DNS with associated IPv4 (A) and IPv6 (AAAA) records\n\n Example: \"laptop,laptop.lan,192.168.0.1,1234::100\"";
 	conf->dns.hostRecord.a = cJSON_CreateStringReference("A string in the format \"<name>[,<name>....],[<IPv4-address>],[<IPv6-address>][,<TTL>]\"");
@@ -660,7 +660,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.rrtype.f = FLAG_RESTART_FTL;
 	conf->dns.cache.rrtype.d.s = (char*)"ANY";
 	conf->dns.cache.rrtype.c = validate_str_no_newline;
-	
+
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?";
@@ -728,7 +728,7 @@ void initConfig(struct config *conf)
 
 	conf->dns.reply.host.v4.k = "dns.reply.host.IPv4";
 	conf->dns.reply.host.v4.h = "Custom IPv4 address for the Pi-hole host";
-	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");	
+	conf->dns.reply.host.v4.a = cJSON_CreateStringReference("A valid IPv4 address or empty string (\"\")");
 	conf->dns.reply.host.v4.t = CONF_STRUCT_IN_ADDR;
 	memset(&conf->dns.reply.host.v4.d.in_addr, 0, sizeof(struct in_addr));
 	conf->dns.reply.host.v4.c = validate_stub; // Only type-based checking
@@ -1806,6 +1806,44 @@ void reset_config_default(struct conf_item *conf_item)
 }
 
 
+// Remove the entries of a list that its validator rejects on their own and
+// return whether what remains passes, leaving the rejection in valerr otherwise
+static bool drop_invalid_entries(struct conf_item *conf_item, char valerr[VALIDATOR_ERRBUF_LEN])
+{
+	cJSON *array = conf_item->v.json;
+	if(!cJSON_IsArray(array))
+		return false;
+
+	// The validator sees a one-element list, so its message names index 0
+	char prefix[128];
+	snprintf(prefix, sizeof(prefix), "%s[0]: ", conf_item->k);
+	const size_t prefix_len = strlen(prefix);
+
+	unsigned int idx = 0;
+	for(cJSON *item = array->child, *next = NULL; item != NULL; item = next, idx++)
+	{
+		next = item->next;
+
+		cJSON *single = cJSON_CreateArray();
+		cJSON_AddItemToArray(single, cJSON_Duplicate(item, true));
+		union conf_value value = { .json = single };
+		char itemerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		const bool valid = conf_item->c(&value, conf_item->k, itemerr);
+		cJSON_Delete(single);
+		if(valid)
+			continue;
+
+		const char *reason = strncmp(itemerr, prefix, prefix_len) == 0 ? itemerr + prefix_len : itemerr;
+		log_err("Invalid value: %s[%u]: %s", conf_item->k, idx, reason);
+		log_err("----> %s[%u] has been removed", conf_item->k, idx);
+		cJSON_Delete(cJSON_DetachItemViaPointer(array, item));
+	}
+
+	// Rules spanning several entries only show on the list as a whole
+	valerr[0] = '\0';
+	return conf_item->c(&conf_item->v, conf_item->k, valerr);
+}
+
 /**
  * @brief Hold a configuration to the same rules every way of setting it obeys.
  *
@@ -1813,8 +1851,9 @@ void reset_config_default(struct conf_item *conf_item)
  * items, which a validator seeing one value at a time cannot express.
  *
  * @param conf Configuration to check
- * @param reset If true, an offending item is reset to its default and the check
- *              continues; if false, the first rejection ends it
+ * @param reset If true, an offending item is reset to its default (a list only
+ *              loses its offending entries) and the check continues; if false,
+ *              the first rejection ends it
  * @param err Buffer receiving the rejection, may be NULL when \p reset is true
  * @return Whether the configuration is acceptable
  */
@@ -1836,6 +1875,10 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
 			return false;
 		}
+
+		// A list loses only the entries that fail, not every entry it holds
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && drop_invalid_entries(conf_item, valerr))
+			continue;
 
 		// The validator's message opens with the key, so it is not repeated
 		log_err("Invalid value: %s", valerr);
@@ -2029,6 +2072,29 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	return false;
 }
 
+static bool getLogFilePathENV(void)
+{
+	const char *val = getenv(FTLCONF_PREFIX "files_log_ftl");
+	if(val == NULL)
+		return false;
+
+	// Validate the path the same way the regular config load does. The
+	// rejection is not reported here: logging is not available yet at this
+	// early stage, but the regular env parse reports the same issue later on.
+	union conf_value tmp = { .s = (char *)val };
+	char err[VALIDATOR_ERRBUF_LEN] = { 0 };
+	if(!validate_filepath(&tmp, config.files.log.ftl.k, err))
+		return false;
+
+	char *copy = strdup(val);
+	if(copy == NULL)
+		return false;
+
+	config.files.log.ftl.v.s = copy;
+	config.files.log.ftl.t = CONF_STRING_ALLOCATED;
+	return true;
+}
+
 bool getLogFilePath(bool try_read)
 {
 	// Initialize memory
@@ -2044,8 +2110,8 @@ bool getLogFilePath(bool try_read)
 	config.files.log.ftl.c = validate_filepath;
 	config.files.log.ftl.f = FLAG_FTL_LOG;
 
-	// Check if the config file contains a different path
-	if(try_read && !getLogFilePathTOML())
+	// Try sources in priority order: ENV > TOML > legacy
+	if(try_read && !getLogFilePathENV() && !getLogFilePathTOML())
 		return getLogFilePathLegacy(&config, NULL);
 
 	return true;
