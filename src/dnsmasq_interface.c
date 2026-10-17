@@ -887,7 +887,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool edns_client = false;
 	// Set when clientIP comes from ECS, an address behind the forwarder
 	bool ecs_client = false;
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 	if(config.dns.EDNS0ECS.v.b && edns && edns->client_set)
 	{
 		// Use ECS provided client
@@ -2855,7 +2855,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		query->ede = addr->log.ede;
 		log_debug(DEBUG_QUERIES, "     EDE (1): %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
 		query->ede = edns->ede;
@@ -3356,7 +3356,7 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	get_rcode(addr->log.rcode, &rcodestr, &reply);
 
 	// Get EDNS data (if available)
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 
 	if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
 		query->ede = addr->log.ede;
@@ -3531,7 +3531,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const int raw_id, const char *file, const int line)
 {
 	// Get EDE data (if available)
-	const ednsData *edns = getEDNS();
+	const ednsData *edns = getEDNS(raw_id);
 
 	// The query ID is negative if this is a TCP query
 	const int id = raw_id < 0 ? -raw_id : raw_id;

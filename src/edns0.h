@@ -14,13 +14,14 @@ typedef struct {
 	bool client_set :1;
 	bool mac_set :1;
 	bool valid :1;
+	int id;
 	char client[ADDRSTRLEN];
 	char mac_byte[6];
 	char mac_text[18];
 	int ede;
 } ednsData;
 
-ednsData *getEDNS(void);
+ednsData *getEDNS(const int id);
 void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen);
 
 #endif // EDNS0_HEADER
