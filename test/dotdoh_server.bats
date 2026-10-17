@@ -269,6 +269,129 @@ setup_file() {
   assert_output "426"
 }
 
+@test "dotdoh-server: the 426 names the required protocol" {
+  run bash -c 'curl -s -D - -o /dev/null "http://127.0.0.1/dns-query" | tr -d "\r"'
+  assert_line "Upgrade: TLS/1.3, HTTP/1.1"
+  assert_line "Connection: Upgrade"
+}
+
+@test "dotdoh-server: every configured TLS port is served" {
+  # test/pihole.toml adds 9443s next to the default 443
+  run curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:9443/api/info/login"
+  assert_output "200"
+}
+
+@test "dotdoh-server: HTTP/3 is served on every configured TLS port" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doh3 127.0.0.1 9443 "$DOMAIN" "$EXPECT_IP"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: Alt-Svc names every HTTP/3 port in webserver.port order" {
+  # 192.0.2.1:9444s could not bind, so it has no QUIC listener to advertise
+  run bash -c 'curl -sk --http2 -D - -o /dev/null "https://127.0.0.1:9443/api/info/login" | grep -i "^alt-svc:" | tr -d "\r"'
+  assert_output 'alt-svc: h3=":443"; ma=86400, h3=":9443"; ma=86400'
+}
+
+@test "dotdoh-server: a TLS port that cannot be bound is reported as such" {
+  # 192.0.2.1 (TEST-NET-1) is not assigned locally, so 192.0.2.1:9444s cannot bind
+  run grep -F "192.0.2.1:9444 (HTTPS, terminator, NOT bound)" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "TLS terminator listening on 192.0.2.1#9444" /var/log/pihole/FTL.log
+  assert_failure
+}
+
+@test "dotdoh-server: a malformed TLS entry is rejected, not read as a port" {
+  # test/pihole.toml lists "44s3" and "443xs", which CivetWeb would refuse
+  run grep -F "Ignoring malformed TLS entry '44s3' in webserver.port" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "Ignoring malformed TLS entry '443xs' in webserver.port" /var/log/pihole/FTL.log
+  assert_success
+  run grep -F "TLS terminator listening on *#44," /var/log/pihole/FTL.log
+  assert_failure
+}
+
+@test "dotdoh-server: DoH behind a trusted reverse proxy is served" {
+  # test/pihole.toml trusts 127.0.0.4, so its PROXY v2 header announcing client
+  # 127.0.0.3 and TLS is believed, and the plaintext request is served and
+  # attributed to that client
+  local proxy_client="127.0.0.3" out i
+  run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" "$proxy_client" \
+          127.0.0.4 "$EXPECT_IP"
+  assert_output "OK"
+  for i in $(seq 1 10); do
+    out=$(curl -s "${FTL_URL}/api/queries?client_ip=${proxy_client}")
+    grep -qF "$DOMAIN" <<< "$out" && break
+    sleep 0.3
+  done
+  run bash -c 'grep -F "$1" <<< "$2"' _ "$DOMAIN" "$out"
+  assert_success
+}
+
+@test "dotdoh-server: DoH behind a proxy sending more TLVs than the address block is served" {
+  # HAProxy and Envoy may add authority, SSL and unique-id TLVs, here 300 bytes
+  run python3 test/dotdoh_query.py dohproxypad 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          127.0.0.4 "$EXPECT_IP" 300
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a PROXY header dripped byte by byte is given up on" {
+  # 0.2 s per byte after the fixed 16 bytes never trips a per-read timeout, but
+  # the remaining 20 bytes take longer than the 3 s allowed for the whole header
+  run python3 test/dotdoh_query.py dohproxydrip 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          127.0.0.4 "$EXPECT_IP" 0.2
+  refute_output "OK"
+}
+
+@test "dotdoh-server: DoH GET behind a reverse proxy is not shared-cacheable" {
+  # The answer depends on the client the proxy announced, so it must be private
+  run python3 test/dotdoh_query.py dohproxyget 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          127.0.0.4 "$EXPECT_IP"
+  assert_line --index 0 "OK"
+  assert_line --index 1 --regexp '^cache-control: private, max-age=[0-9]+$'
+}
+
+@test "dotdoh-server: DoH behind a reverse proxy rejects a non-POST/GET method (405)" {
+  local m
+  for m in PUT DELETE HEAD OPTIONS; do
+    run python3 test/dotdoh_query.py dohproxymethod 127.0.0.1 80 "$m" "$DOMAIN" 127.0.0.3 \
+            127.0.0.4
+    assert_output "HTTP 405 allow=GET, POST body=0"
+  done
+}
+
+@test "dotdoh-server: a refused DoH client gets a plain-text error, not an error page" {
+  # 203.0.113.7 is not local, so dns.listeningMode = LOCAL refuses it with 403.
+  # Stand in for the dashboard's error page, CI does not install the dashboard
+  local pages="/var/www/html/admin" created=""
+  [[ -d "$pages" ]] || { mkdir -p "$pages"; created=1; }
+  echo "dashboard error page" > "$pages/error403.html"
+  run python3 test/dotdoh_query.py dohproxyerror 127.0.0.1 80 "$DOMAIN" 203.0.113.7 \
+          127.0.0.4
+  rm -f "$pages/error403.html"
+  [[ -z "$created" ]] || rmdir "$pages"
+  assert_output "HTTP 403 type=text/plain; charset=utf-8 body=Error 403: Forbidden"
+}
+
+@test "dotdoh-server: DoH behind a trusted proxy is refused (426) if the client did not use TLS" {
+  run python3 test/dotdoh_query.py dohproxyplain 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          127.0.0.4 "$EXPECT_IP"
+  assert_output "HTTP 426"
+}
+
+@test "dotdoh-server: a PROXY v2 header from an untrusted peer is ignored (426)" {
+  # $CLIENT is not in webserver.trustedProxies, so its request stays plaintext
+  run python3 test/dotdoh_query.py dohproxy 127.0.0.1 80 "$DOMAIN" 127.0.0.3 \
+          "$CLIENT" "$EXPECT_IP"
+  assert_output "HTTP 426"
+}
+
+@test "dotdoh-server: an invalid webserver.trustedProxies entry is rejected when set" {
+  run ./pihole-FTL --config webserver.trustedProxies '["10.0.0.0/33"]'
+  assert_line --index 0 'Invalid value: webserver.trustedProxies[0]: not a valid IPv4 CIDR ("33")'
+  assert_failure 3
+}
+
 @test "dotdoh-server: DoH rejects a non-POST/GET method (405)" {
   local ca; ca="$(pwd)/test/test_ca.crt"
   run curl -s -o /dev/null -w '%{http_code}' --cacert "$ca" \
@@ -285,6 +408,42 @@ setup_file() {
            -H 'content-type: text/plain' --data-binary "@$q" \
            "https://pi.hole/dns-query"
   assert_output "415"
+}
+
+@test "dotdoh-server: DoH POST rejects a Content-Type that only starts right (415)" {
+  local ca q v ct; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/err_q.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  for v in --http1.1 --http2; do
+    for ct in 'application/dns-messagefoobar' 'application/dns-message junk'; do
+      run curl -s -o /dev/null -w '%{http_code}' "$v" --cacert "$ca" \
+               --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+               -H "content-type: $ct" --data-binary "@$q" \
+               "https://pi.hole/dns-query"
+      assert_output "415"
+    done
+  done
+}
+
+@test "dotdoh-server: DoH POST with two Content-Type lines is rejected (400)" {
+  local ca q v; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/err_q.bin"
+  python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
+  for v in --http1.1 --http2; do
+    run curl -s -o /dev/null -w '%{http_code}' "$v" --cacert "$ca" \
+             --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+             -H 'content-type: application/dns-message' -H 'content-type: text/plain' \
+             --data-binary "@$q" "https://pi.hole/dns-query"
+    assert_output "400"
+  done
+}
+
+@test "dotdoh-server: DoH POST over HTTP/1.1 with a body above 65535 octets is refused (413)" {
+  local ca big; ca="$(pwd)/test/test_ca.crt"; big="${BATS_FILE_TMPDIR}/big.bin"
+  head -c 70000 /dev/zero > "$big"
+  run curl -s -o /dev/null -w '%{http_code}' --http1.1 --cacert "$ca" \
+           --resolve "pi.hole:443:127.0.0.1" --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' --data-binary "@$big" \
+           "https://pi.hole/dns-query"
+  assert_output "413"
 }
 
 @test "dotdoh-server: DoH GET rejects a malformed dns parameter (400)" {
