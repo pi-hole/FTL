@@ -19,7 +19,6 @@
 #include "log.h"
 #include "dnsmasq_interface.h"
 #include "main.h"
-#include "files.h"
 /************************************/
 
 #ifdef __ANDROID__
@@ -105,22 +104,10 @@ int log_start(struct passwd *ent_pw, int errfd)
 
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
-      struct stat ls, ps;
-      int own_file = 0;
+      struct stat ls;
       
       /* Only mess with permissions for regular files, not (eg) /dev/null */
       if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
-	{
-	  /* Pi-hole modification: the path comes from the pihole-owned config,
-	     so only touch a file in our own directories and never a link target */
-	  own_file = in_pihole_dir(daemon->log_file) && lstat(daemon->log_file, &ps) == 0 &&
-	    S_ISREG(ps.st_mode) && ps.st_dev == ls.st_dev && ps.st_ino == ls.st_ino &&
-	    ls.st_nlink == 1;
-	  if (!own_file)
-	    log_warn("Not changing ownership of %s, it is not a regular file in /etc/pihole or /var/log/pihole",
-		     daemon->log_file);
-	}
-      if (own_file)
 	{
 	  /* If we're running as root and going to change uid later,
 	     change the ownership here so that the file is always owned by
