@@ -46,6 +46,7 @@ int FTLpthread_mutex_lock(pthread_mutex_t *__mutex, const char *file, const char
 
 // Interrupt-safe file routines
 FILE *FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line) __attribute__ ((__malloc__));
+FILE *FTLfopen_nowarn(const char *pathname, const char *mode) __attribute__ ((__malloc__));
 
 // Syscall helpers
 void syscalls_report_error(const char *error, FILE *stream, const int _errno, const char *format, const char *func, const char *file, const int line);

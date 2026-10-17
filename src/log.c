@@ -52,7 +52,7 @@ void init_FTL_log(const char *name)
 	if(config.files.log.ftl.v.s != NULL)
 	{
 		FILE *logfile = NULL;
-		if((logfile = fopen(config.files.log.ftl.v.s, "a+")) == NULL)
+		if((logfile = FTLfopen_nowarn(config.files.log.ftl.v.s, "a+")) == NULL)
 		{
 			printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
 			       config.files.log.ftl.v.s, strerror(errno));
@@ -301,8 +301,9 @@ void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const 
 		bool logged = false;
 		if(ftl_log_available && config.files.log.ftl.v.s != NULL)
 		{
-			// Open log file
-			FILE *logfile = fopen(config.files.log.ftl.v.s, "a+");
+			// Open log file, a failure is handled below and must not be
+			// logged into this very file
+			FILE *logfile = FTLfopen_nowarn(config.files.log.ftl.v.s, "a+");
 
 			// Write to log file
 			if(logfile != NULL)
@@ -360,7 +361,7 @@ void __attribute__ ((format (printf, 1, 2))) log_web(const char *format, ...)
 	const long pid = (long)getpid();
 
 	// Open web log file
-	FILE *weblog = fopen(config.files.log.webserver.v.s, "a+");
+	FILE *weblog = FTLfopen_nowarn(config.files.log.webserver.v.s, "a+");
 
 	// Write to web log file
 	if(weblog != NULL)
@@ -778,7 +779,7 @@ bool flush_dnsmasq_log(void)
 	lock_shm();
 
 	// Open file in write mode to truncate it
-	FILE *logfile = fopen(config.files.log.dnsmasq.v.s, "w");
+	FILE *logfile = FTLfopen_nowarn(config.files.log.dnsmasq.v.s, "w");
 	if(!logfile)
 	{
 		log_err("Could not open log file %s for truncation: %s\n", config.files.log.dnsmasq.v.s, strerror(errno));
