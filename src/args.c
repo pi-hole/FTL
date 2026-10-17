@@ -635,8 +635,8 @@ void parse_args(int argc, char *argv[])
 	{
 		const bool antigravity = strcmp(argv[1], "antigravity") == 0;
 
-		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
-		if(argc == 6 && strcasecmp(argv[2], "parseList") == 0)
+		// pihole-FTL gravity parseList <infile> <outfile> <adlistID> [<source URL>]
+		if((argc == 6 || argc == 7) && strcasecmp(argv[2], "parseList") == 0)
 		{
 			// Parse the given list and write the result to the given file
 			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
