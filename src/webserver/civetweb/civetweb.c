@@ -14442,14 +14442,24 @@ parse_match_net(const struct vec *vec, const union usa *sa, int no_strict)
 	if ((n > 0) && ((size_t)n == vec->len)) {
 		if ((a < 256) && (b < 256) && (c < 256) && (d < 256) && (slash < 33)) {
 			/* IPv4 format */
+			uint32_t ip, net, mask;
 			if (sa->sa.sa_family == AF_INET) {
-				uint32_t ip = ntohl(sa->sin.sin_addr.s_addr);
-				uint32_t net = ((uint32_t)a << 24) | ((uint32_t)b << 16)
-				               | ((uint32_t)c << 8) | (uint32_t)d;
-				uint32_t mask = slash ? (0xFFFFFFFFu << (32 - slash)) : 0;
-				return (ip & mask) == net;
+				ip = ntohl(sa->sin.sin_addr.s_addr);
+#if defined(USE_IPV6)
+			} else if ((sa->sa.sa_family == AF_INET6)
+			           && IN6_IS_ADDR_V4MAPPED(&sa->sin6.sin6_addr)) {
+				/* A dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d */
+				const uint8_t *v4 = &sa->sin6.sin6_addr.s6_addr[12];
+				ip = ((uint32_t)v4[0] << 24) | ((uint32_t)v4[1] << 16)
+				     | ((uint32_t)v4[2] << 8) | (uint32_t)v4[3];
+#endif
+			} else {
+				return 0;
 			}
-			return 0;
+			net = ((uint32_t)a << 24) | ((uint32_t)b << 16)
+			      | ((uint32_t)c << 8) | (uint32_t)d;
+			mask = slash ? (0xFFFFFFFFu << (32 - slash)) : 0;
+			return (ip & mask) == net;
 		}
 	}
 #if defined(USE_IPV6)
