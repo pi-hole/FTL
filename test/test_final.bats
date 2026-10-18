@@ -50,6 +50,7 @@ load 'bats_helper.bash'
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
+  # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
@@ -60,7 +61,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "15"
   else
-    [[ ${lines[0]} == "54" ]]
+    [[ ${lines[0]} == "60" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -84,11 +85,12 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
-  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more (9x)
+  # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more, and
+  # the config restore after the first v5 Teleporter import clears dns.hosts (10x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "7"
   else
-    assert_line --index 0 "9"
+    assert_line --index 0 "10"
   fi
 }
 
@@ -597,4 +599,39 @@ load 'bats_helper.bash'
   refute_output
   run bash -c 'grep "CRIT:" /tmp/FTL.privacylevel.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
+}
+
+@test "A gravity database swapped in right after a restart is loaded (#3162)" {
+  # Swap like pihole -g: drop the tables of the database FTL has just opened,
+  # then move the new one in. It carries the same timestamp here, so only the
+  # file itself tells the two apart
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  logsize_swap=$(stat -c%s /var/log/pihole/FTL.log)
+  cp -p /etc/pihole/gravity.db /etc/pihole/gravity_temp.db
+  printf ".timeout 30000\nDROP TABLE IF EXISTS gravity;\nDROP TABLE IF EXISTS antigravity;\nVACUUM;\n" | ./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db
+  mv /etc/pihole/gravity.db /tmp/gravity_swapped_out.db
+  mv /etc/pihole/gravity_temp.db /etc/pihole/gravity.db
+
+  run bash -c "./pihole-FTL wait-for 'Gravity database has been replaced, reloading now' /var/log/pihole/FTL.log 5 $logsize_swap"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 5 $logsize_swap"
+  assert_success
+  rm -f /tmp/gravity_swapped_out.db
+
+  dig A swap.special.gravity.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run bash -c 'grep -c "gravity blocked swap.special.gravity.ftl is" /var/log/pihole/pihole.log'
+  assert_output "1"
+  run bash -c "tail -c +$((logsize_swap + 1)) /var/log/pihole/FTL.log | grep -c 'no such table'"
+  assert_output "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
 }

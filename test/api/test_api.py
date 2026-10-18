@@ -1124,7 +1124,10 @@ class TestInfo:
         s = data["system"]
         assert "uptime" in s
         assert s["memory"]["ram"]["total"] > 0
-        assert s["cpu"]["nprocs"] > 0
+        # All CPUs present, not only those in FTL's affinity mask
+        with open("/sys/devices/system/cpu/present") as f:
+            ranges = [r.split("-") for r in f.read().strip().split(",")]
+        assert s["cpu"]["nprocs"] == sum(int(r[-1]) - int(r[0]) + 1 for r in ranges)
         assert "ftl" in s
         assert "%mem" in s["ftl"]
         assert "%cpu" in s["ftl"]
