@@ -200,6 +200,16 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 	}
 	return true;
 }
+// Passwords, write-only items and the password hashes are never logged, and
+// only sessions allowed to change the configuration may read the hashes
+bool is_secret_conf_item(const struct conf_item *conf_item)
+{
+	return conf_item->t == CONF_PASSWORD ||
+	       (conf_item->f & FLAG_WRITE_ONLY) ||
+	       strcmp(conf_item->k, "webserver.api.pwhash") == 0 ||
+	       strcmp(conf_item->k, "webserver.api.app_pwhash") == 0;
+}
+
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 {
 	// Sanity check

@@ -1302,7 +1302,7 @@ in_port_t __attribute__((pure)) get_https_port(void)
 }
 
 #define MAX_URL_LEN 255
-unsigned short get_api_string(char **buf, const bool domain)
+unsigned short get_api_string(char **buf, int *bufflen, const bool domain)
 {
 	// Initialize buffer to empty string
 	size_t len = 0;
@@ -1329,12 +1329,18 @@ unsigned short get_api_string(char **buf, const bool domain)
 		   !server_ports[i].is_bound)
 			continue;
 
-		// Reallocate additional memory for every port
+		// Grow only: cache_make_stat() sizes later writes from *bufflen
 		const size_t bufsz = (i + 1) * MAX_URL_LEN;
-		if((*buf = realloc(*buf, bufsz)) == NULL)
+		if((size_t)*bufflen < bufsz)
 		{
-			log_err("Failed to reallocate API URL buffer!");
-			return 0;
+			char *tmp = realloc(*buf, bufsz);
+			if(tmp == NULL)
+			{
+				log_err("Failed to reallocate API URL buffer!");
+				return 0;
+			}
+			*buf = tmp;
+			*bufflen = (int)bufsz;
 		}
 
 		// Use appropriate domain
@@ -1365,7 +1371,7 @@ unsigned short get_api_string(char **buf, const bool domain)
 
 		// Reject the URL if snprintf() truncated it to fit api_str (this_len is
 		// the would-be length) or if it does not fit the destination buffer.
-		if((size_t)this_len >= MAX_URL_LEN || (size_t)this_len >= bufsz - len - 1)
+		if((size_t)this_len >= MAX_URL_LEN || (size_t)this_len >= (size_t)*bufflen - len - 1)
 		{
 			log_err("API URL buffer too small!");
 			free(api_str);

@@ -173,7 +173,7 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// This difference is important for virtualized systems where the number
 	// of available (= online) processors can be lower than the total number
 	//  (= configured) of processors
-	const int nprocs = get_nprocs_conf();
+	const int nprocs = get_present_cpus();
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);

@@ -31,6 +31,8 @@
 #include "database/common.h"
 // pthread_mutex_t
 #include <pthread.h>
+// strcasecmp()
+#include <strings.h>
 
 static uint16_t max_sessions = 0;
 static struct session *auth_data = NULL;
@@ -95,14 +97,105 @@ void free_api(void)
 	auth_data = NULL;
 }
 
+// Explains requests refused without a password
+const char no_password_hint[] = "No password is set, so Pi-hole accepts requests for its own names only "
+                                "(IP address, pi.hole, webserver.domain or its hostname) and none sent by other "
+                                "websites. Open Pi-hole by one of these names, set webserver.domain to the name "
+                                "you use, or set a password.";
+
+// Was this request sent by a browser on behalf of another website?
+static bool cross_site_request(struct ftl_conn *api)
+{
+	const char *origin = mg_get_header(api->conn, "Origin");
+
+	// Browser extensions talk to the API on purpose
+	static const char *extensions[] = { "chrome-extension://", "moz-extension://", "safari-web-extension://" };
+	for(unsigned int i = 0; origin != NULL && i < ArraySize(extensions); i++)
+		if(strncasecmp(origin, extensions[i], strlen(extensions[i])) == 0)
+			return false;
+
+	const char *site = mg_get_header(api->conn, "Sec-Fetch-Site");
+	if(site != NULL)
+	{
+		if(strcasecmp(site, "same-origin") == 0 || strcasecmp(site, "none") == 0)
+			return false;
+
+		// Following a link from elsewhere is fine, that page cannot read the reply
+		const char *mode = mg_get_header(api->conn, "Sec-Fetch-Mode");
+		return api->method != HTTP_GET || mode == NULL || strcasecmp(mode, "navigate") != 0;
+	}
+
+	// Browsers without Fetch Metadata still send Origin on cross-origin requests
+	if(origin != NULL)
+	{
+		const char *host = mg_get_header(api->conn, "Host");
+		const char *sep = strstr(origin, "://");
+		return host == NULL || sep == NULL || strcasecmp(sep + 3, host) != 0;
+	}
+
+	// Not sent by a browser, e.g., curl or a script
+	return false;
+}
+
+// Is this a name the Pi-hole is reached by? DNS rebinding reaches the API
+// under the attacker's own name, which is never one of these
+static bool known_host(const char *host)
+{
+	if(host == NULL)
+		return true;
+
+	// Strip the port and the brackets of an IPv6 address
+	char name[256] = { 0 };
+	if(host[0] == '[')
+	{
+		const char *end = strchr(host, ']');
+		if(end == NULL || (size_t)(end - host - 1) >= sizeof(name))
+			return false;
+		memcpy(name, host + 1, end - host - 1);
+		struct in6_addr addr6;
+		return inet_pton(AF_INET6, name, &addr6) == 1;
+	}
+	size_t len = strcspn(host, ":");
+	if(len >= sizeof(name))
+		return false;
+	memcpy(name, host, len);
+	if(len > 0 && name[len - 1] == '.')
+		name[--len] = '\0';
+
+	struct in_addr addr4;
+	if(inet_pton(AF_INET, name, &addr4) == 1 ||
+	   strcasecmp(name, "localhost") == 0 ||
+	   strcasecmp(name, "pi.hole") == 0 ||
+	   strcasecmp(name, config.webserver.domain.v.s) == 0)
+		return true;
+
+	// The machine's hostname, alone or within the local domain
+	const char *node = hostname();
+	const size_t nodelen = strlen(node);
+	if(nodelen == 0 || strncasecmp(name, node, nodelen) != 0)
+		return false;
+	const char *suffix = name + nodelen;
+	return suffix[0] == '\0' ||
+	       (suffix[0] == '.' && (strcasecmp(suffix + 1, config.dns.domain.name.v.s) == 0 ||
+	                             strcasecmp(suffix + 1, "local") == 0));
+}
+
 // Can we validate this client?
 // Returns -1 if not authenticated or expired
 // Returns >= 0 for any valid authentication
 int check_client_auth(struct ftl_conn *api, const bool is_api)
 {
-	// When the pwhash is unset, authentication is disabled
+	// When the pwhash is unset, authentication is disabled, but not for
+	// other websites using the API through a browser on the network
 	if(config.webserver.api.pwhash.v.s[0] == '\0')
 	{
+		if(cross_site_request(api) || !known_host(mg_get_header(api->conn, "Host")))
+		{
+			api->message = "no password set, but request from another website";
+			log_debug(DEBUG_API, "API Authentication: FAIL (%s)", api->message);
+			return API_AUTH_UNAUTHORIZED;
+		}
+
 		api->message = "no password set";
 		add_request_info(api, NULL);
 		return API_AUTH_EMPTYPASS;
@@ -555,6 +648,10 @@ int api_auth(struct ftl_conn *api)
 
 	// Did the client authenticate before and we can validate this?
 	int user_id = check_client_auth(api, false);
+
+	// Without a password, a refused request must not log in either
+	if(empty_password && user_id == API_AUTH_UNAUTHORIZED)
+		return send_api_auth_status(api, user_id, now);
 
 	// If this is a valid session, we can exit early at this point if no password is supplied
 	if(user_id != API_AUTH_UNAUTHORIZED && (password == NULL || strlen(password) == 0))
