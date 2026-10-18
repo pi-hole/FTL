@@ -48,6 +48,7 @@ void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
+void FTL_process_lease_deletions(void);
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where);
 bool FTL_is_forward_available(const union mysockaddr *addr);

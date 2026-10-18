@@ -13,6 +13,8 @@
 #include "config/config.h"
 #include "log.h"
 #include "webserver/json_macros.h"
+// no_password_hint
+#include "api/api.h"
 // UINT_MAX
 #include <limits.h>
 // HUGE_VAL
@@ -76,11 +78,14 @@ int send_http_code(struct ftl_conn *api, const char *mime_type,
 
 int send_json_unauthorized(struct ftl_conn *api)
 {
+	// Without a password, only a refused browser request ends up here
+	const bool no_password = config.webserver.api.pwhash.v.s[0] == '\0';
+
 	// Log API warnings only if debug.api is true
 	return send_json_error_free(api, 401,
 	                            "unauthorized",
 	                            "Unauthorized",
-	                            NULL, false,
+	                            no_password ? (char*)no_password_hint : NULL, false,
 	                            config.debug.api.v.b);
 }
 

@@ -108,6 +108,7 @@ int api_group(struct ftl_conn *api);
 void init_api_sessions(void);
 void free_api(void);
 int check_client_auth(struct ftl_conn *api, const bool is_api);
+extern const char no_password_hint[];
 int api_auth(struct ftl_conn *api);
 void delete_all_sessions(void);
 int api_auth_sessions(struct ftl_conn *api);
