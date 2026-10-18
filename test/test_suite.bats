@@ -1848,6 +1848,14 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: dns.cnameRecords[1]: invalid domain ("ta*rget.example")'
   assert_failure 3
 
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target.example,9999999999999999999999999999999999999\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid TTL ("9999999999999999999999999999999999999")'
+  assert_failure 3
+
+  # Spaces around the elements are fine, check with -t to leave the config alone
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\" alias.example , target.example , 300 \"]"'
+  assert_success
+
   # No dot follows the last label, but its length is capped just the same
   long_label="$(printf 'a%.0s' {1..64})"
   run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"

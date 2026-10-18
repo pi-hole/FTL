@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+#include <errno.h>
+#include <limits.h>
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -223,7 +225,18 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				s[--slen] = '\0';
 
 			if(k == j - 1 && j > 2 && slen > 0 && strspn(s, "0123456789") == slen)
+			{
+				// The TTL has to fit into an int
+				errno = 0;
+				const unsigned long ttl = strtoul(s, NULL, 10);
+				if(errno != 0 || ttl > INT_MAX)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid TTL (\"%s\")", key, i, s);
+					free(str);
+					return false;
+				}
 				break;
+			}
 
 			if(!valid_domain(s, slen, false))
 			{
