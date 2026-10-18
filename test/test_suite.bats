@@ -1778,7 +1778,7 @@ except socket.timeout:
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
   # Changed records restart the resolver (dns.hostsLocal), wait for it
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Malformed UTF-8: overlong encoding, UTF-16 surrogate, above U+10FFFF,
@@ -1804,7 +1804,7 @@ except socket.timeout:
 
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 }
 
@@ -2012,7 +2012,7 @@ except socket.timeout:
   # (dns.hostsLocal derives local= lines from them), wait for it to be back
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Check that the sanitized entries are properly formatted
@@ -2030,7 +2030,7 @@ except socket.timeout:
   # (dns.hostsLocal derives local= lines from them), wait for it to be back
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Check that the sanitized entries are properly formatted
@@ -2042,7 +2042,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1 host1.local\", \"10.0.0.1 plainhost\"]"'
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # Without expand-hosts, the plain name is only local as itself
@@ -2054,7 +2054,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.expandHosts true'
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 
   # dnsmasq now also answers plainhost.lan from the record, names with a dot
@@ -2069,7 +2069,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.expandHosts false'
   assert_success
-  run bash -c "./pihole-FTL wait-for 'FTL started' /var/log/pihole/FTL.log 10 $logsize_before"
+  run bash -c "./pihole-FTL wait-for 'Parsed config file /etc/pihole/pihole.toml successfully' /var/log/pihole/FTL.log 10 $logsize_before"
   assert_success
 }
 
