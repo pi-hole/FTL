@@ -1996,14 +1996,14 @@ int cache_make_stat(struct txt_record *t)
     /* Pi-hole modification */
     case TXT_API_DOMAIN:
     {
-      t->len = get_api_string(&buff, true);
+      t->len = get_api_string(&buff, &bufflen, true);
       t->txt = (unsigned char *)buff;
 
       return 1;
     }
     case TXT_API_LOCAL:
     {
-      t->len = get_api_string(&buff, false);
+      t->len = get_api_string(&buff, &bufflen, false);
       t->txt = (unsigned char *)buff;
 
       return 1;

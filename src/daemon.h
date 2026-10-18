@@ -27,6 +27,7 @@ void cleanup(const int ret);
 bool join_db_thread(const time_t timeout);
 void set_nice(void);
 void calc_cpu_usage(const unsigned int interval);
+int get_present_cpus(void);
 float get_ftl_cpu_percentage(void) __attribute__((pure));
 float get_total_cpu_percentage(void) __attribute__((pure));
 bool ipv6_enabled(void);
