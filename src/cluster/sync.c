@@ -706,6 +706,10 @@ bool cluster_run_gravity(void)
 	if(gravity_fd >= 0)
 		return false; // our own run, still going
 
+	// A run started now would outlive FTL
+	if(killed || want_terminate)
+		return false;
+
 	// Claimed in one step, so the web interface and this thread cannot both
 	// think they got it - and so neither clears what the other took
 	if(atomic_exchange(&gravity_running, true))
@@ -853,6 +857,9 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 {
 	*rebuilding = false;
 
+	if(killed || want_terminate)
+		return false;
+
 	// Remembered across the import: only a changed adlist makes the blocking
 	// database stale
 	char before[CLUSTER_HASHLEN] = "";
@@ -867,6 +874,13 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	if(!cluster_http_raw(peer, "/api/cluster/lists", &data, &size, err, sizeof(err)))
 	{
 		log_warn("cluster: cannot read lists of %s: %s", peer->url, err);
+		return false;
+	}
+
+	// ...and asked again after the download, which takes seconds
+	if(killed || want_terminate)
+	{
+		free(data);
 		return false;
 	}
 
