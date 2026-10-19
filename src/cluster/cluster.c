@@ -1163,7 +1163,7 @@ static void do_leave(void)
 		const double changed = double_time();
 		for(unsigned int i = 0; i < num_peers; i++)
 			if(peers[i].reachable && !peers[i].is_self &&
-			   cluster_push_config(&peers[i], body, changed))
+			   cluster_push_config(&peers[i], body, changed, NULL))
 				told++;
 		free(body);
 	}
@@ -2782,7 +2782,8 @@ static void catch_up(void)
 		if(body == NULL)
 			break;
 
-		if(!cluster_push_config(peer, body, changed))
+		bool taken = true;
+		if(!cluster_push_config(peer, body, changed, &taken))
 		{
 			// Remembered either way, so the next round can tell "this
 			// peer refused what it holds now" from "there is something
@@ -2821,10 +2822,17 @@ static void catch_up(void)
 		peer->pushed_ourhash[sizeof(peer->pushed_ourhash) - 1] = '\0';
 		strncpy(peer->pushed_credhash, ourcreds, sizeof(peer->pushed_credhash) - 1);
 		peer->pushed_credhash[sizeof(peer->pushed_credhash) - 1] = '\0';
-		peer->pushed_generation = config_generation;
 		peer->push_backoff = 0.0;
 		peer->retry_push_at = 0.0;
 
+		if(!taken)
+		{
+			log_info("cluster: %s holds a newer configuration and did not take ours",
+			         strlen(peer->name) > 0 ? peer->name : peer->url);
+			continue;
+		}
+
+		peer->pushed_generation = config_generation;
 		log_info("cluster: caught %s up", strlen(peer->name) > 0 ? peer->name : peer->url);
 	}
 
@@ -2889,10 +2897,17 @@ static void push_round(void)
 		if(body == NULL)
 			break;
 
-		if(cluster_push_config(peer, body, changed))
+		bool taken = true;
+		if(cluster_push_config(peer, body, changed, &taken))
 		{
-			peer->pushed_generation = generation;
-			handed++;
+			if(taken)
+			{
+				peer->pushed_generation = generation;
+				handed++;
+			}
+			else
+				log_info("cluster: %s holds a newer configuration and did not take ours",
+				         strlen(peer->name) > 0 ? peer->name : peer->url);
 		}
 		else if(!cluster_push_possible(body))
 		{

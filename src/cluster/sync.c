@@ -636,7 +636,8 @@ bool cluster_push_possible(const char *body)
 // request the web interface makes when somebody hits Save. The peer decides
 // item by item whether it already holds what we sent, so a node that is up to
 // date changes nothing, writes nothing and restarts nothing
-bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed)
+bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed,
+                         bool *taken)
 {
 	// The peer takes the configuration and the time it was changed at
 	// together, so it can tell the next node the same thing we told it
@@ -658,6 +659,9 @@ bool cluster_push_config(struct cluster_peer *peer, const char *body, const doub
 		return false;
 	}
 
+	// Missing in the answer of a node too old to say, which took it
+	if(taken != NULL)
+		*taken = !cJSON_IsFalse(cJSON_GetObjectItem(answer, "taken"));
 	cJSON_Delete(answer);
 
 	return true;
