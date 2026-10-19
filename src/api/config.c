@@ -572,8 +572,10 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	// Judged inside the lock, not before it: the writer we just waited for
 	// may have installed something newer than this push while we queued, and
 	// deciding on the value we read before waiting would install the older
-	// document over it and date this node back to match
-	if(from_cluster && (changed <= 0.0 || changed < config_changed))
+	// document over it and date this node back to match. The same stamp is
+	// the version this node holds already, unless both are starting points
+	if(from_cluster && (changed <= 0.0 || changed < config_changed ||
+	                    (changed > CLUSTER_BASELINE_STAMP && !(changed > config_changed))))
 	{
 		cluster_sync_unlock();
 		log_web_debug(DEBUG_API, "Cluster push is older than what this node holds, keeping ours");

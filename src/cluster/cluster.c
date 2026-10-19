@@ -2575,9 +2575,9 @@ void cluster_local_status(cJSON *node)
 // Almost every tick answers "nothing changed" by comparing two numbers, so this
 // costs nothing while the cluster is idle
 // Which of two configurations is the one to keep. The node somebody configured
-// more recently holds it; two nodes nobody ever configured, or configured in
-// the same microsecond, are settled by identity, so both reach the same answer
-// and exactly one of them sends
+// more recently holds it; two nodes that both offer theirs as the starting
+// point are settled by identity, so both reach the same answer and exactly one
+// of them sends
 static bool we_are_newer(const struct cluster_peer *peer)
 {
 	// A node nobody has ever configured holds defaults, and defaults are
@@ -2591,6 +2591,11 @@ static bool we_are_newer(const struct cluster_peer *peer)
 	if(ours > peer->config_changed)
 		return true;
 	if(ours < peer->config_changed)
+		return false;
+
+	// The same stamp is the same version, most often one this node just took
+	// from that very peer. Only two starting points are settled by identity
+	if(ours > CLUSTER_BASELINE_STAMP)
 		return false;
 
 	return strcmp(cluster_node_id(), peer->id) > 0;
@@ -2906,8 +2911,8 @@ static void push_round(void)
 				handed++;
 			}
 			else
-				log_info("cluster: %s holds a newer configuration and did not take ours",
-				         strlen(peer->name) > 0 ? peer->name : peer->url);
+				log_debug(DEBUG_CLUSTER, "cluster: %s already holds this or a newer configuration",
+				          strlen(peer->name) > 0 ? peer->name : peer->url);
 		}
 		else if(!cluster_push_possible(body))
 		{

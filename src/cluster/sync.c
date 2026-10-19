@@ -642,7 +642,7 @@ bool cluster_push_config(struct cluster_peer *peer, const char *body, const doub
 	// The peer takes the configuration and the time it was changed at
 	// together, so it can tell the next node the same thing we told it
 	char path[64] = "";
-	snprintf(path, sizeof(path), "/api/config?changed=%.6f", changed);
+	snprintf(path, sizeof(path), "/api/config?changed=%.17g", changed);
 
 	if(!cluster_push_possible(body))
 	{
@@ -1247,9 +1247,9 @@ static void write_state_file(const struct cluster_sync_state *state)
 	}
 
 	fprintf(file, "node %s\n", node_id);
-	fprintf(file, "gravity %.6f %s\n", saved_state.gravity_changed, saved_state.gravity_hash);
+	fprintf(file, "gravity %.17g %s\n", saved_state.gravity_changed, saved_state.gravity_hash);
 	if(saved_state.pending_changed > 0.0)
-		fprintf(file, "pending %.6f %s %s\n", saved_state.pending_changed,
+		fprintf(file, "pending %.17g %s %s\n", saved_state.pending_changed,
 		        strlen(saved_state.pending_id) > 0 ? saved_state.pending_id : "-",
 		        strlen(saved_state.pending_hash) > 0 ? saved_state.pending_hash : "-");
 	// What this node's lists hashed to before it asked a peer for theirs. Kept
@@ -1259,7 +1259,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 	// the retry was published under the pre-pull timestamp
 	if(saved_state.pending_changed > 0.0 && strlen(saved_state.pre_pull_hash) > 0)
 		fprintf(file, "prepull %s\n", saved_state.pre_pull_hash);
-	fprintf(file, "config %.6f\n", config_changed);
+	fprintf(file, "config %.17g\n", config_changed);
 	// The virtual address this node placed, if it holds one. Read back at
 	// start-up so an FTL that was killed can tell the address it left behind
 	// from one the administrator configured on the machine
