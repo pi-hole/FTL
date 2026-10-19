@@ -589,6 +589,15 @@ bool cluster_adlist_hash(char hash[CLUSTER_HASHLEN])
 static _Thread_local unsigned int sync_lock_depth = 0;
 static _Thread_local int sync_lock_cancelstate = PTHREAD_CANCEL_ENABLE;
 
+// Not switched back on once FTL is stopping: a cancel that arrived meanwhile
+// would fire at the next cancellation point, wherever that is. The thread
+// finishes on its own instead
+static void restore_cancelstate(const int state)
+{
+	if(!killed)
+		pthread_setcancelstate(state, NULL);
+}
+
 void cluster_sync_lock(void)
 {
 	int state = PTHREAD_CANCEL_ENABLE;
@@ -604,7 +613,7 @@ void cluster_sync_unlock(void)
 	const bool outermost = --sync_lock_depth == 0;
 	unlock_config();
 	if(outermost)
-		pthread_setcancelstate(state, NULL);
+		restore_cancelstate(state);
 }
 
 // What this node hands to a peer. It is byte for byte what GET /api/config
@@ -1311,7 +1320,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 	{
 		log_err("cluster: cannot write %s: %s", tmpfile, strerror(errno));
 		pthread_mutex_unlock(&state_file_lock);
-		pthread_setcancelstate(cancelstate, NULL);
+		restore_cancelstate(cancelstate);
 		return;
 	}
 
@@ -1321,7 +1330,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 		log_err("cluster: cannot write %s: %s", tmpfile, strerror(errno));
 		close(fd);
 		pthread_mutex_unlock(&state_file_lock);
-		pthread_setcancelstate(cancelstate, NULL);
+		restore_cancelstate(cancelstate);
 		return;
 	}
 
@@ -1362,7 +1371,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 		log_err("cluster: cannot write %s: %s", tmpfile, strerror(errno));
 		unlink(tmpfile);
 		pthread_mutex_unlock(&state_file_lock);
-		pthread_setcancelstate(cancelstate, NULL);
+		restore_cancelstate(cancelstate);
 		return;
 	}
 
@@ -1371,7 +1380,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 		log_err("cluster: cannot rename %s: %s", tmpfile, strerror(errno));
 		unlink(tmpfile);
 		pthread_mutex_unlock(&state_file_lock);
-		pthread_setcancelstate(cancelstate, NULL);
+		restore_cancelstate(cancelstate);
 		return;
 	}
 
@@ -1383,7 +1392,7 @@ static void write_state_file(const struct cluster_sync_state *state)
 	}
 
 	pthread_mutex_unlock(&state_file_lock);
-	pthread_setcancelstate(cancelstate, NULL);
+	restore_cancelstate(cancelstate);
 }
 
 // state == NULL saves what is already known, for the callers that only changed
