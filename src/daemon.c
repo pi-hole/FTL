@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// PWBUF_SIZE
+#include "files.h"
 // forked
 #include "main.h"
 // sysinfo()
@@ -182,7 +184,7 @@ static void removePID(void)
  * @brief Retrieves the username of the effective user ID of the calling process.
  *
  * This function uses the `geteuid()` function to get the effective user ID (EUID) of the calling process
- * and then searches the user database for an entry with a matching UID using the `getpwuid()` function.
+ * and then searches the user database for an entry with a matching UID using the `getpwuid_r()` function.
  * If a matching entry is found, the username is returned. If no matching entry is found, the UID is
  * returned as a string. If an error occurs during the lookup, a warning is logged.
  *
@@ -192,11 +194,14 @@ static void removePID(void)
 char *getUserName(void)
 {
 	char *name;
-	// the getpwuid() function shall search the user database for an entry with a matching uid
-	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
+	// the getpwuid_r() function shall search the user database for an entry with a matching uid
+	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid_r() function
 	const uid_t euid = geteuid();
-	errno = 0;
-	const struct passwd *pw = getpwuid(euid);
+	// Reentrant, the crash report calls this while another thread may be
+	// inside getpwuid()
+	char buf[PWBUF_SIZE];
+	struct passwd pwd, *pw = NULL;
+	const int ret = getpwuid_r(euid, &pwd, buf, sizeof(buf), &pw);
 	if(pw)
 	{
 		// If the user is found, we return the username
@@ -205,8 +210,8 @@ char *getUserName(void)
 	else
 	{
 		// If there was an error, we log it
-		if(errno != 0)
-			log_warn("getpwuid(%u) failed: %s", euid, strerror(errno));
+		if(ret != 0)
+			log_warn("getpwuid_r(%u) failed: %s", euid, strerror(ret));
 
 		// If the user is not found, we return the UID as string
 		if(asprintf(&name, "%u", euid) < 0)
