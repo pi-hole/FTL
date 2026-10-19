@@ -1367,7 +1367,7 @@ components:
     restart:
       name: restart
       in: query
-      description: Restart FTL after a change would require this. This option can be used if you want to avoid a restart, e.g., when adding multiple items independently instead of all together at once. Note that you will have to restart FTL manually later to apply the changes.
+      description: Restart FTL after a change would require this. This option can be used if you want to avoid a restart, e.g., when adding multiple items independently instead of all together at once. Note that you will have to restart FTL manually later to apply the changes. It applies to this node only - the other nodes of a cluster restart as the synchronized change requires, one after the other.
       required: false
       schema:
         type: boolean
