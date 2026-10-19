@@ -16,7 +16,7 @@
 #include "shmem.h"
 // counters
 #include "datastructure.h"
-// get_dnsmasq_metrics(&metrics)
+// copy_dnsmasq_metrics()
 #include "metrics.h"
 // get_blockingstatus()
 #include "config/config.h"
@@ -149,7 +149,7 @@ int api_padd(struct ftl_conn *api)
 	// Add cache statistics
 	cJSON *cache = JSON_NEW_OBJECT();
 	struct metrics metrics = { 0 };
-	get_dnsmasq_metrics(&metrics);
+	copy_dnsmasq_metrics(&metrics);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", metrics.dns.cache.size);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", metrics.dns.cache.inserted);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "evicted", metrics.dns.cache.live_freed);
