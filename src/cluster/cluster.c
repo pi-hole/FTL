@@ -1956,7 +1956,8 @@ static void take_leases(void)
 			{
 				log_debug(DEBUG_CLUSTER, "cluster: leases of %s arrived as %s, not the %s it published - asking again",
 				          peer->url, arrived, peer->leaseshash);
-				free(data);
+				if(data != NULL)
+					free(data);
 				return;
 			}
 		}
@@ -1966,7 +1967,9 @@ static void take_leases(void)
 		// again immediately would repeat whatever went wrong every round
 		if(taken)
 			taken = cluster_leases_write(data, size);
-		free(data);
+		// An empty lease file arrives as no buffer at all
+		if(data != NULL)
+			free(data);
 
 		if(!taken)
 		{
