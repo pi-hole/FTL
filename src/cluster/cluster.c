@@ -2180,7 +2180,8 @@ static void take_gravity(const bool member)
 	publish_pending_gravity(pending_gravity, pending_gravity_id, pending_gravity_hash);
 
 	bool rebuilding = false;
-	if(!cluster_pull_gravity(peer, pre_pull_hash, &rebuilding))
+	char imported[CLUSTER_HASHLEN] = "";
+	if(!cluster_pull_gravity(peer, pre_pull_hash, &rebuilding, imported))
 	{
 		// Nothing landed. The import replaces the seven tables inside one
 		// transaction, so a failure anywhere in it leaves the tables this
@@ -2212,6 +2213,17 @@ static void take_gravity(const bool member)
 
 	peer->retry_backoff = 0.0;
 	peer->retry_lists_at = 0.0;
+
+	// What arrived, which is what the rebuild is checked against. The peer's
+	// fingerprint is a round old, and an edit it made since came along
+	if(strlen(imported) > 0)
+	{
+		cluster_lock();
+		strncpy(pending_gravity_hash, imported, sizeof(pending_gravity_hash) - 1);
+		pending_gravity_hash[sizeof(pending_gravity_hash) - 1] = '\0';
+		cluster_unlock();
+		publish_pending_gravity(pending_gravity, pending_gravity_id, pending_gravity_hash);
+	}
 
 	// The adlists changed, so a rebuild is owed before this node may say it
 	// holds the peer's lists. Whether it can start is settle_gravity()'s
@@ -2253,7 +2265,7 @@ static void take_gravity(const bool member)
 
 	// Adopt the version we just took over - this content is now theirs, not
 	// a change of ours - but only if we really did end up with it
-	if(strcmp(gravityhash, peer->gravityhash) == 0)
+	if(strcmp(gravityhash, strlen(imported) > 0 ? imported : peer->gravityhash) == 0)
 	{
 		finish_pull(peer->gravity_changed, gravityhash);
 		peer->stuck_valid = false;

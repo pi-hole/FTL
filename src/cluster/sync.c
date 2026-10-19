@@ -928,9 +928,11 @@ void cluster_gravity_release(void)
 	atomic_store(&gravity_running, false);
 }
 
-bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding)
+bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding,
+                          char imported[CLUSTER_HASHLEN])
 {
 	*rebuilding = false;
+	imported[0] = '\0';
 
 	if(killed || want_terminate)
 		return false;
@@ -1015,9 +1017,13 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 	}
 
 	const char *error = read_teleporter_zip(data, size, 4, hint, import, files);
+	// What arrived, which is newer than the fingerprint the round elected
+	// when the peer edited a list since
+	if(error == NULL && !tables_hash(gravity_tables, ArraySize(gravity_tables), imported))
+		imported[0] = '\0';
 	cluster_sync_unlock();
 	// An archive without the list tables reads as a success and imports nothing
-	const bool imported = cJSON_GetArraySize(files) > 0;
+	const bool had_tables = cJSON_GetArraySize(files) > 0;
 	cJSON_Delete(import);
 	cJSON_Delete(files);
 	free(data);
@@ -1027,7 +1033,7 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 		log_err("cluster: cannot import lists of %s: %s (%s)", peer->url, error, hint);
 		return false;
 	}
-	if(!imported)
+	if(!had_tables)
 	{
 		log_err("cluster: the lists of %s contain no list tables", peer->url);
 		return false;
