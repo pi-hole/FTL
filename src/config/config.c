@@ -805,7 +805,7 @@ void initConfig(struct config *conf)
 	conf->dns.port.h = "Port used by the DNS server";
 	conf->dns.port.a = cJSON_CreateStringReference("Any available valid (1 - 65535) port number");
 	conf->dns.port.t = CONF_UINT16;
-	conf->dns.port.f = FLAG_RESTART_FTL;
+	conf->dns.port.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dns.port.d.u16 = 53u;
 	conf->dns.port.c = validate_stub; // Only type-based checking
 
@@ -874,7 +874,7 @@ void initConfig(struct config *conf)
 	conf->dns.cache.size.h = "Cache size of the DNS server. Note that expiring cache entries naturally make room for new insertions over time.\n\nSetting this number too high will have an adverse effect as not only more space is needed, but also lookup speed gets degraded in the 10,000+ range. dnsmasq may issue a warning when you go beyond 10,000+ cache entries.";
 	conf->dns.cache.size.a = cJSON_CreateStringReference("A positive integer value");
 	conf->dns.cache.size.t = CONF_UINT;
-	conf->dns.cache.size.f = FLAG_RESTART_FTL;
+	conf->dns.cache.size.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dns.cache.size.d.ui = 10000u;
 	conf->dns.cache.size.c = validate_stub; // Only type-based checking
 
@@ -1438,7 +1438,7 @@ void initConfig(struct config *conf)
 	conf->webserver.threads.h = "Maximum number of worker threads allowed.\n\n The Pi-hole web server handles each incoming connection in a separate thread. Therefore, the value of this option is effectively the number of concurrent HTTP connections that can be handled. Any other connections are queued until they can be processed by a unoccupied thread.\n\n The total number of threads you see may be lower than the configured value as threads are only created when needed due to incoming connections.\n\n The value 0 means the number of threads is 50 (as per default settings of CivetWeb) for backwards-compatible behavior.";
 	conf->webserver.threads.a = cJSON_CreateStringReference("A positive integer value, or 0 for default (50)");
 	conf->webserver.threads.t = CONF_UINT;
-	conf->webserver.threads.f = FLAG_RESTART_FTL;
+	conf->webserver.threads.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->webserver.threads.d.ui = 50;
 	conf->webserver.threads.c = validate_stub; // Only type-based checking
 
@@ -1655,6 +1655,7 @@ void initConfig(struct config *conf)
 	conf->webserver.api.temp.limit.h = "Which upper temperature limit should be used by Pi-hole? Temperatures above this limit will be shown as \"hot\". The number specified here is in the unit defined below";
 	conf->webserver.api.temp.limit.a = cJSON_CreateStringReference("A positive floating point value in the unit defined below");
 	conf->webserver.api.temp.limit.t = CONF_DOUBLE;
+	conf->webserver.api.temp.limit.f = FLAG_NO_CLUSTER;
 	conf->webserver.api.temp.limit.d.d = 60.0; // °C
 	conf->webserver.api.temp.limit.c = validate_stub; // Only type-based checking
 
@@ -1763,6 +1764,7 @@ void initConfig(struct config *conf)
 	conf->misc.delay_startup.h = "During startup, in some configurations, network interfaces appear only late during system startup and are not ready when FTL tries to bind to them. Therefore, you may want FTL to wait a given amount of time before trying to start the DNS resolver.\n\n This setting takes any integer value between 0 and 300 seconds. To prevent delayed startup while the system is already running and FTL is restarted, the delay only takes place within the first 180 seconds (hard-coded) after booting.";
 	conf->misc.delay_startup.a = cJSON_CreateStringReference("A positive integer value between 0 and 300");
 	conf->misc.delay_startup.t = CONF_UINT;
+	conf->misc.delay_startup.f = FLAG_NO_CLUSTER;
 	conf->misc.delay_startup.d.ui = 0;
 	conf->misc.delay_startup.c = validate_stub; // Only type-based checking
 
