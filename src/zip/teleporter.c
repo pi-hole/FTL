@@ -1233,11 +1233,9 @@ const char *generate_cluster_zip(mz_zip_archive *zip, void **ptr, size_t *size)
 		return "Failed to create gravity database for heap ZIP archive!";
 	}
 
+	// Under the name every receiver looks for, wherever files.gravity is here
 	const char *file_comment = "Pi-hole's gravity database";
-	const char *file_path = gravitydb;
-	if(file_path[0] == '/')
-		file_path++;
-	if(!mz_zip_writer_add_mem_ex(zip, file_path, dbbuf, dbsize, file_comment,
+	if(!mz_zip_writer_add_mem_ex(zip, ZIPNAME_GRAVITY, dbbuf, dbsize, file_comment,
 	                             (uint16_t)strlen(file_comment), MZ_BEST_COMPRESSION, 0, 0))
 	{
 		sqlite3_free(dbbuf);
