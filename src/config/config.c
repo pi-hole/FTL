@@ -1284,8 +1284,8 @@ void initConfig(struct config *conf)
 	conf->cluster.dhcp.failover.c = validate_stub; // Only type-based checking
 
 	conf->cluster.vip.address.k = "cluster.vip.address";
-	conf->cluster.vip.address.h = "Virtual IP address floating between the cluster nodes. Whichever node is currently in charge adds this address to its interface and answers on it, so clients only ever need to know this one address. It is the same address on every node by definition, so it is synchronized like any other setting - set it once, anywhere. An IPv4 address here is also what the DHCP server advertises as the DNS server, in place of the individual nodes, while cluster.dhcp.failover is on. An empty string disables the virtual IP.";
-	conf->cluster.vip.address.a = cJSON_CreateStringReference("An unused IPv4 or IPv6 address in your local network, or an empty string to disable");
+	conf->cluster.vip.address.h = "Virtual IP address floating between the cluster nodes. Whichever node is currently in charge adds this address to its interface and answers on it, so clients only ever need to know this one address. It is the same address on every node by definition, so it is synchronized like any other setting - set it once, anywhere. An IPv4 address here is also what the DHCP server advertises as the DNS server, in place of the individual nodes, while cluster.dhcp.failover is on. An empty string disables the virtual IP.\n\n It has to be an address nothing else uses, and in particular not the address of one of the nodes: the node elected to hold it would take it away from the one it belongs to. A node that finds another machine answering for the address does not claim it.";
+	conf->cluster.vip.address.a = cJSON_CreateStringReference("An unused unicast IPv4 or IPv6 address in your local network that is not the address of a cluster node (no loopback, multicast, broadcast or IPv6 link-local address), or an empty string to disable");
 	conf->cluster.vip.address.t = CONF_STRING;
 	conf->cluster.vip.address.f = FLAG_RESTART_FTL;
 	conf->cluster.vip.address.d.s = (char*)"";

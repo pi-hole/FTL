@@ -109,6 +109,7 @@ struct cluster_peer {
 	char branch[CLUSTER_STRLEN];     // ...and its branch, when that is not master
 	char id[CLUSTER_HASHLEN];          // the peer's identity, which cannot collide
 	char address[CLUSTER_ADDRLEN];     // where this peer answered, so its name is only resolved once
+	char last_address[CLUSTER_ADDRLEN]; // ...kept after it stops answering there
 	char hint[CLUSTER_ADDRLEN];        // ...or where another node reached it, when we cannot resolve it
 	char hint_failed[CLUSTER_ADDRLEN]; // ...and one such address that did not work
 	double hint_rearm_at;              // ...which is tried again after a while, not never
@@ -262,6 +263,12 @@ void cluster_vip_address(char buf[CLUSTER_STRLEN]);
 // Host part of a peer URL, if it is a plain IPv4 address. Used to tell DHCP
 // clients about every node of the cluster
 bool cluster_peer_ipv4(const char *entry, char *buf, const size_t buflen);
+// ...and the same for either family, an IPv6 literal written in brackets
+bool cluster_peer_address(const char *entry, const int family, char *buf, const size_t buflen);
+
+// Where the other members are, as far as this node knows: the literal hosts of
+// their URLs and where they last answered. For the cluster thread only
+unsigned int cluster_member_addresses(char addrs[][CLUSTER_ADDRLEN], const unsigned int max);
 
 // The name of the node with this identity, for saying where a value came from.
 // Returns NULL when no member of the cluster answers to it

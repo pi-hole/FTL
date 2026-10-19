@@ -864,9 +864,14 @@
     # the individual nodes, while cluster.dhcp.failover is on. An empty string disables
     # the virtual IP.
     #
+    # It has to be an address nothing else uses, and in particular not the address of one
+    # of the nodes: the node elected to hold it would take it away from the one it belongs
+    # to. A node that finds another machine answering for the address does not claim it.
+    #
     # Allowed values are:
-    #     An unused IPv4 or IPv6 address in your local network, or an empty string to
-    #     disable
+    #     An unused unicast IPv4 or IPv6 address in your local network that is not the
+    #     address of a cluster node (no loopback, multicast, broadcast or IPv6 link-local
+    #     address), or an empty string to disable
     address = ""
 
     # Interface the virtual IP address is added to. If left empty, the interface holding

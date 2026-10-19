@@ -465,6 +465,8 @@ static bool request(struct cluster_peer *peer, const char *method, const char *p
 	{
 		strncpy(peer->address, ip, sizeof(peer->address) - 1);
 		peer->address[sizeof(peer->address) - 1] = '\0';
+		strncpy(peer->last_address, ip, sizeof(peer->last_address) - 1);
+		peer->last_address[sizeof(peer->last_address) - 1] = '\0';
 		peer->hint[0] = '\0';
 		peer->hint_failed[0] = '\0';
 	}

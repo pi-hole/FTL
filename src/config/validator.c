@@ -1395,18 +1395,114 @@ bool validate_cluster_members(union conf_value *val, const char *key, char err[V
 	return true;
 }
 
+// Is the address the host part of a member URL? Only literal addresses can be
+// compared here, names are checked again before the address is claimed
+static bool member_literal(const int family, const void *addr)
+{
+	const cJSON *members = config.cluster.members.v.json;
+	for(const cJSON *item = cJSON_IsArray(members) ? members->child : NULL; item != NULL; item = item->next)
+	{
+		char buf[INET6_ADDRSTRLEN] = "";
+		unsigned char member[sizeof(struct in6_addr)] = { 0 };
+		if(cJSON_IsString(item) &&
+		   cluster_peer_address(item->valuestring, family, buf, sizeof(buf)) &&
+		   inet_pton(family, buf, member) == 1 &&
+		   memcmp(member, addr, family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr)) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+// Is the address one of this machine's own? A host address (/32, /128) is
+// what FTL places for the virtual IP itself, so only a subnet address counts
+static bool own_subnet_address(const int family, const void *addr)
+{
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) != 0)
+		return false;
+
+	bool found = false;
+	for(struct ifaddrs *ifa = ifap; ifa != NULL && !found; ifa = ifa->ifa_next)
+	{
+		if(ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL || ifa->ifa_addr->sa_family != family)
+			continue;
+
+		const unsigned char *a = NULL, *m = NULL;
+		size_t len = 0;
+		if(family == AF_INET)
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_addr)->sin_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_netmask)->sin_addr;
+			len = sizeof(struct in_addr);
+		}
+		else
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_addr)->sin6_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_netmask)->sin6_addr;
+			len = sizeof(struct in6_addr);
+		}
+
+		bool host_mask = true;
+		for(size_t i = 0; i < len; i++)
+			host_mask &= m[i] == 0xff;
+
+		found = !host_mask && memcmp(a, addr, len) == 0;
+	}
+
+	freeifaddrs(ifap);
+
+	return found;
+}
+
 bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// An empty string disables the virtual IP address
 	if(val->s == NULL || strlen(val->s) == 0)
 		return true;
 
+	int family = AF_INET;
 	struct in_addr addr4 = { 0 };
 	struct in6_addr addr6 = { 0 };
-	if(inet_pton(AF_INET, val->s, &addr4) != 1 &&
-	   inet_pton(AF_INET6, val->s, &addr6) != 1)
+	if(inet_pton(AF_INET, val->s, &addr4) != 1)
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 or IPv6 address (\"%s\")", key, val->s);
+		family = AF_INET6;
+		if(inet_pton(AF_INET6, val->s, &addr6) != 1)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 or IPv6 address (\"%s\")", key, val->s);
+			return false;
+		}
+	}
+
+	// Every DHCP client is told to use this address, and the elected node adds
+	// it to its interface, so it has to be one address of the local network
+	bool unusable = false;
+	if(family == AF_INET)
+	{
+		const uint32_t a = ntohl(addr4.s_addr);
+		unusable = a == INADDR_ANY || a == INADDR_BROADCAST ||
+		           (a >> 24) == 127 || IN_MULTICAST(a);
+	}
+	else
+		unusable = IN6_IS_ADDR_UNSPECIFIED(&addr6) || IN6_IS_ADDR_LOOPBACK(&addr6) ||
+		           IN6_IS_ADDR_MULTICAST(&addr6) || IN6_IS_ADDR_LINKLOCAL(&addr6) ||
+		           IN6_IS_ADDR_V4MAPPED(&addr6);
+	if(unusable)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is not a unicast address a network can share (unspecified, loopback, multicast, broadcast and IPv6 link-local addresses are not)",
+		         key, val->s);
+		return false;
+	}
+
+	// A member's own address would be taken away from that member as soon as
+	// another one is elected
+	const void *addr = family == AF_INET ? (const void *)&addr4 : (const void *)&addr6;
+	if(own_subnet_address(family, addr) || member_literal(family, addr))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is the address of a cluster member, the virtual IP has to be an unused one",
+		         key, val->s);
 		return false;
 	}
 

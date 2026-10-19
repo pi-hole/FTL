@@ -22,6 +22,8 @@
 #include "shmem.h"
 // CLUSTER_STRLEN
 #include "cluster/cluster.h"
+// sleepms()
+#include "timers.h"
 
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -31,6 +33,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <linux/neighbour.h>
 #include <sys/ioctl.h>
 
 // The interface the virtual IP address is added to: the configured one, or the
@@ -480,9 +483,7 @@ static void gratuitous_arp(const char *address, const char *iface)
 }
 
 // Set once this process put the address there. An address FTL did not place is
-// an address FTL does not remove: a user converting a single Pi-hole into a
-// cluster naturally sets cluster.vip.address to the address the clients already
-// use, which is that node's own, and the v4 delete matches on the address alone
+// an address FTL does not remove, as the v4 delete matches on the address alone
 // What this process put there, remembered as it was placed. Reading the address
 // and the interface out of the configuration at release time would have a node
 // that had cluster.vip.address changed under it delete the new address off the
@@ -539,6 +540,205 @@ bool vip_claimed_address(char *buf, const size_t size)
 }
 
 
+
+// What the neighbor cache holds for an address
+struct neighbor {
+	int family;
+	unsigned char addr[sizeof(struct in6_addr)];
+	unsigned char mac[ETH_ALEN];
+	bool known;     // with a link-layer address
+	bool confirmed; // ...that answered recently, not one merely remembered
+};
+
+static void neighbor_lookup(struct neighbor *want, const unsigned int n)
+{
+	const int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+	if(fd < 0)
+		return;
+
+	const struct timeval timeout = { .tv_sec = 2, .tv_usec = 0 };
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+	struct {
+		struct nlmsghdr nlh;
+		struct ndmsg ndm;
+	} req = { 0 };
+	req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg));
+	req.nlh.nlmsg_type = RTM_GETNEIGH;
+	req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+	req.nlh.nlmsg_seq = 1;
+	req.ndm.ndm_family = AF_UNSPEC;
+
+	struct sockaddr_nl sa = { 0 };
+	sa.nl_family = AF_NETLINK;
+	if(sendto(fd, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&sa, sizeof(sa)) < 0)
+	{
+		close(fd);
+		return;
+	}
+
+	char buf[16384] __attribute__((aligned(NLMSG_ALIGNTO)));
+	for(bool done = false; !done;)
+	{
+		const ssize_t received = recv(fd, buf, sizeof(buf), 0);
+		if(received <= 0)
+			break;
+
+		int len = (int)received;
+		for(struct nlmsghdr *nlh = (struct nlmsghdr *)(void *)buf; NLMSG_OK(nlh, (unsigned int)len);
+		    nlh = NLMSG_NEXT(nlh, len))
+		{
+			if(nlh->nlmsg_type == NLMSG_DONE || nlh->nlmsg_type == NLMSG_ERROR)
+			{
+				done = true;
+				break;
+			}
+			if(nlh->nlmsg_type != RTM_NEWNEIGH)
+				continue;
+
+			const struct ndmsg *ndm = (const struct ndmsg *)NLMSG_DATA(nlh);
+			const void *dst = NULL, *lladdr = NULL;
+			size_t dstlen = 0, lllen = 0;
+			int alen = (int)NLMSG_PAYLOAD(nlh, sizeof(struct ndmsg));
+			for(struct rtattr *rta = (struct rtattr *)(void *)((char *)(void *)ndm + NLMSG_ALIGN(sizeof(struct ndmsg)));
+			    RTA_OK(rta, alen); rta = RTA_NEXT(rta, alen))
+			{
+				if(rta->rta_type == NDA_DST)
+				{
+					dst = RTA_DATA(rta);
+					dstlen = RTA_PAYLOAD(rta);
+				}
+				else if(rta->rta_type == NDA_LLADDR)
+				{
+					lladdr = RTA_DATA(rta);
+					lllen = RTA_PAYLOAD(rta);
+				}
+			}
+			if(dst == NULL || lladdr == NULL || lllen != ETH_ALEN)
+				continue;
+
+			for(unsigned int i = 0; i < n; i++)
+			{
+				const size_t size = want[i].family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr);
+				if(ndm->ndm_family != want[i].family || dstlen != size ||
+				   memcmp(dst, want[i].addr, size) != 0)
+					continue;
+
+				memcpy(want[i].mac, lladdr, ETH_ALEN);
+				want[i].known = true;
+				want[i].confirmed = (ndm->ndm_state & (NUD_REACHABLE | NUD_PERMANENT)) != 0;
+			}
+		}
+	}
+
+	close(fd);
+}
+
+// Is this the MAC of one of this machine's interfaces?
+static bool own_mac(const unsigned char mac[ETH_ALEN])
+{
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) != 0)
+		return false;
+
+	bool found = false;
+	for(struct ifaddrs *ifa = ifap; ifa != NULL && !found; ifa = ifa->ifa_next)
+	{
+		if(ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_PACKET)
+			continue;
+
+		const struct sockaddr_ll *sll = (const struct sockaddr_ll *)(void *)ifa->ifa_addr;
+		found = sll->sll_halen == ETH_ALEN && memcmp(sll->sll_addr, mac, ETH_ALEN) == 0;
+	}
+
+	freeifaddrs(ifap);
+
+	return found;
+}
+
+// Does another machine answer for this address? A member's own address is
+// never the virtual one, and a machine that is not a member answering for it
+// is somebody else's host. A member's MAC is what the address was last cached
+// under after a takeover, so that one is fine
+static bool vip_owned_elsewhere(const char *address)
+{
+	static char warned[CLUSTER_STRLEN] = "";
+
+	struct neighbor want[1 + 2 * CLUSTER_MAX_PEERS] = { 0 };
+	if(!parse_address(address, &want[0].family, want[0].addr))
+		return false;
+
+	char members[2 * CLUSTER_MAX_PEERS][CLUSTER_ADDRLEN] = { { 0 } };
+	const unsigned int num = cluster_member_addresses(members, ArraySize(members));
+	unsigned int n = 1;
+	for(unsigned int i = 0; i < num; i++)
+	{
+		if(!parse_address(members[i], &want[n].family, want[n].addr))
+			continue;
+
+		if(want[n].family == want[0].family &&
+		   memcmp(want[n].addr, want[0].addr, sizeof(want[0].addr)) == 0)
+		{
+			if(strcmp(warned, address) != 0)
+				log_err("cluster: the virtual IP %s is the address of member %s, not claiming it",
+				        address, members[i]);
+			strncpy(warned, address, sizeof(warned) - 1);
+			return true;
+		}
+		n++;
+	}
+
+	// Asked for first, so a host holding the address answers the ARP request
+	// or neighbor solicitation this sends before the cache is read
+	const int fd = socket(want[0].family, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if(fd >= 0)
+	{
+		struct sockaddr_storage ss = { 0 };
+		socklen_t sslen = 0;
+		if(want[0].family == AF_INET)
+		{
+			struct sockaddr_in *sin = (struct sockaddr_in *)(void *)&ss;
+			sin->sin_family = AF_INET;
+			sin->sin_port = htons(9);
+			memcpy(&sin->sin_addr, want[0].addr, sizeof(sin->sin_addr));
+			sslen = sizeof(*sin);
+		}
+		else
+		{
+			struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)(void *)&ss;
+			sin6->sin6_family = AF_INET6;
+			sin6->sin6_port = htons(9);
+			memcpy(&sin6->sin6_addr, want[0].addr, sizeof(sin6->sin6_addr));
+			sslen = sizeof(*sin6);
+		}
+		char empty[1] = { 0 };
+		if(sendto(fd, empty, 0, MSG_DONTWAIT, (struct sockaddr *)&ss, sslen) == 0)
+			sleepms(200);
+		close(fd);
+	}
+
+	neighbor_lookup(want, n);
+	if(!want[0].confirmed || own_mac(want[0].mac))
+	{
+		warned[0] = '\0';
+		return false;
+	}
+
+	for(unsigned int i = 1; i < n; i++)
+		if(want[i].known && memcmp(want[i].mac, want[0].mac, ETH_ALEN) == 0)
+		{
+			warned[0] = '\0';
+			return false;
+		}
+
+	if(strcmp(warned, address) != 0)
+		log_err("cluster: the virtual IP %s is in use by %02x:%02x:%02x:%02x:%02x:%02x, which is not a cluster member - not claiming it",
+		        address, want[0].mac[0], want[0].mac[1], want[0].mac[2],
+		        want[0].mac[3], want[0].mac[4], want[0].mac[5]);
+	strncpy(warned, address, sizeof(warned) - 1);
+
+	return true;
+}
 
 // Said once: a machine whose own address is the virtual one is a decision
 // somebody made, not a fault to repeat every round
@@ -603,6 +803,9 @@ bool vip_claim(const char *address)
 
 	char iface[IF_NAMESIZE] = { 0 };
 	if(!vip_interface(iface))
+		return false;
+
+	if(vip_owned_elsewhere(address))
 		return false;
 
 	if(!netlink_address(true, address, iface))

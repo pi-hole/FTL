@@ -101,7 +101,7 @@ void cluster_name(char buf[CLUSTER_STRLEN])
 	buf[CLUSTER_STRLEN - 1] = '\0';
 }
 
-bool cluster_peer_ipv4(const char *entry, char *buf, const size_t buflen)
+bool cluster_peer_address(const char *entry, const int family, char *buf, const size_t buflen)
 {
 	// Skip the scheme
 	const char *host = strstr(entry, "://");
@@ -109,23 +109,57 @@ bool cluster_peer_ipv4(const char *entry, char *buf, const size_t buflen)
 		return false;
 	host += 3;
 
-	// The host ends at the port or the path
-	size_t len = strcspn(host, ":/");
-	if(len == 0 || len >= buflen)
-		return false;
+	// The host ends at the port or the path, an IPv6 literal at its bracket
+	size_t len = 0;
+	if(*host == '[')
+	{
+		const char *end = strchr(++host, ']');
+		if(end == NULL)
+			return false;
+		len = (size_t)(end - host);
+	}
+	else
+		len = strcspn(host, ":/");
 
-	char candidate[INET_ADDRSTRLEN] = "";
-	if(len >= sizeof(candidate))
+	char candidate[INET6_ADDRSTRLEN] = "";
+	if(len == 0 || len >= buflen || len >= sizeof(candidate))
 		return false;
 	memcpy(candidate, host, len);
 
-	struct in_addr addr = { 0 };
-	if(inet_pton(AF_INET, candidate, &addr) != 1)
+	unsigned char addr[sizeof(struct in6_addr)] = { 0 };
+	if(inet_pton(family, candidate, addr) != 1)
 		return false;
 
 	strcpy(buf, candidate);
 
 	return true;
+}
+
+bool cluster_peer_ipv4(const char *entry, char *buf, const size_t buflen)
+{
+	return cluster_peer_address(entry, AF_INET, buf, buflen);
+}
+
+unsigned int cluster_member_addresses(char addrs[][CLUSTER_ADDRLEN], const unsigned int max)
+{
+	unsigned int n = 0;
+	for(unsigned int i = 0; i < num_peers && n < max; i++)
+	{
+		const struct cluster_peer *peer = &peers[i];
+		if(peer->is_self || peer->url == NULL)
+			continue;
+
+		if(cluster_peer_address(peer->url, AF_INET, addrs[n], CLUSTER_ADDRLEN) ||
+		   cluster_peer_address(peer->url, AF_INET6, addrs[n], CLUSTER_ADDRLEN))
+			n++;
+		if(n < max && strlen(peer->last_address) > 0)
+		{
+			strncpy(addrs[n], peer->last_address, CLUSTER_ADDRLEN - 1);
+			addrs[n++][CLUSTER_ADDRLEN - 1] = '\0';
+		}
+	}
+
+	return n;
 }
 
 static void free_peer(struct cluster_peer *peer)
