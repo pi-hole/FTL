@@ -1059,8 +1059,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// automatically generated DNSSEC queries
 	const char *interface = internal_query ? "-" : next_iface.name;
 
-	// Check rate-limit for this client
-	if(!internal_query && config.dns.rateLimit.count.v.ui > 0 &&
+	// Check rate-limit for this client. Hidden queries are exempt, as they
+	// were before dns.ignoreLocalhost filtered them
+	if(!internal_query && !hidden && config.dns.rateLimit.count.v.ui > 0 &&
 	   (++client->rate_limit > config.dns.rateLimit.count.v.ui  || client->flags.rate_limited))
 	{
 		// Log the first rate-limited query for this client in this
