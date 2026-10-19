@@ -365,6 +365,20 @@ class TestDomainSearch:
         assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
             json.dumps(data, indent=2)
 
+    def test_partial_matching_abp_leading_dot(self, api_session):
+        """A leading dot is stripped from the ABP patterns, so the pattern
+        built from the full term is no substring hit and must be looked up."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
     def test_partial_matching_abp_no_duplicates(self, api_session):
         """The substring hit and the generated ABP pattern must not both count."""
         data = _j(api_session.get(f"{FTL_URL}/api/search/special.gravity.ftl",
