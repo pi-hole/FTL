@@ -398,15 +398,15 @@ static const char *test_and_import_pihole_toml(void *ptr, size_t size, char * co
 
 	// Install new configuration (takes ownership of teleporter_config)
 	replace_config(&teleporter_config);
-	config_stamp_local_change();
 
 	// Only now is there an import the skipped settings belong to
 	report_teleporter_skipped(true);
 
 	// Write new pihole.toml to disk, the dnsmaq config was already written above
-	// Also write the custom list to disk
+	// Also write the custom list to disk. Stamped only once the file holds it
 	rotate_files(GLOBALTOMLPATH, NULL);
-	config_write();
+	if(config_write())
+		config_stamp_local_change();
 	write_custom_list();
 	unlock_config();
 
