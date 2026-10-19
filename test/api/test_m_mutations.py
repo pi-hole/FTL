@@ -542,6 +542,8 @@ class TestPutErrors:
         groups = _j(r)["groups"]
         assert len(groups) == 1
         assert groups[0]["name"] == name
+        # A path form "/api/groups/." would resolve to "/api/groups/"
+        assert r.headers.get("Location") == "/api/groups?item=."
 
         # GET narrows the collection to the item, too
         r = api_session.get(url, timeout=10)
@@ -562,6 +564,7 @@ class TestPutErrors:
                             timeout=10)
         assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
         assert _j(r)["groups"][0]["name"] == name
+        assert r.headers.get("Location") == f"/api/groups/{name}"
 
         # Clean up
         r = api_session.delete(f"{FTL_URL}/api/groups/{name}", timeout=10)
@@ -601,6 +604,7 @@ class TestPutErrors:
                             timeout=10)
         assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
         assert _j(r)["groups"][0]["name"] == name
+        assert r.headers.get("Location") == "/api/groups?item=_pytest%20space%20group"
 
         # Clean up
         r = api_session.delete(url, timeout=10)

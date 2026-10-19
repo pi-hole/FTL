@@ -289,7 +289,7 @@ list_read_fail:
 // Any other return value is a status this function has already answered with
 static int api_list_write(struct ftl_conn *api,
                           const enum gravity_list_type listtype,
-                          const char *item,
+                          const char *item, const bool item_in_query,
                           int *code, char **reply_item, cJSON **processed_out)
 {
 	tablerow row = { 0 };
@@ -817,8 +817,20 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT)
 		response_code = 200; // 200 - OK
 
-	// Add "Location" header to response
-	if(snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item) >= (int)sizeof(pi_hole_extra_headers))
+	// Add "Location" header to response. An item named in ?item= is pointed
+	// at the same way, as clients drop a "." or ".." path segment
+	int loclen;
+	if(item_in_query)
+	{
+		char encoded[sizeof(pi_hole_extra_headers)];
+		const bool complete = mg_url_encode(row.item, encoded, sizeof(encoded)) >= 0;
+		loclen = snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s?item=%s", api->action_path, encoded);
+		if(!complete)
+			loclen = sizeof(pi_hole_extra_headers);
+	}
+	else
+		loclen = snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s/%s", api->action_path, row.item);
+	if(loclen >= (int)sizeof(pi_hole_extra_headers))
 	{
 		// This may happen for *extremely* long URLs but is not issue in
 		// itself. Merely add a warning to the log file
@@ -1292,7 +1304,7 @@ int api_list(struct ftl_conn *api)
 			cJSON *processed = NULL;
 
 			lock_shm();
-			ret = api_list_write(api, listtype, item, &code, &reply_item, &processed);
+			ret = api_list_write(api, listtype, item, item_from_query != NULL && item == item_from_query, &code, &reply_item, &processed);
 			unlock_shm();
 
 			if(ret == 0)
@@ -1323,7 +1335,7 @@ int api_list(struct ftl_conn *api)
 			cJSON *processed = NULL;
 
 			lock_shm();
-			ret = api_list_write(api, listtype, item, &code, &reply_item, &processed);
+			ret = api_list_write(api, listtype, item, false, &code, &reply_item, &processed);
 			unlock_shm();
 
 			if(ret == 0)

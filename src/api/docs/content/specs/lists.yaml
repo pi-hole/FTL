@@ -236,7 +236,7 @@ components:
           - $ref: 'common.yaml#/components/parameters/item_required'
           - $ref: 'lists.yaml#/components/parameters/listtype'
         description: |
-          Identical to `PUT /api/lists/{list}`, except that the list is named by the `item` query parameter instead of by a path segment. `{listtype}` stays required.
+          Identical to `PUT /api/lists/{list}`, except that the list is named by the `item` query parameter instead of by a path segment. `{listtype}` stays required. The `Location` header of the reply uses the `item` query parameter as well.
 
           This is the only way to reach a list address that is literally `.` or `..`, as browsers remove such a path segment while they resolve a URL.
       delete:
