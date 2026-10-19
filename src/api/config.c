@@ -573,9 +573,10 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config)
 		cluster_sync_unlock();
 		log_web_debug(DEBUG_API, "Cluster push is older than what this node holds, keeping ours");
 
-		cJSON *json = JSON_NEW_OBJECT();
-		get_json_config(api, json, false, true, false);
-		JSON_SEND_OBJECT(json);
+		// Answered by the caller once the config lock is released, a peer
+		// that reads slowly would otherwise hold up every config change
+		*send_config = true;
+		return 0;
 	}
 
 	struct config newconf;
