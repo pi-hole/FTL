@@ -100,6 +100,8 @@ bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *reb
 // Start a rebuild of the blocking database. False when one is already running,
 // in which case the caller asks again next round
 bool cluster_run_gravity(void);
+// Is a gravity run going on that this node's cluster did not start?
+bool cluster_gravity_elsewhere(void);
 
 // A rebuild the cluster started, and how the last one ended. The lists are only
 // this node's once they were actually built: the blocking database is not part

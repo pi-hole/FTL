@@ -2067,6 +2067,18 @@ static void take_gravity(const bool member)
 	if(cluster_waiting(peer->retry_lists_at, double_time(), CLUSTER_BACKOFF_MAX))
 		return;
 
+	// A run in progress swaps in the tables it copied at its start, and an
+	// import in between would be lost. Asked again next round
+	static bool told_waiting = false;
+	if(cluster_gravity_elsewhere())
+	{
+		if(!told_waiting)
+			log_info("cluster: gravity is running, taking the lists of %s after it", peer->url);
+		told_waiting = true;
+		return;
+	}
+	told_waiting = false;
+
 	// A node that never knew when its lists changed has nothing to subtract,
 	// and neither has one holding a declaration rather than a moment -
 	// subtracting that from a real timestamp gives the age of the epoch
