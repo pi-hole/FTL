@@ -290,7 +290,7 @@ components:
           - Authentication
         operationId: "add_prometheus"
         description: |
-          Create a new token for the Prometheus/OpenMetrics endpoint (`GET /api/metrics`). The generated token is shown only once and cannot be retrieved later - make sure to store it in a safe place.
+          Create a new token for the Prometheus endpoint (`GET /api/metrics`). The generated token is shown only once and cannot be retrieved later - make sure to store it in a safe place.
 
           FTL stores the SHA-256 hash of the new token in `webserver.api.prometheus.token` automatically, immediately replacing (and thereby invalidating) any previously configured token. The response returns the raw `token` (and its `hash`, for reference) exactly once. The scraper then authenticates by sending the raw token in an `Authorization: Bearer <token>` header. To disable the endpoint again, set `webserver.api.prometheus.token` back to an empty string (e.g. via `PATCH /api/config/webserver/api/prometheus/token`, the web interface, or by editing the configuration file). While no token is configured, `GET /api/metrics` returns HTTP 404.
         responses:
@@ -309,6 +309,22 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '400':
+            description: Bad request (the token is set via an environment variable)
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden (app session without `webserver.api.app_sudo`, CLI session, or `misc.readOnly`)
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
 
   schemas:

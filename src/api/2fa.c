@@ -436,6 +436,26 @@ int generateAppPw(struct ftl_conn *api)
 
 int generatePrometheusToken(struct ftl_conn *api)
 {
+	// A new token is a config change, so the restrictions of the config
+	// PATCH endpoint apply
+	if(api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
+
+	if(api->session.used && api->session.cli)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current CLI session is not allowed to modify Pi-hole config settings");
+
+	if(config.misc.readOnly.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+
 	// An environment variable always wins over the stored hash, so a token
 	// generated here could never authenticate. Refuse like the config PATCH
 	// endpoint does.
@@ -446,10 +466,9 @@ int generatePrometheusToken(struct ftl_conn *api)
 		                       "Config items set via environment variables cannot be changed via the API",
 		                       config.webserver.api.prometheus.token.k);
 
-	// Generate a random 256 bit token for the Prometheus/OpenMetrics
-	// endpoint. We reuse generate_password() (without requesting the slow
-	// balloon hash) purely to obtain a base64-encoded, cryptographically
-	// secure random string.
+	// Generate a random 256 bit token for the Prometheus endpoint. We reuse
+	// generate_password() (without requesting the slow balloon hash) purely
+	// to obtain a base64-encoded, cryptographically secure random string.
 	char *token = NULL;
 	if(!generate_password(&token, NULL))
 	{
@@ -485,24 +504,21 @@ int generatePrometheusToken(struct ftl_conn *api)
 	// invalidating) any previously configured token. Ownership of 'hash' is
 	// transferred to the config item here. To disable the endpoint again, the
 	// operator sets webserver.api.prometheus.token back to an empty string.
-	//
-	// The swap-and-free is done under lock_shm() (the same lock used by
-	// replace_config()) because the config string is read concurrently by the
-	// /api/metrics handler on other webserver worker threads; a lock-free
-	// free()+reassign here would be a use-after-free.
-	lock_shm();
-	if(config.webserver.api.prometheus.token.t == CONF_STRING_ALLOCATED)
-		free(config.webserver.api.prometheus.token.v.s);
-	config.webserver.api.prometheus.token.v.s = hash;
-	config.webserver.api.prometheus.token.t = CONF_STRING_ALLOCATED;
+	// Like every other config change, this holds lock_config() from the copy
+	// until the file is written, so a concurrent PATCH cannot install a copy
+	// holding the previous token
+	lock_config();
+	struct config newconf;
+	duplicate_config(&newconf, &config);
+	struct conf_item *new_item = &newconf.webserver.api.prometheus.token;
+	if(new_item->t == CONF_STRING_ALLOCATED)
+		free(new_item->v.s);
+	new_item->v.s = hash;
+	new_item->t = CONF_STRING_ALLOCATED;
 	hash = NULL;
-	unlock_shm();
-
-	// Persist to disk (outside the lock, mirroring the config PATCH path). If
-	// the config is read-only this is a no-op; the token still works until the
-	// next restart, so warn to make the non-persistence visible.
-	if(!writeFTLtoml(true, NULL))
-		log_warn("Prometheus token generated but could not be persisted to the config file");
+	replace_config(&newconf);
+	writeFTLtoml(true, NULL);
+	unlock_config();
 
 	// Send JSON response
 	cJSON *json = cJSON_CreateObject();
