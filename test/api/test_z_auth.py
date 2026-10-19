@@ -18,6 +18,7 @@ import base64
 import os
 import stat
 import subprocess
+import time
 
 import pytest
 import requests
@@ -343,6 +344,36 @@ class TestAuthWorkflow:
             assert _h3_get_status("/api/auth", fields) == "200"
         finally:
             requests.delete(f"{FTL_URL}/api/auth", headers={"X-FTL-SID": sid}, timeout=5)
+
+    # -- 07f: an app session without app_sudo cannot read the secrets --
+
+    def test_07f_app_session_cannot_read_secrets(self):
+        """An app session without app_sudo cannot export the config or read the password hashes."""
+        # An app-password login is checked against both hashes, which counts
+        # two attempts against the per-second rate limit, so start in a
+        # second the logins above have not used
+        time.sleep(1.1)
+        r = requests.post(
+            f"{FTL_URL}/api/auth",
+            json={"password": TestAuthWorkflow._app_password},
+            timeout=10,
+        )
+        assert r.status_code == 200
+        sid = r.json()["session"]["sid"]
+        assert isinstance(sid, str) and len(sid) > 0
+        headers = {"X-FTL-SID": sid}
+        try:
+            r = requests.get(f"{FTL_URL}/api/teleporter", headers=headers, timeout=20)
+            assert r.status_code == 403
+            assert r.json()["error"]["key"] == "forbidden"
+
+            r = requests.get(f"{FTL_URL}/api/config/webserver/api", headers=headers, timeout=10)
+            assert r.status_code == 200
+            api = r.json()["config"]["webserver"]["api"]
+            assert api["pwhash"] == "********"
+            assert api["app_pwhash"] == "********"
+        finally:
+            requests.delete(f"{FTL_URL}/api/auth", headers=headers, timeout=5)
 
     # -- 08: rate limiting enforced --
 
