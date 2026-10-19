@@ -715,8 +715,12 @@ static bool addr_in_net(const char *ip, const char *net)
 	if(inet_pton(af, ip, a) != 1 || inet_pton(af, base, n) != 1)
 		return false;
 	const int max = af == AF_INET6 ? 128 : 32;
-	const int bits = slash != NULL ? atoi(slash + 1) : max;
-	if(bits < 0 || bits > max)
+	// The prefix has to be plain digits, an entry like "10.0.0.0/8x" matches nothing
+	const char *prefix = slash != NULL ? slash + 1 : NULL;
+	if(prefix != NULL && (*prefix == '\0' || strlen(prefix) > 3 || strspn(prefix, "0123456789") != strlen(prefix)))
+		return false;
+	const int bits = prefix != NULL ? atoi(prefix) : max;
+	if(bits > max)
 		return false;
 	if(memcmp(a, n, (size_t)(bits / 8)) != 0)
 		return false;
