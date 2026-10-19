@@ -1856,6 +1856,10 @@ except socket.timeout:
   run bash -c './pihole-FTL --config -t dns.cnameRecords "[\" alias.example , target.example , 300 \"]"'
   assert_success
 
+  # Tabs and a trailing comment are fine as well, dnsmasq reads them the same way
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\"tab.example,\\ttarget.example\", \"comment.example,target.example #note\"]"'
+  assert_success
+
   # No dot follows the last label, but its length is capped just the same
   long_label="$(printf 'a%.0s' {1..64})"
   run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
