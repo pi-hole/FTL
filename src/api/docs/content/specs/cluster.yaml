@@ -52,6 +52,14 @@ components:
                 schema:
                   type: string
                   format: binary
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
           '404':
             description: This node has no DHCP leases
             content:
@@ -87,6 +95,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '500':
+            description: The archive could not be built
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/internal_error'
                     - $ref: 'common.yaml#/components/schemas/took'
     discover:
       get:
@@ -138,6 +154,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Another node of the cluster cannot ask this one to scan the network
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
     enroll:
       post:
@@ -210,6 +234,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/bad_request'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '401':
+            description: Unauthorized
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
           '403':
             description: Forbidden
@@ -312,6 +344,14 @@ components:
                   allOf:
                     - $ref: 'cluster.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '500':
+            description: The cluster secret or the member list could not be stored
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/internal_error'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
     leave:
       post:
@@ -344,12 +384,14 @@ components:
                         peers_told:
                           type: boolean
                           description: |
-                            Present, and `false`, only where clustering was
-                            switched on here but never started: the member list
-                            is still there and every node on it still lists this
-                            one, so they have to be edited by hand. Absent
-                            otherwise - the cluster thread tells them a round
-                            from now, and the log records how many it reached.
+                            Present only where clustering was switched on here
+                            but never started. `false` when the member list
+                            named other nodes: every one of them still lists
+                            this one, so they have to be edited by hand. `true`
+                            when the list was empty and there was nobody to
+                            tell. Absent otherwise - the cluster thread tells
+                            them a round from now, and the log records how many
+                            it reached.
                           example: false
                         restarting:
                           type: boolean
@@ -382,6 +424,14 @@ components:
                   allOf:
                     - $ref: 'cluster.yaml#/components/errors/forbidden'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '500':
+            description: The configuration without the cluster could not be written
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/internal_error'
+                    - $ref: 'common.yaml#/components/schemas/took'
 
   errors:
     forbidden:
@@ -400,6 +450,26 @@ components:
               type: string
               description: "Human-readable error message"
               example: "This needs an encrypted connection"
+            hint:
+              type: string
+              nullable: true
+              example: null
+    internal_error:
+      description: |
+        The request was valid, but the server failed to carry it out.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "internal_error"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Could not store the cluster secret"
             hint:
               type: string
               nullable: true
@@ -813,7 +883,7 @@ components:
                 on. Credentials are not here: they are fingerprinted apart from
                 the rest and listed in `pinned_credentials`. Truncated with
                 `...` when there are too many to fit.
-              example: "dns.upstreams, webserver.api.pwhash"
+              example: "dns.upstreams, misc.privacylevel"
         gravity:
           type: object
           properties:
