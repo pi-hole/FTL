@@ -2648,6 +2648,8 @@ static pthread_mutex_t h3_jobs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  h3_jobs_cv  = PTHREAD_COND_INITIALIZER;
 static struct h3_job *h3_jobs_pending;          // loop -> worker, oldest first
 static struct h3_job *h3_jobs_pending_tail;
+// The source each worker is resolving for, guarded by h3_jobs_mtx
+static struct { bool busy; uint8_t ipkey[16]; } h3_jobs_running[H3_DOH_WORKERS];
 static struct h3_job *h3_jobs_done;             // worker -> loop
 
 // Monotonic timestamp in nanoseconds for nghttp3's rate limiter / bookkeeping.
@@ -3695,6 +3697,38 @@ static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
 	return best;
 }
 
+// Unlink the oldest pending job of the source with the fewest jobs in progress,
+// so one source's backlog does not hold up the others. Caller holds h3_jobs_mtx
+static struct h3_job *h3_job_take(void)
+{
+	struct h3_job **best = NULL, *best_prev = NULL, *prev = NULL;
+	unsigned best_busy = H3_DOH_WORKERS + 1;
+	for(struct h3_job **pp = &h3_jobs_pending; *pp != NULL; prev = *pp, pp = &(*pp)->next)
+	{
+		unsigned busy = 0;
+		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
+			if(h3_jobs_running[i].busy &&
+			   memcmp(h3_jobs_running[i].ipkey, (*pp)->ipkey, sizeof((*pp)->ipkey)) == 0)
+				busy++;
+		if(busy < best_busy)
+		{
+			best = pp;
+			best_prev = prev;
+			best_busy = busy;
+			if(busy == 0)
+				break;
+		}
+	}
+	if(best == NULL)
+		return NULL;
+	struct h3_job *job = *best;
+	*best = job->next;
+	if(h3_jobs_pending_tail == job)
+		h3_jobs_pending_tail = best_prev;
+	job->next = NULL;
+	return job;
+}
+
 // HTTP/3 event-loop thread: own the UDP socket, the QUIC listener, and every
 // connection and stream. One poll() over the shared UDP socket drives OpenSSL's
 // event handling; the rest is bookkeeping to bridge HTTP/3 to the backend.
@@ -3702,7 +3736,7 @@ static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
 // answer back and wake the loop. Works only on the copied-in/out job bytes.
 static void *h3_doh_worker(void *arg)
 {
-	(void)arg;
+	const unsigned idx = (unsigned)(uintptr_t)arg;
 	prctl(PR_SET_NAME, "terminator-doh", 0, 0, 0);
 	uint8_t *answer = malloc(DNS_MSG_MAX);
 	for(;;)
@@ -3715,12 +3749,11 @@ static void *h3_doh_worker(void *arg)
 			pthread_mutex_unlock(&h3_jobs_mtx);
 			break;
 		}
-		struct h3_job *job = h3_jobs_pending;
+		struct h3_job *job = h3_job_take();
 		if(job != NULL)
 		{
-			h3_jobs_pending = job->next;
-			if(h3_jobs_pending == NULL)
-				h3_jobs_pending_tail = NULL;
+			h3_jobs_running[idx].busy = true;
+			memcpy(h3_jobs_running[idx].ipkey, job->ipkey, sizeof(job->ipkey));
 		}
 		pthread_mutex_unlock(&h3_jobs_mtx);
 		if(job == NULL)
@@ -3735,6 +3768,7 @@ static void *h3_doh_worker(void *arg)
 			job->alen = -1;
 
 		pthread_mutex_lock(&h3_jobs_mtx);
+		h3_jobs_running[idx].busy = false;
 		job->next = h3_jobs_done;
 		h3_jobs_done = job;
 		pthread_mutex_unlock(&h3_jobs_mtx);
@@ -4164,7 +4198,8 @@ static void terminator_quic_start(const char *bind_addr, int public_port, const 
 	h3_wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 	if(h3_wake_fd >= 0)
 		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
-			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker, NULL) == 0)
+			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker,
+			                  (void *)(uintptr_t)h3_workers_n) == 0)
 				h3_workers_n++;
 
 	if(pthread_create(&quic_tid, NULL, quic_accept_loop, NULL) != 0)

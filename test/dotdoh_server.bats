@@ -405,3 +405,18 @@ setup_file() {
   echo "dnsmasq TCP workers: before=${before} after=${after}"
   [[ "$after" -le "$((before + 2))" ]]
 }
+
+@test "dotdoh-server: a DoH3 backlog from one client does not hold up another" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow elapsed
+  # Names under slow.ftl take 1.5 s, so 20 of them keep all four resolvers busy
+  python3 test/dotdoh_query.py slowdns 5557 1500 3>&- &
+  slow=$!
+  sleep 0.5
+  run python3 test/dotdoh_query.py doh3fair 127.0.0.1 443 slow.ftl 20 "$DOMAIN"
+  kill "$slow"
+  echo "$output"
+  [[ "$output" =~ ^second\ client\ 200\ after\ ([0-9]+)\.[0-9]+\ s,\ first\ client\ 20/20 ]]
+  elapsed="${BASH_REMATCH[1]}"
+  [[ "$elapsed" -lt 3 ]]
+}
