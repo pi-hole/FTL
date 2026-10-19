@@ -17,9 +17,13 @@ Usage:
 
 import hashlib
 import hmac
+import http.server
 import json
 import os
+import socket
+import threading
 import time
+import urllib.parse
 
 import pytest
 import requests
@@ -41,6 +45,7 @@ SECRET_FILE = "/etc/pihole/cluster_secret"
 # change to the wire format has to be made twice on purpose
 SIG_VERSION = "FTLCLUSTER1"
 REQUEST_KEY = "FTL cluster request v1"
+RESPONSE_KEY = "FTL cluster response v1"
 ANY_NODE = "*"
 SIG_WINDOW = 30
 
@@ -51,6 +56,9 @@ HDR_SIG = "X-FTL-Cluster-Sig"
 
 # Any well-formed identity that is not this node's
 OTHER_NODE = "aaaaaaaaaaaaaaaa"
+
+# The identity of the stand-in peer below
+FAKE_NODE = "bbbbbbbbbbbbbbbb"
 
 # What the rest of the suite logs in with, and what this file sets while it runs
 PASSWORD = "ABC"
@@ -133,6 +141,83 @@ def _headers(secret, method, uri, recipient, seq=None, body="", sender=OTHER_NOD
     }
 
 
+def _read_secret():
+    try:
+        with open(SECRET_FILE, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+class _FakePeer(http.server.BaseHTTPRequestHandler):
+    """A second member that never configured anything, so the node under test
+    hands it its configuration - the one path that builds the cluster document
+    without a connection behind it."""
+
+    pushes = []
+    node_id = ""
+    node_url = ""
+
+    def log_message(self, *args):
+        pass
+
+    def _answer(self, document):
+        secret = _read_secret()
+        seq = self.headers.get(HDR_SEQ, "")
+        if not secret or not seq:
+            self.send_response(500)
+            self.end_headers()
+            return
+        body = json.dumps(document).encode()
+        key = hmac.new(secret.encode(), RESPONSE_KEY.encode(), hashlib.sha256).digest()
+        canonical = "\n".join([SIG_VERSION + "-R", FAKE_NODE, seq,
+                               hashlib.sha256(body).hexdigest()])
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header(HDR_SIG, hmac.new(key, canonical.encode(), hashlib.sha256).hexdigest())
+        self.send_header("X-FTL-Cluster-By", FAKE_NODE)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if not self.path.startswith("/api/cluster/status"):
+            self.send_response(404)
+            self.end_headers()
+            return
+        sender = self.headers.get(HDR_FROM, "")
+        self._answer({"cluster": {
+            "enabled": True,
+            "node": {
+                "name": "fake", "id": FAKE_NODE, "time": time.time(), "interval": 10,
+                "resolving": True, "vip_capable": False,
+                "dhcp": {"active": False, "failover": False, "capable": False,
+                         "configured": False},
+                "vip": {"address": "", "held": False},
+                "sync": {
+                    "config": {"changed": 0, "hash": "0000000000000000", "credentials": "",
+                               "accepts_credentials": False, "wants_credentials": False,
+                               "pinned": "", "pinned_credentials": ""},
+                    "gravity": {"changed": 0, "hash": "", "owed": False},
+                },
+            },
+            "peers": [{"id": sender, "url": _FakePeer.node_url, "reachable": True,
+                       "last_seen": time.time()}],
+        }})
+
+    def do_PATCH(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length).decode()
+        _FakePeer.pushes.append((self.path, body))
+        self._answer({"config": {}})
+
+
+def _free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def _patch(api_session, body, expect_restart=False):
     """One configuration change, and a check that it happened.
 
@@ -181,14 +266,22 @@ def cluster(api_session):
     was_enabled = before.get("enabled", False)
     was_members = before.get("members", [])
 
+    fake = None
     if not was_enabled:
+        # A second member that answers like a node with no configuration, so
+        # this node pushes its own to it
+        self_url = FTL_URL.replace("http://", "https://")
+        _FakePeer.pushes = []
+        _FakePeer.node_url = self_url
+        fake = http.server.ThreadingHTTPServer(("127.0.0.1", _free_port()), _FakePeer)
+        threading.Thread(target=fake.serve_forever, daemon=True).start()
+
         # A member list as well as the switch: a node with nobody to talk to
         # does not start the cluster thread at all, and so never mints the
-        # identity these tests address it by. One member, this node itself, is
-        # what a cluster looks like before anybody has joined it
+        # identity these tests address it by
         _patch(api_session, {"cluster": {
             "enabled": True,
-            "members": [FTL_URL.replace("http://", "https://")],
+            "members": [self_url, f"http://127.0.0.1:{fake.server_address[1]}"],
         }}, expect_restart=True)
         assert _relogin(api_session), "could not log in after the restart"
 
@@ -233,7 +326,7 @@ def cluster(api_session):
 
     assert secret is None or secret, f"{SECRET_FILE} is empty"
 
-    yield {"secret": secret, "id": node_id, "pwhash": pwhash}
+    yield {"secret": secret, "id": node_id, "pwhash": pwhash, "fake": fake}
 
     # Put back what was found, member list included - emptying it would be this
     # file deciding the configuration of a node it was only visiting
@@ -241,6 +334,8 @@ def cluster(api_session):
         _patch(api_session, {"cluster": {"enabled": False, "members": was_members}},
                expect_restart=True)
         _relogin(api_session)
+        fake.shutdown()
+        fake.server_close()
 
     if no_password:
         _patch(api_session, {"webserver": {"api": {"password": ""}}})
@@ -451,3 +546,32 @@ class TestClusterEnrolment:
         headers = _headers(addressed["secret"], "POST", uri, addressed["id"], body=body)
         r = requests.post(f"{FTL_URL}{uri}", headers=headers, timeout=10)
         assert r.status_code in (401, 403), r.text[:200]
+
+
+# ---------------------------------------------------------------------------
+# Handing the configuration to a peer
+# ---------------------------------------------------------------------------
+
+class TestClusterPush:
+
+    def test_node_pushes_to_a_peer_and_survives(self, signed, api_session):
+        """The document a node hands to its peers is built by the cluster
+        thread, with no connection behind it. A peer that holds no
+        configuration is caught up within a round or two."""
+        if signed["fake"] is None:
+            pytest.skip("clustering was already on, so there is no stand-in peer")
+
+        deadline = time.time() + 60
+        while time.time() < deadline and not _FakePeer.pushes:
+            time.sleep(1)
+
+        assert _FakePeer.pushes, "the node never handed its configuration to the peer"
+        assert _answering(api_session), "the node stopped answering after the push"
+
+        path, body = _FakePeer.pushes[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+        assert float(query["changed"][0]) > 0.0, path
+        document = json.loads(body)
+        assert "config" in document, body[:200]
+        # Credentials only travel to https:// members
+        assert signed["pwhash"] not in body

@@ -240,8 +240,9 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed, cons
                     const bool encrypted)
 {
 	// App sessions without app_sudo may not change the configuration, so they
-	// do not get the password hashes either
-	const bool read_only = api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b;
+	// do not get the password hashes either. The cluster thread builds its
+	// document without a connection
+	const bool read_only = api != NULL && api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b;
 
 	// Create root config object
 	cJSON *config_j = JSON_NEW_OBJECT();
