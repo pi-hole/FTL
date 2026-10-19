@@ -103,6 +103,14 @@ bool cluster_run_gravity(void);
 // Is a gravity run going on that this node's cluster did not start?
 bool cluster_gravity_elsewhere(void);
 
+// An edit of the list tables made through the API. What moved the tables
+// without one is not an edit made on this node
+void cluster_note_list_write(void);
+// The time of such an edit not accounted for yet (0 when there is none), and
+// whether gravity.db is another file than when last accounted for
+void cluster_lists_explain(double *written, bool *replaced);
+void cluster_lists_accounted(const double written);
+
 // A rebuild the cluster started, and how the last one ended. The lists are only
 // this node's once they were actually built: the blocking database is not part
 // of the fingerprint, so a node whose rebuild never ran would otherwise report

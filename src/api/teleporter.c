@@ -362,6 +362,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 		// otherwise install a copy taken before it and answer 200 to both
 		cluster_sync_lock();
 		const int code = process_received_zip(api, &data);
+		cluster_note_list_write();
 		cluster_sync_unlock();
 		return code;
 	}
@@ -377,6 +378,7 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	{
 		cluster_sync_lock();
 		const int code = process_received_tar_gz(api, &data);
+		cluster_note_list_write();
 		cluster_sync_unlock();
 		return code;
 	}

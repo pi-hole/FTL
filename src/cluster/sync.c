@@ -1111,6 +1111,66 @@ bool cluster_state_known(void)
 	return state_loaded;
 }
 
+// The last edit of the list tables made through FTL, and the last one the
+// cluster thread has accounted for. Kept in the state file: a Teleporter import
+// restarts FTL before the next round can look
+static double lists_written = 0.0;
+static double lists_accounted = 0.0;
+// ...and which file gravity.db was when last looked at. gravity.sh swaps in a
+// new one at the end of every run
+static unsigned long long lists_inode = 0;
+static pthread_mutex_t lists_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static unsigned long long gravity_inode(void)
+{
+	char dbfile[PATH_MAX] = "";
+	lock_shm();
+	strncpy(dbfile, config.files.gravity.v.s, sizeof(dbfile) - 1);
+	unlock_shm();
+
+	struct stat st = { 0 };
+	return stat(dbfile, &st) == 0 ? (unsigned long long)st.st_ino : 0;
+}
+
+// Called by the API's list writers, under cluster_sync_lock()
+void cluster_note_list_write(void)
+{
+	if(!state_loaded)
+		return;
+
+	pthread_mutex_lock(&lists_lock);
+	lists_written = fmax(double_time(), lists_written);
+	pthread_mutex_unlock(&lists_lock);
+
+	cluster_state_save(NULL);
+}
+
+void cluster_lists_explain(double *written, bool *replaced)
+{
+	const unsigned long long inode = gravity_inode();
+
+	pthread_mutex_lock(&lists_lock);
+	*written = lists_written > lists_accounted ? lists_written : 0.0;
+	*replaced = lists_inode != 0 && inode != 0 && inode != lists_inode;
+	pthread_mutex_unlock(&lists_lock);
+}
+
+void cluster_lists_accounted(const double written)
+{
+	const unsigned long long inode = gravity_inode();
+
+	pthread_mutex_lock(&lists_lock);
+	const bool moved = written > lists_accounted || (inode != 0 && inode != lists_inode);
+	if(written > lists_accounted)
+		lists_accounted = written;
+	if(inode != 0)
+		lists_inode = inode;
+	pthread_mutex_unlock(&lists_lock);
+
+	if(moved)
+		cluster_state_save(NULL);
+}
+
 void cluster_state_load(struct cluster_sync_state *state)
 {
 	bool generated_id = false;
@@ -1129,7 +1189,8 @@ void cluster_state_load(struct cluster_sync_state *state)
 		char line[256] = "";
 		while(fgets(line, sizeof(line), file) != NULL)
 		{
-			double when = 0.0;
+			double when = 0.0, written = 0.0;
+			unsigned long long inode = 0;
 			char hash[CLUSTER_HASHLEN] = "", credhash[CLUSTER_HASHLEN] = "";
 			char phash[CLUSTER_HASHLEN] = "";
 			char key[64] = "";
@@ -1185,6 +1246,14 @@ void cluster_state_load(struct cluster_sync_state *state)
 			}
 			else if(sscanf(line, "vip %63s", vip) == 1)
 				vip_note_placed(vip, "");
+			else if(sscanf(line, "lists %lf %lf %llu", &when, &written, &inode) == 3)
+			{
+				pthread_mutex_lock(&lists_lock);
+				lists_written = isfinite(when) && when > 0.0 ? fmin(when, double_time()) : 0.0;
+				lists_accounted = isfinite(written) && written > 0.0 ? fmin(written, double_time()) : 0.0;
+				lists_inode = inode;
+				pthread_mutex_unlock(&lists_lock);
+			}
 			else if(sscanf(line, "config %lf", &when) == 1)
 			{
 				// When this node was last configured by somebody
@@ -1381,6 +1450,9 @@ static void write_state_file(const struct cluster_sync_state *state)
 	if(saved_state.pending_changed > 0.0 && strlen(saved_state.pre_pull_hash) > 0)
 		fprintf(file, "prepull %s\n", saved_state.pre_pull_hash);
 	fprintf(file, "config %.17g\n", config_changed);
+	pthread_mutex_lock(&lists_lock);
+	fprintf(file, "lists %.17g %.17g %llu\n", lists_written, lists_accounted, lists_inode);
+	pthread_mutex_unlock(&lists_lock);
 	// The virtual address this node placed, if it holds one. Read back at
 	// start-up so an FTL that was killed can tell the address it left behind
 	// from one the administrator configured on the machine
@@ -1479,6 +1551,9 @@ void cluster_state_forget(void)
 
 	state_forgotten = true;
 	config_changed = 0.0;
+	pthread_mutex_lock(&lists_lock);
+	lists_written = lists_accounted = 0.0;
+	pthread_mutex_unlock(&lists_lock);
 
 	if(unlink(CLUSTER_STATE_FILE) != 0 && errno != ENOENT)
 		log_warn("cluster: cannot remove %s: %s", CLUSTER_STATE_FILE, strerror(errno));
