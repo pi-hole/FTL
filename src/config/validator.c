@@ -267,7 +267,9 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 			free(str);
 			return false;
 		}
-		int cidr_int = atoi(cidr);
+		// Digits only, anything else is rejected by the range checks below
+		const size_t cidr_len = strlen(cidr);
+		const int cidr_int = (cidr_len <= 3 && strspn(cidr, "0123456789") == cidr_len) ? atoi(cidr) : -1;
 		if(ip4 && (cidr_int < 0 || cidr_int > 32))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 CIDR (\"%s\")", key, cidr);

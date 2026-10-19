@@ -392,6 +392,12 @@ setup_file() {
   assert_failure 3
 }
 
+@test "dotdoh-server: a webserver.trustedProxies prefix with trailing characters is rejected when set" {
+  run ./pihole-FTL --config webserver.trustedProxies '["127.0.0.1/24x"]'
+  assert_line --index 0 'Invalid value: webserver.trustedProxies[0]: not a valid IPv4 CIDR ("24x")'
+  assert_failure 3
+}
+
 # test/pihole.toml trusts 127.0.0.4 in webserver.trustedProxies
 doh_via_trusted_proxy() {
   local q; q="${BATS_FILE_TMPDIR}/tp_q.bin"
