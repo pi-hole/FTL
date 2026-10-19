@@ -669,9 +669,9 @@ bool cluster_push_config(struct cluster_peer *peer, const char *body, const doub
 	return true;
 }
 
-// What the process watching the run writes back through the pipe
-#define GRAVITY_DONE '1'
-#define GRAVITY_FAILED '0'
+// What the process watching the run writes back through the pipe when it could
+// not start the run at all. Anything else is the wait status of `pihole -g`
+#define GRAVITY_NOT_STARTED -1
 
 // Rebuild the blocking database from the adlists we just received. This is the
 // one part of Pi-hole that lives outside FTL, so we run it the way a user would
@@ -771,8 +771,8 @@ bool cluster_run_gravity(void)
 			// SIGTERM promptly costs the rebuild, which is owed and
 			// retried, rather than a minute of the whole node
 			execl(PIHOLE_BINARY, "pihole", "-g", (char *)NULL);
-			// Only reached if exec failed
-			_exit(EXIT_FAILURE);
+			// Only reached if exec failed, the code a shell uses for it
+			_exit(127);
 		}
 
 		int status = 0;
@@ -781,10 +781,8 @@ bool cluster_run_gravity(void)
 		do
 			waited = child > 0 ? waitpid(child, &status, 0) : -1;
 		while(waited < 0 && errno == EINTR);
-		const char outcome = waited == child &&
-		                     WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS ?
-		                     GRAVITY_DONE : GRAVITY_FAILED;
-		if(out < 0 || write(out, &outcome, 1) != 1)
+		const int outcome = waited == child ? status : GRAVITY_NOT_STARTED;
+		if(out < 0 || write(out, &outcome, sizeof(outcome)) != sizeof(outcome))
 			_exit(EXIT_FAILURE);
 		_exit(EXIT_SUCCESS);
 	}
@@ -809,8 +807,9 @@ void cluster_gravity_check(void)
 	if(gravity_fd < 0)
 		return;
 
-	char outcome = 0;
-	const ssize_t len = read(gravity_fd, &outcome, 1);
+	// Written in one piece, well below PIPE_BUF, so it arrives whole or not
+	int outcome = 0;
+	const ssize_t len = read(gravity_fd, &outcome, sizeof(outcome));
 	if(len < 0 && (errno == EAGAIN || errno == EINTR))
 		return; // still running, looked at again next tick
 
@@ -824,18 +823,29 @@ void cluster_gravity_check(void)
 		waitpid(gravity_pid, NULL, WNOHANG);
 	gravity_pid = 0;
 
-	if(len == 1 && outcome == GRAVITY_DONE)
+	if(len != sizeof(outcome))
 	{
-		log_info("cluster: gravity finished");
-		gravity_ok = true;
+		// The run died before it could say how it went, so whether the
+		// lists were built is unknown - and unknown is not success
+		log_warn("cluster: gravity outcome unknown");
 		return;
 	}
 
-	if(len == 1)
-		log_warn("cluster: gravity failed, is %s installed?", PIHOLE_BINARY);
+	if(outcome == GRAVITY_NOT_STARTED)
+		log_warn("cluster: cannot start gravity");
+	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
+	{
+		log_info("cluster: gravity finished");
+		gravity_ok = true;
+	}
+	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == 127)
+		log_warn("cluster: cannot run %s", PIHOLE_BINARY);
+	else if(WIFEXITED(outcome))
+		log_warn("cluster: gravity exited with status %d", WEXITSTATUS(outcome));
+	else if(WIFSIGNALED(outcome))
+		log_warn("cluster: gravity was ended by signal %d (%s)",
+		         WTERMSIG(outcome), strsignal(WTERMSIG(outcome)));
 	else
-		// The run died before it could say how it went, so whether the
-		// lists were built is unknown - and unknown is not success
 		log_warn("cluster: gravity outcome unknown");
 }
 
