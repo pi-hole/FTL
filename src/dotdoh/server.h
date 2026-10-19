@@ -105,8 +105,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 // static TLS, which glibc takes from every thread's stack. NULL when out of memory.
 uint8_t *dotdoh_thread_buf(uint8_t **slot, size_t size);
 
-// Longest query dnsmasq accepts, over UDP and TCP alike (dnsmasq_interface.c)
+// Longest query dnsmasq accepts over TCP, and over UDP (dnsmasq_interface.c)
 size_t FTL_dnsmasq_query_max(void) __attribute__((pure));
+size_t FTL_dnsmasq_udp_query_max(void) __attribute__((pure));
 
 // Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
 // handoffs and the connections accepted by the encrypted-upstream proxy). A
