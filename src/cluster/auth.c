@@ -73,7 +73,7 @@ static bool constant_time_equal(const char *a, const char *b, const size_t len)
 	return diff == 0;
 }
 
-static void sha256_hex(const char *data, const size_t len, char out[CLUSTER_SIGLEN])
+static void body_sha256_hex(const char *data, const size_t len, char out[CLUSTER_SIGLEN])
 {
 	uint8_t digest[SHA256_DIGEST_SIZE];
 	struct sha256_ctx ctx;
@@ -152,7 +152,7 @@ static bool sign_request(const char *method, const char *uri, const char *from,
 		return false;
 
 	char bodyhash[CLUSTER_SIGLEN] = "";
-	sha256_hex(body != NULL ? body : "", body != NULL ? strlen(body) : 0, bodyhash);
+	body_sha256_hex(body != NULL ? body : "", body != NULL ? strlen(body) : 0, bodyhash);
 
 	char canonical[1024] = "";
 	if(!canonical_request(canonical, sizeof(canonical), method, uri, from, to, seq, bodyhash))
@@ -178,7 +178,7 @@ static bool sign_response(const char *from, const long long seq,
 		return false;
 
 	char bodyhash[CLUSTER_SIGLEN] = "";
-	sha256_hex(body, len, bodyhash);
+	body_sha256_hex(body, len, bodyhash);
 
 	char canonical[256] = "";
 	snprintf(canonical, sizeof(canonical), "%s-R\n%s\n%lld\n%s",
