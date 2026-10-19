@@ -20,8 +20,8 @@ unsigned int setupVarsElements = 0;
 char ** setupVarsArray = NULL;
 
 // Empty an array config item before the values from setupVars.conf are added.
-// A v5 Teleporter import migrates into the running config, whose entries the
-// imported ones have to replace rather than be added to
+// A v5 Teleporter import migrates a copy of the running config, whose entries
+// the imported ones have to replace rather than be added to
 static void clear_conf_array(struct conf_item *conf_item)
 {
 	if(conf_item->v.json != NULL)
@@ -154,7 +154,7 @@ static void get_conf_bool_from_setupVars(const char *key, struct conf_item *conf
 	         key, conf_item->k, conf_item->v.b ? "true" : "false");
 }
 
-static void get_revServer_from_setupVars(void)
+static void get_revServer_from_setupVars(struct config *conf)
 {
 	char *cidr = NULL;
 	char *target = NULL;
@@ -183,7 +183,7 @@ static void get_revServer_from_setupVars(void)
 	clearSetupVarsArray();
 
 	// The file sets the reverse servers, replace the configured ones
-	clear_conf_array(&config.dns.revServers);
+	clear_conf_array(&conf->dns.revServers);
 
 	char *cidr_str = read_setupVarsconf("REV_SERVER_CIDR");
 	if(cidr_str != NULL)
@@ -240,11 +240,11 @@ static void get_revServer_from_setupVars(void)
 				sprintf(old, "%s,%s,%s,%s", active ? "true" : "false", cidr, target, domain);
 			else
 				sprintf(old, "%s,%s,%s", active ? "true" : "false", cidr, target);
-			cJSON_AddItemToArray(config.dns.revServers.v.json, cJSON_CreateString(old));
+			cJSON_AddItemToArray(conf->dns.revServers.v.json, cJSON_CreateString(old));
 
 			// Parameter present in setupVars.conf
 			log_info("setupVars.conf:REV_SERVER -> Setting %s to %s",
-			         config.dns.revServers.k, old);
+			         conf->dns.revServers.k, old);
 			free(old);
 		}
 	}
@@ -395,7 +395,7 @@ static void get_conf_upstream_servers_from_setupVars(struct conf_item *conf_item
 	}
 }
 
-static void get_conf_temp_limit_from_setupVars(void)
+static void get_conf_temp_limit_from_setupVars(struct config *conf)
 {
 	// Try to obtain temperature hot value
 	const char *temp_limit = read_setupVarsconf("TEMPERATURE_LIMIT");
@@ -415,7 +415,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	if(sscanf(temp_limit, "%lf", &lim) == 1)
 	{
 		// Parameter present in setupVars.conf
-		config.webserver.api.temp.limit.v.d = lim;
+		conf->webserver.api.temp.limit.v.d = lim;
 		set = true;
 	}
 
@@ -426,7 +426,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_info("setupVars.conf:TEMPERATURE_LIMIT -> Setting %s to %f",
-		          config.webserver.api.temp.limit.k, config.webserver.api.temp.limit.v.d);
+		          conf->webserver.api.temp.limit.k, conf->webserver.api.temp.limit.v.d);
 	}
 	else
 	{
@@ -435,7 +435,7 @@ static void get_conf_temp_limit_from_setupVars(void)
 	}
 }
 
-static void get_conf_weblayout_from_setupVars(void)
+static void get_conf_weblayout_from_setupVars(struct config *conf)
 {
 	// Try to obtain web layout
 	const char *web_layout = read_setupVarsconf("WEBUIBOXEDLAYOUT");
@@ -452,17 +452,17 @@ static void get_conf_weblayout_from_setupVars(void)
 
 	// If the property is set to false and different than "boxed", the property
 	// is disabled
-	config.webserver.interface.boxed.v.b = strcasecmp(web_layout, "boxed") == 0;
+	conf->webserver.interface.boxed.v.b = strcasecmp(web_layout, "boxed") == 0;
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
 	clearSetupVarsArray();
 
 	// Parameter present in setupVars.conf
 	log_info("setupVars.conf:WEBUIBOXEDLAYOUT -> Setting %s to %s",
-	         config.webserver.interface.boxed.k,config.webserver.interface.boxed.v.b ? "true" : "false");
+	         conf->webserver.interface.boxed.k,conf->webserver.interface.boxed.v.b ? "true" : "false");
 }
 
-static void get_conf_webtheme_from_setupVars(void)
+static void get_conf_webtheme_from_setupVars(struct config *conf)
 {
 	// Try to obtain listening mode
 	const char *webTheme = read_setupVarsconf("WEBTHEME");
@@ -482,7 +482,7 @@ static void get_conf_webtheme_from_setupVars(void)
 	if(web_theme_enum != -1)
 	{
 		set = true;
-		config.webserver.interface.theme.v.web_theme = web_theme_enum;
+		conf->webserver.interface.theme.v.web_theme = web_theme_enum;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -492,8 +492,8 @@ static void get_conf_webtheme_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_info("setupVars.conf:WEBTHEME -> Setting %s to %s",
-		         config.webserver.interface.theme.k,
-		         get_web_theme_str(config.webserver.interface.theme.v.web_theme));
+		         conf->webserver.interface.theme.k,
+		         get_web_theme_str(conf->webserver.interface.theme.v.web_theme));
 	}
 	else
 	{
@@ -502,7 +502,7 @@ static void get_conf_webtheme_from_setupVars(void)
 	}
 }
 
-static void get_conf_temp_unit_from_setupVars(void)
+static void get_conf_temp_unit_from_setupVars(struct config *conf)
 {
 	// Try to obtain listening mode
 	const char *temp_unit = read_setupVarsconf("TEMPERATURE_UNIT");
@@ -522,7 +522,7 @@ static void get_conf_temp_unit_from_setupVars(void)
 	if(temp_unit_enum != -1)
 	{
 		set = true;
-		config.webserver.api.temp.unit.v.temp_unit = temp_unit_enum;
+		conf->webserver.api.temp.unit.v.temp_unit = temp_unit_enum;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -532,8 +532,8 @@ static void get_conf_temp_unit_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_info("setupVars.conf:TEMPERATURE_UNIT -> Setting %s to %s",
-		         config.webserver.interface.theme.k,
-		         get_temp_unit_str(config.webserver.api.temp.unit.v.temp_unit));
+		         conf->webserver.api.temp.unit.k,
+		         get_temp_unit_str(conf->webserver.api.temp.unit.v.temp_unit));
 	}
 	else
 	{
@@ -542,7 +542,7 @@ static void get_conf_temp_unit_from_setupVars(void)
 	}
 }
 
-static void get_conf_listeningMode_from_setupVars(void)
+static void get_conf_listeningMode_from_setupVars(struct config *conf)
 {
 	// Try to obtain listening mode
 	const char *listeningMode = read_setupVarsconf("DNSMASQ_LISTENING");
@@ -562,7 +562,7 @@ static void get_conf_listeningMode_from_setupVars(void)
 	if(listeningMode_enum != -1)
 	{
 		set = true;
-		config.dns.listeningMode.v.listeningMode = listeningMode_enum;
+		conf->dns.listeningMode.v.listeningMode = listeningMode_enum;
 	}
 
 	// Free memory, harmless to call if read_setupVarsconf() didn't return a result
@@ -572,7 +572,7 @@ static void get_conf_listeningMode_from_setupVars(void)
 	{
 		// Parameter present in setupVars.conf
 		log_info("setupVars.conf:DNSMASQ_LISTENING -> Setting %s to %s",
-		         config.dns.listeningMode.k, get_listeningMode_str(config.dns.listeningMode.v.listeningMode));
+		         conf->dns.listeningMode.k, get_listeningMode_str(conf->dns.listeningMode.v.listeningMode));
 	}
 	else
 	{
@@ -581,7 +581,7 @@ static void get_conf_listeningMode_from_setupVars(void)
 	}
 }
 
-void importsetupVarsConf(void)
+void importsetupVarsConf(struct config *conf)
 {
 	// Check if the file exists. If not, there is nothing to do and we
 	// return early
@@ -594,76 +594,76 @@ void importsetupVarsConf(void)
 	log_info("Migrating config from "SETUPVARS_CONF);
 
 	// Try to obtain password hash from setupVars.conf
-	get_conf_string_from_setupVars("WEBPASSWORD", &config.webserver.api.pwhash);
+	get_conf_string_from_setupVars("WEBPASSWORD", &conf->webserver.api.pwhash);
 
 	// Try to obtain blocking active boolean
-	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &config.dns.blocking.active);
+	get_conf_bool_from_setupVars("BLOCKING_ENABLED", &conf->dns.blocking.active);
 
 	// Get clients which the user doesn't want to see
-	get_conf_string_array_from_setupVars_regex("API_EXCLUDE_CLIENTS", &config.webserver.api.excludeClients);
+	get_conf_string_array_from_setupVars_regex("API_EXCLUDE_CLIENTS", &conf->webserver.api.excludeClients);
 
 	// Get domains which the user doesn't want to see
-	get_conf_string_array_from_setupVars_regex("API_EXCLUDE_DOMAINS", &config.webserver.api.excludeDomains);
+	get_conf_string_array_from_setupVars_regex("API_EXCLUDE_DOMAINS", &conf->webserver.api.excludeDomains);
 
 	// Try to obtain temperature hot value
-	get_conf_temp_limit_from_setupVars();
+	get_conf_temp_limit_from_setupVars(conf);
 
 	// Try to obtain password hash from setupVars.conf
-	get_conf_temp_unit_from_setupVars();
+	get_conf_temp_unit_from_setupVars(conf);
 
 	// Try to obtain web layout
-	get_conf_weblayout_from_setupVars();
+	get_conf_weblayout_from_setupVars(conf);
 
 	// Try to obtain web theme
-	get_conf_webtheme_from_setupVars();
+	get_conf_webtheme_from_setupVars(conf);
 
 	// Try to obtain list of upstream servers
-	get_conf_upstream_servers_from_setupVars(&config.dns.upstreams);
+	get_conf_upstream_servers_from_setupVars(&conf->dns.upstreams);
 
 	// Try to get Pi-hole domain
-	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &config.dns.domain.name);
+	get_conf_string_from_setupVars("PIHOLE_DOMAIN", &conf->dns.domain.name);
 
 	// Try to get bool properties (the first two are intentionally set from the same key)
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.domainNeeded);
-	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &config.dns.expandHosts);
-	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &config.dns.bogusPriv);
-	get_conf_bool_from_setupVars("DNSSEC", &config.dns.dnssec);
-	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &config.dns.interface);
-	get_conf_string_from_setupVars("HOSTRECORD", &config.dns.hostRecord);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &conf->dns.domainNeeded);
+	get_conf_bool_from_setupVars("DNS_FQDN_REQUIRED", &conf->dns.expandHosts);
+	get_conf_bool_from_setupVars("DNS_BOGUS_PRIV", &conf->dns.bogusPriv);
+	get_conf_bool_from_setupVars("DNSSEC", &conf->dns.dnssec);
+	get_conf_string_from_setupVars("PIHOLE_INTERFACE", &conf->dns.interface);
+	get_conf_string_from_setupVars("HOSTRECORD", &conf->dns.hostRecord);
 
 	// Try to obtain listening mode
-	get_conf_listeningMode_from_setupVars();
+	get_conf_listeningMode_from_setupVars(conf);
 
 	// Try to obtain REV_SERVER settings
-	get_revServer_from_setupVars();
+	get_revServer_from_setupVars(conf);
 
 	// Try to obtain DHCP settings
-	get_conf_bool_from_setupVars("DHCP_ACTIVE", &config.dhcp.active);
-	get_conf_ipv4_from_setupVars("DHCP_START", &config.dhcp.start);
-	get_conf_ipv4_from_setupVars("DHCP_END", &config.dhcp.end);
-	get_conf_ipv4_from_setupVars("DHCP_ROUTER", &config.dhcp.router);
-	get_conf_string_from_setupVars("DHCP_LEASETIME", &config.dhcp.leaseTime);
+	get_conf_bool_from_setupVars("DHCP_ACTIVE", &conf->dhcp.active);
+	get_conf_ipv4_from_setupVars("DHCP_START", &conf->dhcp.start);
+	get_conf_ipv4_from_setupVars("DHCP_END", &conf->dhcp.end);
+	get_conf_ipv4_from_setupVars("DHCP_ROUTER", &conf->dhcp.router);
+	get_conf_string_from_setupVars("DHCP_LEASETIME", &conf->dhcp.leaseTime);
 
 	// If the DHCP lease time is set to "24", it is interpreted as "24h".
 	// This is some relict from the past that may still be present in some
 	// setups
-	if(strcmp(config.dhcp.leaseTime.v.s, "24") == 0)
+	if(strcmp(conf->dhcp.leaseTime.v.s, "24") == 0)
 	{
-		if(config.dhcp.leaseTime.t == CONF_STRING_ALLOCATED)
-			free(config.dhcp.leaseTime.v.s);
-		config.dhcp.leaseTime.v.s = strdup("24h");
-		config.dhcp.leaseTime.t = CONF_STRING_ALLOCATED;
+		if(conf->dhcp.leaseTime.t == CONF_STRING_ALLOCATED)
+			free(conf->dhcp.leaseTime.v.s);
+		conf->dhcp.leaseTime.v.s = strdup("24h");
+		conf->dhcp.leaseTime.t = CONF_STRING_ALLOCATED;
 	}
 
-	get_conf_bool_from_setupVars("DHCP_IPv6", &config.dhcp.ipv6);
-	get_conf_bool_from_setupVars("DHCP_rapid_commit", &config.dhcp.rapidCommit);
+	get_conf_bool_from_setupVars("DHCP_IPv6", &conf->dhcp.ipv6);
+	get_conf_bool_from_setupVars("DHCP_rapid_commit", &conf->dhcp.rapidCommit);
 
-	get_conf_bool_from_setupVars("QUERY_LOGGING", &config.dns.queryLogging);
+	get_conf_bool_from_setupVars("QUERY_LOGGING", &conf->dns.queryLogging);
 
-	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &config.files.gravity_tmp);
+	get_conf_string_from_setupVars("GRAVITY_TMPDIR", &conf->files.gravity_tmp);
 
 	// Ports may be temporarily stored when importing a legacy Teleporter v5 file
-	get_conf_string_from_setupVars("WEB_PORTS", &config.webserver.port);
+	get_conf_string_from_setupVars("WEB_PORTS", &conf->webserver.port);
 
 	// Move the setupVars.conf file to the migration directory
 	const char *setupVars_target = MIGRATION_TARGET_V6"/setupVars.conf";

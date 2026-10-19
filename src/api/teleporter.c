@@ -943,8 +943,14 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	free(archive);
 	free_upload_data(data);
 
-	// Migrate the config to v6
-	migrate_config_v6();
+	// Migrate the config to v6 on a copy of the running config, which
+	// migrate_config_v6() installs once it is complete. No other change of
+	// the config may run at the same time
+	lock_config();
+	struct config conf = { 0 };
+	duplicate_config(&conf, &config);
+	migrate_config_v6(&conf);
+	unlock_config();
 
 	// Signal FTL we want to restart for re-import
 	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";

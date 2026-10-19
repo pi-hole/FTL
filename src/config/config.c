@@ -1990,7 +1990,7 @@ static void get_web_port(struct config *conf)
 	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 }
 
-bool migrate_config_v6(void)
+bool migrate_config_v6(struct config *conf)
 {
 	// Check if MIGRATION_TARGET_V6 exists and is a directory
 	// Ideally, this directory should be created by the installer but users
@@ -2002,13 +2002,13 @@ bool migrate_config_v6(void)
 	log_info("Migrating config to Pi-hole v6.0 format");
 
 	// Initialize config with default values
-	initConfig(&config);
+	initConfig(conf);
 
 	// If no previous config file could be read, we are likely either running
 	// for the first time or we are upgrading from a version prior to v6.0
 	// In this case, we try to read the legacy config files
 	const char *path = "";
-	if((path = readFTLlegacy(&config)) != NULL)
+	if((path = readFTLlegacy(conf)) != NULL)
 	{
 		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
 		log_info("Moving %s to %s", path, target);
@@ -2020,17 +2020,17 @@ bool migrate_config_v6(void)
 
 	// Import bits and pieces from legacy config files
 	// setupVars.conf
-	importsetupVarsConf();
+	importsetupVarsConf(conf);
 	// 04-pihole-static-dhcp.conf
-	read_legacy_dhcp_static_config();
+	read_legacy_dhcp_static_config(conf);
 	// 05-pihole-custom-cname.conf
-	read_legacy_cnames_config();
+	read_legacy_cnames_config(conf);
 	// custom.list
-	read_legacy_custom_hosts_config();
+	read_legacy_custom_hosts_config(conf);
 
 	// Determine and set default webserver ports if not imported from
 	// setupVars.conf
-	get_web_port(&config);
+	get_web_port(conf);
 
 	// Hold the migrated values to the same rules every other way of setting
 	// them obeys. The legacy file is not necessarily one we wrote: it can be
@@ -2038,7 +2038,13 @@ bool migrate_config_v6(void)
 	// configuration that would otherwise run no validator at all. Migrating
 	// must not fail outright, though - it also runs for genuine upgrades - so
 	// an offending value is reset to its default and the reason is logged.
-	validate_config(&config, true, NULL);
+	validate_config(conf, true, NULL);
+
+	// A Teleporter import migrates a copy while the API and resolver threads
+	// keep reading the running config. The finished copy replaces it here the
+	// same way every other config change does
+	if(conf != &config)
+		replace_config(conf);
 
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
