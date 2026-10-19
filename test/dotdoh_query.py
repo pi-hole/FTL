@@ -25,6 +25,8 @@
 #                                                 connections to the first, then
 #                                                 time one query on the second
 #                                                 and count the idle ones closed
+#   emitpad <domain> <size> <outfile>             like emit, padded to <size> bytes
+#                                                 with an EDNS padding option
 #   slowserver <port> <ms> <ready> <secs>         plain UDP server on loopback that
 #                                                 answers A queries after <ms>, for
 #                                                 <secs>; creates <ready> once bound
@@ -53,6 +55,19 @@ def build_query(qname, qtype=1):
         body += bytes([len(label)]) + label.encode()
     body += b"\x00" + struct.pack("!HH", qtype, 1)  # QTYPE, QCLASS=IN
     return header + body
+
+
+def build_padded_query(qname, size):
+    """build_query() plus an OPT record whose padding option (RFC 7830) brings
+    the message to exactly size bytes."""
+    q = bytearray(build_query(qname))
+    pad = size - len(q) - 11 - 4
+    if pad < 0:
+        sys.exit("size %d is too small" % size)
+    q[10:12] = struct.pack("!H", 1)  # ARCOUNT
+    q += b"\x00" + struct.pack("!HHIH", 41, 1232, 0, 4 + pad)
+    q += struct.pack("!HH", 12, pad) + bytes(pad)
+    return bytes(q)
 
 
 def slow_server(port, delay_ms, readyfile, secs):
@@ -553,7 +568,7 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|slowserver|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
+        sys.exit("usage: dotdoh_query.py <emit|emitpad|emitqr|emiturl|slowserver|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
                  "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn> ...")
     cmd = sys.argv[1]
 
@@ -562,6 +577,10 @@ def main():
         qtype = int(sys.argv[4]) if len(sys.argv) > 4 else 1
         with open(outfile, "wb") as f:
             f.write(build_query(domain, qtype))
+    elif cmd == "emitpad":
+        _, _, domain, size, outfile = sys.argv[:5]
+        with open(outfile, "wb") as f:
+            f.write(build_padded_query(domain, int(size)))
     elif cmd == "slowserver":
         _, _, port, delay_ms, readyfile, secs = sys.argv[:6]
         slow_server(int(port), int(delay_ms), readyfile, float(secs))

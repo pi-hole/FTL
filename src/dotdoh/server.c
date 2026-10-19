@@ -584,9 +584,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 	if(flen < 0)
 		return flen;
 
-	// dnsmasq ignores a longer query over TCP as well. Fail at once rather
-	// than at the timeout
-	if((size_t)flen - 2 > FTL_dnsmasq_query_max())
+	// dnsmasq ignores a longer query over UDP and TCP alike, so fail at once
+	const size_t msg_len = (size_t)flen - 2;
+	if(msg_len > FTL_dnsmasq_query_max())
 		return -1;
 
 	// A random ID tells this query's answer apart from late answers to earlier
@@ -597,8 +597,11 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 		return -1;
 
 	// Over UDP, dnsmasq answers from the cache of its main process and needs no
-	// fork. Only a truncated answer is fetched again over TCP
-	ssize_t alen = loopback_udp_exchange(framed + 2, (size_t)flen - 2, answer, answer_sz);
+	// fork. A truncated answer, or a query longer than dnsmasq reads from a UDP
+	// datagram, goes over TCP
+	ssize_t alen = 0;
+	if(msg_len <= FTL_dnsmasq_udp_query_max())
+		alen = loopback_udp_exchange(framed + 2, msg_len, answer, answer_sz);
 
 	// Borrow a loopback connection for the duration of this query, exactly as the
 	// DoT and DoQ reactors do, so all three share one accounted pool of dnsmasq

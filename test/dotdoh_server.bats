@@ -103,6 +103,24 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a DoH query too long for a UDP query to dnsmasq resolves" {
+  # 1250 bytes plus the client attribution exceed the 1232 bytes dnsmasq reads
+  # from a UDP query, so the handoff has to use TCP
+  local ca q a
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_long_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_long_a.bin"
+  python3 test/dotdoh_query.py emitpad "$DOMAIN" 1250 "$q"
+  run curl -s --max-time 5 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+}
+
 @test "dotdoh-server: a slow DoH query is counted once" {
   # The upstream for slow.ftl answers after 1.5 s. A resend of the handoff in
   # the meantime would be another query for FTL

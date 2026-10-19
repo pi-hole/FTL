@@ -4516,6 +4516,11 @@ size_t FTL_dnsmasq_query_max(void)
 	return (size_t)daemon->packet_buff_sz;
 }
 
+size_t FTL_dnsmasq_udp_query_max(void)
+{
+	return (size_t)daemon->edns_pktsz;
+}
+
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
 void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
 {
