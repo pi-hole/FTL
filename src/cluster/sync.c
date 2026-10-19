@@ -52,6 +52,8 @@
 // MAX_PAYLOAD_BYTES
 #include "webserver/http-common.h"
 #include <sys/wait.h>
+// SYS_close_range
+#include <sys/syscall.h>
 // PATH_MAX
 #include <limits.h>
 // sleepms()
@@ -686,6 +688,19 @@ static int gravity_fd = -1;
 // newest lists while blocking nothing
 static bool gravity_ok = false;
 
+// Close every descriptor from lowfd up. Only called in a child of fork()
+static void close_from(const int lowfd)
+{
+#ifdef SYS_close_range
+	if(syscall(SYS_close_range, (unsigned int)lowfd, ~0U, 0) == 0)
+		return;
+#endif
+	// Kernels before 5.9 have no close_range()
+	const long max = sysconf(_SC_OPEN_MAX);
+	for(long fd = lowfd; fd < (max > 0 ? max : 1024); fd++)
+		close((int)fd);
+}
+
 bool cluster_run_gravity(void)
 {
 	if(gravity_fd >= 0)
@@ -724,7 +739,10 @@ bool cluster_run_gravity(void)
 
 	if(pid == 0)
 	{
-		close(fds[0]);
+		// Only the pipe's write end stays open: anything else of FTL's,
+		// its listening sockets above all, would outlive FTL in the run
+		const int out = dup2(fds[1], 3) == 3 ? 3 : -1;
+		close_from(4);
 
 		// This process does nothing but wait for the run below, and
 		// nothing else in it reaps: a child of a single-threaded process
@@ -732,8 +750,6 @@ bool cluster_run_gravity(void)
 		const pid_t child = fork();
 		if(child == 0)
 		{
-			close(fds[1]);
-
 			// Gravity writes a lot, and none of it belongs in the
 			// answer of whoever triggered this
 			const int fd = open("/dev/null", O_WRONLY);
@@ -743,6 +759,7 @@ bool cluster_run_gravity(void)
 				dup2(fd, STDERR_FILENO);
 				close(fd);
 			}
+			close_from(3);
 			// Deliberately not shielded from SIGTERM, though the
 			// API's own gravity path is (src/api/action.c). That
 			// shield does not work under the KillMode its comment
@@ -767,7 +784,7 @@ bool cluster_run_gravity(void)
 		const char outcome = waited == child &&
 		                     WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS ?
 		                     GRAVITY_DONE : GRAVITY_FAILED;
-		if(write(fds[1], &outcome, 1) != 1)
+		if(out < 0 || write(out, &outcome, 1) != 1)
 			_exit(EXIT_FAILURE);
 		_exit(EXIT_SUCCESS);
 	}
