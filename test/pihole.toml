@@ -389,9 +389,9 @@
   [dns.blocking]
     # Should FTL block queries?
     #
-    # Disabling or enabling blocking only temporarily, i.e., with a timer, does not change
-    # this setting. Such a temporary status is kept in memory only and ends when FTL
-    # restarts.
+    # A temporary status set with a timer is kept in memory only and ends when FTL
+    # restarts. If the requested mode is the one this setting already holds, the setting
+    # is changed to the opposite mode, which applies once the timer has elapsed.
     #
     # Allowed values are:
     #     true or false

@@ -709,7 +709,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
-	conf->dns.blocking.active.h = "Should FTL block queries?\n\n Disabling or enabling blocking only temporarily, i.e., with a timer, does not change this setting. Such a temporary status is kept in memory only and ends when FTL restarts.";
+	conf->dns.blocking.active.h = "Should FTL block queries?\n\n A temporary status set with a timer is kept in memory only and ends when FTL restarts. If the requested mode is the one this setting already holds, the setting is changed to the opposite mode, which applies once the timer has elapsed.";
 	conf->dns.blocking.active.t = CONF_BOOL;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
