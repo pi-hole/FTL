@@ -1302,6 +1302,9 @@ static void do_leave(void)
 // When a restart a peer's configuration asked for is due, and what to call it
 static double restart_at = 0.0;
 static const char *restart_reason = NULL;
+// ...and this node's place in the stagger, taken again after a gravity run
+static double restart_delay = 0.0;
+static bool restart_held = false;
 
 void cluster_restart_later(const char *reason)
 {
@@ -1337,6 +1340,7 @@ void cluster_restart_later(const char *reason)
 
 	restart_at = double_time() + delay;
 	restart_reason = reason;
+	restart_delay = delay;
 
 	log_info("cluster: restarting in %.0f s", delay);
 }
@@ -1346,6 +1350,24 @@ static void restart_due(void)
 {
 	if(restart_at <= 0.0)
 		return;
+
+	// Not while gravity runs. The stop would wait for the run anyway, and
+	// every node runs the same rebuild for the same change, so they would all
+	// restart together when it ends
+	if(gravity_running)
+	{
+		if(!restart_held)
+			log_info("cluster: restart held until gravity has finished");
+		restart_held = true;
+		return;
+	}
+	if(restart_held)
+	{
+		restart_held = false;
+		restart_at = double_time() + restart_delay;
+		log_info("cluster: restarting in %.0f s", restart_delay);
+		return;
+	}
 
 	// Nothing schedules a restart further ahead than the whole cluster's
 	// stagger, so anything beyond that is the wall clock having moved
