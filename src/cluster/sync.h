@@ -73,8 +73,10 @@ cJSON *cluster_config_document(double *changed, const bool encrypted);
 
 // ...and handing it over, which is a PATCH of the peer's configuration - the
 // request the web interface makes when somebody hits Save. The peer decides for
-// itself which of the items it does not hold yet
-bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed);
+// itself which of the items it does not hold yet. *taken (if not NULL) is false
+// when the peer answered but holds a newer configuration
+bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed,
+                         bool *taken);
 
 // Can this document reach a peer at all, or is it larger than one can read?
 bool cluster_push_possible(const char *body) __attribute__ ((pure));

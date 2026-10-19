@@ -521,6 +521,21 @@ class TestClusterCredentials:
             assert "app_pwhash" not in answer.text, f"the application passwords came back in {what}"
 
 
+class TestClusterPushAnswer:
+
+    @pytest.mark.parametrize("older", [True, False])
+    def test_answer_says_whether_the_push_was_taken(self, addressed, older):
+        """A push older than what this node holds is kept out, and the sender
+        has to learn that rather than believe it caught this node up."""
+        body = json.dumps({"config": {}})
+        uri = f"/api/config?changed={0.0 if older else time.time():.6f}"
+        headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body)
+        headers["Content-Type"] = "application/json"
+        r = requests.patch(f"{FTL_URL}{uri}", headers=headers, data=body, timeout=20)
+        assert r.status_code == 200, r.text[:200]
+        assert _j(r).get("taken") is (not older), r.text[:200]
+
+
 # ---------------------------------------------------------------------------
 # Handing a cluster over
 # ---------------------------------------------------------------------------

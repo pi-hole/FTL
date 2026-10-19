@@ -71,6 +71,13 @@ components:
                 schema:
                   allOf:
                     - $ref: 'config.yaml#/components/schemas/config'
+                    - type: object
+                      properties:
+                        taken:
+                          type: boolean
+                          description: |
+                            Only in the answer to another cluster node's signed push: `false` when this node holds a newer configuration and kept it, `true` otherwise
+                          example: true
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
                   config:
@@ -1323,8 +1330,8 @@ components:
         as the cluster's starting point rather than a change anybody made. Only
         another node of the cluster may set it, and only over a signed request:
         it says how old the configuration being handed over is.
-        A push older than what the receiving node holds changes nothing there,
-        so a node that was away cannot overwrite a newer configuration with
+        A push older than what the receiving node holds changes nothing there
+        and is answered with `taken` set to `false`, so a node that was away cannot overwrite a newer configuration with
         what it still held, and two pushes crossing in flight settle the same
         way whichever of them arrives last. Ignored on every other request.
       required: false

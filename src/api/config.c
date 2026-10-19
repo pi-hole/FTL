@@ -457,7 +457,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed, cons
 	return 0;
 }
 
-static int api_config_get(struct ftl_conn *api)
+static int api_config_get(struct ftl_conn *api, const bool refused)
 {
 	// Parse query string parameters
 	bool detailed = false;
@@ -476,6 +476,11 @@ static int api_config_get(struct ftl_conn *api)
 		get_json_config(api, json, false, true, false);
 	else
 		get_json_config(api, json, detailed, false, false);
+
+	// ...and whether the push was taken, so the peer does not believe it
+	// caught up a node holding a newer configuration
+	if(from_cluster && api->method == HTTP_PATCH)
+		JSON_ADD_BOOL_TO_OBJECT(json, "taken", !refused);
 
 	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
@@ -496,8 +501,8 @@ static bool syncable_item(const struct conf_item *item, void *ctx)
 }
 
 // Sets *send_config when the caller is to answer with the full config, which it
-// does after releasing the config lock
-static int api_config_patch(struct ftl_conn *api, bool *send_config)
+// does after releasing the config lock, and *refused for a peer's older push
+static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refused)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -575,6 +580,7 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config)
 
 		// Answered by the caller once the config lock is released, a peer
 		// that reads slowly would otherwise hold up every config change
+		*refused = true;
 		*send_config = true;
 		return 0;
 	}
@@ -1032,7 +1038,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 int api_config(struct ftl_conn *api)
 {
 	if(api->method == HTTP_GET)
-		return api_config_get(api);
+		return api_config_get(api, false);
 
 	// Check if this is an app session and reject the request if app sudo
 	// mode is disabled
@@ -1061,11 +1067,11 @@ int api_config(struct ftl_conn *api)
 	{
 		// Serializing and sending the full config can be slow with a slow
 		// client, so it happens after the lock is released
-		bool send_config = false;
+		bool send_config = false, refused = false;
 		lock_config();
-		const int ret = api_config_patch(api, &send_config);
+		const int ret = api_config_patch(api, &send_config, &refused);
 		unlock_config();
-		return send_config ? api_config_get(api) : ret;
+		return send_config ? api_config_get(api, refused) : ret;
 	}
 	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
 	{
