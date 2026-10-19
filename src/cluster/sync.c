@@ -34,6 +34,8 @@
 
 // read_teleporter_zip()
 #include "zip/teleporter.h"
+// log_cluster_message()
+#include "database/message-table.h"
 // sqlite3
 #include "database/sqlite3.h"
 // gravity_running
@@ -659,6 +661,7 @@ bool cluster_push_config(struct cluster_peer *peer, const char *body, const doub
 	{
 		log_warn("cluster: configuration is too large to synchronize (%zu bytes)",
 		         strlen(body));
+		log_cluster_message("the configuration is too large to synchronize");
 		return false;
 	}
 
@@ -903,22 +906,28 @@ bool cluster_gravity_check(void)
 		return false;
 	}
 
-	if(outcome == GRAVITY_NOT_STARTED)
-		log_warn("cluster: cannot start gravity");
-	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
+	if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
 	{
 		log_info("cluster: gravity finished");
 		gravity_ok = true;
+		return true;
 	}
+
+	char failed[CLUSTER_STRLEN] = "";
+	if(outcome == GRAVITY_NOT_STARTED)
+		snprintf(failed, sizeof(failed), "cannot start gravity");
 	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == 127)
-		log_warn("cluster: cannot run %s", PIHOLE_BINARY);
+		snprintf(failed, sizeof(failed), "cannot run %s", PIHOLE_BINARY);
 	else if(WIFEXITED(outcome))
-		log_warn("cluster: gravity exited with status %d", WEXITSTATUS(outcome));
+		snprintf(failed, sizeof(failed), "gravity exited with status %d", WEXITSTATUS(outcome));
 	else if(WIFSIGNALED(outcome))
-		log_warn("cluster: gravity was ended by signal %d (%s)",
+		snprintf(failed, sizeof(failed), "gravity was ended by signal %d (%s)",
 		         WTERMSIG(outcome), strsignal(WTERMSIG(outcome)));
 	else
-		log_warn("cluster: gravity outcome unknown");
+		snprintf(failed, sizeof(failed), "gravity outcome unknown");
+
+	log_warn("cluster: %s", failed);
+	log_cluster_message(failed);
 
 	return true;
 }
