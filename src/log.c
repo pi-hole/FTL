@@ -28,11 +28,29 @@
 #include "database/query-table.h"
 // runGC()
 #include "gc.h"
+// open(), O_WRONLY, O_APPEND, O_CLOEXEC, O_NOFOLLOW
+#include <fcntl.h>
 
 static bool print_log = true, print_stdout = true;
 static bool ftl_log_available = true;
 static const char *process = "";
 bool debug_flags[DEBUG_MAX] = { false };
+
+// Append to FTL.log without any lock or allocation, for a caller that cannot
+// wait on other threads (the crash watchdog). Not in CLI mode, which does not
+// log to FTL.log
+void log_ftl_raw(const char *msg, const size_t len)
+{
+	if(!print_log || config.files.log.ftl.v.s == NULL)
+		return;
+	const int fd = open(config.files.log.ftl.v.s, O_WRONLY|O_APPEND|O_CLOEXEC|O_NOFOLLOW);
+	if(fd == -1)
+		return;
+	// libc's write(): FTLwrite() logs a failure, which may wait for a lock
+	const ssize_t ret = (write)(fd, msg, len);
+	(void)ret;
+	close(fd);
+}
 
 void clear_debug_flags(void)
 {

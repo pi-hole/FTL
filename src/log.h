@@ -91,6 +91,7 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
 
 bool flush_dnsmasq_log(void);
+void log_ftl_raw(const char *msg, const size_t len);
 
 typedef struct {
 	struct {
