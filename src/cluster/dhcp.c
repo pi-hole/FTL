@@ -144,6 +144,20 @@ static void takeover_failed(void)
 	takeover_failed_until = double_time() + fmin(wait, CLUSTER_TAKEOVER_BACKOFF_MAX);
 }
 
+// Kept in the state file: a takeover that ends in a dead resolver is only seen
+// after the restart it caused, and forgetting it there elects this node again
+void cluster_dhcp_takeover_state(double *until, unsigned int *failures)
+{
+	*until = takeover_failed_until;
+	*failures = takeover_failures;
+}
+
+void cluster_dhcp_restore_takeover(const double until, const unsigned int failures)
+{
+	takeover_failed_until = until;
+	takeover_failures = failures;
+}
+
 // Can this node serve DHCP at all? Not "has it a lease range" but the whole
 // question dnsmasq is asked when the configuration is written - a node that
 // answers yes here and then cannot write its configuration leaves the network
@@ -216,6 +230,11 @@ bool cluster_dhcp_configured(void)
 		return false;
 
 	if(config.misc.readOnly.v.b || (config.dhcp.active.f & FLAG_ENV_VAR))
+		return false;
+
+	// dnsmasq refuses to serve DHCP without it, and the restart of a takeover
+	// would leave this node with a dead resolver
+	if(!check_capability(CAP_NET_ADMIN))
 		return false;
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
@@ -497,6 +516,10 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		{
 			log_warn("cluster: dnsmasq is not running here, so this node stops serving DHCP - another node takes it over");
 			set_dhcp_active(false, "this node's resolver did not start", false);
+
+			// ...and is not elected again right after the restart
+			takeover_failed();
+			cluster_state_save(NULL);
 		}
 		return;
 	}
