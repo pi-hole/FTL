@@ -3182,7 +3182,13 @@ static void *run_cluster_thread(void *val)
 		// minutes, so it is watched from here rather than waited for
 		if(want_terminate)
 			cluster_gravity_stop();
-		cluster_gravity_check();
+		if(cluster_gravity_check())
+		{
+			// Settled before gravity_running goes, or a stop parked
+			// behind the run restarts FTL with the rebuild still owed
+			settle_gravity();
+			cluster_gravity_release();
+		}
 
 		restart_due();
 		cluster_beacon_poll();

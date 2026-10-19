@@ -110,8 +110,10 @@ void cluster_state_build_settled(void);
 bool cluster_gravity_pending(void) __attribute__ ((pure));
 bool cluster_gravity_succeeded(void) __attribute__ ((pure));
 
-// Has the gravity run this node started finished? Looked at once per tick
-void cluster_gravity_check(void);
+// Has the gravity run this node started finished? Looked at once per tick. True
+// when it ended and its outcome is to be settled, followed by the release
+bool cluster_gravity_check(void);
+void cluster_gravity_release(void);
 // End that run, as a stop is pending
 void cluster_gravity_stop(void);
 

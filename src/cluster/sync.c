@@ -822,20 +822,21 @@ void cluster_gravity_stop(void)
 
 // Looked at once per tick. Blocking here would leave the cluster blind for the
 // whole run, and a node failing over during it would go unnoticed
-void cluster_gravity_check(void)
+// True when a run ended that is to be settled. gravity_running is then left to
+// cluster_gravity_release(), so a stop parked behind the run waits for that
+bool cluster_gravity_check(void)
 {
 	if(gravity_fd < 0)
-		return;
+		return false;
 
 	// Written in one piece, well below PIPE_BUF, so it arrives whole or not
 	int outcome = 0;
 	const ssize_t len = read(gravity_fd, &outcome, sizeof(outcome));
 	if(len < 0 && (errno == EAGAIN || errno == EINTR))
-		return; // still running, looked at again next tick
+		return false; // still running, looked at again next tick
 
 	close(gravity_fd);
 	gravity_fd = -1;
-	atomic_store(&gravity_running, false);
 
 	// Whoever gets there first: this leaves no zombie behind if dnsmasq has
 	// not already taken it
@@ -848,12 +849,19 @@ void cluster_gravity_check(void)
 		// The run died before it could say how it went, so whether the
 		// lists were built is unknown - and unknown is not success
 		log_warn("cluster: gravity outcome unknown");
-		return;
+		return true;
 	}
 
+	// Nothing to settle: the pending record has the rebuild redone after
+	// the restart
 	if(gravity_stopping)
+	{
 		log_info("cluster: gravity run ended");
-	else if(outcome == GRAVITY_NOT_STARTED)
+		cluster_gravity_release();
+		return false;
+	}
+
+	if(outcome == GRAVITY_NOT_STARTED)
 		log_warn("cluster: cannot start gravity");
 	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
 	{
@@ -869,6 +877,13 @@ void cluster_gravity_check(void)
 		         WTERMSIG(outcome), strsignal(WTERMSIG(outcome)));
 	else
 		log_warn("cluster: gravity outcome unknown");
+
+	return true;
+}
+
+void cluster_gravity_release(void)
+{
+	atomic_store(&gravity_running, false);
 }
 
 bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding)
