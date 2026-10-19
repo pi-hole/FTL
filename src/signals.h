@@ -20,6 +20,7 @@
 
 void handle_signals(void);
 void start_crash_watchdog(void);
+void crash_watchdog_progress(void);
 void handle_realtime_signals(void);
 void log_sigterm_info(void);
 pid_t main_pid(void);
