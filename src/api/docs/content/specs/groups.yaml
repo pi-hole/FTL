@@ -135,11 +135,14 @@ components:
         tags:
           - "Group management"
         operationId: "list_groups"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_filter'
         description: |
           Returns the full list of groups configured on your Pi-hole.
 
           This is the collection form of `GET /api/groups/{name}` (see `get_groups`)
           and returns the same array schema without requiring a `{name}` path parameter.
+          With the `item` query parameter, only that item is returned.
         responses:
           '200':
             description: OK

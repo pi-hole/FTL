@@ -158,11 +158,14 @@ components:
         tags:
           - "Client management"
         operationId: "list_clients"
+        parameters:
+          - $ref: 'common.yaml#/components/parameters/item_filter'
         description: |
           Returns the full list of clients configured on your Pi-hole.
 
           This is the collection form of `GET /api/clients/{client}` (see `get_clients`)
           and returns the same array schema without requiring a `{client}` path parameter.
+          With the `item` query parameter, only that item is returned.
         responses:
           '200':
             description: OK

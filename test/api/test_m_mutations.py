@@ -543,6 +543,11 @@ class TestPutErrors:
         assert len(groups) == 1
         assert groups[0]["name"] == name
 
+        # GET narrows the collection to the item, too
+        r = api_session.get(url, timeout=10)
+        assert r.status_code == 200, f"GET failed: {r.status_code} {r.text}"
+        assert [g["name"] for g in _j(r)["groups"]] == [name]
+
         # Clean up
         r = api_session.delete(url, timeout=10)
         assert r.status_code == 204

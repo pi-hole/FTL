@@ -140,6 +140,7 @@ components:
         summary: List all lists
         parameters:
           - $ref: 'lists.yaml#/components/parameters/listtype_optional'
+          - $ref: 'common.yaml#/components/parameters/item_filter'
         tags:
           - "List management"
         operationId: "list_lists"
@@ -148,6 +149,7 @@ components:
 
           This is the collection form of `GET /api/lists/{list}` (see `get_lists`)
           and returns the same array schema without requiring a `{list}` path parameter.
+          With the `item` query parameter, only that item is returned.
         responses:
           '200':
             description: OK

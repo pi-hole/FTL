@@ -128,3 +128,12 @@ components:
         type: string
       required: true
       example: "."
+    item_filter:
+      in: query
+      name: item
+      description: |
+        Return only this item instead of all of them, as an alternative to naming it in the URI path. This is the only way to read an item that is literally `.` or `..`, as browsers remove such a path segment while they resolve a URL.
+      schema:
+        type: string
+      required: false
+      example: "."

@@ -24,6 +24,10 @@
     - `/api/domains/exact/abc.com` (allowed and denied exact domains identical to `abc.com`)
     - `/api/domains/regex` (allowed and denied regex domains)
     - `/api/domains/regex/abc.com` (allowed and denied regex domains identical to `abc.com`)
+
+    The domain may also be given in the `item` query parameter instead of the path, e.g., `/api/domains/allow/exact?item=abc.com`.
+  parameters:
+    - $ref: 'common.yaml#/components/parameters/item_filter'
   responses:
     '200':
       description: OK
