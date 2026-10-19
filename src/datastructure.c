@@ -313,6 +313,8 @@ int _findDomainID(const char *domainString, const bool count, const bool hidden,
 
 		// Add one if count == true (do not add one, e.g., during CNAME inspection)
 		if(count) { if(hidden) domain->hiddencount++; else domain->count++; }
+		if(!hidden)
+			domain->flags.hidden_only = false;
 		return domainID;
 	}
 
@@ -343,6 +345,7 @@ int _findDomainID(const char *domainString, const bool count, const bool hidden,
 	// Domains only encountered during CNAME inspection are NOT counted here
 	domain->count = count && !hidden ? 1 : 0;
 	domain->hiddencount = count && hidden ? 1 : 0;
+	domain->flags.hidden_only = hidden;
 	// Set blocked counter to zero
 	domain->blockedcount = 0;
 	// Store domain name - no need to check for NULL here as it doesn't harm
@@ -399,7 +402,12 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 			return -1;
 
 		// Add one if count == true (do not add one, e.g., during ARP table processing)
-		if(count && !aliasclient) change_clientcount(client, 1, 0, -1, 0, hidden);
+		if(count && !aliasclient)
+		{
+			change_clientcount(client, 1, 0, -1, 0, hidden);
+			if(!hidden)
+				client->flags.hidden_only = false;
+		}
 		return clientID;
 	}
 
@@ -430,6 +438,7 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Set its counter to 1
 	client->count = (count && !aliasclient && !hidden) ? 1 : 0;
 	client->hiddencount = (count && !aliasclient && hidden) ? 1 : 0;
+	client->flags.hidden_only = count && !aliasclient && hidden;
 	// Initialize blocked count to zero
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
@@ -1225,6 +1234,32 @@ const char * __attribute__ ((pure)) get_permitted_statuslist(void)
 unsigned int __attribute__ ((pure)) get_visible_query_count(void)
 {
 	return counters->queries - counters->hidden_queries;
+}
+
+// Clients and domains that only hidden queries have counted are no statistic
+// either, they would not exist without dns.ignoreLocalhost
+unsigned int get_visible_client_count(void)
+{
+	unsigned int hidden = 0;
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		const clientsData *client = getClient(clientID, true);
+		if(client != NULL && client->flags.hidden_only)
+			hidden++;
+	}
+	return counters->clients - hidden;
+}
+
+unsigned int get_visible_domain_count(void)
+{
+	unsigned int hidden = 0;
+	for(unsigned int domainID = 0; domainID < counters->domains; domainID++)
+	{
+		const domainsData *domain = getDomain(domainID, true);
+		if(domain != NULL && domain->flags.hidden_only)
+			hidden++;
+	}
+	return counters->domains - hidden;
 }
 
 unsigned int __attribute__ ((pure)) get_blocked_count(void)

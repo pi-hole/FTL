@@ -57,9 +57,9 @@ typedef struct {
 		// is returned exactly once - either by query_blocked() when the
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
-		// Query is filtered but never recorded (dns.ignoreLocalhost). Such
-		// queries live on the stack only, so every counter update has to be
-		// skipped - nothing would ever hand the count back.
+		// Query is filtered like any other but kept out of the statistics,
+		// the query log and the database (dns.ignoreLocalhost). It holds
+		// its client and domain through their hiddencount only
 		bool hidden :1;
 		struct database_flags {
 			bool changed :1;
@@ -113,6 +113,7 @@ typedef struct {
 		bool rate_limited:1;
 		bool in_database:1;
 		bool groups_looked_up:1; // get_client_groupids() ran at least once
+		bool hidden_only:1; // only hidden queries have counted this client
 	} flags;
 	int count;
 	int blockedcount;
@@ -150,6 +151,7 @@ typedef struct {
 	unsigned char magic;
 	struct domain_flags {
 		bool in_database:1;
+		bool hidden_only:1; // See clientsData.flags.hidden_only
 	} flags;
 	int count;
 	int blockedcount;
@@ -239,6 +241,8 @@ const char *getClientNameString(const queriesData *query);
 
 void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod, const bool hidden);
 unsigned int get_visible_query_count(void) __attribute__ ((pure));
+unsigned int get_visible_client_count(void);
+unsigned int get_visible_domain_count(void);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
 const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
 const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));

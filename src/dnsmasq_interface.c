@@ -1053,7 +1053,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update rolling window of queries per second
-	update_qps(querytimestamp);
+	if(!hidden)
+		update_qps(querytimestamp);
 
 	// Interface name is only available for regular queries, not for
 	// automatically generated DNSSEC queries
@@ -1230,11 +1231,13 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Update overTime data structure with the new client
 	change_clientcount(client, 0, 0, timeidx, 1, hidden);
 
-	// Set lastQuery timer and add one query for network table. The counter
-	// ends up in the network overview, so hidden queries stay out of it.
-	client->lastQuery = querytimestamp;
+	// Set lastQuery timer and add one query for network table. Both end up
+	// in the network overview, so hidden queries stay out of it.
 	if(!hidden)
+	{
+		client->lastQuery = querytimestamp;
 		client->numQueriesARP++;
+	}
 
 	// Update domain's last query time
 	domainsData *domain = getDomain(domainID, false);
@@ -2419,7 +2422,7 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 	// This is the domain which was queried later in this chain
 	char child_domain[MAXDOMAINLEN];
 	strcpy_tolower(child_domain, dst, sizeof(child_domain));
-	const int child_domainID = findDomainID(child_domain, false, false);
+	const int child_domainID = findDomainID(child_domain, false, query->flags.hidden);
 
 	// Set child domains's last query time
 	if(child_domainID >= 0)
@@ -2636,8 +2639,8 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 		{
 			upstream->count++;
 			query->flags.upstream_counted = true;
+			upstream->lastQuery = now;
 		}
-		upstream->lastQuery = now;
 	}
 
 	// Proceed only if
@@ -3091,12 +3094,14 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 			unlock_shm();
 			return;
 		}
-		upstream->responses++;
-
 		// Re-compute upstream average response time and uncertainty
-		upstream->rtime += query->response;
-		const double mean = upstream->rtime / upstream->responses;
-		upstream->rtuncertainty += (mean - query->response)*(mean - query->response);
+		if(!query->flags.hidden)
+		{
+			upstream->responses++;
+			upstream->rtime += query->response;
+			const double mean = upstream->rtime / upstream->responses;
+			upstream->rtuncertainty += (mean - query->response)*(mean - query->response);
+		}
 
 		// Only proceed if query is not already known to have been
 		// blocked upstream AND short-circuited.

@@ -1213,7 +1213,9 @@ setup() {
 # NOTE: HTTP 404 tests moved to pytest (test/api/test_api.py)
 
 @test "dns.ignoreLocalhost hides localhost queries but still filters them" {
-  before=$(curl -s 127.0.0.1/api/stats/summary | jq .queries.total)
+  # The whole summary has to stay as it is, apart from the rolling query
+  # frequency and the processing time
+  before=$(curl -s 127.0.0.1/api/stats/summary | jq -c 'del(.queries.frequency, .took)')
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":true}}}"'
@@ -1226,7 +1228,7 @@ setup() {
   reply_gravity=$(dig +short A gravity.ftl @127.0.0.1)
   reply_cname=$(dig +short A cname-1.ftl @127.0.0.1)
   reply_cname_deep=$(dig +short A cname-7.ftl @127.0.0.1)
-  after=$(curl -s 127.0.0.1/api/stats/summary | jq .queries.total)
+  after=$(curl -s 127.0.0.1/api/stats/summary | jq -c 'del(.queries.frequency, .took)')
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":false}}}"'
@@ -1241,6 +1243,8 @@ setup() {
   [[ "${reply_cname_deep}" == "0.0.0.0" ]]
 
   # ... but none of them has been recorded
+  echo "before: ${before}"
+  echo "after:  ${after}"
   [[ "${before}" == "${after}" ]]
 }
 

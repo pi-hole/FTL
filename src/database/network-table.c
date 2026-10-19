@@ -830,8 +830,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			continue;
 		}
 
-		// Silently skip alias-clients - they do not really exist
-		if(client->flags.aliasclient)
+		// Silently skip alias-clients - they do not really exist - and
+		// clients only hidden queries have counted
+		if(client->flags.aliasclient || client->flags.hidden_only)
 		{
 			unlock_shm();
 			continue;
