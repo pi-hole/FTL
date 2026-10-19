@@ -105,6 +105,7 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 
 bool flush_dnsmasq_log(void);
 int is_log_fd(const int fd);
+void log_ftl_raw(const char *msg, const size_t len);
 
 typedef struct {
 	struct {

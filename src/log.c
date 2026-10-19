@@ -97,6 +97,16 @@ static void reopen_log_fd(struct log_fd *log)
 // through the logger, which would re-enter here under the lock already held
 #undef write
 
+// Append to FTL.log without its lock, for a caller that cannot wait on
+// other threads (the crash watchdog)
+void log_ftl_raw(const char *msg, const size_t len)
+{
+	if(ftl_log.fd == -1)
+		return;
+	const ssize_t ret = write(ftl_log.fd, msg, len);
+	(void)ret;
+}
+
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
 // per-file so SIGUSR2 only touches the fd that actually needs it.
