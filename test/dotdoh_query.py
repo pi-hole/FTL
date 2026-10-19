@@ -25,6 +25,9 @@
 #                                                 connections to the first, then
 #                                                 time one query on the second
 #                                                 and count the idle ones closed
+#   slowserver <port> <ms> <ready> <secs>         plain UDP server on loopback that
+#                                                 answers A queries after <ms>, for
+#                                                 <secs>; creates <ready> once bound
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -50,6 +53,35 @@ def build_query(qname, qtype=1):
         body += bytes([len(label)]) + label.encode()
     body += b"\x00" + struct.pack("!HH", qtype, 1)  # QTYPE, QCLASS=IN
     return header + body
+
+
+def slow_server(port, delay_ms, readyfile, secs):
+    """Answer A queries on 127.0.0.1:port with 192.168.1.1 after delay_ms until
+    secs pass. readyfile is created once the socket is bound."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.1", port))
+    open(readyfile, "w").close()
+    end = time.monotonic() + secs
+    while time.monotonic() < end:
+        s.settimeout(max(end - time.monotonic(), 0.01))
+        try:
+            query, peer = s.recvfrom(65535)
+        except socket.timeout:
+            break
+        if len(query) < 12:
+            continue
+        i = 12
+        while i < len(query) and query[i] != 0:
+            i += 1 + query[i]
+        qend = i + 5
+        time.sleep(delay_ms / 1000.0)
+        reply = bytearray(query[:qend])
+        reply[2] |= 0x80
+        reply[3] = 0x80  # RA, NOERROR
+        reply[6:12] = struct.pack("!HHH", 1, 0, 0)
+        reply += struct.pack("!HHHIH", 0xC00C, 1, 1, 60, 4) + socket.inet_aton("192.168.1.1")
+        s.sendto(bytes(reply), peer)
+    s.close()
 
 
 def tcp_keep(host, port, count, suffix):
@@ -521,7 +553,7 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|slowserver|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
                  "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn> ...")
     cmd = sys.argv[1]
 
@@ -530,6 +562,9 @@ def main():
         qtype = int(sys.argv[4]) if len(sys.argv) > 4 else 1
         with open(outfile, "wb") as f:
             f.write(build_query(domain, qtype))
+    elif cmd == "slowserver":
+        _, _, port, delay_ms, readyfile, secs = sys.argv[:6]
+        slow_server(int(port), int(delay_ms), readyfile, float(secs))
     elif cmd == "emitqr":
         # A message with the QR (response) bit set, which is not a query.
         _, _, domain, outfile = sys.argv[:4]

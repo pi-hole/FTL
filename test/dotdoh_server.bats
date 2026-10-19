@@ -103,6 +103,31 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a slow DoH query is counted once" {
+  # The upstream for slow.ftl answers after 1.5 s. A resend of the handoff in
+  # the meantime would be another query for FTL
+  local ca q a ready name i out
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_slow_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_slow_a.bin"
+  ready="${BATS_FILE_TMPDIR}/slow_upstream.ready"
+  name="once.slow.ftl"
+  python3 test/dotdoh_query.py slowserver 5556 1500 "$ready" 20 >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 20); do [[ -f "$ready" ]] && break; sleep 0.1; done
+  python3 test/dotdoh_query.py emit "$name" "$q"
+  run curl -s --max-time 10 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+  out=$(curl -s "${FTL_URL}/api/queries?domain=${name}")
+  run python3 -c 'import json, sys; print(len(json.loads(sys.argv[1])["queries"]))' "$out"
+  assert_output "1"
+}
+
 @test "dotdoh-server: a DoH answer carries a Cache-Control max-age (RFC 8484)" {
   local ca q; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/cc_q.bin"
   python3 test/dotdoh_query.py emit "$DOMAIN" "$q"

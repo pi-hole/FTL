@@ -502,9 +502,9 @@ static int64_t monotonic_msec(void)
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-// Send the query to dnsmasq over loopback UDP and wait for its answer. dnsmasq
-// tries another upstream only when a client repeats a query, so it is sent again
-// after 1 and 3 s. Returns the answer length, 0 if the answer was truncated, or -1
+// Send the query to dnsmasq over loopback UDP and wait for its answer. It is sent
+// once, as dnsmasq would count a repeat as another query from the client.
+// Returns the answer length, 0 if the answer was truncated, or -1
 static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
                                      uint8_t *answer, const size_t answer_sz)
 {
@@ -517,51 +517,46 @@ static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
 		pthread_setspecific(udp_fd_key, &udp_fd);
 	}
 
-	// When to send, relative to the first send. The last entry ends the wait,
-	// as LOOPBACK_IO_TIMEOUT_S does for the TCP handoff
-	static const int64_t send_at_ms[] = { 0, 1000, 3000, LOOPBACK_IO_TIMEOUT_S * 1000 };
-	const int64_t start = monotonic_msec();
-	for(unsigned int i = 0; i + 1 < ArraySize(send_at_ms); i++)
+	ssize_t sent;
+	do
+		sent = send(udp_fd, query, qlen, 0);
+	while(sent < 0 && errno == EINTR);
+	if(sent < 0)
 	{
-		ssize_t sent;
-		do
-			sent = send(udp_fd, query, qlen, 0);
-		while(sent < 0 && errno == EINTR);
-		if(sent < 0)
+		log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
+		return -1;
+	}
+
+	// Wait as long as the TCP handoff does
+	const int64_t end = monotonic_msec() + LOOPBACK_IO_TIMEOUT_S * 1000;
+	int64_t remaining;
+	while((remaining = end - monotonic_msec()) > 0)
+	{
+		struct pollfd pfd = { .fd = udp_fd, .events = POLLIN };
+		const int ready = poll(&pfd, 1, (int)remaining);
+		if(ready == 0)
+			break;
+		if(ready < 0)
 		{
-			log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
+			if(errno == EINTR)
+				continue;
+			log_debug(DEBUG_RESOLVER, "dotdoh: poll on loopback DNS failed: %s", strerror(errno));
 			return -1;
 		}
 
-		int64_t remaining;
-		while((remaining = start + send_at_ms[i + 1] - monotonic_msec()) > 0)
+		const ssize_t rlen = recv_nowarn(udp_fd, answer, answer_sz, MSG_DONTWAIT);
+		if(rlen < 0)
 		{
-			struct pollfd pfd = { .fd = udp_fd, .events = POLLIN };
-			const int ready = poll(&pfd, 1, (int)remaining);
-			if(ready == 0)
-				break;
-			if(ready < 0)
-			{
-				if(errno == EINTR)
-					continue;
-				log_debug(DEBUG_RESOLVER, "dotdoh: poll on loopback DNS failed: %s", strerror(errno));
-				return -1;
-			}
-
-			const ssize_t rlen = recv_nowarn(udp_fd, answer, answer_sz, MSG_DONTWAIT);
-			if(rlen < 0)
-			{
-				if(errno == EAGAIN || errno == EINTR)
-					continue;
-				log_debug(DEBUG_RESOLVER, "dotdoh: read from loopback DNS failed: %s", strerror(errno));
-				return -1;
-			}
-			if(!answers_query(query, qlen, answer, (size_t)rlen))
+			if(errno == EAGAIN || errno == EINTR)
 				continue;
-
-			// A truncated answer has to be fetched over TCP
-			return (answer[2] & 0x02) != 0 ? 0 : rlen;
+			log_debug(DEBUG_RESOLVER, "dotdoh: read from loopback DNS failed: %s", strerror(errno));
+			return -1;
 		}
+		if(!answers_query(query, qlen, answer, (size_t)rlen))
+			continue;
+
+		// A truncated answer has to be fetched over TCP
+		return (answer[2] & 0x02) != 0 ? 0 : rlen;
 	}
 
 	log_debug(DEBUG_RESOLVER, "dotdoh: no answer from loopback DNS");
@@ -590,7 +585,7 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 		return flen;
 
 	// dnsmasq ignores a longer query over TCP as well. Fail at once rather
-	// than after the UDP resends
+	// than at the timeout
 	if((size_t)flen - 2 > FTL_dnsmasq_query_max())
 		return -1;
 
