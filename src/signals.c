@@ -1406,14 +1406,17 @@ static void *crash_watchdog(void *arg)
 
 	// Every finished shutdown step restarts the countdown
 	crash_shutdown_progress = 0;
-	for(unsigned int left = CRASH_EXIT_TIMEOUT; left > 0; left--)
+	unsigned int left = CRASH_EXIT_TIMEOUT;
+	while(left > 0)
 	{
 		sleep(1);
 		if(crash_shutdown_progress)
 		{
 			crash_shutdown_progress = 0;
-			left = CRASH_EXIT_TIMEOUT + 1;
+			left = CRASH_EXIT_TIMEOUT;
 		}
+		else
+			left--;
 	}
 
 	static const char msg[] = "FTL did not shut down after the crash, exiting now\n";
