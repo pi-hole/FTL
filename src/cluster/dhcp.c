@@ -56,7 +56,7 @@ static void forget_rounds(void)
 
 
 // Said once rather than once per round while the condition lasts
-static bool warned_incapable = false;
+static const char *warned_incapable = NULL;
 static bool warned_refused = false;
 
 // ...and the same for peers that run DHCP failover while this node does not
@@ -216,51 +216,67 @@ bool cluster_vip_capable(void)
 	       config.dns.listeningMode.v.listeningMode != LISTEN_BIND;
 }
 
-bool cluster_dhcp_configured(void)
+// Why this node is not set up to serve DHCP, NULL when it is
+static const char *not_configured(void)
 {
 	// Two machines carrying one identity read each other as themselves and
 	// would both serve. Neither can tell which is the original, so neither does
 	if(duplicate_identity)
-		return false;
+		return "another machine is using this node's identity";
 
 	// A node whose dnsmasq did not start is not a node that will serve DHCP,
 	// however good its lease range looks: FTL is up and this thread is running,
 	// so nothing else here would notice
 	if(dnsmasq_failed)
-		return false;
+		return "its resolver did not start";
 
-	if(config.misc.readOnly.v.b || (config.dhcp.active.f & FLAG_ENV_VAR))
-		return false;
+	if(config.misc.readOnly.v.b)
+		return "the configuration is read-only";
+	if(config.dhcp.active.f & FLAG_ENV_VAR)
+		return "dhcp.active is set through the environment";
 
 	// dnsmasq refuses to serve DHCP without it, and the restart of a takeover
 	// would leave this node with a dead resolver
 	if(!check_capability(CAP_NET_ADMIN))
-		return false;
+		return "CAP_NET_ADMIN is missing";
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
 	lock_shm();
 	const bool okay = dhcp_config_valid(&config, errbuf);
 	unlock_shm();
 
-	return okay;
+	return okay ? NULL : "the DHCP settings are incomplete";
+}
+
+bool cluster_dhcp_configured(void)
+{
+	return not_configured() == NULL;
+}
+
+// ...and why it cannot take DHCP over just now: the wait a failed takeover
+// leaves behind, or a gravity run somebody else started, which holds back the
+// restart that would apply the change. A run the cluster started does not: the
+// restart ends it, and the rebuild is owed and done again afterwards.
+//
+// Both belong here rather than in not_configured(). A peer deciding whether to
+// hand DHCP over asks whether anybody is set up to serve; the node it hands to
+// has to be able to start serving. Saying yes here while set_dhcp_active()
+// would decline is how the node that was serving stops and nobody takes its
+// place
+static const char *not_capable(void)
+{
+	if(cluster_waiting(takeover_failed_until, double_time(), CLUSTER_TAKEOVER_BACKOFF_MAX))
+		return "a takeover failed recently";
+
+	if(gravity_running && !cluster_gravity_pending())
+		return "gravity is running";
+
+	return not_configured();
 }
 
 bool cluster_dhcp_capable(void)
 {
-	// ...and this one is that, minus the two things that make a node unable to
-	// take DHCP over just now: the wait a failed takeover leaves behind, and a
-	// gravity run, which holds back the restart that would apply the change.
-	//
-	// Both belong here rather than in cluster_dhcp_configured(). A peer
-	// deciding whether to hand DHCP over asks whether anybody is set up to
-	// serve; the node it hands to has to be able to start serving. Saying yes
-	// here while set_dhcp_active() would decline is how the node that was
-	// serving stops and nobody takes its place
-	if(cluster_waiting(takeover_failed_until, double_time(), CLUSTER_TAKEOVER_BACKOFF_MAX) ||
-	   gravity_running)
-		return false;
-
-	return cluster_dhcp_configured();
+	return not_capable() == NULL;
 }
 
 // A peer only counts in the election if it is reachable, takes part in the
@@ -349,12 +365,12 @@ static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
 static void set_dhcp_active(const bool active, const char *reason, const bool test_config)
 {
 	// The switch and the restart that applies it are one act. A gravity run
-	// holds the restart back until it finishes - minutes, and this node runs
-	// one itself whenever it takes a peer's lists - and flipping the switch
-	// meanwhile would have this node telling its peers it serves DHCP while
-	// its dnsmasq does not, or the other way round. The election is decided
-	// again every round, so this is a wait rather than a decision
-	if(gravity_running)
+	// somebody else started holds the restart back until it finishes, and
+	// flipping the switch meanwhile would have this node telling its peers it
+	// serves DHCP while its dnsmasq does not, or the other way round. The
+	// election is decided again every round, so this is a wait rather than a
+	// decision. The cluster's own run is ended by the restart
+	if(gravity_running && !cluster_gravity_pending())
 	{
 		log_debug(DEBUG_CLUSTER, "cluster: not changing DHCP while gravity runs");
 		return;
@@ -769,11 +785,12 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		return;
 	}
 
-	if(!cluster_dhcp_capable())
+	const char *incapable = not_capable();
+	if(incapable != NULL)
 	{
-		if(!warned_incapable)
-			log_warn("cluster: DHCP failover is on but this node cannot serve DHCP");
-		warned_incapable = true;
+		if(incapable != warned_incapable)
+			log_warn("cluster: DHCP failover is on but this node cannot serve DHCP: %s", incapable);
+		warned_incapable = incapable;
 
 		// Not being able to *change* dhcp.active is not the same as not
 		// serving: a node handing out leases still anchors the address.
@@ -784,7 +801,7 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 		forget_rounds();
 		return;
 	}
-	warned_incapable = false;
+	warned_incapable = NULL;
 
 	char owner_id[CLUSTER_HASHLEN] = "";
 	const bool mine = elect_dhcp(peers, num_peers, intent->owner, owner_id);
