@@ -112,5 +112,7 @@ bool cluster_gravity_succeeded(void) __attribute__ ((pure));
 
 // Has the gravity run this node started finished? Looked at once per tick
 void cluster_gravity_check(void);
+// End that run, as a stop is pending
+void cluster_gravity_stop(void);
 
 #endif // CLUSTER_SYNC_H

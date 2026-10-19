@@ -3180,6 +3180,8 @@ static void *run_cluster_thread(void *val)
 
 		// A gravity run started after a list synchronization takes
 		// minutes, so it is watched from here rather than waited for
+		if(want_terminate)
+			cluster_gravity_stop();
 		cluster_gravity_check();
 
 		restart_due();
