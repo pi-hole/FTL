@@ -1680,6 +1680,27 @@ static bool read_local_state(char confhash[CLUSTER_HASHLEN], char gravityhash[CL
 	return lists_read;
 }
 
+// An edit made through FTL while a peer's lists wait for their rebuild. The
+// tables are this node's from then on, and the rebuild stays owed
+static void adopt_local_edit(const char *hash, const double written)
+{
+	const double stamp = date_local_change(written, false,
+	                                       fmax(sync_state.gravity_changed, pending_gravity));
+	log_info("cluster: lists changed here");
+	publish_gravity_state(stamp, hash);
+
+	cluster_lock();
+	pending_gravity = stamp;
+	strncpy(pending_gravity_id, cluster_node_id(), sizeof(pending_gravity_id) - 1);
+	pending_gravity_id[sizeof(pending_gravity_id) - 1] = '\0';
+	strncpy(pending_gravity_hash, hash, sizeof(pending_gravity_hash) - 1);
+	pending_gravity_hash[sizeof(pending_gravity_hash) - 1] = '\0';
+	cluster_unlock();
+	publish_pending_gravity(stamp, cluster_node_id(), hash);
+
+	cluster_lists_accounted(written);
+}
+
 // Somebody changed this node: the content no longer matches what we recorded,
 // and it was not a synchronization that changed it
 static void note_local_changes(void)
@@ -1708,7 +1729,13 @@ static void note_local_changes(void)
 	const bool settling = gravity_state != GRAVITY_IDLE &&
 	                      strcmp(pending_gravity_id, cluster_node_id()) != 0;
 
-	if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) == 0)
+	// ...except for an edit made on the peer's tables through FTL, which is
+	// this node's as soon as it is made
+	if(lists_read && settling && (gravity_state == GRAVITY_OWED || gravity_state == GRAVITY_RUNNING) &&
+	   strlen(pending_gravity_hash) > 0 && strcmp(gravityhash, pending_gravity_hash) != 0 &&
+	   written > 0.0 && !replaced)
+		adopt_local_edit(gravityhash, written);
+	else if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) == 0)
 	{
 		// Nothing moved: an edit that changed nothing is spent, and a
 		// gravity run that swapped in the same tables changed nothing
@@ -1921,6 +1948,12 @@ static void settle_gravity(void)
 		return;
 	}
 
+	// An edit made through FTL on the peer's tables, which nothing was built
+	// from, is this node's. The rebuild stays owed
+	if(strlen(pending_hash) > 0 && strcmp(gravityhash, pending_hash) != 0 &&
+	   strcmp(pending_gravity_id, cluster_node_id()) != 0 && written > 0.0 && !replaced)
+		adopt_local_edit(gravityhash, written);
+
 	// The tables are the peer's but nothing was built from them. The
 	// fingerprint has to say what is on disk, under the version we already
 	// had - otherwise the next round cannot explain the fingerprint, calls
@@ -2089,7 +2122,11 @@ static void take_gravity(const bool member)
 	if(!member)
 		return;
 
-	if(gravity_state != GRAVITY_IDLE)
+	// A rebuild still owed holds no list back: a newer version replaces the
+	// pending import, and one rebuild covers both. Not while it runs, as the
+	// run swaps in the tables it copied at its start
+	const bool owed = gravity_state == GRAVITY_OWED;
+	if(gravity_state != GRAVITY_IDLE && !owed)
 		return; // last round's pull has not finished settling
 
 	// settle_gravity() above may have taken a while
@@ -2116,6 +2153,11 @@ static void take_gravity(const bool member)
 	}
 
 	if(peer->stuck_valid && peer->gravity_changed <= peer->stuck_changed)
+		return;
+
+	// ...and only for something newer than what is already waiting
+	if(owed && (peer->gravity_changed <= pending_gravity ||
+	            strcmp(peer->gravityhash, pending_gravity_hash) == 0))
 		return;
 
 	// A download that failed on the way is retried, with a wait that grows
@@ -2153,6 +2195,12 @@ static void take_gravity(const bool member)
 	// disk saying so, and the next start reads them as a list edited here -
 	// publishes them as the newest in the cluster, and never runs the rebuild
 	// they are owed
+	// What is on disk now, and the pull it replaces if one is owed
+	char held[CLUSTER_HASHLEN] = "", owed_id[CLUSTER_HASHLEN] = "";
+	const double owed_changed = pending_gravity;
+	strncpy(held, owed ? pending_gravity_hash : sync_state.gravity_hash, sizeof(held) - 1);
+	strncpy(owed_id, pending_gravity_id, sizeof(owed_id) - 1);
+
 	cluster_lock();
 	gravity_state = GRAVITY_PULLING;
 	// What this node held before it asked. `unchanged` below means "the disk is
@@ -2162,8 +2210,12 @@ static void take_gravity(const bool member)
 	// "nothing has moved since the last attempt", and a list edited on this
 	// node during the retry was published under the pre-pull timestamp and
 	// pulled straight back off by the peer
-	strncpy(pre_pull_hash, sync_state.gravity_hash, sizeof(pre_pull_hash) - 1);
-	pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
+	// ...and with a rebuild owed, what it held before the first of the pulls
+	if(!owed || strlen(pre_pull_hash) == 0)
+	{
+		strncpy(pre_pull_hash, sync_state.gravity_hash, sizeof(pre_pull_hash) - 1);
+		pre_pull_hash[sizeof(pre_pull_hash) - 1] = '\0';
+	}
 	// ...and written down with the pull it belongs to. Held only in memory it
 	// was gone after a restart, and the fingerprint it would otherwise fall
 	// back on has been republished by every failed rebuild since - so the
@@ -2181,7 +2233,7 @@ static void take_gravity(const bool member)
 
 	bool rebuilding = false;
 	char imported[CLUSTER_HASHLEN] = "";
-	if(!cluster_pull_gravity(peer, pre_pull_hash, &rebuilding, imported))
+	if(!cluster_pull_gravity(peer, held, &rebuilding, imported))
 	{
 		// Nothing landed. The import replaces the seven tables inside one
 		// transaction, so a failure anywhere in it leaves the tables this
@@ -2194,15 +2246,25 @@ static void take_gravity(const bool member)
 		// need, ran gravity over its own untouched tables, found they were
 		// not the peer's - and published its own pre-pull lists stamped
 		// now, which outranks and undoes the edit it had set out to fetch
-		cluster_lock();
-		gravity_state = GRAVITY_IDLE;
-		pending_gravity = 0.0;
-		pending_gravity_id[0] = '\0';
-		pending_gravity_hash[0] = '\0';
-		pre_pull_hash[0] = '\0';
-		sync_state.pre_pull_hash[0] = '\0';
-		cluster_unlock();
-		publish_pending_gravity(0.0, "", "");
+		//
+		// ...and a rebuild that was owed before stays owed for what it was
+		if(owed)
+		{
+			owe_gravity(owed_changed, owed_id, held);
+			publish_pending_gravity(owed_changed, owed_id, held);
+		}
+		else
+		{
+			cluster_lock();
+			gravity_state = GRAVITY_IDLE;
+			pending_gravity = 0.0;
+			pending_gravity_id[0] = '\0';
+			pending_gravity_hash[0] = '\0';
+			pre_pull_hash[0] = '\0';
+			sync_state.pre_pull_hash[0] = '\0';
+			cluster_unlock();
+			publish_pending_gravity(0.0, "", "");
+		}
 
 		// Doubling from one round to at most an hour
 		peer->retry_backoff = peer->retry_backoff > 0.0 ?
@@ -2233,7 +2295,7 @@ static void take_gravity(const bool member)
 	// Where the two do not overlap the node blocks nothing at all until the
 	// rebuild lands, and waiting a whole cluster.interval before even starting
 	// adds that interval to a gap nobody asked for
-	if(rebuilding)
+	if(rebuilding || owed)
 	{
 		// Already recorded above, with the peer's fingerprint as it was
 		// when we took the tables - it moves on while the rebuild runs,
