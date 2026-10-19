@@ -235,16 +235,15 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// Averaged total CPU usage in percent
 	JSON_ADD_NUMBER_TO_OBJECT(cpu, "%cpu", get_total_cpu_percentage());
 
-	// 1, 5, and 15 minute load averages (we need to convert them)
+	// 1, 5, and 15 minute load averages
 	cJSON *raw = JSON_NEW_ARRAY();
 	cJSON *percent = JSON_NEW_ARRAY();
-	float load_f[3] = { 0.f };
-	const float f_load = 1.f / (1 << SI_LOAD_SHIFT);
+	double loadavg[3] = { 0.0 };
+	get_load_averages(loadavg);
 	for(unsigned int i = 0; i < 3; i++)
 	{
-		load_f[i] = f_load * info.loads[i];
-		JSON_ADD_NUMBER_TO_ARRAY(raw, load_f[i]);
-		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.f*load_f[i]/nprocs));
+		JSON_ADD_NUMBER_TO_ARRAY(raw, loadavg[i]);
+		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.0*loadavg[i]/nprocs));
 	}
 
 	// Averaged CPU usage in percent
