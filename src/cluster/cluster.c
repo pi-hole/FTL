@@ -63,6 +63,13 @@
 static struct cluster_peer peers[CLUSTER_MAX_PEERS] = { 0 };
 static unsigned int num_peers = 0;
 
+// FTL is on its way down. A round past its start keeps going, so every step that
+// changes this node or a peer asks this first
+static bool stopping(void)
+{
+	return killed || want_terminate;
+}
+
 // The snapshot the API threads read
 static struct cluster_state state = { 0 };
 static pthread_mutex_t state_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -2005,6 +2012,10 @@ static void take_gravity(const bool member)
 	if(gravity_state != GRAVITY_IDLE)
 		return; // last round's pull has not finished settling
 
+	// settle_gravity() above may have taken a while
+	if(stopping())
+		return;
+
 	const int src = elect_gravity_source();
 	if(src < 0)
 		return;
@@ -2970,6 +2981,10 @@ static void cluster_round(void)
 	for(unsigned int i = 0; i < num_peers; i++)
 		poll_peer(&peers[i]);
 
+	// The polls above can take a while on a slow member
+	if(stopping())
+		return;
+
 	// Exactly one member entry answers with this node's identity - the one
 	// that is this node. Two mean two machines carrying the same
 	// cluster.state, which an SD card image, a virtual machine template or a
@@ -3057,6 +3072,8 @@ static void cluster_round(void)
 	// The configuration first: it is a request and an answer, and it decides
 	// nothing about who runs DHCP
 	sync_round();
+	if(stopping())
+		return;
 
 	// Who serves DHCP, and where the address the clients use belongs - one
 	// decision, so the two can never contradict each other
@@ -3069,6 +3086,8 @@ static void cluster_round(void)
 	// holding a lease database it will never be allowed to hand out
 	if(member)
 		take_leases();
+	if(stopping())
+		return;
 
 	struct cluster_intent intent = { { 0 }, false, false, false };
 	cluster_dhcp_round(peers, num_peers, member, leader_idx < 0, &intent);
@@ -3089,6 +3108,8 @@ static void cluster_round(void)
 		return;
 
 	publish_state();
+	if(stopping())
+		return;
 
 	// Last, because it is a whole database rather than an answer to a
 	// question: a peer taking its time over it would otherwise hold this
@@ -3154,7 +3175,7 @@ static void *run_cluster_thread(void *val)
 			log_info("cluster: clock moved, running the next round now");
 			next_round = 0.0;
 		}
-		else
+		else if(!stopping())
 			push_round();
 
 		// A gravity run started after a list synchronization takes
