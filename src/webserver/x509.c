@@ -814,7 +814,7 @@ enum cert_check read_certificate(const char* certfile, const char *domain, const
 	return CERT_FILE_NOT_FOUND;
 }
 
-bool certificate_pin(const char *certfile, char *out, const size_t outlen)
+bool __attribute__ ((const)) certificate_pin(const char *certfile, char *out, const size_t outlen)
 {
 	return false;
 }
