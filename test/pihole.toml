@@ -1323,7 +1323,7 @@
       unit = "C"
 
     [webserver.api.prometheus]
-      # SHA-256 hash of the token required to scrape the Prometheus/OpenMetrics endpoint at
+      # SHA-256 hash of the token required to scrape the Prometheus endpoint at
       # /api/metrics.
       #
       # This endpoint is disabled and returns HTTP 404 while this value is empty (the
@@ -1344,12 +1344,12 @@
       token = ""
 
       # Should the Prometheus endpoint expose per-domain and per-client time series (top
-      # domains/clients as labelled metrics)?
+      # domains/clients as labeled metrics)?
       #
-      # These series reveal browsing behaviour and the list of active clients, so they are
+      # These series reveal browsing behavior and the list of active clients, so they are
       # disabled by default and only aggregate metrics are exported. When enabled, the
       # misc.privacylevel setting and the webserver.api.excludeDomains/excludeClients
-      # filters are still honoured, and the number of series is capped by
+      # filters are still honored, and the number of series is capped by
       # webserver.api.prometheus.topN.
       #
       # Allowed values are:
