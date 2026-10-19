@@ -1008,13 +1008,13 @@ static int api_config_put_delete(struct ftl_conn *api)
 
 	// Install new configuration
 	replace_config(&newconf);
-	config_stamp_local_change();
 
 	// Reload debug levels
 	set_debug_flags(&config);
 
-	// Store changed configuration to disk
-	config_write();
+	// Store changed configuration to disk, and stamp it only once it is there
+	if(config_write())
+		config_stamp_local_change();
 	cluster_sync_unlock();
 
 	// Rewrite HOSTS file if required

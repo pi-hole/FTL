@@ -3436,18 +3436,18 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 	}
 
 	replace_config(newconf);
-
-	// Stamped before anything slow: replace_config() is what makes the new
-	// configuration visible to the cluster thread, and a push in the window
-	// between the two would hand the peers the new document under the
-	// previous change's timestamp
-	if(from_cluster)
-		config_stamp_cluster_change(changed);
-	else
-		config_stamp_local_change();
-
 	set_debug_flags(&config);
-	config_write();
+
+	// Stamped only once the file holds it. A stamp on disk for values that
+	// are not has the next start read the old file as a change made while
+	// down and hand it to every peer
+	if(config_write())
+	{
+		if(from_cluster)
+			config_stamp_cluster_change(changed);
+		else
+			config_stamp_local_change();
+	}
 
 	if(result->rewrite_hosts)
 		write_custom_list();
