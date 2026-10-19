@@ -4565,12 +4565,18 @@ void FTL_multiple_replies(const int id, int *firstID)
 	// Debug logging
 	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
 
-	// Copy relevant information over
-	counters->reply[duplicated_query->reply]--;
-	log_debug(DEBUG_STATUS, "duplicated_query reply type %u removed, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	// Copy relevant information over, a hidden duplicate was never counted
+	if(!duplicated_query->flags.hidden)
+	{
+		counters->reply[duplicated_query->reply]--;
+		log_debug(DEBUG_STATUS, "duplicated_query reply type %u removed, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	}
 	duplicated_query->reply = source_query->reply;
-	counters->reply[duplicated_query->reply]++;
-	log_debug(DEBUG_STATUS, "duplicated_query reply type %u set, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	if(!duplicated_query->flags.hidden)
+	{
+		counters->reply[duplicated_query->reply]++;
+		log_debug(DEBUG_STATUS, "duplicated_query reply type %u set, ID = %d, new count = %u", duplicated_query->reply, duplicated_query->id, counters->reply[duplicated_query->reply]);
+	}
 
 	duplicated_query->dnssec = source_query->dnssec;
 	duplicated_query->flags.complete = true;
