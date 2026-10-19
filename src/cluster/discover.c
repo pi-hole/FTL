@@ -145,6 +145,20 @@ void cluster_beacon_poll(void)
 		if(strncmp(buf, BEACON_QUERY, sizeof(BEACON_QUERY) - 1) != 0)
 			continue;
 
+		// Only who the web server would answer as well. IPv4 sources arrive
+		// mapped on the dual-stack socket, the ACL names them unmapped
+		struct sockaddr_storage source = from;
+		const struct sockaddr_in6 *from6 = (const struct sockaddr_in6 *)(const void *)&from;
+		if(from.ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&from6->sin6_addr))
+		{
+			struct sockaddr_in *sin = (struct sockaddr_in *)(void *)&source;
+			memset(&source, 0, sizeof(source));
+			sin->sin_family = AF_INET;
+			memcpy(&sin->sin_addr, &from6->sin6_addr.s6_addr[12], sizeof(sin->sin_addr));
+		}
+		if(!webserver_acl_allows(&source))
+			continue;
+
 		if(budget == 0)
 			continue;
 		budget--;
