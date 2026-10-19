@@ -21,6 +21,7 @@ import http.server
 import json
 import os
 import socket
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -265,6 +266,7 @@ def cluster(api_session):
     before = before.get("config", {}).get("cluster", {})
     was_enabled = before.get("enabled", False)
     was_members = before.get("members", [])
+    was_credentials = before.get("sync", {}).get("credentials", True)
 
     fake = None
     if not was_enabled:
@@ -278,10 +280,12 @@ def cluster(api_session):
 
         # A member list as well as the switch: a node with nobody to talk to
         # does not start the cluster thread at all, and so never mints the
-        # identity these tests address it by
+        # identity these tests address it by. The stand-in peer speaks http,
+        # which credentials never cross
         _patch(api_session, {"cluster": {
             "enabled": True,
             "members": [self_url, f"http://127.0.0.1:{fake.server_address[1]}"],
+            "sync": {"credentials": False},
         }}, expect_restart=True)
         assert _relogin(api_session), "could not log in after the restart"
 
@@ -331,7 +335,8 @@ def cluster(api_session):
     # Put back what was found, member list included - emptying it would be this
     # file deciding the configuration of a node it was only visiting
     if not was_enabled:
-        _patch(api_session, {"cluster": {"enabled": False, "members": was_members}},
+        _patch(api_session, {"cluster": {"enabled": False, "members": was_members,
+                                         "sync": {"credentials": was_credentials}}},
                expect_restart=True)
         _relogin(api_session)
         fake.shutdown()
@@ -575,3 +580,50 @@ class TestClusterPush:
         assert "config" in document, body[:200]
         # Credentials only travel to https:// members
         assert signed["pwhash"] not in body
+
+
+# ---------------------------------------------------------------------------
+# The virtual IP address
+# ---------------------------------------------------------------------------
+
+def _own_subnet_addresses():
+    """This machine's addresses that belong to a subnet, read from `ip`."""
+    try:
+        out = subprocess.run(["ip", "-j", "addr"], capture_output=True, text=True,
+                             timeout=5, check=True).stdout
+        links = json.loads(out)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    found = []
+    for link in links:
+        for addr in link.get("addr_info", []):
+            full = 32 if addr.get("family") == "inet" else 128
+            if addr.get("scope") == "global" and addr.get("prefixlen", full) < full:
+                found.append(addr["local"])
+    return found
+
+
+class TestClusterVip:
+
+    @pytest.mark.parametrize("address", [
+        "0.0.0.0", "127.0.0.1", "224.0.0.1", "255.255.255.255",
+        "::", "::1", "ff02::1", "fe80::1", "::ffff:192.168.0.1",
+    ])
+    def test_address_that_cannot_be_shared_is_refused(self, api_session, address):
+        """Every DHCP client is handed this address, and the elected node adds it
+        to its interface, so it has to be a unicast address of the network."""
+        r = api_session.patch(f"{FTL_URL}/api/config",
+                              json={"config": {"cluster": {"vip": {"address": address}}}},
+                              timeout=10)
+        assert r.status_code == 400, r.text[:200]
+
+    def test_own_address_is_refused(self, api_session):
+        """A node's own address would be taken away from it by whichever
+        node is elected to hold the virtual one."""
+        own = _own_subnet_addresses()
+        if not own:
+            pytest.skip("this machine has no address on a subnet")
+        r = api_session.patch(f"{FTL_URL}/api/config",
+                              json={"config": {"cluster": {"vip": {"address": own[0]}}}},
+                              timeout=10)
+        assert r.status_code == 400, r.text[:200]
