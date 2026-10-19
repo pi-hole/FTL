@@ -759,7 +759,12 @@ bool cluster_run_gravity(void)
 		}
 
 		int status = 0;
-		const char outcome = child > 0 && waitpid(child, &status, 0) == child &&
+		pid_t waited = -1;
+		// A signal to this process is not the end of the run
+		do
+			waited = child > 0 ? waitpid(child, &status, 0) : -1;
+		while(waited < 0 && errno == EINTR);
+		const char outcome = waited == child &&
 		                     WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS ?
 		                     GRAVITY_DONE : GRAVITY_FAILED;
 		if(write(fds[1], &outcome, 1) != 1)
