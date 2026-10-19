@@ -188,7 +188,8 @@ load 'bats_helper.bash'
   chown -R pihole:pihole /tmp/pcap-run
   for f in /tmp/pcap-run/new.pcap /tmp/pcap-run/empty.pcap; do
     logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
-    run bash -c "su pihole -s /bin/sh -c 'FTLCONF_files_pcap=$f /home/pihole/pihole-FTL'"
+    # FTL stays up if dnsmasq refuses the file, so do not wait on its output
+    run bash -c "su pihole -s /bin/sh -c 'FTLCONF_files_pcap=$f /home/pihole/pihole-FTL' > /dev/null 2>&1"
     assert_success
     run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
     assert_success
