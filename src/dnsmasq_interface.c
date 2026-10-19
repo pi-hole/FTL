@@ -927,7 +927,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			// A direct pi.hole/<hostname> query returns here without reaching the
 			// client-attribution getEDNS() below, so consume the EDNS here to pick
 			// up our DoT/DoH server's connected-address hint for the reply.
-			capture_pihole_dest(getEDNS(), addr, id);
+			capture_pihole_dest(getEDNS(id), addr, id);
 
 			// "Block" this query by sending the interface IP address.
 			// Send NODATA when we have no sensible address of the
@@ -988,7 +988,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	bool edns_client = false;
 	// Set when clientIP comes from ECS, an address behind the forwarder
 	bool ecs_client = false;
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 	// Also capture our DoT/DoH server's connected-address hint from the same EDNS
 	// read, so a pi.hole answer reached via a CNAME (resolved under this non-pi.hole
 	// query name) can use it in update_pihole_cache_record.
@@ -2959,7 +2959,7 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		query->ede = addr->log.ede;
 		log_debug(DEBUG_QUERIES, "     EDE (1): %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
 		query->ede = edns->ede;
@@ -3460,7 +3460,7 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	get_rcode(addr->log.rcode, &rcodestr, &reply);
 
 	// Get EDNS data (if available)
-	ednsData *edns = getEDNS();
+	ednsData *edns = getEDNS(id);
 
 	if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
 		query->ede = addr->log.ede;
@@ -3635,7 +3635,7 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const int raw_id, const char *file, const int line)
 {
 	// Get EDE data (if available)
-	const ednsData *edns = getEDNS();
+	const ednsData *edns = getEDNS(raw_id);
 
 	// The query ID is negative if this is a TCP query
 	const int id = raw_id < 0 ? -raw_id : raw_id;
@@ -3846,6 +3846,17 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
 	set_response_time(query, now);
 }
 
+// Hand a file to the pihole user only when it sits directly in /etc/pihole or
+// /var/log/pihole. The path comes from the pihole-owned config while we still
+// run as root, and the pihole user cannot swap out either directory
+static void chown_pihole_own_dir(const char *path, struct passwd *pwd)
+{
+	if(in_pihole_dir(path))
+		chown_pihole(path, pwd);
+	else
+		log_warn("Not changing ownership of %s, it is outside of /etc/pihole and /var/log/pihole", path);
+}
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 {
 	// Going into daemon mode involves storing the
@@ -3990,22 +4001,22 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			chown_all_shmem(ent_pw);
 
 			// Configured FTL log file
-			chown_pihole(config.files.log.ftl.v.s, ent_pw);
+			chown_pihole_own_dir(config.files.log.ftl.v.s, ent_pw);
 
 			// Configured webserver log file
 			if(config.files.log.webserver.v.s != NULL)
-				chown_pihole(config.files.log.webserver.v.s, ent_pw);
+				chown_pihole_own_dir(config.files.log.webserver.v.s, ent_pw);
 
 			// Configured dnsmasq log file (pihole.log)
 			if(config.files.log.dnsmasq.v.s != NULL)
-				chown_pihole(config.files.log.dnsmasq.v.s, ent_pw);
+				chown_pihole_own_dir(config.files.log.dnsmasq.v.s, ent_pw);
 
 			// Configured FTL database file
-			chown_pihole(config.files.database.v.s, ent_pw);
+			chown_pihole_own_dir(config.files.database.v.s, ent_pw);
 
 			// Temporary history database (database.forceDisk)
 			if(config.database.forceDisk.v.b)
-				chown_pihole(config.files.tmp_db.v.s, ent_pw);
+				chown_pihole_own_dir(config.files.tmp_db.v.s, ent_pw);
 
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
@@ -4019,13 +4030,13 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-wal");
 			if(file_exists(extrafile))
-				chown_pihole(extrafile, ent_pw);
+				chown_pihole_own_dir(extrafile, ent_pw);
 
 			// Check <database>-shm file (mmapped shared memory)
 			strcpy(extrafile, config.files.database.v.s);
 			strcat(extrafile, "-shm");
 			if(file_exists(extrafile))
-				chown_pihole(extrafile, ent_pw);
+				chown_pihole_own_dir(extrafile, ent_pw);
 
 			// Free allocated memory
 			free(extrafile);
@@ -4319,57 +4330,121 @@ void FTL_TCP_worker_created(const int confd)
 	gravityDB_forked();
 }
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
+// A DHCP lease deletion requested over the API. dnsmasq's main thread owns the
+// lease list and prunes it on its own timer, so the deletion has to run there,
+// not on the webserver worker that received the request. A worker parks one of
+// these, wakes the main thread through the event pipe and waits for it to fill
+// in the result. The request lives on the worker's stack for as long as the
+// worker is blocked here, so the main thread may use it until it sets `done`.
+struct lease_delete {
+	const char *ipaddr;   // in: address to remove
+	const char *hint;     // out: reason on failure, NULL when simply absent
+	bool found;           // out: whether a lease was removed
+	bool done;            // out: set once the main thread is finished with it
+	struct lease_delete *next;
+};
+
+static pthread_mutex_t lease_delete_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t lease_delete_cond = PTHREAD_COND_INITIALIZER;
+static struct lease_delete *lease_delete_queue = NULL;
+
+// Remove one lease. Runs only on dnsmasq's main thread (from the EVENT_ALARM
+// handler), so touching the lease list needs no further synchronization. The
+// caller writes the lease file and refreshes DNS once for the whole batch.
+static bool unlink_one_lease(const char *ipaddr, const char **hint, const time_t now)
 {
 	struct dhcp_lease *lease;
 	union all_addr addr;
+
+	if (inet_pton(AF_INET, ipaddr, &addr.addr4) > 0)
+		lease = lease_find_by_addr(addr.addr4);
+#ifdef HAVE_DHCP6
+	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
+		lease = lease6_find_by_plain_addr(&addr.addr6);
+#endif
+	else
+	{
+		*hint = "invalid target address (neither IPv4 nor IPv6)";
+		return false;
+	}
+
+	if (lease == NULL)
+	{
+		*hint = NULL;
+		return false;
+	}
+
+	lease_prune(lease, now);
+	return true;
+}
+
+// Drain the queue on dnsmasq's main thread and wake the parked workers. Called
+// from the EVENT_ALARM handler, which writes the lease file and updates DNS
+// right after, so a single removal here does not do so itself.
+void FTL_process_lease_deletions(void)
+{
 	const time_t now = dnsmasq_time();
 
+	pthread_mutex_lock(&lease_delete_lock);
+	for(struct lease_delete *req = lease_delete_queue; req != NULL; req = req->next)
+	{
+		req->found = unlink_one_lease(req->ipaddr, &req->hint, now);
+		req->done = true;
+	}
+	lease_delete_queue = NULL;
+	pthread_cond_broadcast(&lease_delete_cond);
+	pthread_mutex_unlock(&lease_delete_lock);
+}
+
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
+{
 	if(!daemon->dhcp)
 	{
 		*hint = "DHCP is not enabled";
 		return false;
 	}
 
-	// Try to extract IP address
-	if (inet_pton(AF_INET, ipaddr, &addr.addr4) > 0)
+	// Hand the deletion to the main thread and wait for it. The request stays
+	// on this stack while we block on the condition variable below, so the
+	// pointer parked in the queue stays valid until the main thread is done.
+	struct lease_delete req = { .ipaddr = ipaddr };
+
+	pthread_mutex_lock(&lease_delete_lock);
+	req.next = lease_delete_queue;
+	lease_delete_queue = &req;
+
+	// Wake the main thread. EVENT_ALARM already prunes expired leases and
+	// writes the lease file there; FTL_process_lease_deletions() runs in the
+	// same handler, so a batched write covers our removal too.
+	queue_event(EVENT_ALARM);
+
+	// Bound the wait so a stuck main thread cannot hang the worker forever
+	struct timespec deadline;
+	clock_gettime(CLOCK_REALTIME, &deadline);
+	deadline.tv_sec += 5;
+
+	int rc = 0;
+	while(!req.done && rc == 0)
+		rc = pthread_cond_timedwait(&lease_delete_cond, &lease_delete_lock, &deadline);
+
+	if(!req.done)
 	{
-		lease = lease_find_by_addr(addr.addr4);
-	}
-#ifdef HAVE_DHCP6
-	else if (inet_pton(AF_INET6, ipaddr, &addr.addr6) > 0)
-	{
-		lease = lease6_find_by_plain_addr(&addr.addr6);
-	}
-#endif
-	else
-	{
-		// Invalid IP address
-		*hint = "invalid target address (neither IPv4 nor IPv6)";
+		// Timed out: take the request back out of the queue before it leaves
+		// this stack, so the main thread cannot dereference it afterwards
+		for(struct lease_delete **pp = &lease_delete_queue; *pp != NULL; pp = &(*pp)->next)
+			if(*pp == &req)
+			{
+				*pp = req.next;
+				break;
+			}
+		pthread_mutex_unlock(&lease_delete_lock);
+		*hint = "timed out waiting for the resolver to remove the lease";
 		return false;
 	}
+	pthread_mutex_unlock(&lease_delete_lock);
 
-	// If a lease exists for this IP address, we unlink it and immediately
-	// update the lease file to reflect the removal of this lease
-	if (lease)
-	{
-		// Unlink the lease for dnsmasq's database
-		lease_prune(lease, now);
-		// Update the lease file
-		lease_update_file(now);
-		// Argument force == 0 ensures the DNS records are only updated
-		// when unlinking the lease above actually changed something
-		// (variable lease.c:dns_dirty is used here)
-		lease_update_dns(0);
-	}
-	else
-	{
-		*hint = NULL;
-		return false;
-	}
-
-	// Return success
-	return true;
+	*hint = req.hint;
+	return req.found;
 }
 
 void FTL_query_in_progress(const int id)
