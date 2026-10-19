@@ -688,6 +688,9 @@ static int gravity_fd = -1;
 // newest lists while blocking nothing
 static bool gravity_ok = false;
 
+// Set once the run was ended for FTL to stop
+static bool gravity_stopping = false;
+
 // Close every descriptor from lowfd up. Only called in a child of fork()
 static void close_from(const int lowfd)
 {
@@ -743,6 +746,9 @@ bool cluster_run_gravity(void)
 
 	if(pid == 0)
 	{
+		// A process group of its own, so a stop can end the whole run
+		setpgid(0, 0);
+
 		// Only the pipe's write end stays open: anything else of FTL's,
 		// its listening sockets above all, would outlive FTL in the run
 		const int out = dup2(fds[1], 3) == 3 ? 3 : -1;
@@ -764,16 +770,9 @@ bool cluster_run_gravity(void)
 				close(fd);
 			}
 			close_from(3);
-			// Deliberately not shielded from SIGTERM, though the
-			// API's own gravity path is (src/api/action.c). That
-			// shield does not work under the KillMode its comment
-			// names: setsid does not leave the cgroup, and systemd's
-			// stop is not done until the cgroup is empty - so a stop
-			// landing in a rebuild waits out TimeoutStopSec (60 s in
-			// pihole-FTL.service, answering no DNS meanwhile) and
-			// SIGKILLs the run at the end of it anyway. Taking the
-			// SIGTERM promptly costs the rebuild, which is owed and
-			// retried, rather than a minute of the whole node
+			// Not shielded from SIGTERM, unlike the API's run: a stop
+			// ends it through cluster_gravity_stop(), and the rebuild
+			// is owed and redone after the restart
 			execl(PIHOLE_BINARY, "pihole", "-g", (char *)NULL);
 			// Only reached if exec failed, the code a shell uses for it
 			_exit(127);
@@ -792,6 +791,8 @@ bool cluster_run_gravity(void)
 	}
 
 	close(fds[1]);
+	// ...also from here, whichever of the two runs first
+	setpgid(pid, pid);
 
 	// Not waited for here: gravity takes minutes, and the cluster thread has
 	// peers to watch and a DHCP hand-over to decide in that time
@@ -800,8 +801,23 @@ bool cluster_run_gravity(void)
 	gravity_fd = fds[0];
 	gravity_pid = pid;
 	gravity_ok = false;
+	gravity_stopping = false;
 
 	return true;
+}
+
+// A stop is pending. gravity_running holds it back until the run is over, which
+// is minutes, so the cluster's own run is ended instead. The pending record on
+// disk has the rebuild redone after the restart
+void cluster_gravity_stop(void)
+{
+	if(gravity_fd < 0 || gravity_pid <= 0 || gravity_stopping)
+		return;
+
+	gravity_stopping = true;
+	log_info("cluster: ending the gravity run for FTL to stop, it is run again after the restart");
+	if(kill(-gravity_pid, SIGTERM) != 0)
+		log_warn("cluster: cannot end the gravity run: %s", strerror(errno));
 }
 
 // Looked at once per tick. Blocking here would leave the cluster blind for the
@@ -835,7 +851,9 @@ void cluster_gravity_check(void)
 		return;
 	}
 
-	if(outcome == GRAVITY_NOT_STARTED)
+	if(gravity_stopping)
+		log_info("cluster: gravity run ended");
+	else if(outcome == GRAVITY_NOT_STARTED)
 		log_warn("cluster: cannot start gravity");
 	else if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
 	{
