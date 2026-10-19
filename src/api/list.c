@@ -1325,6 +1325,7 @@ int api_list(struct ftl_conn *api)
 			lock_shm();
 			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+			cluster_note_list_write();
 			cluster_sync_unlock();
 
 			if(ret == 0)
@@ -1361,6 +1362,7 @@ int api_list(struct ftl_conn *api)
 			lock_shm();
 			int ret = api_list_write(api, listtype, api->item, &code, &reply_item, &processed);
 			unlock_shm();
+			cluster_note_list_write();
 			cluster_sync_unlock();
 
 			if(ret == 0)
@@ -1379,6 +1381,7 @@ int api_list(struct ftl_conn *api)
 		lock_shm();
 		const int ret = api_list_remove(api, listtype, api->item);
 		unlock_shm();
+		cluster_note_list_write();
 		cluster_sync_unlock();
 		return ret;
 	}

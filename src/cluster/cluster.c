@@ -1653,12 +1653,41 @@ static double our_changed(void)
 	return config_changed;
 }
 
+// The version a change of the tables that nothing here explains is published
+// under. An edit made through FTL counts from when it was written, above what it
+// was made on. Anything else - gravity.sh restoring a backup, a gravity.db
+// copied in by hand, a gravity run swapping in a copy older than an import - is
+// not newer than the cluster's lists, and 0 has this node take those back
+static double date_local_change(const double written, const bool replaced, const double above)
+{
+	if(written <= 0.0 || replaced)
+		return 0.0;
+
+	return fmax(written, nextafter(above, INFINITY));
+}
+
+// The fingerprints, and what explains a change of the lists. Under the lock the
+// API's list writers note their edits under, so an edit is either in both the
+// fingerprint and the note or in neither
+static bool read_local_state(char confhash[CLUSTER_HASHLEN], char gravityhash[CLUSTER_HASHLEN],
+                             double *written, bool *replaced)
+{
+	cluster_sync_lock();
+	const bool lists_read = cluster_sync_hashes(confhash, gravityhash);
+	cluster_lists_explain(written, replaced);
+	cluster_sync_unlock();
+
+	return lists_read;
+}
+
 // Somebody changed this node: the content no longer matches what we recorded,
 // and it was not a synchronization that changed it
 static void note_local_changes(void)
 {
 	char confhash[CLUSTER_HASHLEN] = "", gravityhash[CLUSTER_HASHLEN] = "";
-	const bool lists_read = cluster_sync_hashes(confhash, gravityhash);
+	double written = 0.0;
+	bool replaced = false;
+	const bool lists_read = read_local_state(confhash, gravityhash, &written, &replaced);
 	publish_config_hash(confhash);
 
 	// A fingerprint we could not read says nothing about whether the lists
@@ -1679,7 +1708,13 @@ static void note_local_changes(void)
 	const bool settling = gravity_state != GRAVITY_IDLE &&
 	                      strcmp(pending_gravity_id, cluster_node_id()) != 0;
 
-	if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) != 0)
+	if(lists_read && !settling && strcmp(gravityhash, sync_state.gravity_hash) == 0)
+	{
+		// Nothing moved: an edit that changed nothing is spent, and a
+		// gravity run that swapped in the same tables changed nothing
+		cluster_lists_accounted(written);
+	}
+	else if(lists_read && !settling)
 	{
 		// A node that has never recorded anything is not "changed", it is
 		// new - it starts at version zero and adopts what the cluster has.
@@ -1690,13 +1725,16 @@ static void note_local_changes(void)
 		// which is what settles the question
 		const bool first_time = strlen(sync_state.gravity_hash) == 0;
 		const bool moved_by_build = !first_time && !cluster_state_same_build();
-		const double now = double_time();
+		const double stamp = first_time || moved_by_build ? sync_state.gravity_changed :
+		                     date_local_change(written, replaced, sync_state.gravity_changed);
 		if(moved_by_build)
 			log_info("cluster: FTL was upgraded, keeping this node's list version");
-		else if(!first_time)
+		else if(!first_time && stamp > 0.0)
 			log_info("cluster: lists changed here");
-		publish_gravity_state(first_time || moved_by_build ? sync_state.gravity_changed : now,
-		                      gravityhash);
+		else if(!first_time)
+			log_warn("cluster: lists changed here without an edit through FTL (a gravity.db restored or copied in?), taking the cluster's lists");
+		publish_gravity_state(stamp, gravityhash);
+		cluster_lists_accounted(written);
 
 		// The blocking database is built from the adlists, so an allow or
 		// deny entry, a group or a client needs nothing further - those
@@ -1709,17 +1747,17 @@ static void note_local_changes(void)
 		// rebuild from them by themselves, so the node the edit was made on
 		// would be the only one in the cluster not blocking its own list
 		char adlists[CLUSTER_HASHLEN] = "";
-		if(!first_time && !moved_by_build && cluster_adlist_hash(adlists) &&
+		if(!first_time && !moved_by_build && stamp > 0.0 && cluster_adlist_hash(adlists) &&
 		   strlen(built_adlists) > 0 && strcmp(adlists, built_adlists) != 0)
 		{
 			remember_adlists();
-			owe_gravity(now, cluster_node_id(), gravityhash);
+			owe_gravity(stamp, cluster_node_id(), gravityhash);
 
 			// ...and written down, like the rebuild a pull owes. A run
 			// that fails waits and tries again, and a restart inside that
 			// wait would otherwise find nothing owed - leaving this node
 			// advertising lists it never built its blocking database from
-			publish_pending_gravity(now, cluster_node_id(), gravityhash);
+			publish_pending_gravity(stamp, cluster_node_id(), gravityhash);
 		}
 	}
 
@@ -1809,8 +1847,14 @@ static void settle_gravity(void)
 	if(cluster_gravity_pending())
 		return; // still running
 
+	// The run swapped in the database it built, which by itself is no change
+	// of the lists
+	cluster_lists_accounted(0.0);
+
 	char confhash[CLUSTER_HASHLEN] = "", gravityhash[CLUSTER_HASHLEN] = "";
-	if(!cluster_sync_hashes(confhash, gravityhash))
+	double written = 0.0;
+	bool replaced = false;
+	if(!read_local_state(confhash, gravityhash, &written, &replaced))
 		return; // decided next round, on a fingerprint we could read
 
 	struct cluster_peer *source = pending_source();
@@ -1854,10 +1898,24 @@ static void settle_gravity(void)
 		                                           pre_pull_hash :
 		                                           sync_state.gravity_hash) == 0 ||
 		                       !cluster_state_same_build();
+		// ...or an edit made here during the rebuild that a round recorded
+		const bool recorded = strcmp(gravityhash, sync_state.gravity_hash) == 0;
 
-		finish_pull(theirs ? changed :
-		            unchanged ? sync_state.gravity_changed : double_time(),
-		            gravityhash);
+		// Anything else moved the tables while the rebuild ran, and is dated
+		// like any change made here
+		const double stamp = theirs ? changed :
+		                     recorded || unchanged ? sync_state.gravity_changed :
+		                     date_local_change(written, replaced,
+		                                       fmax(changed, sync_state.gravity_changed));
+		if(!theirs && !recorded && !unchanged)
+		{
+			if(stamp > 0.0)
+				log_info("cluster: lists changed here");
+			else
+				log_warn("cluster: lists changed during the rebuild without an edit through FTL, taking the cluster's lists");
+		}
+		finish_pull(stamp, gravityhash);
+		cluster_lists_accounted(written);
 		if(source != NULL)
 			source->stuck_valid = false;
 		return;
@@ -2300,18 +2358,31 @@ static void resume_gravity(void)
 	// before the round that would have recorded it. That is a change made on
 	// this node, and dating it to the version we already had would have the
 	// cluster hand the old lists back
-	const double now = double_time();
-	log_info("cluster: lists were changed while this node was down");
-	publish_gravity_state(now, gravityhash);
+	// ...unless it was not an edit through FTL, which is not newer than the
+	// cluster's lists
+	double written = 0.0;
+	bool replaced = false;
+	cluster_lists_explain(&written, &replaced);
+	const double stamp = date_local_change(written, replaced, sync_state.gravity_changed);
+	cluster_lists_accounted(written);
+	if(stamp <= 0.0)
+	{
+		log_warn("cluster: lists were changed while this node was down, not through FTL - taking the cluster's lists");
+		publish_gravity_state(0.0, gravityhash);
+		return;
+	}
 
-	// ...and dating them to now makes this node the newest holder in the
-	// cluster, which is a claim about its blocking database as much as about
-	// its tables. Nothing built one from these lists - FTL was not running
-	// when they changed - so the rebuild is owed here exactly as it is owed
-	// after a pull. Which part of the tables moved cannot be told apart
-	// across a restart, so the answer that cannot be wrong is taken
-	owe_gravity(now, cluster_node_id(), gravityhash);
-	publish_pending_gravity(now, cluster_node_id(), gravityhash);
+	log_info("cluster: lists were changed while this node was down");
+	publish_gravity_state(stamp, gravityhash);
+
+	// ...and dating them makes this node the newest holder in the cluster,
+	// which is a claim about its blocking database as much as about its
+	// tables. Nothing built one from these lists - FTL was not running when
+	// they changed - so the rebuild is owed here exactly as it is owed after
+	// a pull. Which part of the tables moved cannot be told apart across a
+	// restart, so the answer that cannot be wrong is taken
+	owe_gravity(stamp, cluster_node_id(), gravityhash);
+	publish_pending_gravity(stamp, cluster_node_id(), gravityhash);
 }
 
 // A node that has never recorded a list version is never taken from, and a
