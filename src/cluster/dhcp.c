@@ -31,6 +31,8 @@
 #include <net/if.h>
 // lock_shm()
 #include "shmem.h"
+// log_cluster_message()
+#include "database/message-table.h"
 
 // Consecutive rounds the outcome of the election has been the same. A single
 // missed answer must not move DHCP: a takeover costs a restart on two nodes
@@ -789,7 +791,14 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	if(incapable != NULL)
 	{
 		if(incapable != warned_incapable)
-			log_warn("cluster: DHCP failover is on but this node cannot serve DHCP: %s", incapable);
+		{
+			char msg[CLUSTER_STRLEN] = "";
+			snprintf(msg, sizeof(msg), "DHCP failover is on but this node cannot serve DHCP: %s", incapable);
+			log_warn("cluster: %s", msg);
+			// A gravity run only holds it back for a while
+			if(strcmp(incapable, "gravity is running") != 0)
+				log_cluster_message(msg);
+		}
 		warned_incapable = incapable;
 
 		// Not being able to *change* dhcp.active is not the same as not

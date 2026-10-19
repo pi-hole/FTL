@@ -55,6 +55,8 @@
 #include <math.h>
 // lock_shm()
 #include "shmem.h"
+// log_cluster_message()
+#include "database/message-table.h"
 
 // The peers the cluster thread works with. They own memory and a libcurl
 // handle and are touched by that thread only, which is why no lock is taken
@@ -1661,6 +1663,9 @@ static double our_changed(void)
 	return config_changed;
 }
 
+// What the web interface says about such a change
+static const char foreign_lists[] = "the lists changed without an edit through FTL (a gravity database restored or copied in?), the cluster's lists are taken instead";
+
 // The version a change of the tables that nothing here explains is published
 // under. An edit made through FTL counts from when it was written, above what it
 // was made on. Anything else - gravity.sh restoring a backup, a gravity.db
@@ -1767,7 +1772,10 @@ static void note_local_changes(void)
 		else if(!first_time && stamp > 0.0)
 			log_info("cluster: lists changed here");
 		else if(!first_time)
+		{
 			log_warn("cluster: lists changed here without an edit through FTL (a gravity.db restored or copied in?), taking the cluster's lists");
+			log_cluster_message(foreign_lists);
+		}
 		publish_gravity_state(stamp, gravityhash);
 		cluster_lists_accounted(written);
 
@@ -1905,6 +1913,7 @@ static void settle_gravity(void)
 		gravity_backoff = gravity_backoff > 0.0 ? fmin(gravity_backoff * 2.0, CLUSTER_BACKOFF_MAX) : 60.0;
 		gravity_retry_at = double_time() + gravity_backoff;
 		log_warn("cluster: cannot read the lists after the rebuild, rebuilding again in %.0f s", gravity_backoff);
+		log_cluster_message("cannot read the lists after the rebuild, rebuilding again");
 		return;
 	}
 	gravity_unreadable = 0;
@@ -1967,7 +1976,10 @@ static void settle_gravity(void)
 			if(stamp > 0.0)
 				log_info("cluster: lists changed here");
 			else
+			{
 				log_warn("cluster: lists changed during the rebuild without an edit through FTL, taking the cluster's lists");
+				log_cluster_message(foreign_lists);
+			}
 		}
 		finish_pull(stamp, gravityhash);
 		cluster_lists_accounted(written);
@@ -2470,6 +2482,7 @@ static void resume_gravity(void)
 	if(stamp <= 0.0)
 	{
 		log_warn("cluster: lists were changed while this node was down, not through FTL - taking the cluster's lists");
+		log_cluster_message(foreign_lists);
 		publish_gravity_state(0.0, gravityhash);
 		return;
 	}
@@ -3030,8 +3043,13 @@ static void catch_up(void)
 			if(cluster_push_possible(body))
 			{
 				if(peer->push_backoff <= 0.0)
-					log_info("cluster: %s did not take the configuration, trying again later",
+				{
+					char refused[CLUSTER_STRLEN + 64] = "";
+					snprintf(refused, sizeof(refused), "%s did not take the configuration",
 					         strlen(peer->name) > 0 ? peer->name : peer->url);
+					log_info("cluster: %s, trying again later", refused);
+					log_cluster_message(refused);
+				}
 				peer->push_backoff = peer->push_backoff > 0.0 ?
 				                     fmin(peer->push_backoff * 2.0, CLUSTER_PUSH_BACKOFF_MAX) : 10.0;
 				peer->retry_push_at = double_time() + peer->push_backoff;
