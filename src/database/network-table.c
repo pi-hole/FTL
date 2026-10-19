@@ -1333,7 +1333,9 @@ bool flush_network_table(void)
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		clientsData *client = getClient(clientID, true);
-		if(client == NULL)
+		// An alias-client's name comes from the aliasclient table, which
+		// the flush leaves alone, and the resolver never restores it
+		if(client == NULL || client->flags.aliasclient)
 			continue;
 
 		client->namepos = 0;
