@@ -89,6 +89,7 @@ struct quic_xfer {
 	bool overflow;          // response body exceeded answer_sz
 	bool done;              // request stream closed
 	bool failed;            // request stream closed with an error
+	bool lost;              // the connection turned out closed or dead before answering
 };
 
 // One pooled QUIC connection plus its HTTP/3 session and stream table. Borrowed
@@ -558,6 +559,12 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
                              uint8_t *answer, size_t answer_sz,
                              const uint64_t deadline, const bool reused)
 {
+	// No stream is the request stream yet, and failing the checks below means
+	// the server closed the connection while it sat in the pool
+	memset(&c->x, 0, sizeof(c->x));
+	c->x.req_sid = -1;
+	c->x.lost = true;
+
 	// Process what arrived while the connection sat in the pool, such as the
 	// server closing it or a GOAWAY, before sending a new request on it
 	SSL_handle_events(c->ssl);
@@ -569,8 +576,8 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
 	SSL_CONN_CLOSE_INFO info;
 	if(c->goaway || SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
 		return -1;
+	c->x.lost = false;
 
-	memset(&c->x, 0, sizeof(c->x));
 	if(!conn_submit_request(c, u, query, qlen, answer, answer_sz))
 		return -1;
 
@@ -618,7 +625,10 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
 			uint64_t unacked = 0;
 			if(c->x.status == 0 && req != NULL &&
 			   SSL_get_stream_write_buf_used(req->ssl, &unacked) == 1 && unacked > 0)
+			{
+				c->x.lost = true;
 				break;
+			}
 			probe = 0;
 		}
 		quic_wait(c->ssl, c->fd, probe != 0 && probe < deadline ? probe : deadline);
@@ -690,15 +700,19 @@ void quic_pool_free(struct quic_pool *p)
 	free(p);
 }
 
-// Borrow a ready connection: reuse a warm one, reap ones close to their idle
-// timeout or shutting down, or open a fresh one. It is pooled while under the cap,
-// else closed after its exchange: waiting for a pooled one would serialize a
-// burst of queries. Sets *reused, returns NULL if no connection could be opened.
-static struct quic_client_conn *borrow(struct quic_pool *p, uint64_t deadline, bool *reused)
+// Borrow a ready connection: reuse a warm one unless fresh_only is set, reap ones
+// close to their idle timeout or shutting down, or open a fresh one. It is pooled
+// while under the cap, else closed after its exchange: waiting for a pooled one
+// would serialize a burst of queries. Sets *reused, returns NULL if no connection
+// could be opened.
+static struct quic_client_conn *borrow(struct quic_pool *p, uint64_t deadline,
+                                       const bool fresh_only, bool *reused)
 {
 	pthread_mutex_lock(&p->lock);
 	int free_slot = -1;
+	struct quic_client_conn *warm = NULL;
 	const uint64_t now = quic_now_ms();
+	// Scan every slot, so expired connections are reaped under light traffic too
 	for(int i = 0; i < p->max; i++)
 	{
 		struct quic_client_conn *c = p->slots[i];
@@ -707,17 +721,24 @@ static struct quic_client_conn *borrow(struct quic_pool *p, uint64_t deadline, b
 			const uint64_t idle_age = now > c->last_used_ms ? now - c->last_used_ms : 0;
 			if(!c->goaway && idle_age + QUIC_IDLE_MARGIN_MS < c->idle_timeout_ms)
 			{
-				// Reuse this warm connection.
-				c->in_use = true;
-				pthread_mutex_unlock(&p->lock);
-				*reused = true;
-				return c;
+				if(warm == NULL && !fresh_only)
+					warm = c;
+				continue;
 			}
 			p->stats.conns_reaped_idle++;
 			retire(p, c);
 		}
 		if(p->slots[i] == NULL && free_slot < 0)
 			free_slot = i;
+	}
+
+	if(warm != NULL)
+	{
+		// Reuse this warm connection.
+		warm->in_use = true;
+		pthread_mutex_unlock(&p->lock);
+		*reused = true;
+		return warm;
 	}
 
 	// Nothing warm; open a fresh connection.
@@ -774,12 +795,26 @@ static void return_ok(struct quic_pool *p, struct quic_client_conn *c)
 }
 
 // Discard a connection after a failed exchange: tear it down and free its slot.
-static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool reused)
+// When it was lost while idle, the idle ones not used since likely were as well,
+// e.g., after an upstream restart, so retire those too.
+static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool lost)
 {
 	pthread_mutex_lock(&p->lock);
-	if(reused)
-		p->stats.conns_dead_on_reuse++;
+	const uint64_t last_used_ms = c->last_used_ms;
 	retire(p, c);
+	if(lost)
+	{
+		p->stats.conns_dead_on_reuse++;
+		for(int i = 0; i < p->max; i++)
+		{
+			struct quic_client_conn *o = p->slots[i];
+			if(o != NULL && !o->in_use && o->last_used_ms <= last_used_ms)
+			{
+				p->stats.conns_reaped_idle++;
+				retire(p, o);
+			}
+		}
+	}
 	pthread_mutex_unlock(&p->lock);
 }
 
@@ -792,16 +827,16 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 		return -1;
 
 	// One budget for the whole exchange (both attempts share it). A pooled
-	// connection the upstream closed while idle is replaced once; a second
-	// failure fails closed.
+	// connection the upstream lost while idle is replaced once by a fresh one;
+	// any other failure fails closed.
 	const uint64_t deadline = quic_now_ms() + QUIC_EXCHANGE_TIMEOUT_MS;
 
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
 		bool reused = false;
-		struct quic_client_conn *c = borrow(p, deadline, &reused);
+		struct quic_client_conn *c = borrow(p, deadline, attempt > 0, &reused);
 		if(c == NULL)
-			continue; // could not connect/obtain one; retry once
+			break;
 
 		const ssize_t r = conn_exchange(c, &p->u, query, qlen, answer, answer_sz, deadline, reused);
 		if(r >= 0)
@@ -809,7 +844,10 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 			return_ok(p, c);
 			return r;
 		}
-		return_dead(p, c, reused);
+		const bool lost = reused && c->x.lost;
+		return_dead(p, c, lost);
+		if(!lost)
+			break;
 	}
 	return -1;
 }

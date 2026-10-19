@@ -440,3 +440,45 @@ print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
   printf "queries: %s, new connections: %s\n" "${queries}" "${conns}"
   [[ "${queries}" -ge 3 && "${conns}" -le 1 ]]
 }
+
+@test "dotdoh-client: a DoH3 request answered with an error is not sent again" {
+  local requests
+  requests=$(grep -c '^doh3 ' "$SHIM_PAD_LOG" || true)
+  dig +short +tries=1 +time=8 $(proxy_at 4) h3err-1.ftl > /dev/null || true
+  requests=$(( $(grep -c '^doh3 ' "$SHIM_PAD_LOG" || true) - requests ))
+  printf "requests: %s\n" "${requests}"
+  [[ "${requests}" -eq 1 ]]
+}
+
+@test "dotdoh-client: queries after the DoH3 upstream lost its connections are answered" {
+  local i ok=0
+  # Parallel slow queries fill the pool, then the shim forgets every connection
+  for i in 1 2 3 4 5 6; do
+    dig +short +tries=1 +time=8 $(proxy_at 4) "slow-h3-fill-${i}.ftl" > /dev/null &
+  done
+  wait
+  pkill -USR1 -f "python3 test/dotdoh_shim.py"
+  sleep 0.5
+  for i in 1 2 3 4; do
+    dig +short +tries=1 +time=3 $(proxy_at 4) "h3-lost-${i}.ftl" > /dev/null && ok=$((ok + 1))
+  done
+  printf "answered: %s of 4\n" "${ok}"
+  [[ "${ok}" -eq 4 ]]
+}
+
+@test "dotdoh-client: idle DoH3 connections expire while one stays in use" {
+  local i open
+  for i in 1 2 3 4 5 6; do
+    dig +short +tries=1 +time=8 $(proxy_at 4) "slow-h3-idle-${i}.ftl" > /dev/null &
+  done
+  wait
+  # The shim's idle timeout is 10 s, so the others are reaped after 8 s
+  for i in $(seq 1 10); do
+    sleep 1
+    dig +short +tries=1 +time=3 $(proxy_at 4) "h3-idle-${i}.ftl" > /dev/null || true
+  done
+  # UDP sockets connected to the shim's DoH3 port 8444 (0x20FC)
+  open=$(awk '$3 == "0100007F:20FC"' /proc/net/udp | wc -l)
+  printf "open connections: %s\n" "${open}"
+  [[ "${open}" -le 2 ]]
+}
