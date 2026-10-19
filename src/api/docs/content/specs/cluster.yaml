@@ -907,3 +907,10 @@ components:
                 edited here while FTL was not running, and for as long as a
                 rebuild is actually running.
               example: false
+            error:
+              type: string
+              description: |
+                Why this node cannot settle its lists, present only while it
+                cannot - for instance a gravity database whose list tables it
+                cannot read after a rebuild.
+              example: "cannot read the lists after the rebuild"

@@ -1627,6 +1627,14 @@ static enum gravity_state gravity_state = GRAVITY_IDLE;
 static double gravity_retry_at = 0.0;
 static double gravity_backoff = 0.0;
 
+// Why the lists cannot be settled, for the status. NULL while they can
+static const char *gravity_error = NULL;
+
+// How often in a row the lists could not be read after a rebuild, and after how
+// many attempts that is taken as a database the rebuild has to repair
+static unsigned int gravity_unreadable = 0;
+#define CLUSTER_UNREADABLE_ROUNDS 3
+
 // The version to adopt once the rebuild succeeds, and who it came from
 static double pending_gravity = 0.0;
 static char pending_gravity_id[CLUSTER_HASHLEN] = "";
@@ -1882,7 +1890,27 @@ static void settle_gravity(void)
 	double written = 0.0;
 	bool replaced = false;
 	if(!read_local_state(confhash, gravityhash, &written, &replaced))
-		return; // decided next round, on a fingerprint we could read
+	{
+		// Decided next round, on a fingerprint we could read - but not
+		// forever: a gravity.db without its tables never becomes readable
+		// by waiting, and gravity.sh restores it from its backups
+		if(++gravity_unreadable < CLUSTER_UNREADABLE_ROUNDS)
+			return;
+
+		gravity_unreadable = 0;
+		cluster_lock();
+		gravity_state = GRAVITY_OWED;
+		gravity_error = "cannot read the lists after the rebuild";
+		cluster_unlock();
+		gravity_backoff = gravity_backoff > 0.0 ? fmin(gravity_backoff * 2.0, CLUSTER_BACKOFF_MAX) : 60.0;
+		gravity_retry_at = double_time() + gravity_backoff;
+		log_warn("cluster: cannot read the lists after the rebuild, rebuilding again in %.0f s", gravity_backoff);
+		return;
+	}
+	gravity_unreadable = 0;
+	cluster_lock();
+	gravity_error = NULL;
+	cluster_unlock();
 
 	struct cluster_peer *source = pending_source();
 	const double changed = pending_gravity;
@@ -2714,6 +2742,7 @@ void cluster_local_status(cJSON *node)
 	// tables there are still this node's own, and consistent with them
 	const bool gravity_owed = gravity_state == GRAVITY_OWED ||
 	                          gravity_state == GRAVITY_RUNNING;
+	const char *error = gravity_error;
 	cluster_unlock();
 
 	char address[CLUSTER_STRLEN] = "";
@@ -2757,6 +2786,8 @@ void cluster_local_status(cJSON *node)
 	cJSON_AddNumberToObject(lists, "changed", published.gravity_changed);
 	cJSON_AddStringToObject(lists, "hash", published.gravity_hash);
 	cJSON_AddBoolToObject(lists, "owed", gravity_owed);
+	if(error != NULL)
+		cJSON_AddStringToObject(lists, "error", error);
 	cJSON_AddItemToObject(sync, "gravity", lists);
 	cJSON_AddItemToObject(node, "sync", sync);
 }
