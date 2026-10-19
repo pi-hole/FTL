@@ -26,7 +26,7 @@
 // directory_exists()
 #include "files.h"
 // trim_whitespace()
-// cluster_peer_ipv4()
+// cluster_peer_ipv4(), cluster_peer_address()
 #include "cluster/cluster.h"
 
 #include "config/setupVars.h"
@@ -840,11 +840,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			// Without a virtual IP address, every node is advertised
 			// individually so a client can fall back on its own
 			char servers[512] = "0.0.0.0";
-			unsigned int unnamed = 0;
+			unsigned int unnamed = 0, ipv6 = 0;
 			cJSON *peers = conf->cluster.members.v.json;
 			for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
 			{
-				char address[INET_ADDRSTRLEN] = "";
+				char address[INET6_ADDRSTRLEN] = "";
+				if(cJSON_IsString(item) &&
+				   cluster_peer_address(item->valuestring, AF_INET6, address, sizeof(address)))
+				{
+					// Advertised through DHCPv6 below, if at all
+					ipv6++;
+					continue;
+				}
 				if(!cJSON_IsString(item) || !cluster_peer_ipv4(item->valuestring, address, sizeof(address)))
 				{
 					// A DHCP option carries an address, so a
@@ -873,6 +880,9 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 				log_warn("cluster: %u member%s written as %s and cannot go into a DHCP option - set cluster.vip.address, or write the member list with IP addresses",
 				         unnamed, unnamed == 1 ? " is" : "s are",
 				         unnamed == 1 ? "a name" : "names");
+			if(ipv6 > 0 && !conf->dhcp.ipv6.v.b)
+				log_warn("cluster: %u member%s not an IPv4 address and cannot go into the DHCPv4 option - set cluster.vip.address, or enable dhcp.ipv6 to advertise %s through DHCPv6",
+				         ipv6, ipv6 == 1 ? " is" : "s are", ipv6 == 1 ? "it" : "them");
 
 			// dhcp.multiDNS asks for the server to be named more than
 			// once, which some clients need before they stop adding
@@ -910,6 +920,30 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			else if(cluster_dhcp && cluster_vip6)
 				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s]\n",
 				        conf->cluster.vip.address.v.s);
+			else if(cluster_dhcp && !cluster_vip4)
+			{
+				// Every node written as an IPv6 address, as for IPv4 above
+				char servers[512] = "[::]";
+				cJSON *peers = conf->cluster.members.v.json;
+				for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
+				{
+					char address[INET6_ADDRSTRLEN] = "";
+					if(!cJSON_IsString(item) ||
+					   !cluster_peer_address(item->valuestring, AF_INET6, address, sizeof(address)) ||
+					   strlen(servers) + strlen(address) + 4 > sizeof(servers))
+						continue;
+
+					strcat(servers, ",[");
+					strcat(servers, address);
+					strcat(servers, "]");
+				}
+
+				if(conf->dhcp.multiDNS.v.b)
+					fprintf(pihole_conf, "dhcp-option=option6:dns-server,%s,%s,%s\n",
+					        servers, servers, servers);
+				else
+					fprintf(pihole_conf, "dhcp-option=option6:dns-server,%s\n", servers);
+			}
 			else if(conf->dhcp.multiDNS.v.b)
 				fputs("dhcp-option=option6:dns-server,[::],[::],[fd00::],[fd00::],[fe80::],[fe80::]\n", pihole_conf);
 			else
