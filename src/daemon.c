@@ -385,8 +385,10 @@ static void terminate_threads(void)
 		}
 
 		// Wait for the cancelled thread as well: the caller closes the
-		// databases and removes the shared memory right afterwards
-		if(!join_thread(i, 2))
+		// databases and removes the shared memory right afterwards. The
+		// cluster thread is not cancelled inside a step that holds a lock,
+		// it finishes the step, which can take a slow peer's timeout
+		if(!join_thread(i, i == CLUSTER ? 15 : 2))
 		{
 			log_warn("Thread %s (%d) did not terminate", thread_names[i], i);
 			all_joined = false;

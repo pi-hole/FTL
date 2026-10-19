@@ -106,6 +106,11 @@ static bool write_log_line(struct log_fd *log, const char *line, size_t len)
 	if(log->path == NULL)
 		return false;
 
+	// write() is a cancellation point, and a thread cancelled in it would
+	// leave the lock held for every later log line, cleanup()'s included
+	int cancelstate = PTHREAD_CANCEL_ENABLE;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cancelstate);
+
 	// log->fd and log->reopen_needed are only accessed under the lock so a
 	// reopen (e.g. from flush_dnsmasq_log()) can never race a concurrent write
 	pthread_mutex_lock(&log->lock);
@@ -116,28 +121,25 @@ static bool write_log_line(struct log_fd *log, const char *line, size_t len)
 	reopen_log_fd(log);
 
 	// No usable descriptor: let the caller fall back to another channel
-	if(log->fd == -1)
-	{
-		pthread_mutex_unlock(&log->lock);
-		return false;
-	}
+	bool ok = log->fd != -1;
 
 	ssize_t written = 0;
-	while(written < (ssize_t)len)
+	while(ok && written < (ssize_t)len)
 	{
 		ssize_t rc = write(log->fd, line + written, len - written);
 		if(rc == -1)
 		{
 			if(errno == EINTR)
 				continue;
-			pthread_mutex_unlock(&log->lock);
-			return false;
+			ok = false;
+			break;
 		}
 		written += rc;
 	}
 
 	pthread_mutex_unlock(&log->lock);
-	return true;
+	pthread_setcancelstate(cancelstate, NULL);
+	return ok;
 }
 
 void clear_debug_flags(void)
