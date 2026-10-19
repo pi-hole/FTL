@@ -95,7 +95,9 @@ const char *cluster_node_id(void) __attribute__ ((const));
 // the archive carries whole tables, not the changes made to them. held is what
 // this node's tables hashed to when the round decided to pull; an edit made here
 // since then is kept rather than replaced
-bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding);
+// imported is what the tables hash to right after the import, "" if unreadable
+bool cluster_pull_gravity(struct cluster_peer *peer, const char *held, bool *rebuilding,
+                          char imported[CLUSTER_HASHLEN]);
 
 // Start a rebuild of the blocking database. False when one is already running,
 // in which case the caller asks again next round
