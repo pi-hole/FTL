@@ -101,6 +101,7 @@ class TestAuthWorkflow:
     05: setting a regular password via API
     06: incorrect password is rejected
     07: correct password is accepted
+    07a: app and CLI sessions cannot create a Prometheus token
     07d/07e: a sid cookie in the second cookie field works over HTTP/2 and HTTP/3
     08: rate limiting is enforced after many wrong attempts
     09: removing the password via API
@@ -256,6 +257,30 @@ class TestAuthWorkflow:
         assert session["message"] == "password correct"
         assert isinstance(session["sid"], str) and len(session["sid"]) > 0
         assert isinstance(session["csrf"], str) and len(session["csrf"]) > 0
+
+    # -- 07a: app and CLI sessions cannot create a Prometheus token --
+
+    def test_07a_prometheus_token_needs_config_rights(self):
+        """POST /api/auth/prometheus is refused like a config change."""
+        passwords = {
+            "app": TestAuthWorkflow._app_password,
+            "cli": open("/etc/pihole/cli_pw", encoding="utf-8").read().strip(),
+        }
+        for kind, password in passwords.items():
+            # Start in a second the logins before have not used, see 07f
+            time.sleep(1.1)
+            r = requests.post(f"{FTL_URL}/api/auth",
+                              json={"password": password}, timeout=10)
+            assert r.status_code == 200, f"{kind} login failed: {r.text}"
+            headers = {"X-FTL-SID": r.json()["session"]["sid"]}
+            try:
+                r = requests.post(f"{FTL_URL}/api/auth/prometheus",
+                                  headers=headers, timeout=10)
+                assert r.status_code == 403, \
+                    f"{kind} session got {r.status_code}: {r.text}"
+            finally:
+                requests.delete(f"{FTL_URL}/api/auth", headers=headers, timeout=5)
+        time.sleep(1.1)
 
     # -- 07b: explicit logout deletes session --
 
