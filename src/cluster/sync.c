@@ -1197,6 +1197,7 @@ void cluster_state_load(struct cluster_sync_state *state)
 		{
 			double when = 0.0, written = 0.0;
 			unsigned long long inode = 0;
+			unsigned int failures = 0;
 			char hash[CLUSTER_HASHLEN] = "", credhash[CLUSTER_HASHLEN] = "";
 			char phash[CLUSTER_HASHLEN] = "";
 			char key[64] = "";
@@ -1259,6 +1260,11 @@ void cluster_state_load(struct cluster_sync_state *state)
 				lists_accounted = isfinite(written) && written > 0.0 ? fmin(written, double_time()) : 0.0;
 				lists_inode = inode;
 				pthread_mutex_unlock(&lists_lock);
+			}
+			else if(sscanf(line, "takeover %lf %u", &when, &failures) == 2)
+			{
+				if(isfinite(when) && when > double_time())
+					cluster_dhcp_restore_takeover(when, failures);
 			}
 			else if(sscanf(line, "config %lf", &when) == 1)
 			{
@@ -1459,6 +1465,11 @@ static void write_state_file(const struct cluster_sync_state *state)
 	pthread_mutex_lock(&lists_lock);
 	fprintf(file, "lists %.17g %.17g %llu\n", lists_written, lists_accounted, lists_inode);
 	pthread_mutex_unlock(&lists_lock);
+	double takeover_until = 0.0;
+	unsigned int takeover_failures = 0;
+	cluster_dhcp_takeover_state(&takeover_until, &takeover_failures);
+	if(takeover_until > double_time())
+		fprintf(file, "takeover %.6f %u\n", takeover_until, takeover_failures);
 	// The virtual address this node placed, if it holds one. Read back at
 	// start-up so an FTL that was killed can tell the address it left behind
 	// from one the administrator configured on the machine
