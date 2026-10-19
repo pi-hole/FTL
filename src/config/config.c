@@ -1468,7 +1468,7 @@ void initConfig(struct config *conf)
 	conf->misc.restart_delay.h = "Some configuration changes can only be applied by restarting the DNS resolver. When a client changes many settings one after another, restarting on each of them takes the resolver down repeatedly. With this setting, FTL waits the given number of seconds and applies everything arriving in the meantime in a single restart.\n\n This setting takes any integer value between 0 and 60 seconds, where 0 restarts immediately. Each further change extends the wait, but a restart is postponed by no more than five times this value (hard-coded). The wait is checked once a second, so the actual delay is rounded up accordingly. Deliberate one-off actions such as a Teleporter import or an explicit restart request are never delayed.";
 	conf->misc.restart_delay.a = cJSON_CreateStringReference("A positive integer value between 0 and 60");
 	conf->misc.restart_delay.t = CONF_UINT;
-	conf->misc.restart_delay.d.ui = 1;
+	conf->misc.restart_delay.d.ui = 0;
 	conf->misc.restart_delay.c = validate_restart_delay;
 
 	conf->misc.nice.k = "misc.nice";

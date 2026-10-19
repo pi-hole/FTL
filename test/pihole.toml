@@ -1429,7 +1429,7 @@
   #
   # Allowed values are:
   #     A positive integer value between 0 and 60
-  restart_delay = 1
+  restart_delay = 0
 
   # Set niceness of pihole-FTL. Defaults to -10 and can be disabled altogether by setting
   # a value of -999. The nice value is an attribute that can be used to influence the
