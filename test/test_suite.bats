@@ -779,7 +779,7 @@ setup() {
 
 @test "A crashed thread cannot keep FTL from exiting" {
   # The thread crashes holding a stdio lock exit() waits for, the crash
-  # watchdog ends the process after 30 seconds
+  # watchdog ends the process after 40 seconds without progress
   run bash -c 'timeout -k 5 60 ./pihole-FTL crash-thread'
   printf "%s\n" "${lines[@]}"
   assert_output --partial "FTL crashed"

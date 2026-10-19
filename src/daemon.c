@@ -355,6 +355,7 @@ static void terminate_threads(void)
 	bool all_joined = true;
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		crash_watchdog_progress();
 		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
 		if(threads[i] == 0)

@@ -44,11 +44,13 @@ static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
 
-// Seconds the shutdown after a crash may take before the watchdog ends the
-// process. terminate_threads() alone may wait up to 2 s for each thread
-#define CRASH_EXIT_TIMEOUT 30
+// Seconds the shutdown after a crash may go without finishing a step before
+// the watchdog ends the process. The longest single step is the wait for the
+// database thread in main()
+#define CRASH_EXIT_TIMEOUT (DB_THREAD_JOIN_TIMEOUT + 10)
 static sem_t crash_sem;
 static volatile sig_atomic_t crash_watchdog_ready = 0;
+static volatile sig_atomic_t crash_shutdown_progress = 0;
 
 // Saved by the SIGTERM handler for deferred logging in the main loop.
 // Only pid_t and uid_t (both integer types) are safe to write from a
@@ -1402,14 +1404,29 @@ static void *crash_watchdog(void *arg)
 	(void)arg;
 	while(sem_wait(&crash_sem) != 0 && errno == EINTR);
 
-	unsigned int left = CRASH_EXIT_TIMEOUT;
-	while((left = sleep(left)) > 0);
+	// Every finished shutdown step restarts the countdown
+	crash_shutdown_progress = 0;
+	for(unsigned int left = CRASH_EXIT_TIMEOUT; left > 0; left--)
+	{
+		sleep(1);
+		if(crash_shutdown_progress)
+		{
+			crash_shutdown_progress = 0;
+			left = CRASH_EXIT_TIMEOUT + 1;
+		}
+	}
 
 	static const char msg[] = "FTL did not shut down after the crash, exiting now\n";
 	// Nothing left to do if this fails, we exit right after
 	const ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
 	(void)ret;
 	_exit(EXIT_FAILURE);
+}
+
+// Tell the crash watchdog the shutdown is still moving
+void crash_watchdog_progress(void)
+{
+	crash_shutdown_progress = 1;
 }
 
 // Start the crash watchdog. Threads do not survive fork(), so call this in
