@@ -713,6 +713,31 @@ static void close_from(const int lowfd)
 		close((int)fd);
 }
 
+// How long a gravity.db_temp nobody writes to still means a run is building
+// it. gravity.sh leaves the file behind when it fails or is killed
+#define GRAVITY_TEMP_MAX_AGE 600
+
+// A gravity run this node's cluster did not start: one through the API sets
+// gravity_running, one from the shell or cron only leaves gravity.db_temp. Such
+// a run swaps a copy of the list tables taken at its start in when it ends
+bool cluster_gravity_elsewhere(void)
+{
+	if(gravity_running && gravity_fd < 0)
+		return true;
+
+	char temp[PATH_MAX] = "";
+	lock_shm();
+	snprintf(temp, sizeof(temp), "%s_temp", config.files.gravity.v.s);
+	unlock_shm();
+
+	struct stat st = { 0 };
+	if(stat(temp, &st) != 0)
+		return false;
+
+	const time_t age = time(NULL) - st.st_mtime;
+	return age >= 0 && age < GRAVITY_TEMP_MAX_AGE;
+}
+
 bool cluster_run_gravity(void)
 {
 	if(gravity_fd >= 0)
@@ -721,6 +746,14 @@ bool cluster_run_gravity(void)
 	// A run started now would outlive FTL
 	if(killed || want_terminate)
 		return false;
+
+	// gravity.sh has no lock against a second run, and two of them leave a
+	// gravity.db without tables
+	if(cluster_gravity_elsewhere())
+	{
+		log_debug(DEBUG_CLUSTER, "cluster: gravity is running elsewhere, waiting");
+		return false;
+	}
 
 	// Claimed in one step, so the web interface and this thread cannot both
 	// think they got it - and so neither clears what the other took
