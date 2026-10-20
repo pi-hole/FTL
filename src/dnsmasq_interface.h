@@ -48,11 +48,17 @@ void FTL_TCP_worker_created(const int confd);
 void FTL_TCP_worker_terminating(bool finished);
 
 bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
+void FTL_process_lease_deletions(void);
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where);
 bool FTL_is_forward_available(const union mysockaddr *addr);
 
 bool get_dnsmasq_debug(void) __attribute__ ((pure));
+
+// Concurrent TCP children dnsmasq will serve (--max-tcp-connections). The
+// encrypted listeners hand every in-flight query to one of these, so they derive
+// their own concurrency limit from it.
+unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 
 // defined in src/dnsmasq/cache.c
 extern char *querystr(char *desc, unsigned short type);
