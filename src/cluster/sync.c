@@ -913,13 +913,15 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
 	ok = true;
 
 done:
-	free(ours);
+	if(ours != NULL)
+		free(ours);
 	free(theirs.leases);
 	free(theirs.extras);
 	free(mine.leases);
 	free(mine.extras);
 	free(chosen);
-	free(buf);
+	if(buf != NULL)
+		free(buf);
 	return ok;
 }
 
