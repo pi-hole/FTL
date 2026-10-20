@@ -729,18 +729,20 @@ with open(sys.argv[1], "ab", buffering=0) as f:
   syslogd=$!
   for i in $(seq 1 50); do [[ -S /dev/log ]] && break; sleep 0.1; done
   chmod 0666 /dev/log
+  # More errors than one queued batch keeps for relaying
+  missing=$(for i in $(seq 1 40); do printf 'addn-hosts=/nonexistent/hosts%s;' "$i"; done)
   started=0
-  start_ftl_afresh "FTLCONF_misc_dnsmasq_lines='addn-hosts=/nonexistent/hosts'" || started=$?
-  ./pihole-FTL wait-for 'failed to load names from /nonexistent/hosts' /var/log/pihole/pihole.log 5 0 > /dev/null || true
+  start_ftl_afresh "FTLCONF_misc_dnsmasq_lines='${missing}'" || started=$?
+  ./pihole-FTL wait-for 'failed to load names from /nonexistent/hosts40:' /var/log/pihole/pihole.log 5 0 > /dev/null || true
 
   # A directory in place of pihole.log makes the reopen after SIGUSR2 fail,
-  # then SIGHUP logs the error again
+  # then SIGHUP logs the errors again
   mv /var/log/pihole/pihole.log /var/log/pihole/pihole.log.saved
   mkdir /var/log/pihole/pihole.log
   kill -USR2 "$(cat /run/pihole-FTL.pid)" || true
   kill -HUP "$(cat /run/pihole-FTL.pid)" || true
   for i in $(seq 1 50); do
-    grep -q 'failed to load names from /nonexistent/hosts' /tmp/ftl_syslog.txt && break
+    [[ $(grep -c 'failed to load names from /nonexistent/hosts' /tmp/ftl_syslog.txt 2> /dev/null) -ge 40 ]] && break
     sleep 0.1
   done
   sleep 0.5
@@ -755,5 +757,5 @@ with open(sys.argv[1], "ab", buffering=0) as f:
 
   printf "relayed to syslog: %s\n" "${relayed}"
   [[ ${started} == 0 && ${stopped} == 0 ]]
-  [[ ${relayed} == 1 ]]
+  [[ ${relayed} == 40 ]]
 }
