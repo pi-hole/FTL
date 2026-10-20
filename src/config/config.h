@@ -510,6 +510,8 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 // Bumped whenever the configuration is replaced, so a reader can tell that
 // something changed without comparing anything
 extern volatile unsigned long config_generation;
+// ...and the one the last change made on this node produced
+extern volatile unsigned long config_local_generation;
 
 // Date what changed, item by item - here, or on the peer we took it from. This
 // decides who catches up whom when two nodes were out of touch and come back

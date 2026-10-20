@@ -34,6 +34,8 @@
 #include "cluster/cluster.h"
 // cluster_sync_lock()
 #include "cluster/sync.h"
+// CLUSTER_HDR_FROM
+#include "cluster/auth.h"
 #include <math.h>
 
 static struct {
@@ -489,16 +491,58 @@ static int api_config_get(struct ftl_conn *api, const bool refused)
 // A configuration handed to us by a peer, and what came of it
 struct cluster_push {
 	bool encrypted;
+	cJSON *conf;
 	// When the peer says each item was changed, zero for one it did not date
 	double changed[CONFIG_ELEMENTS];
 	// ...and the same for the items this node took, zero for the others
 	double taken[CONFIG_ELEMENTS];
+	// ...and the ones it kept its own value of, and why
+	char refused[512];
+	unsigned int num_refused;
 };
+
+// Whether the peer sent another value than the one this node holds
+static bool push_differs(const struct cluster_push *push, const unsigned int i)
+{
+	struct conf_item *item = get_conf_item(&config, i);
+	cJSON *elem = push->conf;
+	const unsigned int level = config_path_depth(item->p);
+	for(unsigned int j = 0; j < level && elem != NULL; j++)
+		elem = cJSON_GetObjectItem(elem, item->p[j]);
+	if(elem == NULL)
+		return false;
+
+	cJSON *ours = addJSONConfValue(item->t, &item->v);
+	const bool same = cJSON_Compare(ours, elem, true);
+	cJSON_Delete(ours);
+
+	return !same;
+}
+
+// Collected as "key (why), ...", cut short with an ellipsis rather than mid-word
+static void note_refused(struct cluster_push *push, const struct conf_item *item, const char *why)
+{
+	push->num_refused++;
+
+	const size_t used = strlen(push->refused);
+	char entry[sizeof(push->refused)] = "";
+	snprintf(entry, sizeof(entry), "%s%s (%s)", used > 0 ? ", " : "", item->k, why);
+
+	// Six bytes are always kept back, so the ellipsis always fits
+	if(used + strlen(entry) + 6 > sizeof(push->refused))
+	{
+		if(used < 3 || strcmp(push->refused + used - 3, "...") != 0)
+			strcat(push->refused, used > 0 ? ", ..." : "...");
+		return;
+	}
+	strcat(push->refused, entry);
+}
 
 // Which items a configuration handed to us by a peer may touch
 static bool syncable_item(const struct conf_item *item, void *ctx)
 {
 	struct cluster_push *push = ctx;
+	const unsigned int i = (unsigned int)(item - get_conf_item(&config, 0));
 
 	// Refused here as well as left out there: a credential that arrived over
 	// a plain connection has already been read by whoever was listening, and
@@ -507,14 +551,21 @@ static bool syncable_item(const struct conf_item *item, void *ctx)
 		return false;
 
 	if(!cluster_syncable(item))
+	{
+		if(config_env_pinned(item) && push_differs(push, i))
+			note_refused(push, item, "set through an environment variable");
 		return false;
+	}
 
 	// ...and only one this node holds an older version of. The same stamp is
 	// the version this node holds already, unless both are starting points
-	const unsigned int i = (unsigned int)(item - get_conf_item(&config, 0));
 	const double theirs = push->changed[i], ours = cluster_item_changed(i);
 	if(!(theirs > ours) && !(theirs > 0.0 && !(theirs < ours) && theirs <= CLUSTER_BASELINE_STAMP))
+	{
+		if(push_differs(push, i))
+			note_refused(push, item, theirs > 0.0 ? "not newer than this node's" : "not dated");
 		return false;
+	}
 
 	push->taken[i] = theirs;
 	return true;
@@ -522,9 +573,36 @@ static bool syncable_item(const struct conf_item *item, void *ctx)
 
 static void refused_item(const struct conf_item *item, const char *why, void *ctx)
 {
-	(void)why;
 	struct cluster_push *push = ctx;
 	push->taken[item - get_conf_item(&config, 0)] = 0.0;
+	note_refused(push, item, why);
+}
+
+// Who handed us a push, by name where a member answers to its identity
+static void push_sender(struct ftl_conn *api, char *out, const size_t outlen)
+{
+	const char *from = mg_get_header(api->conn, CLUSTER_HDR_FROM);
+	snprintf(out, outlen, "%s", from != NULL ? from : "a peer");
+
+	cluster_lock();
+	const struct cluster_state *state = cluster_state();
+	for(unsigned int i = 0; from != NULL && i < state->num_peers; i++)
+		if(strcmp(state->peers[i].id, from) == 0 && strlen(state->peers[i].name) > 0)
+			snprintf(out, outlen, "%s", state->peers[i].name);
+	cluster_unlock();
+}
+
+// Said once per push, and kept for the status until the next one
+static void report_refused(struct ftl_conn *api, const struct cluster_push *push)
+{
+	if(push->num_refused > 0)
+	{
+		char sender[CLUSTER_STRLEN] = "";
+		push_sender(api, sender, sizeof(sender));
+		log_info("cluster: kept this node's value of %u item%s %s pushed: %s",
+		         push->num_refused, push->num_refused == 1 ? "" : "s", sender, push->refused);
+	}
+	cluster_note_refused(push->refused);
 }
 
 // When the peer says each item was changed. False when one of them is not a
@@ -599,7 +677,7 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	// A peer says when each item it is handing us was changed, and on which
 	// node that happened is beside the point - this node holds those items
 	// afterwards and passes the same answer on
-	struct cluster_push push = { .encrypted = api->request->is_ssl };
+	struct cluster_push push = { .encrypted = api->request->is_ssl, .conf = conf };
 	if(from_cluster && !push_stamps(cJSON_GetObjectItem(api->payload.json, "changed"), push.changed))
 	{
 		return send_json_error(api, 400,
@@ -671,10 +749,19 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	cluster_sync_unlock();
 
 	if(!installed)
+	{
+		// The whole push, as the configuration it makes is not usable here
+		if(from_cluster)
+		{
+			snprintf(push.refused, sizeof(push.refused), "everything (%s)", errbuf);
+			push.num_refused = 1;
+			report_refused(api, &push);
+		}
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       "Invalid configuration",
 		                       errbuf);
+	}
 
 	// Only now that the candidate is the live configuration: the dnsmasq
 	// test inside config_install() can still reject it, and that must not
@@ -715,6 +802,7 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 			taken |= push.taken[i] > 0.0;
 		}
 		*refused = dated && !taken;
+		report_refused(api, &push);
 	}
 
 	// The full config is returned by the caller

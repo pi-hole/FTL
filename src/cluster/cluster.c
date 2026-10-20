@@ -872,6 +872,8 @@ static char dhcp_owner[CLUSTER_STRLEN] = "";
 
 // How often FTL had replaced its configuration when we last handed it around
 static unsigned long pushed_generation = 0;
+// ...and the last change made here that was handed around
+static unsigned long pushed_local = 0;
 
 // The round length, clamped rather than trusted: pihole.toml is a file somebody
 // can edit, and a zero would spin. Published as well as used, so a peer bounds
@@ -2868,6 +2870,10 @@ void cluster_local_status(cJSON *node)
 	char pinned_credentials[256] = "";
 	cluster_pinned_items(true, pinned_credentials, sizeof(pinned_credentials));
 	cJSON_AddStringToObject(conf, "pinned_credentials", pinned_credentials);
+	// What this node kept of the last push it was handed, and why
+	char refused[512] = "";
+	cluster_refused_items(refused, sizeof(refused));
+	cJSON_AddStringToObject(conf, "refused", refused);
 	cJSON_AddItemToObject(sync, "config", conf);
 	cJSON *lists = cJSON_CreateObject();
 	cJSON_AddNumberToObject(lists, "changed", published.gravity_changed);
@@ -3122,7 +3128,7 @@ static void catch_up(void)
 			continue;
 		}
 
-		peer->pushed_generation = config_generation;
+		peer->pushed_generation = config_local_generation;
 		log_info("cluster: caught %s up", strlen(peer->name) > 0 ? peer->name : peer->url);
 	}
 }
@@ -3156,6 +3162,16 @@ static void push_round(void)
 		return;
 	}
 
+	// Only a change made here is handed out from here. One taken from a peer
+	// reaches the others through catch_up(), which waits until it has polled
+	// what they hold, so the node a change came from is not handed it back
+	const unsigned long local = config_local_generation;
+	if(local == pushed_local)
+	{
+		pushed_generation = generation;
+		return;
+	}
+
 	unsigned int handed = 0;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
@@ -3166,8 +3182,8 @@ static void push_round(void)
 		if(push_refused(peer))
 			continue;
 
-		// The peer we just took this from already has it
-		if(peer->pushed_generation == generation)
+		// The peer caught up since already has it
+		if(peer->pushed_generation == local)
 			continue;
 
 		// ...and only what the peer lacks. Items it holds as new as ours
@@ -3187,7 +3203,7 @@ static void push_round(void)
 		{
 			if(taken)
 			{
-				peer->pushed_generation = generation;
+				peer->pushed_generation = local;
 				handed++;
 			}
 			else
@@ -3200,7 +3216,7 @@ static void push_round(void)
 			// large next round. Counted as handed over so the tick
 			// stops trying; the fingerprints stay apart and the catch-
 			// up path reports it once per change
-			peer->pushed_generation = generation;
+			peer->pushed_generation = local;
 		}
 		free(body);
 	}
@@ -3209,6 +3225,7 @@ static void push_round(void)
 	// handed the change when it comes back, and the round below does that
 	// through the fingerprint comparison anyway
 	pushed_generation = generation;
+	pushed_local = local;
 
 	if(handed > 0)
 		log_debug(DEBUG_CLUSTER, "cluster: handed config to %u node%s",

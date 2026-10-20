@@ -414,6 +414,7 @@ class TestClusterStatus:
         conf = data["cluster"]["node"]["sync"]["config"]
         assert "pinned" in conf
         assert isinstance(conf["pinned"], str)
+        assert isinstance(conf["refused"], str)
         assert "wants_credentials" in conf
         assert "accepts_credentials" in conf
 
@@ -582,6 +583,12 @@ class TestClusterPushAnswer:
         after = _j(addressed["session"].get(f"{FTL_URL}/api/config/misc/check", timeout=10))
         assert after["config"]["misc"]["check"]["disk"] == disk, "an older item was taken"
         assert after["config"]["misc"]["check"]["load"] is (not load), "a newer item was refused"
+
+        # ...and the node says which item it kept, and why
+        status = _j(addressed["session"].get(f"{FTL_URL}/api/cluster/status", timeout=10))
+        refused = status["cluster"]["node"]["sync"]["config"]["refused"]
+        assert "misc.check.disk (not newer" in refused, refused
+        assert "misc.check.load" not in refused, refused
 
         # Put back, again as the newer version
         r = _signed_patch(addressed, _push({"misc": {"check": {"load": load}}},

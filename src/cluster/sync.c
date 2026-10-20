@@ -248,6 +248,27 @@ void cluster_stamp_items(const bool which[CONFIG_ELEMENTS], const double when[CO
 	cluster_state_save(NULL);
 }
 
+// What this node kept its own value of in the last push that dated anything,
+// as "key (why), ...", for the status
+static char refused_items[512] = "";
+static pthread_mutex_t refused_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void cluster_note_refused(const char *items)
+{
+	pthread_mutex_lock(&refused_lock);
+	strncpy(refused_items, items, sizeof(refused_items) - 1);
+	refused_items[sizeof(refused_items) - 1] = '\0';
+	pthread_mutex_unlock(&refused_lock);
+}
+
+void cluster_refused_items(char *out, const size_t outlen)
+{
+	pthread_mutex_lock(&refused_lock);
+	strncpy(out, refused_items, outlen - 1);
+	out[outlen - 1] = '\0';
+	pthread_mutex_unlock(&refused_lock);
+}
+
 // The newest of them, repaired where kept: a clock that stepped backwards
 // leaves stamps from the future behind, which no peer accepts
 double cluster_newest_change(void)
