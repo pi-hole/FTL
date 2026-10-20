@@ -74,6 +74,8 @@ static bool warned_refused_takes = false;
 // Set once we asked for a restart. The configuration has been replaced at that
 // point and FTL is shutting down, so the round has to end right here
 static bool restarting = false;
+// ...and whether that restart hands DHCP, and the address with it, away
+static bool handing_over = false;
 
 bool cluster_dhcp_restarting(void)
 {
@@ -622,6 +624,7 @@ static void set_dhcp_active(const bool active, const char *reason, const bool te
 	log_info("cluster: %s DHCP (%s)", active ? "taking over" : "handing over", reason);
 
 	restarting = true;
+	handing_over = !active;
 	restart_ftl(active ? "cluster: taking over DHCP" : "cluster: handing over DHCP");
 }
 
@@ -1172,9 +1175,12 @@ void cluster_vip_round(bool mine)
 	// address on that would have two machines answering for it. Giving it up
 	// is not damped - that direction ends with nobody holding it, which is
 	// the better of the two - and neither is a node that is handing out
-	// leases, where the address belongs without asking anybody
+	// leases, where the address belongs without asking anybody.
+	//
+	// An address the previous run left here, across a restart, is held already
 	static unsigned int rounds_wanting_vip = 0;
-	if(mine && !vip_claimed() && !config.dhcp.active.v.b)
+	const bool left_here = vip_was_placed(address) && vip_present(address);
+	if(mine && !vip_claimed() && !left_here && !config.dhcp.active.v.b)
 	{
 		if(++rounds_wanting_vip < CLUSTER_DHCP_ACTIVATE_ROUNDS)
 		{
@@ -1256,6 +1262,21 @@ void cluster_shutdown(const bool restart)
 {
 	if(restart && config.cluster.enabled.v.b)
 		setenv(CLUSTER_RESTART_ENV, "1", 1);
+
+	// The address stays across an internal restart unless the restart hands
+	// it away: cluster.state records it, and the next process adopts it
+	char address[CLUSTER_STRLEN] = "";
+	if(restart && !handing_over && config.cluster.enabled.v.b &&
+	   vip_claimed_address(address, sizeof(address)))
+	{
+		char configured[CLUSTER_STRLEN] = "";
+		cluster_vip_address(configured);
+		if(strcmp(address, configured) == 0)
+		{
+			log_info("cluster: keeping %s across the restart", address);
+			return;
+		}
+	}
 
 	cluster_vip_shutdown();
 }
