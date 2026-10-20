@@ -531,12 +531,16 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		char *supplied = double_sha256_password(password);
 		bool result = strcmp(pwhash, supplied) == 0;
 
-		// Upgrade double-hashed password to BALLOON hash. A caller already
-		// holding the config lock skips it, the next login upgrades then
-		if(result && trylock_config())
+		// Upgrade double-hashed password to BALLOON hash. Only logins do,
+		// the other callers check a new hash or already hold the config lock
+		if(result && rate_limiting)
 		{
+			lock_config();
 			char *new_hash = NULL;
-			if(strcmp(config.webserver.api.pwhash.v.s, supplied) == 0)
+			// A reread may have replaced the hash just verified meanwhile
+			if(strcmp(config.webserver.api.pwhash.v.s, supplied) != 0)
+				result = false;
+			else
 				new_hash = create_password(password);
 			if(new_hash != NULL)
 			{
