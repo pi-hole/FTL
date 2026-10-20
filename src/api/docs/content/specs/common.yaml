@@ -95,7 +95,8 @@ components:
               example: null
   headers:
     Location:
-      description: Location of created resource
+      description: |
+        Location of created resource. The item is named by the `item` query parameter instead of a path segment when the request did so, or when the item is `.`, `..` or needs percent-encoding.
       schema:
         type: string
 

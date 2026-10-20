@@ -657,6 +657,56 @@ class TestPutLists:
         api_session.delete(f"{url}?type=allow", timeout=10)
 
 
+class TestGroupLocation:
+    """Location names a group by ?item= unless it is a plain path segment."""
+
+    @staticmethod
+    def _delete(api_session, name):
+        r = api_session.delete(f"{FTL_URL}/api/groups?item={quote(name, safe='')}",
+                               timeout=10)
+        assert r.status_code == 204, f"DELETE failed: {r.status_code} {r.text}"
+
+    @pytest.mark.parametrize("name,location", [
+        (".", "/api/groups?item=."),
+        ("..", "/api/groups?item=.."),
+        ("a b", "/api/groups?item=a%20b"),
+        ("_pytest_loc_plain", "/api/groups/_pytest_loc_plain"),
+    ])
+    def test_post_location(self, api_session, name, location):
+        r = api_session.post(f"{FTL_URL}/api/groups",
+                             json={"name": name, "comment": "pytest location"},
+                             timeout=10)
+        assert r.status_code == 201, f"POST failed: {r.status_code} {r.text}"
+        assert r.headers.get("Location") == location
+        assert [g["name"] for g in _j(r)["groups"]] == [name]
+        self._delete(api_session, name)
+
+    @pytest.mark.parametrize("old,via_query,new,location", [
+        ("..", True, "renamed one", "/api/groups?item=renamed%20one"),
+        ("_pytest_loc_src", True, ".", "/api/groups?item=."),
+        ("_pytest_loc_src", False, ".", "/api/groups?item=."),
+        ("_pytest_loc_src", False, "a b", "/api/groups?item=a%20b"),
+        ("_pytest_loc_src", False, "_pytest_loc_dst", "/api/groups/_pytest_loc_dst"),
+    ])
+    def test_rename_location(self, api_session, old, via_query, new, location):
+        r = api_session.post(f"{FTL_URL}/api/groups",
+                             json={"name": old, "comment": "pytest location"},
+                             timeout=10)
+        assert r.status_code == 201, f"POST failed: {r.status_code} {r.text}"
+
+        if via_query:
+            url = f"{FTL_URL}/api/groups?item={quote(old, safe='')}"
+        else:
+            url = f"{FTL_URL}/api/groups/{quote(old, safe='')}"
+        r = api_session.put(url,
+                            json={"name": new, "comment": "pytest renamed"},
+                            timeout=10)
+        assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
+        assert r.headers.get("Location") == location
+        assert [g["name"] for g in _j(r)["groups"]] == [new]
+        self._delete(api_session, new)
+
+
 # ===========================================================================
 # Error-case tests
 # ===========================================================================
@@ -740,6 +790,7 @@ class TestPutErrors:
                             timeout=10)
         assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
         assert _j(r)["groups"][0]["name"] == name
+        assert r.headers.get("Location") == "/api/groups?item=_pytest_%2541_group"
 
         # Clean up
         r = api_session.delete(url, timeout=10)

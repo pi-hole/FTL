@@ -887,13 +887,16 @@ static int api_list_write(struct ftl_conn *api,
 	if(api->method == HTTP_PUT && listtype == GRAVITY_GROUPS && row.name != NULL)
 		reply_name = row.name;
 
-	// Add "Location" header to response. An item named in ?item= is pointed
-	// at the same way, as clients drop a "." or ".." path segment
+	// Add "Location" header to response. Point at ?item= when the item came
+	// from there or is no plain path segment: clients drop a "." or ".."
+	// segment, and anything mg_url_encode() changes needs percent-encoding
+	char encoded[sizeof(pi_hole_extra_headers)];
+	const bool complete = mg_url_encode(reply_name, encoded, sizeof(encoded)) >= 0;
+	const bool use_query = item_in_query || strcmp(encoded, reply_name) != 0 ||
+	                       strcmp(reply_name, ".") == 0 || strcmp(reply_name, "..") == 0;
 	int loclen;
-	if(item_in_query)
+	if(use_query)
 	{
-		char encoded[sizeof(pi_hole_extra_headers)];
-		const bool complete = mg_url_encode(reply_name, encoded, sizeof(encoded)) >= 0;
 		loclen = snprintf(pi_hole_extra_headers, sizeof(pi_hole_extra_headers), "Location: %s?item=%s", api->action_path, encoded);
 		if(!complete)
 			loclen = sizeof(pi_hole_extra_headers);
