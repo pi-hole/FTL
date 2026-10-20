@@ -284,11 +284,100 @@ bool cluster_plain_id(const char *str)
 	return true;
 }
 
-bool cluster_verify_request(struct ftl_conn *api)
+// Everything about a cluster request that can be judged before its body has
+// been read. False with the reason in why when the headers alone refuse it
+static bool headers_acceptable(struct ftl_conn *api, long long *seq, char *why, const size_t whylen)
 {
 	const char *from = mg_get_header(api->conn, CLUSTER_HDR_FROM);
 	const char *to = mg_get_header(api->conn, CLUSTER_HDR_TO);
 	const char *seqstr = mg_get_header(api->conn, CLUSTER_HDR_SEQ);
+	const char *sig = mg_get_header(api->conn, CLUSTER_HDR_SIG);
+
+	if(from == NULL || to == NULL || seqstr == NULL || sig == NULL ||
+	   !cluster_plain_id(from) || strlen(sig) != CLUSTER_SIGLEN - 1)
+	{
+		snprintf(why, whylen, "incomplete signature");
+		return false;
+	}
+
+	// A request that names its recipient can only be used against that one.
+	// Only a GET may leave it open, and only because reading a status
+	// document somewhere else gains an attacker nothing
+	if(strcmp(to, cluster_node_id()) != 0 &&
+	   !(api->method == HTTP_GET && strcmp(to, CLUSTER_ANY_NODE) == 0))
+	{
+		snprintf(why, whylen, "addressed to another node");
+		return false;
+	}
+
+	// A node reads its own status once to recognize its own entry in the
+	// member list, so a GET under our own identity is expected. Taking a
+	// configuration from ourselves over the network is not
+	if(api->method != HTTP_GET && strcmp(from, cluster_node_id()) == 0)
+	{
+		snprintf(why, whylen, "sent under our own identity");
+		return false;
+	}
+
+	char *end = NULL;
+	*seq = strtoll(seqstr, &end, 10);
+	if(end == seqstr || *end != '\0' || *seq <= 0)
+	{
+		snprintf(why, whylen, "malformed sequence");
+		return false;
+	}
+
+	const long long now = (long long)(double_time() * 1e6);
+	if(llabs(now - *seq) > (long long)CLUSTER_SIG_WINDOW * 1000000)
+	{
+		snprintf(why, whylen, "%.0f s out of date", fabs((double)(now - *seq)) / 1e6);
+		return false;
+	}
+
+	return true;
+}
+
+// Has this sender signed a request here before, and is the sequence one it has
+// not used yet? Only a signature puts a sender in the table, so a made-up
+// identity is never in it. Records nothing
+static bool sender_known(const char *id, const long long seq)
+{
+	const time_t now = time(NULL);
+	bool known = false;
+
+	pthread_mutex_lock(&senders_lock);
+	for(unsigned int i = 0; i < ArraySize(senders); i++)
+	{
+		if(senders[i].id[0] == '\0' || strcmp(senders[i].id, id) != 0)
+			continue;
+
+		// Aged out the same way sequence_fresh() ages it
+		const bool aged = llabs((long long)(now - senders[i].last)) > CLUSTER_SIG_WINDOW;
+		known = seq > (aged ? 0 : senders[i].seq);
+		break;
+	}
+	pthread_mutex_unlock(&senders_lock);
+
+	return known;
+}
+
+bool cluster_push_plausible(struct ftl_conn *api)
+{
+	if(!config.cluster.enabled.v.b)
+		return false;
+
+	long long seq = 0;
+	char why[64] = "";
+	if(!headers_acceptable(api, &seq, why, sizeof(why)))
+		return false;
+
+	return sender_known(mg_get_header(api->conn, CLUSTER_HDR_FROM), seq);
+}
+
+bool cluster_verify_request(struct ftl_conn *api)
+{
+	const char *from = mg_get_header(api->conn, CLUSTER_HDR_FROM);
+	const char *to = mg_get_header(api->conn, CLUSTER_HDR_TO);
 	const char *sig = mg_get_header(api->conn, CLUSTER_HDR_SIG);
 
 	// Not a cluster request at all, so not ours to judge
@@ -325,45 +414,11 @@ bool cluster_verify_request(struct ftl_conn *api)
 		return false;
 	}
 
-	if(from == NULL || to == NULL || seqstr == NULL ||
-	   !cluster_plain_id(from) || strlen(sig) != CLUSTER_SIGLEN - 1)
+	long long seq = 0;
+	char why[64] = "";
+	if(!headers_acceptable(api, &seq, why, sizeof(why)))
 	{
-		log_web_debug(DEBUG_API, "Cluster request refused: incomplete signature");
-		return false;
-	}
-
-	// A request that names its recipient can only be used against that one.
-	// Only a GET may leave it open, and only because reading a status
-	// document somewhere else gains an attacker nothing
-	if(strcmp(to, cluster_node_id()) != 0 &&
-	   !(api->method == HTTP_GET && strcmp(to, CLUSTER_ANY_NODE) == 0))
-	{
-		log_web_debug(DEBUG_API, "Cluster request refused: addressed to another node");
-		return false;
-	}
-
-	// A node reads its own status once to recognize its own entry in the
-	// member list, so a GET under our own identity is expected. Taking a
-	// configuration from ourselves over the network is not
-	if(api->method != HTTP_GET && strcmp(from, cluster_node_id()) == 0)
-	{
-		log_web_debug(DEBUG_API, "Cluster request refused: sent under our own identity");
-		return false;
-	}
-
-	char *end = NULL;
-	const long long seq = strtoll(seqstr, &end, 10);
-	if(end == seqstr || *end != '\0' || seq <= 0)
-	{
-		log_web_debug(DEBUG_API, "Cluster request refused: malformed sequence");
-		return false;
-	}
-
-	const long long now = (long long)(double_time() * 1e6);
-	if(llabs(now - seq) > (long long)CLUSTER_SIG_WINDOW * 1000000)
-	{
-		log_web_debug(DEBUG_API, "Cluster request refused: %.0f s out of date",
-		              fabs((double)(now - seq)) / 1e6);
+		log_web_debug(DEBUG_API, "Cluster request refused: %s", why);
 		return false;
 	}
 

@@ -608,11 +608,12 @@ bool read_and_parse_payload(struct ftl_conn *api)
 		return true;
 
 	// A peer's push carries whole items, and dns.hosts on its own outgrows
-	// what any other request needs. Its signature is checked over every one
-	// of these bytes before anything in it is acted on
-	const bool cluster_push = config.cluster.enabled.v.b && api->method == HTTP_PATCH &&
-	                          mg_get_header(api->conn, CLUSTER_HDR_SIG) != NULL &&
-	                          strcmp(api->request->local_uri_raw, "/api/config") == 0;
+	// what any other request needs. Only a sender that has signed a request
+	// here before gets the larger buffer, as the signature over these bytes
+	// can only be checked once they have all been read
+	const bool cluster_push = api->method == HTTP_PATCH &&
+	                          strcmp(api->request->local_uri_raw, "/api/config") == 0 &&
+	                          cluster_push_plausible(api);
 	const size_t max = cluster_push ? CLUSTER_MAX_PUSH_BYTES : MAX_PAYLOAD_BYTES;
 
 	api->payload.raw = calloc(max, sizeof(char));
