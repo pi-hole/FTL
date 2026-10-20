@@ -1729,13 +1729,33 @@ static bool read_local_state(char confhash[CLUSTER_HASHLEN], char gravityhash[CL
 	return lists_read;
 }
 
+// The lists of an edit made here that no other node has been seen holding or
+// was handed yet. Lists travel whole, so taking a peer's over them loses it
+static char unshared_lists[CLUSTER_HASHLEN] = "";
+
+static void lists_changed_here(const char *hash)
+{
+	log_info("cluster: lists changed here");
+	cluster_lock();
+	strncpy(unshared_lists, hash, sizeof(unshared_lists) - 1);
+	unshared_lists[sizeof(unshared_lists) - 1] = '\0';
+	cluster_unlock();
+}
+
+void cluster_lists_handed(void)
+{
+	cluster_lock();
+	unshared_lists[0] = '\0';
+	cluster_unlock();
+}
+
 // An edit made through FTL while a peer's lists wait for their rebuild. The
 // tables are this node's from then on, and the rebuild stays owed
 static void adopt_local_edit(const char *hash, const double written)
 {
 	const double stamp = date_local_change(written, false,
 	                                       fmax(sync_state.gravity_changed, pending_gravity));
-	log_info("cluster: lists changed here");
+	lists_changed_here(hash);
 	publish_gravity_state(stamp, hash);
 
 	cluster_lock();
@@ -1806,7 +1826,7 @@ static void note_local_changes(void)
 		if(moved_by_build)
 			log_info("cluster: FTL was upgraded, keeping this node's list version");
 		else if(!first_time && stamp > 0.0)
-			log_info("cluster: lists changed here");
+			lists_changed_here(gravityhash);
 		else if(!first_time)
 		{
 			log_warn("cluster: lists changed here without an edit through FTL (a gravity.db restored or copied in?), taking the cluster's lists");
@@ -2010,7 +2030,7 @@ static void settle_gravity(void)
 		if(!theirs && !recorded && !unchanged)
 		{
 			if(stamp > 0.0)
-				log_info("cluster: lists changed here");
+				lists_changed_here(gravityhash);
 			else
 			{
 				log_warn("cluster: lists changed during the rebuild without an edit through FTL, taking the cluster's lists");
@@ -2209,6 +2229,14 @@ static void take_gravity(const bool member)
 	if(stopping())
 		return;
 
+	// A peer holding the lists of an edit made here has that edit
+	cluster_lock();
+	for(unsigned int i = 0; i < num_peers; i++)
+		if(peers[i].reachable && !peers[i].is_self && strlen(unshared_lists) > 0 &&
+		   strcmp(peers[i].gravityhash, unshared_lists) == 0)
+			unshared_lists[0] = '\0';
+	cluster_unlock();
+
 	const int src = elect_gravity_source();
 	if(src < 0)
 		return;
@@ -2351,6 +2379,22 @@ static void take_gravity(const bool member)
 
 	peer->retry_backoff = 0.0;
 	peer->retry_lists_at = 0.0;
+
+	// Lists are taken whole, the newest version wins. An edit made here that
+	// no other node had is gone everywhere now, which is worth saying
+	cluster_lock();
+	const bool lost = strlen(unshared_lists) > 0 && strcmp(unshared_lists, imported) != 0;
+	unshared_lists[0] = '\0';
+	cluster_unlock();
+	if(lost)
+	{
+		char lost_edit[CLUSTER_STRLEN + 96] = "";
+		snprintf(lost_edit, sizeof(lost_edit),
+		         "the lists of %s replaced list changes made here that no other node had",
+		         strlen(peer->name) > 0 ? peer->name : peer->url);
+		log_warn("cluster: %s", lost_edit);
+		log_cluster_message(lost_edit);
+	}
 
 	// What arrived, which is what the rebuild is checked against. The peer's
 	// fingerprint is a round old, and an edit it made since came along
