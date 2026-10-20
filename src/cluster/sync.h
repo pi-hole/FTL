@@ -53,6 +53,9 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
                           uint8_t **out, size_t *outsize);
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN]);
 
+// What each item's value hashes to, zero for one that never takes part
+void cluster_item_hashes(uint64_t out[CONFIG_ELEMENTS]);
+
 // Which items the last configuration change touched that are synchronized,
 // which is what decides which of them count as configured here
 bool cluster_config_moved(bool moved[CONFIG_ELEMENTS]);

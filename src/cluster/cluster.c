@@ -1033,12 +1033,15 @@ static bool read_refused(struct cluster_peer *peer)
 
 // The items this node holds a newer version of than the peer said it holds.
 // Two starting points of the same item are settled by identity, so both nodes
-// reach the same answer and exactly one of them sends. A node that never
-// configured an item holds defaults, which are never worth handing to anybody
+// reach the same answer and exactly one of them sends - once per value, as the
+// peer holds it at the same stamp afterwards. A node that never configured an
+// item holds defaults, which are never worth handing to anybody
 static bool peer_lacks(const struct cluster_peer *peer, bool include[CONFIG_ELEMENTS])
 {
 	double ours[CONFIG_ELEMENTS];
 	cluster_item_stamps(ours);
+	uint64_t values[CONFIG_ELEMENTS];
+	cluster_item_hashes(values);
 
 	bool any = false;
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
@@ -1056,11 +1059,25 @@ static bool peer_lacks(const struct cluster_peer *peer, bool include[CONFIG_ELEM
 
 		include[i] = ours[i] > theirs ||
 		             (!(ours[i] < theirs) && ours[i] <= CLUSTER_BASELINE_STAMP &&
-		              strcmp(cluster_node_id(), peer->id) > 0);
+		              strcmp(cluster_node_id(), peer->id) > 0 &&
+		              (values[i] == 0 || values[i] != peer->baseline_handed[i]));
 		any |= include[i];
 	}
 
 	return any;
+}
+
+// The starting points a push the peer took carried, by value
+static void baseline_taken(struct cluster_peer *peer, const bool include[CONFIG_ELEMENTS])
+{
+	double ours[CONFIG_ELEMENTS];
+	cluster_item_stamps(ours);
+	uint64_t values[CONFIG_ELEMENTS];
+	cluster_item_hashes(values);
+
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(include[i] && ours[i] <= CLUSTER_BASELINE_STAMP)
+			peer->baseline_handed[i] = values[i];
 }
 
 // What carries them there. What it holds follows the same rule the published
@@ -3301,6 +3318,7 @@ static void catch_up(void)
 		}
 
 		peer->pushed_generation = config_local_generation;
+		baseline_taken(peer, include);
 		log_info("cluster: caught %s up", strlen(peer->name) > 0 ? peer->name : peer->url);
 	}
 }
@@ -3376,6 +3394,7 @@ static void push_round(void)
 			if(taken)
 			{
 				peer->pushed_generation = local;
+				baseline_taken(peer, include);
 				handed++;
 			}
 			else
