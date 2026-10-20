@@ -54,6 +54,11 @@ bool cluster_sign_request(const char *method, const char *uri, const char *to,
 // takes the regular authentication path
 bool cluster_verify_request(struct ftl_conn *api);
 
+// Does this request look like a push from a peer that has signed a request here
+// before? Judged on the headers alone, so it can decide how much of the body to
+// read; the signature over the body is checked by cluster_verify_request()
+bool cluster_push_plausible(struct ftl_conn *api);
+
 // The signature this node puts on its answer to a cluster request, so a peer
 // cannot be lied to about who holds what. False if this is not one
 bool cluster_response_signature(struct ftl_conn *api, const char *body, const size_t len,

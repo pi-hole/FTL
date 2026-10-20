@@ -21,6 +21,7 @@ import http.server
 import ipaddress
 import json
 import os
+import secrets
 import socket
 import sqlite3
 import subprocess
@@ -258,11 +259,28 @@ def _push(config, changed):
     return json.dumps({"config": config, "changed": changed})
 
 
-def _signed_patch(addressed, body):
+def _signed_patch(addressed, body, sender=OTHER_NODE):
     uri = "/api/config"
-    headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body)
+    headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body,
+                       sender=sender)
     headers["Content-Type"] = "application/json"
     return requests.patch(f"{FTL_URL}{uri}", headers=headers, data=body, timeout=20)
+
+
+def _signed_poll(addressed, sender=OTHER_NODE):
+    uri = "/api/cluster/status"
+    headers = _headers(addressed["secret"], "GET", uri, addressed["id"], sender=sender)
+    return requests.get(f"{FTL_URL}{uri}", headers=headers, timeout=10)
+
+
+def _large_push():
+    """dns.hosts larger than any other request may be, dated before what this
+    node holds so taking it changes nothing."""
+    hosts = [f"10.{1 + i // 65025}.{(i // 255) % 255}.{1 + i % 255} host-{i}.example.lan"
+             for i in range(3000)]
+    body = _push({"dns": {"hosts": hosts}}, {"dns.hosts": 0.5})
+    assert len(body) > 64 * 1024
+    return body
 
 
 def _disk(cluster):
@@ -650,10 +668,9 @@ class TestClusterPushAnswer:
         any other request may send. Dated before what this node holds, so it is
         read, judged and kept out without changing anything."""
         _disk(addressed)
-        hosts = [f"10.{1 + i // 65025}.{(i // 255) % 255}.{1 + i % 255} host-{i}.example.lan"
-                 for i in range(3000)]
-        body = _push({"dns": {"hosts": hosts}}, {"dns.hosts": 0.5})
-        assert len(body) > 64 * 1024
+        body = _large_push()
+        # A peer polls a node before it pushes to it
+        assert _signed_poll(addressed).status_code == 200
         r = _signed_patch(addressed, body)
         assert r.status_code == 200, r.text[:200]
         assert _j(r).get("taken") is False, r.text[:200]
@@ -686,6 +703,21 @@ class TestClusterPushAnswer:
         assert r.status_code == 200, r.text[:200]
         assert _j(r).get("taken") is True, r.text[:200]
         assert _disk(addressed) == disk
+    def test_large_push_needs_a_sender_that_signed_before(self, addressed):
+        """The signature covers the body, so it can only be checked once the
+        body has been read. The larger buffer is kept for a sender that has
+        already signed a request here, so headers anybody can make up do not
+        get a megabyte read on their behalf."""
+        _disk(addressed)
+        body = _large_push()
+        sender = secrets.token_hex(8)
+        r = _signed_patch(addressed, body, sender=sender)
+        assert r.status_code == 401, r.text[:200]
+
+        assert _signed_poll(addressed, sender=sender).status_code == 200
+        r = _signed_patch(addressed, body, sender=sender)
+        assert r.status_code == 200, r.text[:200]
+        assert _j(r).get("taken") is False, r.text[:200]
 
     def test_local_items_carry_no_stamp(self, addressed):
         """An item that never leaves a node is never dated: a change to it is
