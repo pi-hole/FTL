@@ -570,3 +570,35 @@ slow_upstream() {
   elapsed="${BASH_REMATCH[1]}"
   [[ "$elapsed" -lt 5 ]]
 }
+
+@test "dotdoh-server: DoH3 requests are not resolved once their connection is closed" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow log count
+  # Twelve slow names take three rounds of the four resolvers, only the first
+  # starts before the client goes away
+  log="${BATS_FILE_TMPDIR}/closed.log"
+  slow_upstream "$log"
+  slow=$!
+  run python3 test/dotdoh_query.py doh3abandon 127.0.0.1 443 closed.slow.ftl 12 close 3.5
+  kill "$slow"
+  assert_output "OK"
+  # Count names, dnsmasq may send a query upstream more than once
+  count=$(sort -u "$log" | grep -c "closed.slow.ftl")
+  echo "upstream got ${count} of 12"
+  [[ "$count" -le 4 ]]
+}
+
+@test "dotdoh-server: cancelled DoH3 requests are not resolved" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow log count
+  log="${BATS_FILE_TMPDIR}/cancelled.log"
+  slow_upstream "$log"
+  slow=$!
+  run python3 test/dotdoh_query.py doh3abandon 127.0.0.1 443 cancelled.slow.ftl 12 reset 3.5
+  kill "$slow"
+  assert_output "OK"
+  # Count names, dnsmasq may send a query upstream more than once
+  count=$(sort -u "$log" | grep -c "cancelled.slow.ftl")
+  echo "upstream got ${count} of 12"
+  [[ "$count" -le 4 ]]
+}

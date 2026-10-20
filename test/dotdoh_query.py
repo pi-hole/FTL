@@ -28,6 +28,10 @@
 #                                                 <suffix> from each of <sources>
 #                                                 clients 127.0.0.2..., then time
 #                                                 one for <domain> from the next
+#   doh3abandon <host> <port> <suffix> <count> <close|reset> <secs>
+#                                                 <count> DoH3 POSTs from 127.0.0.2,
+#                                                 then close the connection or
+#                                                 cancel each request, and wait
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
@@ -502,6 +506,12 @@ def doh3_client(host, port):
             await asyncio.wait_for(self.done[sid].wait(), timeout=60)
             return self.status.get(sid)
 
+        def cancel(self, sid):
+            # RFC 9114 Sec. 4.1.1: reset the request and abort reading the response
+            self._quic.reset_stream(sid, 0x10c)
+            self._quic.stop_stream(sid, 0x10c)
+            self.transmit()
+
     async def open_client(source):
         cfg = QuicConfiguration(is_client=True, alpn_protocols=["h3"])
         cfg.verify_mode = _ssl.CERT_NONE
@@ -546,6 +556,30 @@ def doh3_fair(host, port, suffix, sources, count, domain):
         return status, elapsed, answered
 
     return asyncio.run(run())
+
+
+def doh3_abandon(host, port, suffix, count, how, secs):
+    """Send count DoH3 POSTs for distinct names under suffix from 127.0.0.2 and,
+    half a second later, close the connection or cancel every request. Then
+    wait secs, with the connection still open when cancelling."""
+    import asyncio
+
+    open_client = doh3_client(host, port)
+
+    async def run():
+        stamp = int(time.time())
+        a = await open_client("127.0.0.2")
+        sids = [a.post("s%d-%d.%s" % (i, stamp, suffix)) for i in range(count)]
+        await asyncio.sleep(0.5)
+        if how == "close":
+            a.close()
+        else:
+            for sid in sids:
+                a.cancel(sid)
+        await asyncio.sleep(secs)
+        a.close()
+
+    asyncio.run(run())
 
 
 # --- DoQ (DNS-over-QUIC, RFC 9250) client -----------------------------------
@@ -770,6 +804,10 @@ def main():
                                               int(count), domain)
         print("last client %s after %.2f s, the others %d/%d answered"
               % (status, elapsed, answered, int(sources) * int(count)))
+    elif cmd == "doh3abandon":
+        _, _, host, port, suffix, count, how, secs = sys.argv[:8]
+        doh3_abandon(host, int(port), suffix, int(count), how, float(secs))
+        print("OK")
     elif cmd == "doq":
         # RFC 9250 Sec. 4.2.1: a DoQ query carries Message ID 0.
         _, _, host, port, domain, source, expected_ip = sys.argv[:7]

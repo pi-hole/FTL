@@ -2550,6 +2550,7 @@ struct h3_stream {
 	// Native DoH served in the terminator (resolve off-loaded to a worker).
 	bool is_doh;
 	bool resolving;          // a DoH resolve job is in flight for this stream
+	struct h3_job *job;      // that job until it is drained or cancelled
 	bool close_pending;      // nghttp3 closed the stream while resolving; free be after
 
 	// Backend connection (non-blocking)
@@ -2600,6 +2601,7 @@ struct h3_job {
 	char dest[INET6_ADDRSTRLEN];
 	uint8_t ipkey[16];              // source counted in ip_table while the job lives
 	struct ip_slot *slot;           // its ip_table slot, held by the job's connection
+	bool cancelled;                 // client gone, do not resolve; under h3_jobs_mtx
 	uint8_t *answer; ssize_t alen;  // allocated by the worker at the answer's size
 	size_t   qlen;
 	uint8_t  query[];
@@ -2896,6 +2898,7 @@ static void h3_doh_dispatch(struct h3_stream *s)
 	job->qlen = qlen;
 
 	s->resolving = true;
+	s->job = job;
 	s->conn->inflight++;
 	h3_jobs_n++;
 	pthread_mutex_lock(&h3_jobs_mtx);
@@ -3708,7 +3711,8 @@ static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
 }
 
 // Unlink the oldest job of the source with the fewest jobs in progress and, of
-// those, served least recently, so busy sources take turns. Caller holds h3_jobs_mtx
+// those, served least recently, so busy sources take turns. A cancelled job goes
+// first as it costs nothing. Caller holds h3_jobs_mtx
 static struct h3_job *h3_job_take(void)
 {
 	struct h3_job **best = NULL, *best_prev = NULL, *prev = NULL;
@@ -3717,6 +3721,12 @@ static struct h3_job *h3_job_take(void)
 	for(struct h3_job **pp = &h3_jobs_pending; *pp != NULL; prev = *pp, pp = &(*pp)->next)
 	{
 		const struct h3_job *j = *pp;
+		if(j->cancelled)
+		{
+			best = pp;
+			best_prev = prev;
+			break;
+		}
 		unsigned busy = 0;
 		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
 			if(h3_jobs_running[i] == j->slot)
@@ -3736,7 +3746,8 @@ static struct h3_job *h3_job_take(void)
 	if(h3_jobs_pending_tail == job)
 		h3_jobs_pending_tail = best_prev;
 	job->next = NULL;
-	job->slot->served = ++h3_jobs_served;
+	if(!job->cancelled)
+		job->slot->served = ++h3_jobs_served;
 	return job;
 }
 
@@ -3761,13 +3772,14 @@ static void *h3_doh_worker(void *arg)
 			break;
 		}
 		struct h3_job *job = h3_job_take();
-		if(job != NULL)
+		const bool cancelled = job != NULL && job->cancelled;
+		if(job != NULL && !cancelled)
 			h3_jobs_running[idx] = job->slot;
 		pthread_mutex_unlock(&h3_jobs_mtx);
 		if(job == NULL)
 			continue;
 
-		job->alen = answer == NULL ? -1 :
+		job->alen = answer == NULL || cancelled ? -1 :
 		            dotdoh_server_resolve(job->client, job->dest[0] != '\0' ? job->dest : NULL,
 		                                  job->query, job->qlen, answer, DNS_MSG_MAX);
 		if(job->alen > 0 && (job->answer = malloc((size_t)job->alen)) != NULL)
@@ -3817,6 +3829,7 @@ static void h3_drain_resolved(struct h3_conn *conns)
 			if(s != NULL)
 			{
 				s->resolving = false;
+				s->job = NULL;
 				if(s->close_pending || s->reset || s->error)
 				{
 					// Client bailed while resolving: run the deferred cleanup.
@@ -3826,6 +3839,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
+				else if(job->cancelled)
+					h3_reset_stream(s);
 				else if(job->alen == DOTDOH_MALFORMED)
 					h3_gateway_error(s, "400");
 				else if(job->alen <= 0)
@@ -3845,6 +3860,23 @@ static void h3_drain_resolved(struct h3_conn *conns)
 		if(job->answer != NULL)
 			free(job->answer);
 		free(job);
+	}
+}
+
+// Cancel the queued DoH resolves of a closing connection, or of the streams the
+// client reset or stopped reading (loop thread). A resolve already started runs on
+static void h3_cancel_abandoned(struct h3_conn *c, bool closing)
+{
+	for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
+	{
+		if(s->job == NULL)
+			continue;
+		if(!closing && s->ssl != NULL && SSL_get_stream_write_state(s->ssl) == SSL_STREAM_STATE_OK)
+			continue;
+		pthread_mutex_lock(&h3_jobs_mtx);
+		s->job->cancelled = true;
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		s->job = NULL;
 	}
 }
 
@@ -4077,6 +4109,8 @@ static void *quic_accept_loop(void *arg)
 			struct h3_conn *c = *pp;
 			SSL_CONN_CLOSE_INFO info;
 			const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
+			if(c->inflight > 0)
+				h3_cancel_abandoned(c, c->dead || closed);
 			// Keep a connection with an in-flight DoH resolve until its worker's
 			// answer has been drained, so its stable `gen` stays valid for lookup.
 			if((c->dead || closed) && c->inflight == 0)
