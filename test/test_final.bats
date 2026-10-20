@@ -637,3 +637,123 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
 }
+
+start_ftl_afresh() {
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  su pihole -s /bin/sh -c "$1 /home/pihole/pihole-FTL"
+  ./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 "$logsize_restart" > /dev/null
+}
+
+# Stop FTL in any case, so a failed test does not leave it running for the next
+stop_ftl() {
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  pid=$(cat /run/pihole-FTL.pid 2> /dev/null)
+  [[ -n "${pid}" ]] || return 0
+  kill "${pid}"
+  if ! ./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 "$logsize_before" > /dev/null; then
+    kill -9 "${pid}"
+    return 1
+  fi
+}
+
+@test "pihole.log lists a UDP query before a TCP query sent after it" {
+  started=0
+  start_ftl_afresh || started=$?
+
+  logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
+  for i in $(seq 1 30); do
+    dig @127.0.0.1 +tries=1 +time=2 "order-u${i}.home.arpa" +notcp "order-t${i}.home.arpa" +tcp > /dev/null
+  done
+  ./pihole-FTL wait-for 'query[A] order-u30.home.arpa ' /var/log/pihole/pihole.log 5 "$logsize_dnsmasq" > /dev/null || true
+  ./pihole-FTL wait-for 'query[A] order-t30.home.arpa ' /var/log/pihole/pihole.log 5 "$logsize_dnsmasq" > /dev/null || true
+
+  # Count the pairs whose TCP query is not listed after the UDP query
+  misordered=$(tail -c +$((logsize_dnsmasq + 1)) /var/log/pihole/pihole.log | awk '
+    /query\[A\] order-/ { for(i = 1; i <= NF; i++) if($i ~ /^order-/ && !($i in seen)) seen[$i] = NR }
+    END { bad = 0; for(i = 1; i <= 30; i++) { u = seen["order-u" i ".home.arpa"]; t = seen["order-t" i ".home.arpa"]; if(!u || !t || t < u) bad++ } print bad }')
+  stopped=0
+  stop_ftl || stopped=$?
+
+  printf "pairs out of order: %s\n" "${misordered}"
+  [[ ${started} == 0 && ${stopped} == 0 ]]
+  [[ ${misordered} == 0 ]]
+}
+
+@test "A TCP query or many warnings do not stall DNS while pihole.log cannot be written" {
+  # A FIFO whose reader is stopped blocks writes to pihole.log like a stuck disk.
+  # Each missing addn-hosts file logs an error on every SIGHUP
+  missing=$(for i in $(seq 1 40); do printf 'addn-hosts=/nonexistent/hosts%s;' "$i"; done)
+  mv /var/log/pihole/pihole.log /var/log/pihole/pihole.log.saved
+  mkfifo -m 0640 /var/log/pihole/pihole.log
+  chown pihole:pihole /var/log/pihole/pihole.log
+  cat /var/log/pihole/pihole.log > /dev/null 3>&- &
+  reader=$!
+  started=0
+  start_ftl_afresh "FTLCONF_dns_rateLimit_count=0 FTLCONF_misc_dnsmasq_lines='${missing}'" || started=$?
+
+  kill -STOP "${reader}"
+  for i in $(seq 1 1500); do echo "fill-${i}.home.arpa"; done > /tmp/pihole_log_fill
+  timeout 60 dig -f /tmp/pihole_log_fill @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+  dig +tcp +tries=1 +time=5 tcp-stall.home.arpa @127.0.0.1 > /dev/null 3>&- &
+  sleep 0.5
+  status_udp=$(dig +tries=1 +time=2 udp-after-tcp.home.arpa @127.0.0.1 | grep -oE 'status: [A-Z]+' || true)
+  kill -HUP "$(cat /run/pihole-FTL.pid)" || true
+  sleep 0.5
+  status_warn=$(dig +tries=1 +time=2 udp-after-warnings.home.arpa @127.0.0.1 | grep -oE 'status: [A-Z]+' || true)
+
+  # Clean up before asserting, so a failure does not leave the FIFO behind
+  kill -CONT "${reader}"
+  stopped=0
+  stop_ftl || stopped=$?
+  kill "${reader}" 2> /dev/null || true
+  rm -f /var/log/pihole/pihole.log /tmp/pihole_log_fill
+  mv /var/log/pihole/pihole.log.saved /var/log/pihole/pihole.log
+
+  printf "UDP query after the TCP query: %s\n" "${status_udp}"
+  printf "UDP query after 40 errors: %s\n" "${status_warn}"
+  [[ ${started} == 0 && ${stopped} == 0 ]]
+  [[ "${status_udp}" == "status: NXDOMAIN" ]]
+  [[ "${status_warn}" == "status: NXDOMAIN" ]]
+}
+
+@test "Warnings are relayed to syslog when pihole.log stops being writable" {
+  rm -f /dev/log /tmp/ftl_syslog.txt
+  python3 -c '
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+s.bind("/dev/log")
+with open(sys.argv[1], "ab", buffering=0) as f:
+    while True:
+        f.write(s.recv(65536) + b"\n")
+' /tmp/ftl_syslog.txt > /dev/null 2>&1 3>&- &
+  syslogd=$!
+  for i in $(seq 1 50); do [[ -S /dev/log ]] && break; sleep 0.1; done
+  chmod 0666 /dev/log
+  started=0
+  start_ftl_afresh "FTLCONF_misc_dnsmasq_lines='addn-hosts=/nonexistent/hosts'" || started=$?
+  ./pihole-FTL wait-for 'failed to load names from /nonexistent/hosts' /var/log/pihole/pihole.log 5 0 > /dev/null || true
+
+  # A directory in place of pihole.log makes the reopen after SIGUSR2 fail,
+  # then SIGHUP logs the error again
+  mv /var/log/pihole/pihole.log /var/log/pihole/pihole.log.saved
+  mkdir /var/log/pihole/pihole.log
+  kill -USR2 "$(cat /run/pihole-FTL.pid)" || true
+  kill -HUP "$(cat /run/pihole-FTL.pid)" || true
+  for i in $(seq 1 50); do
+    grep -q 'failed to load names from /nonexistent/hosts' /tmp/ftl_syslog.txt && break
+    sleep 0.1
+  done
+  sleep 0.5
+  relayed=$(grep -c 'failed to load names from /nonexistent/hosts' /tmp/ftl_syslog.txt || true)
+
+  stopped=0
+  stop_ftl || stopped=$?
+  rmdir /var/log/pihole/pihole.log
+  mv /var/log/pihole/pihole.log.saved /var/log/pihole/pihole.log
+  kill "${syslogd}"
+  rm -f /dev/log /tmp/ftl_syslog.txt
+
+  printf "relayed to syslog: %s\n" "${relayed}"
+  [[ ${started} == 0 && ${stopped} == 0 ]]
+  [[ ${relayed} == 1 ]]
+}
