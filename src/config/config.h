@@ -503,9 +503,11 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 // generated from it. from_cluster marks a configuration a peer handed us, which
 // is not a change made on this node: changed carries, per item, the time it was
 // changed at on whichever node that was, and zero for an item not taken.
-// Returns false if the dnsmasq configuration is not usable
+// Returns false if the dnsmasq configuration is not usable. *written (unless
+// NULL) says whether pihole.toml holds the result
 bool config_install(struct config *newconf, const struct config_apply *result,
-                    const bool from_cluster, const double *changed, char *errbuf);
+                    const bool from_cluster, const double *changed, char *errbuf,
+                    bool *written);
 
 // Bumped whenever the configuration is replaced, so a reader can tell that
 // something changed without comparing anything

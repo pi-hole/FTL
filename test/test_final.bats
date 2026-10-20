@@ -14,7 +14,7 @@ load 'bats_helper.bash'
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)|(The configuration was applied but could not be written to /etc/pihole/pihole\.toml)"'
   refute_output
 }
 
@@ -54,7 +54,9 @@ load 'bats_helper.bash'
   #   password (an empty pwhash makes FTL serve every request, so its refusal
   #   tests would assert nothing) and with clustering switched on, and it puts
   #   both back afterwards: password set + cleared, clustering enabled + disabled.
-  #   A signed push changes misc.check.load and a second one puts it back.
+  #   A signed push changes misc.check.load and a second one puts it back. A
+  #   push pihole.toml cannot take is put back by another one, which finds the
+  #   file unchanged.
   #   Measured over two consecutive runs against the same node.
   #
   #   This count also depends on test/pihole.toml being what this build writes:

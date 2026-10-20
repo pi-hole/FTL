@@ -3450,8 +3450,12 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 }
 
 bool config_install(struct config *newconf, const struct config_apply *result,
-                    const bool from_cluster, const double *changed, char *errbuf)
+                    const bool from_cluster, const double *changed, char *errbuf,
+                    bool *written)
 {
+	if(written != NULL)
+		*written = true;
+
 	if(!result->changed)
 	{
 		free_config(newconf, false);
@@ -3491,6 +3495,8 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 		else if(!from_cluster)
 			config_stamp_local_change();
 	}
+	else if(written != NULL)
+		*written = false;
 
 	if(result->rewrite_hosts)
 		write_custom_list();

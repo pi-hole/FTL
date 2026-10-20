@@ -652,6 +652,33 @@ class TestClusterPushAnswer:
         # ...and answered with that alone, however large the document is
         assert "config" not in _j(r), r.text[:200]
 
+    def test_push_not_written_is_not_taken(self, addressed):
+        """A push this node cannot write to pihole.toml would be gone at its
+        next restart, so it is answered as a failure the sender tries again -
+        not as taken. The temporary file the configuration is written through
+        is made unusable for the one write."""
+        if os.geteuid() != 0:
+            pytest.skip("making pihole.toml unwritable needs root")
+        disk = _disk(addressed)
+        tmp = "/etc/pihole/pihole.toml.tmp"
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        os.symlink("/nonexistent", tmp)
+        try:
+            r = _signed_patch(addressed, _push({"misc": {"check": {"disk": disk + 1}}},
+                                               {"misc.check.disk": time.time()}))
+        finally:
+            os.remove(tmp)
+        assert r.status_code == 500, r.text[:200]
+        assert "taken" not in r.text, r.text[:200]
+
+        # The value went live all the same. Put back as the newer version
+        r = _signed_patch(addressed, _push({"misc": {"check": {"disk": disk}}},
+                                           {"misc.check.disk": time.time()}))
+        assert r.status_code == 200, r.text[:200]
+        assert _j(r).get("taken") is True, r.text[:200]
+        assert _disk(addressed) == disk
+
     def test_local_items_carry_no_stamp(self, addressed):
         """An item that never leaves a node is never dated: a change to it is
         not a newer version of anything the cluster holds."""
