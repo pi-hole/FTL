@@ -912,18 +912,12 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			struct in6_addr vip6 = { 0 };
 			const bool cluster_vip6 = strlen(conf->cluster.vip.address.v.s) > 0 &&
 			                          inet_pton(AF_INET6, conf->cluster.vip.address.v.s, &vip6) == 1;
-			// Add dns-server option only if not already done above (dhcp.multiDNS)
-			if(cluster_dhcp && cluster_vip6 && conf->dhcp.multiDNS.v.b)
-				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s],[%s],[%s]\n",
-				        conf->cluster.vip.address.v.s, conf->cluster.vip.address.v.s,
-				        conf->cluster.vip.address.v.s);
-			else if(cluster_dhcp && cluster_vip6)
-				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s]\n",
-				        conf->cluster.vip.address.v.s);
-			else if(cluster_dhcp && !cluster_vip4)
+
+			// Every node written as an IPv6 address, as for IPv4 above. Without
+			// any, the defaults below stay
+			char servers[512] = "[::]";
+			if(cluster_dhcp && !cluster_vip4 && !cluster_vip6)
 			{
-				// Every node written as an IPv6 address, as for IPv4 above
-				char servers[512] = "[::]";
 				cJSON *peers = conf->cluster.members.v.json;
 				for(cJSON *item = peers != NULL ? peers->child : NULL; item != NULL; item = item->next)
 				{
@@ -937,7 +931,18 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 					strcat(servers, address);
 					strcat(servers, "]");
 				}
+			}
 
+			// Add dns-server option only if not already done above (dhcp.multiDNS)
+			if(cluster_dhcp && cluster_vip6 && conf->dhcp.multiDNS.v.b)
+				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s],[%s],[%s]\n",
+				        conf->cluster.vip.address.v.s, conf->cluster.vip.address.v.s,
+				        conf->cluster.vip.address.v.s);
+			else if(cluster_dhcp && cluster_vip6)
+				fprintf(pihole_conf, "dhcp-option=option6:dns-server,[%s]\n",
+				        conf->cluster.vip.address.v.s);
+			else if(strcmp(servers, "[::]") != 0)
+			{
 				if(conf->dhcp.multiDNS.v.b)
 					fprintf(pihole_conf, "dhcp-option=option6:dns-server,%s,%s,%s\n",
 					        servers, servers, servers);
