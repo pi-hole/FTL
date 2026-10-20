@@ -3621,7 +3621,10 @@ static void *run_cluster_thread(void *val)
 	prctl(PR_SET_NAME, thread_names[CLUSTER], 0, 0, 0);
 
 	if(!cluster_http_init())
+	{
+		cluster_dhcp_not_running();
 		return NULL;
+	}
 
 	cluster_state_load(&sync_state);
 	resume_gravity();

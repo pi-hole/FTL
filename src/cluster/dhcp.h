@@ -72,5 +72,13 @@ void cluster_shutdown(const bool restart);
 // Hold a persisted dhcp.active back at start-up until the cluster was asked
 struct config;
 void cluster_dhcp_startup(struct config *conf);
+// ...whether that is still the case, which pihole.toml is written around
+bool cluster_dhcp_held_back(void) __attribute__ ((pure));
+// ...applied to a value read from pihole.toml again
+void cluster_dhcp_reread(bool *active);
+// ...and ended by a value set through the API, true if it was in force
+bool cluster_dhcp_release(void);
+// ...and given up when the cluster thread does not run
+void cluster_dhcp_not_running(void);
 
 #endif // CLUSTER_DHCP_H

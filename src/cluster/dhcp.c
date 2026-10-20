@@ -84,6 +84,38 @@ bool cluster_dhcp_restarting(void)
 
 // Set by a process that re-executes itself, read by the one that follows
 #define CLUSTER_RESTART_ENV "FTL_CLUSTER_RESTART"
+// ...and its value while DHCP is held back, which the next process keeps
+#define CLUSTER_RESTART_HELD "held"
+
+// DHCP is off in the running configuration only, pihole.toml keeps what the
+// administrator set until the cluster switches DHCP itself
+static bool held_back = false;
+
+bool cluster_dhcp_held_back(void)
+{
+	return held_back && !config.dhcp.active.v.b;
+}
+
+// pihole.toml read again while held back: true stays held, false is somebody
+// switching DHCP off, which ends the hold-back
+void cluster_dhcp_reread(bool *active)
+{
+	if(!held_back)
+		return;
+
+	if(*active)
+		*active = false;
+	else
+		held_back = false;
+}
+
+bool cluster_dhcp_release(void)
+{
+	const bool was_held = cluster_dhcp_held_back();
+	held_back = false;
+
+	return was_held;
+}
 
 // A persisted dhcp.active says this node served when it stopped, not that it
 // still should: another node may have taken over meanwhile. Off until the first
@@ -91,7 +123,8 @@ bool cluster_dhcp_restarting(void)
 // seconds that takes
 void cluster_dhcp_startup(struct config *conf)
 {
-	const bool restarted = getenv(CLUSTER_RESTART_ENV) != NULL;
+	const char *env = getenv(CLUSTER_RESTART_ENV);
+	const bool restarted = env != NULL && strcmp(env, CLUSTER_RESTART_HELD) != 0;
 	unsetenv(CLUSTER_RESTART_ENV);
 
 	if(restarted || !conf->cluster.enabled.v.b || !conf->cluster.dhcp.failover.v.b ||
@@ -100,7 +133,20 @@ void cluster_dhcp_startup(struct config *conf)
 	   cJSON_GetArraySize(conf->cluster.members.v.json) == 0)
 		return;
 
+	// ...and only where the cluster thread is going to start and ask them
+#ifdef HAVE_CURL
+	const bool can_start = create_cluster_secret();
+#else
+	const bool can_start = false;
+#endif
+	if(!can_start)
+	{
+		log_warn("cluster: clustering cannot start here, so DHCP is not held back");
+		return;
+	}
+
 	conf->dhcp.active.v.b = false;
+	held_back = true;
 	log_info("cluster: DHCP was on when this node stopped, it stays off until the other nodes have been asked");
 }
 
@@ -593,6 +639,8 @@ static void set_dhcp_active(const bool active, const char *reason, const bool te
 	takeover_failures = 0;
 
 	replace_config(&newconf);
+	const bool was_held = held_back;
+	held_back = false;
 	const bool written = writeFTLtoml(true, NULL);
 	cluster_sync_unlock();
 
@@ -613,6 +661,7 @@ static void set_dhcp_active(const bool active, const char *reason, const bool te
 		// has already arrived
 		cluster_sync_lock();
 		config.dhcp.active.v.b = !active;
+		held_back = was_held;
 		cluster_sync_unlock();
 
 		log_err("cluster: cannot %s DHCP: the configuration could not be written, so a restart would come back on the old value",
@@ -1258,10 +1307,21 @@ void cluster_vip_round(bool mine)
 	}
 }
 
+// Clustering did not start, so nothing will ask the other nodes: DHCP goes
+// back to what pihole.toml says
+void cluster_dhcp_not_running(void)
+{
+	if(!cluster_dhcp_held_back())
+		return;
+
+	log_warn("cluster: clustering is not running here, so DHCP is switched back on as pihole.toml says");
+	set_dhcp_active(true, "clustering is not running", true);
+}
+
 void cluster_shutdown(const bool restart)
 {
 	if(restart && config.cluster.enabled.v.b)
-		setenv(CLUSTER_RESTART_ENV, "1", 1);
+		setenv(CLUSTER_RESTART_ENV, cluster_dhcp_held_back() ? CLUSTER_RESTART_HELD : "1", 1);
 
 	// The address stays across an internal restart unless the restart hands
 	// it away: cluster.state records it, and the next process adopts it
