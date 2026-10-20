@@ -3766,7 +3766,8 @@ static void *h3_doh_worker(void *arg)
 		pthread_mutex_lock(&h3_jobs_mtx);
 		while(h3_jobs_pending == NULL && !h3_workers_stop)
 			pthread_cond_wait(&h3_jobs_cv, &h3_jobs_mtx);
-		if(h3_jobs_pending == NULL && h3_workers_stop)
+		// Stopping drops the jobs still queued, terminator_quic_stop() frees them
+		if(h3_workers_stop)
 		{
 			pthread_mutex_unlock(&h3_jobs_mtx);
 			break;
