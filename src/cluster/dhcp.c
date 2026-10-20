@@ -80,6 +80,28 @@ bool cluster_dhcp_restarting(void)
 	return restarting;
 }
 
+// Set by a process that re-executes itself, read by the one that follows
+#define CLUSTER_RESTART_ENV "FTL_CLUSTER_RESTART"
+
+// A persisted dhcp.active says this node served when it stopped, not that it
+// still should: another node may have taken over meanwhile. Off until the first
+// round has asked. An internal restart keeps it, nobody takes over in the
+// seconds that takes
+void cluster_dhcp_startup(struct config *conf)
+{
+	const bool restarted = getenv(CLUSTER_RESTART_ENV) != NULL;
+	unsetenv(CLUSTER_RESTART_ENV);
+
+	if(restarted || !conf->cluster.enabled.v.b || !conf->cluster.dhcp.failover.v.b ||
+	   !conf->dhcp.active.v.b || conf->misc.readOnly.v.b ||
+	   (conf->dhcp.active.f & FLAG_ENV_VAR) || conf->cluster.members.v.json == NULL ||
+	   cJSON_GetArraySize(conf->cluster.members.v.json) == 0)
+		return;
+
+	conf->dhcp.active.v.b = false;
+	log_info("cluster: DHCP was on when this node stopped, it stays off until the other nodes have been asked");
+}
+
 // Set once a take-over failed for a reason the next round will hit again, so
 // this node stops telling its peers it could serve
 // When a failed take-over stops counting against this node. The reasons are
@@ -304,9 +326,10 @@ static bool peer_competes(const struct cluster_peer *peer)
 	return peer->relayed_seen && peer->relayed_failover && peer->relayed_capable;
 }
 
-// Who should be serving DHCP? The reachable node with the lowest identity.
-// Arbitrary but stable, and every node reaches the same answer without asking
-// anybody - which is what matters: two nodes disagreeing is two DHCP servers.
+// Who should be serving DHCP? The node that does, or else the reachable node
+// with the lowest identity. Arbitrary but stable, and every node reaches the
+// same answer without asking anybody - which is what matters: two nodes
+// disagreeing is two DHCP servers.
 // Returns whether that node is us, and names the winner
 static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
                        char owner[CLUSTER_STRLEN], char owner_id[CLUSTER_HASHLEN])
@@ -322,15 +345,25 @@ static bool elect_dhcp(struct cluster_peer *peers, const unsigned int num_peers,
 	// identity, and stopped deferring to the peer that was about to serve
 	const bool i_compete = config.cluster.dhcp.failover.v.b && cluster_dhcp_capable();
 
+	// The node that serves keeps DHCP, identity only decides among the nodes
+	// that serve or, when none does, among all of them. A node that returns
+	// is a standby, and moving DHCP to it costs a restart on both
+	bool anybody_serves = i_compete && config.dhcp.active.v.b;
+	for(unsigned int i = 0; i < num_peers; i++)
+		if(peer_competes(&peers[i]) && peers[i].reachable && peers[i].dhcp_active)
+			anybody_serves = true;
+
 	const char *best_name = myname;
 	const char *best_id = cluster_node_id();
-	bool best_is_me = i_compete;
-	bool have_best = i_compete;
+	bool best_is_me = i_compete && (config.dhcp.active.v.b || !anybody_serves);
+	bool have_best = best_is_me;
 
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		const struct cluster_peer *peer = &peers[i];
 		if(!peer_competes(peer))
+			continue;
+		if(anybody_serves && !(peer->reachable && peer->dhcp_active))
 			continue;
 
 		// By identity, never by name: two Pi-holes imaged from the same
@@ -1056,6 +1089,14 @@ void cluster_vip_round(bool mine)
 		else
 			vip_claim_failed();
 	}
+}
+
+void cluster_shutdown(const bool restart)
+{
+	if(restart && config.cluster.enabled.v.b)
+		setenv(CLUSTER_RESTART_ENV, "1", 1);
+
+	cluster_vip_shutdown();
 }
 
 void cluster_vip_shutdown(void)
