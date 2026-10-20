@@ -127,6 +127,9 @@ void cluster_note_list_write(void);
 // whether gravity.db is another file than when last accounted for, holding
 // tables (hash) other than the ones that edit left
 void cluster_lists_explain(const char *hash, double *written, bool *replaced);
+// The time of the last such edit when it was made after since and left other
+// tables than hash, 0 otherwise
+double cluster_lists_write_lost(const char *hash, const double since);
 void cluster_lists_accounted(const double written);
 
 // A rebuild the cluster started, and how the last one ended. The lists are only

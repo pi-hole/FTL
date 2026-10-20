@@ -1708,6 +1708,9 @@ static enum gravity_state gravity_state = GRAVITY_IDLE;
 static double gravity_retry_at = 0.0;
 static double gravity_backoff = 0.0;
 
+// When the running rebuild was started
+static double rebuild_started = 0.0;
+
 // Why the lists cannot be settled, for the status. NULL while they can
 static const char *gravity_error = NULL;
 
@@ -1736,6 +1739,19 @@ static double our_changed(void)
 
 // What the web interface says about such a change
 static const char foreign_lists[] = "the lists changed without an edit through FTL (a gravity database restored or copied in?), the cluster's lists are taken instead";
+
+// An edit made through FTL that a gravity run swapped out again: it copied the
+// lists before the edit and nothing here holds it any more. Said once per edit
+static void lost_list_write(const double written)
+{
+	static double warned = 0.0;
+	if(written <= 0.0 || !(written > warned))
+		return;
+	warned = written;
+
+	log_warn("cluster: a list change made while gravity was running is not in the database it swapped in, the change is lost");
+	log_cluster_message("a list change made while gravity was running was lost, gravity replaced it");
+}
 
 // The version a change of the tables that nothing here explains is published
 // under. An edit made through FTL counts from when it was written, above what it
@@ -1843,6 +1859,8 @@ static void note_local_changes(void)
 	{
 		// Nothing moved: an edit that changed nothing is spent, and a
 		// gravity run that swapped in the same tables changed nothing
+		if(replaced)
+			lost_list_write(written);
 		cluster_lists_accounted(written);
 	}
 	else if(lists_read && !settling)
@@ -1972,6 +1990,7 @@ static void settle_gravity(void)
 		if(!cluster_run_gravity())
 			return;
 
+		rebuild_started = double_time();
 		cluster_lock();
 		gravity_state = GRAVITY_RUNNING;
 		cluster_unlock();
@@ -2072,6 +2091,7 @@ static void settle_gravity(void)
 				log_cluster_message(foreign_lists);
 			}
 		}
+		lost_list_write(cluster_lists_write_lost(gravityhash, rebuild_started));
 		finish_pull(stamp, gravityhash);
 		cluster_lists_accounted(written);
 		if(source != NULL)
