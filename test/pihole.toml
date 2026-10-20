@@ -878,7 +878,9 @@
     #
     # With three or more members, a node only serves DHCP while it reaches a majority of
     # them, so a node cut off from the others does not start a second DHCP server. A
-    # cluster of three needs two of them running.
+    # cluster of three needs two of them running. A node that served DHCP when it stopped
+    # asks the other nodes before it serves again, so a plain restart of that node costs
+    # about one cluster.interval without DHCP and a second restart.
     #
     # The dhcp.* settings are not synchronized, as they describe the network of each node,
     # so they have to be the same on every node by hand - static leases in particular.
