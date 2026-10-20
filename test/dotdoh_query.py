@@ -19,18 +19,20 @@
 #   emitqr <domain> <outfile>                     like emit, but with QR set
 #   dotqr <host> <port> <domain> <src> <ca>       DoT query with QR set, print
 #                                                 the RCODE of the reply
+#   slowdns <port> <ms> <ready> <secs> [<log>]    plain UDP/TCP server on loopback
+#                                                 answering any A query after <ms>,
+#                                                 for <secs>; creates <ready> once
+#                                                 bound, logs each name to <log>
+#   doh3fair <host> <port> <suffix> <count> <domain>
+#                                                 <count> DoH3 POSTs for names under
+#                                                 <suffix> from 127.0.0.2, then time
+#                                                 one for <domain> from 127.0.0.3
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
 #                                                 connections to the first, then
 #                                                 time one query on the second
 #                                                 and count the idle ones closed
-#   slowdns <port> <delay-ms>                     plain UDP/TCP server answering
-#                                                 any A query with 192.168.1.1, late
-#   doh3fair <host> <port> <suffix> <count> <domain>
-#                                                 <count> DoH3 POSTs for names under
-#                                                 <suffix> from 127.0.0.2, then time
-#                                                 one for <domain> from 127.0.0.3
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -380,16 +382,23 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
-def slow_dns(port, delay_ms):
+def slow_dns(port, delay_ms, readyfile, secs, logfile=None):
     """Answer every query on 127.0.0.1:port, UDP and TCP, with 192.168.1.1
-    after delay_ms."""
+    after delay_ms, until secs pass. readyfile is created once both sockets are
+    bound, which waits for an earlier server on the port to go away."""
     import threading
 
+    lock = threading.Lock()
+
     def answer(query):
-        time.sleep(delay_ms / 1000.0)
-        end = 12
+        labels, end = [], 12
         while end < len(query) and query[end] != 0:
+            labels.append(query[end + 1:end + 1 + query[end]].decode(errors="replace"))
             end += 1 + query[end]
+        if logfile is not None:
+            with lock, open(logfile, "a") as f:
+                f.write(".".join(labels) + "\n")
+        time.sleep(delay_ms / 1000.0)
         end += 5
         reply = query[:2] + struct.pack("!HHHHH", 0x8180, 1, 1, 0, 0) + query[12:end]
         return reply + struct.pack("!HHHIH", 0xc00c, 1, 1, 0, 4) + socket.inet_aton("192.168.1.1")
@@ -412,16 +421,33 @@ def slow_dns(port, delay_ms):
             conn, _ = srv.accept()
             threading.Thread(target=tcp_serve, args=(conn,), daemon=True).start()
 
+    deadline = time.monotonic() + secs
+
+    def bind(s):
+        while True:
+            try:
+                s.bind(("127.0.0.1", port))
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
+
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", port))
+    bind(srv)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    bind(sock)
     srv.listen(64)
     threading.Thread(target=tcp_accept, args=(srv,), daemon=True).start()
+    open(readyfile, "w").close()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("127.0.0.1", port))
-    while True:
-        query, addr = sock.recvfrom(4096)
+    while time.monotonic() < deadline:
+        sock.settimeout(max(deadline - time.monotonic(), 0.01))
+        try:
+            query, addr = sock.recvfrom(4096)
+        except socket.timeout:
+            break
         if len(query) > 12:
             threading.Thread(target=udp_reply, args=(sock, query, addr), daemon=True).start()
 
@@ -721,8 +747,9 @@ def main():
         doh3(host, int(port), domain, expected_ip)
         print("OK")
     elif cmd == "slowdns":
-        _, _, port, delay_ms = sys.argv[:4]
-        slow_dns(int(port), int(delay_ms))
+        _, _, port, delay_ms, readyfile, secs = sys.argv[:6]
+        logfile = sys.argv[6] if len(sys.argv) > 6 else None
+        slow_dns(int(port), int(delay_ms), readyfile, float(secs), logfile)
     elif cmd == "doh3fair":
         _, _, host, port, suffix, count, domain = sys.argv[:7]
         status, elapsed, answered = doh3_fair(host, int(port), suffix, int(count), domain)

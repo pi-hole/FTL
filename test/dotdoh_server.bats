@@ -547,13 +547,21 @@ setup_file() {
   [[ "$after" -le "$((before + 2))" ]]
 }
 
+# Serve slow.ftl on port 5556, answering after 1.5 s and logging each name to $1.
+# Waits for an earlier server on the port to go away, exits after 40 s at most
+slow_upstream() {
+  local ready i
+  ready="${BATS_FILE_TMPDIR}/slow_upstream.$$.$RANDOM"
+  python3 test/dotdoh_query.py slowdns 5556 1500 "$ready" 40 "$1" >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 300); do [[ -f "$ready" ]] && break; sleep 0.1; done
+}
+
 @test "dotdoh-server: a DoH3 backlog from one client does not hold up another" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   local slow elapsed
   # Names under slow.ftl take 1.5 s, so 20 of them keep all four resolvers busy
-  python3 test/dotdoh_query.py slowdns 5557 1500 3>&- &
+  slow_upstream "${BATS_FILE_TMPDIR}/fair.log"
   slow=$!
-  sleep 0.5
   run python3 test/dotdoh_query.py doh3fair 127.0.0.1 443 slow.ftl 20 "$DOMAIN"
   kill "$slow"
   echo "$output"
