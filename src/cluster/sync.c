@@ -60,6 +60,8 @@
 #include "timers.h"
 #include <fcntl.h>
 #include <sys/stat.h>
+// opendir()
+#include <dirent.h>
 
 // The gravity script, which lives outside FTL
 #define PIHOLE_BINARY "/usr/local/bin/pihole"
@@ -1094,25 +1096,72 @@ static void close_from(const int lowfd)
 // it. gravity.sh leaves the file behind when it fails or is killed
 #define GRAVITY_TEMP_MAX_AGE 600
 
+static void gravity_temp_path(char temp[PATH_MAX])
+{
+	lock_shm();
+	snprintf(temp, PATH_MAX, "%s_temp", config.files.gravity.v.s);
+	unlock_shm();
+}
+
+// Whether a gravity.sh is running on this machine: 1 if so, 0 if not, -1 when
+// /proc cannot tell. Looked for in the arguments, as it may run as "bash
+// gravity.sh" as well as on its own
+static int gravity_script_alive(void)
+{
+	DIR *proc = opendir("/proc");
+	if(proc == NULL)
+		return -1;
+
+	int alive = 0;
+	struct dirent *entry = NULL;
+	while(alive == 0 && (entry = readdir(proc)) != NULL)
+	{
+		if(!isdigit((unsigned char)entry->d_name[0]))
+			continue;
+
+		char path[64] = "";
+		snprintf(path, sizeof(path), "/proc/%s/cmdline", entry->d_name);
+		const int fd = open(path, O_RDONLY | O_CLOEXEC);
+		if(fd < 0)
+			continue;
+		char cmdline[4096];
+		const ssize_t len = read(fd, cmdline, sizeof(cmdline) - 1);
+		close(fd);
+		if(len <= 0)
+			continue;
+		cmdline[len] = '\0';
+
+		// One NUL-terminated argument after the other
+		for(ssize_t i = 0; i < len && alive == 0; i += (ssize_t)strlen(cmdline + i) + 1)
+		{
+			const char *base = strrchr(cmdline + i, '/');
+			if(strcmp(base != NULL ? base + 1 : cmdline + i, "gravity.sh") == 0)
+				alive = 1;
+		}
+	}
+	closedir(proc);
+
+	return alive;
+}
+
 // A gravity run this node's cluster did not start: one through the API sets
 // gravity_running, one from the shell or cron only leaves gravity.db_temp. Such
-// a run swaps a copy of the list tables taken at its start in when it ends
+// a run swaps a copy of the list tables taken at its start in when it ends.
+// A temporary file without a gravity.sh to write it is one left behind
 bool cluster_gravity_elsewhere(void)
 {
 	if(gravity_running && gravity_fd < 0)
 		return true;
 
 	char temp[PATH_MAX] = "";
-	lock_shm();
-	snprintf(temp, sizeof(temp), "%s_temp", config.files.gravity.v.s);
-	unlock_shm();
+	gravity_temp_path(temp);
 
 	struct stat st = { 0 };
 	if(stat(temp, &st) != 0)
 		return false;
 
 	const time_t age = time(NULL) - st.st_mtime;
-	return age >= 0 && age < GRAVITY_TEMP_MAX_AGE;
+	return age >= 0 && age < GRAVITY_TEMP_MAX_AGE && gravity_script_alive() != 0;
 }
 
 bool cluster_run_gravity(void)
@@ -1263,6 +1312,19 @@ bool cluster_gravity_check(void)
 		waitpid(gravity_pid, NULL, WNOHANG);
 	gravity_pid = 0;
 
+	const bool succeeded = len == sizeof(outcome) &&
+	                       WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS;
+
+	// Nothing writes the temporary database while gravity_running is held
+	// for this run, so what an unfinished run left there is a leftover
+	if(!succeeded)
+	{
+		char temp[PATH_MAX] = "";
+		gravity_temp_path(temp);
+		if(unlink(temp) != 0 && errno != ENOENT)
+			log_warn("cluster: cannot remove %s: %s", temp, strerror(errno));
+	}
+
 	if(len != sizeof(outcome))
 	{
 		// The run died before it could say how it went, so whether the
@@ -1280,7 +1342,7 @@ bool cluster_gravity_check(void)
 		return false;
 	}
 
-	if(WIFEXITED(outcome) && WEXITSTATUS(outcome) == EXIT_SUCCESS)
+	if(succeeded)
 	{
 		log_info("cluster: gravity finished");
 		gravity_ok = true;
