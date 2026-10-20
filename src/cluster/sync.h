@@ -47,6 +47,10 @@ bool cluster_leases_read(uint8_t **data, size_t *size);
 bool cluster_leases_hash(char out[CLUSTER_HASHLEN]);
 void cluster_leases_hash_bytes(const uint8_t *data, const size_t size, char out[CLUSTER_HASHLEN]);
 bool cluster_leases_write(const uint8_t *data, const size_t size);
+// Merge the serving node's lease file into this node's copy, newest expiry per
+// address winning, so an outage does not drop the leases granted meanwhile
+bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
+                          uint8_t **out, size_t *outsize);
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN]);
 
 // Which items the last configuration change touched that are synchronized,

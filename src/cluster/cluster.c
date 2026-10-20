@@ -2137,19 +2137,17 @@ static void take_leases(void)
 	if(config.dhcp.active.v.b || !config.cluster.dhcp.failover.v.b)
 		return;
 
-	char ours[CLUSTER_HASHLEN] = "";
-	// A lease file we cannot read at all is one we have never written, and
-	// an empty hash never matches - which is exactly the first pull
-	cluster_leases_hash(ours);
-
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		struct cluster_peer *peer = &peers[i];
 		// Only from the node actually serving: a standby holds a copy of
-		// its own, and copying between copies would spread a stale one
+		// its own, and copying between copies would spread a stale one.
+		// Our copy is a merge of what every serving node published, so it is
+		// compared against the peer's last-merged fingerprint rather than our
+		// own - which no longer equals any single peer's file
 		if(!peer->reachable || peer->is_self || !peer->dhcp_active ||
 		   !peer->clock_agrees || strlen(peer->leaseshash) == 0 ||
-		   strcmp(peer->leaseshash, ours) == 0)
+		   strcmp(peer->leaseshash, peer->leases_merged) == 0)
 			continue;
 
 		if(read_refused(peer))
@@ -2206,9 +2204,23 @@ static void take_leases(void)
 
 		// A download that failed and a file that could not be written are
 		// the same to this node: it does not hold the leases, and asking
-		// again immediately would repeat whatever went wrong every round
+		// again immediately would repeat whatever went wrong every round.
+		// Merged rather than written over our own: a node returning from an
+		// outage keeps the leases handed out while it was gone, and whoever
+		// serves next starts from the union. The whole file is taken when it
+		// is too large to merge cheaply, which is the previous behavior
 		if(taken)
-			taken = cluster_leases_write(data, size);
+		{
+			uint8_t *merged = NULL;
+			size_t mergedsize = 0;
+			if(cluster_leases_merge(data, size, &merged, &mergedsize))
+			{
+				taken = cluster_leases_write(merged, mergedsize);
+				free(merged);
+			}
+			else
+				taken = cluster_leases_write(data, size);
+		}
 		// An empty lease file arrives as no buffer at all
 		if(data != NULL)
 			free(data);
@@ -2225,6 +2237,8 @@ static void take_leases(void)
 
 		log_debug(DEBUG_CLUSTER, "cluster: took the DHCP leases of %s (%zu bytes)",
 		          peer->url, size);
+		strncpy(peer->leases_merged, peer->leaseshash, sizeof(peer->leases_merged) - 1);
+		peer->leases_merged[sizeof(peer->leases_merged) - 1] = '\0';
 		peer->leases_backoff = 0.0;
 		peer->retry_leases_at = 0.0;
 
