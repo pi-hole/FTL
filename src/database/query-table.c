@@ -819,6 +819,14 @@ static int counted_queries = 0;
 // lock
 static unsigned int export_floor = 0;
 
+// Number of queries imported from the long-term database at startup. Guarded
+// by the SHM lock
+static unsigned int imported_queries_total = 0;
+unsigned int __attribute__((pure)) get_imported_queries(void)
+{
+	return imported_queries_total;
+}
+
 static unsigned int get_export_floor(void)
 {
 	// Both counters wrap at UINT_MAX, their difference does not. A floor the
@@ -867,6 +875,7 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 	// The slots reserved for the import are already in the database, the
 	// export starts above them
 	export_floor = counted_queries + get_queries_removed();
+	imported_queries_total = counted_queries;
 	// Unlock shared memory
 	unlock_shm();
 
@@ -2125,6 +2134,7 @@ void DB_read_queries(void)
 		counters->queries -= gap;
 		// The moved queries are not exported yet, keep them above the floor
 		export_floor -= gap;
+		imported_queries_total -= gap;
 
 		// Invalidate the query ID cache since the indices shifted
 		queryIDMap_clear();

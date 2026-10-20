@@ -225,6 +225,8 @@ class TestPrometheusEndpoint:
             )
             assert r.status_code == 200, f"enabling perEntityMetrics failed: {r.text}"
 
+            total_before = {n: v for n, labels, v in _scrape(token)
+                            if not labels}["pihole_dns_queries_total"]
             for name in CRAFTED_NAMES:
                 subprocess.run(["dig", "+time=2", "+tries=1", "@127.0.0.1", name],
                                capture_output=True, timeout=10)
@@ -246,7 +248,9 @@ class TestPrometheusEndpoint:
             assert values["pihole_domains"] == after["queries"]["unique_domains"]
             assert values["pihole_clients"] == after["clients"]["total"]
             assert values["pihole_clients_active"] == after["clients"]["active"]
-            assert values["pihole_dns_queries_total"] >= values["pihole_queries"]
+            # The counter leaves out the imported history, it only grows by
+            # the queries received since
+            assert values["pihole_dns_queries_total"] - total_before >= len(CRAFTED_NAMES)
 
             domains = {labels["domain"] for n, labels, _ in samples
                        if n == "pihole_top_domain_queries"}
