@@ -55,8 +55,9 @@ static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER
 // are appended to one buffer while the thread writes out the other
 #define LOG_QUEUE_SIZE (512u*1024u)
 // Warnings and errors per buffer, relayed to syslog if the buffer cannot be
-// written. Further ones are not relayed, so logging never waits for a slot
-#define LOG_QUEUE_WARN 32u
+// written. Each line has a 15-byte timestamp and a newline, so every line of a
+// full buffer gets a slot. Slots are only backed by memory once used
+#define LOG_QUEUE_WARN (LOG_QUEUE_SIZE/16u)
 struct log_batch {
 	char *buf;
 	size_t used;
