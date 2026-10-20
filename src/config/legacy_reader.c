@@ -180,6 +180,13 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parseFTLconf(fp, "DBFILE");
 
+	// The value is replaced below, either by a string of our own or by the
+	// default, which must never be freed
+	if(conf->files.database.t == CONF_STRING_ALLOCATED)
+		free(conf->files.database.v.s);
+	conf->files.database.v.s = NULL;
+	conf->files.database.t = CONF_STRING;
+
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s) == 1)
 		conf->files.database.t = CONF_STRING_ALLOCATED;
@@ -193,7 +200,10 @@ const char *readFTLlegacy(struct config *conf)
 	{
 		// Use standard path if path was set to zero but override
 		// MAXDBDAYS=0 to ensure no queries are stored in the database
+		if(conf->files.database.t == CONF_STRING_ALLOCATED)
+			free(conf->files.database.v.s);
 		conf->files.database.v.s = conf->files.database.d.s;
+		conf->files.database.t = CONF_STRING;
 		conf->database.maxDBdays.v.ui = 0;
 	}
 
