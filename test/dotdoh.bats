@@ -466,6 +466,28 @@ print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
   [[ "${ok}" -eq 4 ]]
 }
 
+@test "dotdoh-client: a lost DoH3 connection retires every idle one at once" {
+  local i tmp ok
+  for i in 1 2 3 4 5 6; do
+    dig +short +tries=1 +time=8 $(proxy_at 4) "slow-h3-retire-${i}.ftl" > /dev/null &
+  done
+  wait
+  pkill -USR1 -f "python3 test/dotdoh_shim.py"
+  sleep 0.5
+  # This query finds its connection lost after the probe and retires the others,
+  # so none of the parallel ones may wait for a probe of its own
+  dig +short +tries=1 +time=3 $(proxy_at 4) h3-retire-0.ftl > /dev/null || true
+  tmp="$(mktemp -d)"
+  for i in 1 2 3 4 5 6; do
+    ( dig +short +tries=1 +time=1 $(proxy_at 4) "h3-retire-${i}.ftl" > /dev/null && touch "${tmp}/${i}" ) &
+  done
+  wait
+  ok=$(find "${tmp}" -type f | wc -l)
+  rm -rf "${tmp}"
+  printf "answered within 1 s: %s of 6\n" "${ok}"
+  [[ "${ok}" -eq 6 ]]
+}
+
 @test "dotdoh-client: queries after the DoH3 upstream reset its connections are answered" {
   local i conns ok=0
   for i in 1 2 3 4 5 6; do

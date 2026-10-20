@@ -800,12 +800,12 @@ static void return_ok(struct quic_pool *p, struct quic_client_conn *c)
 }
 
 // Discard a connection after a failed exchange: tear it down and free its slot.
-// When it was lost while idle, the idle ones not used since likely were as well,
-// e.g., after an upstream restart, so retire those too.
-static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool lost)
+// When it was lost, the idle ones not used since the exchange started likely
+// were as well, e.g., after an upstream restart, so retire those too.
+static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool lost,
+                        const uint64_t start_ms)
 {
 	pthread_mutex_lock(&p->lock);
-	const uint64_t last_used_ms = c->last_used_ms;
 	retire(p, c);
 	if(lost)
 	{
@@ -813,7 +813,7 @@ static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool lo
 		for(int i = 0; i < p->max; i++)
 		{
 			struct quic_client_conn *o = p->slots[i];
-			if(o != NULL && !o->in_use && o->last_used_ms <= last_used_ms)
+			if(o != NULL && !o->in_use && o->last_used_ms < start_ms)
 			{
 				p->stats.conns_reaped_idle++;
 				retire(p, o);
@@ -834,7 +834,8 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 	// One budget for the whole exchange (both attempts share it). A pooled
 	// connection the upstream lost, closed or reset before answering is replaced
 	// once by a fresh one; any other failure fails closed.
-	const uint64_t deadline = quic_now_ms() + QUIC_EXCHANGE_TIMEOUT_MS;
+	const uint64_t start = quic_now_ms();
+	const uint64_t deadline = start + QUIC_EXCHANGE_TIMEOUT_MS;
 
 	for(int attempt = 0; attempt < 2; attempt++)
 	{
@@ -850,7 +851,7 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 			return r;
 		}
 		const bool lost = reused && c->x.lost;
-		return_dead(p, c, lost);
+		return_dead(p, c, lost, start);
 		if(!lost)
 			break;
 	}
