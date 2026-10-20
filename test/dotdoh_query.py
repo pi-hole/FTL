@@ -30,6 +30,8 @@
 #   slowserver <port> <ms> <ready> <secs>         plain UDP server on loopback that
 #                                                 answers A queries after <ms>, for
 #                                                 <secs>; creates <ready> once bound
+#                                                 and leaves the first copy of each
+#                                                 drop-* name unanswered
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -77,6 +79,7 @@ def slow_server(port, delay_ms, readyfile, secs):
     s.bind(("127.0.0.1", port))
     open(readyfile, "w").close()
     end = time.monotonic() + secs
+    dropped = set()
     while time.monotonic() < end:
         s.settimeout(max(end - time.monotonic(), 0.01))
         try:
@@ -89,6 +92,11 @@ def slow_server(port, delay_ms, readyfile, secs):
         while i < len(query) and query[i] != 0:
             i += 1 + query[i]
         qend = i + 5
+        # A lost query: only a repeat of a drop-* name is answered
+        name = bytes(query[12:i]).lower()
+        if name[1:6] == b"drop-" and name not in dropped:
+            dropped.add(name)
+            continue
         time.sleep(delay_ms / 1000.0)
         reply = bytearray(query[:qend])
         reply[2] |= 0x80

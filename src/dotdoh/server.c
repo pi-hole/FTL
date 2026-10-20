@@ -278,6 +278,9 @@ static int pool_n = 0;
 // its answer arrives before we give up. Failover to another server or DNSSEC
 // validation over TCP can still take longer than this
 #define LOOPBACK_IO_TIMEOUT_S 12
+// When an unanswered UDP handoff is repeated, which makes dnsmasq try all servers.
+// Ahead of dnsmasq's fast retry (1 s by default), which resends to the same server
+#define LOOPBACK_UDP_RESEND_MS 900
 
 // Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
 // draw on the same pool. Encrypted listeners get the rest.
@@ -502,9 +505,20 @@ static int64_t monotonic_msec(void)
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-// Send the query to dnsmasq over loopback UDP and wait for its answer. It is sent
-// once, as dnsmasq would count a repeat as another query from the client.
-// Returns the answer length, 0 if the answer was truncated, or -1
+static bool loopback_udp_send(const uint8_t *query, const size_t qlen)
+{
+	ssize_t sent;
+	do
+		sent = send(udp_fd, query, qlen, 0);
+	while(sent < 0 && errno == EINTR);
+	if(sent < 0)
+		log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
+	return sent >= 0;
+}
+
+// Send the query to dnsmasq over loopback UDP and wait for its answer. Unanswered
+// after LOOPBACK_UDP_RESEND_MS, it is sent once more, which dnsmasq forwards to all
+// servers. Returns the answer length, 0 if the answer was truncated, or -1
 static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
                                      uint8_t *answer, const size_t answer_sz)
 {
@@ -517,25 +531,27 @@ static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
 		pthread_setspecific(udp_fd_key, &udp_fd);
 	}
 
-	ssize_t sent;
-	do
-		sent = send(udp_fd, query, qlen, 0);
-	while(sent < 0 && errno == EINTR);
-	if(sent < 0)
-	{
-		log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
+	if(!loopback_udp_send(query, qlen))
 		return -1;
-	}
 
 	// Wait as long as the TCP handoff does
-	const int64_t end = monotonic_msec() + LOOPBACK_IO_TIMEOUT_S * 1000;
-	int64_t remaining;
-	while((remaining = end - monotonic_msec()) > 0)
+	const int64_t start = monotonic_msec();
+	const int64_t resend = start + LOOPBACK_UDP_RESEND_MS;
+	const int64_t end = start + LOOPBACK_IO_TIMEOUT_S * 1000;
+	bool resent = false;
+	int64_t now;
+	while((now = monotonic_msec()) < end)
 	{
+		if(!resent && now >= resend)
+		{
+			// A failed resend leaves the first copy to be answered
+			resent = true;
+			loopback_udp_send(query, qlen);
+		}
 		struct pollfd pfd = { .fd = udp_fd, .events = POLLIN };
-		const int ready = poll(&pfd, 1, (int)remaining);
+		const int ready = poll(&pfd, 1, (int)((resent ? end : resend) - now));
 		if(ready == 0)
-			break;
+			continue;
 		if(ready < 0)
 		{
 			if(errno == EINTR)
