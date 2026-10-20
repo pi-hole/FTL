@@ -768,6 +768,10 @@
   # network - DHCP failover and the virtual IP address - are switched on separately
   # below.
   #
+  # Lists travel as a whole and the most recently edited set wins, so edit them through
+  # the web interface or the API: a change made to gravity.db directly, with sqlite3 or
+  # by copying a database in, is replaced by the cluster's lists.
+  #
   # Allowed values are:
   #     true or false
   enabled = false

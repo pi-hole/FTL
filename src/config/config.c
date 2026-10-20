@@ -1231,7 +1231,7 @@ void initConfig(struct config *conf)
 
 	// struct cluster
 	conf->cluster.enabled.k = "cluster.enabled";
-	conf->cluster.enabled.h = "Should this Pi-hole be part of a cluster? The nodes listed in cluster.members then keep each other's configuration and lists in step, and each of them knows which of the others are reachable. The two features that change what this machine does on the network - DHCP failover and the virtual IP address - are switched on separately below.";
+	conf->cluster.enabled.h = "Should this Pi-hole be part of a cluster? The nodes listed in cluster.members then keep each other's configuration and lists in step, and each of them knows which of the others are reachable. The two features that change what this machine does on the network - DHCP failover and the virtual IP address - are switched on separately below.\n\n Lists travel as a whole and the most recently edited set wins, so edit them through the web interface or the API: a change made to gravity.db directly, with sqlite3 or by copying a database in, is replaced by the cluster's lists.";
 	conf->cluster.enabled.t = CONF_BOOL;
 	conf->cluster.enabled.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->cluster.enabled.d.b = false;
