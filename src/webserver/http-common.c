@@ -607,14 +607,22 @@ bool read_and_parse_payload(struct ftl_conn *api)
 	if(!payload_expected(api))
 		return true;
 
-	api->payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	// A peer's push carries whole items, and dns.hosts on its own outgrows
+	// what any other request needs. Its signature is checked over every one
+	// of these bytes before anything in it is acted on
+	const bool cluster_push = config.cluster.enabled.v.b && api->method == HTTP_PATCH &&
+	                          mg_get_header(api->conn, CLUSTER_HDR_SIG) != NULL &&
+	                          strcmp(api->request->local_uri_raw, "/api/config") == 0;
+	const size_t max = cluster_push ? CLUSTER_MAX_PUSH_BYTES : MAX_PAYLOAD_BYTES;
+
+	api->payload.raw = calloc(max, sizeof(char));
 	if(api->payload.raw == NULL)
 		return false;
 
 	// Read payload. mg_read() reports a read error as a negative number,
 	// which must not reach the unsigned payload size - it would wrap and
 	// read as a payload too large to handle
-	const int nread = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	const int nread = mg_read(api->conn, api->payload.raw, max - 1);
 	if (nread < 0)
 	{
 		log_web_debug(DEBUG_API, "Error reading payload");
@@ -627,7 +635,7 @@ bool read_and_parse_payload(struct ftl_conn *api)
 		log_web_debug(DEBUG_API, "Received no payload");
 		return true;
 	}
-	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
+	else if (api->payload.size >= max - 1)
 	{
 		// If we reached the upper limit of payload size, we have likely
 		// truncated the payload. The only reasonable thing to do here is to

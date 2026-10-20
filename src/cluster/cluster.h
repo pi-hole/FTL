@@ -26,6 +26,10 @@
 // 5 MB - and small enough that neither reading our own nor taking a peer's
 // makes this node hold a lot of memory or write an unbounded file
 #define CLUSTER_MAX_LEASES_SIZE (8u*1024u*1024u)
+// What a signed push of the configuration may weigh. More than any other request
+// may, as dns.hosts on its own outgrows that, and no more than a node reads an
+// answer up to
+#define CLUSTER_MAX_PUSH_BYTES (1u*1024u*1024u)
 #define CLUSTER_STRLEN 128
 #define CLUSTER_URLLEN 256
 #define CLUSTER_HASHLEN 65
