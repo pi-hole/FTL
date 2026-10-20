@@ -93,8 +93,14 @@ static void recycle(void)
 			continue;
 
 		// Skip if still referenced by at least one query, hidden or not
-		if(client->count > 0 || client->hiddencount > 0)
+		if(client->count > 0)
 			goto keep_client;
+		if(client->hiddencount > 0)
+		{
+			// Only hidden queries are left, so this client is no statistic
+			client->flags.hidden_only = true;
+			goto keep_client;
+		}
 
 		// Never recycle aliasclients (they are not counted above but
 		// are only indirectly referenced by other clients)
@@ -150,8 +156,14 @@ keep_client:
 			continue;
 
 		// Skip if still referenced by any query or CNAME chain
-		if(domain->count > 0 || domain->hiddencount > 0 || domain->cname_refcount > 0)
+		if(domain->count > 0 || domain->cname_refcount > 0)
 			goto keep_domain;
+		if(domain->hiddencount > 0)
+		{
+			// Only hidden queries are left, see the clients above
+			domain->flags.hidden_only = true;
+			goto keep_domain;
+		}
 
 		// Only recycle domains when their last query was more than 24
 		// hours ago. This ensures that we do not recycle domains that

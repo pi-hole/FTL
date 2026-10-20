@@ -511,6 +511,61 @@ load 'bats_helper.bash'
   refute_output
 }
 
+@test "Clients and domains left with only hidden queries are hidden again" {
+  # 127.0.0.1 asks once visibly, then only hidden once dns.ignoreLocalhost is
+  # enabled. After GC removed the visible query, neither may still be listed
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A hidden-again.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  visible=$(date +%s)
+  clients_visible=$(curl -s "127.0.0.1/api/history/clients?N=0" | jq '.clients | has("127.0.0.1")')
+  domains_visible=$(curl -s 127.0.0.1/api/stats/summary | jq '.queries.unique_domains')
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":true}}}"'
+  run bash -c "./pihole-FTL wait-for 'INFO: Config file written to /etc/pihole/pihole.toml' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  # Hidden queries until a run whose cutoff lies past the visible query has
+  # removed queries
+  for i in $(seq 1 180); do
+    dig A hidden-again.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null || true
+    if tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | awk -v t="$((visible + 1))" '
+         /GC starting, mintime:/ { match($0, /\([0-9]+\)/); past = substr($0, RSTART + 1, RLENGTH - 2) + 0 >= t }
+         /GC removed [1-9][0-9]* queries/ { if(past) done = 1 }
+         END { exit !done }'; then
+      break
+    fi
+    sleep 1
+  done
+  clients_hidden=$(curl -s "127.0.0.1/api/history/clients?N=0" | jq '.clients | has("127.0.0.1")')
+  domains_hidden=$(curl -s 127.0.0.1/api/stats/summary | jq '.queries.unique_domains')
+
+  # Restore before asserting, the tests after this one start FTL afresh
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"dns\":{\"ignoreLocalhost\":false}}}"'
+  run bash -c "./pihole-FTL wait-for 'INFO: Config file written to /etc/pihole/pihole.toml' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  printf "127.0.0.1 listed: %s -> %s\nunique domains: %s -> %s\n" "${clients_visible}" "${clients_hidden}" "${domains_visible}" "${domains_hidden}"
+  [[ "${clients_visible}" == "true" ]]
+  [[ "${clients_hidden}" == "false" ]]
+  [[ ${domains_hidden} -lt ${domains_visible} ]]
+}
+
 @test "Pi-hole PTR records are generated once per address, however it is spelled" {
   # Start FTL afresh so no record exists yet, and ask for a non-canonical
   # spelling first: the record must still answer the canonical name. Further
