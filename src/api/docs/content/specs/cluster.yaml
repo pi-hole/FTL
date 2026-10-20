@@ -592,8 +592,8 @@ components:
           type: boolean
           description: |
             Whether this node would answer on an address the cluster places on
-            it. Needs CAP_NET_ADMIN, an interface that exists, and a listening
-            mode other than `bind`.
+            it. Needs CAP_NET_ADMIN, an interface that exists, a listening mode
+            other than `bind`, and enough of the cluster within reach.
           example: true
         identity_shared:
           type: boolean
@@ -619,8 +619,9 @@ components:
               description: |
                 Whether this node could start a DHCP server at this moment. It
                 is `configured` minus the passing reasons not to: a rebuild of
-                the lists in progress, and the wait a failed takeover leaves
-                behind. A node that could not is never elected to serve.
+                the lists in progress, the wait a failed takeover leaves
+                behind, and a cluster this node does not reach enough of. A
+                node that could not is never elected to serve.
               example: false
             configured:
               type: boolean
@@ -643,6 +644,15 @@ components:
                 already knows which client holds which address. Absent on a
                 node whose lease file cannot be read.
               example: "3fa2b1c7080bbad1"
+            conflict:
+              type: boolean
+              description: |
+                Whether this node serves DHCP and another member it reaches
+                does so too, for more than a round. The cluster did not settle
+                it, e.g., `dhcp.active` is set by hand or through the
+                environment on one of them, so it is logged as an error and
+                shown on the web interface as well.
+              example: false
         vip:
           type: object
           properties:
@@ -653,6 +663,13 @@ components:
             held:
               type: boolean
               description: Does this node currently hold the virtual IP address?
+              example: false
+            conflict:
+              type: boolean
+              description: |
+                Whether this node holds the virtual IP address and another
+                member says it holds it too, for more than a round. Logged as
+                an error and shown on the web interface as well.
               example: false
         sync:
           $ref: 'cluster.yaml#/components/schemas/sync_state'

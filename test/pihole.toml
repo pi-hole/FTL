@@ -866,6 +866,10 @@
     # on its own and there is nothing to configure. Only enable this when Pi-hole is your
     # DHCP server on all cluster nodes.
     #
+    # With three or more members, a node only serves DHCP while it reaches a majority of
+    # them, so a node cut off from the others does not start a second DHCP server. A
+    # cluster of three needs two of them running.
+    #
     # The dhcp.* settings are not synchronized, as they describe the network of each node,
     # so they have to be the same on every node by hand - static leases in particular.
     # Serving DHCP needs the CAP_NET_ADMIN capability, which a container only has when it
@@ -886,7 +890,9 @@
     #
     # It has to be an address nothing else uses, and in particular not the address of one
     # of the nodes: the node elected to hold it would take it away from the one it belongs
-    # to. A node that finds another machine answering for the address does not claim it.
+    # to. A node that finds another machine answering for the address does not claim it,
+    # and with three or more members only a node that reaches a majority of them holds
+    # it.
     #
     # Placing the address needs the CAP_NET_ADMIN capability, and dns.listeningMode must
     # not be BIND, as a node bound to its own addresses would not answer on the virtual

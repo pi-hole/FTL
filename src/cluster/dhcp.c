@@ -168,6 +168,124 @@ static void takeover_failed(void)
 	takeover_failed_until = double_time() + fmin(wait, CLUSTER_TAKEOVER_BACKOFF_MAX);
 }
 
+// Whether this node sees enough of the cluster to take DHCP or the address. A
+// node cut off from the others would elect itself beside their server
+static bool quorum = true;
+static unsigned int rounds_without_quorum = 0;
+
+// A strict majority of the members, counting this node and what the others
+// relay. With two members there is none to lose, so the other one only counts
+// against this node while it polls us and cannot be polled
+static void count_quorum(const struct cluster_peer *peers, const unsigned int num_peers)
+{
+	unsigned int self = 0, others = 0, seen = 0;
+	bool alive_unseen = false;
+	const double polled = cluster_polled_at();
+	const double now = double_time();
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		const struct cluster_peer *peer = &peers[i];
+		if(peer->is_self)
+		{
+			self++;
+			continue;
+		}
+
+		others++;
+		if(peer_answers(peer))
+			seen++;
+		// Polled by it since this node lost it, and recently
+		else if(peer->rounds_down > 0 && polled > peer->down_since &&
+		        now - polled < 3.0 * config.cluster.interval.v.ui)
+			alive_unseen = true;
+	}
+
+	// The list names this node once, whether or not its own entry answered
+	const unsigned int members = self > 0 ? others + 1 : others;
+	quorum = members >= 3 ? 2 * (seen + 1) > members : seen > 0 || !alive_unseen;
+	rounds_without_quorum = quorum ? 0 : rounds_without_quorum + 1;
+
+	char address[CLUSTER_STRLEN] = "";
+	cluster_vip_address(address);
+	const bool matters = config.cluster.dhcp.failover.v.b || strlen(address) > 0;
+
+	static bool warned = false;
+	if(rounds_without_quorum == CLUSTER_DHCP_ACTIVATE_ROUNDS && matters && !warned)
+	{
+		char msg[2*CLUSTER_STRLEN] = "";
+		if(members >= 3)
+			snprintf(msg, sizeof(msg), "this node reaches %u of %u members, not a majority, so it does not serve DHCP or hold the virtual IP",
+			         seen + 1, members);
+		else
+			snprintf(msg, sizeof(msg), "the other member reaches this node but not the other way round, so this node does not serve DHCP or hold the virtual IP");
+		log_warn("cluster: %s", msg);
+		log_cluster_message(msg);
+		warned = true;
+	}
+	else if(quorum && warned)
+	{
+		log_info("cluster: this node reaches enough of the cluster again");
+		warned = false;
+	}
+}
+
+// Two DHCP servers or two holders of the address that the election did not
+// settle: one pinned by hand, a broken direction, a partition that healed
+static unsigned int rounds_conflicting = 0;
+static bool dhcp_conflict = false, vip_conflict = false;
+
+static void note_conflicts(const struct cluster_peer *peers, const unsigned int num_peers)
+{
+	char address[CLUSTER_STRLEN] = "";
+	cluster_vip_address(address);
+	const bool serving = config.dhcp.active.v.b && !dnsmasq_failed;
+	const bool holding = strlen(address) > 0 && vip_present(address);
+
+	const char *dhcp_with = NULL, *vip_with = NULL;
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		const struct cluster_peer *peer = &peers[i];
+		if(peer->is_self)
+			continue;
+
+		const char *name = strlen(peer->name) > 0 ? peer->name :
+		                   (peer->url != NULL ? peer->url : "");
+		if(serving && peer->reachable && peer->dhcp_active)
+			dhcp_with = name;
+		if(holding && (peer->reachable ? peer->vip_held : peer->relayed_vip_held))
+			vip_with = name;
+	}
+
+	// One round of it is a hand-over under way
+	rounds_conflicting = dhcp_with != NULL || vip_with != NULL ? rounds_conflicting + 1 : 0;
+	const bool lasting = rounds_conflicting >= CLUSTER_DHCP_ACTIVATE_ROUNDS;
+
+	char msg[3*CLUSTER_STRLEN] = "";
+	if(lasting && dhcp_with != NULL && !dhcp_conflict)
+	{
+		snprintf(msg, sizeof(msg), "this node and %s both serve DHCP", dhcp_with);
+		log_err("cluster: %s", msg);
+		log_cluster_message(msg);
+	}
+	if(lasting && vip_with != NULL && !vip_conflict)
+	{
+		snprintf(msg, sizeof(msg), "this node and %s both hold the virtual IP %s", vip_with, address);
+		log_err("cluster: %s", msg);
+		log_cluster_message(msg);
+	}
+	if(!lasting && (dhcp_conflict || vip_conflict))
+		log_info("cluster: no other node serves DHCP or holds the virtual IP beside this one any more");
+
+	dhcp_conflict = lasting && dhcp_with != NULL;
+	vip_conflict = lasting && vip_with != NULL;
+}
+
+void cluster_conflicts(bool *dhcp, bool *vip)
+{
+	*dhcp = dhcp_conflict;
+	*vip = vip_conflict;
+}
+
 // Kept in the state file: a takeover that ends in a dead resolver is only seen
 // after the restart it caused, and forgetting it there elects this node again
 void cluster_dhcp_takeover_state(double *until, unsigned int *failures)
@@ -216,6 +334,10 @@ bool cluster_vip_capable(void)
 
 	// ...and for a twin, for the same reason as DHCP: both would take it
 	if(duplicate_identity)
+		return false;
+
+	// ...and in the minority, where the majority places it elsewhere
+	if(!quorum)
 		return false;
 
 	// An interface that is not there is the commonest reason a claim fails,
@@ -291,6 +413,9 @@ static const char *not_capable(void)
 {
 	if(cluster_waiting(takeover_failed_until, double_time(), CLUSTER_TAKEOVER_BACKOFF_MAX))
 		return "a takeover failed recently";
+
+	if(!quorum)
+		return "it does not reach enough of the cluster";
 
 	if(gravity_running && !cluster_gravity_pending())
 		return "gravity is running";
@@ -505,6 +630,9 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
                         struct cluster_intent *intent)
 {
 	memset(intent, 0, sizeof(*intent));
+
+	count_quorum(peers, num_peers);
+	note_conflicts(peers, num_peers);
 
 	const bool serving = config.dhcp.active.v.b;
 
@@ -799,6 +927,23 @@ void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers
 	}
 	warned_refused = false;
 
+	// In the minority this node takes nothing, and once that has lasted it
+	// gives up what it holds: the majority elects somebody else meanwhile
+	if(!quorum)
+	{
+		const bool give_up = rounds_without_quorum >= CLUSTER_DHCP_ACTIVATE_ROUNDS;
+		intent->serve = serving;
+		intent->hold_vip = vip_claimed() && !give_up;
+		forget_rounds();
+
+		if(give_up && serving && config.cluster.dhcp.failover.v.b && cluster_dhcp_configured())
+		{
+			intent->serve = false;
+			set_dhcp_active(false, "this node does not reach enough of the cluster", true);
+		}
+		return;
+	}
+
 	// Without failover here, DHCP stays exactly as the administrator set it.
 	// The address still follows whoever hands out leases, and falls back to
 	// the leader when nobody does - the same rule the failover branch below
@@ -1010,8 +1155,11 @@ void cluster_vip_round(bool mine)
 
 	// ...and not onto a node that would not answer on it. The election prefers
 	// a node that can, so this only bites when none of them can - and then the
-	// address being absent is the truth rather than a second failure
-	if(!cluster_vip_capable())
+	// address being absent is the truth rather than a second failure.
+	//
+	// Without a quorum the round has decided already, and keeps what this
+	// node holds for a round or two
+	if(quorum && !cluster_vip_capable())
 		mine = false;
 
 	// Taking the address over is damped the way taking DHCP over is: one

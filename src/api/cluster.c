@@ -28,6 +28,8 @@
 #include "cluster/http.h"
 // cluster_discover()
 #include "cluster/discover.h"
+// CLUSTER_HDR_FROM
+#include "cluster/auth.h"
 // ERRBUF_SIZE
 #include "config/dnsmasq_config.h"
 
@@ -40,6 +42,10 @@ int api_cluster_status(struct ftl_conn *api)
 	cluster_lock();
 	memcpy(&state, cluster_state(), sizeof(state));
 	cluster_unlock();
+
+	// A signed poll proves the sender alive, also where this node cannot reach it
+	if(api->session.used && api->session.cluster)
+		cluster_note_poll(mg_get_header(api->conn, CLUSTER_HDR_FROM));
 
 	cJSON *node = JSON_NEW_OBJECT();
 	cJSON *peers = JSON_NEW_ARRAY();
