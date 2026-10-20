@@ -22,10 +22,9 @@
 #include "shmem.h"
 // CLUSTER_STRLEN
 #include "cluster/cluster.h"
-// sleepms()
-#include "timers.h"
 
 #include <ifaddrs.h>
+#include <poll.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -479,6 +478,122 @@ static void gratuitous_arp(const char *address, const char *iface, const unsigne
 	close(fd);
 }
 
+// Ask the link whether anybody holds the address, the way RFC 5227 and RFC 4862
+// do before an address is used: from no address at all, so no cache learns ours.
+// Returns how many MACs answered, up to max, or -1 when it could not ask
+static int probe_address(const int family, const unsigned char *addr, const char *iface,
+                         unsigned char macs[][ETH_ALEN], const unsigned int max)
+{
+	const uint16_t proto = family == AF_INET ? ETH_P_ARP : ETH_P_IPV6;
+	const int fd = socket(AF_PACKET, SOCK_RAW | SOCK_CLOEXEC, htons(proto));
+	if(fd < 0)
+		return -1;
+
+	struct sockaddr_ll sll = { 0 };
+	sll.sll_family = AF_PACKET;
+	sll.sll_protocol = htons(proto);
+	sll.sll_ifindex = (int)if_nametoindex(iface);
+	unsigned char mac[ETH_ALEN] = { 0 };
+	if(sll.sll_ifindex == 0 || bind(fd, (struct sockaddr *)&sll, sizeof(sll)) != 0 ||
+	   !interface_mac(fd, iface, mac))
+	{
+		close(fd);
+		return -1;
+	}
+
+	unsigned char frame[14 + 40 + 24] = { 0 };
+	size_t len = 0;
+	sll.sll_halen = ETH_ALEN;
+	memcpy(frame + ETH_ALEN, mac, ETH_ALEN);
+	if(family == AF_INET)
+	{
+		// An ARP request for the address, the sender address left zero
+		memset(frame, 0xff, ETH_ALEN);
+		frame[12] = 0x08; frame[13] = 0x06;             // ETH_P_ARP
+		frame[15] = 0x01;                               // hardware type: Ethernet
+		frame[16] = 0x08;                               // protocol type: IPv4
+		frame[18] = ETH_ALEN;
+		frame[19] = sizeof(struct in_addr);
+		frame[21] = 0x01;                               // opcode: request
+		memcpy(frame + 22, mac, ETH_ALEN);              // sender MAC
+		memcpy(frame + 38, addr, sizeof(struct in_addr)); // target IP
+		len = 42;
+	}
+	else
+	{
+		// A neighbor solicitation from :: to the solicited-node address
+		struct in6_addr src = { 0 }, dst = { 0 };
+		dst.s6_addr[0] = 0xff; dst.s6_addr[1] = 0x02;
+		dst.s6_addr[11] = 0x01; dst.s6_addr[12] = 0xff;
+		memcpy(&dst.s6_addr[13], addr + 13, 3);
+
+		unsigned char icmp[24] = { 0 };
+		icmp[0] = 135;                                  // neighbor solicitation
+		memcpy(icmp + 8, addr, sizeof(struct in6_addr)); // target address
+		const uint16_t sum = icmp6_checksum(&src, &dst, icmp, sizeof(icmp));
+		memcpy(icmp + 2, &sum, sizeof(sum));
+
+		frame[0] = 0x33; frame[1] = 0x33;
+		memcpy(frame + 2, &dst.s6_addr[12], 4);
+		frame[12] = 0x86; frame[13] = 0xdd;             // ETH_P_IPV6
+		frame[14] = 0x60;                               // version 6
+		frame[19] = sizeof(icmp);                       // payload length
+		frame[20] = IPPROTO_ICMPV6;
+		frame[21] = 255;                                // hop limit, as ND requires
+		memcpy(frame + 38, &dst, sizeof(dst));          // destination, the source stays ::
+		memcpy(frame + 54, icmp, sizeof(icmp));
+		len = sizeof(frame);
+	}
+	memcpy(sll.sll_addr, frame, ETH_ALEN);
+
+	// Twice, as neither is acknowledged, and briefly: a host on the link
+	// answers within milliseconds
+	int found = 0;
+	for(unsigned int attempt = 0; attempt < 2; attempt++)
+	{
+		if(sendto(fd, frame, len, 0, (struct sockaddr *)&sll, sizeof(sll)) < 0)
+			break;
+
+		const double until = double_time() + 0.25;
+		for(double left = 0.25; left > 0.0; left = until - double_time())
+		{
+			struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+			if(poll(&pfd, 1, (int)(left * 1000.0) + 1) <= 0)
+				break;
+
+			unsigned char in[128] = { 0 };
+			struct sockaddr_ll from = { 0 };
+			socklen_t fromlen = sizeof(from);
+			const ssize_t got = recvfrom(fd, in, sizeof(in), 0, (struct sockaddr *)&from, &fromlen);
+			if(got < 0 || from.sll_pkttype == PACKET_OUTGOING)
+				continue;
+
+			// Whoever speaks for the address: an ARP packet sent from it,
+			// or a neighbor advertisement for it
+			const unsigned char *who = NULL;
+			if(family == AF_INET && got >= 42 && in[12] == 0x08 && in[13] == 0x06 &&
+			   memcmp(in + 28, addr, sizeof(struct in_addr)) == 0)
+				who = in + 22;
+			else if(family == AF_INET6 && got >= 78 && in[12] == 0x86 && in[13] == 0xdd &&
+			        in[20] == IPPROTO_ICMPV6 && in[54] == 136 &&
+			        memcmp(in + 62, addr, sizeof(struct in6_addr)) == 0)
+				who = in + ETH_ALEN;
+			if(who == NULL)
+				continue;
+
+			bool known = false;
+			for(int i = 0; i < found; i++)
+				known |= memcmp(macs[i], who, ETH_ALEN) == 0;
+			if(!known && (unsigned int)found < max)
+				memcpy(macs[found++], who, ETH_ALEN);
+		}
+	}
+
+	close(fd);
+
+	return found;
+}
+
 // Set once this process put the address there. An address FTL did not place is
 // an address FTL does not remove, as the v4 delete matches on the address alone
 // What this process put there, remembered as it was placed. Reading the address
@@ -653,11 +768,21 @@ static bool own_mac(const unsigned char mac[ETH_ALEN])
 	return found;
 }
 
+// Is this the MAC a member answers under? want[0] is the address asked about
+static bool member_mac(const struct neighbor *want, const unsigned int n, const unsigned char mac[ETH_ALEN])
+{
+	for(unsigned int i = 1; i < n; i++)
+		if(want[i].known && memcmp(want[i].mac, mac, ETH_ALEN) == 0)
+			return true;
+
+	return false;
+}
+
 // Does another machine answer for this address? A member's own address is
 // never the virtual one, and a machine that is not a member answering for it
 // is somebody else's host. A member's MAC is what the address was last cached
 // under after a takeover, so that one is fine
-static bool vip_owned_elsewhere(const char *address)
+static bool vip_owned_elsewhere(const char *address, const char *iface)
 {
 	static char warned[CLUSTER_STRLEN] = "";
 
@@ -685,53 +810,33 @@ static bool vip_owned_elsewhere(const char *address)
 		n++;
 	}
 
-	// Asked for first, so a host holding the address answers the ARP request
-	// or neighbor solicitation this sends before the cache is read
-	const int fd = socket(want[0].family, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-	if(fd >= 0)
-	{
-		struct sockaddr_storage ss = { 0 };
-		socklen_t sslen = 0;
-		if(want[0].family == AF_INET)
-		{
-			struct sockaddr_in *sin = (struct sockaddr_in *)(void *)&ss;
-			sin->sin_family = AF_INET;
-			sin->sin_port = htons(9);
-			memcpy(&sin->sin_addr, want[0].addr, sizeof(sin->sin_addr));
-			sslen = sizeof(*sin);
-		}
-		else
-		{
-			struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)(void *)&ss;
-			sin6->sin6_family = AF_INET6;
-			sin6->sin6_port = htons(9);
-			memcpy(&sin6->sin6_addr, want[0].addr, sizeof(sin6->sin6_addr));
-			sslen = sizeof(*sin6);
-		}
-		char empty[1] = { 0 };
-		if(sendto(fd, empty, 0, MSG_DONTWAIT, (struct sockaddr *)&ss, sslen) == 0)
-			sleepms(200);
-		close(fd);
-	}
+	// Asked on the link first. A cached entry is only a host that answered
+	// once, and the kernel does not check a stale one again in time
+	unsigned char answered[4][ETH_ALEN] = { { 0 } };
+	const int num_answered = probe_address(want[0].family, want[0].addr, iface,
+	                                       answered, ArraySize(answered));
 
 	neighbor_lookup(want, n);
-	if(!want[0].confirmed || own_mac(want[0].mac))
+
+	// Neither this node nor a member, answering the probe or in the cache:
+	// confirmed recently, or at all where no probe could be sent
+	const unsigned char *other = NULL;
+	for(int i = 0; i < num_answered && other == NULL; i++)
+		if(!own_mac(answered[i]) && !member_mac(want, n, answered[i]))
+			other = answered[i];
+	if(other == NULL && (num_answered < 0 ? want[0].known : want[0].confirmed) &&
+	   !own_mac(want[0].mac) && !member_mac(want, n, want[0].mac))
+		other = want[0].mac;
+
+	if(other == NULL)
 	{
 		warned[0] = '\0';
 		return false;
 	}
 
-	for(unsigned int i = 1; i < n; i++)
-		if(want[i].known && memcmp(want[i].mac, want[0].mac, ETH_ALEN) == 0)
-		{
-			warned[0] = '\0';
-			return false;
-		}
-
 	if(strcmp(warned, address) != 0)
 		log_err("cluster: the virtual IP %s is in use by %02x:%02x:%02x:%02x:%02x:%02x, which is not a cluster member - not claiming it",
-		        address, want[0].mac[0], want[0].mac[1], want[0].mac[2],
-		        want[0].mac[3], want[0].mac[4], want[0].mac[5]);
+		        address, other[0], other[1], other[2], other[3], other[4], other[5]);
 	strncpy(warned, address, sizeof(warned) - 1);
 
 	return true;
@@ -802,7 +907,7 @@ bool vip_claim(const char *address)
 	if(!vip_interface(iface))
 		return false;
 
-	if(vip_owned_elsewhere(address))
+	if(vip_owned_elsewhere(address, iface))
 		return false;
 
 	if(!netlink_address(true, address, iface))
