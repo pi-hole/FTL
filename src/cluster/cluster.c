@@ -2510,6 +2510,10 @@ static void take_gravity(const bool member)
 		cluster_lock();
 		gravity_state = GRAVITY_OWED;
 		cluster_unlock();
+		// The fingerprint says what is on disk now, under the version
+		// already held, as after a rebuild that failed
+		if(owed && strlen(imported) > 0)
+			publish_gravity_state(sync_state.gravity_changed, imported);
 		settle_gravity();
 		return;
 	}
@@ -2536,7 +2540,10 @@ static void take_gravity(const bool member)
 	if(strcmp(gravityhash, strlen(imported) > 0 ? imported : peer->gravityhash) == 0)
 	{
 		finish_pull(peer->gravity_changed, gravityhash);
-		peer->stuck_valid = false;
+		// The tables held here already, under a fingerprint saying
+		// otherwise: not asked again until its version moves
+		peer->stuck_valid = strcmp(gravityhash, held) == 0;
+		peer->stuck_changed = peer->gravity_changed;
 		return;
 	}
 
