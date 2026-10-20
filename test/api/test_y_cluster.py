@@ -595,6 +595,21 @@ class TestClusterPushAnswer:
                                            {"misc.check.load": time.time()}))
         assert r.status_code == 200, r.text[:200]
 
+    def test_push_larger_than_any_other_request_is_read(self, addressed):
+        """A push carries whole items, and dns.hosts on its own outgrows what
+        any other request may send. Dated before what this node holds, so it is
+        read, judged and kept out without changing anything."""
+        _disk(addressed)
+        hosts = [f"10.{1 + i // 65025}.{(i // 255) % 255}.{1 + i % 255} host-{i}.example.lan"
+                 for i in range(3000)]
+        body = _push({"dns": {"hosts": hosts}}, {"dns.hosts": 0.5})
+        assert len(body) > 64 * 1024
+        r = _signed_patch(addressed, body)
+        assert r.status_code == 200, r.text[:200]
+        assert _j(r).get("taken") is False, r.text[:200]
+        # ...and answered with that alone, however large the document is
+        assert "config" not in _j(r), r.text[:200]
+
     def test_local_items_carry_no_stamp(self, addressed):
         """An item that never leaves a node is never dated: a change to it is
         not a newer version of anything the cluster holds."""

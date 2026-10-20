@@ -469,14 +469,12 @@ static int api_config_get(struct ftl_conn *api, const bool refused)
 		get_bool_var(api->request->query_string, "detailed", &detailed);
 	}
 
-	// A peer is answered with the document it may read elsewhere, also after
-	// its own PATCH. The full one carries this node's password hashes, and
-	// credentials stay out as well: the answer is read by nobody
+	// A peer is answered without the document: nobody reads it, it would carry
+	// this node's password hashes, and it grows with dns.hosts beyond what
+	// the peer reads an answer up to
 	const bool from_cluster = api->session.used && api->session.cluster;
 	cJSON *json = JSON_NEW_OBJECT();
-	if(from_cluster)
-		get_json_config(api, json, false, true, false);
-	else
+	if(!from_cluster)
 		get_json_config(api, json, detailed, false, false);
 
 	// ...and whether the push was taken, so the peer does not believe it

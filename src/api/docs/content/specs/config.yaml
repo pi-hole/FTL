@@ -42,7 +42,7 @@ components:
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
 
-          This is also how the nodes of a cluster keep each other in step: a node hands its peers the items they lack, each with the time it was changed at, with exactly this request. Such a request is signed with the shared cluster secret rather than carrying a session, and the items that never leave a node - the paths and addresses of one machine, anything dnsmasq or the webserver reads as configuration language - are dropped from it here, whatever the sender put in.
+          This is also how the nodes of a cluster keep each other in step: a node hands its peers the items they lack, each with the time it was changed at, with exactly this request. It may carry up to 1 MiB, more than any other request, as `dns.hosts` on its own can outgrow that, and it is answered with `taken` alone. Such a request is signed with the shared cluster secret rather than carrying a session, and the items that never leave a node - the paths and addresses of one machine, anything dnsmasq or the webserver reads as configuration language - are dropped from it here, whatever the sender put in.
 
           Credentials are dropped along with them unless `cluster.sync.credentials` is set and every entry in `cluster.members` is an `https://` one. With both true the passwords and the two-factor secret travel with the rest, which is what makes the nodes interchangeable down to the login.
         parameters:
@@ -85,7 +85,7 @@ components:
                         taken:
                           type: boolean
                           description: |
-                            Only in the answer to another cluster node's signed push: `false` when this node holds a version at least as new of every item the push dated and kept them all, `true` otherwise
+                            Only in the answer to another cluster node's signed push, which carries nothing else: `false` when this node holds a version at least as new of every item the push dated and kept them all, `true` otherwise
                           example: true
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:

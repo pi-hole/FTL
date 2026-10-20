@@ -51,8 +51,6 @@
 #include <stdint.h>
 // lock_shm()
 #include "shmem.h"
-// MAX_PAYLOAD_BYTES
-#include "webserver/http-common.h"
 #include <sys/wait.h>
 // SYS_close_range
 #include <sys/syscall.h>
@@ -751,12 +749,12 @@ cJSON *cluster_config_document(const bool include[CONFIG_ELEMENTS], const bool e
 	return document;
 }
 
-// The peer reads a request body into a fixed buffer, so a document at or above
+// The peer reads a request body into a bounded buffer, so a document at or above
 // that size would arrive truncated. Asked before sending and asked again by the
 // caller, which stops sending rather than repeating the attempt every round
 bool cluster_push_possible(const char *body)
 {
-	return strlen(body) < MAX_PAYLOAD_BYTES - 1;
+	return strlen(body) < CLUSTER_MAX_PUSH_BYTES - 1;
 }
 
 // ...and this is how it gets there: a PATCH of the peer's configuration, the
