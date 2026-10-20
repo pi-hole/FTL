@@ -53,10 +53,11 @@ load 'bats_helper.bash'
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
-  # test_y_cluster.py: 4x pihole.toml writes. That file needs a node with a web
+  # test_y_cluster.py: 6x pihole.toml writes. That file needs a node with a web
   #   password (an empty pwhash makes FTL serve every request, so its refusal
   #   tests would assert nothing) and with clustering switched on, and it puts
   #   both back afterwards: password set + cleared, clustering enabled + disabled.
+  #   A signed push changes misc.check.load and a second one puts it back.
   #   Measured over two consecutive runs against the same node.
   #
   #   This count also depends on test/pihole.toml being what this build writes:
@@ -72,7 +73,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "17"
   else
-    [[ ${lines[0]} == "68" ]]
+    [[ ${lines[0]} == "70" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

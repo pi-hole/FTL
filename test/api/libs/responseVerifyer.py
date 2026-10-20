@@ -33,6 +33,7 @@ class ResponseVerifyer():
 		self.ftl = ftl
 		self.openapi = openapi
 		self.errors = []
+		self.additionalPaths = []
 
 
 	def __enter__(self):
@@ -133,6 +134,7 @@ class ResponseVerifyer():
 			return self.ftl.errors
 
 		self.YAMLresponse = {}
+		self.additionalPaths = []
 		# Checking depends on the expected mimetype
 		if expected_mimetype == "application/json":
 			additionalProperties = []
@@ -174,6 +176,9 @@ class ResponseVerifyer():
 					# to be returned - do not report as
 					# something missing
 					if root_prop in additionalProperties:
+						continue
+					# The same for [any-key] objects further down
+					if any(property.startswith(path + ".") for path in self.additionalPaths):
 						continue
 					self.errors.append("Property '" + property + "' missing in the API specs (1)")
 
@@ -341,7 +346,9 @@ class ResponseVerifyer():
 					# ... and check them recursively
 					if not self.verify_property(YAMLprop['properties'], YAMLexamples, FTLprop, props + [prop], nested_required):
 						all_okay = False
-			elif 'additionalProperties' not in YAMLprop:
+			elif 'additionalProperties' in YAMLprop:
+				self.additionalPaths.append(flat_path)
+			else:
 				self.errors.append(flat_path + " is an object, but the API specs define it as a simple object")
 				return False
 		elif YAMLprop['type'] == 'array':
