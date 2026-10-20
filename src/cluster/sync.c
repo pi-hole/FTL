@@ -668,12 +668,17 @@ bool cluster_leases_write(const uint8_t *data, const size_t size)
 
 // A lease line sliced out of a file being merged. In a dnsmasq lease file the
 // expiry is the first field and the address the third, for IPv4 and IPv6 lines
-// alike; an expiry of zero is dnsmasq's infinite lease
+// alike; an expiry of zero is dnsmasq's infinite lease. The client is the second
+// and fifth field: MAC and client ID, or IAID and DUID
 struct lease_line {
 	const char *line;
 	size_t len;
 	const char *addr;
 	size_t addrlen;
+	const char *hw;
+	size_t hwlen;
+	const char *cid;
+	size_t cidlen;
 	unsigned long expiry;
 	bool infinite;
 };
@@ -785,20 +790,41 @@ static bool lease_parse(const uint8_t *data, const size_t size, struct lease_mer
 		l->addrlen = addrlen;
 		l->expiry = expiry;
 		l->infinite = expiry == 0;
+		l->hw = l->cid = NULL;
+		l->hwlen = l->cidlen = 0;
+		lease_token(line, len, 1, &l->hw, &l->hwlen);
+		lease_token(line, len, 4, &l->cid, &l->cidlen);
 	}
 
 	return true;
 }
 
-// Which of two leases for one address is kept: the later expiry, with an
-// infinite lease (expiry zero) beating any dated one. A reassignment always
-// carries a later expiry than the lease it replaces, so this is the client
-// that actually holds the address now
-static bool lease_newer(const struct lease_line *cand, const struct lease_line *have)
+static const struct lease_line *lease_for_addr(const struct lease_merge_set *set, const struct lease_line *l)
 {
-	if(cand->infinite != have->infinite)
-		return cand->infinite;
-	return cand->expiry > have->expiry;
+	for(unsigned int i = 0; i < set->num; i++)
+		if(set->leases[i].addrlen == l->addrlen &&
+		   memcmp(set->leases[i].addr, l->addr, l->addrlen) == 0)
+			return &set->leases[i];
+
+	return NULL;
+}
+
+static bool same_client(const struct lease_line *a, const struct lease_line *b)
+{
+	if(a->hwlen == 0 || (a->hwlen == 1 && a->hw[0] == '*'))
+		return false;
+
+	return a->hwlen == b->hwlen && memcmp(a->hw, b->hw, a->hwlen) == 0 &&
+	       a->cidlen == b->cidlen && (a->cidlen == 0 || memcmp(a->cid, b->cid, a->cidlen) == 0);
+}
+
+static bool client_in(const struct lease_merge_set *set, const struct lease_line *l)
+{
+	for(unsigned int i = 0; i < set->num; i++)
+		if(same_client(&set->leases[i], l))
+			return true;
+
+	return false;
 }
 
 static void lease_append(uint8_t *buf, size_t *used, const char *line, const size_t len)
@@ -817,7 +843,13 @@ static void lease_append_extras(uint8_t *buf, size_t *used, const struct lease_m
 			lease_append(buf, used, set->extras[j].line, set->extras[j].len);
 }
 
-bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
+// The serving node's file as it was last merged, and whose it was. A lease of
+// that file which the server has since dropped was released there
+static uint8_t *merged_from = NULL;
+static size_t merged_from_size = 0;
+static char merged_from_id[CLUSTER_HASHLEN] = "";
+
+bool cluster_leases_merge(const uint8_t *incoming, const size_t insize, const char *from,
                           uint8_t **out, size_t *outsize)
 {
 	*out = NULL;
@@ -833,26 +865,34 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
 		oursize = 0;
 	}
 
-	struct lease_merge_set theirs = { 0 }, mine = { 0 };
-	struct chosen { const struct lease_line *lease; bool from_theirs; bool in_theirs; } *chosen = NULL;
-	uint8_t *buf = NULL;
+	struct lease_merge_set theirs = { 0 }, mine = { 0 }, before = { 0 };
+	struct chosen { const struct lease_line *lease; bool from_theirs; } *chosen = NULL;
+	uint8_t *buf = NULL, *keep = NULL;
 	bool ok = false;
 
 	theirs.leases = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*theirs.leases));
 	theirs.extras = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*theirs.extras));
 	mine.leases = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*mine.leases));
 	mine.extras = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*mine.extras));
+	before.leases = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*before.leases));
+	before.extras = calloc(CLUSTER_LEASE_MERGE_MAX, sizeof(*before.extras));
 	chosen = calloc(2u * CLUSTER_LEASE_MERGE_MAX, sizeof(*chosen));
+	keep = malloc(insize + 1);
 	if(theirs.leases == NULL || theirs.extras == NULL || mine.leases == NULL ||
-	   mine.extras == NULL || chosen == NULL)
+	   mine.extras == NULL || before.leases == NULL || before.extras == NULL ||
+	   chosen == NULL || keep == NULL)
 		goto done;
 
-	if(!lease_parse(incoming, insize, &theirs) || !lease_parse(ours, oursize, &mine))
+	const bool same_server = from != NULL && strcmp(from, merged_from_id) == 0;
+	if(!lease_parse(incoming, insize, &theirs) || !lease_parse(ours, oursize, &mine) ||
+	   !lease_parse(same_server ? merged_from : NULL, merged_from_size, &before))
 		goto done;
 
-	// The serving node's leases first, so its is the address's default home;
-	// one of ours only displaces it when it is the newer lease
+	// The serving node's lease for an address is the one its clients hold,
+	// whatever ours says. One of ours stays only where the server has none and
+	// never had it: granted here while this node served
 	unsigned int nchosen = 0;
+	const unsigned long now = (unsigned long)time(NULL);
 	for(unsigned int pass = 0; pass < 2; pass++)
 	{
 		const struct lease_merge_set *set = pass == 0 ? &theirs : &mine;
@@ -864,20 +904,26 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
 				if(chosen[k].lease->addrlen == l->addrlen &&
 				   memcmp(chosen[k].lease->addr, l->addr, l->addrlen) == 0)
 					break;
-			if(k == nchosen)
+			if(k < nchosen)
+				continue;
+
+			if(pass == 1)
 			{
-				chosen[nchosen].lease = l;
-				chosen[nchosen].from_theirs = pass == 0;
-				chosen[nchosen].in_theirs = pass == 0;
-				nchosen++;
+				// Expired, which the server pruned and our copy never is
+				if(!l->infinite && l->expiry <= now)
+					continue;
+				// ...released on the server since the last merge
+				const struct lease_line *was = lease_for_addr(&before, l);
+				if(was != NULL && same_client(was, l))
+					continue;
+				// ...or a client the server gave another address since
+				if(client_in(&theirs, l))
+					continue;
 			}
-			else if(lease_newer(l, chosen[k].lease))
-			{
-				chosen[k].lease = l;
-				chosen[k].from_theirs = pass == 0;
-				if(pass == 0)
-					chosen[k].in_theirs = true;
-			}
+
+			chosen[nchosen].lease = l;
+			chosen[nchosen].from_theirs = pass == 0;
+			nchosen++;
 		}
 	}
 
@@ -893,15 +939,9 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
 	if(duid != NULL)
 		lease_append(buf, &used, duid, duidlen);
 
-	const unsigned long now = (unsigned long)time(NULL);
 	for(unsigned int i = 0; i < nchosen; i++)
 	{
 		const struct lease_line *l = chosen[i].lease;
-		// A lease only this node still carries and already expired is dropped
-		// rather than kept forever: the serving node pruned its own, and our
-		// copy is never pruned by a dnsmasq that is not running here
-		if(!chosen[i].in_theirs && !l->infinite && l->expiry <= now)
-			continue;
 		lease_append(buf, &used, l->line, l->len);
 		lease_append_extras(buf, &used, chosen[i].from_theirs ? &theirs : &mine,
 		                    l->addr, l->addrlen);
@@ -912,6 +952,17 @@ bool cluster_leases_merge(const uint8_t *incoming, const size_t insize,
 	buf = NULL;
 	ok = true;
 
+	// Remembered for the next merge
+	if(insize > 0)
+		memcpy(keep, incoming, insize);
+	if(merged_from != NULL)
+		free(merged_from);
+	merged_from = keep;
+	merged_from_size = insize;
+	keep = NULL;
+	strncpy(merged_from_id, from != NULL ? from : "", sizeof(merged_from_id) - 1);
+	merged_from_id[sizeof(merged_from_id) - 1] = '\0';
+
 done:
 	if(ours != NULL)
 		free(ours);
@@ -919,9 +970,13 @@ done:
 	free(theirs.extras);
 	free(mine.leases);
 	free(mine.extras);
+	free(before.leases);
+	free(before.extras);
 	free(chosen);
 	if(buf != NULL)
 		free(buf);
+	if(keep != NULL)
+		free(keep);
 	return ok;
 }
 
