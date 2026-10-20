@@ -36,6 +36,16 @@
 
 static int api_teleporter_GET(struct ftl_conn *api)
 {
+	// The archive contains the password hashes and the TOTP secret, so only
+	// sessions allowed to change the configuration may export it
+	if(api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b)
+	{
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to export configuration",
+		                       "The current app session is not allowed to export Pi-hole config settings (webserver.api.app_sudo is false)");
+	}
+
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
 	size_t size = 0u;
@@ -933,8 +943,11 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	free(archive);
 	free_upload_data(data);
 
-	// Migrate the config to v6
+	// Migrate the config to v6. This changes the running config in place, so
+	// no other change of it may run at the same time
+	lock_config();
 	migrate_config_v6();
+	unlock_config();
 
 	// Signal FTL we want to restart for re-import
 	api->ftl.restart_reason = "Teleporter (TAR.GZ) import";

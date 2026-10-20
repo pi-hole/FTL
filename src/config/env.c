@@ -259,7 +259,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	// else: We found an environment variable with the given key
 	const char *envvar = item != NULL ? item->value : NULL;
 
-	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e, envvar);
+	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e,
+	          is_secret_conf_item(conf_item) ? "(hidden)" : envvar);
 
 	// Snapshot the previous value and type before the type switch commits
 	// the new value into conf_item->v. If the validator below rejects the

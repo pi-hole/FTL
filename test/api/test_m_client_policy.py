@@ -83,6 +83,20 @@ def _put_allow(api_session, entry, enabled):
     assert r.status_code == 200, f"PUT failed: {r.status_code} {r.text}"
 
 
+class TestEDNSPerQuery:
+
+    def test_edns_not_applied_to_next_query(self):
+        """A pi.hole TXT query leaves its EDNS data unread, the next client's
+        query without EDNS must not pick up its MAC and with it group 4"""
+        blocked = _blocked()
+        # Let FTL resolve the new client's name first, its PTR query would
+        # otherwise clear the EDNS data before the query below
+        assert _dig("a.ftl", "127.0.0.11") == "192.168.1.1"
+        time.sleep(1)
+        _dig("pi.hole", "127.0.0.1", "TXT", MAC_GROUP4)
+        assert _dig("regex5.ftl", "127.0.0.11", "+noedns") == blocked
+
+
 class TestClientGroupChange:
 
     def test_cached_decision_follows_new_groups(self):
