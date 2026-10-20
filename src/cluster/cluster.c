@@ -3331,9 +3331,15 @@ static void push_round(void)
 	if(left)
 		return;
 
-	const unsigned long generation = config_generation;
-	if(generation == pushed_generation)
+	if(config_generation == pushed_generation)
 		return;
+
+	// Read under the lock the writers hold from replacing the configuration
+	// to stamping it, so a local change is never read as a peer's
+	cluster_sync_lock();
+	const unsigned long generation = config_generation;
+	const unsigned long local = config_local_generation;
+	cluster_sync_unlock();
 
 	// What this node holds has just changed, so what it tells its peers it
 	// holds changes with it. Published here rather than at the next round:
@@ -3355,7 +3361,6 @@ static void push_round(void)
 	// Only a change made here is handed out from here. One taken from a peer
 	// reaches the others through catch_up(), which waits until it has polled
 	// what they hold, so the node a change came from is not handed it back
-	const unsigned long local = config_local_generation;
 	if(local == pushed_local)
 	{
 		pushed_generation = generation;
