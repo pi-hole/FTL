@@ -606,6 +606,16 @@ components:
             the rest of a disk image. Both machines then stand down from DHCP
             and the virtual address until one of them is given a new identity.
           example: false
+        totp_counter:
+          type: integer
+          description: |
+            The last two-factor (TOTP) time step this node accepted, as an
+            RFC 6238 counter. Present only where the cluster synchronizes
+            credentials, so the secret is the same on every node: a peer raises
+            its own replay guard to this value, which spends a code once across
+            the cluster rather than once per node. Omitted when no code has been
+            accepted or credentials do not travel.
+          example: 56983211
         dhcp:
           type: object
           properties:

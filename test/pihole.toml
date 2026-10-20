@@ -850,9 +850,11 @@
     #
     # The two-factor secret travels with it. A cluster that synchronized the password but
     # not the second factor would be one where the second factor is skipped by opening a
-    # different node instead. The application passwords travel as well, and
-    # webserver.api.app_sudo stays on each node, so an application password can change the
-    # configuration of every node as soon as one of them allows it.
+    # different node instead. The nodes also tell each other the last two-factor code they
+    # accepted, so a code spends once across the cluster rather than once per node. The
+    # application passwords travel as well, and webserver.api.app_sudo stays on each node,
+    # so an application password can change the configuration of every node as soon as one
+    # of them allows it.
     #
     # Credentials only travel while every member is an https:// one, whatever this is set
     # to: a signature keeps a peer from changing them, not from reading them. This setting
