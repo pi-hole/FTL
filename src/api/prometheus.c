@@ -26,6 +26,8 @@
 #include "database/gravity-db.h"
 // get_queries_removed()
 #include "gc.h"
+// get_imported_queries()
+#include "database/query-table.h"
 #include "webserver/cJSON/cJSON.h"
 // constant-time comparison memeql_sec()
 #include <nettle/memops.h>
@@ -327,7 +329,8 @@ int api_metrics(struct ftl_conn *api)
 	// reply arrays are unsigned int; keep them unsigned so a count above
 	// INT_MAX is not printed as a negative (invalid) Prometheus counter.
 	const unsigned int total = counters->queries;
-	const unsigned int total_since_start = counters->queries + get_queries_removed();
+	// Leave out the history imported at startup so the counter starts at zero
+	const unsigned int total_since_start = counters->queries + get_queries_removed() - get_imported_queries();
 	const unsigned int blocked = get_blocked_count();
 	const unsigned int forwarded = get_forwarded_count();
 	const unsigned int cached = get_cached_count();
@@ -372,7 +375,7 @@ int api_metrics(struct ftl_conn *api)
 	// queries in FTL's in-memory history (the last webserver.api.maxHistory
 	// window, 24h by default) and go down when garbage collection removes
 	// queries that aged out. Use pihole_dns_queries_total for rate()
-	fputs("# HELP pihole_dns_queries_total DNS queries since FTL started, including the history imported from the database at startup\n", fp);
+	fputs("# HELP pihole_dns_queries_total DNS queries received since FTL started, not counting the history imported from the database\n", fp);
 	fputs("# TYPE pihole_dns_queries_total counter\n", fp);
 	fprintf(fp, "pihole_dns_queries_total %u\n", total_since_start);
 
