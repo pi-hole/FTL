@@ -600,10 +600,8 @@ static bool plain_request(const char *url, const char *method, const char *path,
 
 	// This is the one connection a cluster cannot authenticate for itself:
 	// the node making it is not a member yet, so it holds neither the shared
-	// secret nor a pin. An administrator who cares can pass the other node's
-	// pin - the page shows it - with the join request, which closes the gap;
-	// the password and the secret are only ever sent over a connection the
-	// caller already required to be TLS either way
+	// secret nor a pin of its own. The caller requires the other node's pin
+	// - its page shows it - or a CA, so the certificate is always checked
 	char cafile[PATH_MAX] = "";
 	lock_shm();
 	strncpy(cafile, config.cluster.tls.ca.v.s, sizeof(cafile) - 1);
@@ -655,6 +653,18 @@ bool cluster_http_bootstrap(const char *url, const char *password, const char *t
 	if(strncmp(url, "https://", 8) != 0)
 	{
 		strncpy(err, "Joining a cluster needs an https:// address", errlen - 1);
+		return false;
+	}
+
+	// ...nor to a certificate nothing checks: without a pin or a CA, whoever
+	// answers on that address would be handed the password and the secret
+	lock_shm();
+	const bool have_ca = strlen(config.cluster.tls.ca.v.s) > 0;
+	unlock_shm();
+	if((pin == NULL || strlen(pin) == 0) && !have_ca)
+	{
+		strncpy(err, "The certificate of that node cannot be checked: pass its fingerprint (pin), "
+		        "shown on its HA cluster page, or set cluster.tls.ca", errlen - 1);
 		return false;
 	}
 

@@ -537,9 +537,9 @@ int api_cluster_join(struct ftl_conn *api)
 	char secret[256] = "";
 	char err[256] = "";
 	cJSON *members = NULL;
-	// Optional, and the only thing that makes this first connection something
-	// a listener cannot read: the pin of the node being joined, copied out of
-	// its web interface by somebody who cares
+	// Required unless cluster.tls.ca is set: the pin of the node being joined,
+	// copied out of its web interface, is what identifies it on this first
+	// connection
 	const char *fingerprint = cJSON_IsString(pin) ? pin->valuestring : NULL;
 	if(fingerprint != NULL && strlen(fingerprint) >= CLUSTER_PINLEN)
 		return send_json_error(api, 400, "bad_request", "pin is not a certificate pin", NULL);
