@@ -2296,6 +2296,25 @@ except socket.timeout:
   assert_output --partial "Error: Empty password on stdin"
 }
 
+@test "Teleporter CLI warns when it ignores a password on stdin" {
+  run bash -c "echo 'secret pw' | ./pihole-FTL --teleporter"
+  assert_success
+  assert_output --partial "Warning: Ignoring stdin without --password-stdin, the archive is not encrypted"
+  filename="${lines[-1]}"
+  [[ "${filename}" == *.zip ]]
+  run bash -c "rm ${filename}"
+  echo 'secret pw' > /tmp/teleporter_pw
+  run bash -c './pihole-FTL --teleporter < /tmp/teleporter_pw'
+  rm /tmp/teleporter_pw
+  assert_success
+  assert_output --partial "Warning: Ignoring stdin"
+  run bash -c "rm ${lines[-1]}"
+  run bash -c './pihole-FTL --teleporter < /dev/null'
+  assert_success
+  refute_output --partial "Warning: Ignoring stdin"
+  run bash -c "rm ${lines[-1]}"
+}
+
 @test "Teleporter CLI refuses an unencrypted archive when given a password" {
   run bash -c './pihole-FTL --teleporter < /dev/null'
   assert_success

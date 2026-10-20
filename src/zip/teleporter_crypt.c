@@ -263,7 +263,14 @@ char *teleporter_read_password(const bool export, const bool from_stdin)
 	if(!tty && !from_stdin)
 	{
 		if(export)
+		{
+			// Data on stdin is likely a password meant for encryption, /dev/null is not
+			struct stat st;
+			if(fstat(STDIN_FILENO, &st) == 0 &&
+			   (S_ISFIFO(st.st_mode) || (S_ISREG(st.st_mode) && st.st_size > 0)))
+				fprintf(stderr, "Warning: Ignoring stdin without --password-stdin, the archive is not encrypted\n");
 			return strdup("");
+		}
 		fprintf(stderr, "Error: This Teleporter archive is password-protected, pass the password with --password-stdin\n");
 		return NULL;
 	}
