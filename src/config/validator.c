@@ -1455,6 +1455,64 @@ static bool own_subnet_address(const int family, const void *addr)
 	return found;
 }
 
+// Is the address the network or broadcast address of one of this machine's
+// subnets? Neither is a host, and the broadcast address reaches all of them
+static bool own_subnet_reserved(const int family, const void *addr)
+{
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) != 0)
+		return false;
+
+	bool found = false;
+	for(struct ifaddrs *ifa = ifap; ifa != NULL && !found; ifa = ifa->ifa_next)
+	{
+		if(ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL || ifa->ifa_addr->sa_family != family)
+			continue;
+
+		const unsigned char *a = NULL, *m = NULL;
+		size_t len = 0;
+		if(family == AF_INET)
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_addr)->sin_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_netmask)->sin_addr;
+			len = sizeof(struct in_addr);
+		}
+		else
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_addr)->sin6_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_netmask)->sin6_addr;
+			len = sizeof(struct in6_addr);
+		}
+
+		// Only where there is a host part of at least two bits: a /31 or
+		// /127 has no network address, a /32 or /128 has no subnet at all
+		unsigned int hostbits = 0;
+		for(size_t i = 0; i < len; i++)
+			for(unsigned int b = 0; b < 8; b++)
+				if(!(m[i] & (1u << b)))
+					hostbits++;
+		if(hostbits < 2)
+			continue;
+
+		bool same_net = true, zeros = true, ones = true;
+		const unsigned char *v = addr;
+		for(size_t i = 0; i < len; i++)
+		{
+			same_net &= (v[i] & m[i]) == (a[i] & m[i]);
+			zeros &= (v[i] & ~m[i] & 0xff) == 0;
+			ones &= (v[i] | m[i]) == 0xff;
+		}
+
+		// IPv6 has no broadcast, its all-zero host part is the subnet-router
+		// anycast address
+		found = same_net && (zeros || (family == AF_INET && ones));
+	}
+
+	freeifaddrs(ifap);
+
+	return found;
+}
+
 bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	// An empty string disables the virtual IP address
@@ -1481,7 +1539,7 @@ bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALID
 	{
 		const uint32_t a = ntohl(addr4.s_addr);
 		unusable = a == INADDR_ANY || a == INADDR_BROADCAST ||
-		           (a >> 24) == 127 || IN_MULTICAST(a);
+		           (a >> 24) == 127 || IN_MULTICAST(a) || (a >> 16) == 0xa9fe;
 	}
 	else
 		unusable = IN6_IS_ADDR_UNSPECIFIED(&addr6) || IN6_IS_ADDR_LOOPBACK(&addr6) ||
@@ -1490,14 +1548,22 @@ bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALID
 	if(unusable)
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: \"%s\" is not a unicast address a network can share (unspecified, loopback, multicast, broadcast and IPv6 link-local addresses are not)",
+		         "%s: \"%s\" is not a unicast address a network can share (unspecified, loopback, multicast, broadcast and link-local addresses are not)",
+		         key, val->s);
+		return false;
+	}
+
+	const void *addr = family == AF_INET ? (const void *)&addr4 : (const void *)&addr6;
+	if(own_subnet_reserved(family, addr))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is the network or broadcast address of this node's subnet, the virtual IP has to be a host address",
 		         key, val->s);
 		return false;
 	}
 
 	// A member's own address would be taken away from that member as soon as
 	// another one is elected
-	const void *addr = family == AF_INET ? (const void *)&addr4 : (const void *)&addr6;
 	if(own_subnet_address(family, addr) || member_literal(family, addr))
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN,
