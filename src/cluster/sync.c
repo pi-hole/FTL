@@ -1548,6 +1548,16 @@ void cluster_lists_explain(const char *hash, double *written, bool *replaced)
 	pthread_mutex_unlock(&lists_lock);
 }
 
+double cluster_lists_write_lost(const char *hash, const double since)
+{
+	pthread_mutex_lock(&lists_lock);
+	const double lost = lists_written >= since && strlen(lists_written_hash) > 0 &&
+	                    strcmp(hash, lists_written_hash) != 0 ? lists_written : 0.0;
+	pthread_mutex_unlock(&lists_lock);
+
+	return lost;
+}
+
 void cluster_lists_accounted(const double written)
 {
 	const unsigned long long inode = gravity_inode();
