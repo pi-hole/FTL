@@ -472,7 +472,7 @@ static void upgrade_stored_password(const char *password)
 	cluster_sync_unlock();
 
 	if(saved)
-		config_stamp_local_change();
+		config_stamp_rewrite();
 }
 
 enum password_result verify_login(const char *password)

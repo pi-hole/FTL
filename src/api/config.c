@@ -486,18 +486,68 @@ static int api_config_get(struct ftl_conn *api, const bool refused)
 	JSON_SEND_OBJECT(json);
 }
 
+// A configuration handed to us by a peer, and what came of it
+struct cluster_push {
+	bool encrypted;
+	// When the peer says each item was changed, zero for one it did not date
+	double changed[CONFIG_ELEMENTS];
+	// ...and the same for the items this node took, zero for the others
+	double taken[CONFIG_ELEMENTS];
+};
+
 // Which items a configuration handed to us by a peer may touch
 static bool syncable_item(const struct conf_item *item, void *ctx)
 {
-	const bool encrypted = *(const bool *)ctx;
+	struct cluster_push *push = ctx;
 
 	// Refused here as well as left out there: a credential that arrived over
 	// a plain connection has already been read by whoever was listening, and
 	// taking it would spread it to the rest of the cluster
-	if(item->f & FLAG_CREDENTIAL && !encrypted)
+	if(item->f & FLAG_CREDENTIAL && !push->encrypted)
 		return false;
 
-	return cluster_syncable(item);
+	if(!cluster_syncable(item))
+		return false;
+
+	// ...and only one this node holds an older version of. The same stamp is
+	// the version this node holds already, unless both are starting points
+	const unsigned int i = (unsigned int)(item - get_conf_item(&config, 0));
+	const double theirs = push->changed[i], ours = cluster_item_changed(i);
+	if(!(theirs > ours) && !(theirs > 0.0 && !(theirs < ours) && theirs <= CLUSTER_BASELINE_STAMP))
+		return false;
+
+	push->taken[i] = theirs;
+	return true;
+}
+
+static void refused_item(const struct conf_item *item, const char *why, void *ctx)
+{
+	(void)why;
+	struct cluster_push *push = ctx;
+	push->taken[item - get_conf_item(&config, 0)] = 0.0;
+}
+
+// When the peer says each item was changed. False when one of them is not a
+// time any comparison could use: not a number, before the epoch, or from the
+// future would sit above every real change forever
+static bool push_stamps(const cJSON *stamps, double changed[CONFIG_ELEMENTS])
+{
+	if(stamps != NULL && !cJSON_IsObject(stamps))
+		return false;
+
+	const double latest = double_time() + CLUSTER_MAX_CLOCK_OFFSET;
+	for(const cJSON *stamp = stamps != NULL ? stamps->child : NULL; stamp != NULL; stamp = stamp->next)
+	{
+		if(!cJSON_IsNumber(stamp) || !isfinite(stamp->valuedouble) ||
+		   stamp->valuedouble < 0.0 || stamp->valuedouble > latest)
+			return false;
+
+		const int i = stamp->string != NULL ? cluster_item_index(stamp->string) : -1;
+		if(i >= 0)
+			changed[i] = stamp->valuedouble;
+	}
+
+	return true;
 }
 
 // Sets *send_config when the caller is to answer with the full config, which it
@@ -536,8 +586,9 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 		get_bool_var(api->request->query_string, "restart", &restart);
 	}
 
-	// A push from another node of the cluster carries that node's entire
-	// configuration rather than the one item a user changed. Two things
+	// A push from another node of the cluster carries every item of that
+	// node's configuration this node lacks, each with the time it was
+	// changed at, rather than the one item a user changed. Two things
 	// follow. The items that never travel are dropped here as well as at
 	// the sender, so a peer that sends them anyway - which no FTL does -
 	// gets nowhere. And a single item this node refuses, one pinned through
@@ -545,18 +596,11 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	// rest of the document, so the push is not applied strictly
 	const bool from_cluster = api->session.used && api->session.cluster;
 
-	// A peer says when the configuration it is handing us was changed, and
-	// on which node that happened is beside the point - this node holds that
-	// configuration afterwards and passes the same answer on
-	double changed = 0.0;
-	if(from_cluster && api->request->query_string != NULL)
-		get_double_var(api->request->query_string, "changed", &changed);
-
-	// Not a number, before the epoch, or from the future: every comparison
-	// against it would answer false, so it would sit above every real change
-	// forever. The status poll checks its timestamps the same way
-	if(from_cluster && (!isfinite(changed) || changed < 0.0 ||
-	                    changed > double_time() + CLUSTER_MAX_CLOCK_OFFSET))
+	// A peer says when each item it is handing us was changed, and on which
+	// node that happened is beside the point - this node holds those items
+	// afterwards and passes the same answer on
+	struct cluster_push push = { .encrypted = api->request->is_ssl };
+	if(from_cluster && !push_stamps(cJSON_GetObjectItem(api->payload.json, "changed"), push.changed))
 	{
 		return send_json_error(api, 400,
 		                       "bad_request",
@@ -566,34 +610,17 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 
 	// One writer at a time from here to the install below, so two saves
 	// arriving together cannot each take a copy of the configuration before
-	// the other and install it over the top
+	// the other and install it over the top. The stamps are judged inside
+	// it: the writer we just waited for may have installed something newer
+	// than this push while we queued
 	cluster_sync_lock();
-
-	// Judged inside the lock, not before it: the writer we just waited for
-	// may have installed something newer than this push while we queued, and
-	// deciding on the value we read before waiting would install the older
-	// document over it and date this node back to match. The same stamp is
-	// the version this node holds already, unless both are starting points
-	if(from_cluster && (changed <= 0.0 || changed < config_changed ||
-	                    (changed > CLUSTER_BASELINE_STAMP && !(changed > config_changed))))
-	{
-		cluster_sync_unlock();
-		log_web_debug(DEBUG_API, "Cluster push is older than what this node holds, keeping ours");
-
-		// Answered by the caller once the config lock is released, a peer
-		// that reads slowly would otherwise hold up every config change
-		*refused = true;
-		*send_config = true;
-		return 0;
-	}
 
 	struct config newconf;
 	duplicate_config(&newconf, &config);
 
 	struct config_apply applied = { 0 };
-	const bool encrypted = api->request->is_ssl;
-	if(!config_apply_json(&newconf, conf, from_cluster ? syncable_item : NULL, (void *)&encrypted,
-	                      !from_cluster, &applied))
+	if(!config_apply_json(&newconf, conf, from_cluster ? syncable_item : NULL,
+	                      from_cluster ? refused_item : NULL, &push, !from_cluster, &applied))
 	{
 		free_config(&newconf, false);
 		cluster_sync_unlock();
@@ -639,7 +666,8 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	}
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
-	const bool installed = config_install(&newconf, &applied, from_cluster, changed, errbuf);
+	const bool installed = config_install(&newconf, &applied, from_cluster,
+	                                      from_cluster ? push.taken : NULL, errbuf);
 	cluster_sync_unlock();
 
 	if(!installed)
@@ -675,6 +703,19 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	}
 	else
 		log_web(LOG_INFO, "No config changes detected");
+
+	// A peer is told when this node held newer versions of everything it
+	// dated, so it does not believe it caught this node up
+	if(from_cluster)
+	{
+		bool dated = false, taken = false;
+		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		{
+			dated |= push.changed[i] > 0.0;
+			taken |= push.taken[i] > 0.0;
+		}
+		*refused = dated && !taken;
+	}
 
 	// The full config is returned by the caller
 	*send_config = true;

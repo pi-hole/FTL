@@ -42,12 +42,11 @@ components:
         description: |
           This API hook allows to modify the config of your Pi-hole. This endpoint supports changing multiple properties at once when you specify several in the payload. See examples below.
 
-          This is also how the nodes of a cluster keep each other in step: a node hands its configuration to its peers with exactly this request. Such a request is signed with the shared cluster secret rather than carrying a session, and the items that never leave a node - the paths and addresses of one machine, anything dnsmasq or the webserver reads as configuration language - are dropped from it here, whatever the sender put in.
+          This is also how the nodes of a cluster keep each other in step: a node hands its peers the items they lack, each with the time it was changed at, with exactly this request. Such a request is signed with the shared cluster secret rather than carrying a session, and the items that never leave a node - the paths and addresses of one machine, anything dnsmasq or the webserver reads as configuration language - are dropped from it here, whatever the sender put in.
 
           Credentials are dropped along with them unless `cluster.sync.credentials` is set and every entry in `cluster.members` is an `https://` one. With both true the passwords and the two-factor secret travel with the rest, which is what makes the nodes interchangeable down to the login.
         parameters:
           - $ref: 'config.yaml#/components/parameters/restart'
-          - $ref: 'config.yaml#/components/parameters/changed'
         requestBody:
           description: Callback payload
           content:
@@ -55,6 +54,16 @@ components:
               schema:
                 allOf:
                   - $ref: 'config.yaml#/components/schemas/config'
+                  - type: object
+                    properties:
+                      changed:
+                        type: object
+                        description: |
+                          Only in another cluster node's signed push, where it is required: when each item in `config` was changed, as a Unix timestamp under the item's name - or `1` for an item a node offers as the cluster's starting point rather than a change anybody made. An item is taken only when its timestamp is newer than the version this node holds, or when both are starting points, so a node that was away cannot overwrite a newer item with what it still held, while its own newer items still arrive. An item without a timestamp is not taken. Ignored on every other request.
+                        additionalProperties:
+                          type: number
+                        example:
+                          misc.check.disk: 1735689600.5
                   - $ref: 'common.yaml#/components/schemas/took'
               examples:
                 config_one:
@@ -76,7 +85,7 @@ components:
                         taken:
                           type: boolean
                           description: |
-                            Only in the answer to another cluster node's signed push: `false` when this node holds a newer configuration and kept it, `true` otherwise
+                            Only in the answer to another cluster node's signed push: `false` when this node holds a version at least as new of every item the push dated and kept them all, `true` otherwise
                           example: true
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
@@ -1321,25 +1330,6 @@ components:
               hint: null
             took: 0.003
   parameters:
-    changed:
-      name: changed
-      in: query
-      description: |
-        When the configuration in this request was changed, as a Unix
-        timestamp - or `1`, which a node sends when it is offering what it holds
-        as the cluster's starting point rather than a change anybody made. Only
-        another node of the cluster may set it, and only over a signed request:
-        it says how old the configuration being handed over is.
-        A push that is not newer than what the receiving node holds changes
-        nothing there and is answered with `taken` set to `false` - unless
-        both are starting points - so a node that was away cannot overwrite a
-        newer configuration with what it still held, and two pushes crossing
-        in flight settle the same way whichever of them arrives last. Ignored
-        on every other request.
-      required: false
-      schema:
-        type: number
-        example: 1735689600.5
     detailed:
       name: detailed
       in: query

@@ -120,19 +120,10 @@ static void hash_str(const uint64_t hash, char out[CLUSTER_HASHLEN])
 // values that can never converge, and report a difference that never resolves
 enum hash_scope { SCOPE_SETTINGS, SCOPE_CREDENTIALS };
 
-// `pinned` says whether items forced through the environment are part of the
-// fingerprint, and the answer depends on what the fingerprint is for.
-//
-// A fingerprint a peer compares against must include them: the two nodes have to
+// Items forced through the environment are part of it: the two nodes have to
 // hash the same set of items or they never agree, and neither can know what the
-// other pins. A fingerprint this node compares against its own past must not:
-// nothing here can change those items, so a difference in one is not evidence
-// that somebody configured anything - and one of them moves on its own.
-// `webserver.api.pwhash` is derived from FTLCONF_webserver_api_password with a
-// fresh random salt at every start, so on the Docker image the credential half
-// is a different string after every restart while the password is identical
-static void config_hash_scope(const enum hash_scope scope, const bool pinned,
-                              char out[CLUSTER_HASHLEN])
+// other pins
+static void config_hash_scope(const enum hash_scope scope, char out[CLUSTER_HASHLEN])
 {
 	uint64_t hash = 0xcbf29ce484222325ULL;
 
@@ -144,9 +135,6 @@ static void config_hash_scope(const enum hash_scope scope, const bool pinned,
 	{
 		struct conf_item *item = get_conf_item(&config, i);
 		const bool credential = item->f & FLAG_CREDENTIAL;
-
-		if(!pinned && config_env_pinned(item))
-			continue;
 
 		switch(scope)
 		{
@@ -179,12 +167,104 @@ static void config_hash_scope(const enum hash_scope scope, const bool pinned,
 
 void cluster_config_hash(char out[CLUSTER_HASHLEN])
 {
-	config_hash_scope(SCOPE_SETTINGS, true, out);
+	config_hash_scope(SCOPE_SETTINGS, out);
 }
 
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN])
 {
-	config_hash_scope(SCOPE_CREDENTIALS, true, out);
+	config_hash_scope(SCOPE_CREDENTIALS, out);
+}
+
+// What each item hashes to, for comparing this node against its own past. Zero
+// for an item that never takes part and for one pinned through the environment:
+// nothing here can change those, and `webserver.api.pwhash` derived from
+// FTLCONF_webserver_api_password gets a fresh salt at every start
+static void item_hashes(uint64_t out[CONFIG_ELEMENTS])
+{
+	lock_shm();
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *item = get_conf_item(&config, i);
+		out[i] = 0;
+		if(!cluster_hashable_ignoring_transport(item) || config_env_pinned(item))
+			continue;
+
+		uint64_t hash = 0xcbf29ce484222325ULL;
+		cJSON *val = addJSONConfValue(item->t, &item->v);
+		char *str = cJSON_PrintUnformatted(val);
+		hash_add(&hash, item->k);
+		hash_add(&hash, "=");
+		hash_add(&hash, str);
+		free(str);
+		cJSON_Delete(val);
+		out[i] = hash;
+	}
+	unlock_shm();
+}
+
+// When each item was last changed, here or on the peer it was taken from. Zero
+// for an item nobody changed and for every item that never leaves a node
+static double item_changed[CONFIG_ELEMENTS] = { 0.0 };
+static pthread_mutex_t item_changed_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// The index of the item with this key, -1 for a key this build does not know
+int cluster_item_index(const char *key)
+{
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(strcmp(get_conf_item(&config, i)->k, key) == 0)
+			return (int)i;
+
+	return -1;
+}
+
+double cluster_item_changed(const unsigned int i)
+{
+	pthread_mutex_lock(&item_changed_lock);
+	const double changed = i < CONFIG_ELEMENTS ? item_changed[i] : 0.0;
+	pthread_mutex_unlock(&item_changed_lock);
+
+	return changed;
+}
+
+void cluster_item_stamps(double out[CONFIG_ELEMENTS])
+{
+	pthread_mutex_lock(&item_changed_lock);
+	memcpy(out, item_changed, sizeof(item_changed));
+	pthread_mutex_unlock(&item_changed_lock);
+}
+
+// Never later than now: a stamp from the future outranks every change anybody
+// makes until wall time catches up with it. Written to disk straight away, as
+// a setting that asks FTL to restart takes the daemon down within the second
+void cluster_stamp_items(const bool which[CONFIG_ELEMENTS], const double when[CONFIG_ELEMENTS])
+{
+	const double now = double_time();
+	pthread_mutex_lock(&item_changed_lock);
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(which[i])
+			item_changed[i] = when[i] > now ? now : when[i];
+	pthread_mutex_unlock(&item_changed_lock);
+
+	cluster_state_save(NULL);
+}
+
+// The newest of them, repaired where kept: a clock that stepped backwards
+// leaves stamps from the future behind, which no peer accepts
+double cluster_newest_change(void)
+{
+	const double now = double_time();
+	double newest = 0.0;
+	pthread_mutex_lock(&item_changed_lock);
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		if(item_changed[i] > now)
+			item_changed[i] = now;
+		if(item_changed[i] > newest)
+			newest = item_changed[i];
+	}
+	pthread_mutex_unlock(&item_changed_lock);
+
+	return newest;
 }
 
 static bool is_run_column(const char *name)
@@ -292,36 +372,32 @@ static bool tables_hash(const char **tables, const size_t num_tables, char out[C
 	return true;
 }
 
-// The fingerprint the configuration timestamp was last taken at, and the lock
-// around it: two webserver threads can install a configuration at once
-// What this node last recorded itself as holding, in two halves: the settings
-// and the credentials. Both are taken over a fixed set of items, so they stay
-// comparable with the last time even when the member list turns https:// and
-// changes what may actually travel
-static char stamped_hash[CLUSTER_HASHLEN] = "";
-static char stamped_credhash[CLUSTER_HASHLEN] = "";
+// What each item hashed to when this node last recorded it, and the lock around
+// it: two webserver threads can install a configuration at once. Taken over a
+// fixed set of items, so it stays comparable with the last time even when the
+// member list turns https:// and changes what may actually travel
+static uint64_t stamped_items[CONFIG_ELEMENTS] = { 0 };
 static pthread_mutex_t stamped_lock = PTHREAD_MUTEX_INITIALIZER;
 
-// Did this change touch anything the cluster synchronizes? A debug flag, a path
-// or this node's own name did not, and dating those would make a node nobody
-// configured outrank the nodes somebody did
-bool cluster_config_moved(void)
+// Which items did this change touch that the cluster synchronizes? A debug
+// flag, a path or this node's own name are not among them, and dating those
+// would make a node nobody configured outrank the nodes somebody did
+bool cluster_config_moved(bool moved[CONFIG_ELEMENTS])
 {
-	char hash[CLUSTER_HASHLEN] = "", credhash[CLUSTER_HASHLEN] = "";
-	config_hash_scope(SCOPE_SETTINGS, false, hash);
-	config_hash_scope(SCOPE_CREDENTIALS, false, credhash);
+	uint64_t now[CONFIG_ELEMENTS];
+	item_hashes(now);
 
+	bool any = false;
 	pthread_mutex_lock(&stamped_lock);
-	const bool moved = strcmp(hash, stamped_hash) != 0 ||
-	                   strcmp(credhash, stamped_credhash) != 0;
-
-	strncpy(stamped_hash, hash, sizeof(stamped_hash) - 1);
-	stamped_hash[sizeof(stamped_hash) - 1] = '\0';
-	strncpy(stamped_credhash, credhash, sizeof(stamped_credhash) - 1);
-	stamped_credhash[sizeof(stamped_credhash) - 1] = '\0';
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		moved[i] = now[i] != 0 && now[i] != stamped_items[i];
+		any |= moved[i];
+		stamped_items[i] = now[i];
+	}
 	pthread_mutex_unlock(&stamped_lock);
 
-	return moved;
+	return any;
 }
 
 // The DHCP leases, which are neither configuration nor a list: they are what
@@ -619,20 +695,37 @@ void cluster_sync_unlock(void)
 }
 
 // What this node hands to a peer. It is byte for byte what GET /api/config
-// answers, minus the items that never leave a node, so there is no second
-// notion anywhere of what a configuration document looks like
-cJSON *cluster_config_document(double *changed, const bool encrypted)
+// answers, minus the items that never leave a node and the ones not asked for,
+// so there is no second notion anywhere of what a configuration document looks
+// like. Each item goes with the time it was changed at, under "changed"
+cJSON *cluster_config_document(const bool include[CONFIG_ELEMENTS], const bool encrypted)
 {
 	cJSON *document = cJSON_CreateObject();
+	cJSON *stamps = cJSON_CreateObject();
 
-	// The document and the time it was last changed are read together: sent
-	// apart, a save made between the two would reach a peer as the values
-	// from before it under the timestamp from after it, and that peer would
-	// then hold a configuration nobody can correct
+	// The values and their stamps are read together. A stamp is only ever
+	// written after its value, so a save made in between reaches a peer as
+	// its new value under the old stamp, which that peer judges as old
 	lock_shm();
 	get_json_config(NULL, document, false, true, encrypted);
-	*changed = config_changed;
+	cJSON *conf = cJSON_GetObjectItem(document, "config");
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *item = get_conf_item(&config, i);
+		cJSON *parent = conf;
+		const unsigned int level = config_path_depth(item->p);
+		for(unsigned int j = 0; j + 1 < level && parent != NULL; j++)
+			parent = cJSON_GetObjectItem(parent, item->p[j]);
+		if(parent == NULL || level == 0 || !cJSON_HasObjectItem(parent, item->p[level - 1]))
+			continue;
+
+		if(include[i])
+			cJSON_AddNumberToObject(stamps, item->k, cluster_item_changed(i));
+		else
+			cJSON_DeleteItemFromObject(parent, item->p[level - 1]);
+	}
 	unlock_shm();
+	cJSON_AddItemToObject(document, "changed", stamps);
 
 	return document;
 }
@@ -649,13 +742,9 @@ bool cluster_push_possible(const char *body)
 // request the web interface makes when somebody hits Save. The peer decides
 // item by item whether it already holds what we sent, so a node that is up to
 // date changes nothing, writes nothing and restarts nothing
-bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed,
-                         bool *taken)
+bool cluster_push_config(struct cluster_peer *peer, const char *body, bool *taken)
 {
-	// The peer takes the configuration and the time it was changed at
-	// together, so it can tell the next node the same thing we told it
-	char path[64] = "";
-	snprintf(path, sizeof(path), "/api/config?changed=%.17g", changed);
+	const char *path = "/api/config";
 
 	if(!cluster_push_possible(body))
 	{
@@ -1189,11 +1278,11 @@ void cluster_lists_accounted(const double written)
 void cluster_state_load(struct cluster_sync_state *state)
 {
 	bool generated_id = false;
-	// Both empty unless the file carries them in the form written above. A
-	// file that does not is one this node cannot compare against, and what
-	// it holds now becomes the baseline instead
-	char stored_hash[CLUSTER_HASHLEN] = "";
-	char stored_credhash[CLUSTER_HASHLEN] = "";
+	// Zero unless the file carries them in the form written below. A file
+	// that does not is one this node cannot compare against, and what it
+	// holds now becomes the baseline instead
+	uint64_t stored_items[CONFIG_ELEMENTS] = { 0 };
+	bool stored_any = false;
 	char stored_version[64] = "";
 	memset(state, 0, sizeof(*state));
 	node_id[0] = '\0';
@@ -1207,7 +1296,7 @@ void cluster_state_load(struct cluster_sync_state *state)
 			double when = 0.0, written = 0.0;
 			unsigned long long inode = 0;
 			unsigned int failures = 0;
-			char hash[CLUSTER_HASHLEN] = "", credhash[CLUSTER_HASHLEN] = "";
+			char hash[CLUSTER_HASHLEN] = "";
 			char phash[CLUSTER_HASHLEN] = "";
 			char key[64] = "";
 			char vip[64] = "";
@@ -1250,10 +1339,20 @@ void cluster_state_load(struct cluster_sync_state *state)
 						        sizeof(state->pending_hash) - 1);
 				}
 			}
-			else if(sscanf(line, "hash %64s %64s", hash, credhash) == 2)
+			else if(sscanf(line, "item %63s %lf %16s", key, &when, hash) == 3)
 			{
-				strncpy(stored_hash, hash, sizeof(stored_hash) - 1);
-				strncpy(stored_credhash, credhash, sizeof(stored_credhash) - 1);
+				// When an item was last changed and what it hashed
+				// to. Hardware without a real-time clock comes back
+				// behind the time it shut down at, so a stamp from
+				// the future is clamped to now rather than dropped
+				const int i = cluster_item_index(key);
+				if(i < 0)
+					continue;
+				pthread_mutex_lock(&item_changed_lock);
+				item_changed[i] = isfinite(when) && when > 0.0 ? fmin(when, double_time()) : 0.0;
+				pthread_mutex_unlock(&item_changed_lock);
+				stored_items[i] = strtoull(hash, NULL, 16);
+				stored_any = true;
 			}
 			else if(sscanf(line, "version %63s", built) == 1)
 			{
@@ -1274,28 +1373,6 @@ void cluster_state_load(struct cluster_sync_state *state)
 			{
 				if(isfinite(when) && when > double_time())
 					cluster_dhcp_restore_takeover(when, failures);
-			}
-			else if(sscanf(line, "config %lf", &when) == 1)
-			{
-				// When this node was last configured by somebody
-				// here. FTL restarts itself whenever a setting
-				// asks for it, so keeping this in memory only
-				// would reset it several times a day.
-				// A stamp from the future - a node that booted
-				// with a dead clock, or a hand-edited file -
-				// would sit above every change anybody makes
-				// until wall time caught up with it
-				// Hardware without a real-time clock comes back with
-				// a time behind the one it shut down at, so what was
-				// written an hour ago reads as the future. Clamped
-				// to now rather than discarded: this node really was
-				// configured, and forgetting that hands the cluster
-				// to whoever was not
-				if(!isfinite(when) || when < 0.0)
-					log_warn("cluster: %s holds an unusable timestamp, starting over",
-					         CLUSTER_STATE_FILE);
-				else
-					config_changed = fmin(when, double_time());
 			}
 		}
 
@@ -1343,18 +1420,17 @@ void cluster_state_load(struct cluster_sync_state *state)
 	// would make the next write of any kind, even one that touched nothing
 	// the cluster synchronizes, look like somebody configuring this node,
 	// and that node then outranks the cluster it was about to take from
-	char now_settings[CLUSTER_HASHLEN] = "", now_credentials[CLUSTER_HASHLEN] = "";
-	config_hash_scope(SCOPE_SETTINGS, false, now_settings);
-	config_hash_scope(SCOPE_CREDENTIALS, false, now_credentials);
+	uint64_t now_items[CONFIG_ELEMENTS];
+	item_hashes(now_items);
 
-	// The fingerprint covers item keys as well as item values, so a release
-	// that adds, removes or renames a synchronized item moves it without
-	// anybody having configured anything. Comparing across an upgrade would
-	// read that as an edit, stamp this node as the most recently configured
-	// one in the cluster, and hand its months-old document to every peer
+	// A release can change how an item's value is written out, which moves
+	// its fingerprint without anybody having configured anything. Comparing
+	// across an upgrade would read that as an edit, stamp this node as the
+	// most recently configured one in the cluster, and hand its months-old
+	// values to every peer
 	same_build_state = strcmp(stored_version, git_version()) == 0;
 	const bool same_build = same_build_state;
-	const bool comparable = strlen(stored_hash) > 0 && strlen(stored_credhash) > 0 && same_build;
+	const bool comparable = stored_any && same_build;
 
 	// The baseline an interrupted pull is measured against is a fingerprint of
 	// the build that wrote it, and it outlives the guard: once a fingerprint is
@@ -1368,13 +1444,20 @@ void cluster_state_load(struct cluster_sync_state *state)
 	}
 
 	if(strlen(stored_version) > 0 && !same_build)
-		log_info("cluster: FTL was upgraded from %s, keeping this node's configuration timestamp",
+		log_info("cluster: FTL was upgraded from %s, keeping this node's configuration timestamps",
 		         stored_version);
 
+	// ...and the same fingerprints say whether somebody configured this node
+	// while it was down. An item the file does not name has nothing to be
+	// compared against
+	bool changed_while_down = false;
 	pthread_mutex_lock(&stamped_lock);
-	strncpy(stamped_hash, comparable ? stored_hash : now_settings, sizeof(stamped_hash) - 1);
-	strncpy(stamped_credhash, comparable ? stored_credhash : now_credentials,
-	        sizeof(stamped_credhash) - 1);
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		stamped_items[i] = comparable && stored_items[i] != 0 ? stored_items[i] : now_items[i];
+		if(now_items[i] != 0 && now_items[i] != stamped_items[i])
+			changed_while_down = true;
+	}
 	pthread_mutex_unlock(&stamped_lock);
 
 	// Written only now, so the identity and a fingerprint pair that can be
@@ -1391,11 +1474,6 @@ void cluster_state_load(struct cluster_sync_state *state)
 	// never be noticed again
 	if(generated_id || !same_build)
 		cluster_state_save(state);
-	// ...and the same two halves say whether somebody configured this node
-	// while it was down
-	const bool changed_while_down = comparable &&
-	                                (strcmp(now_settings, stored_hash) != 0 ||
-	                                 strcmp(now_credentials, stored_credhash) != 0);
 
 	state_loaded = true;
 
@@ -1470,7 +1548,6 @@ static void write_state_file(const struct cluster_sync_state *state)
 	// the retry was published under the pre-pull timestamp
 	if(saved_state.pending_changed > 0.0 && strlen(saved_state.pre_pull_hash) > 0)
 		fprintf(file, "prepull %s\n", saved_state.pre_pull_hash);
-	fprintf(file, "config %.17g\n", config_changed);
 	pthread_mutex_lock(&lists_lock);
 	fprintf(file, "lists %.17g %.17g %llu\n", lists_written, lists_accounted, lists_inode);
 	pthread_mutex_unlock(&lists_lock);
@@ -1485,10 +1562,15 @@ static void write_state_file(const struct cluster_sync_state *state)
 	char placed[CLUSTER_STRLEN] = "";
 	if(vip_placed_address(placed, sizeof(placed)))
 		fprintf(file, "vip %s\n", placed);
+	// Every item with a fingerprint or a stamp, so a restart neither forgets
+	// when an item was changed nor misses an edit made while FTL was down
+	double stamps[CONFIG_ELEMENTS];
+	cluster_item_stamps(stamps);
 	pthread_mutex_lock(&stamped_lock);
-	// Both halves: what may travel depends on the member list, so a single
-	// fingerprint would stop being comparable the moment somebody edits it
-	fprintf(file, "hash %s %s\n", stamped_hash, stamped_credhash);
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(stamped_items[i] != 0 || stamps[i] > 0.0)
+			fprintf(file, "item %s %.17g %016llx\n", get_conf_item(&config, i)->k,
+			        stamps[i], (unsigned long long)stamped_items[i]);
 	fprintf(file, "version %s\n", git_version());
 	pthread_mutex_unlock(&stamped_lock);
 
@@ -1576,7 +1658,9 @@ void cluster_state_forget(void)
 	}
 
 	state_forgotten = true;
-	config_changed = 0.0;
+	pthread_mutex_lock(&item_changed_lock);
+	memset(item_changed, 0, sizeof(item_changed));
+	pthread_mutex_unlock(&item_changed_lock);
 	pthread_mutex_lock(&lists_lock);
 	lists_written = lists_accounted = 0.0;
 	pthread_mutex_unlock(&lists_lock);

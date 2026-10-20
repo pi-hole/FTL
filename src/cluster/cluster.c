@@ -819,6 +819,19 @@ static void poll_peer(struct cluster_peer *peer)
 	const cJSON *sync = cJSON_GetObjectItem(node, "sync");
 	const cJSON *theirconf = cJSON_GetObjectItem(sync, "config");
 	read_domain(theirconf, peer->confhash, &peer->config_changed);
+	// ...and item by item, checked the way that one is. An item the peer does
+	// not date is one it has no version of
+	memset(peer->item_changed, 0, sizeof(peer->item_changed));
+	const cJSON *theiritems = cJSON_GetObjectItem(theirconf, "items");
+	for(const cJSON *stamp = cJSON_IsObject(theiritems) ? theiritems->child : NULL;
+	    stamp != NULL; stamp = stamp->next)
+	{
+		const int i = stamp->string != NULL ? cluster_item_index(stamp->string) : -1;
+		if(i >= 0 && cJSON_IsNumber(stamp) && isfinite(stamp->valuedouble) &&
+		   stamp->valuedouble >= 0.0 &&
+		   stamp->valuedouble <= double_time() + CLUSTER_MAX_CLOCK_OFFSET)
+			peer->item_changed[i] = stamp->valuedouble;
+	}
 	const cJSON *theircreds = cJSON_GetObjectItem(theirconf, "credentials");
 	strncpy(peer->credhash, cJSON_IsString(theircreds) ? theircreds->valuestring : "",
 	        sizeof(peer->credhash) - 1);
@@ -926,7 +939,6 @@ static char published_confhash[CLUSTER_HASHLEN] = "";
 
 static void catch_up(void);
 static bool a_member(void);
-static bool we_are_newer(const struct cluster_peer *peer);
 
 // Is this peer reached over a connection nobody on the way can read? The
 // credentials travel only where that is true, so the document is built twice
@@ -1006,21 +1018,48 @@ static bool read_refused(struct cluster_peer *peer)
 	return true;
 }
 
-// One document per round, built at most once. What it carries follows the same
-// rule the published fingerprint does, so two nodes comparing fingerprints are
-// comparing the same set of items
-static char *document_for(char **body, double *changed)
+// The items this node holds a newer version of than the peer said it holds.
+// Two starting points of the same item are settled by identity, so both nodes
+// reach the same answer and exactly one of them sends. A node that never
+// configured an item holds defaults, which are never worth handing to anybody
+static bool peer_lacks(const struct cluster_peer *peer, bool include[CONFIG_ELEMENTS])
 {
-	if(*body != NULL)
-		return *body;
+	double ours[CONFIG_ELEMENTS];
+	cluster_item_stamps(ours);
 
-	double when = 0.0;
-	cJSON *document = cluster_config_document(&when, credentials_travel);
-	*body = document != NULL ? cJSON_PrintUnformatted(document) : NULL;
+	bool any = false;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		const struct conf_item *item = get_conf_item(&config, i);
+		const double theirs = peer->item_changed[i];
+		include[i] = false;
+
+		if(ours[i] <= 0.0 || !cluster_hashable_ignoring_transport(item))
+			continue;
+
+		// The credentials only where they travel and the peer takes them
+		if(item->f & FLAG_CREDENTIAL && !(credentials_travel && peer->accepts_credentials))
+			continue;
+
+		include[i] = ours[i] > theirs ||
+		             (!(ours[i] < theirs) && ours[i] <= CLUSTER_BASELINE_STAMP &&
+		              strcmp(cluster_node_id(), peer->id) > 0);
+		any |= include[i];
+	}
+
+	return any;
+}
+
+// What carries them there. What it holds follows the same rule the published
+// fingerprint does, so two nodes comparing fingerprints are comparing the same
+// set of items
+static char *document_for(const bool include[CONFIG_ELEMENTS])
+{
+	cJSON *document = cluster_config_document(include, credentials_travel);
+	char *body = document != NULL ? cJSON_PrintUnformatted(document) : NULL;
 	cJSON_Delete(document);
-	*changed = when;
 
-	return *body;
+	return body;
 }
 
 static void owe_gravity(const double changed, const char *id, const char *hash);
@@ -1108,7 +1147,7 @@ bool cluster_leave_now(char *errbuf, bool *peers_told)
 	// The member list is what DHCP hands out as the resolvers to use
 	applied.dnsmasq_changed = true;
 
-	const bool written = config_install(&newconf, &applied, false, 0.0, errbuf);
+	const bool written = config_install(&newconf, &applied, false, NULL, errbuf);
 	cluster_sync_unlock();
 
 	if(!written)
@@ -1147,6 +1186,10 @@ static char *without_us(void)
 	cJSON_AddItemToObject(conf, "cluster", cluster);
 	cJSON *document = cJSON_CreateObject();
 	cJSON_AddItemToObject(document, "config", conf);
+	// Dated now, as the change it is
+	cJSON *changed = cJSON_CreateObject();
+	cJSON_AddNumberToObject(changed, config.cluster.members.k, double_time());
+	cJSON_AddItemToObject(document, "changed", changed);
 
 	char *body = cJSON_PrintUnformatted(document);
 	cJSON_Delete(document);
@@ -1169,10 +1212,9 @@ static void do_leave(void)
 	unsigned int told = 0;
 	if(body != NULL)
 	{
-		const double changed = double_time();
 		for(unsigned int i = 0; i < num_peers; i++)
 			if(peers[i].reachable && !peers[i].is_self &&
-			   cluster_push_config(&peers[i], body, changed, NULL))
+			   cluster_push_config(&peers[i], body, NULL))
 				told++;
 		free(body);
 	}
@@ -1260,7 +1302,7 @@ static void do_leave(void)
 	applied.dnsmasq_changed = true;
 
 	char errbuf[ERRBUF_SIZE] = "";
-	const bool written = config_install(&newconf, &applied, false, 0.0, errbuf);
+	const bool written = config_install(&newconf, &applied, false, NULL, errbuf);
 	cluster_sync_unlock();
 
 	leaving = false;
@@ -1646,21 +1688,13 @@ static char pending_gravity_id[CLUSTER_HASHLEN] = "";
 static char pre_pull_hash[CLUSTER_HASHLEN] = "";
 static char pending_gravity_hash[CLUSTER_HASHLEN] = "";
 
-// What this node holds, never dated later than the present. A stamp taken while
-// the clock was fast would otherwise outrank every change anybody makes until
-// wall time catches up, and this node could push to nobody in the meantime
+// The newest item this node holds, never dated later than the present. A stamp
+// taken while the clock was fast would otherwise outrank every change anybody
+// makes until wall time catches up, and this node could push to nobody in the
+// meantime
 static double our_changed(void)
 {
-	const double now = double_time();
-
-	// Repaired where it is kept rather than only where it is read: a clock
-	// that stepped backwards leaves a stamp from the future behind, and a
-	// node that reads it as now for every comparison looks newest for as
-	// long as that lasts - taking nothing from anybody in the meantime
-	if(config_changed > now)
-		config_changed = now;
-
-	return config_changed;
+	return cluster_newest_change();
 }
 
 // What the web interface says about such a change
@@ -2545,11 +2579,25 @@ static void baseline_lists(void)
 // none of the settings that recipe touches is one the cluster hashes, and what
 // FTL writes at startup is not a change anybody made. Every node then sits at
 // zero, no node is newer than any other, and the settings never converge - the
-// manual says they do
+// manual says they do. Asked item by item: an item nobody has a version of
+// stays apart however recently another one was changed
+static void unversioned_items(bool unversioned[CONFIG_ELEMENTS])
+{
+	double ours[CONFIG_ELEMENTS];
+	cluster_item_stamps(ours);
+
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		const struct conf_item *item = get_conf_item(&config, i);
+		unversioned[i] = ours[i] <= 0.0 && cluster_hashable_ignoring_transport(item) &&
+		                 !config_env_pinned(item);
+	}
+}
+
 static void baseline_config(void)
 {
-	if(our_changed() > 0.0)
-		return;
+	bool unversioned[CONFIG_ELEMENTS] = { false };
+	unversioned_items(unversioned);
 
 	bool somebody_answers = false;
 	for(unsigned int i = 0; i < num_peers; i++)
@@ -2558,17 +2606,35 @@ static void baseline_config(void)
 			continue;
 
 		// Somebody has a version, so it is theirs we converge on
-		if(peers[i].config_changed > 0.0)
-			return;
+		for(unsigned int j = 0; j < CONFIG_ELEMENTS; j++)
+			if(peers[i].item_changed[j] > 0.0)
+				unversioned[j] = false;
 
 		somebody_answers = true;
 	}
 
-	if(!somebody_answers)
+	unsigned int count = 0;
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(unversioned[i])
+			count++;
+
+	if(!somebody_answers || count == 0)
 		return;
 
-	log_info("cluster: no node holds a configuration version yet, offering this node's as the one to start from");
-	config_stamp_baseline();
+	log_info("cluster: no node holds a version of %u setting%s yet, offering this node's as the one%s to start from",
+	         count, count == 1 ? "" : "s", count == 1 ? "" : "s");
+	config_stamp_baseline(unversioned);
+}
+
+// The node somebody joins offers every setting nobody dated as the one to start
+// from, so the joining node takes them instead of the two settling by identity
+void cluster_stamp_config(void)
+{
+	cluster_sync_lock();
+	bool unversioned[CONFIG_ELEMENTS] = { false };
+	unversioned_items(unversioned);
+	config_stamp_baseline(unversioned);
+	cluster_sync_unlock();
 }
 
 // Take the newest configuration and the newest lists, wherever they were made.
@@ -2777,6 +2843,14 @@ void cluster_local_status(cJSON *node)
 
 	cJSON *conf = cJSON_CreateObject();
 	cJSON_AddNumberToObject(conf, "changed", our_changed());
+	// ...and item by item, which is what a peer decides on
+	double stamps[CONFIG_ELEMENTS];
+	cluster_item_stamps(stamps);
+	cJSON *items = cJSON_CreateObject();
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(stamps[i] > 0.0)
+			cJSON_AddNumberToObject(items, get_conf_item(&config, i)->k, stamps[i]);
+	cJSON_AddItemToObject(conf, "items", items);
 	cJSON_AddStringToObject(conf, "hash", confhash);
 	cJSON_AddStringToObject(conf, "credentials", credhash);
 	cJSON_AddBoolToObject(conf, "accepts_credentials", cluster_credentials_syncable());
@@ -2803,36 +2877,6 @@ void cluster_local_status(cJSON *node)
 		cJSON_AddStringToObject(lists, "error", error);
 	cJSON_AddItemToObject(sync, "gravity", lists);
 	cJSON_AddItemToObject(node, "sync", sync);
-}
-
-// Hand this node's configuration to the peers as soon as somebody changes it.
-// Almost every tick answers "nothing changed" by comparing two numbers, so this
-// costs nothing while the cluster is idle
-// Which of two configurations is the one to keep. The node somebody configured
-// more recently holds it; two nodes that both offer theirs as the starting
-// point are settled by identity, so both reach the same answer and exactly one
-// of them sends
-static bool we_are_newer(const struct cluster_peer *peer)
-{
-	// A node nobody has ever configured holds defaults, and defaults are
-	// never worth handing to anybody. Without this a freshly imaged node
-	// joining a cluster settles a tie of zero against zero by identity and
-	// has an even chance of replacing years of configuration with nothing
-	const double ours = our_changed();
-	if(ours <= 0.0)
-		return false;
-
-	if(ours > peer->config_changed)
-		return true;
-	if(ours < peer->config_changed)
-		return false;
-
-	// The same stamp is the same version, most often one this node just took
-	// from that very peer. Only two starting points are settled by identity
-	if(ours > CLUSTER_BASELINE_STAMP)
-		return false;
-
-	return strcmp(cluster_node_id(), peer->id) > 0;
 }
 
 // A node that was away missed the pushes made while it was gone. Nothing is
@@ -2945,8 +2989,6 @@ static bool a_member(void)
 
 static void catch_up(void)
 {
-	char *body_for_all = NULL;
-	double changed = 0.0;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		struct cluster_peer *peer = &peers[i];
@@ -2977,9 +3019,10 @@ static void catch_up(void)
 		if(peer->last_seen < our_changed())
 			continue;
 
-		// The peer was configured more recently than we were, so it
-		// catches us up rather than the other way around
-		if(!we_are_newer(peer))
+		// The peer holds every item that differs in a version at least as
+		// new as ours, so it catches us up rather than the other way around
+		bool include[CONFIG_ELEMENTS];
+		if(!peer_lacks(peer, include))
 			continue;
 
 		// Items the peer cannot take - one pinned through its
@@ -3015,14 +3058,17 @@ static void catch_up(void)
 			peer->retry_push_at = 0.0;
 		}
 
-		// Built once per encryption class, and only if there is somebody
-		// to send it to
-		char *body = document_for(&body_for_all, &changed);
+		// Only what this peer lacks, and only if there is somebody to send
+		// it to
+		char *body = document_for(include);
 		if(body == NULL)
 			break;
 
 		bool taken = true;
-		if(!cluster_push_config(peer, body, changed, &taken))
+		const bool pushed = cluster_push_config(peer, body, &taken);
+		const bool possible = cluster_push_possible(body);
+		free(body);
+		if(!pushed)
 		{
 			// Remembered either way, so the next round can tell "this
 			// peer refused what it holds now" from "there is something
@@ -3040,7 +3086,7 @@ static void catch_up(void)
 			        sizeof(peer->pushed_credhash) - 1);
 			peer->pushed_credhash[sizeof(peer->pushed_credhash) - 1] = '\0';
 
-			if(cluster_push_possible(body))
+			if(possible)
 			{
 				if(peer->push_backoff <= 0.0)
 				{
@@ -3079,11 +3125,11 @@ static void catch_up(void)
 		peer->pushed_generation = config_generation;
 		log_info("cluster: caught %s up", strlen(peer->name) > 0 ? peer->name : peer->url);
 	}
-
-	if(body_for_all != NULL)
-		free(body_for_all);
 }
 
+// Hand this node's configuration to the peers as soon as somebody changes it.
+// Almost every tick answers "nothing changed" by comparing two numbers, so this
+// costs nothing while the cluster is idle
 static void push_round(void)
 {
 	if(left)
@@ -3110,12 +3156,6 @@ static void push_round(void)
 		return;
 	}
 
-	// One document for every peer, and one timestamp with it. Building it per
-	// peer would let a change made while this loop runs reach the later ones
-	// and not the earlier
-	char *body_for_all = NULL;
-	double changed = 0.0;
-
 	unsigned int handed = 0;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
@@ -3130,19 +3170,20 @@ static void push_round(void)
 		if(peer->pushed_generation == generation)
 			continue;
 
-		// ...and a peer holding a configuration newer than ours is not
-		// ours to correct. Without this a node that changed something the
-		// cluster does not synchronize - or one that has never been
-		// configured at all - hands its own values to everybody
-		if(!we_are_newer(peer))
+		// ...and only what the peer lacks. Items it holds as new as ours
+		// are not ours to correct, and without this a node that changed
+		// something the cluster does not synchronize - or one that has
+		// never been configured at all - hands its own values to everybody
+		bool include[CONFIG_ELEMENTS];
+		if(!peer_lacks(peer, include))
 			continue;
 
-		char *body = document_for(&body_for_all, &changed);
+		char *body = document_for(include);
 		if(body == NULL)
 			break;
 
 		bool taken = true;
-		if(cluster_push_config(peer, body, changed, &taken))
+		if(cluster_push_config(peer, body, &taken))
 		{
 			if(taken)
 			{
@@ -3161,10 +3202,8 @@ static void push_round(void)
 			// up path reports it once per change
 			peer->pushed_generation = generation;
 		}
+		free(body);
 	}
-
-	if(body_for_all != NULL)
-		free(body_for_all);
 
 	// Only when every peer has it: one that was unreachable has to be
 	// handed the change when it comes back, and the round below does that

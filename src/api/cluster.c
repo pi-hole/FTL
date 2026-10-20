@@ -345,7 +345,7 @@ static bool install_members(cJSON *base, const char *add, const bool joining, ch
 	// epoch as the moment it was last changed - so the cluster hands it
 	// everything rather than taking its settings. A node that enrolls
 	// somebody else made an ordinary change, which travels from here
-	const bool installed = config_install(&newconf, &applied, joining, 0.0, errbuf);
+	const bool installed = config_install(&newconf, &applied, joining, NULL, errbuf);
 	if(installed && joining)
 		cluster_state_forget();
 
@@ -460,9 +460,10 @@ int api_cluster_enroll(struct ftl_conn *api)
 	}
 
 	// The joining node arrives as one that never held anything, so this one
-	// has to be able to say when its lists were last touched - a node that
-	// cannot say is never taken from
+	// has to be able to say when its lists and settings were last touched - a
+	// node that cannot say is never taken from
 	cluster_stamp_lists();
+	cluster_stamp_config();
 
 	// Worth a line in the log at any level: somebody just took the key to
 	// this cluster, and the administrator should be able to see when

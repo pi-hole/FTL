@@ -10,7 +10,7 @@
 
 #include "FTL.h"
 #include "config/config.h"
-// cluster_state_save()
+// cluster_stamp_items()
 #include "cluster/sync.h"
 // set_and_check_password()
 #include "config/password.h"
@@ -47,6 +47,8 @@
 #include "args.h"
 // _Atomic
 #include <stdatomic.h>
+// nextafter()
+#include <math.h>
 
 // Global variables
 struct config config = { 0 };
@@ -2590,23 +2592,15 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 // to find out whether anything changed since it last told its peers, which is
 // cheaper by far than comparing every item on a timer
 volatile unsigned long config_generation = 0;
-volatile double config_changed = 0.0;
 
-static void stamp(const double when)
+// Date the items in which, all with the same time
+static void stamp(const bool which[CONFIG_ELEMENTS], const double when)
 {
-	// Never ahead of the present. A stamp from the future outranks every
-	// change anybody makes until wall time catches up with it, and the node
-	// holding it can push to nobody, because every peer refuses a stamp it
-	// considers impossible
-	const double now = double_time();
-	config_changed = when > now ? now : when;
+	double stamps[CONFIG_ELEMENTS];
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		stamps[i] = when;
 
-	// On disk straight away rather than at the next cluster round: a setting
-	// that asks FTL to restart takes the daemon down within the second, and
-	// a stamp still in memory would be gone with it - the node would come
-	// back looking as though nobody had ever configured it, and take an
-	// older configuration from a peer
-	cluster_state_save(NULL);
+	cluster_stamp_items(which, stamps);
 }
 
 // This node's configuration, as of now, whether or not anybody has changed it.
@@ -2617,7 +2611,7 @@ static void stamp(const double when)
 // direction, for good. That is what a cluster assembled from the command line
 // looks like: none of the settings that recipe touches moves the timestamp.
 // One node saying "mine, as of now" is what gets them talking
-void config_stamp_baseline(void)
+void config_stamp_baseline(const bool which[CONFIG_ELEMENTS])
 {
 	if(!cluster_state_known())
 		return;
@@ -2626,7 +2620,7 @@ void config_stamp_baseline(void)
 	// real configuration can be out of touch for a single round while the
 	// others decide that nobody has one, and a declaration stamped now would
 	// outrank the thing it exists to defer to
-	stamp(CLUSTER_BASELINE_STAMP);
+	stamp(which, CLUSTER_BASELINE_STAMP);
 }
 
 // Writing the running configuration out, and saying so when it does not land.
@@ -2652,23 +2646,50 @@ void config_stamp_local_change(void)
 {
 	// Before the cluster has read its state this node does not know who it
 	// is yet, and what FTL writes while starting up is not a change anybody
-	// made
-	if(!cluster_state_known() || !cluster_config_moved())
+	// made. Only the items that moved are dated: a change to one setting is
+	// not a newer version of all the others
+	bool moved[CONFIG_ELEMENTS] = { false };
+	if(!cluster_state_known() || !cluster_config_moved(moved))
 		return;
 
-	stamp(double_time());
+	stamp(moved, double_time());
 }
 
-// A configuration taken from a peer was changed when that peer says it was, not
-// now: this node holds that configuration from now on, and says so to the rest
-// of the cluster. Stamping it with the present would make every node that took
-// a change look newer than the node that made it
-void config_stamp_cluster_change(const double when)
+// A value rewritten without anybody changing what it means, such as a password
+// hash upgraded at login. Dated just above the version it replaces rather than
+// now, so it reaches the nodes holding that version but never outranks a change
+// made elsewhere in the meantime
+void config_stamp_rewrite(void)
 {
-	if(!cluster_state_known() || !cluster_config_moved())
+	bool moved[CONFIG_ELEMENTS] = { false };
+	if(!cluster_state_known() || !cluster_config_moved(moved))
 		return;
 
-	stamp(when);
+	double stamps[CONFIG_ELEMENTS];
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		stamps[i] = nextafter(cluster_item_changed(i), INFINITY);
+
+	cluster_stamp_items(moved, stamps);
+}
+
+// Items taken from a peer were changed when that peer says they were, not now:
+// this node holds them from now on, and says so to the rest of the cluster.
+// Stamping them with the present would make every node that took a change look
+// newer than the node that made it. changed is zero for every item not taken
+void config_stamp_cluster_change(const double changed[CONFIG_ELEMENTS])
+{
+	if(!cluster_state_known())
+		return;
+
+	// Recorded as held, so the next change here is not read as touching them
+	bool moved[CONFIG_ELEMENTS] = { false };
+	cluster_config_moved(moved);
+
+	bool taken[CONFIG_ELEMENTS] = { false };
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		taken[i] = changed[i] > 0.0;
+
+	cluster_stamp_items(taken, changed);
 }
 
 static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct config *newconf)
@@ -3215,8 +3236,9 @@ static cJSON *json_item(cJSON *conf, struct conf_item *item)
 	return elem;
 }
 
-bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted, void *ctx,
-                       const bool strict, struct config_apply *result)
+bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted,
+                       config_refuse_fn refused, void *ctx, const bool strict,
+                       struct config_apply *result)
 {
 	memset(result, 0, sizeof(*result));
 
@@ -3313,6 +3335,8 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 				free_config(&trial, false);
 				return false;
 			}
+			if(refused != NULL)
+				refused(item, response, ctx);
 			continue;
 		}
 
@@ -3335,6 +3359,8 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 				free_config(&trial, false);
 				return false;
 			}
+			if(refused != NULL)
+				refused(item, "can only be set on the host", ctx);
 			continue;
 		}
 
@@ -3351,6 +3377,8 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 				free_config(&trial, false);
 				return false;
 			}
+			if(refused != NULL)
+				refused(item, "set through an environment variable", ctx);
 			continue;
 		}
 
@@ -3365,6 +3393,8 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 				free_config(&trial, false);
 				return false;
 			}
+			if(refused != NULL)
+				refused(item, errbuf, ctx);
 			continue;
 		}
 
@@ -3411,11 +3441,15 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 }
 
 bool config_install(struct config *newconf, const struct config_apply *result,
-                    const bool from_cluster, const double changed, char *errbuf)
+                    const bool from_cluster, const double *changed, char *errbuf)
 {
 	if(!result->changed)
 	{
 		free_config(newconf, false);
+		// Nothing to write, but a peer's newer stamp for a value this node
+		// already holds is still the version this node holds now
+		if(from_cluster && changed != NULL)
+			config_stamp_cluster_change(changed);
 		return true;
 	}
 
@@ -3443,9 +3477,9 @@ bool config_install(struct config *newconf, const struct config_apply *result,
 	// down and hand it to every peer
 	if(config_write())
 	{
-		if(from_cluster)
+		if(from_cluster && changed != NULL)
 			config_stamp_cluster_change(changed);
-		else
+		else if(!from_cluster)
 			config_stamp_local_change();
 	}
 

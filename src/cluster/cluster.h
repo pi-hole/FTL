@@ -14,6 +14,8 @@
 #include "FTL.h"
 #include "webserver/cJSON/cJSON.h"
 #include <pthread.h>
+// CONFIG_ELEMENTS
+#include "config/config.h"
 
 // More than a handful of Pi-holes in one cluster is not a scenario we design
 // for: every node talks to every other one, so the number of requests per round
@@ -138,6 +140,7 @@ struct cluster_peer {
 	char credhash[CLUSTER_HASHLEN];    // ...and of its credentials, which travel only
 	bool accepts_credentials;          // ...between two nodes that both accept them
 	double config_changed;             // ...and when somebody last configured it
+	double item_changed[CONFIG_ELEMENTS]; // ...item by item, so it is sent only what it lacks
 	char gravityhash[CLUSTER_HASHLEN]; // fingerprint of the peer's lists
 	double gravity_changed;            // when the peer's lists last changed
 	unsigned long pushed_generation;   // configuration we last handed to this peer
@@ -292,6 +295,8 @@ extern bool duplicate_identity;
 // Say that the lists of this node were last touched now, but only if this node
 // never knew. Called when somebody joins, so the cluster can hand them over
 void cluster_stamp_lists(void);
+// ...and the same for every setting this node holds no version of
+void cluster_stamp_config(void);
 
 
 // Add this node's own status to the given JSON object

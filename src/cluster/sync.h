@@ -18,8 +18,7 @@
 #define CLUSTER_STATE_FILE_NAME "/etc/pihole/cluster.state"
 
 // What this node knows about its own list tables. The configuration is not in
-// here: when it was last changed lives in config_changed, which the whole of
-// FTL writes to and this file only persists
+// here: when each item was last changed is kept per item below
 struct cluster_sync_state {
 	double gravity_changed;
 	char gravity_hash[CLUSTER_HASHLEN];
@@ -50,9 +49,17 @@ void cluster_leases_hash_bytes(const uint8_t *data, const size_t size, char out[
 bool cluster_leases_write(const uint8_t *data, const size_t size);
 void cluster_credentials_hash(char out[CLUSTER_HASHLEN]);
 
-// Whether the last configuration change touched anything that is synchronized,
-// which is what decides whether it counts as this node being configured
-bool cluster_config_moved(void);
+// Which items the last configuration change touched that are synchronized,
+// which is what decides which of them count as configured here
+bool cluster_config_moved(bool moved[CONFIG_ELEMENTS]);
+
+// When each item was last changed, here or on the peer it came from. Zero for
+// an item nobody changed and for every item that never leaves a node
+int cluster_item_index(const char *key) __attribute__ ((pure));
+double cluster_item_changed(const unsigned int i);
+void cluster_item_stamps(double out[CONFIG_ELEMENTS]);
+void cluster_stamp_items(const bool which[CONFIG_ELEMENTS], const double when[CONFIG_ELEMENTS]);
+double cluster_newest_change(void);
 
 // Fingerprint of the adlist table alone. Only a change here makes the blocking
 // database stale, and only then is a gravity run needed
@@ -66,17 +73,17 @@ void cluster_state_save(const struct cluster_sync_state *state);
 void cluster_state_forget(void);
 
 // What this node hands to a peer: exactly what GET /api/config answers, minus
-// the items that never leave a node
+// the items that never leave a node and the ones include leaves out, with when
+// each item was changed under "changed"
 // encrypted says whether the peer this document is for is reached over TLS.
 // The credentials are left out when it is not
-cJSON *cluster_config_document(double *changed, const bool encrypted);
+cJSON *cluster_config_document(const bool include[CONFIG_ELEMENTS], const bool encrypted);
 
 // ...and handing it over, which is a PATCH of the peer's configuration - the
 // request the web interface makes when somebody hits Save. The peer decides for
 // itself which of the items it does not hold yet. *taken (if not NULL) is false
-// when the peer answered but holds a newer configuration
-bool cluster_push_config(struct cluster_peer *peer, const char *body, const double changed,
-                         bool *taken);
+// when the peer answered but holds newer versions of everything it was sent
+bool cluster_push_config(struct cluster_peer *peer, const char *body, bool *taken);
 
 // Can this document reach a peer at all, or is it larger than one can read?
 bool cluster_push_possible(const char *body) __attribute__ ((pure));

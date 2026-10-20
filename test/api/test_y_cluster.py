@@ -24,7 +24,6 @@ import socket
 import subprocess
 import threading
 import time
-import urllib.parse
 
 import pytest
 import requests
@@ -237,6 +236,35 @@ def _patch(api_session, body, expect_restart=False):
     assert status in (None, 200), f"PATCH {body} answered {status}"
 
 
+def _push(config, changed):
+    """The body a peer hands this node: items, and when each was changed."""
+    return json.dumps({"config": config, "changed": changed})
+
+
+def _signed_patch(addressed, body):
+    uri = "/api/config"
+    headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body)
+    headers["Content-Type"] = "application/json"
+    return requests.patch(f"{FTL_URL}{uri}", headers=headers, data=body, timeout=20)
+
+
+def _disk(cluster):
+    """misc.check.disk, once this node holds a version of it. Before the first
+    round dated it, any push is newer than what is here."""
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        status = _j(cluster["session"].get(f"{FTL_URL}/api/cluster/status", timeout=10))
+        items = status["cluster"]["node"]["sync"]["config"].get("items", {})
+        if items.get("misc.check.disk", 0) >= 1:
+            break
+        time.sleep(1)
+    else:
+        pytest.fail("this node never dated misc.check.disk")
+
+    r = cluster["session"].get(f"{FTL_URL}/api/config/misc/check/disk", timeout=10)
+    return _j(r)["config"]["misc"]["check"]["disk"]
+
+
 @pytest.fixture(scope="module")
 def cluster(api_session):
     """Switches clustering on, sets a password, and puts both back afterwards.
@@ -330,7 +358,7 @@ def cluster(api_session):
 
     assert secret is None or secret, f"{SECRET_FILE} is empty"
 
-    yield {"secret": secret, "id": node_id, "pwhash": pwhash, "fake": fake}
+    yield {"secret": secret, "id": node_id, "pwhash": pwhash, "fake": fake, "session": api_session}
 
     # Put back what was found, member list included - emptying it would be this
     # file deciding the configuration of a node it was only visiting
@@ -459,7 +487,7 @@ class TestClusterSignature:
     def test_addressed_to_another_node_is_refused_for_writes(self, addressed):
         """A GET may be addressed to anybody - reading a status document
         somewhere else gains nothing. Anything that writes may not."""
-        uri = "/api/config?changed=0.000000"
+        uri = "/api/config"
         body = json.dumps({"config": {}})
         headers = _headers(addressed["secret"], "PATCH", uri, OTHER_NODE, body=body)
         headers["Content-Type"] = "application/json"
@@ -470,7 +498,7 @@ class TestClusterSignature:
         """Taking a configuration from ourselves over the network is not a thing
         that should ever happen, and it is how an answer of ours handed back
         would look."""
-        uri = "/api/config?changed=0.000000"
+        uri = "/api/config"
         body = json.dumps({"config": {}})
         headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"],
                            body=body, sender=addressed["id"])
@@ -498,10 +526,11 @@ class TestClusterCredentials:
         pwhash = addressed["pwhash"]
         assert pwhash, "no password is set, so there is no credential to look for"
 
-        body = json.dumps({"config": {}})
-        for changed, what in ((0.0, "a push that was turned away"),
+        disk = _disk(addressed)
+        for changed, what in ((0.5, "a push that was turned away"),
                               (time.time(), "a push that was taken")):
-            uri = f"/api/config?changed={changed:.6f}"
+            body = _push({"misc": {"check": {"disk": disk}}}, {"misc.check.disk": changed})
+            uri = "/api/config"
             headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body)
             headers["Content-Type"] = "application/json"
             # Not skipped when TLS is missing. This is the one test in the file
@@ -526,14 +555,47 @@ class TestClusterPushAnswer:
     @pytest.mark.parametrize("older", [True, False])
     def test_answer_says_whether_the_push_was_taken(self, addressed, older):
         """A push older than what this node holds is kept out, and the sender
-        has to learn that rather than believe it caught this node up."""
-        body = json.dumps({"config": {}})
-        uri = f"/api/config?changed={0.0 if older else time.time():.6f}"
-        headers = _headers(addressed["secret"], "PATCH", uri, addressed["id"], body=body)
-        headers["Content-Type"] = "application/json"
-        r = requests.patch(f"{FTL_URL}{uri}", headers=headers, data=body, timeout=20)
+        has to learn that rather than believe it caught this node up. The newer
+        one carries the value this node already has, so taking it changes
+        nothing but the version."""
+        disk = _disk(addressed)
+        body = _push({"misc": {"check": {"disk": disk + 1 if older else disk}}},
+                     {"misc.check.disk": 0.5 if older else time.time()})
+        r = _signed_patch(addressed, body)
         assert r.status_code == 200, r.text[:200]
         assert _j(r).get("taken") is (not older), r.text[:200]
+        assert _disk(addressed) == disk
+
+    def test_each_item_is_judged_by_its_own_stamp(self, addressed):
+        """Two nodes that were apart can each hold the newest version of a
+        different item. A push carrying both is taken for the item it holds
+        the newer version of and refused for the other, rather than taken or
+        refused as a whole."""
+        disk = _disk(addressed)
+        load = _j(addressed["session"].get(f"{FTL_URL}/api/config/misc/check/load", timeout=10))
+        load = load["config"]["misc"]["check"]["load"]
+        body = _push({"misc": {"check": {"disk": disk + 1, "load": not load}}},
+                     {"misc.check.disk": 0.5, "misc.check.load": time.time()})
+        r = _signed_patch(addressed, body)
+        assert r.status_code == 200, r.text[:200]
+        assert _j(r).get("taken") is True, r.text[:200]
+        after = _j(addressed["session"].get(f"{FTL_URL}/api/config/misc/check", timeout=10))
+        assert after["config"]["misc"]["check"]["disk"] == disk, "an older item was taken"
+        assert after["config"]["misc"]["check"]["load"] is (not load), "a newer item was refused"
+
+        # Put back, again as the newer version
+        r = _signed_patch(addressed, _push({"misc": {"check": {"load": load}}},
+                                           {"misc.check.load": time.time()}))
+        assert r.status_code == 200, r.text[:200]
+
+    def test_local_items_carry_no_stamp(self, addressed):
+        """An item that never leaves a node is never dated: a change to it is
+        not a newer version of anything the cluster holds."""
+        data = _j(addressed["session"].get(f"{FTL_URL}/api/cluster/status", timeout=10))
+        items = data["cluster"]["node"]["sync"]["config"]["items"]
+        assert items, "this node dates none of its items"
+        for key in ("dns.port", "webserver.port", "cluster.name", "debug.api", "dhcp.active"):
+            assert key not in items, f"{key} carries a cluster stamp"
 
 
 # ---------------------------------------------------------------------------
@@ -589,10 +651,11 @@ class TestClusterPush:
         assert _answering(api_session), "the node stopped answering after the push"
 
         path, body = _FakePeer.pushes[0]
-        query = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-        assert float(query["changed"][0]) > 0.0, path
         document = json.loads(body)
         assert "config" in document, body[:200]
+        # Every item goes with the time it was changed at
+        assert document.get("changed"), body[:200]
+        assert all(stamp > 0.0 for stamp in document["changed"].values()), body[:200]
         # Credentials only travel to https:// members
         assert signed["pwhash"] not in body
 

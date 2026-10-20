@@ -813,7 +813,9 @@ components:
             changed:
               type: number
               description: |
-                When somebody last configured this node, as a Unix timestamp.
+                When the newest item this node holds was changed, here or on
+                the node it came from, as a Unix timestamp. Which node hands an
+                item to which is decided item by item, by `items`.
 
                 Two values are not moments. Zero means nobody has configured this
                 node, which is what keeps a fresh one from overwriting the cluster
@@ -825,6 +827,20 @@ components:
                 decided still wins with whatever it actually holds. Anything below
                 1000000000 is one of these rather than a time.
               example: 1735689600.5
+            items:
+              type: object
+              description: |
+                When each item this node holds was changed, as a Unix timestamp
+                under the item's name, with the same two values that are not
+                moments as `changed`. An item nobody has changed, and every item
+                that never leaves a node, is not listed. A peer hands this node
+                exactly the items it holds a newer version of, so edits of
+                different items on two nodes that were apart both survive.
+              additionalProperties:
+                type: number
+              example:
+                dns.upstreams: 1735689600.5
+                misc.check.disk: 1
             hash:
               type: string
               description: |

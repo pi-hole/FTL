@@ -486,40 +486,43 @@ struct config_apply {
 // Decide whether an item takes part in this document at all. NULL takes every
 // item the document carries
 typedef bool (*config_accept_fn)(const struct conf_item *item, void *ctx);
+// ...and be told about one left at its current value without strict, and why
+typedef void (*config_refuse_fn)(const struct conf_item *item, const char *why, void *ctx);
 
 // Apply the items of a JSON configuration document to newconf, which the caller
 // obtained from duplicate_config(). Values are judged on a copy first, so an
 // item this node refuses never reaches newconf - with strict set, one such item
 // fails the whole document, without it the item is left at its current value.
 // Returns false only when strict rejected something
-bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted, void *ctx,
-                       const bool strict, struct config_apply *result);
+bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wanted,
+                       config_refuse_fn refused, void *ctx, const bool strict,
+                       struct config_apply *result);
 
 // Install a configuration prepared by config_apply_json(): write the dnsmasq
 // configuration, replace the running one, persist it and rewrite what is
 // generated from it. from_cluster marks a configuration a peer handed us, which
-// is not a change made on this node: it carries the time it was changed at, on
-// whichever node that was. Returns false if the dnsmasq configuration is not
-// usable
+// is not a change made on this node: changed carries, per item, the time it was
+// changed at on whichever node that was, and zero for an item not taken.
+// Returns false if the dnsmasq configuration is not usable
 bool config_install(struct config *newconf, const struct config_apply *result,
-                    const bool from_cluster, const double changed, char *errbuf);
+                    const bool from_cluster, const double *changed, char *errbuf);
 
 // Bumped whenever the configuration is replaced, so a reader can tell that
 // something changed without comparing anything
 extern volatile unsigned long config_generation;
 
-// When the configuration this node holds was last changed - here, or on the
-// peer we took it from. This decides who catches up whom when two nodes were
-// out of touch and come back with different configurations. It starts at zero,
-// so a node nobody has ever configured yields to one somebody has, and it is
-// persisted, so a setting that asks FTL to restart does not lose it
-extern volatile double config_changed;
+// Date what changed, item by item - here, or on the peer we took it from. This
+// decides who catches up whom when two nodes were out of touch and come back
+// with different configurations. An item starts at zero, so a node nobody has
+// configured yields to one somebody has, and the stamps are persisted, so a
+// setting that asks FTL to restart does not lose them
 void config_stamp_local_change(void);
+void config_stamp_rewrite(void);
 
 // Write the running configuration out, complaining if the file did not take it
 bool config_write(void);
-void config_stamp_baseline(void);
-void config_stamp_cluster_change(const double when);
+void config_stamp_baseline(const bool which[CONFIG_ELEMENTS]);
+void config_stamp_cluster_change(const double changed[CONFIG_ELEMENTS]);
 void reread_config(void);
 bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
