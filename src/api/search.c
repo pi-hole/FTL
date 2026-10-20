@@ -15,6 +15,8 @@
 #include "database/gravity-db.h"
 // match_regex()
 #include "regex_r.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 // parse_groupIDs()
 #include "webserver/http-common.h"
 #include <idn2.h>
@@ -290,9 +292,14 @@ int api_search(struct ftl_conn *api)
 		goto search_fail;
 	}
 
-	// Search through all regex filters
+	// Search through all regex filters. The compiled regex live in this
+	// process and are freed and rebuilt under the SHM lock on every list
+	// reload, so the match runs under it as well (it is short, unlike the
+	// LIKE searches above)
 	regex_ids = JSON_NEW_OBJECT();
+	lock_shm();
 	check_all_regex(punycode, regex_ids);
+	unlock_shm();
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
 

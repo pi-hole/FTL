@@ -26,6 +26,7 @@ Usage:
 
 import io
 import re
+import tarfile
 import time
 import zipfile
 
@@ -36,6 +37,7 @@ from libs.FTLAPI import AuthenticationMethods
 PIHOLE_TOML = "/etc/pihole/pihole.toml"
 FTL_LOG = "/var/log/pihole/FTL.log"
 RESTART_MARKER = "CLI password set and stored in file"
+STARTED_MARKER = "########## FTL started on"
 
 
 def _log_end():
@@ -48,7 +50,7 @@ def _log_end():
         return 0
 
 
-def _wait_for_restart(start_pos, timeout=30):
+def _wait_for_restart(start_pos, timeout=30, marker=RESTART_MARKER):
     """Block until a restarted FTL has re-initialised.
 
     An accepted import sets restart_ftl(). Probing the API is no good, it
@@ -61,12 +63,32 @@ def _wait_for_restart(start_pos, timeout=30):
             with open(FTL_LOG, "r") as f:
                 f.seek(start_pos)
                 for line in f:
-                    if RESTART_MARKER in line:
+                    if marker in line:
                         return
         except FileNotFoundError:
             pass
         time.sleep(0.25)
     raise AssertionError("FTL did not come back within %ds of an import" % timeout)
+
+
+def _wait_for_v5_restart(ftl, start_pos, timeout=30):
+    """Like _wait_for_restart(), for an import that rebuilds the configuration.
+
+    The usual marker is a debug message and the migrated configuration does
+    not carry the debug flags of this test setup, so wait for the new
+    process's start line and then for its API to answer. The start line is
+    written by the process that replaced the old one, so an answer after it
+    cannot come from the process that went away.
+    """
+    _wait_for_restart(start_pos, timeout, STARTED_MARKER)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        # GET() returns None while nothing listens
+        data = ftl.GET("/api/info/version")
+        if data and "version" in data:
+            return
+        time.sleep(0.25)
+    raise AssertionError("API did not answer within %ds of a restart" % timeout)
 
 
 def _archive(toml_text: str) -> bytes:
@@ -189,18 +211,70 @@ LOCKED_ITEMS = [
                          ids=[i[2] for i in LOCKED_ITEMS])
 def test_locked_item_is_not_carried_over(ftl, key, value, dotted):
     """An archive changing a host-only item is imported without that change."""
-    def _value():
-        node = ftl.GET("/api/config/" + dotted.replace(".", "/"))["config"]
-        for part in dotted.split("."):
-            node = node[part]
-        return node
-
-    before = _value()
+    before = _config_value(ftl, dotted)
 
     pos = _log_end()
     response = _import(ftl, _replace(_current_toml(), key, value))
     assert "error" not in response, f"{dotted}: refused: {response}"
     _wait_for_restart(pos)
 
-    assert _value() == before, \
+    assert _config_value(ftl, dotted) == before, \
         f"{dotted}: archive changed it"
+
+
+def _config_value(ftl, dotted: str):
+    node = ftl.GET("/api/config/" + dotted.replace(".", "/"))["config"]
+    for part in dotted.split("."):
+        node = node[part]
+    return node
+
+
+def _v5_archive(ftl_conf: str) -> bytes:
+    """Pack a pihole-FTL.conf into a v5 Teleporter tar.gz archive."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        data = ftl_conf.encode("utf-8")
+        info = tarfile.TarInfo("pihole-FTL.conf")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _import_v5(ftl, ftl_conf: str):
+    return ftl.POST("/api/teleporter", None, AuthenticationMethods.HEADER,
+                    {"file": ("teleporter.tar.gz", _v5_archive(ftl_conf),
+                              "application/gzip")})
+
+
+# A v5 archive carries the legacy pihole-FTL.conf instead of a pihole.toml and
+# is migrated rather than parsed, but the same items are locked. The values
+# are ordinary directories that every validator accepts, so only the lock can
+# keep them out.
+V5_LOCKED_ITEMS = [
+    ("WEBROOT=/var/www", "webserver.paths.webroot"),
+    ("WEBHOME=/html/admin/", "webserver.paths.webhome"),
+]
+
+
+@pytest.mark.parametrize("line,dotted", V5_LOCKED_ITEMS,
+                         ids=[i[1] for i in V5_LOCKED_ITEMS])
+def test_v5_archive_locked_item_is_not_carried_over(ftl, line, dotted):
+    """A v5 archive changing a host-only item is imported without that change."""
+    before = _config_value(ftl, dotted)
+    toml_before = _current_toml()
+
+    pos = _log_end()
+    response = _import_v5(ftl, line + "\n")
+    assert "error" not in response, f"{dotted}: refused: {response}"
+    _wait_for_v5_restart(ftl, pos)
+
+    try:
+        assert _config_value(ftl, dotted) == before, \
+            f"{dotted}: archive changed it"
+    finally:
+        # A v5 import rebuilds the whole configuration from the legacy files,
+        # so put back the one the remaining tests expect
+        pos = _log_end()
+        response = _import(ftl, _replace(toml_before, "hosts", "[]"))
+        assert "error" not in response, f"restoring the configuration failed: {response}"
+        _wait_for_restart(pos)

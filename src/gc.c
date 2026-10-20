@@ -101,6 +101,11 @@ static void recycle(void)
 		if(client->flags.aliasclient)
 			goto keep_client;
 
+		// Keep the rate limit of a client until reset_rate_limiting()
+		// ends it, rate-limited queries are not counted above
+		if(client->flags.rate_limited || client->rate_limit > 0)
+			goto keep_client;
+
 		if(config.debug.gc.v.b)
 		{
 			char timestring[TIMESTR_SIZE];
@@ -183,6 +188,10 @@ keep_domain:
 		memset(domains_lookup + dwrite, 0,
 		       (counters->domains_lookup_size - dwrite) * sizeof(*domains_lookup));
 		counters->domains_lookup_size = dwrite;
+
+		// Cached CNAME addinfo row IDs are keyed on domain IDs that
+		// may now be handed out to other domains
+		clear_addinfo_id_cache();
 	}
 
 	// Recycle cache records
@@ -363,20 +372,6 @@ static int check_space(const char *file, unsigned int LastUsage)
 	return perc;
 }
 
-static int getloadavg_proc(double loadavg[3])
-{
-	FILE *f = fopen("/proc/loadavg", "r");
-	if(f == NULL)
-		return -1;
-
-	int count = fscanf(f, "%lf %lf %lf", &loadavg[0], &loadavg[1], &loadavg[2]);
-	fclose(f);
-	if (count != 3)
-		return -1;
-
-	return 0;
-}
-
 static void check_load(void)
 {
 	if(!config.misc.check.load.v.b)
@@ -384,12 +379,11 @@ static void check_load(void)
 
 	// Get CPU load averages
 	double load[3];
-	if (getloadavg_proc(load) == -1)
-		if (getloadavg(load, 3) == -1)
-			return;
+	if(get_load_averages(load) == -1)
+		return;
 
 	// Get total number of CPU cores
-	const int nprocs = get_nprocs_conf();
+	const int nprocs = get_present_cpus();
 
 	// Warn if 15 minute average of load exceeds number of available
 	// processors
@@ -430,12 +424,30 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	time_t mintime = now;
 	if(!flush)
 	{
-		// Normal GC run
-		mintime -= - GCdelay + config.webserver.api.maxHistory.v.ui;
+		// Normal GC run. Signed, maxHistory may be smaller than GCdelay
+		mintime += (time_t)GCdelay - (time_t)config.webserver.api.maxHistory.v.ui;
 
-		// Align the start time of this GC run to the GCinterval. This will also align with the
-		// oldest overTime interval after GC is done.
+		// Align the start time of this GC run to the GCinterval. Unless one of
+		// the limits below applies, this also aligns with the oldest overTime
+		// interval after GC is done.
 		mintime -= mintime % GCinterval;
+
+		// Keep the queries that may still receive a reply
+		if(mintime > now - REPLY_TIMEOUT)
+			mintime = now - REPLY_TIMEOUT;
+
+		// Keep the queries the database thread has not stored yet, but no
+		// more than the default history keeps. Nothing is stored with a
+		// broken database or at the maximum privacy level
+		const double horizon = get_export_horizon();
+		if(mintime > horizon && !FTLDBerror() &&
+		   config.misc.privacylevel.v.privacy_level < PRIVACY_MAXIMUM)
+		{
+			time_t limit = now + (time_t)GCdelay - (time_t)(MAXLOGAGE*3600);
+			limit -= limit % GCinterval;
+			const time_t keep = max((time_t)horizon, limit);
+			mintime = min(mintime, keep);
+		}
 	}
 
 	if(config.debug.gc.v.b)
@@ -528,14 +540,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		removed++;
 	}
 
-	// Remove query from queries table (temp), we can release the lock for this
-	// action to prevent blocking the DNS service too long
-	if(!flush)
-		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
-		lock_shm();
-
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
 	{
@@ -556,23 +560,33 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		queryIDMap_clear();
 	}
 
+	// Remove query from queries table (temp), we can release the lock for this
+	// action to prevent blocking the DNS service too long. The processed
+	// queries are already shifted out above, so a runGC() from a log flush
+	// in this window cannot process them again. A flush removes every row,
+	// a normal run keeps those the export to disk has not copied yet
+	if(flush)
+		delete_old_queries_from_db(true, mintime);
+	else
+	{
+		unlock_shm();
+		delete_exported_queries_from_memdb(mintime);
+		lock_shm();
+	}
+
 	// Recycle old clients and domains
 	recycle();
 
-	// Determine if overTime memory needs to get moved
-	moveOverTimeMemory(mintime);
+	// Determine if overTime memory needs to get moved. A flush keeps the
+	// current window, the removed queries were already subtracted above
+	if(!flush)
+		moveOverTimeMemory(mintime);
 
 	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 
 	// Release thread lock
 	if(!flush)
 		unlock_shm();
-
-	// After storing data in the database for the next time,
-	// we should scan for old entries, which will then be deleted
-	// to free up pages in the database and prevent it from growing
-	// ever larger and larger
-	DBdeleteoldqueries = true;
 }
 
 static bool check_files_on_same_device(const char *path1, const char *path2)
@@ -702,8 +716,8 @@ void *GC_thread(void *val)
 		if(killed)
 			break;
 
-		// Check if pihole.toml has been modified
-		if(check_inotify_event())
+		// Check if pihole.toml has been modified or a reread is pending
+		if(check_inotify_event() || reread_config_deferred())
 		{
 			// Reload config
 			reread_config();

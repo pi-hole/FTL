@@ -55,9 +55,10 @@
 
 static ednsData edns = { 0 };
 
-ednsData *getEDNS(void)
+// Only the query or reply whose packet carried the data may consume it
+ednsData *getEDNS(const int id)
 {
-	if(edns.valid)
+	if(edns.valid && edns.id == abs(id))
 	{
 		// Return pointer to ednsData structure and reset it for the
 		// next query
@@ -378,6 +379,7 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 	// Reset EDNS(0) data
 	memset(&edns, 0, sizeof(ednsData));
 	edns.ede = EDE_UNSET;
+	edns.id = abs(daemon->log_display_id);
 	edns.valid = true;
 
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA
@@ -391,10 +393,15 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 		GETSHORT(optlen, p);
 		offset += 4;
 
-		// Avoid buffer overflow due to an malicious packet
+		// Avoid buffer overflow due to an malicious packet. Every client
+		// allowed to query can send such a query, so only a malformed
+		// upstream reply is logged as a warning.
 		if(offset + optlen > rdlen)
 		{
-			log_warn("Found malicious EDNS payload (payload larger than advertised), skipping record.");
+			if(((const struct dns_header *)(const void *)msg)->hb3 & HB3_QR)
+				log_warn("Found malicious EDNS payload (payload larger than advertised), skipping record.");
+			else
+				log_debug(DEBUG_EDNS0, "Found malicious EDNS payload (payload larger than advertised), skipping record.");
 			break;
 		}
 

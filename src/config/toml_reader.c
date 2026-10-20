@@ -323,7 +323,13 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 		// Importing the same archive with "pihole-FTL --teleporter <file>" does
 		// apply them: that already requires access to the host, which is the
 		// whole point of the distinction.
-		if(teleporter && !cli_mode && new_conf_item->f & (FLAG_API_READ_ONLY | FLAG_API_CLI_READ_ONLY))
+		//
+		// A value forced through an environment variable is kept either way:
+		// the environment wins over pihole.toml on every start, so the
+		// archive's value would only hold until the restart the import
+		// itself triggers, and PATCH /api/config refuses it too.
+		if(teleporter && ((!cli_mode && new_conf_item->f & (FLAG_API_READ_ONLY | FLAG_API_CLI_READ_ONLY)) ||
+		                  new_conf_item->f & FLAG_ENV_VAR))
 		{
 			// Parse into a scratch copy so the archive's value can be looked
 			// at without replacing the one we keep. Only a real difference is
@@ -399,6 +405,15 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	// An archive is refused outright, naming the offending item. Doing the same
 	// for the config file would take DNS down for the entire network over a
 	// single bad value, so there the item goes back to its default instead.
+	// v6.7.1 and older accepted a longer history. Clamp such a value rather
+	// than refusing an archive or resetting the file over it
+	if(newconf->webserver.api.maxHistory.v.ui > MAXLOGAGE*3600)
+	{
+		log_warn("Reducing webserver.api.maxHistory from %u to %u seconds",
+		         newconf->webserver.api.maxHistory.v.ui, MAXLOGAGE*3600);
+		newconf->webserver.api.maxHistory.v.ui = MAXLOGAGE*3600;
+	}
+
 	const bool valid = validate_config(newconf, !teleporter, err);
 
 	// Free memory allocated by the TOML parser and return

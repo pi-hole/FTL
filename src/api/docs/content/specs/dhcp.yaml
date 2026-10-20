@@ -56,8 +56,10 @@ components:
                     - $ref: 'common.yaml#/components/errors/bad_request'
                     - $ref: 'common.yaml#/components/schemas/took'
                 examples:
-                  item_missing:
-                    $ref: 'dhcp.yaml#/components/examples/errors/uri_error/item_missing'
+                  invalid_ip:
+                    $ref: 'dhcp.yaml#/components/examples/errors/bad_request/invalid_ip'
+                  delete_failed:
+                    $ref: 'dhcp.yaml#/components/examples/errors/bad_request/delete_failed'
           '401':
             description: Unauthorized
             content:
@@ -98,14 +100,22 @@ components:
                 example: "00:00:00:00:00:00"
   examples:
     errors:
-      uri_error:
-        item_missing:
-          summary: DHCP lease to be deleted not specified accurately enough
+      bad_request:
+        invalid_ip:
+          summary: The ip in the URI is missing or not a valid IP address (the hint is the received ip)
           value:
             error:
-              key: "uri_error"
-              message: "No ip in URI"
-              hint: null
+              key: "bad_request"
+              message: "The provided IP address is invalid"
+              hint: "192.168.2"
+            took: 0.003
+        delete_failed:
+          summary: The lease could not be deleted
+          value:
+            error:
+              key: "bad_request"
+              message: "Failed to delete DHCP lease"
+              hint: "DHCP is not enabled"
             took: 0.003
   parameters:
     ip:

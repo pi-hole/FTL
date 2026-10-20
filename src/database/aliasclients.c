@@ -121,6 +121,7 @@ bool import_aliasclients(sqlite3 *db)
 			log_err("import_aliasclients() - SQL error step: %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
 			sqlite3_finalize(stmt);
+			counters->aliasclients = imported;
 			return false;
 		}
 
@@ -134,8 +135,12 @@ bool import_aliasclients(sqlite3 *db)
 			log_err("Memory error in import_aliasclients()");
 			checkFTLDBrc(rc);
 			sqlite3_finalize(stmt);
+			counters->aliasclients = imported;
 			return false;
 		}
+
+		// Make room for this client, the lock is held for the entire import
+		shm_ensure_client_size();
 
 		// Try to open existing client
 		const int clientID = findClientID(aliasclient_str, false, true, now);
@@ -167,6 +172,9 @@ bool import_aliasclients(sqlite3 *db)
 		free(aliasclient_str);
 		imported++;
 	}
+
+	// reset_aliasclient() has nothing to look up without alias-clients
+	counters->aliasclients = imported;
 
 	// Finalize statement
 	if ((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
@@ -227,8 +235,9 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 
 void reset_aliasclient(sqlite3 *db, clientsData *client)
 {
-	// Return early if database is known to be broken
-	if(FTLDBerror())
+	// Return early if no alias-client is configured or if the database is
+	// known to be broken
+	if(counters->aliasclients == 0 || FTLDBerror())
 		return;
 
 	// Open pihole-FTL.db database file if needed
@@ -307,7 +316,8 @@ void reimport_aliasclients(sqlite3 *db)
 	// Import aliasclients from database table
 	import_aliasclients(db);
 
-	// Recompute all alias-clients
+	// Assign every client to its alias-client (if any) first, so that no
+	// recomputation below sees a membership that is no longer current
 	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
 	{
 		// Get pointer to client candidate
@@ -316,7 +326,19 @@ void reimport_aliasclients(sqlite3 *db)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		reset_aliasclient(db, client);
+		client->aliasclient_id = get_aliasclient_ID(db, client);
+	}
+
+	// Recompute all alias-clients
+	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
+	{
+		// Get pointer to client candidate
+		const clientsData *client = getClient(clientID, true);
+		// Skip invalid and non-alias-clients
+		if(client == NULL || !client->flags.aliasclient)
+			continue;
+
+		recompute_aliasclient(clientID);
 	}
 
 	// Close the database if we opened it here

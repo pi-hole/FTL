@@ -11,6 +11,9 @@
 #define DAEMON_H
 
 #include "enums.h"
+// atomic_bool
+#include <stdatomic.h>
+
 extern pthread_t threads[THREADS_MAX];
 
 void go_daemon(void);
@@ -21,8 +24,11 @@ const char *domainname(void);
 void delay_startup(void);
 bool is_fork(const pid_t mpid, const pid_t pid) __attribute__ ((const));
 void cleanup(const int ret);
+bool join_db_thread(const time_t timeout);
 void set_nice(void);
 void calc_cpu_usage(const unsigned int interval);
+int get_present_cpus(void);
+int get_load_averages(double load[3]);
 float get_ftl_cpu_percentage(void) __attribute__((pure));
 float get_total_cpu_percentage(void) __attribute__((pure));
 bool ipv6_enabled(void);
@@ -56,7 +62,7 @@ ssize_t getrandom_fallback(void *buf, size_t buflen, unsigned int flags);
 
 extern bool resolver_ready;
 extern bool dnsmasq_failed;
-extern volatile sig_atomic_t gravity_running;
+extern atomic_bool gravity_running;
 extern volatile sig_atomic_t want_terminate;
 
 #endif //DAEMON_H

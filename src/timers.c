@@ -25,7 +25,7 @@ void timer_start(const enum timers i)
 		log_crit("Timer %i not defined in timer_start().", i);
 		exit(EXIT_FAILURE);
 	}
-	clock_gettime(CLOCK_REALTIME, &t0[i]);
+	clock_gettime(CLOCK_MONOTONIC, &t0[i]);
 }
 
 static struct timespec diff(struct timespec start, struct timespec end)
@@ -66,7 +66,7 @@ double timer_elapsed_msec(const enum timers i)
 		exit(EXIT_FAILURE);
 	}
 	struct timespec t1, td;
-	clock_gettime(CLOCK_REALTIME, &t1);
+	clock_gettime(CLOCK_MONOTONIC, &t1);
 	td = diff(t0[i], t1);
 	return td.tv_sec * 1e3 + td.tv_nsec * 1e-6;
 }
@@ -79,19 +79,25 @@ void sleepms(const int milliseconds)
 	select(0, NULL, NULL, NULL, &tv);
 }
 
+// The timer state is shared between the timer thread and the API workers
+static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
 static double timer_delay = -1.0;
 static bool timer_target_status = true;
 
 void set_blockingmode_timer(double delay, bool target_status)
 {
+	pthread_mutex_lock(&timer_lock);
 	timer_delay = delay;
 	timer_target_status = target_status;
+	pthread_mutex_unlock(&timer_lock);
 }
 
 void get_blockingmode_timer(double *delay, bool *target_status)
 {
+	pthread_mutex_lock(&timer_lock);
 	*delay = timer_delay;
 	*target_status = timer_target_status;
+	pthread_mutex_unlock(&timer_lock);
 }
 
 #define SLEEPING_TIME 0.1 // seconds
@@ -105,6 +111,9 @@ void *timer(void *val)
 	// to the database
 	while(!killed)
 	{
+		// Hold the lock across the tick so a new timer set through the API
+		// is neither overwritten by the decrement nor discarded on expiry
+		pthread_mutex_lock(&timer_lock);
 		if(timer_delay > 0)
 		{
 			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %.1f seconds...",
@@ -114,12 +123,20 @@ void *timer(void *val)
 		}
 		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
-			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
-			          timer_target_status ? "enabled" : "disabled");
+			// The API takes the config lock before timer_lock, so only
+			// try it here and retry on the next tick while a config
+			// change is in progress
+			if(trylock_config())
+			{
+				log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+				          timer_target_status ? "enabled" : "disabled");
 
-			set_blockingstatus(timer_target_status);
-			timer_delay = -1.0;
+				set_blockingstatus(timer_target_status);
+				unlock_config();
+				timer_delay = -1.0;
+			}
 		}
+		pthread_mutex_unlock(&timer_lock);
 		thread_sleepms(TIMER, SLEEPING_TIME * 1000);
 	}
 
