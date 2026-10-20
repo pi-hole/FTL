@@ -347,7 +347,7 @@ static uint16_t __attribute__((pure)) icmp6_checksum(const struct in6_addr *src,
 // advertisement for the address, sent to every node on the link. Without it the
 // switches and the neighbors keep sending the address to the node that held it
 // before, for as long as their caches say so
-static void unsolicited_na(const char *address, const char *iface)
+static void unsolicited_na(const char *address, const char *iface, const unsigned int count)
 {
 	struct in6_addr addr = { 0 };
 	if(inet_pton(AF_INET6, address, &addr) != 1)
@@ -409,8 +409,7 @@ static void unsolicited_na(const char *address, const char *iface)
 	sll.sll_halen = ETH_ALEN;
 	memcpy(sll.sll_addr, frame, ETH_ALEN);
 
-	// Three of them, for the same reason the ARP path sends three
-	for(unsigned int i = 0; i < 3; i++)
+	for(unsigned int i = 0; i < count; i++)
 		if(sendto(fd, frame, sizeof(frame), 0, (struct sockaddr *)&sll, sizeof(sll)) < 0)
 		{
 			log_warn("cluster: cannot send neighbor advertisement for %s: %s",
@@ -424,12 +423,12 @@ static void unsolicited_na(const char *address, const char *iface)
 // Tell the network that the address moved here. Without this, switches keep
 // forwarding to the port of the previous holder and clients keep using the
 // stale ARP entry until it expires - which is a minute of broken DNS for them
-static void gratuitous_arp(const char *address, const char *iface)
+static void gratuitous_arp(const char *address, const char *iface, const unsigned int count)
 {
 	struct in_addr addr = { 0 };
 	if(inet_pton(AF_INET, address, &addr) != 1)
 	{
-		unsolicited_na(address, iface);
+		unsolicited_na(address, iface, count);
 		return;
 	}
 
@@ -470,9 +469,7 @@ static void gratuitous_arp(const char *address, const char *iface)
 	sll.sll_halen = ETH_ALEN;
 	memset(sll.sll_addr, 0xff, ETH_ALEN);
 
-	// Three of them: ARP is unacknowledged and this is the only announcement
-	// a client gets
-	for(unsigned int i = 0; i < 3; i++)
+	for(unsigned int i = 0; i < count; i++)
 		if(sendto(fd, frame, sizeof(frame), 0, (struct sockaddr *)&sll, sizeof(sll)) < 0)
 		{
 			log_warn("cluster: cannot send ARP for %s: %s", address, strerror(errno));
@@ -796,7 +793,7 @@ bool vip_claim(const char *address)
 
 			log_info("cluster: %s was already on %s, taking it over",
 			         address, claimed_iface);
-			gratuitous_arp(address, claimed_iface);
+			gratuitous_arp(address, claimed_iface, 3);
 		}
 		return true;
 	}
@@ -819,9 +816,18 @@ bool vip_claim(const char *address)
 	vip_note_placed(address, iface);
 	cluster_state_save(NULL);
 	log_info("cluster: claimed %s on %s", address, iface);
-	gratuitous_arp(address, iface);
+	// Three: ARP is unacknowledged
+	gratuitous_arp(address, iface, 3);
 
 	return true;
+}
+
+// Said again while held, as keepalived does: a client that last heard another
+// holder keeps sending there until its cache ages out
+void vip_announce(const bool loud)
+{
+	if(claimed)
+		gratuitous_arp(claimed_address, claimed_iface, loud ? 3 : 1);
 }
 
 bool vip_release(const char *address)

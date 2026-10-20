@@ -21,6 +21,9 @@ bool vip_present(const char *address);
 bool vip_claim(const char *address);
 bool vip_release(const char *address);
 
+// Tell the network again that this node holds the address it claimed
+void vip_announce(const bool loud);
+
 // What an earlier FTL on this machine recorded having placed, so an address
 // already on the interface can be told from one somebody else configured
 void vip_note_placed(const char *address, const char *iface);

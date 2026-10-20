@@ -143,9 +143,14 @@ static unsigned int vip_failures = 0;
 // declines, which is the outage it was added to prevent, upside down
 static bool vip_stand_aside = false;
 
+// ...and whether another node holds it, which the node keeping it answers with
+// louder announcements
+static bool vip_contested = false;
+
 void cluster_vip_note_holder(const bool somebody_else_holds_it)
 {
 	vip_stand_aside = somebody_else_holds_it && vip_failures > 0;
+	vip_contested = somebody_else_holds_it;
 }
 
 static void vip_claim_failed(void)
@@ -1208,7 +1213,15 @@ void cluster_vip_round(bool mine)
 	// round is thousands of lines a day onto the card this runs from
 	static bool last_ok = true;
 	static bool last_mine = false;
+	const bool held = vip_claimed();
 	const bool okay = mine ? vip_claim(address) : vip_release(address);
+
+	// Repeated every round while held, louder while another node holds it too
+	// and a round after: clients send to whichever holder they heard last
+	static bool was_contested = false;
+	if(mine && okay && held)
+		vip_announce(vip_contested || was_contested);
+	was_contested = vip_contested;
 
 	if(okay != last_ok || mine != last_mine)
 	{
