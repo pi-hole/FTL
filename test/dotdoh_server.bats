@@ -556,16 +556,17 @@ slow_upstream() {
   for i in $(seq 1 300); do [[ -f "$ready" ]] && break; sleep 0.1; done
 }
 
-@test "dotdoh-server: a DoH3 backlog from one client does not hold up another" {
+@test "dotdoh-server: DoH3 backlogs from several clients do not hold up another" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   local slow elapsed
-  # Names under slow.ftl take 1.5 s, so 20 of them keep all four resolvers busy
+  # Five clients with six slow names each keep all four resolvers busy for 11 s.
+  # Taking turns, the client after them waits two rounds of 1.5 s at most
   slow_upstream "${BATS_FILE_TMPDIR}/fair.log"
   slow=$!
-  run python3 test/dotdoh_query.py doh3fair 127.0.0.1 443 slow.ftl 20 "$DOMAIN"
+  run python3 test/dotdoh_query.py doh3fair 127.0.0.1 443 fair.slow.ftl 5 6 "$DOMAIN"
   kill "$slow"
   echo "$output"
-  [[ "$output" =~ ^second\ client\ 200\ after\ ([0-9]+)\.[0-9]+\ s,\ first\ client\ 20/20 ]]
+  [[ "$output" =~ ^last\ client\ 200\ after\ ([0-9]+)\.[0-9]+\ s,\ the\ others\ 30/30 ]]
   elapsed="${BASH_REMATCH[1]}"
-  [[ "$elapsed" -lt 3 ]]
+  [[ "$elapsed" -lt 5 ]]
 }

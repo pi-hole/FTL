@@ -23,10 +23,11 @@
 #                                                 answering any A query after <ms>,
 #                                                 for <secs>; creates <ready> once
 #                                                 bound, logs each name to <log>
-#   doh3fair <host> <port> <suffix> <count> <domain>
+#   doh3fair <host> <port> <suffix> <sources> <count> <domain>
 #                                                 <count> DoH3 POSTs for names under
-#                                                 <suffix> from 127.0.0.2, then time
-#                                                 one for <domain> from 127.0.0.3
+#                                                 <suffix> from each of <sources>
+#                                                 clients 127.0.0.2..., then time
+#                                                 one for <domain> from the next
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
@@ -452,11 +453,9 @@ def slow_dns(port, delay_ms, readyfile, secs, logfile=None):
             threading.Thread(target=udp_reply, args=(sock, query, addr), daemon=True).start()
 
 
-def doh3_fair(host, port, suffix, count, domain):
-    """Send count DoH3 POSTs for distinct names under suffix on one connection
-    from 127.0.0.2, then one for domain from 127.0.0.3 on a second connection.
-    Returns the second client's status and latency, and how many of the first
-    client's requests were answered 200."""
+def doh3_client(host, port):
+    """Return an async factory that opens an aioquic HTTP/3 connection from a
+    given source address, able to POST DoH queries and wait for each."""
     import asyncio
     import ssl as _ssl
     from aioquic.asyncio.protocol import QuicConnectionProtocol
@@ -515,19 +514,34 @@ def doh3_fair(host, port, suffix, count, domain):
         client.http = H3Connection(client._quic)
         return client
 
+    return open_client
+
+
+def doh3_fair(host, port, suffix, sources, count, domain):
+    """Send count DoH3 POSTs for distinct names under suffix from each of sources
+    clients (127.0.0.2 onwards, one connection each), then one for domain from
+    the next address. Returns that client's status and latency, and how many of
+    the other requests were answered 200."""
+    import asyncio
+
+    open_client = doh3_client(host, port)
+
     async def run():
-        a = await open_client("127.0.0.2")
-        sids = [a.post("s%d-%d.%s" % (i, int(time.time()), suffix)) for i in range(count)]
+        stamp = int(time.time())
+        busy = [await open_client("127.0.0.%d" % (2 + i)) for i in range(sources)]
+        sids = [[c.post("s%d-%d-%d.%s" % (i, j, stamp, suffix)) for j in range(count)]
+                for i, c in enumerate(busy)]
         await asyncio.sleep(0.5)
-        b = await open_client("127.0.0.3")
+        b = await open_client("127.0.0.%d" % (2 + sources))
         start = time.monotonic()
         status = await b.wait(b.post(domain))
         elapsed = time.monotonic() - start
         answered = 0
-        for sid in sids:
-            if await a.wait(sid) == "200":
-                answered += 1
-        a.close()
+        for c, cs in zip(busy, sids):
+            for sid in cs:
+                if await c.wait(sid) == "200":
+                    answered += 1
+            c.close()
         b.close()
         return status, elapsed, answered
 
@@ -751,10 +765,11 @@ def main():
         logfile = sys.argv[6] if len(sys.argv) > 6 else None
         slow_dns(int(port), int(delay_ms), readyfile, float(secs), logfile)
     elif cmd == "doh3fair":
-        _, _, host, port, suffix, count, domain = sys.argv[:7]
-        status, elapsed, answered = doh3_fair(host, int(port), suffix, int(count), domain)
-        print("second client %s after %.2f s, first client %d/%s answered"
-              % (status, elapsed, answered, count))
+        _, _, host, port, suffix, sources, count, domain = sys.argv[:8]
+        status, elapsed, answered = doh3_fair(host, int(port), suffix, int(sources),
+                                              int(count), domain)
+        print("last client %s after %.2f s, the others %d/%d answered"
+              % (status, elapsed, answered, int(sources) * int(count)))
     elif cmd == "doq":
         # RFC 9250 Sec. 4.2.1: a DoQ query carries Message ID 0.
         _, _, host, port, domain, source, expected_ip = sys.argv[:7]

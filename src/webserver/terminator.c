@@ -100,7 +100,8 @@ static atomic_int active_handlers = 0;
 // bound a single source). Mirrors DOT_MAX_CONNS_PER_IP in dot_server.c. Sized to
 // a quarter of the global caps; a browser or DoH client stays well under it.
 #define TERMINATOR_MAX_CONNS_PER_IP 64
-struct ip_slot { uint8_t key[16]; unsigned count; unsigned jobs; };
+// served: when a DoH3 worker last took one of the source's jobs, under h3_jobs_mtx
+struct ip_slot { uint8_t key[16]; unsigned count; unsigned jobs; uint64_t served; };
 // One slot per distinct source. Sized for the combined worst case of both
 // subsystems (TCP handlers and HTTP/3 connections, each with its own global cap
 // and both keyed into this one table), so a free slot always exists while either
@@ -141,7 +142,7 @@ static bool ip_reserve(const uint8_t key[16])
 	if(slot != NULL)
 		ok = slot->count < TERMINATOR_MAX_CONNS_PER_IP ? (slot->count++, true) : false;
 	else if(freeslot != NULL)
-	{ memcpy(freeslot->key, key, 16); freeslot->count = 1; freeslot->jobs = 0; ok = true; }
+	{ memcpy(freeslot->key, key, 16); freeslot->count = 1; freeslot->jobs = 0; freeslot->served = 0; ok = true; }
 	else
 		ok = false;
 	pthread_mutex_unlock(&ip_table_mtx);
@@ -2598,6 +2599,7 @@ struct h3_job {
 	char client[INET6_ADDRSTRLEN];
 	char dest[INET6_ADDRSTRLEN];
 	uint8_t ipkey[16];              // source counted in ip_table while the job lives
+	struct ip_slot *slot;           // its ip_table slot, held by the job's connection
 	uint8_t *answer; ssize_t alen;  // allocated by the worker at the answer's size
 	size_t   qlen;
 	uint8_t  query[];
@@ -2610,11 +2612,11 @@ struct h3_job {
 #define H3_DOH_MAX_JOBS_PER_IP (H3_DOH_MAX_JOBS / 4)
 
 // Count a DoH resolve against its source (which holds an ip_table slot through
-// its connection). Returns false when the source is at H3_DOH_MAX_JOBS_PER_IP.
-// Pair every true with one ip_job_done(key)
-static bool ip_job_start(const uint8_t key[16])
+// its connection). Returns the slot, or NULL when the source is at
+// H3_DOH_MAX_JOBS_PER_IP. Pair every slot returned with one ip_job_done(key)
+static struct ip_slot *ip_job_start(const uint8_t key[16])
 {
-	bool ok = false;
+	struct ip_slot *slot = NULL;
 	pthread_mutex_lock(&ip_table_mtx);
 	for(size_t i = 0; i < sizeof(ip_table) / sizeof(ip_table[0]); i++)
 		if(ip_table[i].count > 0 && memcmp(ip_table[i].key, key, 16) == 0)
@@ -2622,12 +2624,12 @@ static bool ip_job_start(const uint8_t key[16])
 			if(ip_table[i].jobs < H3_DOH_MAX_JOBS_PER_IP)
 			{
 				ip_table[i].jobs++;
-				ok = true;
+				slot = &ip_table[i];
 			}
 			break;
 		}
 	pthread_mutex_unlock(&ip_table_mtx);
-	return ok;
+	return slot;
 }
 
 static void ip_job_done(const uint8_t key[16])
@@ -2652,8 +2654,10 @@ static pthread_mutex_t h3_jobs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  h3_jobs_cv  = PTHREAD_COND_INITIALIZER;
 static struct h3_job *h3_jobs_pending;          // loop -> worker, oldest first
 static struct h3_job *h3_jobs_pending_tail;
-// The source each worker is resolving for, guarded by h3_jobs_mtx
-static struct { bool busy; uint8_t ipkey[16]; } h3_jobs_running[H3_DOH_WORKERS];
+// The source each worker is resolving for (NULL when idle) and the count behind
+// ip_slot.served, both guarded by h3_jobs_mtx
+static struct ip_slot *h3_jobs_running[H3_DOH_WORKERS];
+static uint64_t h3_jobs_served = 0;
 static struct h3_job *h3_jobs_done;             // worker -> loop
 
 // Monotonic timestamp in nanoseconds for nghttp3's rate limiter / bookkeeping.
@@ -2871,7 +2875,8 @@ static void h3_doh_dispatch(struct h3_stream *s)
 	if(client[0] == '\0' || !dotdoh_source_allowed(client))
 	{ h3_gateway_error(s, "403"); return; }
 
-	if(h3_jobs_n >= H3_DOH_MAX_JOBS || !ip_job_start(s->conn->ipkey))
+	struct ip_slot *slot = h3_jobs_n < H3_DOH_MAX_JOBS ? ip_job_start(s->conn->ipkey) : NULL;
+	if(slot == NULL)
 	{ h3_gateway_error(s, "503"); return; }
 
 	struct h3_job *job = calloc(1, sizeof(*job) + qlen);
@@ -2883,6 +2888,7 @@ static void h3_doh_dispatch(struct h3_stream *s)
 	}
 	job->conn_gen = s->conn->gen;
 	memcpy(job->ipkey, s->conn->ipkey, sizeof(job->ipkey));
+	job->slot = slot;
 	job->stream_id = s->id;
 	snprintf(job->client, sizeof(job->client), "%s", client);
 	snprintf(job->dest, sizeof(job->dest), "%s", dest);
@@ -3701,26 +3707,26 @@ static int h3_event_timeout_ms(SSL *listener, struct h3_conn *conns)
 	return best;
 }
 
-// Unlink the oldest pending job of the source with the fewest jobs in progress,
-// so one source's backlog does not hold up the others. Caller holds h3_jobs_mtx
+// Unlink the oldest job of the source with the fewest jobs in progress and, of
+// those, served least recently, so busy sources take turns. Caller holds h3_jobs_mtx
 static struct h3_job *h3_job_take(void)
 {
 	struct h3_job **best = NULL, *best_prev = NULL, *prev = NULL;
 	unsigned best_busy = H3_DOH_WORKERS + 1;
+	uint64_t best_served = 0;
 	for(struct h3_job **pp = &h3_jobs_pending; *pp != NULL; prev = *pp, pp = &(*pp)->next)
 	{
+		const struct h3_job *j = *pp;
 		unsigned busy = 0;
 		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
-			if(h3_jobs_running[i].busy &&
-			   memcmp(h3_jobs_running[i].ipkey, (*pp)->ipkey, sizeof((*pp)->ipkey)) == 0)
+			if(h3_jobs_running[i] == j->slot)
 				busy++;
-		if(busy < best_busy)
+		if(busy < best_busy || (busy == best_busy && j->slot->served < best_served))
 		{
 			best = pp;
 			best_prev = prev;
 			best_busy = busy;
-			if(busy == 0)
-				break;
+			best_served = j->slot->served;
 		}
 	}
 	if(best == NULL)
@@ -3730,6 +3736,7 @@ static struct h3_job *h3_job_take(void)
 	if(h3_jobs_pending_tail == job)
 		h3_jobs_pending_tail = best_prev;
 	job->next = NULL;
+	job->slot->served = ++h3_jobs_served;
 	return job;
 }
 
@@ -3755,10 +3762,7 @@ static void *h3_doh_worker(void *arg)
 		}
 		struct h3_job *job = h3_job_take();
 		if(job != NULL)
-		{
-			h3_jobs_running[idx].busy = true;
-			memcpy(h3_jobs_running[idx].ipkey, job->ipkey, sizeof(job->ipkey));
-		}
+			h3_jobs_running[idx] = job->slot;
 		pthread_mutex_unlock(&h3_jobs_mtx);
 		if(job == NULL)
 			continue;
@@ -3772,7 +3776,7 @@ static void *h3_doh_worker(void *arg)
 			job->alen = -1;
 
 		pthread_mutex_lock(&h3_jobs_mtx);
-		h3_jobs_running[idx].busy = false;
+		h3_jobs_running[idx] = NULL;
 		job->next = h3_jobs_done;
 		h3_jobs_done = job;
 		pthread_mutex_unlock(&h3_jobs_mtx);
