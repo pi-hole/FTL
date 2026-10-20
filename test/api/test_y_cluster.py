@@ -18,6 +18,7 @@ Usage:
 import hashlib
 import hmac
 import http.server
+import ipaddress
 import json
 import os
 import socket
@@ -862,7 +863,7 @@ class TestClusterLists:
 # The virtual IP address
 # ---------------------------------------------------------------------------
 
-def _own_subnet_addresses():
+def _own_subnets():
     """This machine's addresses that belong to a subnet, read from `ip`."""
     try:
         out = subprocess.run(["ip", "-j", "addr"], capture_output=True, text=True,
@@ -875,14 +876,18 @@ def _own_subnet_addresses():
         for addr in link.get("addr_info", []):
             full = 32 if addr.get("family") == "inet" else 128
             if addr.get("scope") == "global" and addr.get("prefixlen", full) < full:
-                found.append(addr["local"])
+                found.append(ipaddress.ip_interface(f"{addr['local']}/{addr['prefixlen']}"))
     return found
+
+
+def _own_subnet_addresses():
+    return [str(iface.ip) for iface in _own_subnets()]
 
 
 class TestClusterVip:
 
     @pytest.mark.parametrize("address", [
-        "0.0.0.0", "127.0.0.1", "224.0.0.1", "255.255.255.255",
+        "0.0.0.0", "127.0.0.1", "224.0.0.1", "255.255.255.255", "169.254.1.1",
         "::", "::1", "ff02::1", "fe80::1", "::ffff:192.168.0.1",
     ])
     def test_address_that_cannot_be_shared_is_refused(self, api_session, address):
@@ -903,3 +908,19 @@ class TestClusterVip:
                               json={"config": {"cluster": {"vip": {"address": own[0]}}}},
                               timeout=10)
         assert r.status_code == 400, r.text[:200]
+
+    def test_network_and_broadcast_address_are_refused(self, api_session):
+        """Neither is a host on this node's subnet, and every host there
+        answers the broadcast address."""
+        nets = [iface.network for iface in _own_subnets()
+                if iface.network.num_addresses >= 4]
+        if not nets:
+            pytest.skip("this machine has no address on a subnet")
+        reserved = [nets[0].network_address]
+        if nets[0].version == 4:
+            reserved.append(nets[0].broadcast_address)
+        for address in reserved:
+            r = api_session.patch(f"{FTL_URL}/api/config",
+                                  json={"config": {"cluster": {"vip": {"address": str(address)}}}},
+                                  timeout=10)
+            assert r.status_code == 400, f"{address}: {r.text[:200]}"
