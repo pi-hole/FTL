@@ -418,7 +418,7 @@ static bool request(struct cluster_peer *peer, const char *method, const char *p
 	char previous_pin[CLUSTER_PINLEN] = "";
 	bool asked_unpinned = false;
 	if(rc == CURLE_SSL_PINNEDPUBKEYNOTMATCH && strlen(peer->pin) > 0 && postdata == NULL &&
-	   strcmp(path, "/api/cluster/status") == 0)
+	   strncmp(path, "/api/cluster/status", 19) == 0 && (path[19] == '\0' || path[19] == '?'))
 	{
 		log_info("cluster: certificate of %s changed, asking it again", peer->url);
 

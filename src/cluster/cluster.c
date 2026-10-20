@@ -356,8 +356,17 @@ static void poll_peer(struct cluster_peer *peer)
 	cJSON *json = NULL;
 	char err[CLUSTER_STRLEN] = "";
 
+	// What this node serves goes with the poll, so a peer that cannot poll
+	// this node back can tell a standby from a second server
+	char address[CLUSTER_STRLEN] = "";
+	cluster_vip_address(address);
+	const bool holding = vip_claimed() || (strlen(address) > 0 && vip_present(address));
+	char path[64] = "";
+	snprintf(path, sizeof(path), "/api/cluster/status?dhcp=%s&vip=%s",
+	         config.dhcp.active.v.b ? "true" : "false", holding ? "true" : "false");
+
 	char signer[CLUSTER_HASHLEN] = "";
-	if(!cluster_http_json(peer, "/api/cluster/status", &json, err, sizeof(err),
+	if(!cluster_http_json(peer, path, &json, err, sizeof(err),
 	                      signer, sizeof(signer)))
 	{
 		mark_unreachable(peer, err);
@@ -521,6 +530,7 @@ static void poll_peer(struct cluster_peer *peer)
 
 		strncpy(peer->id, id->valuestring, sizeof(peer->id) - 1);
 		peer->id[sizeof(peer->id) - 1] = '\0';
+		memcpy(peer->last_id, peer->id, sizeof(peer->last_id));
 
 		// The member list is the same on every node, so one of its entries
 		// is this node. It answers with our own identity, which is how we
@@ -1140,25 +1150,65 @@ bool cluster_running(void)
 	return running;
 }
 
-// When another node last read our status with a signed request
-static double polled_at = 0.0;
+// When each sender last read our status with a signed request. By sender, as
+// any holder of the secret can poll, and only a member's poll says it is alive
+static struct {
+	char from[CLUSTER_HASHLEN];
+	double at;
+	bool idle;
+} polls[2 * CLUSTER_MAX_PEERS];
 static pthread_mutex_t polled_lock = PTHREAD_MUTEX_INITIALIZER;
 
-void cluster_note_poll(const char *from)
+void cluster_note_poll(const char *from, const bool idle)
 {
 	// Our own entry in the member list is polled too
-	if(from == NULL || strcmp(from, cluster_node_id()) == 0)
+	if(from == NULL || !cluster_plain_id(from) || strcmp(from, cluster_node_id()) == 0)
 		return;
 
 	pthread_mutex_lock(&polled_lock);
-	polled_at = double_time();
+	unsigned int slot = 0;
+	for(unsigned int i = 0; i < ArraySize(polls); i++)
+		if(polls[i].at < polls[slot].at)
+			slot = i;
+	for(unsigned int i = 0; i < ArraySize(polls); i++)
+		if(strcmp(polls[i].from, from) == 0)
+			slot = i;
+
+	strncpy(polls[slot].from, from, sizeof(polls[slot].from) - 1);
+	polls[slot].from[sizeof(polls[slot].from) - 1] = '\0';
+	polls[slot].at = double_time();
+	polls[slot].idle = idle;
 	pthread_mutex_unlock(&polled_lock);
 }
 
-double cluster_polled_at(void)
+// Is this the member a poll came from? Known by the identity it last answered
+// with; one not reached in this run could be any sender no other member is
+static bool polled_as(const struct cluster_peer *peer, const char *from)
 {
+	if(strlen(peer->last_id) > 0)
+		return strcmp(peer->last_id, from) == 0;
+
+	for(unsigned int i = 0; i < num_peers; i++)
+		if(&peers[i] != peer && strcmp(peers[i].last_id, from) == 0)
+			return false;
+
+	return true;
+}
+
+double cluster_polled_by(const struct cluster_peer *peer, bool *idle)
+{
+	double when = 0.0;
+	*idle = false;
+
 	pthread_mutex_lock(&polled_lock);
-	const double when = polled_at;
+	for(unsigned int i = 0; i < ArraySize(polls); i++)
+	{
+		if(strlen(polls[i].from) == 0 || polls[i].at <= when || !polled_as(peer, polls[i].from))
+			continue;
+
+		when = polls[i].at;
+		*idle = polls[i].idle;
+	}
 	pthread_mutex_unlock(&polled_lock);
 
 	return when;
@@ -2958,6 +3008,8 @@ void cluster_local_status(cJSON *node)
 	// well as in the log, so the page a user opens can explain why the node it
 	// is showing serves nothing
 	cJSON_AddBoolToObject(node, "identity_shared", duplicate_identity);
+	// ...and the same for a node that does not see enough of the cluster
+	cJSON_AddBoolToObject(node, "quorum", cluster_quorum());
 
 	cJSON *dhcp = cJSON_CreateObject();
 	// ...and the same gate as its three neighbours below. A dead dnsmasq hands

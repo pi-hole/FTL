@@ -114,6 +114,7 @@ struct cluster_peer {
 	char version[CLUSTER_STRLEN];    // FTL version of the peer
 	char branch[CLUSTER_STRLEN];     // ...and its branch, when that is not master
 	char id[CLUSTER_HASHLEN];          // the peer's identity, which cannot collide
+	char last_id[CLUSTER_HASHLEN];     // ...and the last one it answered with, kept while it is down
 	char address[CLUSTER_ADDRLEN];     // where this peer answered, so its name is only resolved once
 	char last_address[CLUSTER_ADDRLEN]; // ...kept after it stops answering there
 	char hint[CLUSTER_ADDRLEN];        // ...or where another node reached it, when we cannot resolve it
@@ -297,9 +298,11 @@ bool cluster_leave_now(char *errbuf, bool *peers_told);
 bool cluster_running(void);
 
 // A peer read this node's status, which proves it alive where this node cannot
-// reach it. Recorded by the web server, read by the cluster thread
-void cluster_note_poll(const char *from);
-double cluster_polled_at(void);
+// reach it, and said whether it serves nothing itself. Recorded by the web
+// server, read by the cluster thread
+void cluster_note_poll(const char *from, const bool idle);
+// ...when this member last did so, 0 if never
+double cluster_polled_by(const struct cluster_peer *peer, bool *idle);
 
 // Set when more than one member answers with this node's identity - two machines
 // carrying the same cluster.state. Read where a node decides whether to serve

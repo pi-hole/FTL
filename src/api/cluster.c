@@ -43,9 +43,15 @@ int api_cluster_status(struct ftl_conn *api)
 	memcpy(&state, cluster_state(), sizeof(state));
 	cluster_unlock();
 
-	// A signed poll proves the sender alive, also where this node cannot reach it
+	// A signed poll proves the sender alive, also where this node cannot reach
+	// it, and says whether it serves DHCP or holds the virtual IP
 	if(api->session.used && api->session.cluster)
-		cluster_note_poll(mg_get_header(api->conn, CLUSTER_HDR_FROM));
+	{
+		bool dhcp = true, vip = true;
+		const bool told = get_bool_var(api->request->query_string, "dhcp", &dhcp) &&
+		                  get_bool_var(api->request->query_string, "vip", &vip);
+		cluster_note_poll(mg_get_header(api->conn, CLUSTER_HDR_FROM), told && !dhcp && !vip);
+	}
 
 	cJSON *node = JSON_NEW_OBJECT();
 	cJSON *peers = JSON_NEW_ARRAY();

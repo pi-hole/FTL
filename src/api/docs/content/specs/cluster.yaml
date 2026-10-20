@@ -12,6 +12,25 @@ components:
           The other nodes of a cluster poll exactly this endpoint, which is why
           it also carries the fingerprints and timestamps they compare to decide
           which of them has to catch the other up.
+        parameters:
+          - name: dhcp
+            in: query
+            description: |
+              Sent by a peer polling this node: whether it serves DHCP itself.
+              Only read from a signed request.
+            schema:
+              type: boolean
+            required: false
+            example: false
+          - name: vip
+            in: query
+            description: |
+              Sent by a peer polling this node: whether it holds the virtual IP
+              address. Only read from a signed request.
+            schema:
+              type: boolean
+            required: false
+            example: false
         responses:
           '200':
             description: OK
@@ -606,6 +625,13 @@ components:
             the rest of a disk image. Both machines then stand down from DHCP
             and the virtual address until one of them is given a new identity.
           example: false
+        quorum:
+          type: boolean
+          description: |
+            Whether this node sees enough of the cluster to take DHCP or the
+            virtual address: a majority of three or more members, or, in a
+            pair, the other member unless only that one reaches this node.
+          example: true
         totp_counter:
           type: integer
           description: |

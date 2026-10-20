@@ -165,6 +165,8 @@ class _FakePeer(http.server.BaseHTTPRequestHandler):
     items = {}
     hash_moves = False
     polls = 0
+    url = ""
+    down = False
 
     def log_message(self, *args):
         pass
@@ -189,6 +191,10 @@ class _FakePeer(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if _FakePeer.down:
+            # No answer at all, as from a node that is not there
+            self.close_connection = True
+            return
         if not self.path.startswith("/api/cluster/status"):
             self.send_response(404)
             self.end_headers()
@@ -316,6 +322,7 @@ def cluster(api_session):
         _FakePeer.node_url = self_url
         fake = http.server.ThreadingHTTPServer(("127.0.0.1", _free_port()), _FakePeer)
         threading.Thread(target=fake.serve_forever, daemon=True).start()
+        _FakePeer.url = f"http://127.0.0.1:{fake.server_address[1]}"
 
         # A member list as well as the switch: a node with nobody to talk to
         # does not start the cluster thread at all, and so never mints the
@@ -323,7 +330,7 @@ def cluster(api_session):
         # which credentials never cross
         _patch(api_session, {"cluster": {
             "enabled": True,
-            "members": [self_url, f"http://127.0.0.1:{fake.server_address[1]}"],
+            "members": [self_url, _FakePeer.url],
             "sync": {"credentials": False},
         }}, expect_restart=True)
         assert _relogin(api_session), "could not log in after the restart"
@@ -924,3 +931,59 @@ class TestClusterVip:
                                   json={"config": {"cluster": {"vip": {"address": str(address)}}}},
                                   timeout=10)
             assert r.status_code == 400, f"{address}: {r.text[:200]}"
+
+
+# ---------------------------------------------------------------------------
+# Who proves a member alive
+# ---------------------------------------------------------------------------
+
+def _poll(secret, sender, query=""):
+    uri = "/api/cluster/status" + query
+    r = requests.get(f"{FTL_URL}{uri}", headers=_headers(secret, "GET", uri, ANY_NODE, sender=sender),
+                     timeout=10)
+    assert r.status_code == 200, r.text[:200]
+    return _j(r)["cluster"]
+
+
+class TestClusterPollIdentity:
+
+    def test_only_the_member_proves_itself_alive(self, signed):
+        """In a pair, the other member counts against this node while it polls
+        this node and cannot be polled. Anybody else holding the secret - a
+        removed node, a monitoring script - says nothing about that member."""
+        if signed["fake"] is None:
+            pytest.skip("clustering was already on, so there is no stand-in peer")
+
+        secret = signed["secret"]
+        _FakePeer.down = True
+        try:
+            status = _poll(secret, OTHER_NODE)
+            interval = status["node"]["interval"]
+            deadline = time.time() + 3 * interval + 10
+            while time.time() < deadline:
+                fake = [p for p in status["peers"] if p["url"] == _FakePeer.url]
+                if fake and not fake[0]["reachable"]:
+                    break
+                time.sleep(1)
+                status = _poll(secret, OTHER_NODE)
+            else:
+                pytest.fail("this node never noticed the stand-in peer was gone")
+
+            # Polled by a sender that is no member, over more than two rounds
+            until = time.time() + 2.5 * interval
+            while time.time() < until:
+                status = _poll(secret, OTHER_NODE, "?dhcp=false&vip=false")
+                assert status["node"]["quorum"] is True, "a poll by a non-member counted for the member"
+                time.sleep(2)
+
+            # ...and by the member itself
+            deadline = time.time() + 3 * interval
+            while time.time() < deadline:
+                status = _poll(secret, FAKE_NODE, "?dhcp=false&vip=false")
+                if status["node"]["quorum"] is False:
+                    break
+                time.sleep(2)
+            else:
+                pytest.fail("the member polling this node did not count")
+        finally:
+            _FakePeer.down = False
