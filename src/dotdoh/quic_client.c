@@ -614,7 +614,7 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
 		if(conn_pump_write(c) < 0)
 			break;
 		SSL_handle_events(c->ssl);
-		if(c->x.done)
+		if(c->x.done || SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
 			break;
 		const uint64_t now = quic_now_ms();
 		if(now >= deadline)
@@ -624,7 +624,7 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
 			const struct qstream *req = find_stream(c, c->x.req_sid);
 			uint64_t unacked = 0;
 			if(c->x.status == 0 && req != NULL &&
-			   SSL_get_stream_write_buf_used(req->ssl, &unacked) == 1 && unacked > 0)
+			   (SSL_get_stream_write_buf_used(req->ssl, &unacked) != 1 || unacked > 0))
 			{
 				c->x.lost = true;
 				break;
@@ -633,6 +633,11 @@ static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_u
 		}
 		quic_wait(c->ssl, c->fd, probe != 0 && probe < deadline ? probe : deadline);
 	}
+
+	// Closed or reset by the upstream before any response, e.g., a Stateless
+	// Reset after a restart: the query is safe to send again on a new connection
+	if(c->x.status == 0 && SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
+		c->x.lost = true;
 
 	// A cleanly closed request stream carrying a 200 with a non-empty body
 	// is the only success; anything else fails closed.
@@ -827,8 +832,8 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 		return -1;
 
 	// One budget for the whole exchange (both attempts share it). A pooled
-	// connection the upstream lost while idle is replaced once by a fresh one;
-	// any other failure fails closed.
+	// connection the upstream lost, closed or reset before answering is replaced
+	// once by a fresh one; any other failure fails closed.
 	const uint64_t deadline = quic_now_ms() + QUIC_EXCHANGE_TIMEOUT_MS;
 
 	for(int attempt = 0; attempt < 2; attempt++)

@@ -391,14 +391,17 @@ except Exception as exc:
     AIOQUIC_IMPORT_ERROR = repr(exc)
 
 
-# The DoH3 listener's event loop and server, for h3_forget()
-H3_STATE = {}
+# The DoH3 listener's event loop and server, for h3_forget(), and the reset
+# tokens of the connections it forgot with SIGUSR2
+H3_STATE = {"resets": {}}
 
 
 def h3_forget(signum, frame):
-    """SIGUSR1: make the DoH3 listener forget its connections."""
+    """SIGUSR1: make the DoH3 listener forget its connections, SIGUSR2: and
+    answer their packets with a Stateless Reset."""
     if "loop" in H3_STATE:
-        H3_STATE["loop"].call_soon_threadsafe(H3_STATE["forget"])
+        H3_STATE["loop"].call_soon_threadsafe(H3_STATE["forget"],
+                                              signum == signal.SIGUSR2)
 
 
 def start_h3_listener():
@@ -410,15 +413,19 @@ def start_h3_listener():
     if not HAVE_AIOQUIC:
         return False
 
-    def forget():
+    def forget(reset):
         # Drop every connection silently, as a restarted server would: nothing
-        # more is sent on them and their packets are ignored from now on
+        # more is sent on them and their packets are ignored from now on. With
+        # reset, they are answered as by a server that kept its reset key
         server = H3_STATE["server"]
         for proto in set(server._protocols.values()):
             proto.transmit = lambda: None
             if proto._timer is not None:
                 proto._timer.cancel()
                 proto._timer = None
+            if reset:
+                for cid in proto._quic._host_cids:
+                    H3_STATE["resets"][cid.cid] = cid.stateless_reset_token
         server._protocols.clear()
 
     H3_STATE["forget"] = forget
@@ -466,9 +473,27 @@ def start_h3_listener():
         config = QuicConfiguration(is_client=False, alpn_protocols=["h3"],
                                    idle_timeout=10.0)
         config.load_cert_chain(CERT, CERT)
-        H3_STATE["server"] = await quic_serve(DOH3_ADDR[0], DOH3_ADDR[1],
-                                           configuration=config,
-                                           create_protocol=DoH3Protocol)
+        server = await quic_serve(DOH3_ADDR[0], DOH3_ADDR[1],
+                                  configuration=config,
+                                  create_protocol=DoH3Protocol)
+        H3_STATE["server"] = server
+        receive = server.datagram_received
+        cid_len = config.connection_id_length
+
+        def datagram_received(data, addr):
+            token = None
+            if len(data) > 1 + cid_len and not data[0] & 0x80:
+                token = H3_STATE["resets"].get(data[1:1 + cid_len])
+            if token is None:
+                receive(data, addr)
+                return
+            # Stateless Reset (RFC 9000 10.3): a short header, unpredictable
+            # bits and the token, shorter than the packet it answers
+            size = max(21, min(len(data) - 1, 43))
+            server._transport.sendto(bytes([0x40 | (os.urandom(1)[0] & 0x3f)]) +
+                                     os.urandom(size - 17) + token, addr)
+
+        server.datagram_received = datagram_received
 
     def _run():
         loop = asyncio.new_event_loop()
@@ -604,6 +629,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     signal.signal(signal.SIGUSR1, h3_forget)
+    signal.signal(signal.SIGUSR2, h3_forget)
 
     # HTTP/3 needs aioquic. dotdoh.bats requires DoH3, so surface the exact
     # reason (import error) rather than a bare "not available".

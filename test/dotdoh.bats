@@ -466,6 +466,25 @@ print("%.1f" % ask(a, "a2-%s.dnssec" % tag))
   [[ "${ok}" -eq 4 ]]
 }
 
+@test "dotdoh-client: queries after the DoH3 upstream reset its connections are answered" {
+  local i conns ok=0
+  for i in 1 2 3 4 5 6; do
+    dig +short +tries=1 +time=8 $(proxy_at 4) "slow-h3-reset-${i}.ftl" > /dev/null &
+  done
+  wait
+  # The shim forgets every connection and answers it with a Stateless Reset
+  pkill -USR2 -f "python3 test/dotdoh_shim.py"
+  sleep 0.5
+  conns=$(grep -c '^doh3-conn$' "$SHIM_PAD_LOG" || true)
+  for i in 1 2 3 4; do
+    dig +short +tries=1 +time=3 $(proxy_at 4) "h3-reset-${i}.ftl" > /dev/null && ok=$((ok + 1))
+  done
+  # The first query is retried on one new connection, which then serves the rest
+  conns=$(( $(grep -c '^doh3-conn$' "$SHIM_PAD_LOG" || true) - conns ))
+  printf "answered: %s of 4, new connections: %s\n" "${ok}" "${conns}"
+  [[ "${ok}" -eq 4 && "${conns}" -eq 1 ]]
+}
+
 @test "dotdoh-client: idle DoH3 connections expire while one stays in use" {
   local i open
   for i in 1 2 3 4 5 6; do
