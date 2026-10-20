@@ -487,6 +487,7 @@ void cleanup(const int ret)
 	// while civetweb worker threads were still handling requests against it,
 	// since mg_stop() only runs inside http_terminate()
 	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
+	crash_watchdog_progress();
 	http_terminate();
 
 	// Terminate API

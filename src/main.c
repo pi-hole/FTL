@@ -223,6 +223,7 @@ int main (int argc, char *argv[])
 		// inside its periodic export on the shared in-memory connection
 		// or the daily cleanup, which locks the disk file. Let it return
 		// before the final export touches either
+		crash_watchdog_progress();
 		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
 		crash_watchdog_progress();
 		if(!joined)

@@ -21,6 +21,7 @@
 #endif
 #include <sys/mman.h>    // mmap() - alternate signal stack with a guard page
 #include <semaphore.h>   // sem_post() - async-signal-safe wakeup of the crash watchdog
+#include <stdatomic.h>   // atomic_exchange() - crash watchdog progress flag
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -50,7 +51,7 @@ volatile int exit_code = EXIT_SUCCESS;
 #define CRASH_EXIT_TIMEOUT (DB_THREAD_JOIN_TIMEOUT + 10)
 static sem_t crash_sem;
 static volatile sig_atomic_t crash_watchdog_ready = 0;
-static volatile sig_atomic_t crash_shutdown_progress = 0;
+static atomic_bool crash_shutdown_progress = false;
 
 // Saved by the SIGTERM handler for deferred logging in the main loop.
 // Only pid_t and uid_t (both integer types) are safe to write from a
@@ -1405,21 +1406,18 @@ static void *crash_watchdog(void *arg)
 	while(sem_wait(&crash_sem) != 0 && errno == EINTR);
 
 	// Every finished shutdown step restarts the countdown
-	crash_shutdown_progress = 0;
+	atomic_store(&crash_shutdown_progress, false);
 	unsigned int left = CRASH_EXIT_TIMEOUT;
 	while(left > 0)
 	{
 		sleep(1);
-		if(crash_shutdown_progress)
-		{
-			crash_shutdown_progress = 0;
+		if(atomic_exchange(&crash_shutdown_progress, false))
 			left = CRASH_EXIT_TIMEOUT;
-		}
 		else
 			left--;
 	}
 
-	static const char msg[] = "FTL did not shut down after the crash, exiting now\n";
+	static const char msg[] = "CRIT: FTL did not shut down after the crash, exiting now\n";
 	log_ftl_raw(msg, sizeof(msg) - 1);
 	// Nothing left to do if this fails, we exit right after
 	const ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
@@ -1430,7 +1428,7 @@ static void *crash_watchdog(void *arg)
 // Tell the crash watchdog the shutdown is still moving
 void crash_watchdog_progress(void)
 {
-	crash_shutdown_progress = 1;
+	atomic_store(&crash_shutdown_progress, true);
 }
 
 // Start the crash watchdog. Threads do not survive fork(), so call this in
