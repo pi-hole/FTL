@@ -16,7 +16,9 @@
 
 #include "dnsmasq.h"
 
-static struct blockdata *keyblock_free;
+static struct blockdata *new_block(void);
+
+static struct blockdata *keyblock_free, *fallback;
 static unsigned int blockdata_count, blockdata_hwm, blockdata_alloced;
 
 static void add_blocks(int n)
@@ -48,7 +50,11 @@ void blockdata_init(void)
   /* Note that daemon->cachesize is enforced to have non-zero size if OPT_DNSSEC_VALID is set */  
   if (option_bool(OPT_DNSSEC_VALID))
     add_blocks(daemon->cachesize);
-}
+
+  /* make sure we have one block to fall back on. */
+  if (!(fallback = new_block()))
+    die(_("Blockdata init: no memory"), NULL, EC_MISC);
+ }
 
 void blockdata_report(void)
 {
@@ -84,36 +90,47 @@ static struct blockdata *blockdata_alloc_real(int fd, char *data, size_t len)
   struct blockdata *block, *ret = NULL;
   struct blockdata **prev = &ret;
   size_t blen;
-
-  do
-    {
-      if (!(block = new_block()))
-	{
-	  /* failed to alloc, free partial chain */
-	  blockdata_free(ret);
-	  return NULL;
-	}
-
-      if ((blen = len > KEYBLOCK_LEN ? KEYBLOCK_LEN : len) > 0)
-	{
-	  if (data)
-	    {
-	      memcpy(block->key, data, blen);
-	      data += blen;
-	    }
-	  else if (!read_write(fd, block->key, blen, RW_READ))
-	    {
-	      /* failed read free partial chain */
-	      blockdata_free(ret);
-	      return NULL;
-	    }
-	}
-      
-      len -= blen;
-      *prev = block;
-      prev = &block->next;
-    } while (len != 0);
+  int fail;
   
+  for (fail = 0; len != 0; len -= blen)
+    {
+       blen = len > KEYBLOCK_LEN ? KEYBLOCK_LEN : len;
+
+       if (!fail)
+	{
+	  if ((block = new_block()))
+	    {
+	      *prev = block;
+	      prev = &block->next;
+	    }
+	  else
+	    {
+	      /* Failed to alloc, use the pre-allocated fall-back. 
+		 This allows us to always read the specified amount of data from the fd. */
+	      fail = 1;
+	      block = fallback;
+	    }
+	}
+
+       if (data)
+	 {
+	   memcpy(block->key, data, blen);
+	   data += blen;
+	 }
+       else if (!read_write(fd, block->key, blen, RW_READ))
+	 {
+	   fail = 1;
+	   break;
+	 }
+    }
+  
+  if (fail)
+    {
+      /* failed, free partial chain */
+      blockdata_free(ret);
+      return NULL;
+    }
+
   return ret;
 }
 
@@ -235,6 +252,14 @@ void blockdata_write(struct blockdata *block, size_t len, int fd)
     }
 }
 
+/* NOTE: this can fail (NULL return) for three possible reasons.
+   1) len == 0 - trivial
+   2) end of stream. 
+   3) malloc failure when allocating blocks.
+
+   Unless EOF is encountered, len octets will always be read from the stream,
+   even in memory allocation fails.
+*/
 struct blockdata *blockdata_read(int fd, size_t len)
 {
   return blockdata_alloc_real(fd, NULL, len);
