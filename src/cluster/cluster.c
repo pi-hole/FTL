@@ -31,6 +31,8 @@
 #include "config/password.h"
 // thread_names, thread_sleepms
 #include "signals.h"
+// totp_last_counter(), totp_observe_counter()
+#include "api/api.h"
 // prctl()
 #include <sys/prctl.h>
 
@@ -561,6 +563,13 @@ static void poll_peer(struct cluster_peer *peer)
 	else
 		peer->clock_agrees = false;
 
+
+	// The last TOTP time step this peer accepted. Acted on after the poll
+	// loop, where this round's configuration facts are known - here it is only
+	// recorded
+	const cJSON *totp_counter = cJSON_GetObjectItem(node, "totp_counter");
+	peer->totp_counter = cJSON_IsNumber(totp_counter) && totp_counter->valuedouble > 0.0 ?
+	                     (uint64_t)totp_counter->valuedouble : 0;
 
 	const cJSON *dhcp_active = status_item(node, "dhcp", "active");
 	peer->dhcp_active = cJSON_IsTrue(dhcp_active);
@@ -2892,6 +2901,17 @@ void cluster_local_status(cJSON *node)
 		cJSON_AddStringToObject(dhcp, "leases", leaseshash);
 	cJSON_AddItemToObject(node, "dhcp", dhcp);
 
+	// The last TOTP time step accepted here, so a cluster that shares the
+	// second-factor secret spends a code once across all of its nodes rather
+	// than once per node. Only where the secret actually travels: elsewhere
+	// the step is about a different secret and means nothing to a peer
+	if(credentials_travel)
+	{
+		const uint64_t counter = totp_last_counter();
+		if(counter > 0)
+			cJSON_AddNumberToObject(node, "totp_counter", (double)counter);
+	}
+
 	// Read under the lock the cluster thread publishes them under, so a peer
 	// never sees a version next to a fingerprint it does not belong to
 	cluster_lock();
@@ -3353,6 +3373,16 @@ static void cluster_round(void)
 
 	for(unsigned int i = 0; i < num_peers; i++)
 		poll_peer(&peers[i]);
+
+	// A TOTP code accepted on a peer is spent here too, so one code logs in
+	// once across the cluster rather than once per node. Only where the secret
+	// is shared (credentials travel) and the peer's clock is close enough that
+	// the step counts the same on both - otherwise the step is about a
+	// different secret, or a different clock, and means nothing here
+	if(credentials_travel)
+		for(unsigned int i = 0; i < num_peers; i++)
+			if(!peers[i].is_self && peers[i].clock_agrees && peers[i].totp_counter > 0)
+				totp_observe_counter(peers[i].totp_counter);
 
 	// The polls above can take a while on a slow member
 	if(stopping())

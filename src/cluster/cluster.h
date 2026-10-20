@@ -181,6 +181,7 @@ struct cluster_peer {
 	bool dhcp_active;                // peer is currently serving DHCP
 	char leaseshash[CLUSTER_HASHLEN];// ...and what its DHCP lease file hashes to
 	char leases_merged[CLUSTER_HASHLEN]; // the leaseshash we last merged into our copy, so an unchanged file is not pulled again
+	uint64_t totp_counter;           // the last TOTP time step it accepted, shared so a code spends once cluster-wide
 	bool sees_dhcp;                  // ...or can see a node that is
 	char sees_anchor_id[CLUSTER_HASHLEN]; // the lowest identity it sees serving that could hold the address too
 	// What the other members say about this one, for a round in which this

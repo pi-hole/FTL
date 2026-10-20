@@ -327,6 +327,27 @@ enum totp_status verifyTOTP(const uint32_t incode)
 	return TOTP_INVALID;
 }
 
+// The last accepted time step, for the cluster to publish so a code used on one
+// node is known to be spent on the others
+uint64_t totp_last_counter(void)
+{
+	pthread_mutex_lock(&totp_lock);
+	const uint64_t counter = last_counter;
+	pthread_mutex_unlock(&totp_lock);
+	return counter;
+}
+
+// A time step a peer has already accepted. Raising this node's guard to it
+// makes that step, and any earlier one, unusable here too - the same code
+// cannot be replayed from node to node while it is still numerically valid
+void totp_observe_counter(const uint64_t counter)
+{
+	pthread_mutex_lock(&totp_lock);
+	if(counter > last_counter)
+		last_counter = counter;
+	pthread_mutex_unlock(&totp_lock);
+}
+
 // Print TOTP code to stdout (for CLI use)
 int printTOTP(void)
 {
