@@ -123,11 +123,18 @@ void *timer(void *val)
 		}
 		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
-			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
-			          timer_target_status ? "enabled" : "disabled");
+			// The API takes the config lock before timer_lock, so only
+			// try it here and retry on the next tick while a config
+			// change is in progress
+			if(trylock_config())
+			{
+				log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+				          timer_target_status ? "enabled" : "disabled");
 
-			set_blockingstatus(timer_target_status);
-			timer_delay = -1.0;
+				set_blockingstatus(timer_target_status);
+				unlock_config();
+				timer_delay = -1.0;
+			}
 		}
 		pthread_mutex_unlock(&timer_lock);
 		thread_sleepms(TIMER, SLEEPING_TIME * 1000);

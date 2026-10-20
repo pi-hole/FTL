@@ -121,6 +121,7 @@ bool import_aliasclients(sqlite3 *db)
 			log_err("import_aliasclients() - SQL error step: %s", sqlite3_errstr(rc));
 			checkFTLDBrc(rc);
 			sqlite3_finalize(stmt);
+			counters->aliasclients = imported;
 			return false;
 		}
 
@@ -134,6 +135,7 @@ bool import_aliasclients(sqlite3 *db)
 			log_err("Memory error in import_aliasclients()");
 			checkFTLDBrc(rc);
 			sqlite3_finalize(stmt);
+			counters->aliasclients = imported;
 			return false;
 		}
 
@@ -170,6 +172,9 @@ bool import_aliasclients(sqlite3 *db)
 		free(aliasclient_str);
 		imported++;
 	}
+
+	// reset_aliasclient() has nothing to look up without alias-clients
+	counters->aliasclients = imported;
 
 	// Finalize statement
 	if ((rc = sqlite3_finalize(stmt)) != SQLITE_OK)
@@ -230,8 +235,9 @@ static int get_aliasclient_ID(sqlite3 *db, const clientsData *client)
 
 void reset_aliasclient(sqlite3 *db, clientsData *client)
 {
-	// Return early if database is known to be broken
-	if(FTLDBerror())
+	// Return early if no alias-client is configured or if the database is
+	// known to be broken
+	if(counters->aliasclients == 0 || FTLDBerror())
 		return;
 
 	// Open pihole-FTL.db database file if needed

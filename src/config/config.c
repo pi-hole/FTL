@@ -37,6 +37,10 @@
 #include "files.h"
 // restart_ftl()
 #include "signals.h"
+// cli_mode
+#include "args.h"
+// _Atomic
+#include <stdatomic.h>
 
 // Global variables
 struct config config = { 0 };
@@ -196,6 +200,16 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 	}
 	return true;
 }
+// Passwords, write-only items and the password hashes are never logged, and
+// only sessions allowed to change the configuration may read the hashes
+bool is_secret_conf_item(const struct conf_item *conf_item)
+{
+	return conf_item->t == CONF_PASSWORD ||
+	       (conf_item->f & FLAG_WRITE_ONLY) ||
+	       strcmp(conf_item->k, "webserver.api.pwhash") == 0 ||
+	       strcmp(conf_item->k, "webserver.api.app_pwhash") == 0;
+}
+
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 {
 	// Sanity check
@@ -233,6 +247,28 @@ unsigned int __attribute__ ((pure)) config_path_depth(char **paths)
 	// MAX_CONFIG_PATH_DEPTH
 	return MAX_CONFIG_PATH_DEPTH;
 
+}
+
+// Serializes every read-modify-write of the live config: whoever takes a copy
+// with duplicate_config() and installs it with replace_config() holds this
+// from before the copy until the result is written to disk, so a concurrent
+// change cannot be overwritten by an outdated copy. Taken before lock_shm().
+// The resolver, housekeeper and timer threads only try it and retry later
+static pthread_mutex_t config_write_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void lock_config(void)
+{
+	pthread_mutex_lock(&config_write_lock);
+}
+
+bool trylock_config(void)
+{
+	return pthread_mutex_trylock(&config_write_lock) == 0;
+}
+
+void unlock_config(void)
+{
+	pthread_mutex_unlock(&config_write_lock);
 }
 
 void duplicate_config(struct config *dst, struct config *src)
@@ -593,7 +629,7 @@ void initConfig(struct config *conf)
 	conf->dns.revServers.f = FLAG_RESTART_FTL;
 
 	conf->dns.upstreamCA.k = "dns.upstreamCA";
-	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses the tls:// or https:// scheme.";
+	conf->dns.upstreamCA.h = "Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH). If left empty, the system default trust store is used. Only relevant when at least one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or quic://).";
 	conf->dns.upstreamCA.a = cJSON_CreateStringReference("A path to a PEM CA bundle, or empty for the system default trust store");
 	conf->dns.upstreamCA.t = CONF_STRING;
 	conf->dns.upstreamCA.d.s = (char*)"";
@@ -613,6 +649,13 @@ void initConfig(struct config *conf)
 	conf->dns.dot.d.b = true;
 	conf->dns.dot.f = FLAG_RESTART_FTL;
 	conf->dns.dot.c = validate_stub;
+
+	conf->dns.doq.k = "dns.doq";
+	conf->dns.doq.h = "Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL terminates DoQ connections directly (RFC 9250) so downstream clients can use this Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS certificate (the same one configured for the webserver) and an FTL built with QUIC support.";
+	conf->dns.doq.t = CONF_BOOL;
+	conf->dns.doq.d.b = true;
+	conf->dns.doq.f = FLAG_RESTART_FTL;
+	conf->dns.doq.c = validate_stub;
 
 	// sub-struct dns.cache
 	conf->dns.domain.name.k = "dns.domain.name";
@@ -674,7 +717,7 @@ void initConfig(struct config *conf)
 	{
 		struct enum_options blockingmode[] =
 		{
-			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture, section 2.5.2." },
+			{ get_blocking_mode_str(MODE_NULL), "In NULL mode, which is both the default and recommended mode for Pi-hole FTLDNS, blocked queries will be answered with the \"unspecified address\" (0.0.0.0 or ::). The \"unspecified address\" is a reserved IP address specified by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2." },
 			{ get_blocking_mode_str(MODE_IP_NODATA_AAAA), "In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4 addresses of your Pi-hole. Blocked AAAA queries will be answered with NODATA-IPV6 and clients will only try to reach your Pi-hole over its static IPv4 address." },
 			{ get_blocking_mode_str(MODE_IP), "In IP mode, blocked queries will be answered with the local IP addresses of your Pi-hole." },
 			{ get_blocking_mode_str(MODE_NX), "In NXDOMAIN mode, blocked queries will be answered with an empty response (i.e., there won't be an answer section) and status NXDOMAIN. A NXDOMAIN response should indicate that there is no such domain to the client making the query." },
@@ -930,6 +973,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.interval.h = "Interval in seconds between successive synchronization attempts with the NTP server";
 	conf->ntp.sync.interval.a = cJSON_CreateStringReference("A positive integer value in seconds");
 	conf->ntp.sync.interval.t = CONF_UINT;
+	conf->ntp.sync.interval.f = FLAG_RESTART_FTL;
 	conf->ntp.sync.interval.d.ui = 3600;
 	conf->ntp.sync.interval.c = validate_stub; // Only type-based checking
 
@@ -938,7 +982,7 @@ void initConfig(struct config *conf)
 	conf->ntp.sync.count.a = cJSON_CreateStringReference("A positive integer value");
 	conf->ntp.sync.count.t = CONF_UINT;
 	conf->ntp.sync.count.d.ui = 8;
-	conf->ntp.sync.count.c = validate_stub; // Only type-based checking
+	conf->ntp.sync.count.c = validate_ui_min_1;
 
 	conf->ntp.sync.rtc.set.k = "ntp.sync.rtc.set";
 	conf->ntp.sync.rtc.set.h = "Should FTL update a real-time clock (RTC) if available?";
@@ -1078,7 +1122,7 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.c = validate_domain;
 
 	conf->webserver.acl.k = "webserver.acl";
-	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
+	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
 	conf->webserver.acl.f = FLAG_RESTART_FTL;
 	conf->webserver.acl.t = CONF_STRING;
@@ -1155,7 +1199,7 @@ void initConfig(struct config *conf)
 	conf->webserver.tls.cert.f = FLAG_RESTART_FTL;
 	conf->webserver.tls.cert.t = CONF_STRING;
 	conf->webserver.tls.cert.d.s = (char*)(PIHOLE_INSTALL_DIR "/tls.pem");
-	conf->webserver.tls.cert.c = validate_filepath;
+	conf->webserver.tls.cert.c = validate_filepath_empty;
 
 	// sub-struct paths
 	conf->webserver.paths.webroot.k = "webserver.paths.webroot";
@@ -1812,6 +1856,44 @@ void reset_config_default(struct conf_item *conf_item)
 }
 
 
+// Remove the entries of a list that its validator rejects on their own and
+// return whether what remains passes, leaving the rejection in valerr otherwise
+static bool drop_invalid_entries(struct conf_item *conf_item, char valerr[VALIDATOR_ERRBUF_LEN])
+{
+	cJSON *array = conf_item->v.json;
+	if(!cJSON_IsArray(array))
+		return false;
+
+	// The validator sees a one-element list, so its message names index 0
+	char prefix[128];
+	snprintf(prefix, sizeof(prefix), "%s[0]: ", conf_item->k);
+	const size_t prefix_len = strlen(prefix);
+
+	unsigned int idx = 0;
+	for(cJSON *item = array->child, *next = NULL; item != NULL; item = next, idx++)
+	{
+		next = item->next;
+
+		cJSON *single = cJSON_CreateArray();
+		cJSON_AddItemToArray(single, cJSON_Duplicate(item, true));
+		union conf_value value = { .json = single };
+		char itemerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		const bool valid = conf_item->c(&value, conf_item->k, itemerr);
+		cJSON_Delete(single);
+		if(valid)
+			continue;
+
+		const char *reason = strncmp(itemerr, prefix, prefix_len) == 0 ? itemerr + prefix_len : itemerr;
+		log_err("Invalid value: %s[%u]: %s", conf_item->k, idx, reason);
+		log_err("----> %s[%u] has been removed", conf_item->k, idx);
+		cJSON_Delete(cJSON_DetachItemViaPointer(array, item));
+	}
+
+	// Rules spanning several entries only show on the list as a whole
+	valerr[0] = '\0';
+	return conf_item->c(&conf_item->v, conf_item->k, valerr);
+}
+
 /**
  * @brief Hold a configuration to the same rules every way of setting it obeys.
  *
@@ -1819,8 +1901,9 @@ void reset_config_default(struct conf_item *conf_item)
  * items, which a validator seeing one value at a time cannot express.
  *
  * @param conf Configuration to check
- * @param reset If true, an offending item is reset to its default and the check
- *              continues; if false, the first rejection ends it
+ * @param reset If true, an offending item is reset to its default (a list only
+ *              loses its offending entries) and the check continues; if false,
+ *              the first rejection ends it
  * @param err Buffer receiving the rejection, may be NULL when \p reset is true
  * @return Whether the configuration is acceptable
  */
@@ -1842,6 +1925,10 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
 			return false;
 		}
+
+		// A list loses only the entries that fail, not every entry it holds
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && drop_invalid_entries(conf_item, valerr))
+			continue;
 
 		// The validator's message opens with the key, so it is not repeated
 		log_err("Invalid value: %s", valerr);
@@ -2095,6 +2182,7 @@ enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }
 
+// The caller holds lock_config()
 void set_blockingstatus(bool enabled)
 {
 	// If dnsmasq failed to start, we do not allow to change the blocking status
@@ -2155,6 +2243,8 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
+	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
 	memcpy(&old_conf, &config, sizeof(struct config));
@@ -2167,16 +2257,39 @@ void replace_config(struct config *newconf)
 
 	// Unlock shared memory
 	unlock_shm();
+
+	// Drop the cached answers and verdicts of the previous blocking status as
+	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	if(blocking_changed && !cli_mode && !dnsmasq_failed)
+		raise(SIGHUP);
+}
+
+// Set when reread_config() found a config change in progress and left the
+// reread to the housekeeper thread
+static _Atomic bool reread_deferred = false;
+
+bool reread_config_deferred(void)
+{
+	return reread_deferred;
 }
 
 void reread_config(void)
 {
+	// Never wait for the config lock here: this also runs in the resolver's
+	// main thread. The housekeeper thread retries until it gets the lock
+	if(!trylock_config())
+	{
+		reread_deferred = true;
+		return;
+	}
+	reread_deferred = false;
 
 	// Create checksum of config file
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!sha256sum(GLOBALTOMLPATH, checksum, false))
 	{
 		log_err("Unable to create checksum of %s, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2184,6 +2297,7 @@ void reread_config(void)
 	if(memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
 	{
 		log_debug(DEBUG_CONFIG, "Checksum of %s has not changed, not re-reading config file", GLOBALTOMLPATH);
+		unlock_config();
 		return;
 	}
 
@@ -2236,6 +2350,8 @@ void reread_config(void)
 	// However, we do need to write the custom.list file as this file can change
 	// at any time and is automatically reloaded by dnsmasq
 	write_custom_list();
+
+	unlock_config();
 
 	// If we need to restart FTL, we do so now
 	if(restart)

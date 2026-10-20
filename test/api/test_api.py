@@ -449,6 +449,16 @@ class TestLuaServerPages:
         r = api_session.head(f"{FTL_URL}/broken_lua", timeout=5)
         assert r.status_code == 404
 
+    def test_root_not_served_by_default(self, api_session):
+        """/ under a Host other than webserver.domain follows serve_all too."""
+        set_config(api_session, "webserver.serve_all", False)
+        r = api_session.get(f"{FTL_URL}/", allow_redirects=False, timeout=5)
+        assert r.status_code == 404
+        r = api_session.get(f"{FTL_URL}/", headers={"Host": "pi.hole"},
+                            allow_redirects=False, timeout=5)
+        assert r.status_code == 308
+        assert r.headers["Location"].endswith("/admin/")
+
     def test_lua_page_generates_proper_backtrace(self, api_session):
         """Lua server page generates proper backtrace on error."""
         set_config(api_session, "webserver.serve_all", True)
@@ -464,6 +474,19 @@ class TestLuaServerPages:
         r = api_session.get(f"{FTL_URL}/broken_lua", timeout=5)
         lines = r.text.splitlines()
         assert lines[0] == "Hello, world 1!", f"Unexpected response:\n{r.text}"
+
+    def test_lp_redirect_stays_on_host(self):
+        """The .lp redirect never points to another host (serve_all is on)."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("//evil.example/x.lp", "/%5Cevil.example/x.lp"):
+            raw = _raw_http(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            "Connection: close\r\n\r\n".encode())
+            head = raw.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+            location = [line.split(":", 1)[1].strip()
+                        for line in head.split("\r\n")[1:]
+                        if line.lower().startswith("location:")]
+            assert location, f"No redirect for {path}:\n{head}"
+            assert not location[0].startswith(("//", "/\\")), location[0]
 
 
 # ---------------------------------------------------------------------------
@@ -1101,7 +1124,10 @@ class TestInfo:
         s = data["system"]
         assert "uptime" in s
         assert s["memory"]["ram"]["total"] > 0
-        assert s["cpu"]["nprocs"] > 0
+        # All CPUs present, not only those in FTL's affinity mask
+        with open("/sys/devices/system/cpu/present") as f:
+            ranges = [r.split("-") for r in f.read().strip().split(",")]
+        assert s["cpu"]["nprocs"] == sum(int(r[-1]) - int(r[0]) + 1 for r in ranges)
         assert "ftl" in s
         assert "%mem" in s["ftl"]
         assert "%cpu" in s["ftl"]
@@ -1170,6 +1196,40 @@ class TestLogs:
     def test_webserver_log(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/logs/webserver", timeout=5))
         assert len(data["log"]) > 0
+
+    def test_dnsmasq_log_wraps(self, api_session):
+        """Once the log has wrapped, it returns its last 512 messages in order
+        and nextID picks up exactly where an earlier reply ended."""
+        import socket
+        import struct
+
+        # dnsmasq logs pi.hole queries but FTL does not count them, so they
+        # fill the log without changing what other tests expect
+        query = struct.pack('!HHHHHH', 0x4242, 0x0100, 1, 0, 0, 0) + \
+            b'\x02pi\x04hole\x00' + struct.pack('!HH', 1, 1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            for _ in range(600):
+                sock.sendto(query, ('127.0.0.1', 53))
+                sock.recvfrom(512)
+        finally:
+            sock.close()
+
+        url = f"{FTL_URL}/api/logs/dnsmasq"
+        data = _j(api_session.get(url, timeout=5))
+        log, next_id = data["log"], data["nextID"]
+        assert len(log) == 512, len(log)
+        stamps = [entry["timestamp"] for entry in log]
+        assert stamps == sorted(stamps)
+
+        # Lines logged in between can only add to the end of these replies
+        tail = _j(api_session.get(f"{url}?nextID={next_id - 10}", timeout=5))["log"]
+        assert tail[:10] == log[-10:], json.dumps(tail[:10], indent=2)
+        oldest = _j(api_session.get(f"{url}?nextID=0", timeout=5))["log"]
+        assert len(oldest) == 512, len(oldest)
+        newer = _j(api_session.get(f"{url}?nextID={next_id}", timeout=5))["log"]
+        assert all(entry["timestamp"] >= stamps[-1] for entry in newer)
 
 
 # ---------------------------------------------------------------------------
