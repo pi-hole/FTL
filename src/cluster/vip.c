@@ -858,6 +858,21 @@ bool vip_claim(const char *address)
 		vip_release(claimed_address);
 	}
 
+	// ...and the same where cluster.vip.interface names another interface
+	// than the one this node placed it on
+	char configured[CLUSTER_STRLEN] = "", on[IF_NAMESIZE] = "";
+	lock_shm();
+	strncpy(configured, config.cluster.vip.interface.v.s, sizeof(configured) - 1);
+	unlock_shm();
+	if(strlen(configured) > 0 && vip_was_placed(address) &&
+	   vip_present_on(address, on, NULL) && strcmp(on, configured) != 0)
+	{
+		log_info("cluster: cluster.vip.interface is %s, moving %s there from %s",
+		         configured, address, on);
+		if(!vip_release(address))
+			return false;
+	}
+
 	char present_on[IF_NAMESIZE] = "";
 	unsigned int bits = 0;
 	if(vip_present_on(address, present_on, &bits))
