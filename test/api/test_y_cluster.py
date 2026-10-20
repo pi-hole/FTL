@@ -418,6 +418,14 @@ class TestClusterStatus:
         assert "wants_credentials" in conf
         assert "accepts_credentials" in conf
 
+    def test_node_reports_conflicts(self, cluster, api_session):
+        """Two DHCP servers or two holders of the virtual IP are shown on the
+        page of the node that sees them. This node serves neither."""
+        data = _j(api_session.get(f"{FTL_URL}/api/cluster/status", timeout=10))
+        node = data["cluster"]["node"]
+        assert node["dhcp"]["conflict"] is False, json.dumps(node["dhcp"])
+        assert node["vip"]["conflict"] is False, json.dumps(node["vip"])
+
     def test_lists_say_whether_a_rebuild_is_owed(self, cluster, api_session):
         """The list fingerprint names the tables on disk, which after a pull are
         the peer's - so it cannot say whether this node has built anything from

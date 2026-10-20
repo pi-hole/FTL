@@ -167,6 +167,7 @@ struct cluster_peer {
 	bool unknown_warned;               // ...which is said once, not every round
 	char error[CLUSTER_STRLEN];      // why the last round failed ("" if it did not)
 	unsigned int rounds_down;        // consecutive rounds this peer was not
+	double down_since;               // ...and when the first of them failed
 	double last_seen;
 	bool reachable;
 	// Whether the last request got an answer of any kind. A peer that
@@ -291,6 +292,11 @@ bool cluster_leave_now(char *errbuf, bool *peers_told);
 // Whether the cluster thread is actually there. `cluster.enabled` says what the
 // administrator asked for, this says what happened
 bool cluster_running(void);
+
+// A peer read this node's status, which proves it alive where this node cannot
+// reach it. Recorded by the web server, read by the cluster thread
+void cluster_note_poll(const char *from);
+double cluster_polled_at(void);
 
 // Set when more than one member answers with this node's identity - two machines
 // carrying the same cluster.state. Read where a node decides whether to serve

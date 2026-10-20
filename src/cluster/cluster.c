@@ -274,6 +274,8 @@ static void mark_unreachable(struct cluster_peer *peer, const char *err)
 {
 	if(peer->reachable || peer->rounds_down == 0)
 		log_info("cluster: %s unreachable (%s)", peer->url, err);
+	if(peer->rounds_down == 0)
+		peer->down_since = double_time();
 
 	peer->reachable = false;
 	peer->rounds_down++;
@@ -1110,6 +1112,30 @@ bool duplicate_identity = false;
 bool cluster_running(void)
 {
 	return running;
+}
+
+// When another node last read our status with a signed request
+static double polled_at = 0.0;
+static pthread_mutex_t polled_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void cluster_note_poll(const char *from)
+{
+	// Our own entry in the member list is polled too
+	if(from == NULL || strcmp(from, cluster_node_id()) == 0)
+		return;
+
+	pthread_mutex_lock(&polled_lock);
+	polled_at = double_time();
+	pthread_mutex_unlock(&polled_lock);
+}
+
+double cluster_polled_at(void)
+{
+	pthread_mutex_lock(&polled_lock);
+	const double when = polled_at;
+	pthread_mutex_unlock(&polled_lock);
+
+	return when;
 }
 
 void cluster_leave(void)
@@ -2840,6 +2866,10 @@ void cluster_local_status(cJSON *node)
 	// node leaving the cluster needs in order to know whether handing DHCP
 	// over leaves anybody holding it
 	cJSON_AddBoolToObject(dhcp, "configured", cluster_dhcp_configured());
+	// ...and whether another node serves beside it
+	bool dhcp_conflict = false, vip_conflict = false;
+	cluster_conflicts(&dhcp_conflict, &vip_conflict);
+	cJSON_AddBoolToObject(dhcp, "conflict", dhcp_conflict);
 	// What this node's lease file hashes to, so a standby can tell whether
 	// its copy is still the one the serving node holds. Only the serving
 	// node's is worth anything, which is why it sits inside "dhcp"
@@ -2876,6 +2906,7 @@ void cluster_local_status(cJSON *node)
 	cJSON *vip = cJSON_CreateObject();
 	cJSON_AddStringToObject(vip, "address", address);
 	cJSON_AddBoolToObject(vip, "held", vip_held);
+	cJSON_AddBoolToObject(vip, "conflict", vip_conflict);
 	cJSON_AddItemToObject(node, "vip", vip);
 
 	// What the peers compare against to find out who holds the newest
