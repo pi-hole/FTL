@@ -683,6 +683,9 @@ int api_cluster_lists(struct ftl_conn *api)
 	void *ptr = NULL;
 	size_t size = 0u;
 
+	// Said before the archive is built, so an edit made after it is not
+	// counted as handed out
+	cluster_lists_handed();
 	const char *error = generate_cluster_zip(&zip, &ptr, &size);
 	if(error != NULL)
 		return send_json_error(api, 500,

@@ -301,6 +301,8 @@ extern bool duplicate_identity;
 void cluster_stamp_lists(void);
 // ...and the same for every setting this node holds no version of
 void cluster_stamp_config(void);
+// A peer was handed this node's lists, edits made here included
+void cluster_lists_handed(void);
 
 
 // Add this node's own status to the given JSON object
