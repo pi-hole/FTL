@@ -860,10 +860,11 @@
 
   [cluster.dhcp]
     # Hand DHCP over to another node when this one fails? One node serves DHCP and the
-    # others keep their DHCP server switched off until they are needed - which node that
-    # is follows from the node identities, so every node reaches the same answer on its
-    # own and there is nothing to configure. Only enable this when Pi-hole is your DHCP
-    # server on all cluster nodes.
+    # others keep their DHCP server switched off until they are needed. The node that
+    # serves keeps it, also when a node with a lower identity joins or comes back, and
+    # when none serves the node identities decide, so every node reaches the same answer
+    # on its own and there is nothing to configure. Only enable this when Pi-hole is your
+    # DHCP server on all cluster nodes.
     #
     # The dhcp.* settings are not synchronized, as they describe the network of each node,
     # so they have to be the same on every node by hand - static leases in particular.

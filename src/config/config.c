@@ -12,6 +12,8 @@
 #include "config/config.h"
 // cluster_stamp_items()
 #include "cluster/sync.h"
+// cluster_dhcp_startup()
+#include "cluster/dhcp.h"
 // set_and_check_password()
 #include "config/password.h"
 #include "config/toml_reader.h"
@@ -1279,7 +1281,7 @@ void initConfig(struct config *conf)
 	conf->cluster.sync.credentials.c = validate_stub; // Only type-based checking
 
 	conf->cluster.dhcp.failover.k = "cluster.dhcp.failover";
-	conf->cluster.dhcp.failover.h = "Hand DHCP over to another node when this one fails? One node serves DHCP and the others keep their DHCP server switched off until they are needed - which node that is follows from the node identities, so every node reaches the same answer on its own and there is nothing to configure. Only enable this when Pi-hole is your DHCP server on all cluster nodes.\n\n The dhcp.* settings are not synchronized, as they describe the network of each node, so they have to be the same on every node by hand - static leases in particular. Serving DHCP needs the CAP_NET_ADMIN capability, which a container only has when it is granted.";
+	conf->cluster.dhcp.failover.h = "Hand DHCP over to another node when this one fails? One node serves DHCP and the others keep their DHCP server switched off until they are needed. The node that serves keeps it, also when a node with a lower identity joins or comes back, and when none serves the node identities decide, so every node reaches the same answer on its own and there is nothing to configure. Only enable this when Pi-hole is your DHCP server on all cluster nodes.\n\n The dhcp.* settings are not synchronized, as they describe the network of each node, so they have to be the same on every node by hand - static leases in particular. Serving DHCP needs the CAP_NET_ADMIN capability, which a container only has when it is granted.";
 	conf->cluster.dhcp.failover.t = CONF_BOOL;
 	conf->cluster.dhcp.failover.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->cluster.dhcp.failover.d.b = false;
@@ -2436,6 +2438,8 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 				// never reach here, so log files are not created on
 				// pihole-FTL --config etc.
 				open_log_fds(false);
+				// Before dnsmasq's configuration is written from it
+				cluster_dhcp_startup(conf);
 				writeFTLtoml(true, NULL);
 				char errbuf[ERRBUF_SIZE] = { 0 };
 				write_dnsmasq_config(conf, DNSMASQ_INSTALL, errbuf);

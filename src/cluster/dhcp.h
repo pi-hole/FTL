@@ -64,5 +64,10 @@ void cluster_vip_round(bool mine);
 
 // Give the virtual IP address up when FTL stops
 void cluster_vip_shutdown(void);
+void cluster_shutdown(const bool restart);
+
+// Hold a persisted dhcp.active back at start-up until the cluster was asked
+struct config;
+void cluster_dhcp_startup(struct config *conf);
 
 #endif // CLUSTER_DHCP_H
