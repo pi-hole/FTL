@@ -3230,9 +3230,11 @@ static void catch_up(void)
 		peer->push_backoff = 0.0;
 		peer->retry_push_at = 0.0;
 
+		// For each item the peer holds a newer version, pins it through its
+		// environment or rejects it - its log says which
 		if(!taken)
 		{
-			log_info("cluster: %s holds a newer configuration and did not take ours",
+			log_info("cluster: %s kept its own values of the settings sent to it, its log says why",
 			         strlen(peer->name) > 0 ? peer->name : peer->url);
 			continue;
 		}
