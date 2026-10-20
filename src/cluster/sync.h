@@ -61,6 +61,10 @@ void cluster_item_stamps(double out[CONFIG_ELEMENTS]);
 void cluster_stamp_items(const bool which[CONFIG_ELEMENTS], const double when[CONFIG_ELEMENTS]);
 double cluster_newest_change(void);
 
+// What this node kept its own value of in the last push it was handed
+void cluster_note_refused(const char *items);
+void cluster_refused_items(char *out, const size_t outlen);
+
 // Fingerprint of the adlist table alone. Only a change here makes the blocking
 // database stale, and only then is a gravity run needed
 bool cluster_adlist_hash(char hash[CLUSTER_HASHLEN]);

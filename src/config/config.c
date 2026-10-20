@@ -2612,6 +2612,9 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 // to find out whether anything changed since it last told its peers, which is
 // cheaper by far than comparing every item on a timer
 volatile unsigned long config_generation = 0;
+// ...and the generation the last change made on this node produced. A change
+// taken from a peer moves the first and not this one
+volatile unsigned long config_local_generation = 0;
 
 // Date the items in which, all with the same time
 static void stamp(const bool which[CONFIG_ELEMENTS], const double when)
@@ -2673,6 +2676,7 @@ void config_stamp_local_change(void)
 		return;
 
 	stamp(moved, double_time());
+	config_local_generation = config_generation;
 }
 
 // A value rewritten without anybody changing what it means, such as a password
@@ -2690,6 +2694,7 @@ void config_stamp_rewrite(void)
 		stamps[i] = nextafter(cluster_item_changed(i), INFINITY);
 
 	cluster_stamp_items(moved, stamps);
+	config_local_generation = config_generation;
 }
 
 // Items taken from a peer were changed when that peer says they were, not now:

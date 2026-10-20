@@ -900,6 +900,16 @@ components:
                 the rest and listed in `pinned_credentials`. Truncated with
                 `...` when there are too many to fit.
               example: "dns.upstreams, misc.privacylevel"
+            refused:
+              type: string
+              description: |
+                The items of the last push from a peer that this node kept its
+                own value of, each with the reason, comma separated - an item
+                not newer than the version held here, one pinned through the
+                environment, or one a validator rejects. Empty when the last
+                push was taken whole. Truncated with `...` when there are too
+                many to fit.
+              example: "misc.check.disk (not newer than this node's)"
         gravity:
           type: object
           properties:
