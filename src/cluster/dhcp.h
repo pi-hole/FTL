@@ -58,6 +58,8 @@ bool cluster_dhcp_restarting(void) __attribute__ ((pure));
 
 // Whether this node and another one both serve DHCP or hold the address
 void cluster_conflicts(bool *dhcp, bool *vip);
+// ...and whether it sees enough of the cluster to take either
+bool cluster_quorum(void) __attribute__ ((pure));
 void cluster_dhcp_takeover_state(double *until, unsigned int *failures);
 void cluster_dhcp_restore_takeover(const double until, const unsigned int failures);
 

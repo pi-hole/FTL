@@ -228,12 +228,12 @@ static unsigned int rounds_without_quorum = 0;
 
 // A strict majority of the members, counting this node and what the others
 // relay. With two members there is none to lose, so the other one only counts
-// against this node while it polls us and cannot be polled
+// against this node while it polls us and cannot be polled - and not against a
+// node that serves while the other one says it serves nothing
 static void count_quorum(const struct cluster_peer *peers, const unsigned int num_peers)
 {
 	unsigned int self = 0, others = 0, seen = 0;
-	bool alive_unseen = false;
-	const double polled = cluster_polled_at();
+	bool alive_unseen = false, unseen_idle = true;
 	const double now = double_time();
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
@@ -246,17 +246,33 @@ static void count_quorum(const struct cluster_peer *peers, const unsigned int nu
 
 		others++;
 		if(peer_answers(peer))
+		{
 			seen++;
+			continue;
+		}
+
 		// Polled by it since this node lost it, and recently
-		else if(peer->rounds_down > 0 && polled > peer->down_since &&
-		        now - polled < 3.0 * config.cluster.interval.v.ui)
+		bool idle = false;
+		const double polled = peer->rounds_down > 0 ? cluster_polled_by(peer, &idle) : 0.0;
+		if(polled > peer->down_since && now - polled < 3.0 * config.cluster.interval.v.ui)
+		{
 			alive_unseen = true;
+			unseen_idle &= idle;
+		}
 	}
+
+	const bool keeps = config.dhcp.active.v.b || vip_claimed();
 
 	// The list names this node once, whether or not its own entry answered
 	const unsigned int members = self > 0 ? others + 1 : others;
-	quorum = members >= 3 ? 2 * (seen + 1) > members : seen > 0 || !alive_unseen;
+	quorum = members >= 3 ? 2 * (seen + 1) > members :
+	         seen > 0 || !alive_unseen || (keeps && unseen_idle);
 	rounds_without_quorum = quorum ? 0 : rounds_without_quorum + 1;
+
+	static bool kept = false;
+	if(members < 3 && seen == 0 && alive_unseen && quorum && !kept)
+		log_info("cluster: the other member polls this node but cannot be polled, and serves nothing, so this node keeps what it serves");
+	kept = members < 3 && seen == 0 && alive_unseen && quorum;
 
 	char address[CLUSTER_STRLEN] = "";
 	cluster_vip_address(address);
@@ -280,6 +296,11 @@ static void count_quorum(const struct cluster_peer *peers, const unsigned int nu
 		log_info("cluster: this node reaches enough of the cluster again");
 		warned = false;
 	}
+}
+
+bool cluster_quorum(void)
+{
+	return quorum;
 }
 
 // Two DHCP servers or two holders of the address that the election did not
