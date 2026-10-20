@@ -622,7 +622,10 @@ load 'bats_helper.bash'
   assert_success
   rm -f /tmp/gravity_swapped_out.db
 
+  logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
   dig A swap.special.gravity.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run bash -c "./pihole-FTL wait-for 'gravity blocked swap.special.gravity.ftl is' /var/log/pihole/pihole.log 5 $logsize_dnsmasq"
+  assert_success
   run bash -c 'grep -c "gravity blocked swap.special.gravity.ftl is" /var/log/pihole/pihole.log'
   assert_output "1"
   run bash -c "tail -c +$((logsize_swap + 1)) /var/log/pihole/FTL.log | grep -c 'no such table'"
