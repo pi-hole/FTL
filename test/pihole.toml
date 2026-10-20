@@ -827,6 +827,10 @@
     # which it publishes in an answer signed with the shared secret - so there is nothing
     # to collect and nothing to copy between the nodes.
     #
+    # Joining is the one exception: the joining node holds no secret yet, so without a
+    # bundle here a join needs the fingerprint (pin) of the node being joined, which that
+    # node shows on its HA cluster page.
+    #
     # Allowed values are:
     #     A path to a PEM certificate bundle, or empty to identify the peers by their
     #     public keys

@@ -268,7 +268,8 @@ components:
           replaced rather than pushed to the others.
 
           The connection to the other node has to be an encrypted one, as the
-          password and the secret both cross it.
+          password and the secret both cross it, and its certificate has to be
+          checked: pass `pin`, or set `cluster.tls.ca`.
         requestBody:
           required: true
           content:
@@ -308,12 +309,14 @@ components:
                   pin:
                     type: string
                     description: |
-                      Optional. The certificate pin of the node being joined,
-                      read off its own status. This is the one connection a
-                      cluster cannot authenticate for itself - the joining node
-                      holds no shared secret yet - so passing it here is what
-                      keeps the password from being readable by anybody on the
-                      path.
+                      Required unless `cluster.tls.ca` is set. The certificate
+                      pin of the node being joined, read off its own status (its
+                      HA cluster page shows it as the fingerprint). This is the
+                      one connection a cluster cannot authenticate for itself -
+                      the joining node holds no shared secret yet - so without
+                      it nothing would keep the password and the secret from
+                      whoever answers on that address. A join with neither is
+                      refused before anything is sent.
                     example: "aKG1khSEO0G+KcSunqhLo3cVFCTGSH81QfvtIH8h13s="
         responses:
           '200':

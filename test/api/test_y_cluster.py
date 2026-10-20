@@ -395,6 +395,30 @@ def addressed(signed):
 # The status document
 # ---------------------------------------------------------------------------
 
+class TestClusterJoin:
+    """Before any test switches clustering on: a node in a cluster refuses to
+    join another one before it looks at the pin."""
+
+    def test_join_without_a_pin_is_refused_before_connecting(self, api_session):
+        """Without a pin or cluster.tls.ca nothing checks the other node's
+        certificate, so the password must not be sent at all."""
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(0.5)
+        try:
+            port = listener.getsockname()[1]
+            r = api_session.post(f"{FTL_URL_TLS}/api/cluster/join",
+                                 json={"url": f"https://127.0.0.1:{port}", "password": "x"},
+                                 timeout=30, verify=False)
+            assert r.status_code == 400, r.text[:300]
+            assert "pin" in _j(r)["error"]["hint"], r.text[:300]
+            with pytest.raises(socket.timeout):
+                listener.accept()
+        finally:
+            listener.close()
+
+
 class TestClusterStatus:
 
     def test_status_is_well_formed(self, api_session):

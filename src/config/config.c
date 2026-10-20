@@ -1266,7 +1266,7 @@ void initConfig(struct config *conf)
 	conf->cluster.interval.c = validate_cluster_interval;
 
 	conf->cluster.tls.ca.k = "cluster.tls.ca";
-	conf->cluster.tls.ca.h = "Path to a certificate bundle the peers' TLS certificates are verified against. This is only needed when the nodes use certificates of your own: with Pi-hole's self-signed ones, which name a machine rather than the address a peer reaches it at, a chain says nothing. What identifies a peer instead is the hash of its public key, which it publishes in an answer signed with the shared secret - so there is nothing to collect and nothing to copy between the nodes.";
+	conf->cluster.tls.ca.h = "Path to a certificate bundle the peers' TLS certificates are verified against. This is only needed when the nodes use certificates of your own: with Pi-hole's self-signed ones, which name a machine rather than the address a peer reaches it at, a chain says nothing. What identifies a peer instead is the hash of its public key, which it publishes in an answer signed with the shared secret - so there is nothing to collect and nothing to copy between the nodes.\n\n Joining is the one exception: the joining node holds no secret yet, so without a bundle here a join needs the fingerprint (pin) of the node being joined, which that node shows on its HA cluster page.";
 	conf->cluster.tls.ca.a = cJSON_CreateStringReference("A path to a PEM certificate bundle, or empty to identify the peers by their public keys");
 	conf->cluster.tls.ca.t = CONF_STRING;
 	conf->cluster.tls.ca.f = FLAG_NO_CLUSTER;
