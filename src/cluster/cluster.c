@@ -2259,7 +2259,7 @@ static void take_leases(void)
 		{
 			uint8_t *merged = NULL;
 			size_t mergedsize = 0;
-			if(cluster_leases_merge(data, size, &merged, &mergedsize))
+			if(cluster_leases_merge(data, size, peer->id, &merged, &mergedsize))
 			{
 				taken = cluster_leases_write(merged, mergedsize);
 				free(merged);
