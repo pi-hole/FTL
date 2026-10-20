@@ -351,7 +351,7 @@ static bool install_members(cJSON *base, const char *add, const bool joining, ch
 	// epoch as the moment it was last changed - so the cluster hands it
 	// everything rather than taking its settings. A node that enrolls
 	// somebody else made an ordinary change, which travels from here
-	const bool installed = config_install(&newconf, &applied, joining, NULL, errbuf);
+	const bool installed = config_install(&newconf, &applied, joining, NULL, errbuf, NULL);
 	if(installed && joining)
 		cluster_state_forget();
 

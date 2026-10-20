@@ -133,6 +133,14 @@ components:
                     $ref: 'config.yaml#/components/examples/errors/forbidden/cli_session'
                   read_only_mode:
                     $ref: 'config.yaml#/components/examples/errors/forbidden/read_only_mode'
+          '500':
+            description: Only in the answer to another cluster node's signed push - `pihole.toml` could not be written, so the push is not taken and the peer tries again later
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'cluster.yaml#/components/errors/internal_error'
+                    - $ref: 'common.yaml#/components/schemas/took'
     config_elem:
       get:
         summary: Get specific part of current configuration of your Pi-hole

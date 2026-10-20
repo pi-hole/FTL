@@ -742,8 +742,9 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 	}
 
 	char errbuf[ERRBUF_SIZE] = { 0 };
+	bool written = true;
 	const bool installed = config_install(&newconf, &applied, from_cluster,
-	                                      from_cluster ? push.taken : NULL, errbuf);
+	                                      from_cluster ? push.taken : NULL, errbuf, &written);
 	cluster_sync_unlock();
 
 	if(!installed)
@@ -801,6 +802,14 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refus
 		}
 		*refused = dated && !taken;
 		report_refused(api, &push);
+
+		// Not in pihole.toml, so not this node's after a restart. Answered
+		// as a failure, which the peer tries again later
+		if(!written)
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "The configuration could not be written",
+			                       NULL);
 	}
 
 	// The full config is returned by the caller

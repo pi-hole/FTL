@@ -1201,7 +1201,7 @@ bool cluster_leave_now(char *errbuf, bool *peers_told)
 	// The member list is what DHCP hands out as the resolvers to use
 	applied.dnsmasq_changed = true;
 
-	const bool written = config_install(&newconf, &applied, false, NULL, errbuf);
+	const bool written = config_install(&newconf, &applied, false, NULL, errbuf, NULL);
 	cluster_sync_unlock();
 
 	if(!written)
@@ -1356,7 +1356,7 @@ static void do_leave(void)
 	applied.dnsmasq_changed = true;
 
 	char errbuf[ERRBUF_SIZE] = "";
-	const bool written = config_install(&newconf, &applied, false, NULL, errbuf);
+	const bool written = config_install(&newconf, &applied, false, NULL, errbuf, NULL);
 	cluster_sync_unlock();
 
 	leaving = false;
