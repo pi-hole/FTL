@@ -2281,12 +2281,18 @@ void remember_config(struct config *conf)
 }
 
 // Take in whatever changed in pihole.toml since it was last read or written,
-// keeping the running config's values for the items the file left alone. The
-// caller holds the install lock, so no other writer can get in between. An
-// item changed on both sides keeps the value the CLI set: the file's in the
-// daemon, our own in the CLI. Returns true if FTL needs to restart
+// keeping the running config's values for the items the file left alone.
+// Outside read-only mode the caller holds the install lock, so no other writer
+// can get in between. An item changed on both sides keeps the value the CLI
+// set: the file's in the daemon, our own in the CLI. Returns true if FTL needs
+// to restart
 bool merge_config_file(void)
 {
+	// Without a snapshot (pihole-FTL migrate v6) the config written is the
+	// one meant to replace the file
+	if(!have_last_seen)
+		return false;
+
 	uint8_t checksum[SHA256_DIGEST_SIZE];
 	if(!file_exists(GLOBALTOMLPATH) ||
 	   !sha256sum(GLOBALTOMLPATH, checksum, false) ||
@@ -2310,7 +2316,7 @@ bool merge_config_file(void)
 		struct config merged, ours;
 		duplicate_config(&merged, &fileconf);
 		duplicate_config(&ours, &config);
-		struct config *base = have_last_seen ? &last_seen : &config;
+		struct config *base = &last_seen;
 		bool invalidate_sessions = false, rewrite_hosts = false;
 		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 		{

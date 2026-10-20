@@ -119,7 +119,7 @@ static void release_install_lock(int *fd)
 	*fd = -1;
 }
 
-bool writeFTLtoml(const bool verbose, FILE *fp)
+static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 {
 	// Read-only mode keeps an existing file as it is. A missing one is still
 	// written, pihole-FTL --config and the Teleporter need it
@@ -128,8 +128,8 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 
 		// An edit of the file must still reach the running config
-		if(fp == NULL && merge_config_file())
-			restart_ftl("pihole.toml change");
+		if(fp == NULL)
+			*restart = merge_config_file();
 		return true;
 	}
 
@@ -160,8 +160,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	// wrote the file. Under the install lock, nobody can make another one
 	if(opened)
 	{
-		if(merge_config_file())
-			restart_ftl("pihole.toml change");
+		*restart = merge_config_file();
 		if(config.misc.readOnly.v.b)
 		{
 			release_install_lock(&install_lock);
@@ -379,4 +378,14 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 
 	release_install_lock(&install_lock);
 	return true;
+}
+
+bool writeFTLtoml(const bool verbose, FILE *fp)
+{
+	// Restart only once the change at hand is written and the lock is released
+	bool restart = false;
+	const bool ok = write_config_file(verbose, fp, &restart);
+	if(restart)
+		restart_ftl("pihole.toml change");
+	return ok;
 }
