@@ -3271,6 +3271,11 @@ bool config_apply_json(struct config *newconf, cJSON *conf, config_accept_fn wan
 		if(elem == NULL)
 			continue; // not in the document, which is allowed
 
+		// Whoever names dhcp.active decides it, also where the cluster held
+		// it back, and pihole.toml is written with what they named
+		if(item == &config.dhcp.active && cluster_dhcp_release())
+			result->changed = true;
+
 		// An item that can only be set in pihole.toml, and one that is
 		// never handed out, are not taken from a document
 		if(item->f & FLAG_API_CLI_READ_ONLY)

@@ -29,6 +29,8 @@
 #include "version.h"
 // sanitize_dns_hosts()
 #include "config/validator.h"
+// cluster_dhcp_held_back()
+#include "cluster/dhcp.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
@@ -163,7 +165,13 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 			sanitize_dns_hosts(&conf_item->v);
 		}
 		
-		writeTOMLvalue(fp, level-1, conf_item->t, &conf_item->v);
+		// DHCP held back for the cluster is off in the running configuration
+		// only, the file keeps what was set
+		union conf_value value = conf_item->v;
+		if(conf_item == &config.dhcp.active && cluster_dhcp_held_back())
+			value.b = true;
+
+		writeTOMLvalue(fp, level-1, conf_item->t, &value);
 
 		// Compare with default value and add a comment on difference
 		bool changed = false;
@@ -172,7 +180,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		else if(conf_item->t == CONF_JSON_STRING_ARRAY)
 			changed = !cJSON_Compare(conf_item->v.json, conf_item->d.json, true);
 		else
-			changed = memcmp(&conf_item->v, &conf_item->d, sizeof(conf_item->v)) != 0;
+			changed = memcmp(&value, &conf_item->d, sizeof(value)) != 0;
 
 		if(changed)
 		{
