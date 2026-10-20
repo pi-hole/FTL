@@ -62,6 +62,7 @@
 #include <sys/stat.h>
 // opendir()
 #include <dirent.h>
+#include <poll.h>
 
 // The gravity script, which lives outside FTL
 #define PIHOLE_BINARY "/usr/local/bin/pihole"
@@ -1282,6 +1283,11 @@ void cluster_gravity_stop(void)
 	if(gravity_fd < 0 || gravity_pid <= 0 || gravity_stopping)
 		return;
 
+	// Over already, with its outcome waiting to be settled
+	struct pollfd ended = { .fd = gravity_fd, .events = POLLIN, .revents = 0 };
+	if(poll(&ended, 1, 0) > 0)
+		return;
+
 	gravity_stopping = true;
 	log_info("cluster: ending the gravity run for FTL to stop, it is run again after the restart");
 	if(kill(-gravity_pid, SIGTERM) != 0)
@@ -1334,8 +1340,8 @@ bool cluster_gravity_check(void)
 	}
 
 	// Nothing to settle: the pending record has the rebuild redone after
-	// the restart
-	if(gravity_stopping)
+	// the restart. A run that finished before it could be ended is settled
+	if(gravity_stopping && !succeeded)
 	{
 		log_info("cluster: gravity run ended");
 		cluster_gravity_release();
