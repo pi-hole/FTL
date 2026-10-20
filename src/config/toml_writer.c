@@ -29,6 +29,8 @@
 #include "version.h"
 // sanitize_dns_hosts()
 #include "config/validator.h"
+// restart_ftl()
+#include "signals.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
@@ -125,11 +127,9 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	{
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 
-		// We need to (re-)calculate the checksum here as it'd otherwise
-		// be outdated (in non-read-only mode, it's calculated at the
-		// end of this function)
-		if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
-			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+		// An edit of the file must still reach the running config
+		if(fp == NULL && merge_config_file())
+			restart_ftl("pihole.toml change");
 		return true;
 	}
 
@@ -153,6 +153,19 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 			log_warn("Cannot lock %s (%s), writing the config unserialised",
 			         GLOBALTOMLPATH".lock", strerror(errno));
 			release_install_lock(&install_lock);
+		}
+	}
+
+	// Never overwrite a change another process made since we last read or
+	// wrote the file. Under the install lock, nobody can make another one
+	if(opened)
+	{
+		if(merge_config_file())
+			restart_ftl("pihole.toml change");
+		if(config.misc.readOnly.v.b)
+		{
+			release_install_lock(&install_lock);
+			return true;
 		}
 	}
 
@@ -362,6 +375,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 
 	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+	remember_config(&config);
 
 	release_install_lock(&install_lock);
 	return true;
