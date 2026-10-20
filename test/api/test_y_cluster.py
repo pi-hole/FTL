@@ -21,6 +21,7 @@ import http.server
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import threading
 import time
@@ -712,6 +713,71 @@ class TestClusterPush:
         assert all(stamp > 0.0 for stamp in document["changed"].values()), body[:200]
         # Credentials only travel to https:// members
         assert signed["pwhash"] not in body
+
+
+# ---------------------------------------------------------------------------
+# The lists
+# ---------------------------------------------------------------------------
+
+GRAVITY_DB = "/etc/pihole/gravity.db"
+
+
+def _swap_gravity():
+    """What gravity.sh does at the end of every run: the lists copied into a new
+    file, which takes the place of the old one. The old one is kept beside it,
+    as gravity.sh does, and FTL reads that as the file being renamed."""
+    st = os.stat(GRAVITY_DB)
+    new = GRAVITY_DB + ".swap"
+    src = sqlite3.connect(f"file:{GRAVITY_DB}?mode=ro", uri=True)
+    dst = sqlite3.connect(new)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    os.chown(new, st.st_uid, st.st_gid)
+    os.chmod(new, st.st_mode & 0o777)
+    os.rename(GRAVITY_DB, "/etc/pihole/gravity_old.db")
+    os.rename(new, GRAVITY_DB)
+
+
+def _gravity_state(session):
+    status = _j(session.get(f"{FTL_URL}/api/cluster/status", timeout=10))
+    return status["cluster"]["node"]["sync"]["gravity"]
+
+
+class TestClusterLists:
+
+    def test_list_edit_survives_a_swapped_database(self, cluster, api_session):
+        """A list edit made through the API is dated as an edit made here, also
+        when a gravity run swaps gravity.db before the next round looks: the
+        tables in the new file are the ones the edit left. Only tables nothing
+        explains count as a database restored or copied in, which the cluster's
+        lists replace."""
+        if os.geteuid() != 0:
+            pytest.skip("swapping gravity.db needs root")
+
+        before = _gravity_state(api_session)
+        domain = "swapped.cluster.example"
+        r = api_session.post(f"{FTL_URL}/api/domains/deny/exact",
+                             json={"domain": domain}, timeout=10)
+        assert r.status_code == 201, r.text[:200]
+        written = time.time()
+        try:
+            _swap_gravity()
+
+            # Judged by the next round
+            deadline = time.time() + 40
+            after = before
+            while time.time() < deadline and after["hash"] == before["hash"]:
+                time.sleep(1)
+                after = _gravity_state(api_session)
+            assert after["hash"] != before["hash"], "no round recorded the edit"
+            assert after["changed"] >= written - 5, \
+                f"the edit was not dated as one made here: {json.dumps(after)}"
+        finally:
+            r = api_session.delete(f"{FTL_URL}/api/domains/deny/exact/{domain}", timeout=10)
+            assert r.status_code == 204, r.text[:200]
 
 
 # ---------------------------------------------------------------------------
