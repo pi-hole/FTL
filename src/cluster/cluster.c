@@ -2649,6 +2649,36 @@ static void resume_gravity(void)
 	publish_pending_gravity(stamp, cluster_node_id(), gravityhash);
 }
 
+// Whether this node holds a version of anything, a setting or the lists. One
+// that holds none was never configured as a member, and what it holds is no
+// starting point while a node that was is around
+static bool holds_versions(void)
+{
+	double ours[CONFIG_ELEMENTS];
+	cluster_item_stamps(ours);
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(ours[i] > 0.0)
+			return true;
+
+	cluster_lock();
+	const bool lists = sync_state.gravity_changed > 0.0;
+	cluster_unlock();
+
+	return lists;
+}
+
+static bool peer_holds_versions(const struct cluster_peer *peer)
+{
+	if(peer->gravity_changed > 0.0)
+		return true;
+
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		if(peer->item_changed[i] > 0.0)
+			return true;
+
+	return false;
+}
+
 // A node that has never recorded a list version is never taken from, and a
 // cluster where that is true of everybody never synchronizes its lists at all -
 // which is what a cluster assembled from the command line looks like, since
@@ -2667,6 +2697,7 @@ static void baseline_lists(void)
 	if(known)
 		return;
 
+	const bool versioned = holds_versions();
 	bool somebody_answers = false;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
@@ -2675,6 +2706,10 @@ static void baseline_lists(void)
 
 		// Somebody holds a version, so it is theirs we converge on
 		if(peers[i].gravity_changed > 0.0)
+			return;
+
+		// ...and a node holding none at all defers to one that does
+		if(!versioned && peer_holds_versions(&peers[i]))
 			return;
 
 		somebody_answers = true;
@@ -2714,11 +2749,17 @@ static void baseline_config(void)
 	bool unversioned[CONFIG_ELEMENTS] = { false };
 	unversioned_items(unversioned);
 
+	const bool versioned = holds_versions();
 	bool somebody_answers = false;
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		if(peers[i].is_self || !peers[i].reachable)
 			continue;
+
+		// A node holding no version at all defers to one that holds any:
+		// its values are defaults, not the configuration of a member
+		if(!versioned && peer_holds_versions(&peers[i]))
+			return;
 
 		// Somebody has a version, so it is theirs we converge on
 		for(unsigned int j = 0; j < CONFIG_ELEMENTS; j++)
