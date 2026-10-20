@@ -4493,14 +4493,10 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 // get_dnsmasq_metrics() walks dnsmasq's cache hash table, which rehash()
 // replaces and frees on dnsmasq's main thread whenever a hosts source grows.
 // The walk therefore only runs on that thread, and the API threads copy what
-// it left here. It is declared here rather than in metrics.h so that nothing
-// else can call it. The walk costs time on the resolver thread when the cache
-// holds large hosts sources, so it runs at most once a second and only while
-// somebody reads the metrics, plus once at startup
+// it left here, at most a second old while queries come in. It is declared
+// here rather than in metrics.h so that nothing else can call it
 void get_dnsmasq_metrics(struct metrics *ci);
-#define DNSMASQ_METRICS_IDLE 60
 static struct metrics dnsmasq_metrics = { 0 };
-static time_t dnsmasq_metrics_wanted = 0;
 static pthread_mutex_t dnsmasq_metrics_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void refresh_dnsmasq_metrics(void)
@@ -4517,14 +4513,6 @@ static void refresh_dnsmasq_metrics(void)
 	if(gettid() != main_pid())
 		return;
 
-	static bool walked = false;
-	pthread_mutex_lock(&dnsmasq_metrics_lock);
-	const time_t wanted = dnsmasq_metrics_wanted;
-	pthread_mutex_unlock(&dnsmasq_metrics_lock);
-	if(walked && now - wanted > DNSMASQ_METRICS_IDLE)
-		return;
-	walked = true;
-
 	struct metrics metrics;
 	get_dnsmasq_metrics(&metrics);
 
@@ -4537,7 +4525,6 @@ void copy_dnsmasq_metrics(struct metrics *metrics)
 {
 	// The cache content (per type, expired, immortal) comes from the last walk
 	pthread_mutex_lock(&dnsmasq_metrics_lock);
-	dnsmasq_metrics_wanted = time(NULL);
 	memcpy(metrics, &dnsmasq_metrics, sizeof(*metrics));
 	pthread_mutex_unlock(&dnsmasq_metrics_lock);
 

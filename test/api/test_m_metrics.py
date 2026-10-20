@@ -2,10 +2,9 @@
 Pi-hole FTL cache metrics.
 
 The counters are read live. The cache content is walked on dnsmasq's main
-thread, at most once a second while somebody reads the metrics, and the API
-serves the copy the walk left. These tests send DNS queries, so the file is
-named ``test_m_*`` to run *after* ``test_api.py``, which asserts exact counts
-on the seed data.
+thread, at most once a second, and the API serves the copy the walk left.
+These tests send DNS queries, so the file is named ``test_m_*`` to run *after*
+``test_api.py``, which asserts exact counts on the seed data.
 
 Usage:
     pytest test/api/test_m_metrics.py -v
@@ -35,7 +34,7 @@ def _content_total(dns):
 def test_metrics_follow_dns_activity(api_session):
     """Replies count at once. The answers they cached show up in the content
     once the resolver walked the cache again, which it does on the next UDP
-    query at least a second after the last walk while the metrics are read.
+    query at least a second after the last walk.
     The unknown names get a cached negative answer from the ftl. zone"""
     before = _dns_metrics(api_session)
     assert before["cache"]["size"] > 0
