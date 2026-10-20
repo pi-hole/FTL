@@ -200,6 +200,11 @@ static void item_hashes(uint64_t out[CONFIG_ELEMENTS])
 	unlock_shm();
 }
 
+void cluster_item_hashes(uint64_t out[CONFIG_ELEMENTS])
+{
+	item_hashes(out);
+}
+
 // When each item was last changed, here or on the peer it was taken from. Zero
 // for an item nobody changed and for every item that never leaves a node
 static double item_changed[CONFIG_ELEMENTS] = { 0.0 };

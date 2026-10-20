@@ -58,8 +58,9 @@ HDR_SIG = "X-FTL-Cluster-Sig"
 # Any well-formed identity that is not this node's
 OTHER_NODE = "aaaaaaaaaaaaaaaa"
 
-# The identity of the stand-in peer below
-FAKE_NODE = "bbbbbbbbbbbbbbbb"
+# The identity of the stand-in peer below. Below any identity FTL mints, so
+# this node is the one that hands over a starting point both of them hold
+FAKE_NODE = "0000000000000001"
 
 # What the rest of the suite logs in with, and what this file sets while it runs
 PASSWORD = "ABC"
@@ -158,6 +159,11 @@ class _FakePeer(http.server.BaseHTTPRequestHandler):
     pushes = []
     node_id = ""
     node_url = ""
+    # The item stamps it publishes, and whether its fingerprint moves with
+    # every poll - which has the node compare what it holds against it again
+    items = {}
+    hash_moves = False
+    polls = 0
 
     def log_message(self, *args):
         pass
@@ -187,6 +193,8 @@ class _FakePeer(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         sender = self.headers.get(HDR_FROM, "")
+        _FakePeer.polls += 1
+        confhash = f"{_FakePeer.polls:016x}" if _FakePeer.hash_moves else "0000000000000000"
         self._answer({"cluster": {
             "enabled": True,
             "node": {
@@ -196,9 +204,10 @@ class _FakePeer(http.server.BaseHTTPRequestHandler):
                          "configured": False},
                 "vip": {"address": "", "held": False},
                 "sync": {
-                    "config": {"changed": 0, "hash": "0000000000000000", "credentials": "",
+                    "config": {"changed": 0, "hash": confhash, "credentials": "",
                                "accepts_credentials": False, "wants_credentials": False,
-                               "pinned": "", "pinned_credentials": ""},
+                               "pinned": "", "pinned_credentials": "",
+                               "items": _FakePeer.items},
                     "gravity": {"changed": 0, "hash": "", "owed": False},
                 },
             },
@@ -713,6 +722,48 @@ class TestClusterPush:
         assert all(stamp > 0.0 for stamp in document["changed"].values()), body[:200]
         # Credentials only travel to https:// members
         assert signed["pwhash"] not in body
+
+    def test_starting_points_are_handed_over_once(self, signed, api_session):
+        """Two nodes holding the same starting point of an item settle it by
+        identity: the higher one hands its value over, and the peer holds it at
+        the same stamp afterwards. Handing it over again at every catch-up
+        rewrote the peer's state for nothing, so it is sent once per value.
+
+        The stand-in publishes this node's stamps and a fingerprint that moves
+        with every poll, so this node keeps comparing and finds nothing to send."""
+        if signed["fake"] is None:
+            pytest.skip("clustering was already on, so there is no stand-in peer")
+        assert signed["id"] > FAKE_NODE, "this node does not rank above the stand-in"
+
+        # Handed over once already, as in the test above
+        deadline = time.time() + 60
+        while time.time() < deadline and not _FakePeer.pushes:
+            time.sleep(1)
+        assert _FakePeer.pushes, "the node never handed its configuration to the peer"
+
+        status = _j(api_session.get(f"{FTL_URL}/api/cluster/status", timeout=10))
+        items = status["cluster"]["node"]["sync"]["config"]["items"]
+        baseline = {key for key, stamp in items.items() if stamp <= 1.0}
+        if not baseline:
+            pytest.skip("this node holds no starting point")
+
+        _FakePeer.items = dict(items)
+        _FakePeer.hash_moves = True
+        start = len(_FakePeer.pushes)
+        try:
+            # Two rounds at the default interval, each seeing another fingerprint
+            polls = _FakePeer.polls
+            deadline = time.time() + 45
+            while time.time() < deadline and _FakePeer.polls < polls + 3:
+                time.sleep(1)
+            assert _FakePeer.polls >= polls + 3, "the node stopped polling the stand-in"
+            sent = [set(json.loads(body).get("changed", {})) & baseline
+                    for _, body in _FakePeer.pushes[start:]]
+        finally:
+            _FakePeer.items = {}
+            _FakePeer.hash_moves = False
+
+        assert not any(sent), f"starting points handed over again: {sorted(set().union(*sent))[:10]}"
 
 
 # ---------------------------------------------------------------------------

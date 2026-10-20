@@ -145,6 +145,7 @@ struct cluster_peer {
 	bool accepts_credentials;          // ...between two nodes that both accept them
 	double config_changed;             // ...and when somebody last configured it
 	double item_changed[CONFIG_ELEMENTS]; // ...item by item, so it is sent only what it lacks
+	uint64_t baseline_handed[CONFIG_ELEMENTS]; // the value of each starting point it took from us
 	char gravityhash[CLUSTER_HASHLEN]; // fingerprint of the peer's lists
 	double gravity_changed;            // when the peer's lists last changed
 	unsigned long pushed_generation;   // configuration we last handed to this peer
