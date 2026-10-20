@@ -1503,6 +1503,9 @@ static double lists_accounted = 0.0;
 // ...and which file gravity.db was when last looked at. gravity.sh swaps in a
 // new one at the end of every run
 static unsigned long long lists_inode = 0;
+// ...and what the tables hashed to right after that edit. Tables found that way
+// are explained by it whichever file holds them
+static char lists_written_hash[CLUSTER_HASHLEN] = "";
 static pthread_mutex_t lists_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static unsigned long long gravity_inode(void)
@@ -1522,20 +1525,26 @@ void cluster_note_list_write(void)
 	if(!state_loaded)
 		return;
 
+	char hash[CLUSTER_HASHLEN] = "";
+	if(!tables_hash(gravity_tables, ArraySize(gravity_tables), hash))
+		hash[0] = '\0';
+
 	pthread_mutex_lock(&lists_lock);
 	lists_written = fmax(double_time(), lists_written);
+	memcpy(lists_written_hash, hash, sizeof(lists_written_hash));
 	pthread_mutex_unlock(&lists_lock);
 
 	cluster_state_save(NULL);
 }
 
-void cluster_lists_explain(double *written, bool *replaced)
+void cluster_lists_explain(const char *hash, double *written, bool *replaced)
 {
 	const unsigned long long inode = gravity_inode();
 
 	pthread_mutex_lock(&lists_lock);
 	*written = lists_written > lists_accounted ? lists_written : 0.0;
-	*replaced = lists_inode != 0 && inode != 0 && inode != lists_inode;
+	*replaced = lists_inode != 0 && inode != 0 && inode != lists_inode &&
+	            (strlen(lists_written_hash) == 0 || strcmp(hash, lists_written_hash) != 0);
 	pthread_mutex_unlock(&lists_lock);
 }
 
@@ -1641,12 +1650,14 @@ void cluster_state_load(struct cluster_sync_state *state)
 			}
 			else if(sscanf(line, "vip %63s", vip) == 1)
 				vip_note_placed(vip, "");
-			else if(sscanf(line, "lists %lf %lf %llu", &when, &written, &inode) == 3)
+			else if(sscanf(line, "lists %lf %lf %llu %16s", &when, &written, &inode, hash) == 4)
 			{
 				pthread_mutex_lock(&lists_lock);
 				lists_written = isfinite(when) && when > 0.0 ? fmin(when, double_time()) : 0.0;
 				lists_accounted = isfinite(written) && written > 0.0 ? fmin(written, double_time()) : 0.0;
 				lists_inode = inode;
+				strncpy(lists_written_hash, strcmp(hash, "-") != 0 ? hash : "",
+				        sizeof(lists_written_hash) - 1);
 				pthread_mutex_unlock(&lists_lock);
 			}
 			else if(sscanf(line, "takeover %lf %u", &when, &failures) == 2)
@@ -1829,7 +1840,8 @@ static void write_state_file(const struct cluster_sync_state *state)
 	if(saved_state.pending_changed > 0.0 && strlen(saved_state.pre_pull_hash) > 0)
 		fprintf(file, "prepull %s\n", saved_state.pre_pull_hash);
 	pthread_mutex_lock(&lists_lock);
-	fprintf(file, "lists %.17g %.17g %llu\n", lists_written, lists_accounted, lists_inode);
+	fprintf(file, "lists %.17g %.17g %llu %s\n", lists_written, lists_accounted, lists_inode,
+	        strlen(lists_written_hash) > 0 ? lists_written_hash : "-");
 	pthread_mutex_unlock(&lists_lock);
 	double takeover_until = 0.0;
 	unsigned int takeover_failures = 0;
@@ -1943,6 +1955,7 @@ void cluster_state_forget(void)
 	pthread_mutex_unlock(&item_changed_lock);
 	pthread_mutex_lock(&lists_lock);
 	lists_written = lists_accounted = 0.0;
+	lists_written_hash[0] = '\0';
 	pthread_mutex_unlock(&lists_lock);
 
 	if(unlink(CLUSTER_STATE_FILE) != 0 && errno != ENOENT)

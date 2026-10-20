@@ -124,8 +124,9 @@ bool cluster_gravity_elsewhere(void);
 // without one is not an edit made on this node
 void cluster_note_list_write(void);
 // The time of such an edit not accounted for yet (0 when there is none), and
-// whether gravity.db is another file than when last accounted for
-void cluster_lists_explain(double *written, bool *replaced);
+// whether gravity.db is another file than when last accounted for, holding
+// tables (hash) other than the ones that edit left
+void cluster_lists_explain(const char *hash, double *written, bool *replaced);
 void cluster_lists_accounted(const double written);
 
 // A rebuild the cluster started, and how the last one ended. The lists are only

@@ -1758,7 +1758,7 @@ static bool read_local_state(char confhash[CLUSTER_HASHLEN], char gravityhash[CL
 {
 	cluster_sync_lock();
 	const bool lists_read = cluster_sync_hashes(confhash, gravityhash);
-	cluster_lists_explain(written, replaced);
+	cluster_lists_explain(gravityhash, written, replaced);
 	cluster_sync_unlock();
 
 	return lists_read;
@@ -2605,7 +2605,7 @@ static void resume_gravity(void)
 	// cluster's lists
 	double written = 0.0;
 	bool replaced = false;
-	cluster_lists_explain(&written, &replaced);
+	cluster_lists_explain(gravityhash, &written, &replaced);
 	const double stamp = date_local_change(written, replaced, sync_state.gravity_changed);
 	cluster_lists_accounted(written);
 	if(stamp <= 0.0)
