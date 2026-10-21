@@ -129,6 +129,7 @@ enum totp_status verifyTOTP(const uint32_t code);
 // The last accepted TOTP time step, shared across a cluster so a code accepted
 // on one node cannot be replayed on another within its validity window
 uint64_t totp_last_counter(void);
+uint64_t totp_local_counter(void);
 void totp_observe_counter(const uint64_t counter);
 int generateTOTP(struct ftl_conn *api);
 int printTOTP(void);
