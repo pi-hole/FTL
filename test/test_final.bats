@@ -227,6 +227,37 @@ load 'bats_helper.bash'
   assert_success
 }
 
+@test "Clients in recycled slots do not make the clients array longer" {
+  # The regex reload logs the length of the clients array. 50 clients, a
+  # flush that recycles all clients, 50 other clients: the second 50 reuse
+  # recycled slots, so the array has to stay as long as it was
+  for i in $(seq 1 50); do
+    dig +short +tries=1 +time=2 -b 127.0.2.${i} slots.ftl @127.0.0.1 > /dev/null
+  done
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  before="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -o 'deny regex for [0-9]* client' | head -n 1 | grep -o '[0-9]*')"
+
+  # The flush keeps the queries of the current second, which would keep
+  # their clients from being recycled
+  sleep 2
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_line --index 0 "success"
+  for i in $(seq 1 50); do
+    dig +short +tries=1 +time=2 -b 127.0.3.${i} slots.ftl @127.0.0.1 > /dev/null
+  done
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  after="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -o 'deny regex for [0-9]* client' | head -n 1 | grep -o '[0-9]*')"
+
+  printf "clients array before: %s, after: %s\n" "${before}" "${after}"
+  [[ -n "${before}" && "${before}" == "${after}" ]]
+}
+
 @test "A new client's MAC address is looked up on its first query" {
   # hwlen starts at -1, which must compare below 1 on every architecture
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
