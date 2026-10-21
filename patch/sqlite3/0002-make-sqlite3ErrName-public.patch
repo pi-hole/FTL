@@ -1,6 +1,6 @@
 --- a/src/database/sqlite3.c
 +++ b/src/database/sqlite3.c
-@@ -188636,8 +188636,7 @@
+@@ -189913,8 +189913,7 @@
  ** Return a static string containing the name corresponding to the error code
  ** specified in the argument.
  */
@@ -10,7 +10,7 @@
    const char *zName = 0;
    int i, origRc = rc;
    for(i=0; i<2 && zName==0; i++, rc &= 0xff){
-@@ -188746,7 +188745,6 @@
+@@ -190023,7 +190022,6 @@
    }
    return zName;
  }
