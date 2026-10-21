@@ -1860,6 +1860,10 @@ except socket.timeout:
   run bash -c './pihole-FTL --config -t dns.cnameRecords "[\"tab.example,\\ttarget.example\", \"comment.example,target.example #note\"]"'
   assert_success
 
+  # Whitespace in front of a comma must not end up as a CNAME for the root name
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\"a.example ,target.example\", \"b.example ,target.example\"]"'
+  assert_success
+
   # No dot follows the last label, but its length is capped just the same
   long_label="$(printf 'a%.0s' {1..64})"
   run bash -c "./pihole-FTL --config dns.hosts '[\"1.2.3.4 test.${long_label}\"]'"
