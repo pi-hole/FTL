@@ -15,6 +15,7 @@ Usage:
     pytest test/api/test_y_cluster.py -v
 """
 
+import base64
 import hashlib
 import hmac
 import http.server
@@ -1019,3 +1020,83 @@ class TestClusterPollIdentity:
                 pytest.fail("the member polling this node did not count")
         finally:
             _FakePeer.down = False
+
+# ---------------------------------------------------------------------------
+# A two-factor code used on a peer
+# ---------------------------------------------------------------------------
+
+TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+def _totp_code(step):
+    key = base64.b32decode(TOTP_SECRET)
+    digest = hmac.new(key, step.to_bytes(8, "big"), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    return (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
+
+
+def _totp_login(step):
+    return requests.post(f"{FTL_URL}/api/auth",
+                         json={"password": PASSWORD, "totp": _totp_code(step)}, timeout=10)
+
+
+class TestClusterTotp:
+
+    def test_code_used_on_a_peer_is_refused_here(self, addressed, api_session):
+        """A peer that accepts a two-factor code tells this node right away, so
+        the code is refused here before this node would poll that peer. Only
+        where the second-factor secret travels, which needs every member to be
+        an https:// one."""
+        if addressed["fake"] is None:
+            pytest.skip("clustering was already on, so the member list is not this file's")
+
+        members = _j(api_session.get(f"{FTL_URL}/api/config/cluster/members", timeout=10))
+        members = members["config"]["cluster"]["members"]
+        encrypted = [m for m in members if m.startswith("https://")]
+        encrypted.append(f"https://127.0.0.1:{_free_port()}")
+        _patch(api_session, {"cluster": {"members": encrypted, "sync": {"credentials": True}}},
+               expect_restart=True)
+        assert _relogin(api_session), "could not log in after the restart"
+
+        sid = None
+        try:
+            r = api_session.patch(f"{FTL_URL}/api/config",
+                                  json={"config": {"webserver": {"api": {"totp_secret": TOTP_SECRET}}}},
+                                  timeout=20)
+            assert r.status_code == 200, r.text[:200]
+
+            step = int(time.time() // 30)
+            uri = f"/api/cluster/status?totp={step}"
+            r = requests.get(f"{FTL_URL}{uri}",
+                             headers=_headers(addressed["secret"], "GET", uri, addressed["id"]),
+                             timeout=10)
+            assert r.status_code == 200, r.text[:200]
+
+            r = _totp_login(step)
+            if r.status_code == 200:
+                sid = r.json()["session"]["sid"]
+            assert r.status_code == 401, "a code the peer used was accepted here"
+            assert _j(r)["error"]["message"] == "Reused 2FA token", r.text[:200]
+
+            # One 2FA attempt per second. The next step is still unused
+            time.sleep(1.1)
+            r = _totp_login(step + 1)
+            assert r.status_code == 200, r.text[:200]
+            sid = r.json()["session"]["sid"]
+        finally:
+            # A session to clear the secret with, whatever went wrong above
+            for later in (1, 2):
+                if sid:
+                    break
+                time.sleep(1.1)
+                r = _totp_login(int(time.time() // 30) + later)
+                sid = r.json().get("session", {}).get("sid") if r.status_code == 200 else None
+            if sid:
+                api_session.headers["X-FTL-SID"] = sid
+                api_session.patch(f"{FTL_URL}/api/config",
+                                  json={"config": {"webserver": {"api": {"totp_secret": ""}}}},
+                                  timeout=20)
+                assert _relogin(api_session), "could not log in after clearing the 2FA secret"
+            _patch(api_session, {"cluster": {"members": members, "sync": {"credentials": False}}},
+                   expect_restart=True)
+            assert _relogin(api_session), "could not log in after the restart"

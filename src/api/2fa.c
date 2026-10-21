@@ -245,6 +245,9 @@ static time_t last_attempt = 0;
 // been accepted, that step and any earlier one can never be replayed, even
 // though the code stays numerically valid across the -1..+1 acceptance window.
 static uint64_t last_counter = 0;
+// ...and the last one a login on this node accepted, which the cluster tells
+// its peers about at once
+static uint64_t local_counter = 0;
 static pthread_mutex_t totp_lock = PTHREAD_MUTEX_INITIALIZER;
 enum totp_status verifyTOTP(const uint32_t incode)
 {
@@ -310,6 +313,7 @@ enum totp_status verifyTOTP(const uint32_t incode)
 			const char *which = i == -1 ? "previous" : i == 0 ? "current" : "next";
 			log_web_debug(DEBUG_API, "2FA code from %s time step is valid", which);
 			last_counter = counter;
+			local_counter = counter;
 			pthread_mutex_unlock(&totp_lock);
 			return TOTP_CORRECT;
 		}
@@ -333,6 +337,14 @@ uint64_t totp_last_counter(void)
 {
 	pthread_mutex_lock(&totp_lock);
 	const uint64_t counter = last_counter;
+	pthread_mutex_unlock(&totp_lock);
+	return counter;
+}
+
+uint64_t totp_local_counter(void)
+{
+	pthread_mutex_lock(&totp_lock);
+	const uint64_t counter = local_counter;
 	pthread_mutex_unlock(&totp_lock);
 	return counter;
 }

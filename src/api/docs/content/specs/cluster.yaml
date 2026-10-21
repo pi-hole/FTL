@@ -31,6 +31,7 @@ components:
               type: boolean
             required: false
             example: false
+          - $ref: 'cluster.yaml#/components/parameters/totp'
         responses:
           '200':
             description: OK
@@ -497,6 +498,21 @@ components:
               nullable: true
               example: null
 
+  parameters:
+    totp:
+      in: query
+      name: totp
+      description: |
+        (Optional, peers only) A two-factor (TOTP) time step the sending peer
+        has just accepted. A peer sends it as soon as a code is used there, so
+        the same code is refused here without waiting for this node's next poll
+        of that peer. Taken under the same conditions as `totp_counter`, and
+        ignored unless the request is signed by a peer.
+      schema:
+        type: integer
+      required: false
+      example: 56983211
+
   schemas:
     status:
       type: object
@@ -638,9 +654,9 @@ components:
             The last two-factor (TOTP) time step this node accepted, as an
             RFC 6238 counter. Present only where the cluster synchronizes
             credentials, so the secret is the same on every node: a peer raises
-            its own replay guard to this value, which spends a code once across
-            the cluster rather than once per node. Omitted when no code has been
-            accepted or credentials do not travel.
+            its own replay guard to this value, so a code used on one node is
+            refused on the others. Omitted when no code has been accepted or
+            credentials do not travel.
           example: 56983211
         dhcp:
           type: object

@@ -31,7 +31,7 @@
 #include "config/password.h"
 // thread_names, thread_sleepms
 #include "signals.h"
-// totp_last_counter(), totp_observe_counter()
+// totp_last_counter(), totp_local_counter(), totp_observe_counter()
 #include "api/api.h"
 // prctl()
 #include <sys/prctl.h>
@@ -3487,6 +3487,38 @@ static void push_round(void)
 		          handed, handed == 1 ? "" : "s");
 }
 
+// The last TOTP time step accepted here that the peers were told about. A
+// peer learns it from our status anyway, but only at its next poll
+static uint64_t told_totp = 0;
+
+static void tell_totp(void)
+{
+	const uint64_t counter = totp_local_counter();
+	if(counter <= told_totp)
+		return;
+	told_totp = counter;
+
+	if(!credentials_travel || !a_member())
+		return;
+
+	char path[64] = "";
+	snprintf(path, sizeof(path), "/api/cluster/status?totp=%llu", (unsigned long long)counter);
+	for(unsigned int i = 0; i < num_peers; i++)
+	{
+		struct cluster_peer *peer = &peers[i];
+		if(!peer->reachable || !peer->clock_agrees || peer->is_self)
+			continue;
+
+		cJSON *answer = NULL;
+		char err[CLUSTER_STRLEN] = "";
+		if(cluster_http_json(peer, path, &answer, err, sizeof(err), NULL, 0))
+			cJSON_Delete(answer);
+		else
+			log_debug(DEBUG_CLUSTER, "cluster: cannot tell %s about a used 2FA code: %s",
+			          peer->url, err);
+	}
+}
+
 static void cluster_round(void)
 {
 	// Nothing to poll, nobody to tell, and a restart on its way
@@ -3728,7 +3760,10 @@ static void *run_cluster_thread(void *val)
 			next_round = 0.0;
 		}
 		else if(!stopping())
+		{
+			tell_totp();
 			push_round();
+		}
 
 		// A gravity run started after a list synchronization takes
 		// minutes, so it is watched from here rather than waited for

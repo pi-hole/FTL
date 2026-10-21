@@ -32,6 +32,31 @@
 #include "cluster/auth.h"
 // ERRBUF_SIZE
 #include "config/dnsmasq_config.h"
+// double_time()
+#include "timers.h"
+#include <math.h>
+
+// A peer that has just accepted a TOTP code says so in its poll, so the code is
+// spent here at once. Taken on the same terms as the step a peer publishes:
+// only where the second-factor secret is shared and the clocks agree
+static void totp_told(struct ftl_conn *api)
+{
+	uint64_t counter = 0;
+	const char *msg = NULL;
+	if(!get_uint64_var_msg(api->request->query_string, "totp", &counter, &msg) || counter == 0)
+		return;
+
+	const double sent = (double)api->session.cluster_seq / 1e6;
+	if(fabs(double_time() - sent) > CLUSTER_MAX_CLOCK_OFFSET)
+		return;
+
+	lock_shm();
+	const bool shared = cluster_credentials_syncable();
+	unlock_shm();
+
+	if(shared)
+		totp_observe_counter(counter);
+}
 
 int api_cluster_status(struct ftl_conn *api)
 {
@@ -51,6 +76,7 @@ int api_cluster_status(struct ftl_conn *api)
 		const bool told = get_bool_var(api->request->query_string, "dhcp", &dhcp) &&
 		                  get_bool_var(api->request->query_string, "vip", &vip);
 		cluster_note_poll(mg_get_header(api->conn, CLUSTER_HDR_FROM), told && !dhcp && !vip);
+		totp_told(api);
 	}
 
 	cJSON *node = JSON_NEW_OBJECT();
