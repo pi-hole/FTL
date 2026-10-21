@@ -351,19 +351,26 @@ static const char *cluster_run_token(void)
 	return own_run;
 }
 
+// What this node serves goes with every signed status request, so a peer that
+// cannot poll this node back can tell a standby from a second server
+static void status_path(char *path, const size_t size, const uint64_t totp)
+{
+	char address[CLUSTER_STRLEN] = "";
+	cluster_vip_address(address);
+	const bool holding = vip_claimed() || (strlen(address) > 0 && vip_present(address));
+	const int len = snprintf(path, size, "/api/cluster/status?dhcp=%s&vip=%s",
+	                         config.dhcp.active.v.b ? "true" : "false", holding ? "true" : "false");
+	if(totp > 0 && len > 0 && (size_t)len < size)
+		snprintf(path + len, size - len, "&totp=%llu", (unsigned long long)totp);
+}
+
 static void poll_peer(struct cluster_peer *peer)
 {
 	cJSON *json = NULL;
 	char err[CLUSTER_STRLEN] = "";
 
-	// What this node serves goes with the poll, so a peer that cannot poll
-	// this node back can tell a standby from a second server
-	char address[CLUSTER_STRLEN] = "";
-	cluster_vip_address(address);
-	const bool holding = vip_claimed() || (strlen(address) > 0 && vip_present(address));
-	char path[64] = "";
-	snprintf(path, sizeof(path), "/api/cluster/status?dhcp=%s&vip=%s",
-	         config.dhcp.active.v.b ? "true" : "false", holding ? "true" : "false");
+	char path[96] = "";
+	status_path(path, sizeof(path), 0);
 
 	char signer[CLUSTER_HASHLEN] = "";
 	if(!cluster_http_json(peer, path, &json, err, sizeof(err),
@@ -3501,8 +3508,8 @@ static void tell_totp(void)
 	if(!credentials_travel || !a_member())
 		return;
 
-	char path[64] = "";
-	snprintf(path, sizeof(path), "/api/cluster/status?totp=%llu", (unsigned long long)counter);
+	char path[96] = "";
+	status_path(path, sizeof(path), counter);
 	for(unsigned int i = 0; i < num_peers; i++)
 	{
 		struct cluster_peer *peer = &peers[i];
