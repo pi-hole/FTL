@@ -431,6 +431,15 @@ doh_via_trusted_proxy() {
   assert_output "426"
 }
 
+@test "dotdoh-server: X-Forwarded-Proto lines from a trusted proxy form one list, the last entry counts" {
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-Proto: https' \
+          -H 'X-Forwarded-Proto: http' -H 'X-Forwarded-For: 127.0.0.5'
+  assert_output "426"
+  run doh_via_trusted_proxy --interface 127.0.0.4 -H 'X-Forwarded-Proto: http' \
+          -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 127.0.0.5'
+  assert_output "200"
+}
+
 @test "dotdoh-server: forwarding headers from an untrusted peer are ignored (426)" {
   run doh_via_trusted_proxy --interface "$CLIENT" -H 'X-Forwarded-Proto: https' \
           -H 'X-Forwarded-For: 127.0.0.5'

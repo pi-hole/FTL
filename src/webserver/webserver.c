@@ -698,6 +698,15 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 // Whether the numeric address ip lies in net, an address or CIDR subnet
 static bool addr_in_net(const char *ip, const char *net)
 {
+	// Drop the zone CivetWeb appends to a link-local peer ("fe80::4%eth0")
+	char addr[INET6_ADDRSTRLEN];
+	const size_t alen = strcspn(ip, "%");
+	if(alen >= sizeof(addr))
+		return false;
+	memcpy(addr, ip, alen);
+	addr[alen] = '\0';
+	ip = addr;
+
 	char base[INET6_ADDRSTRLEN];
 	const char *slash = strchr(net, '/');
 	const size_t blen = slash != NULL ? (size_t)(slash - net) : strlen(net);
@@ -748,7 +757,10 @@ static int forwarded_client(struct mg_connection *conn, const struct mg_request_
 		return 426;
 
 	// The last hop appends to the list, so its entry is the one that counts
-	const char *proto = mg_get_header(conn, "X-Forwarded-Proto");
+	const char *proto = NULL;
+	for(int i = 0; i < ri->num_headers; i++)
+		if(strcasecmp(ri->http_headers[i].name, "X-Forwarded-Proto") == 0)
+			proto = ri->http_headers[i].value;
 	if(proto == NULL)
 		return 426;
 	const char *last = strrchr(proto, ',');
@@ -772,8 +784,11 @@ static int forwarded_client(struct mg_connection *conn, const struct mg_request_
 		len += (size_t)n;
 	}
 
-	strncpy(client, ri->remote_addr, INET6_ADDRSTRLEN - 1);
-	client[INET6_ADDRSTRLEN - 1] = '\0';
+	const size_t rlen = strcspn(ri->remote_addr, "%");
+	if(rlen >= INET6_ADDRSTRLEN)
+		return 400;
+	memcpy(client, ri->remote_addr, rlen);
+	client[rlen] = '\0';
 	for(char *end = chain + len; end > chain; )
 	{
 		char *start = end;
@@ -844,6 +859,12 @@ static int dns_query_guard(struct mg_connection *conn, void *cbdata)
 		mg_response_header_send(conn);
 		mg_write(conn, msg, sizeof(msg) - 1);
 		return 426;
+	}
+	if(st == 0 && !ri->is_ssl && acl_per_request && !request_acl_allows(client))
+	{
+		log_web_debug(DEBUG_WEBSERVER, "Rejecting request from %s (webserver.acl)", client);
+		mg_send_http_error(conn, 403, "Forbidden");
+		return 403;
 	}
 	if(!dotdoh_doh_enabled())
 	{

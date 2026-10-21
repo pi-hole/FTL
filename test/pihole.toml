@@ -286,6 +286,10 @@
   # announces is used to attribute the query. Any other plain HTTP request is still
   # refused, so enabling this alone never exposes DNS queries in cleartext.
   #
+  # The proxy has to connect to a webserver.port entry without the redirect flag (r), as
+  # a redirect port answers a request that announces its TLS in X-Forwarded-Proto with a
+  # redirect.
+  #
   # Allowed values are:
   #     true or false
   dohReverseProxy = true ### CHANGED, default = false
@@ -919,7 +923,9 @@
   # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
   # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS
   # queries if dns.doh is enabled and dns.listeningMode allows it, all its other
-  # requests are refused.
+  # requests are refused. Behind a reverse proxy listed in webserver.trustedProxies, the
+  # ACL applies to the client the proxy announces, and DNS-over-HTTPS queries of a
+  # refused client are refused as well.
   #
   # Example 1: "+127.0.0.1,+[::1]" ---> deny all access, except from 127.0.0.1 and ::1
   #
