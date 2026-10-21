@@ -440,11 +440,16 @@ char * __attribute__((malloc)) create_password(const char *password)
 // build the credential fingerprint, so it needs the one the API writers take
 static void upgrade_stored_password(const char *password)
 {
-	char *new_hash = create_password(password);
-	if(new_hash == NULL)
+	char *legacy = double_sha256_password(password);
+	if(legacy == NULL)
 		return;
 
-	log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+	char *new_hash = create_password(password);
+	if(new_hash == NULL)
+	{
+		free(legacy);
+		return;
+	}
 
 	// lock_shm(), not the sync lock. The string being freed and replaced is a
 	// live configuration value, and the thread that walks those to build the
@@ -456,6 +461,21 @@ static void upgrade_stored_password(const char *password)
 	// lock the cluster thread holds while it waits for lock_shm
 	cluster_sync_lock();
 	lock_shm();
+
+	// A password set here or taken from a peer since the login was checked
+	// is newer than this one and stays
+	const bool unchanged = config.webserver.api.pwhash.v.s != NULL &&
+	                       strcmp(config.webserver.api.pwhash.v.s, legacy) == 0;
+	free(legacy);
+	if(!unchanged)
+	{
+		unlock_shm();
+		cluster_sync_unlock();
+		free(new_hash);
+		return;
+	}
+
+	log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
 	if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
 		free(config.webserver.api.pwhash.v.s);
 	config.webserver.api.pwhash.v.s = new_hash;
