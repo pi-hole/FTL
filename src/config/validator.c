@@ -146,9 +146,6 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 	return true;
 }
 
-// Validate the dns.cnames array
-// Each entry needs to be a string in form "<cname>,[<cname>,]<target>[,<TTL>]"
-// Newline characters are not allowed in any of the entries
 // dnsmasq ends a line at a # that starts it or follows whitespace
 static void cut_comment(char *s)
 {
@@ -162,6 +159,41 @@ static void cut_comment(char *s)
 	}
 }
 
+// Reduce a dns.cnameRecords entry in place to what dnsmasq needs to see: no
+// comment and no whitespace around the commas. dnsmasq turns whitespace in front
+// of a comma into an additional CNAME for the root name.
+void normalize_cname(char *s)
+{
+	cut_comment(s);
+
+	size_t w = 0;
+	for(char *p = s; ; )
+	{
+		char *comma = strchr(p, ',');
+		size_t len = comma != NULL ? (size_t)(comma - p) : strlen(p);
+		while(len > 0 && isspace((unsigned char)*p))
+		{
+			p++;
+			len--;
+		}
+		while(len > 0 && isspace((unsigned char)p[len - 1]))
+			len--;
+
+		if(w > 0)
+			s[w++] = ',';
+		memmove(s + w, p, len);
+		w += len;
+
+		if(comma == NULL)
+			break;
+		p = comma + 1;
+	}
+	s[w] = '\0';
+}
+
+// Validate the dns.cnames array
+// Each entry needs to be a string in form "<cname>,[<cname>,]<target>[,<TTL>]"
+// Newline characters are not allowed in any of the entries
 bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(!cJSON_IsArray(val->json))
@@ -187,6 +219,11 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// Check if it's in the form "<cname>,[<cnameX>,]<target>[,<TTL>]"
 		// <cnameX> is optional and may be repeated
 		char *str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
 		cut_comment(str);
 		char *tmp = str, *s = NULL;
 		unsigned int j = 0;
@@ -229,6 +266,11 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// spaces around the commas are ignored, and the last of at least
 		// three elements is the TTL if it is a number
 		str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
 		cut_comment(str);
 		tmp = str;
 		for(unsigned int k = 0; (s = strsep(&tmp, ",")) != NULL; k++)
