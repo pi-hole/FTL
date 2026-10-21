@@ -1425,7 +1425,9 @@
   # immediately. Each further change extends the wait, but a restart is postponed by no
   # more than five times this value (hard-coded). The wait is checked once a second, so
   # the actual delay is rounded up accordingly. Deliberate one-off actions such as a
-  # Teleporter import or an explicit restart request are never delayed.
+  # Teleporter import or an explicit restart request are never delayed. The web
+  # interface does not wait for a delayed restart and may show a change as applied
+  # before FTL has restarted.
   #
   # Allowed values are:
   #     A positive integer value between 0 and 60
