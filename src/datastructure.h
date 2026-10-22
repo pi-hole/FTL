@@ -34,8 +34,9 @@ typedef struct {
 	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status, -1 otherwise
-	int ede;
+	int list_id; // list ID of its row in the database, -1 if none
 	uint16_t qtype;
+	uint16_t ede; // only valid with flags.has_ede, see query_get_ede()
 	unsigned char magic;
 	enum query_status status;
 	enum query_type type;
@@ -57,6 +58,7 @@ typedef struct {
 		// is returned exactly once - either by query_blocked() when the
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
+		bool has_ede :1;
 		struct database_flags {
 			bool changed :1;
 			bool imported :1;
@@ -228,6 +230,8 @@ const char *getDomainString(const queriesData *query);
 const char *getCNAMEDomainString(const queriesData *query);
 const char *getClientIPString(const queriesData *query);
 const char *getClientNameString(const queriesData *query);
+int query_get_ede(const queriesData *query) __attribute__((pure));
+void query_set_ede(queriesData *query, const int ede);
 
 void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);

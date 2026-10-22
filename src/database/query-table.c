@@ -1778,7 +1778,9 @@ void DB_read_queries(void)
 	                              "additional_info,"\
 	                              "reply_type,"\
 	                              "reply_time,"\
-	                              "dnssec "\
+	                              "dnssec,"\
+	                              "list_id,"\
+	                              "ede "\
 	                       "FROM queries";
 
 	// Only try to import from database if it is known to not be broken and
@@ -1977,7 +1979,9 @@ void DB_read_queries(void)
 		query->flags.database.imported = true;
 		query->flags.database.changed = false;
 		query->flags.database.stored = true;
-		query->ede = -1; // EDE_UNSET == -1
+		// List ID and extended DNS error, NULL counts as none
+		query->list_id = sqlite3_column_type(stmt, 11) == SQLITE_INTEGER ? sqlite3_column_int(stmt, 11) : -1;
+		query_set_ede(query, sqlite3_column_type(stmt, 12) == SQLITE_INTEGER ? sqlite3_column_int(stmt, 12) : -1);
 
 		// Set lastQuery timer for network table
 		clientsData *client = getClient(clientID, true);
@@ -2447,7 +2451,7 @@ bool queries_to_database(const bool final)
 		s->response = query->response;
 		s->response_calculated = query->flags.response_calculated;
 		s->dnssec = query->dnssec;
-		s->ede = query->ede;
+		s->ede = query_get_ede(query);
 		s->blocked = query->flags.blocked;
 
 		// DOMAIN - handle linking table INSERT if first encounter. The row
@@ -2582,6 +2586,7 @@ bool queries_to_database(const bool final)
 
 		// ADDINFO — handle linking table INSERT if not cached
 		s->addinfo_id = 0;
+		s->list_id = -1;
 		if(query->status == QUERY_GRAVITY_CNAME ||
 		   query->status == QUERY_REGEX_CNAME ||
 		   query->status == QUERY_DENYLIST_CNAME)
@@ -2768,8 +2773,8 @@ bool queries_to_database(const bool final)
 		goto rollback_fail;
 
 	// ===================================================================
-	// PHASE 3: Brief SHM lock — mark the new queries that were successfully
-	// committed as stored.
+	// PHASE 3: Brief SHM lock — update the queries that were successfully
+	// committed: their list ID and, for new ones, the stored flag.
 	// ===================================================================
 	lock_shm();
 
@@ -2789,8 +2794,8 @@ bool queries_to_database(const bool final)
 	if(succeeded == snap_count)
 		last_export_start = run_start;
 
-	// Loop through snapshots of successfully committed queries and mark the
-	// new ones as stored
+	// Loop through snapshots of successfully committed queries, keep the
+	// list ID their row got and mark the new ones as stored
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
@@ -2798,6 +2803,7 @@ bool queries_to_database(const bool final)
 		if(query == NULL)
 			continue;
 
+		query->list_id = s->list_id;
 		if(s->is_new)
 		{
 			query->flags.database.stored = true;
