@@ -210,6 +210,119 @@ load 'bats_helper.bash'
   [[ "${resets}" == "1" ]]
 }
 
+@test "An answer from the cache does not look up its CNAME target again until the lists change" {
+  # The upstream answer checks memo-target-1.ftl, the answer from the cache
+  # (one check per address record) reuses that result
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  first="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-1.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  cached="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-1.ftl @127.0.0.1)"
+  log="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log)"
+  lookups="$(grep -c 'domain_in_list("memo-target-1.ftl"' <<< "${log}" || true)"
+  known="$(grep -c 'memo-target-1.ftl is known as not to be blocked (CNAME target)' <<< "${log}" || true)"
+
+  # Denying the target reloads the lists, the next answer from the cache checks it again
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X POST 127.0.0.1/api/domains/deny/exact -d '{"domain":"memo-target-1.ftl"}'
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  reloaded=$status
+  denied="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-1.ftl @127.0.0.1)"
+  again="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-1.ftl @127.0.0.1)"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X DELETE 127.0.0.1/api/domains/deny/exact/memo-target-1.ftl
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+
+  printf "blocked: %s, first: %s, cached: %s, lookups: %s, known: %s, reloaded: %s, denied: %s, again: %s\n" \
+         "${blocked}" "${first//$'\n'/ }" "${cached//$'\n'/ }" "${lookups}" "${known}" "${reloaded}" "${denied//$'\n'/ }" "${again}"
+  [[ -n "${blocked}" && "${blocked}" != *"192.168.6."* ]]
+  [[ "${first}" == *"192.168.6.4"* && "${cached}" == *"192.168.6.4"* ]]
+  [[ "${lookups}" == "0" && "${known}" -gt 0 ]]
+  [[ "${reloaded}" == "0" ]]
+  [[ "${denied}" != *"192.168.6."* ]]
+  [[ "${again}" == "${blocked}" ]]
+}
+
+@test "A remembered CNAME target is blocked by a deny regex added later" {
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-2.ftl @127.0.0.1 > /dev/null
+  cached="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-2.ftl @127.0.0.1)"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X POST 127.0.0.1/api/domains/deny/regex -d '{"domain":"^memo-target-2\\.ftl$"}'
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  reloaded=$status
+  denied="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-2.ftl @127.0.0.1)"
+  again="$(dig +short +tries=1 +time=2 -b 127.0.0.42 cname-memo-2.ftl @127.0.0.1)"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X POST 127.0.0.1/api/domains:batchDelete -d '[{"item":"^memo-target-2\\.ftl$","type":"deny","kind":"regex"}]'
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+
+  printf "blocked: %s, cached: %s, reloaded: %s, denied: %s, again: %s\n" \
+         "${blocked}" "${cached//$'\n'/ }" "${reloaded}" "${denied//$'\n'/ }" "${again}"
+  [[ "${cached}" == *"192.168.6.5"* ]]
+  [[ "${reloaded}" == "0" ]]
+  [[ "${denied}" != *"192.168.6.5"* ]]
+  [[ "${again}" == "${blocked}" ]]
+}
+
+@test "A remembered CNAME target is checked again for a client that moved to other groups" {
+  # memo-target-3.ftl is denied in group 4 only. The MAC address puts the
+  # client into that group, which does not reload the lists
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X POST 127.0.0.1/api/domains/deny/exact -d '{"domain":"memo-target-3.ftl","groups":[4]}'
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  reloaded=$status
+  dig +short +tries=1 +time=2 -b 127.0.0.43 cname-memo-3.ftl @127.0.0.1 > /dev/null
+  cached="$(dig +short +tries=1 +time=2 -b 127.0.0.43 cname-memo-3.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  moved="$(dig +short +tries=1 +time=2 -b 127.0.0.43 +ednsopt=65001:aabbccddeeff cname-memo-3.ftl @127.0.0.1)"
+  again="$(dig +short +tries=1 +time=2 -b 127.0.0.43 +ednsopt=65001:aabbccddeeff cname-memo-3.ftl @127.0.0.1)"
+  reloads="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'deny regex for' || true)"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X DELETE 127.0.0.1/api/domains/deny/exact/memo-target-3.ftl
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+
+  printf "blocked: %s, reloaded: %s, cached: %s, moved: %s, again: %s, reloads: %s\n" \
+         "${blocked}" "${reloaded}" "${cached//$'\n'/ }" "${moved//$'\n'/ }" "${again}" "${reloads}"
+  [[ "${reloaded}" == "0" ]]
+  [[ "${cached}" == *"192.168.6.6"* ]]
+  [[ "${moved}" != *"192.168.6.6"* ]]
+  [[ "${again}" == "${blocked}" ]]
+  [[ "${reloads}" == "0" ]]
+}
+
+@test "A CNAME target is blocked again after blocking was disabled and enabled" {
+  blocked="$(dig +short +tries=1 +time=2 gravity.ftl @127.0.0.1)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X POST 127.0.0.1/api/domains/deny/exact -d '{"domain":"memo-target-4.ftl"}'
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+  before="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
+
+  # Each change flushes the cache and reloads the lists, the second answer
+  # comes from the cache
+  results=""
+  for state in false true; do
+    logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+    curl -s -o /dev/null -X POST 127.0.0.1/api/dns/blocking -d "{\"blocking\":${state}}"
+    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+    first="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
+    second="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
+    results="${results} ${state}:${status}:${first//$'\n'/,}/${second//$'\n'/,}"
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null -X DELETE 127.0.0.1/api/domains/deny/exact/memo-target-4.ftl
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+
+  printf "blocked: %s, before: %s, results:%s\n" "${blocked}" "${before}" "${results}"
+  [[ "${before}" == "${blocked}" ]]
+  [[ "${results}" == " false:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:${blocked}/${blocked}" ]]
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
