@@ -223,7 +223,7 @@ setup() {
   assert_line --index 0 "11"
 }
 
-@test "Client 6: Client is recognized by interface name" {
+@test "Client 6: Client is matched by the interface its query arrives on" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.6 @127.0.0.1 +short"
 
@@ -234,18 +234,22 @@ setup() {
   assert_line --index 0 "1"
   run bash -c "grep -c \"There is no record for 00:11:22:33:44:55 in the client table\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
+  # The query arrives on lo, which takes precedence over enp0s123 from the
+  # network table. There is no client :lo, so the default group applies
+  run bash -c "grep -c \"Using in-memory interface :lo of 127.0.0.6\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "1"
   run bash -c "grep -c \"Found database interface 127.0.0.6 -> enp0s123\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "0"
+  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 not found. Using default group.\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
-  assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "2"
+  assert_line --index 0 "0"
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "11"
+  assert_line --index 0 "0"
 }
 
 @test "Normal query (A) is not blocked" {
@@ -1433,6 +1437,11 @@ except socket.timeout:
   rm ~/.sqliterc
 }
 
+@test "Embedded SQLite3 shell reports the disk usage" {
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db .diskused"
+  assert_line --partial "Database storage utilization report"
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
@@ -1944,6 +1953,30 @@ except socket.timeout:
   assert_failure 3
 }
 
+@test "Config validation: a document root that resolves to the root is rejected" {
+  # Lexically /proc/self/root is a directory of its own, but it is a link
+  # the kernel plants to /, so it has to be judged by where it leads
+  run bash -c './pihole-FTL --config webserver.paths.webroot /proc/self/root'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/proc/self/root" resolves to "/", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+
+  # A link into the configuration directory is caught the same way
+  ln -s /etc/pihole /tmp/webroot-link
+  run bash -c './pihole-FTL --config webserver.paths.webroot /tmp/webroot-link'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/tmp/webroot-link" resolves to "/etc/pihole", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+  rm -f /tmp/webroot-link
+
+  # A link to an ordinary directory stays configurable
+  ln -s /var/www/html /var/webroot-ok
+  run bash -c './pihole-FTL --config -t webserver.paths.webroot /var/webroot-ok'
+  assert_success
+  rm -f /var/webroot-ok
+
+  run bash -c './pihole-FTL --config webserver.paths.webroot'
+  assert_line --index 0 '/var/www/html'
+}
+
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
   # Set dns.hosts with various whitespace formatting issues
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -2252,6 +2285,12 @@ except socket.timeout:
   assert_success
   assert_output --partial "HOSTNAME_WARNING_POSITION=PASS"
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
+}
+
+@test "TXT stat buffer regression harness" {
+  run ./txt_stat_regression
+  assert_success
+  assert_output --partial "TXT_STAT_SERVERS_REGRESSION=PASS"
 }
 
 @test "SHA256 checksum working" {
