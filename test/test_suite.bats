@@ -1437,6 +1437,11 @@ except socket.timeout:
   rm ~/.sqliterc
 }
 
+@test "Embedded SQLite3 shell reports the disk usage" {
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db .diskused"
+  assert_line --partial "Database storage utilization report"
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
@@ -1499,6 +1504,15 @@ except socket.timeout:
   run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 29: (synthesized)"
   assert_line --index 1 ""
+}
+
+@test "A TCP worker forked during a config write does not keep pihole.toml.lock" {
+  # dnsmasq forks a worker per TCP connection. One forked while FTL has the
+  # lock file open must not hold the lock after the write is done, else every
+  # later config write waits for that worker to exit
+  run bash -c "python3 test/toml_lock_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "free"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {

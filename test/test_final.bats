@@ -30,6 +30,7 @@ load 'bats_helper.bash'
 
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
+  # BATS:   2x pihole.toml writes (webserver.interface.boxed PATCH + restore around a TCP worker fork)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
@@ -54,14 +55,14 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
-  # slow), leaving the dns.reply.host PATCH, the removed dns.hosts entry and
-  # webserver_acl.bats. The CLI password set/remove do not write: the in-memory
-  # config already matches, so they log "pihole.toml unchanged" - which the
-  # next assertion below counts.
+  # slow), leaving the dns.reply.host PATCH, the boxed PATCH + restore, the
+  # removed dns.hosts entry and webserver_acl.bats. The CLI password
+  # set/remove do not write: the in-memory config already matches, so they
+  # log "pihole.toml unchanged" - which the next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "15"
+    assert_line --index 0 "17"
   else
-    [[ ${lines[0]} == "60" ]]
+    [[ ${lines[0]} == "62" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -226,6 +227,37 @@ load 'bats_helper.bash'
   # disabled below would otherwise continue from it
   run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id < 0;"'
   assert_success
+}
+
+@test "Clients in recycled slots do not make the clients array longer" {
+  # The regex reload logs the length of the clients array. 50 clients, a
+  # flush that recycles all clients, 50 other clients: the second 50 reuse
+  # recycled slots, so the array has to stay as long as it was
+  for i in $(seq 1 50); do
+    dig +short +tries=1 +time=2 -b 127.0.2.${i} slots.ftl @127.0.0.1 > /dev/null
+  done
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  before="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -o 'deny regex for [0-9]* client' | head -n 1 | grep -o '[0-9]*')"
+
+  # The flush keeps the queries of the current second, which would keep
+  # their clients from being recycled
+  sleep 2
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_line --index 0 "success"
+  for i in $(seq 1 50); do
+    dig +short +tries=1 +time=2 -b 127.0.3.${i} slots.ftl @127.0.0.1 > /dev/null
+  done
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  after="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -o 'deny regex for [0-9]* client' | head -n 1 | grep -o '[0-9]*')"
+
+  printf "clients array before: %s, after: %s\n" "${before}" "${after}"
+  [[ -n "${before}" && "${before}" == "${after}" ]]
 }
 
 @test "A new client's MAC address is looked up on its first query" {

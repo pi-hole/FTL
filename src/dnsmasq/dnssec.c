@@ -1650,7 +1650,7 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       if (*closest_encloser == '.')
 	closest_encloser++;
 
-      if (wild_offset != 0 && name - closest_encloser == wild_offset)
+      if (wild_offset != 0 && closest_encloser - name == wild_offset)
 	break;
       
       if (dec_counter(validate_counter, NULL))
@@ -1941,7 +1941,7 @@ static int zone_status(char *name, int class, char *keyname, time_t now)
 	    return STAT_INSECURE;
 	}
 
-      if (name_start == 0)
+      if (name_start <= 1)
 	break;
 
       for (p = &name[name_start-2]; (*p != '.') && (p != name); p--);
