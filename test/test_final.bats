@@ -666,3 +666,92 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
 }
+
+@test "Query IDs are kept across a restart and continue above the imported ones" {
+  # The TCP queries are created in forked TCP workers, which number them from
+  # the same counter as the main process
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A udp-1.ids.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  dig +tcp A tcp-1.ids.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  dig A udp-2.ids.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  # Queries move into the in-memory database once per second
+  sleep 2
+  before=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '.queries')
+
+  # The final export on termination stores them on disk
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT MAX(id) FROM query_storage;"'
+  maxid=${lines[0]}
+
+  logsize_import=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
+  imported=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '.queries')
+  for i in $(seq 1 30); do
+    if dig A udp-3.ids.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  dig +tcp A tcp-2.ids.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  sleep 2
+  all=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '[.queries[] | [.id, .domain]]')
+
+  # Page through all of them two at a time, from the new queries into the
+  # imported ones
+  cursor=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=2" | jq '.cursor')
+  paged="[]"
+  for start in $(seq 0 2 98); do
+    page=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=2&start=${start}&cursor=${cursor}" | jq -c '[.queries[] | [.id, .domain]]')
+    if [[ "${page}" == "[]" ]]; then
+      break
+    fi
+    paged=$(jq -cn --argjson a "${paged}" --argjson b "${page}" '$a + $b')
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  printf "disk max ID: %s\nbefore: %s\nimported: %s\nall: %s\npaged: %s\n" "${maxid}" "${before}" "${imported}" "${all}" "${paged}"
+  # The imported queries are the same as before the restart, IDs included
+  [[ "${before}" != "[]" ]]
+  assert_equal "${imported}" "${before}"
+  # The new queries, also the one over TCP, continue above the highest ID on
+  # disk, the imported ones are at or below it
+  run jq -n --argjson all "${all}" --argjson max "${maxid}" '
+    def ids($name): [$all[] | select(.[1] == $name + ".ids.ftl") | .[0]];
+    ([ids("udp-1", "tcp-1", "udp-2", "udp-3", "tcp-2")] | all(length > 0)) and
+    ([ids("udp-1", "tcp-1", "udp-2")[]] | all(. <= $max)) and
+    ([ids("udp-3", "tcp-2")[]] | all(. > $max))'
+  assert_output "true"
+  # Paging with the cursor walks across both without a gap or a duplicate
+  assert_equal "${paged}" "${all}"
+  run jq -n --argjson all "${all}" '[$all[][0]] | . == (unique | reverse)'
+  assert_output "true"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.query-ids.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.query-ids.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.query-ids.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.query-ids.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}

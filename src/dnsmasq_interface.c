@@ -1172,9 +1172,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query_set_status_init(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
-	// Initialize database fields
-	// This query is new and not yet known to the database
-	query->db = -1;
+	// Initialize database fields. The ID is handed out under the same lock
+	// as the slot, so the IDs follow the order of the queries array
+	query->db = counters->next_query_id++;
+	query->flags.database.stored = false;
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;

@@ -494,6 +494,11 @@ bool init_memory_database(void)
 	// Initialize in-memory database starting index
 	init_disk_db_idx(_memdb);
 
+	// New queries continue above the highest ID on disk
+	lock_shm();
+	counters->next_query_id = memdb_queries_maxid + 1;
+	unlock_shm();
+
 	// Flush messages stored in the long-term database
 	flush_message_table(_memdb);
 
@@ -1922,9 +1927,10 @@ void DB_read_queries(void)
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
 
-		// Store this query in memory
+		// Store this query in memory, it keeps its ID from the database
 		queriesData *query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
+		query->db = dbID;
 		query->timestamp = queryTimeStamp;
 		if(type < 100)
 		{
@@ -1970,6 +1976,7 @@ void DB_read_queries(void)
 		query->flags.allowed = false;
 		query->flags.database.imported = true;
 		query->flags.database.changed = false;
+		query->flags.database.stored = true;
 		query->ede = -1; // EDE_UNSET == -1
 
 		// Set lastQuery timer for network table
@@ -2198,7 +2205,7 @@ static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
 // Snapshot struct for lock-free SQLite writes in phase 2
 struct query_snap {
 	unsigned int queryID;       // SHM index for writeback
-	int64_t idx;                // pre-assigned db index
+	int64_t idx;                // ID in the database
 	double timestamp;
 	int type_val;               // pre-computed type for param 3
 	int status;                 // param 4
@@ -2379,7 +2386,6 @@ bool queries_to_database(const bool final)
 
 	unsigned int snap_count = 0;
 	unsigned int unchanged = 0u;
-	int64_t next_maxid = memdb_queries_maxid;
 	bool phase1_error = false;
 	int64_t changes = 0;
 	sqlite3_int64 rowid = 0;
@@ -2426,15 +2432,12 @@ bool queries_to_database(const bool final)
 		struct query_snap *s = &snaps[snap_count];
 		s->queryID = queryID;
 
-		// Pre-assign db index
-		s->is_new = (query->db == -1);
-		if(s->is_new)
-			s->idx = ++next_maxid;
-		else
-			s->idx = query->db;
+		// The ID was handed out when the query was created
+		s->is_new = !query->flags.database.stored;
+		s->idx = query->db;
 
-		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld (old idx %lld)",
-		          queryID, (long long)s->idx, (long long)query->db);
+		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld (%s)",
+		          queryID, (long long)s->idx, s->is_new ? "new" : "update");
 
 		// Snapshot scalar fields
 		s->timestamp = query->timestamp;
@@ -2765,8 +2768,8 @@ bool queries_to_database(const bool final)
 		goto rollback_fail;
 
 	// ===================================================================
-	// PHASE 3: Brief SHM lock — write back db indices and clear changed
-	// flags only for queries that were successfully committed.
+	// PHASE 3: Brief SHM lock — mark the new queries that were successfully
+	// committed as stored.
 	// ===================================================================
 	lock_shm();
 
@@ -2786,8 +2789,8 @@ bool queries_to_database(const bool final)
 	if(succeeded == snap_count)
 		last_export_start = run_start;
 
-	// Loop through snapshots of successfully committed queries and write
-	// back db indices
+	// Loop through snapshots of successfully committed queries and mark the
+	// new ones as stored
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
@@ -2797,7 +2800,7 @@ bool queries_to_database(const bool final)
 
 		if(s->is_new)
 		{
-			query->db = s->idx;
+			query->flags.database.stored = true;
 			if(s->blocked)
 				new_blocked++;
 			if(s->timestamp > new_last_timestamp)

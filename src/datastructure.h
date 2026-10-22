@@ -27,7 +27,7 @@ typedef struct {
 	// x86_64).
 	double response;
 	double timestamp;
-	sqlite3_int64 db;
+	sqlite3_int64 db; // ID in the database, handed out when the query is created
 	unsigned int domainID;
 	unsigned int clientID;
 	int upstreamID; // -1 if not forwarded
@@ -60,6 +60,8 @@ typedef struct {
 		struct database_flags {
 			bool changed :1;
 			bool imported :1;
+			// The query has a row in the database (stored or imported)
+			bool stored :1;
 		} database;
 	} flags;
 } queriesData;
