@@ -1473,6 +1473,11 @@ except socket.timeout:
   rm ~/.sqliterc
 }
 
+@test "Embedded SQLite3 shell reports the disk usage" {
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db .diskused"
+  assert_line --partial "Database storage utilization report"
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'

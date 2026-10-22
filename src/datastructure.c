@@ -353,8 +353,10 @@ int _findDomainID(const char *domainString, const bool count, const bool hidden,
 	// Store pre-computed hash for faster lookups later on
 	domain->hash = hash;
 	domain->lastQuery = 0.0;
-	// Increase counter by one
-	counters->domains++;
+	// A recycled ID is a slot inside the array already
+	if(domainID == counters->domains)
+		counters->domains++;
+	counters->domains_total++;
 
 	return domainID;
 }
@@ -476,8 +478,10 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Store client ID
 	client->id = clientID;
 
-	// Increase counter by one
-	counters->clients++;
+	// A recycled ID is a slot inside the array already
+	if(clientID == counters->clients)
+		counters->clients++;
+	counters->clients_total++;
 
 	// Give the client a cleared regex row now, sized by the counter above, so
 	// no regex applies before its first query resolves its groups
@@ -1247,7 +1251,7 @@ unsigned int get_visible_client_count(void)
 		if(client != NULL && client->flags.hidden_only)
 			hidden++;
 	}
-	return counters->clients - hidden;
+	return counters->clients_total - hidden;
 }
 
 unsigned int get_visible_domain_count(void)
@@ -1259,7 +1263,7 @@ unsigned int get_visible_domain_count(void)
 		if(domain != NULL && domain->flags.hidden_only)
 			hidden++;
 	}
-	return counters->domains - hidden;
+	return counters->domains_total - hidden;
 }
 
 unsigned int __attribute__ ((pure)) get_blocked_count(void)

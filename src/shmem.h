@@ -49,8 +49,11 @@ typedef struct {
 	unsigned int hidden_queries;
 	unsigned int queries_offset;
 	unsigned int upstreams;
+	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;
 	unsigned int domains;
+	unsigned int clients_total;
+	unsigned int domains_total;
 	unsigned int queries_MAX;
 	unsigned int upstreams_MAX;
 	unsigned int clients_MAX;
