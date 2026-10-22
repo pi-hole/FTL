@@ -755,3 +755,38 @@ load 'bats_helper.bash'
   run bash -c 'grep "CRIT:" /tmp/FTL.query-ids.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
 }
+
+@test "Sessions are restored and earlier messages flushed when FTL starts" {
+  # An expired session is deleted and a valid one restored and removed from
+  # the database. Of the messages only those of type TELEPORTER_SKIPPED stay
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"DELETE FROM session; INSERT INTO session (login_at, valid_until, remote_addr, user_agent, sid, csrf, tls_login, tls_mixed, app, cli) VALUES (${now}, $((now + 3600)), '127.0.0.1', 'bats', 'restore-sid', 'restore-csrf', 0, 0, 0, 0), ($((now - 7200)), $((now - 3600)), '127.0.0.1', 'bats', 'expired-sid', 'expired-csrf', 0, 0, 0, 0); INSERT INTO message (timestamp, type, message) VALUES (${now}, 'TELEPORTER_SKIPPED', 'restart.kept'), (${now}, 'LOAD', 'restart.flushed');\""
+  assert_success
+
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -c 'Restored 1 API session from the database'"
+  assert_output "1"
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"SELECT (SELECT COUNT(*) FROM session), (SELECT group_concat(message) FROM message WHERE message GLOB 'restart.*');\""
+  assert_output "0|restart.kept"
+
+  # The restored session is stored again on termination
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"SELECT group_concat(sid) FROM session; DELETE FROM session; DELETE FROM message WHERE message GLOB 'restart.*';\""
+  assert_output "restore-sid"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.startup-db.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.startup-db.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.startup-db.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.startup-db.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}

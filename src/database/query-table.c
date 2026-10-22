@@ -500,7 +500,7 @@ bool init_memory_database(void)
 	unlock_shm();
 
 	// Flush messages stored in the long-term database
-	flush_message_table(_memdb);
+	flush_message_table();
 
 	// Attach disk database
 	if(attached)
