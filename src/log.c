@@ -746,8 +746,8 @@ void log_counter_info(void)
 	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
 	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
 	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %u", counters->domains);
-	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> Unique domains: %u", counters->domains_total);
+	log_info(" -> Unique clients: %u", counters->clients_total);
 	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
 	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }
