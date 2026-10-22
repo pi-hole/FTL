@@ -335,8 +335,8 @@ int api_metrics(struct ftl_conn *api)
 	const unsigned int forwarded = get_forwarded_count();
 	const unsigned int cached = get_cached_count();
 	const int num_gravity = counters->database.gravity;
-	const unsigned int num_clients = counters->clients;
-	const unsigned int num_domains = counters->domains;
+	const unsigned int num_clients = counters->clients_total;
+	const unsigned int num_domains = counters->domains_total;
 	const unsigned int num_upstreams = counters->upstreams;
 	const unsigned int activeclients = get_active_clients();
 
@@ -436,7 +436,7 @@ int api_metrics(struct ftl_conn *api)
 	}
 
 	// Clients / domains / upstreams, the same numbers as in /api/stats/summary
-	fputs("# HELP pihole_clients Number of clients held in memory, including those without queries left in the history window\n", fp);
+	fputs("# HELP pihole_clients Number of clients added since FTL started, including those recycled since\n", fp);
 	fputs("# TYPE pihole_clients gauge\n", fp);
 	fprintf(fp, "pihole_clients %u\n", num_clients);
 
@@ -444,7 +444,7 @@ int api_metrics(struct ftl_conn *api)
 	fputs("# TYPE pihole_clients_active gauge\n", fp);
 	fprintf(fp, "pihole_clients_active %u\n", activeclients);
 
-	fputs("# HELP pihole_domains Number of domains held in memory, including those without queries left in the history window\n", fp);
+	fputs("# HELP pihole_domains Number of domains added since FTL started, including those recycled since\n", fp);
 	fputs("# TYPE pihole_domains gauge\n", fp);
 	fprintf(fp, "pihole_domains %u\n", num_domains);
 
