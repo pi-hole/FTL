@@ -372,20 +372,6 @@ static int check_space(const char *file, unsigned int LastUsage)
 	return perc;
 }
 
-static int getloadavg_proc(double loadavg[3])
-{
-	FILE *f = fopen("/proc/loadavg", "r");
-	if(f == NULL)
-		return -1;
-
-	int count = fscanf(f, "%lf %lf %lf", &loadavg[0], &loadavg[1], &loadavg[2]);
-	fclose(f);
-	if (count != 3)
-		return -1;
-
-	return 0;
-}
-
 static void check_load(void)
 {
 	if(!config.misc.check.load.v.b)
@@ -393,9 +379,8 @@ static void check_load(void)
 
 	// Get CPU load averages
 	double load[3];
-	if (getloadavg_proc(load) == -1)
-		if (getloadavg(load, 3) == -1)
-			return;
+	if(get_load_averages(load) == -1)
+		return;
 
 	// Get total number of CPU cores
 	const int nprocs = get_present_cpus();
