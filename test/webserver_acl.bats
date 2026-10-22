@@ -100,7 +100,7 @@ teardown_file() {
   # No terminator, so CivetWeb itself trusts the PROXY v2 header of a reverse
   # proxy in webserver.trustedProxies. The proxy connects from 127.0.0.4, which
   # the ACL admits, and only the announced 127.0.0.3 may pass
-  local port acl before i allowed refused
+  local port acl before i allowed refused xff_allowed xff_refused
   port=$(curl -s http://127.0.0.1/api/config/webserver/port | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["port"])')
   acl=$(curl -s http://127.0.0.1/api/config/webserver/acl | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["acl"])')
   before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -113,6 +113,12 @@ teardown_file() {
   done
   allowed=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.3 127.0.0.4)
   refused=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.5 127.0.0.4)
+  # The same goes for the client X-Forwarded-For names, an empty DoH POST
+  # is answered 400 once it passed the ACL
+  xff_allowed=$(curl -s -o /dev/null -w '%{http_code}' --interface 127.0.0.4 -H 'X-Forwarded-Proto: https' \
+                     -H 'X-Forwarded-For: 127.0.0.3' -H 'content-type: application/dns-message' --data-binary '' http://127.0.0.1/dns-query)
+  xff_refused=$(curl -s -o /dev/null -w '%{http_code}' --interface 127.0.0.4 -H 'X-Forwarded-Proto: https' \
+                     -H 'X-Forwarded-For: 127.0.0.5' -H 'content-type: application/dns-message' --data-binary '' http://127.0.0.1/dns-query)
 
   before=$(stat -c%s /var/log/pihole/FTL.log)
   # Put back the previous ACL too, teardown_file clears it
@@ -122,4 +128,6 @@ teardown_file() {
 
   [[ "$allowed" == "HTTP 200" ]]
   [[ "$refused" == "HTTP 403" ]]
+  [[ "$xff_allowed" == "400" ]]
+  [[ "$xff_refused" == "403" ]]
 }
