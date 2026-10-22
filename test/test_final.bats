@@ -30,6 +30,7 @@ load 'bats_helper.bash'
 
 @test "Expected number of config file rotations" {
   # BATS:   1x pihole.toml write (dns.reply.host API PATCH)
+  # BATS:   2x pihole.toml writes (webserver.interface.boxed PATCH + restore around a TCP worker fork)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
@@ -54,14 +55,14 @@ load 'bats_helper.bash'
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
-  # slow), leaving the dns.reply.host PATCH, the removed dns.hosts entry and
-  # webserver_acl.bats. The CLI password set/remove do not write: the in-memory
-  # config already matches, so they log "pihole.toml unchanged" - which the
-  # next assertion below counts.
+  # slow), leaving the dns.reply.host PATCH, the boxed PATCH + restore, the
+  # removed dns.hosts entry and webserver_acl.bats. The CLI password
+  # set/remove do not write: the in-memory config already matches, so they
+  # log "pihole.toml unchanged" - which the next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "6"
+    assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "56" ]]
+    [[ ${lines[0]} == "58" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
