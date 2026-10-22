@@ -27,87 +27,87 @@ void slaac_add_addrs(struct dhcp_lease *lease, time_t now, int force)
   struct slaac_address *slaac, *old, **up;
   struct dhcp_context *context;
   int dns_dirty = 0;
-  
-  if (!(lease->flags & LEASE_HAVE_HWADDR) || 
-      (lease->flags & (LEASE_TA | LEASE_NA)) ||
-      lease->last_interface == 0 ||
-      !lease->hostname)
-    return ;
-  
+
   old = lease->slaac_address;
   lease->slaac_address = NULL;
 
-  for (context = daemon->dhcp6; context; context = context->next) 
-    if ((context->flags & CONTEXT_RA_NAME) && 
-	!(context->flags & CONTEXT_OLD) &&
-	lease->last_interface == context->if_index)
-      {
-	struct in6_addr addr = context->start6;
-	if (lease->hwaddr_len == 6 &&
-	    (lease->hwaddr_type == ARPHRD_ETHER || lease->hwaddr_type == ARPHRD_IEEE802))
+  if ((lease->flags & LEASE_HAVE_HWADDR) && 
+      !(lease->flags & (LEASE_TA | LEASE_NA)) &&
+      lease->last_interface != 0 &&
+      lease->hostname)
+    {
+      for (context = daemon->dhcp6; context; context = context->next) 
+	if ((context->flags & CONTEXT_RA_NAME) && 
+	    !(context->flags & CONTEXT_OLD) &&
+	    lease->last_interface == context->if_index)
 	  {
-	    /* convert MAC address to EUI-64 */
-	    memcpy(&addr.s6_addr[8], lease->hwaddr, 3);
-	    memcpy(&addr.s6_addr[13], &lease->hwaddr[3], 3);
-	    addr.s6_addr[11] = 0xff;
-	    addr.s6_addr[12] = 0xfe;
-	  }
+	    struct in6_addr addr = context->start6;
+	    if (lease->hwaddr_len == 6 &&
+		(lease->hwaddr_type == ARPHRD_ETHER || lease->hwaddr_type == ARPHRD_IEEE802))
+	      {
+		/* convert MAC address to EUI-64 */
+		memcpy(&addr.s6_addr[8], lease->hwaddr, 3);
+		memcpy(&addr.s6_addr[13], &lease->hwaddr[3], 3);
+		addr.s6_addr[11] = 0xff;
+		addr.s6_addr[12] = 0xfe;
+	      }
 #if defined(ARPHRD_EUI64)
-	else if (lease->hwaddr_len == 8 &&
-		 lease->hwaddr_type == ARPHRD_EUI64)
-	  memcpy(&addr.s6_addr[8], lease->hwaddr, 8);
+	    else if (lease->hwaddr_len == 8 &&
+		     lease->hwaddr_type == ARPHRD_EUI64)
+	      memcpy(&addr.s6_addr[8], lease->hwaddr, 8);
 #endif
 #if defined(ARPHRD_IEEE1394) && defined(ARPHRD_EUI64)
-	else if (lease->clid_len == 9 && 
-		 lease->clid[0] ==  ARPHRD_EUI64 &&
-		 lease->hwaddr_type == ARPHRD_IEEE1394)
-	  /* FireWire has EUI-64 identifier as clid */
-	  memcpy(&addr.s6_addr[8], &lease->clid[1], 8);
+	    else if (lease->clid_len == 9 && 
+		     lease->clid[0] ==  ARPHRD_EUI64 &&
+		     lease->hwaddr_type == ARPHRD_IEEE1394)
+	      /* FireWire has EUI-64 identifier as clid */
+	      memcpy(&addr.s6_addr[8], &lease->clid[1], 8);
 #endif
-	else
-	  continue;
-	
-	addr.s6_addr[8] ^= 0x02;
-	
-	/* check if we already have this one */
-	for (up = &old, slaac = old; slaac; slaac = slaac->next)
-	  {
-	    if (IN6_ARE_ADDR_EQUAL(&addr, &slaac->addr))
-	      {
-		*up = slaac->next;
-		/* recheck when DHCPv4 goes through init-reboot */
-		if (force)
-		  {
-		    slaac->ping_time = now;
-		    slaac->backoff = 1;
-		    dns_dirty = 1;
-		  }
-		break;
-	      }
-	    up = &slaac->next;
-	  }
+	    else
+	      continue;
 	    
-	/* No, make new one */
-	if (!slaac && (slaac = whine_malloc(sizeof(struct slaac_address))))
-	  {
-	    slaac->ping_time = now;
-	    slaac->backoff = 1;
-	    slaac->addr = addr;
-	    /* Do RA's to prod it */
-	    ra_start_unsolicited(now, context);
+	    addr.s6_addr[8] ^= 0x02;
+	    
+	    /* check if we already have this one */
+	    for (up = &old, slaac = old; slaac; slaac = slaac->next)
+	      {
+		if (IN6_ARE_ADDR_EQUAL(&addr, &slaac->addr))
+		  {
+		    *up = slaac->next;
+		    /* recheck when DHCPv4 goes through init-reboot */
+		    if (force)
+		      {
+			slaac->ping_time = now;
+			slaac->backoff = 1;
+			dns_dirty = 1;
+		      }
+		    break;
+		  }
+		up = &slaac->next;
+	      }
+	    
+	    /* No, make new one */
+	    if (!slaac && (slaac = whine_malloc(sizeof(struct slaac_address))))
+	      {
+		slaac->ping_time = now;
+		slaac->backoff = 1;
+		slaac->addr = addr;
+		/* Do RA's to prod it */
+		ra_start_unsolicited(now, context);
+	      }
+	    
+	    if (slaac)
+	      {
+		slaac->next = lease->slaac_address;
+		lease->slaac_address = slaac;
+	      }
 	  }
-	
-	if (slaac)
-	  {
-	    slaac->next = lease->slaac_address;
-	    lease->slaac_address = slaac;
-	  }
-      }
+    }
   
   if (old || dns_dirty)
     lease_update_dns(1);
   
-  /* Free any no reused */
+  /* Free any not reused */
   for (; old; old = slaac)
     {
       slaac = old->next;
