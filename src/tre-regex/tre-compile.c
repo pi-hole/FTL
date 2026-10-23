@@ -988,6 +988,11 @@ tre_expand_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		node->obj = tmp_node->obj;
 		node->type = tmp_node->type;
 		params_depth++;
+		/* The approximate matcher has storage for only
+		   TRE_M_MAX_DEPTH nested parameter levels; reject
+		   patterns that need more. */
+		if (params_depth > TRE_M_MAX_DEPTH)
+		  return REG_BADPAT;
 		if (params_depth > *max_depth)
 		  *max_depth = params_depth;
 	      }
