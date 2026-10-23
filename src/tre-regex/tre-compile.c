@@ -107,13 +107,6 @@ typedef enum {
   ADDTAGS_SET_SUBMATCH_END
 } tre_addtags_symbol_t;
 
-
-typedef struct {
-  int tag;
-  int next_tag;
-} tre_tag_states_t;
-
-
 /* Go through `regset' and set submatch data for submatches that are
    using this tag. */
 static void
@@ -157,7 +150,6 @@ tre_add_tags(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
   int *parents;	    /* Stack of submatches the current submatch is
 		       contained in. */
   int minimal_tag = -1; /* Tag that marks the beginning of a minimal match. */
-  tre_tag_states_t *saved_states;
 
   tre_tag_direction_t direction = TRE_TAG_MINIMIZE;
   if (!first_pass)
@@ -179,20 +171,6 @@ tre_add_tags(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
       return REG_ESPACE;
     }
   parents[0] = -1;
-
-  saved_states = xmalloc(sizeof(*saved_states) * (tnfa->num_submatches + 1));
-  if (saved_states == NULL)
-    {
-      xfree(regset);
-      xfree(parents);
-      return REG_ESPACE;
-    }
-  else
-    {
-      unsigned int i;
-      for (i = 0; i <= tnfa->num_submatches; i++)
-	saved_states[i].tag = -1;
-    }
 
   STACK_PUSH(stack, voidptr, node);
   STACK_PUSH(stack, int, ADDTAGS_RECURSE);
@@ -631,7 +609,6 @@ tre_add_tags(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
   tnfa->num_minimals = num_minimals;
   xfree(orig_regset);
   xfree(parents);
-  xfree(saved_states);
   return status;
 }
 
