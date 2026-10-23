@@ -107,7 +107,9 @@ static struct {
 // Pack addinfo type and key into a single integer
 static inline int addinfo_pack(const int type, const int key)
 {
-	return (key << ADDINFO_TYPE_BITS) | (type & ((1 << ADDINFO_TYPE_BITS) - 1));
+	// Shift as unsigned: list IDs can be negative, and left-shifting a
+	// negative int is undefined behaviour
+	return (int)(((unsigned int)key << ADDINFO_TYPE_BITS) | (type & ((1u << ADDINFO_TYPE_BITS) - 1)));
 }
 
 static inline int lookup_addinfo_id(const int type, const int key)
