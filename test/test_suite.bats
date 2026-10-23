@@ -2436,6 +2436,27 @@ setup() {
   run bash -c "rm ${filename}"
 }
 
+@test "Teleporter export and import work with a quote in files.gravity" {
+  cp /etc/pihole/gravity.db "/tmp/grav'ity.db"
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter"
+  assert_success
+  filename="${lines[-1]}"
+  # Import only the database, pihole.toml would be written with the override
+  python3 - "${filename}" <<'EOF'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zin, zipfile.ZipFile(sys.argv[1] + ".db.zip", "w") as zout:
+    for item in zin.infolist():
+        if item.filename != "etc/pihole/pihole.toml":
+            zout.writestr(item, zin.read(item))
+EOF
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter ${filename}.db.zip"
+  assert_line --index -7 "Imported tmp/grav'ity.db->group"
+  assert_line --index -1 "Imported tmp/grav'ity.db->client_by_group"
+  refute_output --partial "Imported etc/pihole/pihole.toml"
+  assert_success
+  run bash -c "rm ${filename} ${filename}.db.zip \"/tmp/grav'ity.db\""
+}
+
 # NOTE: Config file rotation count test moved to test_final.bats
 
 @test "Suggest expected completions" {

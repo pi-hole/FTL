@@ -82,6 +82,20 @@ static void set_hint(char *hint, const char *src)
 	hint[ERRBUF_SIZE - 1] = '\0';
 }
 
+// ATTACH the database file at path as "disk". The path is bound, not spliced
+// into the SQL, so SQLite never parses it, whatever characters it contains
+static bool attach_disk(sqlite3 *db, const char *path)
+{
+	sqlite3_stmt *stmt = NULL;
+	if(sqlite3_prepare_v2(db, "ATTACH DATABASE ? AS disk;", -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	const bool ok = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_STATIC) == SQLITE_OK &&
+	                sqlite3_step(stmt) == SQLITE_DONE;
+	sqlite3_finalize(stmt);
+	return ok;
+}
+
 // Create database in memory, copy selected tables to it, serialize and return a memory pointer to it
 static bool create_teleporter_database(const char *filename, const char **tables, const unsigned int num_tables,
                                        void **buffer, size_t *size)
@@ -94,21 +108,17 @@ static bool create_teleporter_database(const char *filename, const char **tables
 		log_warn("Failed to open in-memory database: %s", sqlite3_errmsg(db));
 		return false;
 	}
-	// Attach the FTL database to the in-memory database
 	char *err = NULL;
-	char attach_stmt[128] = "";
-
-	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS \"disk\";", filename);
 
 	// Set busy timeout to access the database in a
 	// multi-threaded environment
 	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
 		log_warn("Failed to set busy timeout during creation of in-memory Teleporter database: %s", sqlite3_errmsg(db));
 
-	if(sqlite3_exec(db, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
+	// Attach the FTL database to the in-memory database
+	if(!attach_disk(db, filename))
 	{
-		log_warn("Failed to attach database \"%s\" to in-memory database: %s", filename, err);
-		sqlite3_free(err);
+		log_warn("Failed to attach database \"%s\" to in-memory database: %s", filename, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return false;
 	}
@@ -624,16 +634,14 @@ static const char *test_and_import_database(void *ptr, size_t size, const char *
 	// When we reach this point, we know that the file is a valid SQLite3 database
 
 	// ATTACH the database file to the in-memory database
-	char *err = NULL;
-	char attach_stmt[128] = "";
-	snprintf(attach_stmt, sizeof(attach_stmt), "ATTACH DATABASE '%s' AS disk;", destination);
-	if(sqlite3_exec(database, attach_stmt, NULL, NULL, &err) != SQLITE_OK)
+	if(!attach_disk(database, destination))
 	{
-		set_hint(hint, err);
-		sqlite3_free(err);
+		set_hint(hint, sqlite3_errmsg(database));
 		sqlite3_close(database);
 		return "Failed to attach database file to in-memory SQLite3 database";
 	}
+
+	char *err = NULL;
 
 	// Disable foreign key checks for import
 	if(sqlite3_exec(database, "PRAGMA foreign_keys = 0;", NULL, NULL, &err) != SQLITE_OK)
