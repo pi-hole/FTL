@@ -1137,6 +1137,22 @@ setup() {
   assert_line --partial --index 3 "status: NOERROR"
 }
 
+@test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
+  run bash -c './pihole-FTL regex-test "abcd" "(a){~1}(b){~1}(c){~1}(d){~1}"'
+  assert_success
+}
+
+@test "Regex Test 55: Approximate matching, nesting at the supported limit: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "(((a){~1}){~1}){~1}"'
+  assert_success
+}
+
+@test "Regex Test 56: Approximate matching, nesting beyond the supported limit: Invalid regexp" {
+  run bash -c './pihole-FTL regex-test "a" "((((a){~1}){~1}){~1}){~1}"'
+  assert_line --index 1 "Invalid regex CLI filter \"((((a){~1}){~1}){~1}){~1}\": Invalid regexp"
+  assert_failure 1
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
