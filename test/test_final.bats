@@ -514,3 +514,48 @@ load 'bats_helper.bash'
   run bash -c 'grep "CRIT:" /tmp/FTL.privacylevel.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
 }
+
+@test "A query stored with type 100 (DNS type 0) is imported into shared memory" {
+  # Unmapped query types are stored as 100 + the DNS type, so 100 is a query
+  # of type 0, written like this by older versions. It shows as TYPE0
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"INSERT OR IGNORE INTO domain_by_id (domain) VALUES ('type0.import.ftl'); INSERT OR IGNORE INTO client_by_id (ip, name) VALUES ('10.0.100.0', ''); INSERT INTO query_storage (timestamp, type, status, domain, client) SELECT $((now - 60)), 100, 3, d.id, c.id FROM domain_by_id d, client_by_id c WHERE d.domain = 'type0.import.ftl' AND c.ip = '10.0.100.0' AND c.name = '';\""
+  assert_success
+
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "curl -s '127.0.0.1/api/queries?domain=type0.import.ftl' | jq -c '[.queries[] | [.type, .client.ip]]'"
+  assert_output '[["TYPE0","10.0.100.0"]]'
+  # It is counted in shared memory as well: every row read from the disk
+  # is imported, the domain is in the top list with its one query, and the
+  # query types count it as OTHER, as the long-term statistics do
+  run bash -c "curl -s '127.0.0.1/api/stats/top_domains?count=100000' | jq -c '[.domains[] | select(.domain == \"type0.import.ftl\") | .count]'"
+  assert_output '[1]'
+  other=$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT COUNT(*) FROM query_storage WHERE type >= 100 AND timestamp > $((now - 86400));")
+  run bash -c "curl -s 127.0.0.1/api/stats/query_types | jq '.types.OTHER'"
+  assert_output "${other}"
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.type0.log
+  disk=$(grep -oE 'Imported [0-9]+ queries from the on-disk database' /tmp/FTL.type0.log | grep -oE '[0-9]+')
+  shm=$(grep -oE 'Imported [0-9]+ queries from the long-term database' /tmp/FTL.type0.log | grep -oE '[0-9]+')
+  printf "imported from disk: %s, into shared memory: %s\n" "${disk}" "${shm}"
+  [[ -n "${disk}" ]]
+  assert_equal "${shm}" "${disk}"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE type = 100; DELETE FROM domain_by_id WHERE domain = 'type0.import.ftl'; DELETE FROM client_by_id WHERE ip = '10.0.100.0';"
+
+  # No "TYPE should not be 100" and no rows missing from the import
+  run bash -c 'grep "WARNING:" /tmp/FTL.type0.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.type0.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.type0.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
