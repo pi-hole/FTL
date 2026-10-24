@@ -42,6 +42,21 @@ setup() {
    assert_output --partial "CRIT: pihole-FTL is already running"
 }
 
+@test "A second instance with other FTLCONF_ values leaves the config files alone" {
+  # It is refused before it reads the config, so its environment does not
+  # end up in the files the running instance uses and reloads
+  files="/etc/pihole/pihole.toml /etc/pihole/dnsmasq.conf /etc/pihole/hosts/custom.list"
+  before=$(sha256sum ${files})
+  logsize=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_misc_check_load=false FTLCONF_dns_domain_name=second.lan FTLCONF_dns_hosts=\"10.0.200.1 second.ftl\" ./pihole-FTL -f"'
+  assert_output --partial "CRIT: pihole-FTL is already running"
+  run sha256sum ${files}
+  assert_output "${before}"
+  # The refusal is in FTL.log, not only on the terminal
+  run bash -c "tail -c +$((logsize + 1)) /var/log/pihole/FTL.log | grep -c 'CRIT: pihole-FTL is already running'"
+  assert_output "1"
+}
+
 @test "dnsmasq options as expected" {
   run bash -c './pihole-FTL -vv | grep "dumpfile"'
   assert_line --index 0 "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth DNSSEC loop-detect inotify dumpfile"
@@ -1440,6 +1455,11 @@ except socket.timeout:
   rm ~/.sqliterc
 }
 
+@test "Embedded SQLite3 shell reports the disk usage" {
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db .diskused"
+  assert_line --partial "Database storage utilization report"
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
@@ -1502,6 +1522,15 @@ except socket.timeout:
   run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 29: (synthesized)"
   assert_line --index 1 ""
+}
+
+@test "A TCP worker forked during a config write does not keep pihole.toml.lock" {
+  # dnsmasq forks a worker per TCP connection. One forked while FTL has the
+  # lock file open must not hold the lock after the write is done, else every
+  # later config write waits for that worker to exit
+  run bash -c "python3 test/toml_lock_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "free"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
