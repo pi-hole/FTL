@@ -494,14 +494,18 @@ void parse_args(int argc, char *argv[])
 		exit(printTOTP());
 	}
 
+	// Teleporter through CLI, --password-stdin reads the password from stdin
+	const bool teleporter = argc > 1 && strcmp(argv[1], "--teleporter") == 0;
+	const bool password_stdin = teleporter && argc > 2 && strcmp(argv[2], "--password-stdin") == 0;
+
 	// Create teleporter archive through CLI
-	if(argc == 2 && strcmp(argv[1], "--teleporter") == 0)
+	if(teleporter && argc == (password_stdin ? 3 : 2))
 	{
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
-		exit(write_teleporter_zip_to_disk() ? EXIT_SUCCESS : EXIT_FAILURE);
+		exit(write_teleporter_zip_to_disk(password_stdin) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Create test NTP client
@@ -537,13 +541,13 @@ void parse_args(int argc, char *argv[])
 	}
 
 	// Import teleporter archive through CLI
-	if(argc == 3 && strcmp(argv[1], "--teleporter") == 0)
+	if(teleporter && argc == (password_stdin ? 4 : 3))
 	{
 		// Enable stdout printing
 		cli_mode = true;
 		log_ctrl(false, true);
 		readFTLconf(&config, false);
-		exit(read_teleporter_zip_from_disk(argv[2]) ? EXIT_SUCCESS : EXIT_FAILURE);
+		exit(read_teleporter_zip_from_disk(argv[argc - 1], password_stdin) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Generate X.509 certificate
@@ -1408,8 +1412,14 @@ void parse_args(int argc, char *argv[])
 
 			printf("%sTeleporter:%s\n", yellow, normal);
 			printf("\t%s--teleporter%s        Create a Teleporter archive in the\n", green, normal);
-			printf("\t                    current directory and print its name\n");
-			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n\n", green, cyan, normal, cyan, normal);
+			printf("\t                    current directory and print its name.\n");
+			printf("\t                    Asks for an optional password on a\n");
+			printf("\t                    terminal, or reads it from stdin with\n");
+			printf("\t                    %s--password-stdin%s\n", green, normal);
+			printf("\t%s--teleporter%s file%s   Import the Teleporter archive %sfile%s\n", green, cyan, normal, cyan, normal);
+			printf("\t                    (asks for the password if encrypted, or\n");
+			printf("\t                    reads it from stdin with\n");
+			printf("\t                    %s--password-stdin%s before %sfile%s)\n\n", green, normal, cyan, normal);
 
 			printf("%sTLS X.509 certificate generator:%s\n", yellow, normal);
 			printf("    Generate a self-signed certificate suitable for SSL/TLS\n");

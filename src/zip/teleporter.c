@@ -17,6 +17,8 @@
 #include <limits.h>
 // errno, ERANGE
 #include <errno.h>
+// open(), O_CREAT
+#include <fcntl.h>
 #include "zip/teleporter.h"
 #include "config/config.h"
 // hostname()
@@ -51,6 +53,8 @@
 #include "signals.h"
 // sqliteBusyCallback()
 #include "database/common.h"
+// teleporter_encrypt()
+#include "zip/teleporter_crypt.h"
 
 #define ZIPNAME_TOML "etc/pihole/pihole.toml"
 #define ZIPNAME_DHCPLEASES "etc/pihole/dhcp.leases"
@@ -944,8 +948,35 @@ bool free_teleporter_zip(mz_zip_archive *zip)
 	return mz_zip_writer_end(zip);
 }
 
-bool write_teleporter_zip_to_disk(void)
+// Replace the finalized archive in *ptr by its encrypted form
+const char *encrypt_teleporter_zip(char filename[128], void **ptr, size_t *size, const char *password)
 {
+	uint8_t *enc = NULL;
+	size_t enclen = 0u;
+	// The plaintext holds the secrets being protected, wipe it either way
+	const char *error = teleporter_encrypt(*ptr, *size, password, &enc, &enclen);
+	explicit_bzero(*ptr, *size);
+	if(error != NULL)
+		return error;
+
+	free(*ptr);
+	*ptr = enc;
+	*size = enclen;
+	strncat(filename, TELEPORTER_ENC_EXT, 127 - strlen(filename));
+	return NULL;
+}
+
+bool write_teleporter_zip_to_disk(const bool password_stdin)
+{
+	char *password = teleporter_read_password(true, password_stdin);
+	if(password == NULL)
+		return false;
+	if(password[0] == '\0')
+	{
+		free(password);
+		password = NULL;
+	}
+
 	// Generate in-memory ZIP file
 	mz_zip_archive zip = { 0 };
 	void *ptr = NULL;
@@ -955,13 +986,33 @@ bool write_teleporter_zip_to_disk(void)
 	if(error != NULL)
 	{
 		log_err("Failed to create Teleporter ZIP file: %s", error);
+		if(password != NULL)
+			free(password);
 		return false;
 	}
 
-	// Write file to disk
-	FILE *fp = fopen(filename, "w");
+	if(password != NULL)
+	{
+		error = encrypt_teleporter_zip(filename, &ptr, &size, password);
+		explicit_bzero(password, strlen(password));
+		free(password);
+		if(error != NULL)
+		{
+			log_err("Failed to encrypt Teleporter ZIP file: %s", error);
+			free_teleporter_zip(&zip);
+			free(ptr);
+			return false;
+		}
+	}
+
+	// Write file to disk, readable by us only: it holds password hashes and
+	// other secrets, encrypted or not
+	const int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+	FILE *fp = fd > -1 ? fdopen(fd, "w") : NULL;
 	if(fp == NULL)
 	{
+		if(fd > -1)
+			close(fd);
 		log_err("Failed to open %s for writing: %s", filename, strerror(errno));
 		free_teleporter_zip(&zip);
 		free(ptr);
@@ -990,7 +1041,7 @@ bool write_teleporter_zip_to_disk(void)
 
 #define MAX_TELEPORTER_ZIP_SIZE (size_t)(128*1024*1024) // 128 MiB
 
-bool read_teleporter_zip_from_disk(const char *filename)
+bool read_teleporter_zip_from_disk(const char *filename, const bool password_stdin)
 {
 	// Open ZIP archive
 	FILE *fp = fopen(filename, "r");
@@ -1003,7 +1054,7 @@ bool read_teleporter_zip_from_disk(const char *filename)
 
 	// Get ZIP archive size
 	fseek(fp, 0, SEEK_END);
-	const size_t size = (size_t)ftell(fp);
+	size_t size = (size_t)ftell(fp);
 	fseek(fp, 0, SEEK_SET);
 	if(size == 0 || size > MAX_TELEPORTER_ZIP_SIZE)
 	{
@@ -1030,6 +1081,38 @@ bool read_teleporter_zip_from_disk(const char *filename)
 		return false;
 	}
 	fclose(fp);
+
+	// A password on stdin asks for an encrypted archive, never import
+	// something else under it
+	if(password_stdin && !teleporter_is_encrypted(ptr, size))
+	{
+		log_err("This Teleporter archive is not password-protected");
+		free(ptr);
+		return false;
+	}
+
+	if(teleporter_is_encrypted(ptr, size))
+	{
+		char *password = teleporter_read_password(false, password_stdin);
+		if(password == NULL)
+		{
+			free(ptr);
+			return false;
+		}
+		uint8_t *dec = NULL;
+		size_t declen = 0u;
+		const char *error = teleporter_decrypt(ptr, size, password, &dec, &declen);
+		explicit_bzero(password, strlen(password));
+		free(password);
+		free(ptr);
+		if(error != NULL)
+		{
+			log_err("Failed to decrypt Teleporter archive: %s", error);
+			return false;
+		}
+		ptr = dec;
+		size = declen;
+	}
 
 	// Process ZIP archive
 	char hint[ERRBUF_SIZE] = "";
