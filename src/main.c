@@ -81,15 +81,17 @@ int main (int argc, char *argv[])
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
+	// Check if another FTL process is already running. This comes before
+	// reading the config, which rewrites pihole.toml, dnsmasq.conf and
+	// custom.list, the files a running instance uses and reloads
+	if(another_FTL())
+		return EXIT_FAILURE;
+
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
-
-	// Check if another FTL process is already running
-	if(another_FTL())
-		return EXIT_FAILURE;
 
 	// Set process priority
 	set_nice();
