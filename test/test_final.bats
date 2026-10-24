@@ -46,7 +46,9 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
-  # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
+  # pytest: 48x pihole.toml writes (concurrent config mutations, 4 workers x 6 PUT+DELETE pairs)
+  # dotdoh.bats: 5x pihole.toml writes (encrypted setup, then misc.restart_delay
+  #              arm + reset around the two-request plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 4x pihole.toml writes (three ACLs + restore)
@@ -61,7 +63,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "53" ]]
+    [[ ${lines[0]} == "104" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -73,6 +75,8 @@ load 'bats_helper.bash'
   # tuples change the encrypted-upstream config on every (re)start. Those tuples
   # need dns.upstreams to hold encrypted entries, which only the dotdoh suites
   # arrange - on riscv64 they are skipped, leaving a single write.
+  # Unchanged by the split dotdoh teardown: clearing dns.upstreamCA leaves the
+  # generated dnsmasq.conf identical, only the dns.upstreams change rewrites it.
   # pytest adds one more: the ZIP restore drops the reverse server of the v5
   # setupVars.conf import again
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
