@@ -905,8 +905,10 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		// Add list_id if it exists
 		row.has_list_id = sqlite3_column_type(read_stmt, 13) == SQLITE_INTEGER;
 		row.list_id = sqlite3_column_int(read_stmt, 13); // list_id
-		// Add EDE code
-		row.ede = sqlite3_column_int(read_stmt, 14); // ede
+		// Add EDE code, -1 for none as query_get_ede() reports it. Rows
+		// stored before the column existed have NULL there
+		row.ede = sqlite3_column_type(read_stmt, 14) == SQLITE_INTEGER ?
+		          sqlite3_column_int(read_stmt, 14) : -1; // ede
 		// CNAME information for the CNAME blocking statuses
 		if(row.status == QUERY_GRAVITY_CNAME || row.status == QUERY_REGEX_CNAME ||
 		   row.status == QUERY_DENYLIST_CNAME)
