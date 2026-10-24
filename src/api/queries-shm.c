@@ -21,15 +21,43 @@
  * The query log from shared memory gives the answers of the SQL query in
  * queries_from_sql(): the filters behave like its WHERE clause, the order is
  * SQLite's (NULL first, text bytewise) and rows with equal keys come in ID
- * order in the direction of the sort. The SHM lock is taken per QLOG_CHUNK
+ * order in the direction of the sort. The SHM lock is taken per chunk of
  * rows, so positions are absolute (index plus the queries the garbage
  * collector has removed), no pointer into shared memory is kept across an
  * unlock, and a heap row is only taken if the query at its position still
  * has its ID.
  */
 
-// Rows per hold of the SHM lock
-#define QLOG_CHUNK 256
+// Rows per hold of the SHM lock. Measured with 2M queries in memory on amd64
+// (FTL pinned to its own cores): FTL's own time, and the p99 of 1000 DNS
+// queries/s while one client pages through the middle of a sort by domain
+//
+//   rows   status sort, first page   domain search "co"   DNS p99
+//     16          28 ms                     44 ms           0.36 ms
+//     32          24 ms                     42 ms           0.54 ms
+//     64          23 ms                     40 ms           0.86 ms
+//    128          21 ms                     38 ms           2.7 ms
+//    256          20 ms                     38 ms           63 ms
+//   1024          20 ms                     38 ms           233 ms
+//
+// Larger chunks make full scans a little faster. But once a deep page keeps a
+// large heap, every chunk holds the lock long enough for DNS queries to queue
+// behind it. 64 rows is the largest size that keeps the p99 below 1 ms with
+// 100k, 500k and 2M queries alike
+#define QLOG_CHUNK 64
+
+// Rows per hold once the heap holds QLOG_DEEP_HEAP rows. A DNS query takes
+// the lock about ten times, waiting for a chunk each time, so at higher rates
+// a deep page needs shorter holds. Middle page of the domain sort, 2M queries,
+// same machine, DNS p99 with 64 and with 8 rows:
+//
+//   queries/s     64 rows               8 rows
+//      6000       57 ms, 9 % lost       0.21 ms, none lost
+//     10000       65 ms, 24 % lost      0.56 ms, none lost
+#define QLOG_CHUNK_DEEP 8
+// First pages stay below it, the middle page with 100k queries (a heap of
+// 50000 rows) needs it: with 65536 its DNS p99 stayed at 7 to 10 ms
+#define QLOG_DEEP_HEAP 4096u
 
 // A sorted request whose heap would hold more rows than this is counted
 // first, to see whether its page is in the back half of the result
@@ -110,6 +138,8 @@ struct qlog_scan {
 	// The rows of the reply
 	struct qlog_row *page;
 	unsigned int n_page;
+	// Filter evaluations in the current chunk that ran exclusion regexes
+	unsigned int evals;
 	// Matching queries
 	unsigned int counted;
 	bool done, oom;
@@ -470,6 +500,8 @@ static bool query_matches(struct qlog_scan *s, const queriesData *query)
 			if((match = cache_get(&s->domains, query->domainID, pos, 0)) < 0)
 			{
 				match = domain_passes(req, domain);
+				if(req->N_regex_domains > 0)
+					s->evals++;
 				cache_set(&s->domains, query->domainID, pos, 0, match);
 			}
 		}
@@ -495,6 +527,8 @@ static bool query_matches(struct qlog_scan *s, const queriesData *query)
 			if((match = cache_get(&s->clients, query->clientID, ippos, namepos)) < 0)
 			{
 				match = client_passes(req, ip, name);
+				if(req->N_regex_clients > 0)
+					s->evals++;
 				cache_set(&s->clients, query->clientID, ippos, namepos, match);
 			}
 		}
@@ -832,10 +866,15 @@ static bool scan_reserve(struct qlog_scan *s)
 static void scan(struct qlog_scan *s, const unsigned int lo, const unsigned int hi)
 {
 	unsigned int next = s->desc ? hi : lo;
+	unsigned int chunk = QLOG_CHUNK;
 	for(unsigned int n = QLOG_CHUNK; !s->done && !s->oom; n++)
 	{
-		if(n == QLOG_CHUNK || block_free(s) < s->room)
+		// A chunk also ends after each filter evaluation that ran exclusion
+		// regexes, as one runs all of them (20 take ~6 us)
+		if(n >= chunk || block_free(s) < s->room || s->evals > 0)
 		{
+			chunk = s->n_heap >= QLOG_DEEP_HEAP ? QLOG_CHUNK_DEEP : QLOG_CHUNK;
+			s->evals = 0;
 			// Let DNS in between two chunks, make room for the next
 			unlock_shm();
 			const bool ok = scan_reserve(s);
