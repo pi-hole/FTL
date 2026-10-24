@@ -861,6 +861,41 @@ static bool is_pihole_domain(const char *domain)
 	       (hostname_suffix && dlen == hostname_suffix_len && strcasecmp(domain, hostname_suffix) == 0);
 }
 
+// Whether this repeats a query in flight from the same socket with the same DNS ID
+// and question. The first copy's query then takes the ID dnsmasq answers under
+static bool take_over_repeat(const union mysockaddr *addr, const char *domain,
+                             const unsigned short qtype, const int id)
+{
+	// receive_query() holds the UDP query in daemon->packet
+	uint16_t qid;
+	memcpy(&qid, daemon->packet, sizeof(qid));
+	qid = ntohs(qid);
+	for(const struct frec *f = daemon->frec_list; f != NULL; f = f->next)
+	{
+		if(f->sentto == NULL)
+			continue;
+		for(const struct frec_src *src = &f->frec_src; src != NULL; src = src->next)
+		{
+			if(src->orig_id != qid || !sockaddr_isequal(&src->source, addr))
+				continue;
+
+			const int queryID = findQueryID((int)src->log_id);
+			queriesData *query = queryID < 0 ? NULL : getQuery(queryID, true);
+			if(query == NULL || query->qtype != qtype)
+				return false;
+			const domainsData *qdomain = getDomain(query->domainID, true);
+			if(qdomain == NULL || strcmp(getstr(qdomain->domainpos), domain) != 0)
+				return false;
+
+			log_debug(DEBUG_QUERIES, "**** repeat of %s (ID %u) as ID %i", domain, src->log_id, id);
+			query->id = id;
+			queryIDMap_insert(id, queryID);
+			return true;
+		}
+	}
+	return false;
+}
+
 bool _FTL_new_query(const unsigned int flags, const char *name,
                     union mysockaddr *addr, char *arg,
                     const unsigned short qtype, int id,
@@ -1035,6 +1070,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	lock_shm();
 	PERF_START(_pnq);
 	const int queryID = counters->queries;
+
+	// A repeat from our own DoH handoff is neither counted nor rate-limited again
+	if(proto == UDP && edns_client && !ecs_client &&
+	   take_over_repeat(addr, domainString, qtype, id))
+	{
+		unlock_shm();
+		return false;
+	}
 
 	// Find client IP
 	PERF_START(_pfc);
@@ -4584,6 +4627,16 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 
 	// Set DNSSEC status
 	query->dnssec = dnssec;
+}
+
+size_t FTL_dnsmasq_query_max(void)
+{
+	return (size_t)daemon->packet_buff_sz;
+}
+
+size_t FTL_dnsmasq_udp_query_max(void)
+{
+	return (size_t)daemon->edns_pktsz;
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)

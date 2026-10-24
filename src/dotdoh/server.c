@@ -42,6 +42,8 @@ unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 #include "edns_pad.h"
 // get_gateway_name(), MAXIFACESTRLEN
 #include "tools/netlink.h"
+// get_secure_randomness()
+#include "config/password.h"
 #include "FTL.h"
 
 
@@ -276,6 +278,9 @@ static int pool_n = 0;
 // its answer arrives before we give up. Failover to another server or DNSSEC
 // validation over TCP can still take longer than this
 #define LOOPBACK_IO_TIMEOUT_S 12
+// When an unanswered UDP handoff is repeated, which makes dnsmasq try all servers.
+// Ahead of dnsmasq's fast retry (1 s by default), which resends to the same server
+#define LOOPBACK_UDP_RESEND_MS 900
 
 // Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
 // draw on the same pool. Encrypted listeners get the rest.
@@ -432,13 +437,155 @@ static int loopback_connect(void)
 	return fd;
 }
 
+// The UDP loopback fd is thread-local. It is closed on a thread-exit destructor
+// so it does not outlive its owning thread: native DoH is served from the
+// terminator's per-connection detached handler threads (and from restartable h3
+// workers), neither of which lives for the whole life of the process.
+static _Thread_local int udp_fd = -1;
+static pthread_key_t udp_fd_key;
+static pthread_once_t udp_fd_once = PTHREAD_ONCE_INIT;
+static void udp_fd_close(void *arg)
+{
+	(void)arg;
+	if(udp_fd >= 0) { dotdoh_fd_close(udp_fd); udp_fd = -1; }
+}
+static void udp_fd_key_init(void)
+{
+	pthread_key_create(&udp_fd_key, udp_fd_close);
+}
+
+// Open a UDP socket connected to dnsmasq's own DNS listener. Returns the fd or -1
+static int loopback_udp_open(void)
+{
+	const int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if(fd < 0)
+		return -1;
+	dotdoh_fd_track(fd);
+
+	struct sockaddr_in sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(config.dns.port.v.u16);
+	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	if(connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0)
+	{
+		dotdoh_fd_close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+// Whether reply answers query: the same ID and, if the reply carries one, the
+// same question. Skips late answers to an earlier query on the same socket
+static bool answers_query(const uint8_t *query, const size_t qlen,
+                          const uint8_t *reply, const size_t rlen)
+{
+	if(rlen < 12 || memcmp(reply, query, 2) != 0 || (reply[2] & 0x80) == 0)
+		return false;
+	if(reply[4] == 0 && reply[5] == 0)
+		return true;
+
+	// QNAME compared case-insensitively, QTYPE and QCLASS exactly
+	size_t name_end = 12;
+	while(name_end < qlen && query[name_end] != 0)
+		name_end += 1u + query[name_end];
+	name_end++;
+	if(name_end + 4 > qlen || name_end + 4 > rlen)
+		return false;
+	for(size_t i = 12; i < name_end; i++)
+		if(tolower(query[i]) != tolower(reply[i]))
+			return false;
+	return memcmp(query + name_end, reply + name_end, 4) == 0;
+}
+
+static int64_t monotonic_msec(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static bool loopback_udp_send(const uint8_t *query, const size_t qlen)
+{
+	ssize_t sent;
+	do
+		sent = send(udp_fd, query, qlen, 0);
+	while(sent < 0 && errno == EINTR);
+	if(sent < 0)
+		log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
+	return sent >= 0;
+}
+
+// Send the query to dnsmasq over loopback UDP and wait for its answer. Unanswered
+// after LOOPBACK_UDP_RESEND_MS, it is sent once more, which dnsmasq forwards to all
+// servers. Returns the answer length, 0 if the answer was truncated, or -1
+static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
+                                     uint8_t *answer, const size_t answer_sz)
+{
+	if(udp_fd < 0)
+	{
+		udp_fd = loopback_udp_open();
+		if(udp_fd < 0)
+			return -1;
+		pthread_once(&udp_fd_once, udp_fd_key_init);
+		pthread_setspecific(udp_fd_key, &udp_fd);
+	}
+
+	if(!loopback_udp_send(query, qlen))
+		return -1;
+
+	// Wait as long as the TCP handoff does
+	const int64_t start = monotonic_msec();
+	const int64_t resend = start + LOOPBACK_UDP_RESEND_MS;
+	const int64_t end = start + LOOPBACK_IO_TIMEOUT_S * 1000;
+	bool resent = false;
+	int64_t now;
+	while((now = monotonic_msec()) < end)
+	{
+		if(!resent && now >= resend)
+		{
+			// A failed resend leaves the first copy to be answered
+			resent = true;
+			loopback_udp_send(query, qlen);
+		}
+		struct pollfd pfd = { .fd = udp_fd, .events = POLLIN };
+		const int ready = poll(&pfd, 1, (int)((resent ? end : resend) - now));
+		if(ready == 0)
+			continue;
+		if(ready < 0)
+		{
+			if(errno == EINTR)
+				continue;
+			log_debug(DEBUG_RESOLVER, "dotdoh: poll on loopback DNS failed: %s", strerror(errno));
+			return -1;
+		}
+
+		const ssize_t rlen = recv_nowarn(udp_fd, answer, answer_sz, MSG_DONTWAIT);
+		if(rlen < 0)
+		{
+			if(errno == EAGAIN || errno == EINTR)
+				continue;
+			log_debug(DEBUG_RESOLVER, "dotdoh: read from loopback DNS failed: %s", strerror(errno));
+			return -1;
+		}
+		if(!answers_query(query, qlen, answer, (size_t)rlen))
+			continue;
+
+		// A truncated answer has to be fetched over TCP
+		return (answer[2] & 0x02) != 0 ? 0 : rlen;
+	}
+
+	log_debug(DEBUG_RESOLVER, "dotdoh: no answer from loopback DNS");
+	return -1;
+}
+
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS
-// listener over loopback TCP: dnsmasq accepts it as an ordinary TCP DNS query,
-// so nothing unsafe (a direct tcp_request()/fork) happens from the calling DoH
-// handler thread. `client` (the real downstream client) is carried into dnsmasq
-// via a private EDNS option so the query is attributed to it rather than to
-// loopback (see dotdoh_inject_client and FTL_parse_pseudoheaders). Returns the
-// answer length, DOTDOH_MALFORMED or -1.
+// listener over loopback UDP (TCP for a truncated answer): dnsmasq accepts it as
+// an ordinary DNS query, so nothing unsafe (a direct tcp_request()/fork) happens
+// from the calling DoH handler thread. `client` (the real downstream client) is
+// carried into dnsmasq via a private EDNS option so the query is attributed to
+// it rather than to loopback (see dotdoh_inject_client and
+// FTL_parse_pseudoheaders). Returns the answer length, DOTDOH_MALFORMED or -1.
 ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz)
@@ -453,14 +600,32 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 	if(flen < 0)
 		return flen;
 
+	// dnsmasq ignores a longer query over UDP and TCP alike, so fail at once
+	const size_t msg_len = (size_t)flen - 2;
+	if(msg_len > FTL_dnsmasq_query_max())
+		return -1;
+
+	// A random ID tells this query's answer apart from late answers to earlier
+	// ones. The client's own ID is put back into the answer
+	uint8_t client_id[2];
+	memcpy(client_id, framed + 2, sizeof(client_id));
+	if(!get_secure_randomness(framed + 2, sizeof(client_id)))
+		return -1;
+
+	// Over UDP, dnsmasq answers from the cache of its main process and needs no
+	// fork. A truncated answer, or a query longer than dnsmasq reads from a UDP
+	// datagram, goes over TCP
+	ssize_t alen = 0;
+	if(msg_len <= FTL_dnsmasq_udp_query_max())
+		alen = loopback_udp_exchange(framed + 2, msg_len, answer, answer_sz);
+
 	// Borrow a loopback connection for the duration of this query, exactly as the
 	// DoT and DoQ reactors do, so all three share one accounted pool of dnsmasq
 	// children. dnsmasq closes a pooled connection after its keep-alive limit or
 	// an idle period. Only that case is retried, once, on a fresh connection: a
 	// timeout or any other failure is not, as the query may already be on its
 	// way upstream.
-	ssize_t alen = -1;
-	for(int attempt = 0; attempt < 2; attempt++)
+	for(int attempt = 0; alen == 0 && attempt < 2; attempt++)
 	{
 		bool pooled = true;
 		int fd = dotdoh_loopback_take();
@@ -490,6 +655,7 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 			dotdoh_loopback_drop(fd);
 			if(!pooled || !closed)
 				break;
+			alen = 0;
 			continue;
 		}
 		// Hand it back the way the reactors expect to find it.
@@ -499,6 +665,9 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 			dotdoh_loopback_drop(fd);
 		break;
 	}
+	if(alen < 2)
+		return -1;
+	memcpy(answer, client_id, sizeof(client_id));
 
 	// Pad the answer to a 468-octet boundary (RFC 8467 Sec. 4.1) so its ciphertext
 	// length leaks less, but only when the client's query asked for padding, which
