@@ -36,7 +36,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 21
+#define SHARED_MEMORY_VERSION 22
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -73,7 +73,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        565280, 557088, 557072);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        376,    376,    376);
+ASSERT_SHM_SIZE(countersStruct,        408,    408,    404);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -1806,6 +1806,37 @@ void update_qps(const time_t timestamp)
 
 	// Add the query
 	shmSettings->qps[slot]++;
+}
+
+// The queries array is in ID order and its timestamps nearly so: a query is
+// never older than any query before it by more than query_time_disorder
+// seconds, which time range searches rely on. Called with the SHM lock held
+void track_query_time(const queriesData *query)
+{
+	if(query->timestamp > counters->newest_query_time)
+		counters->newest_query_time = query->timestamp;
+	else if(counters->newest_query_time - query->timestamp > counters->query_time_disorder)
+	{
+		counters->query_time_disorder = counters->newest_query_time - query->timestamp;
+		counters->query_time_disorder_id = query->db;
+	}
+}
+
+// Track the timestamps of all queries again, in array order: after the
+// import, which fills its slots while newer queries arrive, and once the
+// garbage collector has removed the query that set the bound. Called with the
+// SHM lock held
+void retrack_query_times(void)
+{
+	counters->newest_query_time = 0.0;
+	counters->query_time_disorder = 0.0;
+	counters->query_time_disorder_id = -1;
+	for(unsigned int i = 0; i < counters->queries; i++)
+	{
+		const queriesData *query = getQuery(i, false);
+		if(query != NULL && query->magic == MAGICBYTE)
+			track_query_time(query);
+	}
 }
 
 // Reset queries per second (qps) value for the timeslot following the current
