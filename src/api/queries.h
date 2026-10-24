@@ -13,6 +13,8 @@
 #include "webserver/http-common.h"
 // regex_t
 #include "regex_r.h"
+// sqlite3_int64
+#include "database/sqlite3.h"
 
 // Hard upper bound on the number of query rows materialized into a single
 // JSON response. This prevents /api/queries from exhausting memory by
@@ -106,5 +108,10 @@ struct qlog_row {
 int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *row);
 bool qlog_domain_excluded(const struct qlog_request *req, const char *domain);
 bool qlog_client_excluded(const struct qlog_request *req, const char *client_ip, const char *client_name);
+
+// The query log from shared memory, see queries-shm.c
+void shm_query_log_counts(sqlite3_int64 *newest_id, sqlite3_int64 *total);
+int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON *queries,
+                     unsigned int *records);
 
 #endif // API_QUERIES_H

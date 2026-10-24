@@ -20,6 +20,8 @@
 // dbopen(false, ), dbclose()
 #include "database/common.h"
 #include "api/queries.h"
+// db_import_done
+#include "gc.h"
 // PRIu64
 #include <inttypes.h>
 
@@ -714,9 +716,9 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 	return 0;
 }
 
-// Read the query log from the in-memory database, or the on-disk one with
-// disk=true, and count the matching queries. Returns 0, or the status of the
-// error reply it sent
+// Read the query log from the on-disk database with disk=true, from the
+// in-memory one while the queries are imported, and count the matching
+// queries. Returns 0, or the status of the error reply it sent
 static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req, cJSON *queries,
                             unsigned int *records)
 {
@@ -960,9 +962,14 @@ int api_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 		get_bool_var(api->request->query_string, "disk", &req.disk);
 
-	// The numbers of queries and the highest ID when the request arrived
+	// The numbers of queries and the highest ID when the request arrived.
+	// Once the import is done, the in-memory query log is read from shared
+	// memory, which also has the queries that are not stored yet
 	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
 	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
+	const bool from_shm = !req.disk && db_import_done;
+	if(from_shm)
+		shm_query_log_counts(&largest_db_index, &mem_dbnum);
 
 	// Read the request, then the queries it selects
 	unsigned int records = 0;
@@ -970,7 +977,9 @@ int api_queries(struct ftl_conn *api)
 	int ret = parse_queries_request(api, &req, largest_db_index);
 	if(ret == 0 && (queries = JSON_NEW_ARRAY()) == NULL)
 		ret = send_http_internal_error(api);
-	if(ret == 0)
+	if(ret == 0 && from_shm)
+		ret = queries_from_shm(api, &req, queries, &records);
+	else if(ret == 0)
 		ret = queries_from_sql(api, &req, queries, &records);
 
 	// Release the compiled regexes
@@ -986,10 +995,16 @@ int api_queries(struct ftl_conn *api)
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
-	if(req.cursor_set)
+	if(from_shm && !req.cursor_set && largest_db_index < 0)
 	{
-		// Repeat cursor received in the request. This ensures we get a
-		// static result by skipping any newer queries.
+		// No query yet, so there is nothing a cursor could point to
+		JSON_ADD_NULL_TO_OBJECT(json, "cursor");
+	}
+	else if(req.cursor_set || from_shm)
+	{
+		// Repeat cursor received in the request, or the newest query
+		// when it arrived. This ensures we get a static result by
+		// skipping any newer queries.
 		log_web_debug(DEBUG_API, "Sending cursor %"PRIu64, req.cursor);
 		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", req.cursor);
 	}

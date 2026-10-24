@@ -166,9 +166,9 @@ void *DB_thread(void *val)
 	retrack_query_times();
 	unlock_shm();
 
-	// Signify that the import is done, so garbage collection will run. An
-	// import that was aborted because FTL terminates is not: main() skips
-	// the final export then
+	// Signify that the import is done, so garbage collection will run and
+	// the query log is read from shared memory. An import that was aborted
+	// because FTL terminates is not: main() skips the final export then
 	if(!killed)
 		db_import_done = true;
 
