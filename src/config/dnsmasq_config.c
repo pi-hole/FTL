@@ -311,6 +311,64 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
+// dnsmasq writes the PCAP header itself and refuses an existing empty or
+// non-PCAP file, so mirror its checks without leaving an empty file behind
+static bool pcap_writeable(const char *path, const bool test_only)
+{
+	// Same access mode as dnsmasq, which also reads an existing file. On Linux,
+	// O_RDWR opens a named pipe without a reader, a socket fails with ENXIO
+	const int flags = O_RDWR | O_APPEND | O_NONBLOCK | O_NOCTTY;
+	bool link = false, created = false;
+	int fd = open(path, flags | O_NOFOLLOW);
+	if(fd < 0 && errno == ELOOP)
+	{
+		// Open through a symlink, but never create its target
+		link = true;
+		fd = open(path, flags);
+	}
+	else if(fd < 0 && errno == ENOENT)
+	{
+		// O_EXCL never follows a symlink created in the meantime
+		created = true;
+		fd = open(path, flags | O_CREAT | O_EXCL, 0644);
+	}
+	if(fd < 0)
+		return false;
+
+	bool ok = false;
+	struct stat st;
+	if(created)
+		ok = unlink(path) == 0;
+	else if(fstat(fd, &st) != 0)
+		ok = false;
+	else if(S_ISFIFO(st.st_mode))
+		ok = true;
+	else if(!S_ISREG(st.st_mode))
+		ok = false;
+	else if(st.st_size == 0)
+	{
+		// Testing a config must not change the filesystem it checks. An empty
+		// target behind a symlink is not ours to remove
+		if(link)
+			ok = false;
+		else
+			ok = test_only || unlink(path) == 0;
+	}
+	else
+	{
+		// dnsmasq reads the full header and checks the magic in host byte order
+		unsigned char hdr[24];
+		uint32_t magic;
+		if(pread(fd, hdr, sizeof(hdr), 0) == (ssize_t)sizeof(hdr))
+		{
+			memcpy(&magic, hdr, sizeof(magic));
+			ok = magic == 0xa1b2c3d4;
+		}
+	}
+	close(fd);
+	return ok;
+}
+
 bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
@@ -927,7 +985,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// Add option for PCAP file recording
 	if(strlen(conf->files.pcap.v.s) > 0)
 	{
-		if(file_writeable(conf->files.pcap.v.s))
+		if(pcap_writeable(conf->files.pcap.v.s, mode == DNSMASQ_TEST_ONLY))
 		{
 			fputs("# PCAP network traffic recording\n", pihole_conf);
 			fprintf(pihole_conf, "dumpmask=0xFFFF\n");

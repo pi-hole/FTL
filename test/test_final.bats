@@ -675,3 +675,33 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
 }
+
+@test "dnsmasq writes the PCAP header to a fresh or empty files.pcap" {
+  rm -rf /tmp/pcap-run
+  mkdir /tmp/pcap-run
+  touch /tmp/pcap-run/empty.pcap
+  chown -R pihole:pihole /tmp/pcap-run
+  for f in /tmp/pcap-run/new.pcap /tmp/pcap-run/empty.pcap; do
+    logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+    # FTL stays up if dnsmasq refuses the file, so do not wait on its output
+    run bash -c "su pihole -s /bin/sh -c 'FTLCONF_files_pcap=$f /home/pihole/pihole-FTL' > /dev/null 2>&1"
+    assert_success
+    run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+    assert_success
+
+    run bash -c "dig A pcap.ftl @127.0.0.1 +tries=3 +time=2 +short"
+    assert_success
+    run bash -c "od -An -tx4 -N4 $f | tr -d ' '"
+    assert_output 'a1b2c3d4'
+
+    logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+    run bash -c "kill $(cat /run/pihole-FTL.pid)"
+    assert_success
+    run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+    assert_success
+
+    run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'CRIT:|disabling PCAP'"
+    refute_output
+  done
+  rm -rf /tmp/pcap-run
+}
