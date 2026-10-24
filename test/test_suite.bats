@@ -42,6 +42,21 @@ setup() {
    assert_output --partial "CRIT: pihole-FTL is already running"
 }
 
+@test "A second instance with other FTLCONF_ values leaves the config files alone" {
+  # It is refused before it reads the config, so its environment does not
+  # end up in the files the running instance uses and reloads
+  files="/etc/pihole/pihole.toml /etc/pihole/dnsmasq.conf /etc/pihole/hosts/custom.list"
+  before=$(sha256sum ${files})
+  logsize=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_misc_check_load=false FTLCONF_dns_domain_name=second.lan FTLCONF_dns_hosts=\"10.0.200.1 second.ftl\" ./pihole-FTL -f"'
+  assert_output --partial "CRIT: pihole-FTL is already running"
+  run sha256sum ${files}
+  assert_output "${before}"
+  # The refusal is in FTL.log, not only on the terminal
+  run bash -c "tail -c +$((logsize + 1)) /var/log/pihole/FTL.log | grep -c 'CRIT: pihole-FTL is already running'"
+  assert_output "1"
+}
+
 @test "dnsmasq options as expected" {
   run bash -c './pihole-FTL -vv | grep "dumpfile"'
   assert_line --index 0 "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth DNSSEC loop-detect inotify dumpfile"
