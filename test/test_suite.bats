@@ -1173,6 +1173,17 @@ setup() {
   assert_success
 }
 
+@test "Regex Test 58: Back-reference inside an unbounded repetition is rejected" {
+  run bash -c './pihole-FTL regex-test "aaaa" "((a?)\2)*"'
+  assert_line --index 1 "Invalid regex CLI filter \"((a?)\2)*\": Back-reference inside an unbounded repetition is not supported"
+  assert_failure 1
+}
+
+@test "Regex Test 59: Back-reference outside a repeated group still works: MATCH" {
+  run bash -c './pihole-FTL regex-test "ababab" "(ab)+\1"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
