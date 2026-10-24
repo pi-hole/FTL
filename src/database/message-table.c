@@ -1539,6 +1539,50 @@ void logg_rate_limit_message(const char *clientIP, const unsigned int rate_limit
 
 }
 
+// dnsmasq repeats some warnings for every reply, e.g., "refused to do a recursive
+// query", and the DNS thread waits for every database write: store each at most
+// once a minute. Per thread, an API thread deleting a DHCP lease logs here too
+static void store_dnsmasq_warning(const char *message)
+{
+	static _Thread_local struct {
+		time_t stored;
+		char message[1024];
+	} recent[8];
+	static _Thread_local unsigned int next = 0;
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	// Look for the message, and for a free or expired slot to keep it in
+	const size_t len = strlen(message);
+	const bool keep = len > 0 && len < sizeof(recent[0].message);
+	unsigned int slot = ArraySize(recent);
+	for(unsigned int i = 0; keep && i < ArraySize(recent); i++)
+	{
+		const bool expired = recent[i].message[0] == '\0' || now.tv_sec - recent[i].stored >= 60;
+		if(strcmp(recent[i].message, message) == 0)
+		{
+			if(!expired)
+				return;
+			slot = i;
+			break;
+		}
+		if(expired && slot == ArraySize(recent))
+			slot = i;
+	}
+
+	// Remember it only once it is stored, so a failed write is retried
+	if(add_message_no_args(DNSMASQ_WARN_MESSAGE, message) < 0 || !keep)
+		return;
+	if(slot == ArraySize(recent))
+	{
+		slot = next;
+		next = (next + 1) % ArraySize(recent);
+	}
+	recent[slot].stored = now.tv_sec;
+	memcpy(recent[slot].message, message, len + 1);
+}
+
 void logg_warn_dnsmasq_message(const char *message)
 {
 	// Create message (dnsmasq limits is message length to 1KiB to conform with RFC 3164; See MAX_MESSAGE in dnsmasq/log.c), account for our 'dnsmasq: ' prefix
@@ -1549,7 +1593,7 @@ void logg_warn_dnsmasq_message(const char *message)
 	log_warn("%s", buf);
 
 	// Log to database
-	add_message_no_args(DNSMASQ_WARN_MESSAGE, message);
+	store_dnsmasq_warning(message);
 
 }
 
