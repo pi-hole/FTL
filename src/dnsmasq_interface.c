@@ -1172,9 +1172,10 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query_set_status_init(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
-	// Initialize database fields
-	// This query is new and not yet known to the database
-	query->db = -1;
+	// Initialize database fields. The ID is handed out under the same lock
+	// as the slot, so the IDs follow the order of the queries array
+	query->db = counters->next_query_id++;
+	query->flags.database.stored = false;
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
@@ -1200,8 +1201,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// generated) is stored in the queries structure
 	query->privacylevel = config.misc.privacylevel.v.privacy_level;
 
-	// Query extended DNS error
-	query->ede = EDE_UNSET;
+	// Query extended DNS error and the list ID in the database
+	query_set_ede(query, EDE_UNSET);
+	query->list_id = -1;
 
 	// Initialize cache ID, may be reusing an existing one if this
 	// (domain,client,type) tuple was already seen before
@@ -3034,13 +3036,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// EDE analysis
 	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
 	{
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 		log_debug(DEBUG_QUERIES, "     EDE (1): %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 	ednsData *edns = getEDNS(id);
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
-		query->ede = edns->ede;
+		query_set_ede(query, edns->ede);
 		log_debug(DEBUG_QUERIES, "     EDE (2): %s (%d)", edestr(edns->ede), edns->ede);
 	}
 
@@ -3439,7 +3441,7 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 
 	// Store EDE
 	if(addr && addr->log.ede != EDE_UNSET)
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 
 	// Iterate through possible values
 	if(strcmp(arg, "SECURE") == 0)
@@ -3541,10 +3543,10 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	ednsData *edns = getEDNS(id);
 
 	if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 
 	else if(edns != NULL && edns->ede != EDE_UNSET)
-		query->ede = edns->ede;
+		query_set_ede(query, edns->ede);
 
 	// Debug logging
 	if(config.debug.queries.v.b)
