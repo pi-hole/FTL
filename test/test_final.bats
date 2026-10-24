@@ -480,6 +480,9 @@ load 'bats_helper.bash'
   # The garbage collector runs once per minute then and keeps only the
   # queries that can still receive a reply. All of them still reach the disk,
   # and a rate-limited client stays limited when none of its queries is left
+  # With debug.gc, each run replaces the string dump of the run before
+  rm -f /tmp/stringdump.txt
+  su pihole -s /bin/sh -c 'echo "String dump starting at an earlier run" > /tmp/stringdump.txt'
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
   run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 FTLCONF_dns_rateLimit_count=250 FTLCONF_dns_rateLimit_interval=3600 /home/pihole/pihole-FTL"'
@@ -516,6 +519,12 @@ load 'bats_helper.bash'
   run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'GC (starting|removed)'"
   printf "%s\n" "${lines[@]}"
   assert_output --regexp "GC removed [1-9][0-9]* queries"
+
+  # The file holds one complete dump, the earlier one is gone
+  run bash -c "./pihole-FTL wait-for 'Summary:' /tmp/stringdump.txt 30 0"
+  assert_success
+  run grep -c "^String dump starting at" /tmp/stringdump.txt
+  assert_output "1"
 
   # None of the queries of 127.0.0.2 is left in memory, it is still limited
   run bash -c "dig A ratelimit-after.ftl -b 127.0.0.2 @127.0.0.1 +tries=1 +time=1 | grep -oE 'status: [A-Z]+'"
