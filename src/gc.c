@@ -289,8 +289,6 @@ keep_cache:
 
 		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
-
-		dump_strings();
 	}
 }
 
@@ -587,6 +585,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Release thread lock
 	if(!flush)
 		unlock_shm();
+
+	// dump_strings() takes the lock only to copy the string table. A log
+	// flush runs with the lock held by its caller and writes no dump
+	if(!flush && config.debug.gc.v.b)
+		dump_strings();
 }
 
 static bool check_files_on_same_device(const char *path1, const char *path2)

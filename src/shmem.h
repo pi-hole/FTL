@@ -46,6 +46,8 @@ typedef struct {
 typedef struct {
 	unsigned int queries;
 	unsigned int queries_offset;
+	// Database ID the next new query gets, see _FTL_new_query()
+	int64_t next_query_id;
 	unsigned int upstreams;
 	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;

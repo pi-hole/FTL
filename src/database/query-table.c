@@ -107,7 +107,9 @@ static struct {
 // Pack addinfo type and key into a single integer
 static inline int addinfo_pack(const int type, const int key)
 {
-	return (key << ADDINFO_TYPE_BITS) | (type & ((1 << ADDINFO_TYPE_BITS) - 1));
+	// Shift as unsigned: list IDs can be negative, and left-shifting a
+	// negative int is undefined behaviour
+	return (int)(((unsigned int)key << ADDINFO_TYPE_BITS) | (type & ((1u << ADDINFO_TYPE_BITS) - 1)));
 }
 
 static inline int lookup_addinfo_id(const int type, const int key)
@@ -494,8 +496,13 @@ bool init_memory_database(void)
 	// Initialize in-memory database starting index
 	init_disk_db_idx(_memdb);
 
+	// New queries continue above the highest ID on disk
+	lock_shm();
+	counters->next_query_id = memdb_queries_maxid + 1;
+	unlock_shm();
+
 	// Flush messages stored in the long-term database
-	flush_message_table(_memdb);
+	flush_message_table();
 
 	// Attach disk database
 	if(attached)
@@ -1773,7 +1780,9 @@ void DB_read_queries(void)
 	                              "additional_info,"\
 	                              "reply_type,"\
 	                              "reply_time,"\
-	                              "dnssec "\
+	                              "dnssec,"\
+	                              "list_id,"\
+	                              "ede "\
 	                       "FROM queries";
 
 	// Only try to import from database if it is known to not be broken and
@@ -1922,9 +1931,10 @@ void DB_read_queries(void)
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
 
-		// Store this query in memory
+		// Store this query in memory, it keeps its ID from the database
 		queriesData *query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
+		query->db = dbID;
 		query->timestamp = queryTimeStamp;
 		if(type < 100)
 		{
@@ -1970,7 +1980,10 @@ void DB_read_queries(void)
 		query->flags.allowed = false;
 		query->flags.database.imported = true;
 		query->flags.database.changed = false;
-		query->ede = -1; // EDE_UNSET == -1
+		query->flags.database.stored = true;
+		// List ID and extended DNS error, NULL counts as none
+		query->list_id = sqlite3_column_type(stmt, 11) == SQLITE_INTEGER ? sqlite3_column_int(stmt, 11) : -1;
+		query_set_ede(query, sqlite3_column_type(stmt, 12) == SQLITE_INTEGER ? sqlite3_column_int(stmt, 12) : -1);
 
 		// Set lastQuery timer for network table
 		clientsData *client = getClient(clientID, true);
@@ -2198,7 +2211,7 @@ static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
 // Snapshot struct for lock-free SQLite writes in phase 2
 struct query_snap {
 	unsigned int queryID;       // SHM index for writeback
-	int64_t idx;                // pre-assigned db index
+	int64_t idx;                // ID in the database
 	double timestamp;
 	int type_val;               // pre-computed type for param 3
 	int status;                 // param 4
@@ -2379,7 +2392,6 @@ bool queries_to_database(const bool final)
 
 	unsigned int snap_count = 0;
 	unsigned int unchanged = 0u;
-	int64_t next_maxid = memdb_queries_maxid;
 	bool phase1_error = false;
 	int64_t changes = 0;
 	sqlite3_int64 rowid = 0;
@@ -2426,15 +2438,12 @@ bool queries_to_database(const bool final)
 		struct query_snap *s = &snaps[snap_count];
 		s->queryID = queryID;
 
-		// Pre-assign db index
-		s->is_new = (query->db == -1);
-		if(s->is_new)
-			s->idx = ++next_maxid;
-		else
-			s->idx = query->db;
+		// The ID was handed out when the query was created
+		s->is_new = !query->flags.database.stored;
+		s->idx = query->db;
 
-		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld (old idx %lld)",
-		          queryID, (long long)s->idx, (long long)query->db);
+		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld (%s)",
+		          queryID, (long long)s->idx, s->is_new ? "new" : "update");
 
 		// Snapshot scalar fields
 		s->timestamp = query->timestamp;
@@ -2444,7 +2453,7 @@ bool queries_to_database(const bool final)
 		s->response = query->response;
 		s->response_calculated = query->flags.response_calculated;
 		s->dnssec = query->dnssec;
-		s->ede = query->ede;
+		s->ede = query_get_ede(query);
 		s->blocked = query->flags.blocked;
 
 		// DOMAIN - handle linking table INSERT if first encounter. The row
@@ -2579,6 +2588,7 @@ bool queries_to_database(const bool final)
 
 		// ADDINFO — handle linking table INSERT if not cached
 		s->addinfo_id = 0;
+		s->list_id = -1;
 		if(query->status == QUERY_GRAVITY_CNAME ||
 		   query->status == QUERY_REGEX_CNAME ||
 		   query->status == QUERY_DENYLIST_CNAME)
@@ -2765,8 +2775,8 @@ bool queries_to_database(const bool final)
 		goto rollback_fail;
 
 	// ===================================================================
-	// PHASE 3: Brief SHM lock — write back db indices and clear changed
-	// flags only for queries that were successfully committed.
+	// PHASE 3: Brief SHM lock — update the queries that were successfully
+	// committed: their list ID and, for new ones, the stored flag.
 	// ===================================================================
 	lock_shm();
 
@@ -2786,8 +2796,8 @@ bool queries_to_database(const bool final)
 	if(succeeded == snap_count)
 		last_export_start = run_start;
 
-	// Loop through snapshots of successfully committed queries and write
-	// back db indices
+	// Loop through snapshots of successfully committed queries, keep the
+	// list ID their row got and mark the new ones as stored
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
@@ -2795,9 +2805,10 @@ bool queries_to_database(const bool final)
 		if(query == NULL)
 			continue;
 
+		query->list_id = s->list_id;
 		if(s->is_new)
 		{
-			query->db = s->idx;
+			query->flags.database.stored = true;
 			if(s->blocked)
 				new_blocked++;
 			if(s->timestamp > new_last_timestamp)

@@ -714,6 +714,18 @@ const char *getClientNameString(const queriesData *query)
 		return HIDDEN_CLIENT;
 }
 
+// Extended DNS error code (0 - 65535) of a query, -1 (EDE_UNSET) if it has none
+int __attribute__((pure)) query_get_ede(const queriesData *query)
+{
+	return query->flags.has_ede ? query->ede : -1;
+}
+
+void query_set_ede(queriesData *query, const int ede)
+{
+	query->flags.has_ede = ede >= 0;
+	query->ede = (uint16_t)(ede >= 0 ? ede : 0);
+}
+
 // Forget the blocking decision cached in one per-client DNS cache entry
 static void reset_dns_cache_entry(DNSCacheData *dns_cache)
 {
