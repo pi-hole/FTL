@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// open(), O_NOFOLLOW
+#include <fcntl.h>
 #include "log.h"
 #include "config/config.h"
 #include "password.h"
@@ -493,9 +495,15 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		free(salt);
 		free(config_hash);
 
-		// Successful logins do not count against rate-limiting
+		// Successful logins do not count against rate-limiting. Take the
+		// same lock the increment above uses - this is a read-modify-write
+		// on a variable that mutex otherwise protects
 		if(result)
+		{
+			pthread_mutex_lock(&rate_limit_lock);
 			num_password_attempts--;
+			pthread_mutex_unlock(&rate_limit_lock);
+		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -521,7 +529,9 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 			}
 
 			// Successful logins do not count against rate-limiting
+			pthread_mutex_lock(&rate_limit_lock);
 			num_password_attempts--;
+			pthread_mutex_unlock(&rate_limit_lock);
 		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
@@ -806,9 +816,14 @@ bool create_cli_password(void)
 		return false;
 	}
 
-	// Store the CLI password in the corresponding file
-	FILE *file = fopen(CLI_PW_FILE, "w");
-	if(file == NULL)
+	// Create a new file rather than truncating an existing one, whose mode may
+	// be wider and which another process may already hold open. O_EXCL after
+	// unlink() means we create it ourselves, O_NOFOLLOW refuses a planted symlink
+	if(unlink(CLI_PW_FILE) != 0 && errno != ENOENT)
+		log_warn("Failed to remove old CLI password file: %s", strerror(errno));
+	const mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
+	const int fd = open(CLI_PW_FILE, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode);
+	if(fd < 0)
 	{
 		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
 		free(cli_password);
@@ -816,27 +831,37 @@ bool create_cli_password(void)
 		return false;
 	}
 
+	// Pin the mode on the handle, the umask may have trimmed it
+	if(fchmod(fd, mode) != 0)
+		log_warn("Unable to set permissions on CLI password file: %s", strerror(errno));
+
 	// Write password
-	if(fputs(cli_password, file) == EOF)
+	const size_t len = strlen(cli_password);
+	size_t done = 0;
+	while(done < len)
+	{
+		const ssize_t ret = write(fd, cli_password + done, len - done);
+		if(ret < 0 && errno == EINTR)
+			continue;
+		if(ret <= 0)
+		{
+			if(ret == 0)
+				errno = EIO;
+			break;
+		}
+		done += (size_t)ret;
+	}
+	if(done < len)
 	{
 		log_err("Failed to write CLI password to file: %s", strerror(errno));
-		fclose(file);
+		close(fd);
+		unlink(CLI_PW_FILE);
 		free(cli_password);
 		cli_password = NULL;
 		return false;
 	}
 
-	// Close file
-	fclose(file);
-
-	// Set file permissions to 0640
-	if(chmod(CLI_PW_FILE, S_IRUSR | S_IWUSR | S_IRGRP) < 0)
-	{
-		log_err("Failed to set permissions on CLI password file: %s", strerror(errno));
-		free(cli_password);
-		cli_password = NULL;
-		return false;
-	}
+	close(fd);
 
 	log_debug(DEBUG_API, "CLI password set and stored in file");
 	return true;
@@ -851,19 +876,19 @@ bool remove_cli_password(void)
 		cli_password = NULL;
 	}
 
-	// Empty the CLI password file
-	FILE *file = fopen(CLI_PW_FILE, "w");
-	if(file == NULL)
-	{
-		log_err("Failed to open CLI password file for writing: %s", strerror(errno));
-		return false;
-	}
-
-	// Close file
-	fclose(file);
+	// Empty the CLI password file before removing it, for anyone still holding
+	// it open. Without O_CREAT, a missing file is not created, O_NOFOLLOW leaves
+	// the target of a symlink alone (the symlink is still removed below) and
+	// O_NONBLOCK keeps a FIFO from blocking us
+	const int fd = open(CLI_PW_FILE, O_WRONLY | O_TRUNC | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if(fd >= 0)
+		close(fd);
+	else if(errno == ENOENT)
+		return true;
+	else
+		log_warn("Failed to empty CLI password file: %s", strerror(errno));
 
 	// Remove the CLI password file from disk
-	// If the file does not exist, we returned above already
 	if(unlink(CLI_PW_FILE) < 0)
 	{
 		log_err("Failed to remove CLI password file: %s", strerror(errno));

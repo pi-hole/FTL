@@ -10,6 +10,7 @@ components:
         description: |
           Request an archived copy of your Pi-hole's current configuration.
           Authentication via header or cookie is required for the endpoint.
+          The archive contains the password hashes and the TOTP secret, so application sessions without `webserver.api.app_sudo` cannot export it.
         responses:
           '200':
             description: OK
@@ -26,6 +27,17 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  app_session:
+                    $ref: 'teleporter.yaml#/components/examples/errors/forbidden/app_session_export'
       post:
         summary: Import Pi-hole settings
         tags:
@@ -181,6 +193,14 @@ components:
               hint: null
             took: 0.003
       forbidden:
+        app_session_export:
+          summary: Application session without sudo mode
+          value:
+            error:
+              key: "forbidden"
+              message: "Unable to export configuration"
+              hint: "The current app session is not allowed to export Pi-hole config settings (webserver.api.app_sudo is false)"
+            took: 0.003
         app_session:
           summary: Application session without sudo mode
           value:

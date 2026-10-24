@@ -46,9 +46,14 @@ typedef struct {
 typedef struct {
 	unsigned int queries;
 	unsigned int queries_offset;
+	// Database ID the next new query gets, see _FTL_new_query()
+	int64_t next_query_id;
 	unsigned int upstreams;
+	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;
 	unsigned int domains;
+	unsigned int clients_total;
+	unsigned int domains_total;
 	unsigned int queries_MAX;
 	unsigned int upstreams_MAX;
 	unsigned int clients_MAX;
@@ -70,6 +75,7 @@ typedef struct {
 	unsigned int dns_cache_lookup_size;
 	unsigned int intarrays_MAX;
 	unsigned int regex_change;
+	unsigned int aliasclients; // rows of the last alias-client import
 	struct {
 		int gravity;
 		int antigravity;

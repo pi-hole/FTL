@@ -354,6 +354,50 @@ class TestDomainSearch:
         assert search["results"]["total"] > 0, \
             f"Expected partial matches for 'gravity':\n{json.dumps(data, indent=2)}"
 
+    def test_partial_matching_abp_subdomain(self, api_session):
+        """Partial matching must resolve ABP-style entries like exact matching.
+
+        The gravity table stores "||special.gravity.ftl^", which a plain
+        substring search for a subdomain of it cannot find.
+        """
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert search["results"]["gravity"] == {"allow": 0, "block": 1}, \
+            json.dumps(data, indent=2)
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_antigravity_subdomain(self, api_session):
+        """ABP-style antigravity entries are found for subdomains, too."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_leading_dot(self, api_session):
+        """A leading dot is stripped from the ABP patterns, so the pattern
+        built from the full term is no substring hit and must be looked up."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_no_duplicates(self, api_session):
+        """The substring hit and the generated ABP pattern must not both count."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # History
@@ -1124,7 +1168,10 @@ class TestInfo:
         s = data["system"]
         assert "uptime" in s
         assert s["memory"]["ram"]["total"] > 0
-        assert s["cpu"]["nprocs"] > 0
+        # All CPUs present, not only those in FTL's affinity mask
+        with open("/sys/devices/system/cpu/present") as f:
+            ranges = [r.split("-") for r in f.read().strip().split(",")]
+        assert s["cpu"]["nprocs"] == sum(int(r[-1]) - int(r[0]) + 1 for r in ranges)
         assert "ftl" in s
         assert "%mem" in s["ftl"]
         assert "%cpu" in s["ftl"]
@@ -1193,6 +1240,40 @@ class TestLogs:
     def test_webserver_log(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/logs/webserver", timeout=5))
         assert len(data["log"]) > 0
+
+    def test_dnsmasq_log_wraps(self, api_session):
+        """Once the log has wrapped, it returns its last 512 messages in order
+        and nextID picks up exactly where an earlier reply ended."""
+        import socket
+        import struct
+
+        # dnsmasq logs pi.hole queries but FTL does not count them, so they
+        # fill the log without changing what other tests expect
+        query = struct.pack('!HHHHHH', 0x4242, 0x0100, 1, 0, 0, 0) + \
+            b'\x02pi\x04hole\x00' + struct.pack('!HH', 1, 1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            for _ in range(600):
+                sock.sendto(query, ('127.0.0.1', 53))
+                sock.recvfrom(512)
+        finally:
+            sock.close()
+
+        url = f"{FTL_URL}/api/logs/dnsmasq"
+        data = _j(api_session.get(url, timeout=5))
+        log, next_id = data["log"], data["nextID"]
+        assert len(log) == 512, len(log)
+        stamps = [entry["timestamp"] for entry in log]
+        assert stamps == sorted(stamps)
+
+        # Lines logged in between can only add to the end of these replies
+        tail = _j(api_session.get(f"{url}?nextID={next_id - 10}", timeout=5))["log"]
+        assert tail[:10] == log[-10:], json.dumps(tail[:10], indent=2)
+        oldest = _j(api_session.get(f"{url}?nextID=0", timeout=5))["log"]
+        assert len(oldest) == 512, len(oldest)
+        newer = _j(api_session.get(f"{url}?nextID={next_id}", timeout=5))["log"]
+        assert all(entry["timestamp"] >= stamps[-1] for entry in newer)
 
 
 # ---------------------------------------------------------------------------

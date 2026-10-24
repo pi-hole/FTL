@@ -25,6 +25,18 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "A leftover world-readable CLI password file is replaced" {
+  # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
+  holder=$(cat /tmp/cli_pw_holder.pid)
+  run cat "/proc/${holder}/fd/0"
+  kill "${holder}"
+  assert_output "stale"
+  run stat -c '%a' /etc/pihole/cli_pw
+  assert_output "640"
+  run cat /etc/pihole/cli_pw
+  refute_output "stale"
+}
+
 @test "Running a second instance is detected and prevented" {
   run bash -c 'su pihole -s /bin/sh -c "./pihole-FTL -f"'
    assert_output --partial "CRIT: pihole-FTL is already running"
@@ -211,7 +223,7 @@ setup() {
   assert_line --index 0 "11"
 }
 
-@test "Client 6: Client is recognized by interface name" {
+@test "Client 6: Client is matched by the interface its query arrives on" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "dig TXT CHAOS version.bind -b 127.0.0.6 @127.0.0.1 +short"
 
@@ -222,18 +234,22 @@ setup() {
   assert_line --index 0 "1"
   run bash -c "grep -c \"There is no record for 00:11:22:33:44:55 in the client table\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
+  # The query arrives on lo, which takes precedence over enp0s123 from the
+  # network table. There is no client :lo, so the default group applies
+  run bash -c "grep -c \"Using in-memory interface :lo of 127.0.0.6\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "1"
   run bash -c "grep -c \"Found database interface 127.0.0.6 -> enp0s123\" /var/log/pihole/FTL.log"
+  assert_line --index 0 "0"
+  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 not found. Using default group.\" /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c \"Gravity database: Client 00:11:22:33:44:55 found (identified by interface enp0s123). Using groups (5)\" /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex deny: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
-  assert_line --index 0 "1"
-  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 5)' /var/log/pihole/FTL.log"
+  run bash -c "grep -c 'Regex allow: Querying associated regexes for client 127.0.0.6 (groups: 0)' /var/log/pihole/FTL.log"
   assert_line --index 0 "1"
   run bash -c "grep -c 'Regex allow ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "2"
+  assert_line --index 0 "0"
   run bash -c "grep -c 'Regex deny ([[:digit:]]*, DB ID [[:digit:]]*) .* NOT ENABLED for client 127.0.0.6' /var/log/pihole/FTL.log"
-  assert_line --index 0 "11"
+  assert_line --index 0 "0"
 }
 
 @test "Normal query (A) is not blocked" {
@@ -1308,6 +1324,24 @@ except socket.timeout:
   assert_output "${expected}"
 }
 
+@test "Message truncation is detected at exactly the buffer size" {
+  # "dnsmasq: " + message renders to 1024 (truncated) and 1023 bytes (fits) in plain[1024]
+  pad="$(head -c 999 /dev/zero | tr '\0' a)"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "INSERT INTO message (timestamp, type, message) VALUES (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad}'), (strftime('%s','now'), 'DNSMASQ_WARN', 'truncation-test-${pad:1}');"
+  assert_success
+
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c 'curl -s 127.0.0.1/api/info/messages'
+  assert_success
+  after="$(grep -c ^ /var/log/pihole/FTL.log)"
+  run bash -c "sed -n \"${before},${after}p\" /var/log/pihole/FTL.log | grep 'Buffer too small to hold'"
+  assert_line --index 0 --partial "format_dnsmasq_warn_message(): Buffer too small to hold plain message"
+  assert_equal "${#lines[@]}" 1
+
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "DELETE FROM message WHERE message LIKE 'truncation-test-%';"
+  assert_success
+}
+
 @test "Local interfaces are added to the network table" {
   # Use the first interface with a hardware address, fall back to lo
   iface="lo"
@@ -1403,6 +1437,11 @@ except socket.timeout:
   rm ~/.sqliterc
 }
 
+@test "Embedded SQLite3 shell reports the disk usage" {
+  run bash -c "./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db .diskused"
+  assert_line --partial "Database storage utilization report"
+}
+
 @test "Embedded LUA engine is called for .lua file" {
   echo 'print("Hello from LUA")' > abc.lua
   run bash -c './pihole-FTL abc.lua'
@@ -1465,6 +1504,15 @@ except socket.timeout:
   run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 29: (synthesized)"
   assert_line --index 1 ""
+}
+
+@test "A TCP worker forked during a config write does not keep pihole.toml.lock" {
+  # dnsmasq forks a worker per TCP connection. One forked while FTL has the
+  # lock file open must not hold the lock after the write is done, else every
+  # later config write waits for that worker to exit
+  run bash -c "python3 test/toml_lock_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "free"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
@@ -1700,6 +1748,12 @@ except socket.timeout:
   assert_failure 2
 }
 
+@test "An empty files.database is rejected" {
+  run bash -c './pihole-FTL --config files.database ""'
+  assert_output --partial 'files.database: must not be empty'
+  assert_failure 3
+}
+
 # NOTE: API config validation tests moved to pytest (test/api/test_api.py)
 
 @test "Internationalized domain names are accepted, invalid ones are not" {
@@ -1734,6 +1788,28 @@ except socket.timeout:
   run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
   assert_success
 
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+}
+
+@test "An invalid entry of a list in pihole.toml is removed, the others are kept" {
+  # Break one of the two shipped entries in the file itself
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  sed -i 's|"2.2.2.2 äste.com steä.com"|"2.2.2.2 äste!.com steä.com"|' /etc/pihole/pihole.toml
+  run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c -F -e 'Invalid value: dns.hosts[1]: invalid hostname (\"äste!.com\")' -e '----> dns.hosts[1] has been removed'"
+  assert_output "2"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'dns.hosts has been reset'"
+  assert_output "0"
+  run ./pihole-FTL --config dns.hosts
+  assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de ]"
+
+  # Restore the shipped value for the tests that follow
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run ./pihole-FTL --config dns.hosts '[ "1.1.1.1 abc-custom.com def-custom.de", "2.2.2.2 äste.com steä.com" ]'
+  assert_success
   run bash -c "./pihole-FTL wait-for 'HOSTS file written to /etc/pihole/hosts/custom.list' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
 }
@@ -1817,6 +1893,11 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: webserver.tls.validity: cannot be larger than 36500'
   assert_failure 3
 
+  # An NTP sync needs at least one request to the server
+  run bash -c './pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --index 0 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
   run bash -c './pihole-FTL --config -t database.DBinterval 0'
   assert_line --index 0 'Invalid value: database.DBinterval: cannot be lower than 1'
   assert_failure 3
@@ -1866,6 +1947,43 @@ except socket.timeout:
   run bash -c './pihole-FTL --config -t webserver.tls.cert /var/www/html/tls.pem'
   assert_line --index 0 'Invalid value: webserver.tls.cert ("/var/www/html/tls.pem") must not be inside webserver.paths.webroot ("/var/www/html")'
   assert_failure 3
+}
+
+@test "files.tmp_db cannot name a file Pi-hole keeps" {
+  # database.forceDisk empties files.tmp_db on every start
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
+  assert_failure 3
+  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
+  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
+  assert_failure 3
+}
+
+@test "Config validation: a document root that resolves to the root is rejected" {
+  # Lexically /proc/self/root is a directory of its own, but it is a link
+  # the kernel plants to /, so it has to be judged by where it leads
+  run bash -c './pihole-FTL --config webserver.paths.webroot /proc/self/root'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/proc/self/root" resolves to "/", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+
+  # A link into the configuration directory is caught the same way
+  ln -s /etc/pihole /tmp/webroot-link
+  run bash -c './pihole-FTL --config webserver.paths.webroot /tmp/webroot-link'
+  assert_line --index 0 'Invalid value: webserver.paths.webroot: "/tmp/webroot-link" resolves to "/etc/pihole", which must not be "/" or overlap Pi-hole'"'"'s configuration directory ("/etc/pihole")'
+  assert_failure 3
+  rm -f /tmp/webroot-link
+
+  # A link to an ordinary directory stays configurable
+  ln -s /var/www/html /var/webroot-ok
+  run bash -c './pihole-FTL --config -t webserver.paths.webroot /var/webroot-ok'
+  assert_success
+  rm -f /var/webroot-ok
+
+  run bash -c './pihole-FTL --config webserver.paths.webroot'
+  assert_line --index 0 '/var/www/html'
 }
 
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
@@ -2178,6 +2296,12 @@ except socket.timeout:
   assert_output --partial "PTR_RESPONSE_REGRESSION=PASS"
 }
 
+@test "TXT stat buffer regression harness" {
+  run ./txt_stat_regression
+  assert_success
+  assert_output --partial "TXT_STAT_SERVERS_REGRESSION=PASS"
+}
+
 @test "SHA256 checksum working" {
   run bash -c './pihole-FTL sha256sum test/test.pem'
   assert_line --index 0 "ce4c01340ef46bf3bc26831f7c53763d57c863528826aa795f1da5e16d6e7b2d  test/test.pem"
@@ -2346,3 +2470,21 @@ SQL
 }
 
 # NOTE: FTL termination test moved to run.sh (runs after both BATS and pytest)
+
+@test "NTP client counts the replies of a server advertising a coarse precision" {
+  # The server advertises 2^-9 s (about 2 ms), coarser than a loopback round
+  # trip. FTL's own NTP server listens on 127.0.0.1 only (test/pihole.toml)
+  python3 test/fakentp.py 127.0.0.5 -9 > "${BATS_TEST_TMPDIR}/fakentp.out" 2>&1 &
+  local pid=$!
+  for i in $(seq 1 50); do
+    grep -q ready "${BATS_TEST_TMPDIR}/fakentp.out" && break
+    sleep 0.1
+  done
+  local got
+  got=$(./pihole-FTL ntp 127.0.0.5 2>&1 | grep -o "Received [0-9]*/[0-9]* valid NTP replies")
+  kill "$pid"
+  printf "%s\n" "${got}"
+  # Every reply counts, none is discarded for being more precise than the server
+  [[ "${got}" =~ Received\ ([0-9]+)/([0-9]+) ]]
+  [[ ${BASH_REMATCH[1]} -gt 0 && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]
+}

@@ -24,6 +24,8 @@
 #include "dotdoh/framing.h"
 // log_err(), log_info(), log_warn()
 #include "log.h"
+// webserver_acl_allows()
+#include "webserver/webserver.h"
 
 // The terminator is entirely OpenSSL-based; without TLS it does not exist. Guard
 // the whole body (like tls_client.c) so a no-TLS build still compiles. webserver.c
@@ -670,6 +672,40 @@ static void sockaddr_numeric(const struct sockaddr_storage *ss, char *out, size_
 	}
 }
 
+// Check the real client against webserver.acl before serving it. A v4-mapped
+// peer is checked as IPv4, the form its PROXY header announces to the backend.
+// DoH follows dns.listeningMode instead: a client the ACL refuses is still let
+// through when DoH would serve it, and every other request it sends gets a 403
+// from begin_request_handler(), which sees the client through the PROXY header
+static bool client_acl_allows(const struct sockaddr_storage *peer, const char *proto)
+{
+	struct sockaddr_storage ss = *peer;
+	const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)peer;
+	if(peer->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+	{
+		struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
+		memset(&ss, 0, sizeof(ss));
+		s4->sin_family = AF_INET;
+		s4->sin_port = s6->sin6_port;
+		memcpy(&s4->sin_addr, s6->sin6_addr.s6_addr + 12, 4);
+	}
+	if(webserver_acl_allows(&ss))
+		return true;
+
+	char client[INET6_ADDRSTRLEN] = "";
+	sockaddr_numeric(peer, client, sizeof(client));
+	if(client[0] != '\0' && dotdoh_doh_enabled() && dotdoh_source_allowed(client))
+	{
+		log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is refused by webserver.acl, admitted for DoH only",
+		          proto, client);
+		return true;
+	}
+
+	log_debug(DEBUG_WEBSERVER, "Terminator: %s client %s is not allowed to connect (webserver.acl)",
+	          proto, client[0] != '\0' ? client : "(unknown)");
+	return false;
+}
+
 static int hexnib(int c)
 {
 	if(c >= '0' && c <= '9') return c - '0';
@@ -1005,6 +1041,8 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 
 		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 		                                           query, qlen, answer, sizeof(answer));
+		if(alen == DOTDOH_MALFORMED)
+		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 		if(alen <= 0)
 		{ h1_doh_error(ssl, "502 Bad Gateway", NULL); return; }
 
@@ -1321,23 +1359,65 @@ static void copy_pseudo_header(char *dst, size_t cap, const char *v, size_t vlen
 	dst[vlen] = '\0';
 }
 
+// Append n bytes to out (capacity cap, length *len). Returns false if they do not fit.
+static bool head_append(char *out, size_t cap, size_t *len, const char *data, size_t n)
+{
+	if(*len + n >= cap)
+		return false;
+	memcpy(out + *len, data, n);
+	*len += n;
+	return true;
+}
+
 // Format the plain HTTP/1.1 request head (request line + reconstructed headers)
 // into out. Connection: close is added so responses are cleanly delimited.
 // extra_headers, if non-NULL, is inserted verbatim (e.g. a framing header such
-// as Transfer-Encoding). Returns the snprintf() result: the would-be length,
-// negative on error, >= outcap if truncated.
+// as Transfer-Encoding). The cookie lines of reqhdr become a single line joined
+// with "; ", as HTTP/1.1 allows only one (RFC 9113 8.2.3, RFC 9114 4.2.1).
+// Returns the length, or -1 if the head does not fit.
 static int be_format_request_head(char *out, size_t outcap,
                                          const char *method, const char *path,
                                          const char *authority, const char *reqhdr,
                                          size_t reqhdr_len, const char *extra_headers)
 {
-	return snprintf(out, outcap,
-	                "%s %s HTTP/1.1\r\nHost: %s\r\n%.*s%sConnection: close\r\n\r\n",
-	                method[0] ? method : "GET",
-	                path[0] ? path : "/",
-	                authority[0] ? authority : "pi.hole",
-	                (int)reqhdr_len, reqhdr,
-	                extra_headers ? extra_headers : "");
+	const int n = snprintf(out, outcap, "%s %s HTTP/1.1\r\nHost: %s\r\n",
+	                       method[0] ? method : "GET",
+	                       path[0] ? path : "/",
+	                       authority[0] ? authority : "pi.hole");
+	if(n < 0 || (size_t)n >= outcap)
+		return -1;
+	size_t len = (size_t)n;
+
+	// reqhdr holds "name: value\r\n" lines: copy all other lines on the first
+	// pass, the non-empty cookie values on the second
+	bool ok = true, cookie = false;
+	for(int pass = 0; pass < 2 && ok; pass++)
+	{
+		for(const char *line = reqhdr, *end = reqhdr + reqhdr_len; line < end && ok; )
+		{
+			const char *eol = memchr(line, '\n', (size_t)(end - line));
+			const char *next = eol != NULL ? eol + 1 : end;
+			const size_t ll = (size_t)(next - line);
+			const bool is_cookie = ll >= 10 && strncasecmp(line, "cookie: ", 8) == 0;
+			if(pass == 0 && !is_cookie)
+				ok = head_append(out, outcap, &len, line, ll);
+			else if(pass == 1 && is_cookie && ll > 10)
+			{
+				ok = head_append(out, outcap, &len, cookie ? "; " : "cookie: ", cookie ? 2 : 8) &&
+				     head_append(out, outcap, &len, line + 8, ll - 10);
+				cookie = true;
+			}
+			line = next;
+		}
+	}
+	if(!ok || (cookie && !head_append(out, outcap, &len, "\r\n", 2)))
+		return -1;
+
+	const int m = snprintf(out + len, outcap - len, "%sConnection: close\r\n\r\n",
+	                       extra_headers ? extra_headers : "");
+	if(m < 0 || (size_t)m >= outcap - len)
+		return -1;
+	return (int)(len + (size_t)m);
 }
 #endif /* HAVE_HTTP2 || HAVE_HTTP3 */
 
@@ -1686,6 +1766,8 @@ static void h2_doh_serve(struct h2_stream *s)
 
 	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
 	                                           query, qlen, answer, sizeof(answer));
+	if(alen == DOTDOH_MALFORMED)
+	{ h2_gateway_error(s, "400"); return; }
 	if(alen <= 0)
 	{ h2_gateway_error(s, "502"); return; }
 
@@ -3634,6 +3716,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
+				else if(job->alen == DOTDOH_MALFORMED)
+					h3_gateway_error(s, "400");
 				else if(job->alen <= 0)
 					h3_gateway_error(s, "502");
 				else if(s->ssl != NULL && SSL_get_stream_write_state(s->ssl) != SSL_STREAM_STATE_OK)
@@ -3795,6 +3879,16 @@ static void *quic_accept_loop(void *arg)
 			if(c == NULL)
 			{
 				SSL_free(cs);
+				continue;
+			}
+			// Refuse clients webserver.acl does not allow. A peer whose address
+			// could not be read is checked as an address no ACL entry matches,
+			// so it is refused whenever an ACL is set
+			const struct sockaddr_storage unknown = { 0 };
+			if(c->have_client_addr ? !client_acl_allows(&c->client_addr, "QUIC") :
+			                         !webserver_acl_allows(&unknown))
+			{
+				h3_conn_free(c);
 				continue;
 			}
 			// Per-source cap, shared with the TCP handlers via ip_table so one host
@@ -4200,6 +4294,13 @@ static void *accept_loop(void *arg)
 				break; // listener shut down by terminator_stop()
 			// Transient error (e.g. EMFILE); avoid a tight spin.
 			poll(NULL, 0, 100);
+			continue;
+		}
+
+		// Refuse clients webserver.acl does not allow before any TLS work
+		if(!client_acl_allows(&peer, "TCP"))
+		{
+			close(client_fd);
 			continue;
 		}
 

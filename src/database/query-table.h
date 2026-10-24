@@ -48,7 +48,7 @@
                                         "WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward," \
                                       "CASE typeof(additional_info) "\
                                         "WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, " \
-                                      "reply_type, reply_time, dnssec, list_id FROM query_storage q"
+                                      "reply_type, reply_time, dnssec, list_id, ede FROM query_storage q"
 
 // Version 1
 #define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
@@ -113,12 +113,16 @@ void interrupt_memdb(void);
 bool attach_database(sqlite3* db, const char **message, const char *path, const char *alias);
 bool detach_database(sqlite3* db, const char **message, const char *alias);
 void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp);
+bool delete_old_queries_batch(sqlite3 *db, const double until, int64_t *deleted);
+void log_deleted_old_queries(const int64_t deleted, const bool complete);
 bool export_queries_to_disk(const bool final);
 bool delete_old_queries_from_db(const bool use_memdb, const double mintime);
+bool delete_exported_queries_from_memdb(const double mintime);
 bool delete_recent_queries_from_db(const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 bool queries_to_database(const bool final);
+double get_export_horizon(void) __attribute__((pure));
 void clear_addinfo_id_cache(void);
 bool is_memdb(const sqlite3 *db) __attribute__((pure));
 bool get_memdb_size(size_t *memsize, int *queries);
