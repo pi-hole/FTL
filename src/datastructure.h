@@ -59,6 +59,10 @@ typedef struct {
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
 		bool has_ede :1;
+		// Query is filtered like any other but kept out of the statistics,
+		// the query log and the database (dns.ignoreLocalhost). It holds
+		// its client and domain through their hiddencount only
+		bool hidden :1;
 		struct database_flags {
 			bool changed :1;
 			bool imported :1;
@@ -113,9 +117,14 @@ typedef struct {
 		bool rate_limited:1;
 		bool in_database:1;
 		bool groups_looked_up:1; // get_client_groupids() ran at least once
+		bool hidden_only:1; // only hidden queries have counted this client
 	} flags;
 	int count;
 	int blockedcount;
+	// Queries kept out of the statistics (dns.ignoreLocalhost) are counted
+	// here instead. Not a statistic - it only tells garbage collection that
+	// this client is still referenced by a query
+	int hiddencount;
 	int aliasclient_id; // -1 if not an alias-client
 	int db_id;
 	unsigned int id;
@@ -146,10 +155,13 @@ typedef struct {
 	unsigned char magic;
 	struct domain_flags {
 		bool in_database:1;
+		bool hidden_only:1; // See clientsData.flags.hidden_only
 	} flags;
 	int count;
 	int blockedcount;
 	int cname_refcount;
+	// See clientsData.hiddencount
+	int hiddencount;
 	int db_id;
 	unsigned int id;
 	uint32_t hash;
@@ -200,10 +212,10 @@ void queryIDMap_insert(const int dnsmasq_id, const int query_index);
 void queryIDMap_clear(void);
 #define findUpstreamID(upstream, port) _findUpstreamID(upstream, port, __LINE__, __FUNCTION__, __FILE__)
 int _findUpstreamID(const char *upstream, const in_port_t port, int line, const char *func, const char *file);
-#define findDomainID(domain, count) _findDomainID(domain, count, __LINE__, __FUNCTION__, __FILE__)
-int _findDomainID(const char *domain, const bool count, int line, const char *func, const char *file);
-#define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
-int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
+#define findDomainID(domain, count, hidden) _findDomainID(domain, count, hidden, __LINE__, __FUNCTION__, __FILE__)
+int _findDomainID(const char *domain, const bool count, const bool hidden, int line, const char *func, const char *file);
+#define findClientID(client, count, aliasclient, now, hidden) _findClientID(client, count, aliasclient, now, hidden, __LINE__, __FUNCTION__, __FILE__)
+int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, const bool hidden, int line, const char *func, const char *file);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
 int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
@@ -233,7 +245,10 @@ const char *getClientNameString(const queriesData *query);
 int query_get_ede(const queriesData *query) __attribute__((pure));
 void query_set_ede(queriesData *query, const int ede);
 
-void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod);
+void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod, const bool hidden);
+unsigned int get_visible_query_count(void) __attribute__ ((pure));
+unsigned int get_visible_client_count(void);
+unsigned int get_visible_domain_count(void);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);
 const char *get_query_status_str(const enum query_status status) __attribute__ ((const));
 const char *get_query_dnssec_str(const enum dnssec_status dnssec) __attribute__ ((const));

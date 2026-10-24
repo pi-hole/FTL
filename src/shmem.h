@@ -45,6 +45,8 @@ typedef struct {
 
 typedef struct {
 	unsigned int queries;
+	// Subset of `queries` kept out of the statistics (dns.ignoreLocalhost)
+	unsigned int hidden_queries;
 	unsigned int queries_offset;
 	// Database ID the next new query gets, see _FTL_new_query()
 	int64_t next_query_id;
