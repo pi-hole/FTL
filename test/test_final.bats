@@ -816,6 +816,9 @@ load 'bats_helper.bash'
     run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E 'CRIT:|disabling PCAP'"
     refute_output
   done
+  # pihole.toml keeps the value set via the environment
+  run bash -c './pihole-FTL --config files.pcap ""'
+  assert_success
   rm -rf /tmp/pcap-run
 }
 
