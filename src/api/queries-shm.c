@@ -31,6 +31,10 @@
 // Rows per hold of the SHM lock
 #define QLOG_CHUNK 256
 
+// A sorted request whose heap would hold more rows than this is counted
+// first, to see whether its page is in the back half of the result
+#define QLOG_FLIP_MIN 10000u
+
 // Size of the first block of string copies, each further one is twice as
 // large, up to the second size
 #define QLOG_BLOCK_MIN (64u*1024u)
@@ -80,6 +84,8 @@ struct qlog_block {
 struct qlog_scan {
 	const struct qlog_request *req;
 	bool heap_mode;  // keep the first rows in a heap instead of reading in order
+	bool count_only; // only count the matching queries
+	bool flip;       // in the opposite order, see queries_from_shm()
 	bool desc;       // read the array newest first
 	double disorder; // see track_query_time()
 	struct qlog_cache domains, clients, upstreams;
@@ -96,10 +102,11 @@ struct qlog_scan {
 	// room bytes
 	struct qlog_block *block;
 	size_t str_max, room;
-	// Max-heap of the first k rows in the requested order, last on top
+	// Max-heap of the first k rows in the requested order, last on top. The
+	// page is [ws, we) of them
 	struct qlog_key *heap;
 	unsigned int n_heap, cap_heap;
-	uint64_t k;
+	uint64_t k, ws, we;
 	// The rows of the reply
 	struct qlog_row *page;
 	unsigned int n_page;
@@ -538,7 +545,7 @@ static int cmp_rows(const struct qlog_scan *s, const struct qlog_key *a, const s
 	int c = cmp_keys(s, a, b);
 	if(c == 0)
 		c = (a->id > b->id) - (a->id < b->id);
-	return s->req->sort_desc ? -c : c;
+	return s->req->sort_desc != s->flip ? -c : c;
 }
 
 // Sort key of a query. Text from the string pool points into shared memory,
@@ -775,6 +782,8 @@ static void scan_query(struct qlog_scan *s, const unsigned int idx, const unsign
 		return;
 	s->counted++;
 
+	if(s->count_only)
+		return;
 	if(s->heap_mode)
 	{
 		heap_offer(s, query, pos);
@@ -803,7 +812,7 @@ static void scan_query(struct qlog_scan *s, const unsigned int idx, const unsign
 // chunk ends early once it has less
 static bool scan_reserve(struct qlog_scan *s)
 {
-	if(s->heap_mode && s->cap_heap < s->k && s->cap_heap < s->n_heap + QLOG_CHUNK)
+	if(s->heap_mode && !s->count_only && s->cap_heap < s->k && s->cap_heap < s->n_heap + QLOG_CHUNK)
 	{
 		uint64_t cap = s->cap_heap > 0 ? 2 * (uint64_t)s->cap_heap : 4096;
 		if(cap > s->k)
@@ -861,13 +870,13 @@ static void scan(struct qlog_scan *s, const unsigned int lo, const unsigned int 
 	}
 }
 
-// Read the rows of the heap from start on. A query the garbage collector
+// Read the rows [ws, we) of the sorted heap. A query the garbage collector
 // removed in the meantime is left out, never replaced by another. Called and
 // returns with the SHM lock held
 static void read_page(struct qlog_scan *s)
 {
 	unsigned int n = QLOG_CHUNK;
-	for(uint64_t i = s->req->start; i < s->n_heap && !s->oom; i++, n++)
+	for(uint64_t i = s->ws; i < s->we && i < s->n_heap && !s->oom; i++, n++)
 	{
 		// Chunks as in scan()
 		if(n == QLOG_CHUNK || block_free(s) < s->room)
@@ -945,16 +954,54 @@ int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON
 		s.n_upstream_str = n_upstreams;
 
 	lock_shm_reader();
+
+	// A page in the back half of a sorted result is the mirrored page of the
+	// opposite order, read backwards. With the ID as the last key, the order
+	// is total, so this is exact and needs a smaller heap. Without a filter,
+	// and while no query of the maximum privacy level is in memory, every
+	// query up to the cursor is in the result. Otherwise count first
+	s.ws = req->start;
+	s.we = s.k;
+	if(s.heap_mode && s.k > QLOG_FLIP_MIN && !s.oom)
+	{
+		const int left = (int)(hi - get_queries_removed());
+		uint64_t total = left > 0 ? (uint64_t)left : 0;
+		if(req->filtering || counters->queries_maxprivacy > 0)
+		{
+			s.count_only = true;
+			scan(&s, lo, hi);
+			s.count_only = false;
+			total = s.counted;
+		}
+		if(s.ws >= total)
+			s.done = true;
+		else if(total - s.ws < s.we)
+		{
+			const uint64_t end = s.we < total ? s.we : total;
+			s.flip = true;
+			s.desc = !s.desc;
+			s.ws = total - end;
+			s.we = s.k = total - req->start;
+		}
+		if(!s.done)
+			s.counted = 0;
+	}
 	if(!s.oom)
 		scan(&s, lo, hi);
 
-	// The page is the heap from start on, sorted without the lock
+	// The page is part of the heap, sorted without the lock
 	if(s.heap_mode && !s.oom)
 	{
 		unlock_shm();
 		heap_sort(&s);
 		lock_shm_reader();
 		read_page(&s);
+		for(unsigned int i = 0; s.flip && i < s.n_page / 2; i++)
+		{
+			const struct qlog_row row = s.page[i];
+			s.page[i] = s.page[s.n_page - 1 - i];
+			s.page[s.n_page - 1 - i] = row;
+		}
 	}
 	unlock_shm();
 	pthread_mutex_unlock(&qlog_gate);
