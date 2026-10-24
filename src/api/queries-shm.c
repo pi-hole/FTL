@@ -830,7 +830,7 @@ static void scan(struct qlog_scan *s, const unsigned int lo, const unsigned int 
 			// Let DNS in between two chunks, make room for the next
 			unlock_shm();
 			const bool ok = scan_reserve(s);
-			lock_shm();
+			lock_shm_reader();
 			if(!ok)
 			{
 				s->oom = true;
@@ -874,7 +874,7 @@ static void read_page(struct qlog_scan *s)
 		{
 			unlock_shm();
 			const bool ok = str_table_reserve(s, 4 * QLOG_CHUNK) && block_reserve(s);
-			lock_shm();
+			lock_shm_reader();
 			if(!ok)
 			{
 				s->oom = true;
@@ -918,7 +918,7 @@ int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON
 	s.room = 6 * (s.str_max + 6);
 
 	pthread_mutex_lock(&qlog_gate);
-	lock_shm();
+	lock_shm_reader();
 
 	// The time order is the array order while no timestamp is out of it
 	s.disorder = counters->query_time_disorder;
@@ -944,7 +944,7 @@ int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON
 	else
 		s.n_upstream_str = n_upstreams;
 
-	lock_shm();
+	lock_shm_reader();
 	if(!s.oom)
 		scan(&s, lo, hi);
 
@@ -953,7 +953,7 @@ int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON
 	{
 		unlock_shm();
 		heap_sort(&s);
-		lock_shm();
+		lock_shm_reader();
 		read_page(&s);
 	}
 	unlock_shm();

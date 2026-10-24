@@ -24,6 +24,9 @@
 #include "daemon.h"
 // NAME_MAX
 #include <limits.h>
+// SYS_futex
+#include <sys/syscall.h>
+#include <linux/futex.h>
 // gettid
 #include "daemon.h"
 // generate_backtrace()
@@ -179,6 +182,10 @@ typedef struct {
 		struct timespec begin;
 		struct timespec end;
 	} time;
+	// DNS-path callers waiting for the lock, and readers sleeping until
+	// none waits, see _lock_shm_reader()
+	int dns_waiting;
+	int readers_sleeping;
 } ShmLock;
 static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
@@ -710,6 +717,11 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
+// Set while the query log reader takes the lock. It only reads, so it leaves
+// growing the shared memory arrays to the callers that add entries, which
+// also keeps a long scan from doing that work under its many short holds
+static _Thread_local bool lock_reader = false;
+
 // Obtain SHMEM lock
 void _lock_shm(const char *func, const int line, const char *file)
 {
@@ -721,7 +733,25 @@ void _lock_shm(const char *func, const int line, const char *file)
 	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
 
+	// DNS-path callers, the main threads of FTL and of its forked TCP
+	// workers, are counted while they wait
+	const bool dns_path = cached_gettid() == cached_getpid();
+	if(dns_path)
+		__atomic_add_fetch(&shmLock->dns_waiting, 1, __ATOMIC_SEQ_CST);
+
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
+
+	// The last of them wakes the sleeping readers. The count stays at zero
+	// if a reader has reset it meanwhile
+	if(dns_path)
+	{
+		int count = __atomic_load_n(&shmLock->dns_waiting, __ATOMIC_SEQ_CST);
+		while(count > 0 && !__atomic_compare_exchange_n(&shmLock->dns_waiting, &count, count - 1, false,
+		                                                __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			continue;
+		if(count == 1 && __atomic_load_n(&shmLock->readers_sleeping, __ATOMIC_SEQ_CST) > 0)
+			syscall(SYS_futex, &shmLock->dns_waiting, FUTEX_WAKE, INT_MAX, NULL, NULL, 0);
+	}
 
 	// Who held the lock before us, for the recovery messages below
 	const pid_t previous_pid = shmLock->owner.pid;
@@ -757,7 +787,8 @@ void _lock_shm(const char *func, const int line, const char *file)
 	}
 
 	// Ensure we have enough shared memory available for new data
-	shm_ensure_size();
+	if(!lock_reader)
+		shm_ensure_size();
 
 	result = pthread_mutex_lock(&shmLock->lock.inner);
 
@@ -780,6 +811,45 @@ void _lock_shm(const char *func, const int line, const char *file)
 		if(result != 0)
 			log_err("Failed to make inner SHM lock consistent: %s", strerror(result));
 	}
+}
+
+// Take the lock in a reader that takes it many times (the query log), after
+// the DNS-path callers waiting for it. While one waits, sleep until the last
+// of them wakes us in _lock_shm(), at most 1 ms per round and ten rounds. If
+// all ten rounds time out while nobody holds the lock, the count is reset:
+// the callers counted are gone (a TCP worker that ran into its lifetime or was
+// killed while it waited) or have not run for ten milliseconds (a busy CPU),
+// and the decrement in _lock_shm() stops at zero for those still waiting. One
+// such round is not enough: the caller counted may have been woken by the last
+// unlock without having run yet, and reset away it would lose the lock to the
+// reader at every chunk. On a lock held nearly all the time, a caller that
+// died while counted keeps the readers sleeping for longer, until ten such
+// rounds come in a row
+void _lock_shm_reader(const char *func, const int line, const char *file)
+{
+	// SYS_futex reads two longs, while struct timespec has a 64-bit tv_sec
+	// on 32-bit musl
+	const struct { long tv_sec, tv_nsec; } ms = { 0, 1000000 };
+	unsigned int free_timeouts = 0;
+	for(unsigned int round = 0; shmLock != NULL && round < 10; round++)
+	{
+		int waiting = __atomic_load_n(&shmLock->dns_waiting, __ATOMIC_SEQ_CST);
+		if(waiting <= 0)
+			break;
+		__atomic_add_fetch(&shmLock->readers_sleeping, 1, __ATOMIC_SEQ_CST);
+		if(syscall(SYS_futex, &shmLock->dns_waiting, FUTEX_WAIT, waiting, &ms, NULL, 0) != 0 &&
+		   errno == ETIMEDOUT && shmLock->owner.pid == 0)
+			free_timeouts++;
+		else
+			free_timeouts = 0;
+		if(free_timeouts == 10)
+			__atomic_compare_exchange_n(&shmLock->dns_waiting, &waiting, 0, false,
+			                            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+		__atomic_sub_fetch(&shmLock->readers_sleeping, 1, __ATOMIC_SEQ_CST);
+	}
+	lock_reader = true;
+	_lock_shm(func, line, file);
+	lock_reader = false;
 }
 
 // Release SHM lock
