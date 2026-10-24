@@ -14,6 +14,9 @@ the order-dependent workflow in test_z_auth.py:
    accepted RFC 6238 time-step counter, so once a step has been accepted the
    same code can no longer be reused.
 
+3. A legacy password hash is still upgraded at login once the stored hash
+   is compared under the lock.
+
 Usage:
     pytest test/api/test_z_auth_security.py -v
 """
@@ -198,3 +201,35 @@ class TestTOTPReplay:
             # guard (which would reject a freshly computed code in this window).
             if first_sid:
                 _set_totp_secret("", first_sid)
+
+
+class TestLegacyPasswordUpgrade:
+    """A login with a legacy SHA256^2 password rewrites the stored hash as a
+    BALLOON one, but only while the stored hash is still that legacy one."""
+
+    OLD = "legacy-old-pw"
+
+    @staticmethod
+    def _patch(api, sid):
+        return requests.patch(f"{FTL_URL}/api/config",
+                              json={"config": {"webserver": {"api": api}}},
+                              headers={"X-FTL-SID": sid}, timeout=20)
+
+    def test_legacy_hash_is_upgraded_at_login(self):
+        sid = _admin_sid()
+        assert sid, "could not obtain an admin session"
+        legacy = hashlib.sha256(hashlib.sha256(self.OLD.encode()).hexdigest().encode()).hexdigest()
+        assert self._patch({"pwhash": legacy}, sid).status_code == 200
+
+        time.sleep(1.1)
+        r = _login_rate_limited(self.OLD)
+        session = r.json().get("session", {})
+        assert session.get("valid") is True, r.text[:200]
+        sid = session.get("sid")
+        try:
+            r = requests.get(f"{FTL_URL}/api/config/webserver/api/pwhash",
+                             headers={"X-FTL-SID": sid}, timeout=20)
+            pwhash = r.json()["config"]["webserver"]["api"]["pwhash"]
+            assert pwhash.startswith("$BALLOON-SHA256$"), pwhash
+        finally:
+            self._patch({"password": PASSWORD}, sid)

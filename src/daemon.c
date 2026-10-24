@@ -45,6 +45,8 @@
 #include "procps.h"
 // dotdoh_cleanup()
 #include "dotdoh/proxy.h"
+// cluster_shutdown()
+#include "cluster/dhcp.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -383,8 +385,10 @@ static void terminate_threads(void)
 		}
 
 		// Wait for the cancelled thread as well: the caller closes the
-		// databases and removes the shared memory right afterwards
-		if(!join_thread(i, 2))
+		// databases and removes the shared memory right afterwards. The
+		// cluster thread is not cancelled inside a step that holds a lock,
+		// it finishes the step, which can take a slow peer's timeout
+		if(!join_thread(i, i == CLUSTER ? 15 : 2))
 		{
 			log_warn("Thread %s (%d) did not terminate", thread_names[i], i);
 			all_joined = false;
@@ -445,6 +449,11 @@ void cleanup(const int ret)
 {
 	// Log deferred SIGTERM sender info (safe here, outside signal context)
 	log_sigterm_info();
+
+	// The virtual IP address is the cluster's, not the resolver's. The cluster
+	// thread is cancelled in its sleep and cannot give it back itself, and a
+	// node whose dnsmasq never came up is the one that should hand it over
+	cluster_shutdown(ret == RESTART_FTL_CODE);
 
 	// Join the worker threads only when they exist. They are started before
 	// the resolver is ready, and stay running when dnsmasq dies at startup
