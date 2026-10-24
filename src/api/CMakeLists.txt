@@ -25,6 +25,7 @@ set(sources
         list.c
         logs.c
         queries.c
+        queries.h
         search.c
         stats_database.c
         stats.c
