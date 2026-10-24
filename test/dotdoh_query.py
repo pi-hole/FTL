@@ -19,6 +19,19 @@
 #   emitqr <domain> <outfile>                     like emit, but with QR set
 #   dotqr <host> <port> <domain> <src> <ca>       DoT query with QR set, print
 #                                                 the RCODE of the reply
+#   slowdns <port> <ms> <ready> <secs> [<log>]    plain UDP/TCP server on loopback
+#                                                 answering any A query after <ms>,
+#                                                 for <secs>; creates <ready> once
+#                                                 bound, logs each name to <log>
+#   doh3fair <host> <port> <suffix> <sources> <count> <domain>
+#                                                 <count> DoH3 POSTs for names under
+#                                                 <suffix> from each of <sources>
+#                                                 clients 127.0.0.2..., then time
+#                                                 one for <domain> from the next
+#   doh3abandon <host> <port> <suffix> <count> <close|reset> <secs>
+#                                                 <count> DoH3 POSTs from 127.0.0.2,
+#                                                 then close the connection or
+#                                                 cancel each request, and wait
 #   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
 #                                                 at a time, keeping each open
 #   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
@@ -374,6 +387,200 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
+def slow_dns(port, delay_ms, readyfile, secs, logfile=None):
+    """Answer every query on 127.0.0.1:port, UDP and TCP, with 192.168.1.1
+    after delay_ms, until secs pass. readyfile is created once both sockets are
+    bound, which waits for an earlier server on the port to go away."""
+    import threading
+
+    lock = threading.Lock()
+
+    def answer(query):
+        labels, end = [], 12
+        while end < len(query) and query[end] != 0:
+            labels.append(query[end + 1:end + 1 + query[end]].decode(errors="replace"))
+            end += 1 + query[end]
+        if logfile is not None:
+            with lock, open(logfile, "a") as f:
+                f.write(".".join(labels) + "\n")
+        time.sleep(delay_ms / 1000.0)
+        end += 5
+        reply = query[:2] + struct.pack("!HHHHH", 0x8180, 1, 1, 0, 0) + query[12:end]
+        return reply + struct.pack("!HHHIH", 0xc00c, 1, 1, 0, 4) + socket.inet_aton("192.168.1.1")
+
+    def udp_reply(sock, query, addr):
+        sock.sendto(answer(query), addr)
+
+    def tcp_serve(conn):
+        with conn:
+            while True:
+                hdr = conn.recv(2, socket.MSG_WAITALL)
+                if len(hdr) < 2:
+                    return
+                query = conn.recv(struct.unpack("!H", hdr)[0], socket.MSG_WAITALL)
+                reply = answer(query)
+                conn.sendall(struct.pack("!H", len(reply)) + reply)
+
+    def tcp_accept(srv):
+        while True:
+            conn, _ = srv.accept()
+            threading.Thread(target=tcp_serve, args=(conn,), daemon=True).start()
+
+    deadline = time.monotonic() + secs
+
+    def bind(s):
+        while True:
+            try:
+                s.bind(("127.0.0.1", port))
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    bind(srv)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    bind(sock)
+    srv.listen(64)
+    threading.Thread(target=tcp_accept, args=(srv,), daemon=True).start()
+    open(readyfile, "w").close()
+
+    while time.monotonic() < deadline:
+        sock.settimeout(max(deadline - time.monotonic(), 0.01))
+        try:
+            query, addr = sock.recvfrom(4096)
+        except socket.timeout:
+            break
+        if len(query) > 12:
+            threading.Thread(target=udp_reply, args=(sock, query, addr), daemon=True).start()
+
+
+def doh3_client(host, port):
+    """Return an async factory that opens an aioquic HTTP/3 connection from a
+    given source address, able to POST DoH queries and wait for each."""
+    import asyncio
+    import ssl as _ssl
+    from aioquic.asyncio.protocol import QuicConnectionProtocol
+    from aioquic.h3.connection import H3Connection
+    from aioquic.h3.events import DataReceived, HeadersReceived
+    from aioquic.quic.configuration import QuicConfiguration
+    from aioquic.quic.connection import QuicConnection
+
+    class H3Client(QuicConnectionProtocol):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.http = None
+            self.status = {}
+            self.done = {}
+
+        def quic_event_received(self, event):
+            if self.http is None:
+                return
+            for e in self.http.handle_event(event):
+                if isinstance(e, HeadersReceived):
+                    for hk, hv in e.headers:
+                        if hk == b":status":
+                            self.status[e.stream_id] = hv.decode()
+                if isinstance(e, (HeadersReceived, DataReceived)) and e.stream_ended:
+                    self.done.setdefault(e.stream_id, asyncio.Event()).set()
+
+        def post(self, qname):
+            query = build_query(qname)
+            sid = self._quic.get_next_available_stream_id()
+            self.done.setdefault(sid, asyncio.Event())
+            self.http.send_headers(sid, [
+                (b":method", b"POST"),
+                (b":scheme", b"https"),
+                (b":authority", b"pi.hole"),
+                (b":path", b"/dns-query"),
+                (b"content-type", b"application/dns-message"),
+                (b"content-length", str(len(query)).encode()),
+            ], end_stream=False)
+            self.http.send_data(sid, query, end_stream=True)
+            self.transmit()
+            return sid
+
+        async def wait(self, sid):
+            await asyncio.wait_for(self.done[sid].wait(), timeout=60)
+            return self.status.get(sid)
+
+        def cancel(self, sid):
+            # RFC 9114 Sec. 4.1.1: reset the request and abort reading the response
+            self._quic.reset_stream(sid, 0x10c)
+            self._quic.stop_stream(sid, 0x10c)
+            self.transmit()
+
+    async def open_client(source):
+        cfg = QuicConfiguration(is_client=True, alpn_protocols=["h3"])
+        cfg.verify_mode = _ssl.CERT_NONE
+        cfg.server_name = "pi.hole"
+        loop = asyncio.get_running_loop()
+        _, client = await loop.create_datagram_endpoint(
+            lambda: H3Client(QuicConnection(configuration=cfg)), local_addr=(source, 0))
+        client.connect((host, port))
+        await client.wait_connected()
+        client.http = H3Connection(client._quic)
+        return client
+
+    return open_client
+
+
+def doh3_fair(host, port, suffix, sources, count, domain):
+    """Send count DoH3 POSTs for distinct names under suffix from each of sources
+    clients (127.0.0.2 onwards, one connection each), then one for domain from
+    the next address. Returns that client's status and latency, and how many of
+    the other requests were answered 200."""
+    import asyncio
+
+    open_client = doh3_client(host, port)
+
+    async def run():
+        stamp = int(time.time())
+        busy = [await open_client("127.0.0.%d" % (2 + i)) for i in range(sources)]
+        sids = [[c.post("s%d-%d-%d.%s" % (i, j, stamp, suffix)) for j in range(count)]
+                for i, c in enumerate(busy)]
+        await asyncio.sleep(0.5)
+        b = await open_client("127.0.0.%d" % (2 + sources))
+        start = time.monotonic()
+        status = await b.wait(b.post(domain))
+        elapsed = time.monotonic() - start
+        answered = 0
+        for c, cs in zip(busy, sids):
+            for sid in cs:
+                if await c.wait(sid) == "200":
+                    answered += 1
+            c.close()
+        b.close()
+        return status, elapsed, answered
+
+    return asyncio.run(run())
+
+
+def doh3_abandon(host, port, suffix, count, how, secs):
+    """Send count DoH3 POSTs for distinct names under suffix from 127.0.0.2 and,
+    half a second later, close the connection or cancel every request. Then
+    wait secs, with the connection still open when cancelling."""
+    import asyncio
+
+    open_client = doh3_client(host, port)
+
+    async def run():
+        stamp = int(time.time())
+        a = await open_client("127.0.0.2")
+        sids = [a.post("s%d-%d.%s" % (i, stamp, suffix)) for i in range(count)]
+        await asyncio.sleep(0.5)
+        if how == "close":
+            a.close()
+        else:
+            for sid in sids:
+                a.cancel(sid)
+        await asyncio.sleep(secs)
+        a.close()
+
+    asyncio.run(run())
+
 
 # --- DoQ (DNS-over-QUIC, RFC 9250) client -----------------------------------
 #
@@ -586,6 +793,20 @@ def main():
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]
         doh3(host, int(port), domain, expected_ip)
+        print("OK")
+    elif cmd == "slowdns":
+        _, _, port, delay_ms, readyfile, secs = sys.argv[:6]
+        logfile = sys.argv[6] if len(sys.argv) > 6 else None
+        slow_dns(int(port), int(delay_ms), readyfile, float(secs), logfile)
+    elif cmd == "doh3fair":
+        _, _, host, port, suffix, sources, count, domain = sys.argv[:8]
+        status, elapsed, answered = doh3_fair(host, int(port), suffix, int(sources),
+                                              int(count), domain)
+        print("last client %s after %.2f s, the others %d/%d answered"
+              % (status, elapsed, answered, int(sources) * int(count)))
+    elif cmd == "doh3abandon":
+        _, _, host, port, suffix, count, how, secs = sys.argv[:8]
+        doh3_abandon(host, int(port), suffix, int(count), how, float(secs))
         print("OK")
     elif cmd == "doq":
         # RFC 9250 Sec. 4.2.1: a DoQ query carries Message ID 0.
