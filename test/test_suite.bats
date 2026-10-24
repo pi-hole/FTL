@@ -1168,6 +1168,11 @@ setup() {
   assert_failure 1
 }
 
+@test "Regex Test 57: Approximate matching, bounded repetition with parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "bbbb" "((b){2,2,~0}){2,2,~0}"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
