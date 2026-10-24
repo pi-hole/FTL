@@ -73,7 +73,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        565280, 557088, 557072);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        372,    372,    372);
+ASSERT_SHM_SIZE(countersStruct,        384,    384,    380);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -1993,8 +1993,18 @@ void print_recycle_list_fullness(void)
 #define STRING_DUMPFILE "/tmp/stringdump.txt"
 void dump_strings(void)
 {
-	// Dump string table to temporary file
-	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "a");
+	// Copy the string table under the lock and write the copy without it
+	lock_shm();
+	const size_t pool_size = shmSettings->next_str_pos;
+	char *pool = malloc(pool_size);
+	if(pool != NULL)
+		memcpy(pool, shm_strings.ptr, pool_size);
+	unlock_shm();
+	if(pool == NULL)
+		return;
+
+	// Dump string table to temporary file, replacing the previous dump
+	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "w");
 	if(str_dumpfile != NULL)
 	{
 		char timestring[TIMESTR_SIZE] = { 0 };
@@ -2003,9 +2013,9 @@ void dump_strings(void)
 		log_info("String dump to "STRING_DUMPFILE);
 
 		size_t j = 0, non_print = 0;
-		for(size_t i = 0; i < shmSettings->next_str_pos; i++)
+		for(size_t i = 0; i < pool_size; i++)
 		{
-			char *sstr = (char*)getstr(i);
+			char *sstr = pool + i;
 			const size_t len = strlen(sstr);
 			char *buffer = sstr;
 			i += len;
@@ -2046,4 +2056,6 @@ void dump_strings(void)
 	}
 	else
 		log_err("Cannot open "STRING_DUMPFILE" for writing: %s", strerror(errno));
+
+	free(pool);
 }
