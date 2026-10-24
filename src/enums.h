@@ -256,6 +256,7 @@ enum thread_types {
 	DOTDOH,
 	DOTDOH_DOT,
 	DOTDOH_DOQ,
+	LOG_WRITER,
 	THREADS_MAX
 } __attribute__ ((packed));
 
