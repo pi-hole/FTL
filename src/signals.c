@@ -20,6 +20,8 @@
 #  include <sys/wait.h>  // waitpid()/WIFEXITED() - reap the addr2line child
 #endif
 #include <sys/mman.h>    // mmap() - alternate signal stack with a guard page
+#include <semaphore.h>   // sem_post() - async-signal-safe wakeup of the crash watchdog
+#include <stdatomic.h>   // atomic_exchange() - crash watchdog progress flag
 #include "signals.h"
 // logging routines
 #include "log.h"
@@ -42,6 +44,14 @@ volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;
 volatile int exit_code = EXIT_SUCCESS;
+
+// Seconds the shutdown after a crash may go without finishing a step before
+// the watchdog ends the process. The longest single step is the wait for the
+// database thread in main()
+#define CRASH_EXIT_TIMEOUT (DB_THREAD_JOIN_TIMEOUT + 10)
+static sem_t crash_sem;
+static volatile sig_atomic_t crash_watchdog_ready = 0;
+static atomic_bool crash_shutdown_progress = false;
 
 // Saved by the SIGTERM handler for deferred logging in the main loop.
 // Only pid_t and uid_t (both integer types) are safe to write from a
@@ -1025,6 +1035,11 @@ static void terminate_error(void)
 
 static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, void *context)
 {
+	// Arm the watchdog first, anything below may block on a lock the
+	// crashed thread holds
+	if(crash_watchdog_ready)
+		sem_post(&crash_sem);
+
 	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	log_info("---------------------------->  FTL crashed!  <----------------------------");
 	log_info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
@@ -1165,6 +1180,10 @@ static void __attribute__((noreturn)) signal_handler(int sig, siginfo_t *si, voi
 		log_info("Shutting down thread...");
 		exit_code = EXIT_FAILURE;
 		terminate();
+
+		// The report must not stay buffered if the watchdog ends the
+		// process with _exit() later
+		fflush(stdout);
 
 		// Exit the thread here, it failed anyway
 		pthread_exit(NULL);
@@ -1377,6 +1396,68 @@ static void terminate(void)
 		log_debug(DEBUG_ANY, "Embedded dnsmasq failed, exiting on request");
 		killed = true;
 	}
+}
+
+// Ends the process when the shutdown after a crash does not finish, e.g.,
+// because the crashed thread died holding a stdio lock exit() waits for
+static void *crash_watchdog(void *arg)
+{
+	(void)arg;
+	while(sem_wait(&crash_sem) != 0 && errno == EINTR);
+
+	// Every finished shutdown step restarts the countdown
+	atomic_store(&crash_shutdown_progress, false);
+	unsigned int left = CRASH_EXIT_TIMEOUT;
+	while(left > 0)
+	{
+		sleep(1);
+		if(atomic_exchange(&crash_shutdown_progress, false))
+			left = CRASH_EXIT_TIMEOUT;
+		else
+			left--;
+	}
+
+	static const char msg[] = "CRIT: FTL did not shut down after the crash, exiting now\n";
+	log_ftl_raw(msg, sizeof(msg) - 1);
+	// Nothing left to do if this fails, we exit right after
+	const ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+	(void)ret;
+	_exit(EXIT_FAILURE);
+}
+
+// Tell the crash watchdog the shutdown is still moving
+void crash_watchdog_progress(void)
+{
+	atomic_store(&crash_shutdown_progress, true);
+}
+
+// Start the crash watchdog. Threads do not survive fork(), so call this in
+// the process that is to be watched
+void start_crash_watchdog(void)
+{
+	if(sem_init(&crash_sem, 0, 0) != 0)
+	{
+		log_warn("Cannot initialize crash watchdog: %s", strerror(errno));
+		return;
+	}
+
+	// The watchdog inherits this mask, so it never handles process signals
+	sigset_t all, old;
+	sigfillset(&all);
+	pthread_sigmask(SIG_SETMASK, &all, &old);
+
+	pthread_t tid;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	const int ret = pthread_create(&tid, &attr, crash_watchdog, NULL);
+	if(ret == 0)
+		crash_watchdog_ready = 1;
+	else
+		log_warn("Cannot start crash watchdog: %s", strerror(ret));
+	pthread_attr_destroy(&attr);
+
+	pthread_sigmask(SIG_SETMASK, &old, NULL);
 }
 
 // Register ordinary signals handler
