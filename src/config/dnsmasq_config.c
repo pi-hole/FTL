@@ -33,6 +33,8 @@
 #include <unistd.h>
 // wait
 #include <sys/wait.h>
+// flock()
+#include <sys/file.h>
 // get_gateway_name()
 #include "tools/netlink.h"
 
@@ -311,7 +313,7 @@ static const char *invalid_host_address(const struct in_addr addr, const uint32_
 	return NULL;
 }
 
-bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
+static bool write_dnsmasq_config_unlocked(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
 {
 	// Early config checks
 	if(conf->dhcp.active.v.b)
@@ -866,6 +868,40 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		}
 	}
 
+	// Treat the names defined in dns.hosts as local. Without this, a query
+	// for a type we have no local record for (e.g., AAAA when only an A
+	// address is defined) is forwarded and a public answer for the same
+	// name shadows the local address
+	if(conf->dns.hostsLocal.v.b && cJSON_GetArraySize(conf->dns.hosts.v.json) > 0)
+	{
+		fputs("# Custom DNS records are local, never forward them upstream\n", pihole_conf);
+		// expand-hosts also answers plain names as <name>.<domain>
+		const char *domain = conf->dns.domain.name.v.s;
+		const bool expand = conf->dns.expandHosts.v.b && strlen(domain) > 0;
+		cJSON *entry = NULL;
+		cJSON_ArrayForEach(entry, conf->dns.hosts.v.json)
+		{
+			if(!cJSON_IsString(entry))
+				continue;
+			char *line = strdup(entry->valuestring), *saveptr = NULL;
+			if(line == NULL)
+				continue;
+			// Skip the address, then emit one local= per hostname,
+			// stopping at a trailing comment
+			strtok_r(line, " \t", &saveptr);
+			for(const char *name = strtok_r(NULL, " \t", &saveptr);
+			    name != NULL && name[0] != '#';
+			    name = strtok_r(NULL, " \t", &saveptr))
+			{
+				fprintf(pihole_conf, "local=/%s/\n", name);
+				if(expand && strchr(name, '.') == NULL)
+					fprintf(pihole_conf, "local=/%s.%s/\n", name, domain);
+			}
+			free(line);
+		}
+		fputs("\n", pihole_conf);
+	}
+
 	if(cJSON_GetArraySize(conf->dns.cnameRecords.v.json) > 0)
 	{
 		fputs("# User-defined custom CNAMEs\n", pihole_conf);
@@ -1084,6 +1120,40 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		}
 	}
 	return true;
+}
+
+// Serialise the whole temporary file lifecycle against another process: the
+// CLI may test a config while a restarting FTL writes its own, and each starts
+// by unlinking the other's temporary file. The lock sits on a path nothing
+// renames, so every writer locks the same inode
+bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enum dnsmasq_write_mode mode, char errbuf[ERRBUF_SIZE])
+{
+	// flock() needs no write access on a local file system, so members of the
+	// pihole group can take the lock through a read-only descriptor
+	int lock_fd = open(DNSMASQ_PH_CONFIG".lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
+	                   S_IRUSR | S_IWUSR | S_IRGRP);
+	if(lock_fd < 0 && errno == EACCES)
+		lock_fd = open(DNSMASQ_PH_CONFIG".lock", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+	if(lock_fd >= 0 && geteuid() == 0)
+		chown_pihole(DNSMASQ_PH_CONFIG".lock", NULL);
+	if(lock_fd < 0)
+		log_warn("Cannot open "DNSMASQ_PH_CONFIG".lock (%s), writing the dnsmasq config unserialised",
+		         strerror(errno));
+	else if(flock(lock_fd, LOCK_EX) != 0)
+	{
+		log_warn("Cannot lock "DNSMASQ_PH_CONFIG".lock (%s), writing the dnsmasq config unserialised",
+		         strerror(errno));
+		close(lock_fd);
+		lock_fd = -1;
+	}
+
+	const bool ret = write_dnsmasq_config_unlocked(conf, mode, errbuf);
+
+	// Closing the descriptor releases the flock
+	if(lock_fd >= 0)
+		close(lock_fd);
+
+	return ret;
 }
 
 bool read_legacy_dhcp_static_config(void)

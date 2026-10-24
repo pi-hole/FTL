@@ -77,20 +77,26 @@ load 'bats_helper.bash'
   # setupVars.conf import again
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
+  # On RISCV64, pytest is skipped, so only the BATS writes occur (1x)
+  # Otherwise, the pytest dns/hosts config array PUT + DELETE add 2 more: with
+  # dns.hostsLocal the local= lines are derived from the records, so changing
+  # them rewrites dnsmasq.conf as well, and the ZIP restore drops the reverse
+  # server of the v5 setupVars.conf import again. The config restore after the
+  # first v5 Teleporter import clears dns.hosts, which rewrites it once more (8x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "1"
   else
-    assert_line --index 0 "5"
+    assert_line --index 0 "8"
   fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (8x)
   # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more, and
-  # the config restore after the first v5 Teleporter import clears dns.hosts (10x)
+  # the config restore after the first v5 Teleporter import clears dns.hosts (11x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "7"
+    assert_line --index 0 "8"
   else
-    assert_line --index 0 "10"
+    assert_line --index 0 "11"
   fi
 }
 
