@@ -59,12 +59,6 @@ typedef struct {
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
 		bool has_ede :1;
-		struct database_flags {
-			bool changed :1;
-			bool imported :1;
-			// The query has a row in the database (stored or imported)
-			bool stored :1;
-		} database;
 	} flags;
 } queriesData;
 

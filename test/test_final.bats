@@ -694,9 +694,7 @@ first_start_stop() {
     sleep 1
   done
 
-  # Queries move into the in-memory database once per second, the final
-  # export on termination then stores them on disk
-  sleep 3
+  # The final export on termination stores them on disk
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "kill $(cat /run/pihole-FTL.pid)"
   assert_success
@@ -720,14 +718,16 @@ first_start_stop() {
 
 @test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
   # The garbage collector runs once per minute then and keeps only the
-  # queries that can still receive a reply. All of them still reach the disk,
-  # and a rate-limited client stays limited when none of its queries is left
+  # queries that can still receive a reply or are not stored yet. The export
+  # runs every 45 s here, so the collector also runs between two exports. All
+  # of them reach the disk, and a rate-limited client stays limited when none
+  # of its queries is left
   # With debug.gc, each run replaces the string dump of the run before
   rm -f /tmp/stringdump.txt
   su pihole -s /bin/sh -c 'echo "String dump starting at an earlier run" > /tmp/stringdump.txt'
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 FTLCONF_dns_rateLimit_count=250 FTLCONF_dns_rateLimit_interval=3600 /home/pihole/pihole-FTL"'
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_webserver_api_maxHistory=0 FTLCONF_database_DBinterval=45 FTLCONF_dns_rateLimit_count=250 FTLCONF_dns_rateLimit_interval=3600 /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
@@ -835,14 +835,14 @@ first_start_stop() {
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
   for i in $(seq 1 30); do
     if dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
       break
     fi
     sleep 1
   done
-  # Queries move into the in-memory database once per second
-  sleep 2
 
   # Raising the level does not restart FTL. Every query from the next full
   # second on carries the new level
@@ -926,6 +926,8 @@ first_start_stop() {
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
   for i in $(seq 1 30); do
     if dig A udp-1.ids.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
       break
@@ -934,8 +936,6 @@ first_start_stop() {
   done
   dig +tcp A tcp-1.ids.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
   dig A udp-2.ids.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
-  # Queries move into the in-memory database once per second
-  sleep 2
   before=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '.queries')
 
   # The final export on termination stores them on disk
