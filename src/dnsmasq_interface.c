@@ -48,7 +48,7 @@
 #include "database/message-table.h"
 // http_init(), webserver_thread()
 #include "webserver/webserver.h"
-// init_memory_database()
+// init_query_database()
 #include "database/query-table.h"
 // reread_config()
 #include "config/config.h"
@@ -3922,9 +3922,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
-	// Initialize in-memory databases
-	if(!init_memory_database())
-		log_crit("Cannot initialize in-memory database.");
+	// Open the query database and prepare the import of the history
+	init_query_database();
 
 	// Verify checksum of this binary early on to ensure that the binary is
 	// not corrupted and that the binary is not tampered with. We can only

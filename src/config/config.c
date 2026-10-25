@@ -1081,11 +1081,9 @@ void initConfig(struct config *conf)
 	// a setting that will be changed very rarely, this seems the better
 	// compromise than adding special code that can transform the database
 	// while being active.
-	// The in-memory database is not affected by this setting as it uses a
-	// MEMORY journal mode anyway (there is nothing to be restored after power
-	// loss). The gravity database is also not affected as it is only written
-	// to on an individual basis (explicit API calls) and not continuously
-	// (like the query database).
+	// The gravity database is not affected as it is only written to on an
+	// individual basis (explicit API calls) and not continuously (like the
+	// query database).
 	conf->database.useWAL.f = FLAG_RESTART_FTL;
 	conf->database.useWAL.d.b = true;
 	conf->database.useWAL.c = validate_stub; // Only type-based checking

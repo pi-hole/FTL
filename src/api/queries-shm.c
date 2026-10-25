@@ -261,8 +261,8 @@ static const char *pool_str(struct qlog_scan *s, const size_t pos)
 	return copy;
 }
 
-// The strings of a query as the in-memory database has them, privacy levels
-// included. pos is 0 for the strings that are not taken from the pool
+// The strings of a query as they are stored, privacy levels included. pos is
+// 0 for the strings that are not taken from the pool
 static const char *query_domain(const queriesData *query, size_t *pos)
 {
 	*pos = 0;

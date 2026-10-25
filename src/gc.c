@@ -22,7 +22,7 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
-// delete_old_queries_from_db()
+// get_export_index()
 #include "database/query-table.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
@@ -588,19 +588,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(counters->query_time_disorder > 0.0 &&
 		   counters->query_time_disorder_id <= last_removed_id)
 			retrack_query_times();
-	}
-
-	// Remove query from queries table (temp), we can release the lock for this
-	// action to prevent blocking the DNS service too long. The processed
-	// queries are already shifted out above, so a runGC() from a log flush
-	// in this window cannot process them again
-	if(flush)
-		delete_old_queries_from_db(true, mintime);
-	else
-	{
-		unlock_shm();
-		delete_old_queries_from_db(true, mintime);
-		lock_shm();
 	}
 
 	// Recycle old clients and domains

@@ -121,8 +121,8 @@ load 'bats_helper.bash'
 }
 
 @test "Query with ID 0 has been saved to the database" {
-  # FTL exports queries from in-memory DB to disk after a configurable
-  # delay (default 30s). Poll up to 60s for the export to complete.
+  # FTL stores a query on disk at the first export after it is 30 s old.
+  # Poll up to 60s for the export to complete.
   for i in $(seq 1 30); do
     run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT COUNT(*) FROM queries WHERE id=0;"'
     if [[ ${lines[0]} == "1" ]]; then
@@ -487,26 +487,6 @@ load 'bats_helper.bash'
   assert_output --partial "Gravity failed"
 }
 
-@test "The on-disk history database of database.forceDisk is not world-readable and removed on stop" {
-  # Enabling it restarts FTL, which then keeps the history in files.tmp_db
-  before=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"database\":{\"forceDisk\":true}}}"'
-  assert_output "200"
-  run ./pihole-FTL wait-for "TLS terminator listening" /var/log/pihole/FTL.log 30 "$before"
-  assert_success
-  run stat -c %a /etc/pihole/pihole-tmp.db
-  assert_output "640"
-
-  # Disabling it restarts FTL again, the stopping instance removes the file
-  before=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -d "{\"config\":{\"database\":{\"forceDisk\":false}}}"'
-  assert_output "200"
-  run ./pihole-FTL wait-for "TLS terminator listening" /var/log/pihole/FTL.log 30 "$before"
-  assert_success
-  run bash -c 'ls /etc/pihole/pihole-tmp.db*'
-  assert_failure
-}
-
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
@@ -680,7 +660,7 @@ first_start_stop() {
 
 @test "Queries are stored with their own domain when database.DBimport is disabled" {
   # Restart FTL without importing the history. New domains must continue the
-  # IDs of disk.domain_by_id instead of reusing those of older domains
+  # IDs of domain_by_id on disk instead of reusing those of older domains
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false /home/pihole/pihole-FTL"'
   assert_success

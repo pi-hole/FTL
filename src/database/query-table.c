@@ -9,7 +9,6 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
-#define QUERY_TABLE_PRIVATE
 #include "database/query-table.h"
 #include "database/sqlite3.h"
 #include "log.h"
@@ -34,14 +33,12 @@
 // name_history_import(), client_name_at()
 #include "name-history.h"
 
-static sqlite3 *_memdb = NULL;
-static bool disk_attached = false;
 // The database thread's own connection to pihole-FTL.db, kept open
 static sqlite3 *querydb = NULL;
 // Unix timestamp of the newest query stored
 static double new_last_timestamp = 0;
-static uint64_t memdb_queries_count = 0, diskdb_queries_count = 0;
-static double memdb_earliest_timestamp = 0, diskdb_earliest_timestamp = 0;
+static uint64_t diskdb_queries_count = 0;
+static double diskdb_earliest_timestamp = 0;
 
 // Process-local cache for addinfo_by_id row IDs.
 // The type is packed into the low bits of a combined key, with the actual key
@@ -148,9 +145,8 @@ static bool count_queries_on_disk(void);
 static bool disk_db_maxid(sqlite3_int64 *maxid);
 
 // Open the database thread's connection to pihole-FTL.db, which the startup
-// import reads through and the export writes through. Memory-mapped I/O spares
-// a pread() per page, and in WAL mode a commit needs no fsync(). On failure,
-// error says why
+// import reads through and the export writes through. On failure, error says
+// why
 static bool open_query_database(char *error, const size_t size)
 {
 	if(querydb != NULL)
@@ -168,108 +164,12 @@ static bool open_query_database(char *error, const size_t size)
 
 	if((rc = sqlite3_busy_handler(querydb, sqliteBusyCallback, NULL)) != SQLITE_OK)
 		log_warn("Cannot set the busy handler of the query database: %s", sqlite3_errstr(rc));
-	if((rc = sqlite3_exec(querydb, "PRAGMA mmap_size = 268435456", NULL, NULL, NULL)) != SQLITE_OK)
-		log_warn("Cannot enable mmap for the query database: %s", sqlite3_errstr(rc));
-	if(config.database.useWAL.v.b &&
-	   (rc = sqlite3_exec(querydb, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL)) != SQLITE_OK)
-		log_warn("Cannot set synchronous mode of the query database: %s", sqlite3_errstr(rc));
-
-	return true;
-}
-
-// Initialize in-memory database, add queries table and indices
-// The flow of queries is as follows:
-//   1. Every second, we try to copy all queries from our internal datastructure
-//      into the memory table. We iterate over the last 100 queries and check if
-//      they were changed. This operation may fail if the tables is currently busy.
-//      This ensures the in-memory database isn't updated midway when, e.g., an
-//      API query is running. Furthermore, it ensures that new queries are not
-//      blocked when the database is busy and INSERTions aren't currently possible.
-//   2. At user-configured intervals, the in-memory database is dumped on-disk.
-//      For this, we
-//        3.1. Attach the on-disk database
-//        3.2. INSERT the queries that came in since the last dumping
-//        3.3. Detach the on-disk database
-//   3. At the end of their lifetime (that is after 24 hours), queries are DELETEd
-//      from the in-memory database to make room for new queries in the rolling
-//      window. The queries are not removed from the on-disk database.
-bool init_memory_database(void)
-{
-	int rc;
-	// Try to open in-memory database
-	// The :memory: database always has synchronous=OFF since the content of
-	// it is ephemeral and is not expected to survive a power outage.
-	// If database.forceDisk is set, we do not want an in-memory database but, instead,
-	// use an additional on-disk database for query storage. This database is always
-	// recreated from scratch on FTL start and deleted on FTL stop.
-	const char *db_path = config.database.forceDisk.v.b ? config.files.tmp_db.v.s : ":memory:";
-	rc = sqlite3_open_v2(db_path, &_memdb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(): Error opening database: %s at %s",
-		        sqlite3_errstr(rc), db_path);
-		return false;
-	}
-
-	// Explicitly set busy handler to value defined in FTL.h
-	rc = sqlite3_busy_handler(_memdb, sqliteBusyCallback, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(): Error setting busy timeout: %s",
-		        sqlite3_errstr(rc));
-		sqlite3_close(_memdb);
-		return false;
-	}
-
-	// Erase any existing on-disk temporary database if used. This process
-	// works even for a badly corrupted database file.
-	if(config.database.forceDisk.v.b)
-	{
-		log_warn("Using on-disk history database. This will reduce performance.");
-		// Same permissions as pihole-FTL.db (0640), set before anything is
-		// written to it or its journal is created
-		chmod_file(db_path, S_IWUSR | S_IRUSR | S_IRGRP);
-		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 1, 0);
-		sqlite3_exec(_memdb, "VACUUM", NULL, NULL, NULL);
-		sqlite3_db_config(_memdb, SQLITE_DBCONFIG_RESET_DATABASE, 0, 0);
-	}
-
-	// Create query_storage table in the database
-	for(unsigned int i = 0; i < ArraySize(table_creation); i++)
-	{
-		log_debug(DEBUG_DATABASE, "init_memory_database(): Executing %s", table_creation[i]);
-		rc = sqlite3_exec(_memdb, table_creation[i], NULL, NULL, NULL);
-		if( rc != SQLITE_OK ){
-			log_err("init_memory_database(\"%s\") failed: %s",
-				table_creation[i], sqlite3_errstr(rc));
-			sqlite3_close(_memdb);
-			return false;
-		}
-	}
-
-	// Add indices on all columns of the in-memory database
-	// as well as index on auxiliary tables
-	for(unsigned int i = 0; i < ArraySize(index_creation); i++)
-	{
-		log_debug(DEBUG_DATABASE, "init_memory_database(): Executing %s", index_creation[i]);
-		rc = sqlite3_exec(_memdb, index_creation[i], NULL, NULL, NULL);
-		if( rc != SQLITE_OK ){
-			log_err("init_memory_database(\"%s\") failed: %s",
-			        index_creation[i], sqlite3_errstr(rc));
-			sqlite3_close(_memdb);
-			return false;
-		}
-	}
-
-	// Attach disk database. This may fail if the database is unavailable
-	const bool attached = attach_database(_memdb, NULL, config.files.database.v.s, "disk");
-	disk_attached = attached;
 
 	// Enable WAL mode for the on-disk database (pihole-FTL.db) if
 	// configured (default is yes). User may not want to enable WAL
 	// mode if the database is on a network share as all processes
 	// accessing the database must be on the same host in WAL mode.
-	if(config.database.useWAL.v.b && attached)
+	if(config.database.useWAL.v.b)
 	{
 		// Change journal mode to WAL
 		// - WAL is significantly faster in most scenarios.
@@ -277,12 +177,12 @@ bool init_memory_database(void)
 		//   writer does not block readers. Reading and writing can proceed
 		//   concurrently.
 		// - Disk I/O operations tend to be more sequential using WAL.
-		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=WAL", NULL, NULL, NULL);
+		rc = sqlite3_exec(querydb, "PRAGMA journal_mode=WAL", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(): Error setting journal mode (WAL): %s",
-			        sqlite3_errstr(rc));
-			sqlite3_close(_memdb);
+			snprintf(error, size, "cannot set journal mode WAL: %s", sqlite3_errstr(rc));
+			sqlite3_close(querydb);
+			querydb = NULL;
 			return false;
 		}
 
@@ -301,16 +201,16 @@ bool init_memory_database(void)
 		//
 		// SQLite documentation explicitly states:
 		//   "WAL mode is safe from corruption with synchronous=NORMAL."
-		rc = sqlite3_exec(_memdb, "PRAGMA disk.synchronous=NORMAL", NULL, NULL, NULL);
+		rc = sqlite3_exec(querydb, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(): Error setting synchronous mode: %s",
-			        sqlite3_errstr(rc));
-			sqlite3_close(_memdb);
+			snprintf(error, size, "cannot set synchronous mode: %s", sqlite3_errstr(rc));
+			sqlite3_close(querydb);
+			querydb = NULL;
 			return false;
 		}
 	}
-	else if(attached)
+	else
 	{
 		// Unlike the other journaling modes, PRAGMA journal_mode=WAL is
 		// persistent. If a process sets WAL mode, then closes and
@@ -322,12 +222,12 @@ bool init_memory_database(void)
 
 		// Change journal mode back to DELETE due to user configuration
 		// (might have been changed to WAL before)
-		rc = sqlite3_exec(_memdb, "PRAGMA disk.journal_mode=DELETE", NULL, NULL, NULL);
+		rc = sqlite3_exec(querydb, "PRAGMA journal_mode=DELETE", NULL, NULL, NULL);
 		if( rc != SQLITE_OK )
 		{
-			log_err("init_memory_database(): Error setting journal mode (DELETE): %s",
-			        sqlite3_errstr(rc));
-			sqlite3_close(_memdb);
+			snprintf(error, size, "cannot set journal mode DELETE: %s", sqlite3_errstr(rc));
+			sqlite3_close(querydb);
+			querydb = NULL;
 			return false;
 		}
 	}
@@ -347,21 +247,24 @@ bool init_memory_database(void)
 	// warming the entire file would evict useful cached pages (gravity
 	// B-tree, DNS cache) on memory-constrained systems. The mmap alone
 	// is sufficient: pages fault in on demand during import.
-	if(attached)
-	{
-		rc = sqlite3_exec(_memdb, "PRAGMA disk.mmap_size = 268435456", NULL, NULL, NULL);
-		if(rc != SQLITE_OK)
-			log_warn("init_memory_database(): Error enabling mmap for disk database: %s",
-			         sqlite3_errstr(rc));
-	}
+	if((rc = sqlite3_exec(querydb, "PRAGMA mmap_size = 268435456", NULL, NULL, NULL)) != SQLITE_OK)
+		log_warn("open_query_database(): Error enabling mmap for disk database: %s",
+		         sqlite3_errstr(rc));
 
+	return true;
+}
+
+// Open the query database: new queries continue above the highest ID on disk,
+// the history window is counted for the import, which the database thread
+// does, and queries go to disk at every export
+void init_query_database(void)
+{
 	// Clear process-local addinfo ID cache
 	clear_addinfo_id_cache();
 
-	// The database thread's connection, for the import at startup and the
-	// export of new queries
+	// The database thread's connection, for the import and the export
 	char error[128] = "the database is not usable";
-	const bool opened = attached && open_query_database(error, sizeof(error));
+	const bool opened = !FTLDBerror() && open_query_database(error, sizeof(error));
 
 	// New queries continue above the highest ID on disk
 	sqlite3_int64 maxid = -1;
@@ -373,150 +276,42 @@ bool init_memory_database(void)
 	// Flush messages stored in the long-term database
 	flush_message_table();
 
-	// Without the connection no query is stored until FTL is restarted
-	if(attached && !opened)
-		log_query_database_error(config.files.database.v.s, error);
-
-	// Attach disk database
-	if(attached)
+	if(opened)
 	{
 		// Compensate for possible jumps in time
 		runGC(time(NULL), NULL, false);
 
 		// Try to import queries from long-term database if available
 		// Skip if we are not supposed to load queries from disk
-		if(config.database.DBimport.v.b && querydb != NULL)
+		if(config.database.DBimport.v.b)
 			count_queries_on_disk();
 	}
 	else
-		log_err("init_memory_database(): Failed to attach disk database");
-
-	// Return that the in-memory database was initialized successfully, even
-	// when attach failed
-	return true;
+		// Without the connection no query is stored until FTL is restarted
+		log_query_database_error(config.files.database.v.s, error);
 }
 
-// Close memory database
-void close_memory_database(void)
+// Close the query database
+void close_query_database(void)
 {
-	if(querydb != NULL)
-	{
-		const int rc = sqlite3_close(querydb);
-		if(rc != SQLITE_OK)
-			log_err("Closing the query database failed: %s", sqlite3_errstr(rc));
-		querydb = NULL;
-	}
-
-	// Return early if there is no memory database to be closed
-	if(_memdb == NULL)
+	if(querydb == NULL)
 		return;
 
-	// Detach disk database
-	disk_attached = false;
-	if(!detach_database(_memdb, NULL, "disk"))
-		log_err("close_memory_database(): Failed to detach disk database");
-
-	// An on-disk database (database.forceDisk) is removed below, its name is
-	// only available while the connection is open
-	const char *filename = sqlite3_db_filename(_memdb, "main");
-	char *tmp_db = filename != NULL && filename[0] != '\0' ? strdup(filename) : NULL;
-
-	// Close SQLite3 memory database
-	int ret = sqlite3_close(_memdb);
-	if(ret != SQLITE_OK)
-		log_err("Finalizing memory database failed: %s",
-		        sqlite3_errstr(ret));
-	else
-		log_debug(DEBUG_DATABASE, "Closed memory database");
-
-	// Set global pointer to NULL
-	_memdb = NULL;
-
-	if(tmp_db == NULL)
-		return;
-
-	// Remove the database together with any journal it may have left behind
-	const char *suffixes[] = { "", "-journal", "-wal", "-shm" };
-	for(unsigned int i = 0; i < ArraySize(suffixes); i++)
-	{
-		char *path = NULL;
-		if(asprintf(&path, "%s%s", tmp_db, suffixes[i]) < 0)
-			continue;
-		if(unlink(path) != 0 && errno != ENOENT)
-			log_warn("Cannot remove %s: %s", path, strerror(errno));
-		free(path);
-	}
-	free(tmp_db);
-}
-
-// Is this the shared in-memory connection? Used to keep dbclose() away from a
-// handle it does not own
-bool __attribute__((pure)) is_memdb(const sqlite3 *db)
-{
-	return db != NULL && db == _memdb;
-}
-
-sqlite3 *__attribute__((pure)) _get_memdb(const int line, const char *func, const char *file)
-{
-	log_debug(DEBUG_DATABASE, "Accessing in-memory database in %s() (%s:%i)", func, file, line);
-	return _memdb;
-}
-
-// Abort a statement currently running on the in-memory database. Used when
-// FTL terminates while the initial query import is still running.
-void interrupt_memdb(void)
-{
-	if(_memdb != NULL)
-		sqlite3_interrupt(_memdb);
-	if(querydb != NULL)
-		sqlite3_interrupt(querydb);
-}
-
-// Get memory usage and size of in-memory tables
-bool get_memdb_size(size_t *memsize, int *queries)
-{
-	int rc;
-	sqlite3 *db = get_memdb();
-	sqlite3_stmt *stmt = NULL;
-	size_t page_count = 0, page_size = 0;
-
-	// Fetch page_count and page_size in a single round trip using the
-	// pragma_* table-valued functions. This replaces two prepare/step/
-	// finalize cycles with one. PRAGMAs cannot be combined inside a single
-	// sqlite3_prepare_v2() (only one statement per prepare), but the
-	// pragma_* TVFs can be cross-joined in a regular SELECT.
-	rc = sqlite3_prepare_v2(db,
-	                        "SELECT page_count, page_size "
-	                        "FROM pragma_page_count(), pragma_page_size()",
-	                        -1, &stmt, NULL);
+	const int rc = sqlite3_close(querydb);
 	if(rc != SQLITE_OK)
-	{
-		if(rc != SQLITE_BUSY)
-			log_err("get_memdb_size(): Prepare error: %s",
-			        sqlite3_errstr(rc));
-		return false;
-	}
-	rc = sqlite3_step(stmt);
-	if(rc == SQLITE_ROW)
-	{
-		page_count = sqlite3_column_int(stmt, 0);
-		page_size  = sqlite3_column_int(stmt, 1);
-	}
+		log_err("Closing the query database failed: %s", sqlite3_errstr(rc));
 	else
-	{
-		log_err("get_memdb_size(): Step error: %s", sqlite3_errstr(rc));
-		sqlite3_finalize(stmt);
-		return false;
-	}
-	sqlite3_finalize(stmt);
+		log_debug(DEBUG_DATABASE, "Closed the query database");
+	querydb = NULL;
+}
 
-	*memsize = page_count * page_size;
-
-	// Get number of queries in the memory table
-	if(queries != NULL)
-		*queries = memdb_queries_count;
-
-	return true;
+// Abort a statement currently running on the query database. Used when FTL
+// terminates while the initial query import is still running. Only then: an
+// interrupt still pending when the connection is closed skips its checkpoint
+void interrupt_import(void)
+{
+	if(querydb != NULL && !db_import_done)
+		sqlite3_interrupt(querydb);
 }
 
 // Attach database using specified path and alias
@@ -630,17 +425,13 @@ bool detach_database(sqlite3* db, const char **message, const char *alias)
 	return okay;
 }
 
-// Get number of queries either in the mem or in the on-disk database
-// This routine is used by the API routines.
+// Get the number of queries in the on-disk database and the time of the
+// earliest one
 static uint64_t get_number_of_queries_in_DB(sqlite3 *db, double *earliest_timestamp)
 {
 	int rc = 0;
 	uint64_t num = 0;
 	sqlite3_stmt *stmt = NULL;
-
-	// The database pointer may be NULL, meaning we want the memdb
-	if(db == NULL)
-		db = get_memdb();
 
 	// Two subqueries so that COUNT(*) and MIN() each get SQLite's fast path,
 	// combined in one SELECT they fall back to reading every row
@@ -855,108 +646,65 @@ bool delete_old_queries_batch(sqlite3 *db, const double until, int64_t *deleted)
 	return false;
 }
 
-// Delete queries with a timestamp up to (recent = false) or from (recent =
-// true) the given timestamp
-static bool delete_queries_from_db(const bool use_memdb, const double timestamp, const bool recent)
-{
-	bool okay = false;
-	const char *op = recent ? ">=" : "<=";
-	const char *querystr = recent ?
-		"DELETE FROM query_storage WHERE timestamp >= ?" :
-		"DELETE FROM query_storage WHERE timestamp <= ?";
-
-	sqlite3 *db = NULL;
-	if(use_memdb)
-		db = get_memdb();
-	else
-		db = dbopen(false, false);
-
-	// Prepare SQLite3 statement
-	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK ){
-		log_err("delete_queries_from_db(%s): SQL error prepare: %s",
-		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
-		if(!use_memdb) dbclose(&db);
-		return false;
-	}
-
-	// Bind index
-	if((rc = sqlite3_bind_double(stmt, 1, timestamp)) != SQLITE_OK)
-	{
-		log_err("delete_queries_from_db(%s): Failed to bind timestamp: %s",
-		        use_memdb ? "memdb" : "disk", sqlite3_errstr(rc));
-		sqlite3_finalize(stmt);
-		if(!use_memdb) dbclose(&db);
-		return false;
-	}
-
-	// Perform step
-	int64_t deleted = 0;
-	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
-		okay = true;
-	else
-		log_err("delete_queries_from_db(%s): Failed to delete queries with timestamp %s %f: %s",
-		        use_memdb ? "memdb" : "disk", op, timestamp, sqlite3_errstr(rc));
-
-	if(okay)
-	{
-		// Update number of queries in either in-memory or on-disk
-		// database (depending on what was cleaned). Guard against
-		// underflow: if the counter is somehow already below the
-		// number deleted (e.g. after a failed import that set the
-		// counter to 0), clamp to 0 rather than wrapping to UINT64_MAX.
-		if(use_memdb)
-			memdb_queries_count = (uint64_t)deleted <= memdb_queries_count
-			                      ? memdb_queries_count - (uint64_t)deleted : 0u;
-		else
-			diskdb_queries_count = (uint64_t)deleted <= diskdb_queries_count
-			                       ? diskdb_queries_count - (uint64_t)deleted : 0u;
-	}
-
-	// Finalize statement
-	sqlite3_finalize(stmt);
-
-	// Update earliest timestamp in the database after deleting the oldest
-	// queries, deleting the most recent ones leaves it unchanged
-	if(!recent)
-	{
-		if(use_memdb)
-			memdb_earliest_timestamp = timestamp;
-		else
-			diskdb_earliest_timestamp = timestamp;
-	}
-
-	// Add additional logging and close on-disk database if used
-	if(!use_memdb)
-	{
-		// Get size of on-disk database
-		struct stat st;
-		get_FTL_db_stats(&st);
-
-		// Log size of database and number of deleted rows
-		log_info("Size of %s is %.2f MB, deleted %"PRId64" of %"PRIu64" rows",
-			config.files.database.v.s, 9.5367431640625e-07*st.st_size,
-			deleted, diskdb_queries_count);
-
-		// Close on-disk database
-		dbclose(&db);
-	}
-
-	return okay;
-}
-
-// Delete queries older than given timestamp. Used by garbage collection
-bool delete_old_queries_from_db(const bool use_memdb, const double mintime)
-{
-	return delete_queries_from_db(use_memdb, mintime, false);
-}
-
 // Delete queries from the on-disk database that are not older than the given
 // timestamp. Used when flushing the logs.
 bool delete_recent_queries_from_db(const double mintime)
 {
-	return delete_queries_from_db(false, mintime, true);
+	sqlite3 *db = dbopen(false, false);
+	if(db == NULL)
+		return false;
+
+	// Prepare SQLite3 statement
+	sqlite3_stmt *stmt = NULL;
+	int rc = sqlite3_prepare_v2(db, "DELETE FROM query_storage WHERE timestamp >= ?", -1, &stmt, NULL);
+	if( rc != SQLITE_OK ){
+		log_err("delete_recent_queries_from_db(): SQL error prepare: %s", sqlite3_errstr(rc));
+		dbclose(&db);
+		return false;
+	}
+
+	// Bind index
+	if((rc = sqlite3_bind_double(stmt, 1, mintime)) != SQLITE_OK)
+	{
+		log_err("delete_recent_queries_from_db(): Failed to bind timestamp: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		dbclose(&db);
+		return false;
+	}
+
+	// Perform step
+	bool okay = false;
+	int64_t deleted = 0;
+	if((rc = step_and_count(db, stmt, &deleted, NULL)) == SQLITE_DONE)
+		okay = true;
+	else
+		log_err("delete_recent_queries_from_db(): Failed to delete queries with timestamp >= %f: %s",
+		        mintime, sqlite3_errstr(rc));
+
+	// Update number of queries in the on-disk database. Guard against
+	// underflow: if the counter is somehow already below the number
+	// deleted (e.g. after a failed import that set the counter to 0), clamp
+	// to 0 rather than wrapping to UINT64_MAX.
+	if(okay)
+		diskdb_queries_count = (uint64_t)deleted <= diskdb_queries_count
+		                       ? diskdb_queries_count - (uint64_t)deleted : 0u;
+
+	// Finalize statement
+	sqlite3_finalize(stmt);
+
+	// Get size of on-disk database
+	struct stat st;
+	get_FTL_db_stats(&st);
+
+	// Log size of database and number of deleted rows
+	log_info("Size of %s is %.2f MB, deleted %"PRId64" of %"PRIu64" rows",
+		config.files.database.v.s, 9.5367431640625e-07*st.st_size,
+		deleted, diskdb_queries_count);
+
+	// Close on-disk database
+	dbclose(&db);
+
+	return okay;
 }
 
 bool add_additional_info_column(sqlite3 *db)

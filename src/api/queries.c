@@ -25,67 +25,6 @@
 // PRIu64
 #include <inttypes.h>
 
-#if 0
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
-{
-
-	sqlite3 *memdb = get_memdb();
-	if(memdb == NULL)
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not read from in-memory database",
-		                       NULL);
-	}
-
-	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not prepare in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Loop through returned rows and add them to the array
-	int counter = 0;
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
-	      (max_count < 0 || ++counter <= max_count))
-	{
-		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
-		if(array1_str != NULL && array1_str[0] != '\0')
-			// Only add non-empty strings
-			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
-		if(array2 != NULL)
-		{
-			// We have a second array to fill (second column in the query)
-			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
-			if(array2_str != NULL && array2_str[0] != '\0')
-				// Only add non-empty strings
-				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
-		}
-	}
-
-	// Acceptable return codes are either
-	// - SQLITE_DONE: We read all lines, or
-	// - SQLITE_ROW: We ended reading early because of set limit
-	if( rc != SQLITE_DONE && rc != SQLITE_ROW )
-	{
-		sqlite3_finalize(stmt);
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not step in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Finalize SQLite3 statement
-	sqlite3_finalize(stmt);
-
-	return 0;
-}
-#endif
-
 int api_queries_suggestions(struct ftl_conn *api)
 {
 	// Does the user request a custom number of records to be included?
