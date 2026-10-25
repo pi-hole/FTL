@@ -661,13 +661,6 @@ void free_regex(void)
 		return;
 	}
 
-	// Reset client configuration
-	log_debug(DEBUG_DATABASE, "Resetting per-client regex settings");
-	for(unsigned int clientID = 0; clientID < counters->clients; clientID++)
-	{
-		reset_per_client_regex(clientID);
-	}
-
 	// Free regex datastructure
 	// Loop over regex types
 	for(enum regex_type regexid = REGEX_DENY; regexid < REGEX_MAX; regexid++)

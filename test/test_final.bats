@@ -589,6 +589,34 @@ load 'bats_helper.bash'
   [[ ${lines[0]} -ge 1 ]]
 }
 
+@test "A list reload and the exit with only alias-clients stay inside the per-client regex array" {
+  # Without history, the alias-clients of the reimport test above are the only
+  # clients. None of them has a row in the per-client regex array
+  aliasclients="$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db "SELECT COUNT(*) FROM aliasclient;")"
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  clients="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -o 'deny regex for [0-9]* client' | head -n 1 | grep -o '[0-9]*')"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  errors="$(tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -ci 'out of bounds' || true)"
+  printf "alias-clients: %s, clients: %s, out of bounds: %s\n" "${aliasclients}" "${clients}" "${errors}"
+  [[ ${aliasclients} -ge 600 && "${clients}" == "${aliasclients}" ]]
+  [[ "${errors}" == "0" ]]
+}
+
 @test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
   # The garbage collector runs once per minute then and keeps only the
   # queries that can still receive a reply. All of them still reach the disk,
