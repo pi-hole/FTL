@@ -970,6 +970,8 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
   sums=$(curl -s 127.0.0.1/api/stats/summary | jq -c '[.queries.total, ([.queries.status[]] | add), ([.queries.replies[]] | add)]')
   clients=$(curl -s '127.0.0.1/api/stats/top_clients?count=100000' | jq -c '[.clients[] | select(.ip | startswith("10.0.201.")) | [.ip, .count]] | sort')
   upstreams=$(tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -oE 'New upstream server: 10\.0\.201\.[0-9]+:[0-9]+' || true)
