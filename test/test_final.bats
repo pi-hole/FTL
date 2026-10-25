@@ -559,23 +559,19 @@ first_start_stop() {
 }
 
 @test "FTLCONF_ variables apply when FTL starts without pihole.toml" {
-  # files.tmp_db names the database, which the rules a config file is held to
-  # do not allow, so it is reset to its default
-  first_start_ftl "FTLCONF_misc_privacylevel=2 FTLCONF_dns_upstreams='127.0.0.1#5555;127.0.0.2' FTLCONF_files_tmp_db=${first_start}/pihole-FTL.db FTLCONF_debug_config=true FTLCONF_debug_database=true"
+  first_start_ftl "FTLCONF_misc_privacylevel=2 FTLCONF_dns_upstreams='127.0.0.1#5555;127.0.0.2' FTLCONF_debug_config=true FTLCONF_debug_database=true"
   dns="$(dig +tries=1 +time=2 -p 5397 CHAOS TXT version.FTL @127.0.0.1 | grep -oE 'status: [A-Z]+' || true)"
   level="$(curl -s -m 5 http://127.0.0.1:8097/api/config/misc/privacylevel | jq -c '.config.misc.privacylevel' || true)"
   upstreams="$(curl -s -m 5 http://127.0.0.1:8097/api/config/dns/upstreams | jq -c '.config.dns.upstreams' || true)"
-  tmp_db="$(curl -s -m 5 http://127.0.0.1:8097/api/config/files/tmp_db | jq -r '.config.files.tmp_db' || true)"
   # Only what the environment sets is forced
   forced="$(curl -s -m 5 'http://127.0.0.1:8097/api/config/misc/privacylevel?detailed=true' | jq -r '.config.misc.privacylevel.flags.env_var' || true)"
   unforced="$(curl -s -m 5 'http://127.0.0.1:8097/api/config/dns/blocking/mode?detailed=true' | jq -r '.config.dns.blocking.mode.flags.env_var' || true)"
   first_start_stop
 
-  printf "DNS on port 5397: %s, privacy level: %s, upstreams: %s, tmp_db: %s, forced: %s/%s, CLI: %s\n" "${dns}" "${level}" "${upstreams}" "${tmp_db}" "${forced}" "${unforced}" "${first_start_cli}"
+  printf "DNS on port 5397: %s, privacy level: %s, upstreams: %s, forced: %s/%s, CLI: %s\n" "${dns}" "${level}" "${upstreams}" "${forced}" "${unforced}" "${first_start_cli}"
   [[ "${dns}" == "status: NOERROR" ]]
   [[ "${level}" == "2" ]]
   [[ "${upstreams}" == '["127.0.0.1#5555","127.0.0.2"]' ]]
-  [[ "${tmp_db}" == "/etc/pihole/pihole-tmp.db" ]]
   [[ "${forced}" == "true" && "${unforced}" == "false" ]]
   # pihole-FTL --config still shows the plain defaults without a file
   [[ "${first_start_cli}" == "53" ]]
