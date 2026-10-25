@@ -31,6 +31,8 @@
 #include "files.h"
 // INFINITY
 #include <math.h>
+// name_history_import(), client_name_at()
+#include "name-history.h"
 
 static sqlite3 *_memdb = NULL;
 static bool disk_attached = false;
@@ -1769,21 +1771,18 @@ void DB_read_queries(void)
 
 	// Prepare request
 	// Filtering to the history window has already happened in
-	// import_queries_from_disk()
-	const char *querystr = "SELECT id,"\
-	                              "timestamp,"\
-	                              "type,"\
-	                              "status,"\
-	                              "domain,"\
-	                              "client,"\
-	                              "forward,"\
-	                              "additional_info,"\
-	                              "reply_type,"\
-	                              "reply_time,"\
-	                              "dnssec,"\
-	                              "list_id,"\
-	                              "ede "\
-	                       "FROM queries";
+	// import_queries_from_disk(). The columns of the queries view plus the
+	// client name, in the order of the IDs for the client name history
+	const char *querystr = "SELECT q.id, q.timestamp, q.type, q.status, "
+	                              "COALESCE(d.domain, q.domain), COALESCE(c.ip, q.client), "
+	                              "COALESCE(f.forward, q.forward), COALESCE(a.content, q.additional_info), "
+	                              "q.reply_type, q.reply_time, q.dnssec, q.list_id, q.ede, c.name "
+	                       "FROM query_storage q "
+	                       "LEFT JOIN domain_by_id d ON q.domain = d.id "
+	                       "LEFT JOIN client_by_id c ON q.client = c.id "
+	                       "LEFT JOIN forward_by_id f ON q.forward = f.id "
+	                       "LEFT JOIN addinfo_by_id a ON q.additional_info = a.id "
+	                       "ORDER BY q.id";
 
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
@@ -1935,6 +1934,10 @@ void DB_read_queries(void)
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
+
+		// The query keeps the client name it was stored with
+		const char *clientName = (const char *)sqlite3_column_text(stmt, 13);
+		name_history_import(clientID, dbID, addstr(clientName != NULL ? clientName : ""));
 
 		// Store this query in memory, it keeps its ID from the database
 		queriesData *query = getQuery(queryIndex, false);
@@ -2494,15 +2497,19 @@ bool queries_to_database(const bool final)
 		s->domain_db_id = domain_db_id;
 
 		// CLIENT - handle linking table INSERT if first encounter. The same
-		// as for the domain applies to a query hiding its client
+		// as for the domain applies to a query hiding its client. A query
+		// made before its client was renamed has the old name, the row cached
+		// with the client is the one of the current name
 		const char *clientIP = getClientIPString(query);
 		const char *clientName = getClientNameString(query);
 		clientsData *clientdata = getClient(query->clientID, true);
 		const bool hide_client = query->privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS;
+		const bool old_name = !hide_client && clientdata != NULL &&
+		                      client_name_at(query->clientID, clientdata->namepos, query->db) != clientdata->namepos;
 		const bool store_client = hide_client ? hidden_client_db_id == 0 :
-		                          clientdata != NULL && !clientdata->flags.in_database;
+		                          clientdata != NULL && (!clientdata->flags.in_database || old_name);
 		int client_db_id = hide_client ? hidden_client_db_id :
-		                   clientdata != NULL ? clientdata->db_id : 0;
+		                   clientdata != NULL && !old_name ? clientdata->db_id : 0;
 
 		if(store_client)
 		{
@@ -2530,7 +2537,7 @@ bool queries_to_database(const bool final)
 
 			if(hide_client)
 				hidden_client_db_id = client_db_id;
-			else if(clientdata != NULL)
+			else if(clientdata != NULL && !old_name)
 			{
 				clientdata->db_id = client_db_id;
 				clientdata->flags.in_database = true;
