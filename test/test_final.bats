@@ -44,6 +44,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
+  # pytest: 2x pihole.toml writes (excludeClients cleared + restored around the sorted query log tests)
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
@@ -61,7 +62,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "53" ]]
+    [[ ${lines[0]} == "55" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -752,6 +753,33 @@ load 'bats_helper.bash'
   refute_output
   run bash -c 'grep "CRIT:" /tmp/FTL.privacylevel.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
+}
+
+@test "The query log is empty at misc.privacylevel 3" {
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "curl -s 127.0.0.1/api/queries | jq '.recordsTotal'"
+  [[ ${lines[0]} -ge 1 ]]
+
+  # Raising the level does not restart FTL. Lowering it would, so FTL gets
+  # level 0 back once it has stopped
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":3}}}"'
+  assert_output "200"
+  run bash -c "curl -s 127.0.0.1/api/queries | jq -c '[.queries, .cursor, .recordsTotal, .recordsFiltered]'"
+  assert_output '[[],null,0,0]'
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run ./pihole-FTL --config misc.privacylevel 0
+  assert_success
 }
 
 @test "A gravity database swapped in right after a restart is loaded (#3162)" {
