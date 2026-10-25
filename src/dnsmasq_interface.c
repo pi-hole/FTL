@@ -1370,6 +1370,11 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		PERF_START(_pcb);
 		blockDomain = FTL_check_blocking(domainString, query, client, domain, dns_cache_entry);
 		PERF_END(_pcb, PERF_STAT_CHECK_BLOCKING);
+
+		// The query keeps the list ID of its verdict, the cache entry can
+		// be reset or decided anew later on
+		if(dns_cache_entry != NULL)
+			query->list_id = dns_cache_entry->list_id;
 	}
 
 	// Store query in database
@@ -2600,6 +2605,10 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		// The answer built for this query derives its EDE from cacheStatus
 		cacheStatus = query->status;
 	}
+
+	// The checks of the CNAME target ran on this query's cache entry, the
+	// list that blocked or allowed the chain stays with the query
+	query->list_id = dns_cache->list_id;
 
 	// Debug logging for deep CNAME inspection (if enabled)
 	log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
@@ -4645,9 +4654,13 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// The original query may have been blocked during CNAME inspection,
-	// correct status in this case
+	// correct status and list ID in this case
 	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
+	if(source_query->status == QUERY_GRAVITY_CNAME ||
+	   source_query->status == QUERY_REGEX_CNAME ||
+	   source_query->status == QUERY_DENYLIST_CNAME)
+		duplicated_query->list_id = source_query->list_id;
 
 	// Mark query for updating in the database
 	duplicated_query->flags.database.changed = true;

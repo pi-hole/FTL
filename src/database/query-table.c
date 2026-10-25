@@ -2556,7 +2556,7 @@ bool queries_to_database(const bool final)
 
 		// ADDINFO — handle linking table INSERT if not cached
 		s->addinfo_id = 0;
-		s->list_id = -1;
+		s->list_id = query->list_id;
 		if(query->status == QUERY_GRAVITY_CNAME ||
 		   query->status == QUERY_REGEX_CNAME ||
 		   query->status == QUERY_DENYLIST_CNAME)
@@ -2599,62 +2599,36 @@ bool queries_to_database(const bool final)
 			}
 			s->addinfo_id = aid;
 		}
-		else
+		else if(query->list_id != -1)
 		{
-			// Resolve list_id from DNS cache (needs SHM access)
-			const unsigned int cacheID = query->cacheID > -1
-				? query->cacheID
-				: findCacheID(query->domainID, query->clientID, query->type, false);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-
-			if(cache != NULL && cache->list_id != -1)
+			const int list_id = query->list_id;
+			int aid = lookup_addinfo_id(ADDINFO_LIST_ID, list_id);
+			if(aid == 0)
 			{
-				const int list_id = cache->list_id;
-				int aid = lookup_addinfo_id(ADDINFO_LIST_ID, list_id);
-				if(aid == 0)
+				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
+				sqlite3_bind_int(addinfo_stmt, 2, list_id);
+				rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
+				sqlite3_reset(addinfo_stmt);
+				if(rc != SQLITE_DONE)
 				{
-					sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
-					sqlite3_bind_int(addinfo_stmt, 2, list_id);
-					rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
-					sqlite3_reset(addinfo_stmt);
-					if(rc != SQLITE_DONE)
-					{
-						log_err("Encountered error while trying to store addinfo");
-						phase1_error = true;
-						break;
-					}
-
-					if(changes > 0)
-						aid = (int)rowid;
-					else
-					{
-						sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_LIST_ID);
-						sqlite3_bind_int(addinfo_id_stmt, 2, list_id);
-						if(sqlite3_step(addinfo_id_stmt) == SQLITE_ROW)
-							aid = sqlite3_column_int(addinfo_id_stmt, 0);
-						sqlite3_reset(addinfo_id_stmt);
-					}
-					store_addinfo_id(ADDINFO_LIST_ID, list_id, aid);
+					log_err("Encountered error while trying to store addinfo");
+					phase1_error = true;
+					break;
 				}
-				s->addinfo_id = aid;
-				s->list_id = list_id;
-			}
-			else
-			{
-				s->list_id = -1;
-			}
-		}
 
-		// For CNAME-blocked queries, list_id comes from the DNS cache too
-		if(s->addinfo_id > 0 && (query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_DENYLIST_CNAME))
-		{
-			const unsigned int cacheID = query->cacheID > -1
-				? query->cacheID
-				: findCacheID(query->domainID, query->clientID, query->type, false);
-			DNSCacheData *cache = getDNSCache(cacheID, true);
-			s->list_id = (cache != NULL && cache->list_id != -1) ? cache->list_id : -1;
+				if(changes > 0)
+					aid = (int)rowid;
+				else
+				{
+					sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_LIST_ID);
+					sqlite3_bind_int(addinfo_id_stmt, 2, list_id);
+					if(sqlite3_step(addinfo_id_stmt) == SQLITE_ROW)
+						aid = sqlite3_column_int(addinfo_id_stmt, 0);
+					sqlite3_reset(addinfo_id_stmt);
+				}
+				store_addinfo_id(ADDINFO_LIST_ID, list_id, aid);
+			}
+			s->addinfo_id = aid;
 		}
 
 		// Clear changed flag now (under lock) so that if the DNS thread
@@ -2764,8 +2738,8 @@ bool queries_to_database(const bool final)
 	if(succeeded == snap_count)
 		last_export_start = run_start;
 
-	// Loop through snapshots of successfully committed queries, keep the
-	// list ID their row got and mark the new ones as stored
+	// Loop through snapshots of successfully committed queries and mark the
+	// new ones as stored
 	for(unsigned int i = 0; i < succeeded; i++)
 	{
 		const struct query_snap *s = &snaps[i];
@@ -2773,7 +2747,6 @@ bool queries_to_database(const bool final)
 		if(query == NULL)
 			continue;
 
-		query->list_id = s->list_id;
 		if(s->is_new)
 		{
 			query->flags.database.stored = true;

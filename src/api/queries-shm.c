@@ -328,18 +328,10 @@ static const char *query_upstream(struct qlog_scan *s, const queriesData *query)
 	return str;
 }
 
-// The list ID of a query's row once it is stored, before that the one its
-// DNS cache entry has, which is what the next export stores
+// The ID of the list that blocked or allowed the query
 static bool query_list_id(const queriesData *query, int *list_id)
 {
 	*list_id = query->list_id;
-	if(!query->flags.database.stored)
-	{
-		const int cacheID = query->cacheID > -1 ? query->cacheID :
-		                    findCacheID(query->domainID, query->clientID, query->type, false);
-		const DNSCacheData *cache = getDNSCache(cacheID, true);
-		*list_id = cache != NULL ? cache->list_id : -1;
-	}
 	return *list_id != -1;
 }
 
