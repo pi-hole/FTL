@@ -101,8 +101,6 @@ const char *index_creation[] = {
 };
 #endif
 
-sqlite3_int64 get_max_db_idx(void) __attribute__((pure));
-void db_counts(sqlite3_int64 *last_idx, sqlite3_int64 *mem_num, sqlite3_int64 *disk_num);
 bool init_memory_database(void);
 sqlite3 *_get_memdb(const int line, const char *func, const char *file) __attribute__((pure));
 #define get_memdb(void) _get_memdb(__LINE__, __FUNCTION__, __FILE__)

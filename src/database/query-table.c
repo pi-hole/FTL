@@ -177,22 +177,6 @@ static int step_and_count(sqlite3 *db, sqlite3_stmt *stmt, int64_t *changes, sql
 static bool count_queries_on_disk(sqlite3 *memdb);
 static void init_disk_db_idx(sqlite3 *memdb);
 
-// Return the maximum ID of the in-memory database
-sqlite3_int64 __attribute__((pure)) get_max_db_idx(void)
-{
-	return memdb_queries_maxid;
-}
-
-void db_counts(sqlite3_int64 *last_idx, sqlite3_int64 *mem_num, sqlite3_int64 *disk_num)
-{
-	if(last_idx != NULL)
-		*last_idx = memdb_queries_maxid;
-	if(mem_num != NULL)
-		*mem_num = memdb_queries_count;
-	if(disk_num != NULL)
-		*disk_num = diskdb_queries_count;
-}
-
 // Initialize in-memory database, add queries table and indices
 // The flow of queries is as follows:
 //   1. Every second, we try to copy all queries from our internal datastructure
@@ -890,13 +874,14 @@ static bool count_queries_on_disk(sqlite3 *memdb)
 }
 
 /**
- * @brief Retrieve query count and earliest timestamp from the selected database.
+ * @brief Retrieve query count and earliest timestamp on disk or in memory.
  *
- * @param disk If true, read values from the on-disk database; if false, read from the in-memory database.
- * @param[out] count Pointer to a uint64_t that will be set to the number of stored queries. Must not be NULL.
- * @param[out] earliest_timestamp Pointer to a double that will be set to the earliest query timestamp. Must not be NULL.
+ * @param disk If true, read values of the on-disk database; if false, of the queries in shared memory.
+ * @param[out] count Pointer to a uint64_t that will be set to the number of queries, or NULL.
+ * @param[out] earliest_timestamp Pointer to a double that will be set to the earliest query timestamp, or NULL.
  *
- * Populates the provided output parameters with the corresponding values from the chosen database.
+ * In memory, the queries made at the maximum privacy level are not counted,
+ * as the query log does not show them.
  */
 void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 {
@@ -906,14 +891,22 @@ void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 			*count = diskdb_queries_count;
 		if(earliest_timestamp != NULL)
 			*earliest_timestamp = diskdb_earliest_timestamp;
+		return;
 	}
-	else
+
+	lock_shm();
+	if(count != NULL)
+		*count = counters->queries - counters->queries_maxprivacy;
+	if(earliest_timestamp != NULL)
 	{
-		if(count != NULL)
-			*count = memdb_queries_count;
-		if(earliest_timestamp != NULL)
-			*earliest_timestamp = memdb_earliest_timestamp;
+		// No query is older than the first one by more than the disorder.
+		// While the import runs, its slots are still empty and the query
+		// log reads the window of the import from the disk
+		const queriesData *oldest = db_import_done && counters->queries > 0 ? getQuery(0, true) : NULL;
+		*earliest_timestamp = oldest != NULL ? oldest->timestamp - counters->query_time_disorder :
+		                      db_import_done ? 0.0 : import_from;
 	}
+	unlock_shm();
 }
 
 // Import linking tables and current AUTOINCREMENT values from the disk

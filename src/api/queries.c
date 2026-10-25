@@ -15,7 +15,7 @@
 #include "datastructure.h"
 // config struct
 #include "config/config.h"
-// get_import_window()
+// get_import_window(), get_db_info()
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
@@ -975,14 +975,14 @@ int api_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 		get_bool_var(api->request->query_string, "disk", &req.disk);
 
-	// The numbers of queries and the highest ID when the request arrived.
-	// Once the import is done, the in-memory query log is read from shared
-	// memory, which also has the queries that are not stored yet
-	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
-	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
+	// The newest query ID and the numbers of queries when the request
+	// arrived. Once the import is done, the in-memory query log is read from
+	// shared memory, which also has the queries that are not stored yet
+	sqlite3_int64 largest_db_index = 0, mem_dbnum = 0;
+	shm_query_log_counts(&largest_db_index, &mem_dbnum);
+	uint64_t disk_dbnum = 0;
+	get_db_info(true, &disk_dbnum, NULL);
 	const bool from_shm = !req.disk && db_import_done;
-	if(from_shm)
-		shm_query_log_counts(&largest_db_index, &mem_dbnum);
 
 	// Read the request, then the queries it selects
 	unsigned int records = 0;
@@ -1023,20 +1023,20 @@ int api_queries(struct ftl_conn *api)
 	}
 	else
 	{
-		// Send cursor pointing to the firstID of the data obtained in
-		// this query. This ensures we get a static result by skipping
-		// any newer queries.
-		log_web_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
-		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
+		// Send cursor pointing to the newest query when the request
+		// arrived. This ensures we get a static result by skipping any
+		// newer queries.
+		log_web_debug(DEBUG_API, "Sending cursor %lld (newest)", largest_db_index);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", largest_db_index);
 	}
 
 	// DataTables specific properties
-	const unsigned long recordsTotal = req.disk ? disk_dbnum : mem_dbnum;
+	const unsigned long recordsTotal = req.disk ? disk_dbnum : (uint64_t)mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", req.filtering ? records : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", req.draw);
 
-	// Add number of queries and earliest timestamp in in-memory database
+	// Add earliest timestamp in memory
 	double earliest_timestamp_mem = 0.0;
 	get_db_info(false, NULL, &earliest_timestamp_mem);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", earliest_timestamp_mem);
