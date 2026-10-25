@@ -1772,10 +1772,13 @@ void DB_read_queries(void)
 	// Prepare request
 	// Filtering to the history window has already happened in
 	// import_queries_from_disk(). The columns of the queries view plus the
-	// client name, in the order of the IDs for the client name history
+	// client name, in the order of the IDs for the client name history. As
+	// in the view, an ID without a row in its linking table reads as NULL
 	const char *querystr = "SELECT q.id, q.timestamp, q.type, q.status, "
-	                              "COALESCE(d.domain, q.domain), COALESCE(c.ip, q.client), "
-	                              "COALESCE(f.forward, q.forward), COALESCE(a.content, q.additional_info), "
+	                              "CASE typeof(q.domain) WHEN 'integer' THEN d.domain ELSE q.domain END, "
+	                              "CASE typeof(q.client) WHEN 'integer' THEN c.ip ELSE q.client END, "
+	                              "CASE typeof(q.forward) WHEN 'integer' THEN f.forward ELSE q.forward END, "
+	                              "CASE typeof(q.additional_info) WHEN 'integer' THEN a.content ELSE q.additional_info END, "
 	                              "q.reply_type, q.reply_time, q.dnssec, q.list_id, q.ede, c.name "
 	                       "FROM query_storage q "
 	                       "LEFT JOIN domain_by_id d ON q.domain = d.id "
