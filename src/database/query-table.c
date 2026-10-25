@@ -2234,6 +2234,11 @@ bool queries_to_database(void)
 			break;
 		}
 
+		// Queries recorded in maximum privacy mode are never stored, also
+		// not once the level has been lowered
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
+			continue;
+
 		// Skip queries which have not changed since the last iteration
 		if(!query->flags.database.changed)
 		{
