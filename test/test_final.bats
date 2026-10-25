@@ -692,6 +692,156 @@ first_start_stop() {
   [[ ${lines[0]} -ge 1 ]]
 }
 
+@test "Queries go to disk as the query log shows them, with their list IDs and the totals" {
+  # The final export at the stop stores the queries, a restart reads them back
+  ids_before=$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT IFNULL(MAX(id), -1) FROM query_storage;")
+  totals_before=$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT (SELECT value FROM counters WHERE id = 0) || ' ' || (SELECT value FROM counters WHERE id = 1);")
+  read -r total_before blocked_before <<< "${totals_before}"
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A export-start.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  # Blocked by gravity, the exact denylist, a deny regex and through a CNAME,
+  # allowed by the exact allowlist, an allow regex and antigravity, and one
+  # on no list
+  first=$(date +%s)
+  for domain in gravity.ftl denied.ftl regex5.ftl cname-1.ftl allowed.ftl gravity-allowed.ftl antigravity.ftl a.ftl; do
+    dig A "${domain}" -b 127.0.0.77 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  done
+  # A query keeps the list ID of its verdict when the lists are reloaded
+  # right after it
+  logsize_reload=$(stat -c%s /var/log/pihole/FTL.log)
+  dig A gravity.ftl -b 127.0.0.78 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_reload}"
+  assert_success
+
+  rows() {
+    for client in 127.0.0.77 127.0.0.78; do
+      curl -s "127.0.0.1/api/queries?client_ip=${client}&length=100$1"
+    done | jq -sc '[.[].queries[] | [.id, .domain, .client.ip, .client.name, .status, .type, .reply.type, .dnssec, .list_id, .ede.code, .cname, .upstream]] | sort'
+  }
+  # None of them is ready yet, unless a slow runner took close to the 30 s
+  # until the first one is
+  if (( $(date +%s) - first < 25 )); then
+    run rows "&disk=true"
+    assert_output "[]"
+  fi
+  memory=$(rows "")
+  run jq -c '[.[] | [.[1], .[8] != null]]' <<< "${memory}"
+  assert_output '[["gravity.ftl",true],["denied.ftl",true],["regex5.ftl",true],["cname-1.ftl",true],["allowed.ftl",true],["gravity-allowed.ftl",true],["antigravity.ftl",true],["a.ftl",false],["gravity.ftl",true]]'
+
+  # The final export stores them. The totals count what is stored, and the
+  # time of the newest query is that of the newest row
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"SELECT (SELECT value FROM counters WHERE id = 0) - ${total_before} - COUNT(*), (SELECT value FROM counters WHERE id = 1) - ${blocked_before} - COUNT(*) FILTER (WHERE status IN (1, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 18)), ABS((SELECT value FROM ftl WHERE id = 1) - MAX(timestamp)) < 0.001, COUNT(*) > 9 FROM query_storage WHERE id > ${ids_before};\""
+  printf "total and blocked beyond the rows stored, newest timestamp, rows: %s\n" "${lines[0]}"
+  assert_output "0|0|1|1"
+
+  # On disk they are what the query log showed before the stop
+  logsize_import=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
+  disk=$(rows "&disk=true")
+  printf "in memory before the stop: %s\non disk: %s\n" "${memory}" "${disk}"
+  assert_equal "${disk}" "${memory}"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.export.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.export.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.export.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.export.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
+@test "A query stored after its client was renamed keeps the name it was made with" {
+  # The test configuration resolves no client names. This instance resolves
+  # 127.0.0.23 through dns.hosts and renames it between two of its queries.
+  # The final export at the stop stores them with a third one, made after the
+  # rename and more than one chunk of the export later
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.rename
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  hosts=$(curl -s 127.0.0.1/api/config/dns/hosts | jq -c '.config.dns.hosts')
+  # Point 127.0.0.23 at a name, then wait until FTL's client has it
+  set_name() {
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH 127.0.0.1/api/config -d "$(jq -c --arg host "127.0.0.23 $1" '{config: {dns: {hosts: (. + [$host])}}}' <<< "${hosts}")")" == "200" ]] || return 1
+    for i in $(seq 1 30); do
+      [[ "$(dig -x 127.0.0.23 @127.0.0.1 +short)" == "$1." ]] && break
+      sleep 1
+    done
+    kill -SIGRTMIN+4 "$(cat /run/pihole-FTL.pid)"
+    for i in $(seq 1 30); do
+      [[ "$(curl -s '127.0.0.1/api/stats/top_clients?count=1000' | jq -r '.clients[] | select(.ip == "127.0.0.23") | .name')" == "$1" ]] && return 0
+      sleep 1
+    done
+    return 1
+  }
+  first=$(date +%s)
+  dig A one.rename.ftl -b 127.0.0.23 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run set_name old-rename.ftl
+  assert_success
+  dig A two.rename.ftl -b 127.0.0.23 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run set_name new-rename.ftl
+  assert_success
+  stored() {
+    ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT d.domain, IFNULL(c.name, '') FROM query_storage q JOIN domain_by_id d ON d.id = q.domain JOIN client_by_id c ON c.id = q.client WHERE d.domain GLOB '*.rename.ftl' ORDER BY q.id;"
+  }
+  # Not stored before the rename, unless a slow runner took close to the
+  # 30 s until the first one is ready
+  if (( $(date +%s) - first < 25 )); then
+    run stored
+    refute_output
+  fi
+  # The rows found for the first two do not serve the third one, which gets
+  # the row of the current name
+  for i in $(seq 1 70); do
+    echo "A pad-${i}.chunk.ftl -b 127.0.0.24 @127.0.0.1 +tries=1 +time=2"
+  done | dig -f - > /dev/null
+  dig A three.rename.ftl -b 127.0.0.23 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run stored
+  assert_output "one.rename.ftl|
+two.rename.ftl|old-rename.ftl
+three.rename.ftl|new-rename.ftl"
+
+  cp -p /tmp/pihole.toml.rename /etc/pihole/pihole.toml
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE client IN (SELECT id FROM client_by_id WHERE ip IN ('127.0.0.23', '127.0.0.24')); DELETE FROM client_by_id WHERE ip IN ('127.0.0.23', '127.0.0.24'); DELETE FROM domain_by_id WHERE domain GLOB '*.rename.ftl' OR domain GLOB '*.chunk.ftl';"
+}
+
 @test "Garbage collection removes old queries when webserver.api.maxHistory is 0" {
   # The garbage collector runs once per minute then and keeps only the
   # queries that can still receive a reply or are not stored yet. The export
@@ -805,7 +955,7 @@ first_start_stop() {
   assert_success
 }
 
-@test "Raising misc.privacylevel at runtime hides known domains and clients in the database" {
+@test "Raising misc.privacylevel at runtime hides known domains and clients in the database, and stores nothing at level 3" {
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
   assert_success
@@ -832,6 +982,11 @@ first_start_stop() {
   level2=$(( $(date +%s) + 1 ))
   sleep 2
   dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":3}}}"'
+  assert_output "200"
+  level3=$(( $(date +%s) + 1 ))
+  sleep 2
+  dig A privacy-known.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
   sleep 2
 
   # The final export on termination stores everything on disk
@@ -843,14 +998,15 @@ first_start_stop() {
   run ./pihole-FTL --config misc.privacylevel 0
   assert_success
 
-  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT (SELECT COUNT(*) FROM queries WHERE domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'hidden'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '127.0.0.1'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '0.0.0.0');\""
-  printf "named, named after level 1, hidden, client after level 2, hidden client: %s\n" "${lines[0]}"
-  IFS='|' read -r named named_hidden hidden client_shown client_hidden <<< "${lines[0]}"
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT (SELECT COUNT(*) FROM queries WHERE domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'privacy-known.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level1} AND domain = 'hidden'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '127.0.0.1'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level2} AND client = '0.0.0.0'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level3});\""
+  printf "named, named after level 1, hidden, client after level 2, hidden client, after level 3: %s\n" "${lines[0]}"
+  IFS='|' read -r named named_hidden hidden client_shown client_hidden level3_stored <<< "${lines[0]}"
   [[ ${named} -ge 1 ]]
   [[ ${named_hidden} == 0 ]]
   [[ ${hidden} -ge 2 ]]
   [[ ${client_shown} == 0 ]]
   [[ ${client_hidden} -ge 1 ]]
+  [[ ${level3_stored} == 0 ]]
 
   tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.privacylevel.log
   run bash -c 'grep "ERROR: " /tmp/FTL.privacylevel.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
