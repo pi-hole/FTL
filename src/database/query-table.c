@@ -822,6 +822,13 @@ static double import_from = 0.0;
 static double import_until = 0.0;
 static int counted_queries = 0;
 
+// The history window of the import at startup
+void get_import_window(double *from, double *until)
+{
+	*from = import_from;
+	*until = import_until;
+}
+
 // Every query below this index has been visited by an export, counted in
 // absolute terms (index + get_queries_removed()) so the garbage collector
 // removing queries from the front does not invalidate it. Guarded by the SHM
