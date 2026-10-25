@@ -802,6 +802,13 @@ load 'bats_helper.bash'
     INSERT INTO network_addresses (network_id, ip, lastSeen) VALUES (last_insert_rowid(), '127.0.0.93', ${now});"
   assert_success
 
+  # pihole.toml keeps values set via the environment, restore them below
+  keys="resolver.resolveIPv4 resolver.networkNames resolver.refreshNames dns.piholePTR"
+  declare -A saved
+  for key in ${keys}; do
+    saved[${key}]="$(./pihole-FTL --config "${key}")"
+  done
+
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c 'su pihole -s /bin/sh -c "FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_networkNames=true FTLCONF_resolver_refreshNames=ALL FTLCONF_dns_piholePTR=NONE /home/pihole/pihole-FTL"'
   assert_success
@@ -852,6 +859,10 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
+  for key in ${keys}; do
+    run ./pihole-FTL --config "${key}" "${saved[${key}]}"
+    assert_success
+  done
 
   printf "name: %s, nameUpdated: %s (seeded %s), named after flush: %s, alias: %s -> %s\n" "${name}" "${updated}" "$((now - 3600))" "${flushed}" "${alias_before}" "${alias_after}"
   [[ "${name}" == "stale-name.lan" ]]
