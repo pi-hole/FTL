@@ -1880,6 +1880,34 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
+		double reply_time = 0.0;
+		bool reply_time_avail = false;
+		if(sqlite3_column_type(stmt, 9) == SQLITE_FLOAT)
+		{
+			// The field has been added for database version 12
+			reply_time = sqlite3_column_double(stmt, 9);
+			reply_time_avail = true;
+			if(reply_time < 0.0)
+			{
+				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
+				         reply_time, dbID, queryTimeStamp);
+				continue;
+			}
+		}
+
+		// All slots reserved for the import are taken: the database has
+		// more rows than were counted
+		if((int)imported_queries >= counted_queries)
+		{
+			log_warn("Database %s has changed during import: Expected to import %i queries. Parts of the history may be missing.",
+			         config.files.database.v.s, counted_queries);
+			break;
+		}
+
+		// Rows are only skipped above this point, so a skipped row leaves
+		// nothing behind in shared memory and an imported one fills its
+		// slot completely
+
 		// Lock shared memory
 		lock_shm();
 
@@ -1900,32 +1928,8 @@ void DB_read_queries(void)
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
-		double reply_time = 0.0;
-		bool reply_time_avail = false;
-		if(sqlite3_column_type(stmt, 9) == SQLITE_FLOAT)
-		{
-			// The field has been added for database version 12
-			reply_time = sqlite3_column_double(stmt, 9);
-			reply_time_avail = true;
-			if(reply_time < 0.0)
-			{
-				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
-				         reply_time, dbID, queryTimeStamp);
-				unlock_shm();
-				continue;
-			}
-		}
-
 		// Set index for this query
 		const int queryIndex = imported_queries++;
-
-		if(queryIndex >= counted_queries)
-		{
-			log_warn("Database %s has changed during import: Expected to import %i queries. Parts of the history may be missing.",
-			         config.files.database.v.s, counted_queries);
-			unlock_shm();
-			break;
-		}
 
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
@@ -1937,20 +1941,8 @@ void DB_read_queries(void)
 		query->magic = MAGICBYTE;
 		query->db = dbID;
 		query->timestamp = queryTimeStamp;
-		if(type < 100)
-		{
-			// Mapped query type
-			if(type >= TYPE_NONE && type < TYPE_MAX)
-				query->type = type;
-			else
-			{
-				// Invalid query type
-				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
-				         type, dbID, queryTimeStamp);
-				unlock_shm();
-				continue;
-			}
-		}
+		if(mapped_type)
+			query->type = type;
 		else
 		{
 			// Offset query type
