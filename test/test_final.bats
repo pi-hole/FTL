@@ -996,6 +996,148 @@ load 'bats_helper.bash'
   assert_equal "${upstreams}" "New upstream server: 10.0.201.54:53"
 }
 
+@test "Queries keep the client name they were made with, in memory, on disk and after a restart" {
+  # The test configuration resolves no client names. This instance resolves
+  # 127.0.0.20 through dns.hosts, which names it old-name.ftl after its first
+  # query and renames it to new-name.ftl after its second. Its query of
+  # held.names.ftl gets its answer, and is stored again, only after the rename
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.names
+  # The upstream of held.names.ftl answers once /tmp/held.names.release exists
+  rm -f /tmp/held.names.release
+  timeout 300 python3 -c 'import os, socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(("127.0.0.1", 5397))
+while True:
+    q, a = s.recvfrom(4096)
+    while not os.path.exists("/tmp/held.names.release"):
+        time.sleep(0.1)
+    s.sendto(q[:2] + bytes([q[2] | 0x80, 0x83]) + q[4:], a)' 3>&- > /dev/null 2>&1 &
+  upstream=$!
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  # Without the history of the earlier tests, the resolver has only the names
+  # of this test to look up
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL FTLCONF_dns_dnssec=false FTLCONF_misc_dnsmasq_lines=server=/held.names.ftl/127.0.0.1#5397 /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  patch() {
+    [[ "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH 127.0.0.1/api/config -d "{\"config\": $1}")" == "200" ]]
+  }
+  hosts=$(curl -s 127.0.0.1/api/config/dns/hosts | jq -c '.config.dns.hosts')
+  # Point 127.0.0.20 at a name, then wait until FTL's client has it
+  set_name() {
+    patch "$(jq -c --arg host "127.0.0.20 $1" '{dns: {hosts: (. + [$host])}}' <<< "${hosts}")" || return 1
+    for i in $(seq 1 30); do
+      [[ "$(dig -x 127.0.0.20 @127.0.0.1 +short)" == "$1." ]] && return 0
+      sleep 1
+    done
+    return 1
+  }
+  wait_for_name() {
+    for i in $(seq 1 30); do
+      [[ "$(curl -s '127.0.0.1/api/stats/top_clients?count=1000' | jq -r '.clients[] | select(.ip == "127.0.0.20") | .name')" == "$1" ]] && return 0
+      sleep 1
+    done
+    return 1
+  }
+  names() {
+    curl -s "127.0.0.1/api/queries?domain=*.names.ftl$1" | jq -c '[.queries[] | [.domain, .client.name]]'
+  }
+  # Output, filter, column search and sort all go by the name a query was
+  # made with. Without the exclusion regex of the test configuration, which
+  # needs the name, so that a filter by IP alone does not look it up
+  check_names() {
+    run names "$1"
+    assert_output '[["three.names.ftl","new-name.ftl"],["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"],["one.names.ftl",null]]'
+    run names "&client_name=old-name.ftl$1"
+    assert_output '[["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"]]'
+    run names "&columns%5B4%5D%5Bdata%5D=client&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=old-name$1"
+    assert_output '[["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"]]'
+    run bash -c "curl -s '127.0.0.1/api/queries?domain=*.names.ftl&columns%5B5%5D%5Bdata%5D=client.name&order%5B0%5D%5Bcolumn%5D=5&order%5B0%5D%5Bdir%5D=asc$1' | jq -c '[.queries[] | .client.name]'"
+    assert_output '[null,"new-name.ftl","old-name.ftl","old-name.ftl"]'
+    run names "&client_ip=127.0.0.20$1"
+    assert_output "$(names "$1")"
+  }
+  run patch '{"webserver": {"api": {"excludeClients": []}}}'
+  assert_success
+
+  run set_name old-name.ftl
+  assert_success
+  dig A one.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  run wait_for_name old-name.ftl
+  assert_success
+  dig A two.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  dig A held.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=20 3>&- > /dev/null &
+  held=$!
+  for i in $(seq 1 30); do
+    [[ "$(names "" | jq -r '.[0][0]')" == "held.names.ftl" ]] && break
+    sleep 0.2
+  done
+  run set_name new-name.ftl
+  assert_success
+  kill -SIGRTMIN+4 "$(cat /run/pihole-FTL.pid)"
+  run wait_for_name new-name.ftl
+  assert_success
+  touch /tmp/held.names.release
+  wait "${held}"
+  dig A three.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=2 > /dev/null
+  check_names ""
+
+  # The final export on termination stores them with these names, the import
+  # gives them back. On disk and in memory alike
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  # Plus two queries of 127.0.0.21 with IDs right after each other, stored
+  # with different names
+  now=$(date +%s)
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"INSERT OR IGNORE INTO client_by_id (ip, name) VALUES ('127.0.0.21', 'row-a.ftl'), ('127.0.0.21', 'row-b.ftl'); INSERT OR IGNORE INTO domain_by_id (domain) VALUES ('a.rows.ftl'), ('b.rows.ftl'); INSERT INTO query_storage (timestamp, type, status, domain, client) SELECT $((now - 10)) + (n = 'b'), 1, 3, (SELECT id FROM domain_by_id WHERE domain = n || '.rows.ftl'), (SELECT id FROM client_by_id WHERE ip = '127.0.0.21' AND name = 'row-' || n || '.ftl') FROM (SELECT 'a' AS n UNION ALL SELECT 'b') ORDER BY n;\""
+  assert_success
+  logsize_import=$(stat -c%s /var/log/pihole/FTL.log)
+  # The names come from the import, this instance resolves none. The API
+  # writes above put some of the first instance's settings into pihole.toml
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=true FTLCONF_resolver_resolveIPv4=false FTLCONF_resolver_refreshNames=NONE /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
+  for disk in "" "&disk=true"; do
+    check_names "${disk}"
+    run bash -c "curl -s '127.0.0.1/api/queries?domain=*.rows.ftl${disk}' | jq -c '[.queries[] | [.domain, .client.name]]'"
+    assert_output '[["b.rows.ftl","row-b.ftl"],["a.rows.ftl","row-a.ftl"]]'
+  done
+  # And so do the exclusion regexes
+  run patch '{"webserver": {"api": {"excludeClients": ["^old-name\\.ftl$"]}}}'
+  assert_success
+  for disk in "" "&disk=true"; do
+    run names "${disk}"
+    assert_output '[["three.names.ftl","new-name.ftl"],["one.names.ftl",null]]'
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  kill "${upstream}" || true
+  rm -f /tmp/held.names.release
+  cp -p /tmp/pihole.toml.names /etc/pihole/pihole.toml
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE client IN (SELECT id FROM client_by_id WHERE ip IN ('127.0.0.20', '127.0.0.21')); DELETE FROM client_by_id WHERE ip IN ('127.0.0.20', '127.0.0.21'); DELETE FROM domain_by_id WHERE domain GLOB '*.names.ftl' OR domain GLOB '*.rows.ftl';"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.names.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.names.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.names.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.names.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
 @test "Sessions are restored and earlier messages flushed when FTL starts" {
   # An expired session is deleted and a valid one restored and removed from
   # the database. Of the messages only those of type TELEPORTER_SKIPPED stay
