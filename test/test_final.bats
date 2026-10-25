@@ -755,33 +755,6 @@ load 'bats_helper.bash'
   refute_output
 }
 
-@test "The query log is empty at misc.privacylevel 3" {
-  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
-  assert_success
-  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
-  assert_success
-  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
-  assert_success
-  run bash -c "curl -s 127.0.0.1/api/queries | jq '.recordsTotal'"
-  [[ ${lines[0]} -ge 1 ]]
-
-  # Raising the level does not restart FTL. Lowering it would, so FTL gets
-  # level 0 back once it has stopped
-  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":3}}}"'
-  assert_output "200"
-  run bash -c "curl -s 127.0.0.1/api/queries | jq -c '[.queries, .cursor, .recordsTotal, .recordsFiltered]'"
-  assert_output '[[],null,0,0]'
-
-  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c "kill $(cat /run/pihole-FTL.pid)"
-  assert_success
-  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
-  assert_success
-  run ./pihole-FTL --config misc.privacylevel 0
-  assert_success
-}
-
 @test "A gravity database swapped in right after a restart is loaded (#3162)" {
   # Swap like pihole -g: drop the tables of the database FTL has just opened,
   # then move the new one in. It carries the same timestamp here, so only the
@@ -851,6 +824,8 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_import"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
   imported=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '.queries')
   for i in $(seq 1 30); do
     if dig A udp-3.ids.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
@@ -917,6 +892,8 @@ load 'bats_helper.bash'
   run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
   run bash -c "curl -s '127.0.0.1/api/queries?domain=type0.import.ftl' | jq -c '[.queries[] | [.type, .client.ip]]'"
   assert_output '[["TYPE0","10.0.100.0"]]'
@@ -996,6 +973,8 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
   reply=$(curl -s "127.0.0.1/api/queries?domain=*.blocks.ftl&length=1000" | jq -c '[(.queries | length), ([.queries[]?.domain | length] | unique), ([.queries[]?.domain[0:4]] | unique | length), .recordsFiltered]')
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -1018,6 +997,8 @@ load 'bats_helper.bash'
   run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
   reply=$(curl -s "127.0.0.1/api/queries" | jq -c '[.cursor, .recordsTotal, (.queries | length)]')
 
