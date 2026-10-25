@@ -61,7 +61,17 @@ size_t __attribute__((pure)) client_name_at(const unsigned int clientID, const s
 // Insert an entry at position i, false if the history is full
 static bool insert_entry(const unsigned int i, const unsigned int clientID, const int64_t until_id, const size_t namepos)
 {
-	if(n_entries >= NAME_HISTORY_MAX || namepos > UINT32_MAX)
+	if(n_entries >= NAME_HISTORY_MAX)
+	{
+		// Once per run, later renames are not remembered from here on
+		static bool warned = false;
+		if(!warned)
+			log_warn("Client name history is full (%u entries), further renames are not remembered",
+			         NAME_HISTORY_MAX);
+		warned = true;
+		return false;
+	}
+	if(namepos > UINT32_MAX)
 		return false;
 	if(n_entries == cap_entries)
 	{

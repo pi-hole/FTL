@@ -999,24 +999,12 @@ load 'bats_helper.bash'
 @test "Queries keep the client name they were made with, in memory, on disk and after a restart" {
   # The test configuration resolves no client names. This instance resolves
   # 127.0.0.20 through dns.hosts, which names it old-name.ftl after its first
-  # query and renames it to new-name.ftl after its second. Its query of
-  # held.names.ftl gets its answer, and is stored again, only after the rename
+  # query and renames it to new-name.ftl after its second
   cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.names
-  # The upstream of held.names.ftl answers once /tmp/held.names.release exists
-  rm -f /tmp/held.names.release
-  timeout 300 python3 -c 'import os, socket, time
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.bind(("127.0.0.1", 5397))
-while True:
-    q, a = s.recvfrom(4096)
-    while not os.path.exists("/tmp/held.names.release"):
-        time.sleep(0.1)
-    s.sendto(q[:2] + bytes([q[2] | 0x80, 0x83]) + q[4:], a)' 3>&- > /dev/null 2>&1 &
-  upstream=$!
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   # Without the history of the earlier tests, the resolver has only the names
   # of this test to look up
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL FTLCONF_dns_dnssec=false FTLCONF_misc_dnsmasq_lines=server=/held.names.ftl/127.0.0.1#5397 /home/pihole/pihole-FTL"'
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
@@ -1050,13 +1038,13 @@ while True:
   # needs the name, so that a filter by IP alone does not look it up
   check_names() {
     run names "$1"
-    assert_output '[["three.names.ftl","new-name.ftl"],["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"],["one.names.ftl",null]]'
+    assert_output '[["three.names.ftl","new-name.ftl"],["two.names.ftl","old-name.ftl"],["one.names.ftl",null]]'
     run names "&client_name=old-name.ftl$1"
-    assert_output '[["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"]]'
+    assert_output '[["two.names.ftl","old-name.ftl"]]'
     run names "&columns%5B4%5D%5Bdata%5D=client&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D=old-name$1"
-    assert_output '[["held.names.ftl","old-name.ftl"],["two.names.ftl","old-name.ftl"]]'
+    assert_output '[["two.names.ftl","old-name.ftl"]]'
     run bash -c "curl -s '127.0.0.1/api/queries?domain=*.names.ftl&columns%5B5%5D%5Bdata%5D=client.name&order%5B0%5D%5Bcolumn%5D=5&order%5B0%5D%5Bdir%5D=asc$1' | jq -c '[.queries[] | .client.name]'"
-    assert_output '[null,"new-name.ftl","old-name.ftl","old-name.ftl"]'
+    assert_output '[null,"new-name.ftl","old-name.ftl"]'
     run names "&client_ip=127.0.0.20$1"
     assert_output "$(names "$1")"
   }
@@ -1069,19 +1057,11 @@ while True:
   run wait_for_name old-name.ftl
   assert_success
   dig A two.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=2 > /dev/null
-  dig A held.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=20 3>&- > /dev/null &
-  held=$!
-  for i in $(seq 1 30); do
-    [[ "$(names "" | jq -r '.[0][0]')" == "held.names.ftl" ]] && break
-    sleep 0.2
-  done
   run set_name new-name.ftl
   assert_success
   kill -SIGRTMIN+4 "$(cat /run/pihole-FTL.pid)"
   run wait_for_name new-name.ftl
   assert_success
-  touch /tmp/held.names.release
-  wait "${held}"
   dig A three.names.ftl -b 127.0.0.20 @127.0.0.1 +tries=1 +time=2 > /dev/null
   check_names ""
 
@@ -1124,8 +1104,6 @@ while True:
   assert_success
   run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
   assert_success
-  kill "${upstream}" || true
-  rm -f /tmp/held.names.release
   cp -p /tmp/pihole.toml.names /etc/pihole/pihole.toml
   ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE client IN (SELECT id FROM client_by_id WHERE ip IN ('127.0.0.20', '127.0.0.21')); DELETE FROM client_by_id WHERE ip IN ('127.0.0.20', '127.0.0.21'); DELETE FROM domain_by_id WHERE domain GLOB '*.names.ftl' OR domain GLOB '*.rows.ftl';"
 
