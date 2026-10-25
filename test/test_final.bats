@@ -1466,3 +1466,20 @@ three.rename.ftl|new-rename.ftl"
   printf "cursor, recordsTotal, rows: %s\n" "${reply}"
   assert_equal "${reply}" "[null,0,0]"
 }
+
+@test "The query log gives the same answers from memory and from disk" {
+  # test/query_log_diff.sh starts FTL on a database of its own, on ports of its
+  # own, and sends every request to both. Too slow for the emulated riscv64
+  # runner, like the API tests
+  if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
+    skip "too slow on ${CI_ARCH}"
+  fi
+  run bash -c "QUERY_LOG_DIFF_SUITE=1 QUERY_LOG_DIFF_USER=pihole test/query_log_diff.sh /home/pihole/pihole-FTL /etc/pihole/query-log-diff --strict-names"
+  assert_success
+
+  # The script starts FTL without the FTLCONF_ variables of test/run.sh
+  run bash -c 'cat /etc/pihole/query-log-diff/FTL.*.log | grep "WARNING:" | grep -v -E "(Linux capability CAP_[A-Z_]+ is not available)|(CAP_SYS_NICE required)|(FTLCONF_webserver_api_(password|excludeDomains|excludeClients) has no value)|(No database file found, creating new)"'
+  refute_output
+  run bash -c 'cat /etc/pihole/query-log-diff/FTL.*.log | grep -E "ERROR: |CRIT:"'
+  refute_output
+}
