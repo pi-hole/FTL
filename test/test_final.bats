@@ -215,6 +215,43 @@ load 'bats_helper.bash'
   assert_output "2"
 }
 
+@test "The reply to a duplicate of a query in flight is not logged as an unknown reply" {
+  # test/slow_upstream.py answers delayed.ftl after 1.5 s. dnsmasq forwards
+  # the first of two identical queries and attaches the second one to it
+  python3 test/slow_upstream.py 5559 1.5 > "${BATS_TEST_TMPDIR}/slow_upstream.out" 2>&1 3>&- &
+  pid=$!
+  for i in $(seq 1 50); do
+    grep -q ready "${BATS_TEST_TMPDIR}/slow_upstream.out" && break
+    sleep 0.1
+  done
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  dnsmasq_before=$(stat -c%s /var/log/pihole/pihole.log)
+  dig +short +tries=1 +time=5 dup.delayed.ftl @127.0.0.1 > "${BATS_TEST_TMPDIR}/first.out" &
+  first=$!
+  dig +short +tries=1 +time=5 dup.delayed.ftl @127.0.0.1 > "${BATS_TEST_TMPDIR}/second.out" &
+  second=$!
+  wait "${first}" "${second}" || true
+  kill "${pid}"
+  # Queries move into the in-memory database once per second
+  sleep 2
+
+  answers="$(cat "${BATS_TEST_TMPDIR}/first.out" "${BATS_TEST_TMPDIR}/second.out")"
+  duplicates="$(tail -c +$((dnsmasq_before + 1)) /var/log/pihole/pihole.log | grep -c 'reply query is duplicate' || true)"
+  # debug.flags, which the warning needs, also logs each line FTL gets from
+  # dnsmasq
+  hooked="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Processing FTL hook from .*name: "query"' || true)"
+  unknown="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Unknown upstream REPLY' || true)"
+  statuses="$(curl -s '127.0.0.1/api/queries?domain=dup.delayed.ftl' | jq -c '[.queries[].status] | sort')"
+  printf "answers: %s, duplicate replies: %s, hooked: %s, unknown replies: %s, statuses: %s\n" \
+         "${answers//$'\n'/ }" "${duplicates}" "${hooked}" "${unknown}" "${statuses}"
+  [[ "${answers}" == $'192.168.7.1\n192.168.7.1' ]]
+  [[ "${duplicates}" == "1" ]]
+  [[ "${hooked}" == "1" ]]
+  [[ "${unknown}" == "0" ]]
+  # The second one keeps the status it got when dnsmasq attached it
+  [[ "${statuses}" == '["FORWARDED","IN_PROGRESS"]' ]]
+}
+
 @test "Setting ntp.sync.interval to 0 disables the NTP sync right away" {
   # FTL restarts and does not start the sync at all, instead of a sync that
   # is already running going on without any pause between the rounds
