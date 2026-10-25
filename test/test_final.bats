@@ -1034,7 +1034,7 @@ first_start_stop() {
   run bash -c "curl -s 127.0.0.1/api/stats/query_types | jq '.types.OTHER'"
   assert_output "${other}"
   tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.type0.log
-  disk=$(grep -oE 'Imported [0-9]+ queries from the on-disk database' /tmp/FTL.type0.log | grep -oE '[0-9]+')
+  disk=$(grep -oE 'from the long-term database \([0-9]+ rows read' /tmp/FTL.type0.log | grep -oE '[0-9]+')
   shm=$(grep -oE 'Imported [0-9]+ queries from the long-term database' /tmp/FTL.type0.log | grep -oE '[0-9]+')
   printf "imported from disk: %s, into shared memory: %s\n" "${disk}" "${shm}"
   [[ -n "${disk}" ]]

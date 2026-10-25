@@ -36,6 +36,8 @@
 
 static sqlite3 *_memdb = NULL;
 static bool disk_attached = false;
+// The database thread's own connection to pihole-FTL.db, kept open
+static sqlite3 *querydb = NULL;
 // Highest query ID in the disk database, the export continues above it.
 // Guarded by the mutex of the in-memory database connection
 static int64_t exported_maxid = -1;
@@ -174,8 +176,33 @@ static int step_and_count(sqlite3 *db, sqlite3_stmt *stmt, int64_t *changes, sql
 }
 
 // Private prototypes
-static bool count_queries_on_disk(sqlite3 *memdb);
+static bool count_queries_on_disk(void);
 static void init_disk_db_idx(sqlite3 *memdb);
+
+// Open the database thread's connection to pihole-FTL.db, which the startup
+// import reads through. Memory-mapped I/O spares it a pread() per page
+static bool open_query_database(void)
+{
+	if(querydb != NULL)
+		return true;
+
+	int rc = sqlite3_open_v2(config.files.database.v.s, &querydb, SQLITE_OPEN_READWRITE, NULL);
+	if(rc != SQLITE_OK)
+	{
+		log_err("Cannot open the query database %s: %s", config.files.database.v.s, sqlite3_errstr(rc));
+		sqlite3_close(querydb);
+		querydb = NULL;
+		checkFTLDBrc(rc);
+		return false;
+	}
+
+	if((rc = sqlite3_busy_handler(querydb, sqliteBusyCallback, NULL)) != SQLITE_OK)
+		log_warn("Cannot set the busy handler of the query database: %s", sqlite3_errstr(rc));
+	if((rc = sqlite3_exec(querydb, "PRAGMA mmap_size = 268435456", NULL, NULL, NULL)) != SQLITE_OK)
+		log_warn("Cannot enable mmap for the query database: %s", sqlite3_errstr(rc));
+
+	return true;
+}
 
 // Initialize in-memory database, add queries table and indices
 // The flow of queries is as follows:
@@ -498,8 +525,8 @@ bool init_memory_database(void)
 
 		// Try to import queries from long-term database if available
 		// Skip if we are not supposed to load queries from disk
-		if(config.database.DBimport.v.b)
-			count_queries_on_disk(_memdb);
+		if(config.database.DBimport.v.b && open_query_database())
+			count_queries_on_disk();
 	}
 	else
 		log_err("init_memory_database(): Failed to attach disk database");
@@ -512,6 +539,14 @@ bool init_memory_database(void)
 // Close memory database
 void close_memory_database(void)
 {
+	if(querydb != NULL)
+	{
+		const int rc = sqlite3_close(querydb);
+		if(rc != SQLITE_OK)
+			log_err("Closing the query database failed: %s", sqlite3_errstr(rc));
+		querydb = NULL;
+	}
+
 	// Return early if there is no memory database to be closed
 	if(_memdb == NULL)
 		return;
@@ -582,6 +617,8 @@ void interrupt_memdb(void)
 {
 	if(_memdb != NULL)
 		sqlite3_interrupt(_memdb);
+	if(querydb != NULL)
+		sqlite3_interrupt(querydb);
 }
 
 // Get memory usage and size of in-memory tables
@@ -762,7 +799,7 @@ bool detach_database(sqlite3* db, const char **message, const char *alias)
 
 // Get number of queries either in the mem or in the on-disk database
 // This routine is used by the API routines.
-static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, double *earliest_timestamp)
+static uint64_t get_number_of_queries_in_DB(sqlite3 *db, double *earliest_timestamp)
 {
 	int rc = 0;
 	uint64_t num = 0;
@@ -774,18 +811,12 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 
 	// Two subqueries so that COUNT(*) and MIN() each get SQLite's fast path,
 	// combined in one SELECT they fall back to reading every row
-	const size_t buflen = 64 + 2*strlen(tablename);
-	char *querystr = calloc(buflen, sizeof(char));
-	snprintf(querystr, buflen, "SELECT (SELECT COUNT(*) FROM %s), (SELECT MIN(timestamp) FROM %s)",
-	         tablename, tablename);
-
-	rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "SELECT (SELECT COUNT(*) FROM query_storage), "
+	                               "(SELECT MIN(timestamp) FROM query_storage)", -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
 		if(rc != SQLITE_BUSY)
-			log_err("get_number_of_queries_in_DB(%s): Prepare error: %s",
-			        tablename, sqlite3_errstr(rc));
-		free(querystr);
+			log_err("get_number_of_queries_in_DB(): Prepare error: %s", sqlite3_errstr(rc));
 		return 0;
 	}
 	rc = sqlite3_step(stmt);
@@ -797,7 +828,6 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 		*earliest_timestamp = sqlite3_column_double(stmt, 1);
 	}
 	sqlite3_finalize(stmt);
-	free(querystr);
 
 	return num;
 }
@@ -805,6 +835,7 @@ static uint64_t get_number_of_queries_in_DB(sqlite3 *db, const char *tablename, 
 static double import_from = 0.0;
 static double import_until = 0.0;
 static int counted_queries = 0;
+static sqlite3_int64 import_min_id = 0;
 
 // The history window of the import at startup
 void get_import_window(double *from, double *until)
@@ -827,20 +858,28 @@ static unsigned int get_export_floor(void)
 	return idx <= counters->queries ? idx : 0;
 }
 
-// Start transaction and count number of queries to be imported from disk.
-// We keep the transaction open so that no new queries are written to the disk
-// database until we have copied the data into the in-memory database in
-// import_queries_from_disk() below. Note that this function is subsequently
-// called from the database thread instead of the main process thread.
-static bool count_queries_on_disk(sqlite3 *memdb)
+// Count the queries of the history window on disk and reserve their slots in
+// shared memory, the import fills them in the database thread. Live queries
+// coming in meanwhile take the slots above
+static bool count_queries_on_disk(void)
 {
 	// Set time range for counting queries
 	import_until = double_time();
 	import_from = import_until - config.webserver.api.maxHistory.v.ui;
 
-	counted_queries = db_query_int_from_until(memdb, "SELECT COUNT(*) FROM disk.query_storage "
-	                                                 "WHERE timestamp BETWEEN ? AND ?",
-	                                                 import_from, import_until);
+	// The import reads the IDs from the lowest one of the window upwards
+	counted_queries = DB_FAILED;
+	sqlite3_stmt *stmt = NULL;
+	if(sqlite3_prepare_v2(querydb, "SELECT COUNT(*), IFNULL(MIN(id), 0) FROM query_storage "
+	                               "WHERE timestamp BETWEEN ?1 AND ?2", -1, &stmt, NULL) == SQLITE_OK &&
+	   sqlite3_bind_double(stmt, 1, import_from) == SQLITE_OK &&
+	   sqlite3_bind_double(stmt, 2, import_until) == SQLITE_OK &&
+	   sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		counted_queries = sqlite3_column_int(stmt, 0);
+		import_min_id = sqlite3_column_int64(stmt, 1);
+	}
+	sqlite3_finalize(stmt);
 	log_debug(DEBUG_DATABASE, "count_queries_on_disk(): Going to import %i queries from disk database",
 	          counted_queries);
 
@@ -980,104 +1019,6 @@ bool import_linking_tables_from_disk(void)
 	}
 
 	return true;
-}
-
-// Read queries from the on-disk database into the in-memory database (after
-// restart, etc.). A transaction is already running when this function is called.
-bool import_queries_from_disk(void)
-{
-	// Get time stamp 24 hours (or what was configured) in the past
-	bool okay = false;
-	const char *querystr = "INSERT INTO query_storage SELECT * FROM disk.query_storage WHERE timestamp BETWEEN ? AND ?";
-
-	// Begin transaction
-	int rc;
-	sqlite3 *memdb = get_memdb();
-	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Cannot begin transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Prepare SQLite3 statement
-	sqlite3_stmt *stmt = NULL;
-	if((rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): SQL error prepare: %s", sqlite3_errstr(rc));
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// Bind lower limit
-	if((rc = sqlite3_bind_double(stmt, 1, import_from)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Failed to bind type mintime: %s", sqlite3_errstr(rc));
-		sqlite3_finalize(stmt);
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// Bind upper limit
-	if((rc = sqlite3_bind_double(stmt, 2, import_until)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Failed to bind type now: %s", sqlite3_errstr(rc));
-		sqlite3_finalize(stmt);
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// sqlite3_interrupt() has no effect on a statement that is not running
-	// yet, so do not start the import when FTL is already terminating
-	if(killed)
-	{
-		sqlite3_finalize(stmt);
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// Perform step
-	if((rc = sqlite3_step(stmt)) == SQLITE_DONE)
-		okay = true;
-	else if(killed)
-	{
-		// SQLite has rolled the transaction back when the statement was
-		// interrupted, and the memory database is closed right after us
-		sqlite3_finalize(stmt);
-		return false;
-	}
-	else
-		log_err("import_queries_from_disk(): Failed to import queries: %s",
-		        sqlite3_errstr(rc));
-	const int imported_queries = sqlite3_changes(memdb);
-	log_debug(DEBUG_DATABASE, "Imported %i rows from disk.query_storage", imported_queries);
-
-	if(!killed && imported_queries != counted_queries)
-		log_warn("Database %s has changed during import: Expected to import %i queries, but only imported %i. You may observe memory error warnings.",
-		         config.files.database.v.s, counted_queries, imported_queries);
-
-	// Finalize statement
-	sqlite3_finalize(stmt);
-
-	// Import linking tables and current AUTOINCREMENT values
-	if(!import_linking_tables(memdb))
-		return false;
-
-	// End transaction
-	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_queries_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// Get number of queries on disk before detaching
-	memdb_queries_count = imported_queries;
-	memdb_earliest_timestamp = import_from;
-	diskdb_queries_count = get_number_of_queries_in_DB(memdb, "disk.query_storage", &diskdb_earliest_timestamp);
-
-	log_info("Imported %"PRIu64" queries from the on-disk database (it has %"PRIu64" rows)", memdb_queries_count, diskdb_queries_count);
-
-	return okay;
 }
 
 // Export in-memory queries to disk - either due to periodic dumping (final =
@@ -1766,14 +1707,15 @@ bool create_addinfo_table(sqlite3 *db)
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
-	// Actually read queries from disk into memory
-	import_queries_from_disk();
+	// New queries reference the rows of the linking tables by their IDs on
+	// disk, so the in-memory database needs these rows as well
+	import_linking_tables_from_disk();
 
-	// Prepare request
-	// Filtering to the history window has already happened in
-	// import_queries_from_disk(). The columns of the queries view plus the
-	// client name, in the order of the IDs for the client name history. As
-	// in the view, an ID without a row in its linking table reads as NULL
+	// The columns of the queries view plus the client name, in the order of
+	// the IDs for the client name history. As in the view, an ID without a
+	// row in its linking table reads as NULL. The rows of the history window
+	// are read from the lowest ID of the window upwards, the unary plus keeps
+	// SQLite from reading them by the timestamp index and sorting them
 	const char *querystr = "SELECT q.id, q.timestamp, q.type, q.status, "
 	                              "CASE typeof(q.domain) WHEN 'integer' THEN d.domain ELSE q.domain END, "
 	                              "CASE typeof(q.client) WHEN 'integer' THEN c.ip ELSE q.client END, "
@@ -1785,32 +1727,54 @@ void DB_read_queries(void)
 	                       "LEFT JOIN client_by_id c ON q.client = c.id "
 	                       "LEFT JOIN forward_by_id f ON q.forward = f.id "
 	                       "LEFT JOIN addinfo_by_id a ON q.additional_info = a.id "
+	                       "WHERE q.id >= ?1 AND +q.timestamp BETWEEN ?2 AND ?3 "
 	                       "ORDER BY q.id";
 
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
-	if(FTLDBerror() || killed)
+	if(FTLDBerror() || killed || querydb == NULL)
 		return;
+
+	// The rows on disk, for disk=true and /api/info/database, also when the
+	// import below fails
+	diskdb_queries_count = get_number_of_queries_in_DB(querydb, &diskdb_earliest_timestamp);
+
+	// Nothing to read when no query on disk is in the history window. The
+	// lowest ID of the window would be 0 then, the whole table
+	if(counted_queries == 0)
+	{
+		log_info("Imported 0 queries from the long-term database (0 rows read, it has %"PRIu64")",
+		         diskdb_queries_count);
+		return;
+	}
 
 	log_info("Parsing queries in database");
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *stmt = NULL;
-	sqlite3 *memdb = get_memdb();
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(querydb, querystr, -1, &stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
 		log_err("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
 		return;
 	}
+	if((rc = sqlite3_bind_int64(stmt, 1, import_min_id)) != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 2, import_from)) != SQLITE_OK ||
+	   (rc = sqlite3_bind_double(stmt, 3, import_until)) != SQLITE_OK)
+	{
+		log_err("DB_read_queries() - Failed to bind the window: %s", sqlite3_errstr(rc));
+		sqlite3_finalize(stmt);
+		return;
+	}
 
 	// Loop through returned database rows
-	size_t imported_queries = 0;
+	size_t imported_queries = 0, read_rows = 0;
 	while((rc = sqlite3_step(stmt)) == SQLITE_ROW)
 	{
 		// Cancellation-point before the shared memory is locked: the
 		// main thread tears down what the loop below uses once we are gone
 		BREAK_IF_KILLED();
+		read_rows++;
 
 		const sqlite3_int64 dbID = sqlite3_column_int64(stmt, 0);
 		const double queryTimeStamp = sqlite3_column_double(stmt, 1);
@@ -2111,7 +2075,8 @@ void DB_read_queries(void)
 	if(killed)
 		log_info("Aborted import after %zu queries, FTL is shutting down", imported_queries);
 	else if( rc == SQLITE_DONE )
-		log_info("Imported %zu queries from the long-term database", imported_queries);
+		log_info("Imported %zu queries from the long-term database (%zu rows read, it has %"PRIu64")",
+		         imported_queries, read_rows, diskdb_queries_count);
 	else
 		log_err("DB_read_queries() - SQL error step: %s", sqlite3_errstr(rc));
 
