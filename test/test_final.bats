@@ -923,6 +923,72 @@ load 'bats_helper.bash'
   refute_output
 }
 
+@test "Rows the history import skips leave nothing behind in shared memory" {
+  # One row for each check that makes the import skip a row, next to two rows
+  # it imports, type 0 being the lowest mapped type. A domain or client ID
+  # without a row in its linking table reads as NULL. Only the two imported
+  # rows are counted, and only the forwarded one adds its upstream, not the
+  # one skipped for its negative reply time. This runs on a copy of the
+  # database that holds only these rows
+  db=/etc/pihole/import-skip.db
+  rm -f "${db}"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" ".backup ${db}"
+  assert_success
+  chown pihole:pihole "${db}"
+  now=$(date +%s)
+  sql="DELETE FROM query_storage; DELETE FROM aliasclient;
+  CREATE TEMP TABLE r (domain TEXT, ip TEXT, type INTEGER, status INTEGER, reply INTEGER, rtime REAL, dnssec INTEGER, fwd TEXT, missing TEXT);
+  INSERT INTO r VALUES
+    ('imported-a.import-skip.ftl',    '10.0.201.1',  1,     2,  4,  0.01, 0,  '10.0.201.54#53', NULL),
+    ('imported-0.import-skip.ftl',    '10.0.201.2',  0,     3,  1,  0.0,  0,  NULL, NULL),
+    ('type-50.import-skip.ftl',       '10.0.201.3',  50,    2,  4,  0.01, 0,  NULL, NULL),
+    ('type-negative.import-skip.ftl', '10.0.201.4',  -1,    2,  4,  0.01, 0,  NULL, NULL),
+    ('type-65636.import-skip.ftl',    '10.0.201.5',  65636, 2,  4,  0.01, 0,  NULL, NULL),
+    ('status.import-skip.ftl',        '10.0.201.6',  1,     99, 4,  0.01, 0,  NULL, NULL),
+    ('reply.import-skip.ftl',         '10.0.201.7',  1,     2,  99, 0.01, 0,  NULL, NULL),
+    ('dnssec.import-skip.ftl',        '10.0.201.8',  1,     2,  4,  0.01, 99, NULL, NULL),
+    ('reply-time.import-skip.ftl',    '10.0.201.9',  1,     2,  4,  -1.0, 0,  '10.0.201.53#53', NULL),
+    ('domain.import-skip.ftl',        '10.0.201.10', 1,     2,  4,  0.01, 0,  NULL, 'domain'),
+    ('client.import-skip.ftl',        '10.0.201.11', 1,     2,  4,  0.01, 0,  NULL, 'client');
+  INSERT OR IGNORE INTO domain_by_id (domain) SELECT domain FROM r;
+  INSERT OR IGNORE INTO client_by_id (ip, name) SELECT ip, '' FROM r;
+  INSERT OR IGNORE INTO forward_by_id (forward) SELECT fwd FROM r WHERE fwd IS NOT NULL;
+  INSERT INTO query_storage (timestamp, type, status, domain, client, forward, reply_type, reply_time, dnssec)
+    SELECT $((now - 60)), r.type, r.status,
+           CASE r.missing WHEN 'domain' THEN 2147483000 ELSE d.id END,
+           CASE r.missing WHEN 'client' THEN 2147483000 ELSE c.id END,
+           f.id, r.reply, r.rtime, r.dnssec
+    FROM r JOIN domain_by_id d ON d.domain = r.domain
+           JOIN client_by_id c ON c.ip = r.ip AND c.name = ''
+           LEFT JOIN forward_by_id f ON f.forward = r.fwd;"
+  run ./pihole-FTL sqlite3 "${db}" ".timeout 5000" "${sql}"
+  assert_success
+
+  # The counters are logged once the import has closed its gaps
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "su pihole -s /bin/sh -c 'FTLCONF_files_database=${db} /home/pihole/pihole-FTL'"
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  sums=$(curl -s 127.0.0.1/api/stats/summary | jq -c '[.queries.total, ([.queries.status[]] | add), ([.queries.replies[]] | add)]')
+  clients=$(curl -s '127.0.0.1/api/stats/top_clients?count=100000' | jq -c '[.clients[] | select(.ip | startswith("10.0.201.")) | [.ip, .count]] | sort')
+  upstreams=$(tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -oE 'New upstream server: 10\.0\.201\.[0-9]+:[0-9]+' || true)
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  rm -f "${db}" "${db}-journal" "${db}-wal" "${db}-shm"
+
+  # Every query has one status and one reply type, and the skipped rows count
+  # neither for a client nor add an upstream
+  printf "total, status and reply sums: %s\nclients: %s\nupstreams: %s\n" "${sums}" "${clients}" "${upstreams}"
+  assert_equal "$(jq 'unique | length' <<< "${sums}")" "1"
+  assert_equal "${clients}" '[["10.0.201.1",1],["10.0.201.2",1]]'
+  assert_equal "${upstreams}" "New upstream server: 10.0.201.54:53"
+}
+
 @test "Sessions are restored and earlier messages flushed when FTL starts" {
   # An expired session is deleted and a valid one restored and removed from
   # the database. Of the messages only those of type TELEPORTER_SKIPPED stay
