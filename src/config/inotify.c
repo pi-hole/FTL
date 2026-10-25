@@ -170,7 +170,8 @@ static bool scan_file(FILE *file, const char *string, long *last_size, size_t *l
 		fseek(file, *last_size, SEEK_SET);
 		// Read new lines
 		bool found = false;
-		while(getline(line, len, file) != -1)
+		ssize_t n;
+		while((n = getline(line, len, file)) != -1)
 		{
 			// Check for target string
 			log_debug(DEBUG_INOTIFY, "Read new line: \"%s\"", *line);
@@ -179,20 +180,23 @@ static bool scan_file(FILE *file, const char *string, long *last_size, size_t *l
 				found = true;
 				break;
 			}
+
+			// Move the scan position past complete lines only. A last line
+			// without a newline may be completed by a later write, the next
+			// scan reads it again from its start
+			if((*line)[n - 1] == '\n')
+				*last_size += n;
 		}
 		if(found)
 			return true;
-
-		// Update last_size position
-		*last_size = ftell(file);
 	}
 
 	return false;
 }
 
 /**
- * @brief Waits for a specific string to appear in a file, scanning the last N
- * lines and monitoring for new content.
+ * @brief Waits for a specific string to appear in a file, scanning it from a
+ * byte offset and monitoring it for new content.
  *
  * This function uses inotify to monitor the file for modifications and checks
  * any new lines appended to the file for the target string, waiting up to the
@@ -202,8 +206,8 @@ static bool scan_file(FILE *file, const char *string, long *last_size, size_t *l
  * @param string The string to search for within the file.
  * @param timeout The maximum time to wait (in seconds) for the string to appear
  * in the file.
- * @param initial_filesize The initial size of the file to start reading from.
- * If set to 0, the function will start reading from the end of the file.
+ * @param initial_filesize The byte offset to start reading from: 0 reads the
+ * whole file, a negative value starts at the end of the file.
  * @return true if the string is found within the timeout period, false otherwise.
  */
 bool wait_for_string_in_file(const char *filename, const char *string, unsigned int timeout, long initial_filesize)
@@ -267,6 +271,11 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		fclose(file);
 		return false;
 	}
+
+	// Scan again now that the watch is in place. The watch does not report
+	// lines appended after the initial scan reached the end of the file and
+	// before it was added
+	found = scan_file(file, string, &scan_start, &len, &line);
 
 	// Initialize time tracking
 	struct timespec ts;
