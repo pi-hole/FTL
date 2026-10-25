@@ -1169,6 +1169,11 @@ setup() {
   assert_success
 }
 
+@test "Regex Test 60: Approximate matching, position with merged parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" ".{#1}{+1}"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
