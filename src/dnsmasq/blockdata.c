@@ -91,6 +91,11 @@ static struct blockdata *blockdata_alloc_real(int fd, char *data, size_t len)
   struct blockdata **prev = &ret;
   size_t blen;
   int fail;
+
+  /* Zero length still gives one empty block, blockdata_alloc(NULL, 0)
+     is how callers start a chain to add to with blockdata_expand(). */
+  if (len == 0)
+    return new_block();
   
   for (fail = 0; len != 0; len -= blen)
     {
@@ -252,10 +257,9 @@ void blockdata_write(struct blockdata *block, size_t len, int fd)
     }
 }
 
-/* NOTE: this can fail (NULL return) for three possible reasons.
-   1) len == 0 - trivial
-   2) end of stream. 
-   3) malloc failure when allocating blocks.
+/* NOTE: this can fail (NULL return) for two possible reasons.
+   1) end of stream. 
+   2) malloc failure when allocating blocks.
 
    Unless EOF is encountered, len octets will always be read from the stream,
    even in memory allocation fails.
