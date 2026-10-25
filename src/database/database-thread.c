@@ -153,12 +153,9 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
-	// Asynchronously import queries from the on-disk database. The linking
-	// tables are imported in any case as new queries continue their IDs
+	// Asynchronously import queries from the on-disk database
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
-	else
-		import_linking_tables_from_disk();
 
 	// The import has put older queries in front of the ones that arrived
 	// meanwhile
@@ -250,9 +247,8 @@ void *DB_thread(void *val)
 			lastDBsave = now - now%config.database.DBinterval.v.ui;
 
 			// Save data to database
-			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(export_queries_to_disk(false));
-			DBCLOSE_OR_BREAK();
+			BREAK_IF_KILLED();
 
 			// Parse neighbor cache (fill network table)
 			set_event(PARSE_NEIGHBOR_CACHE);

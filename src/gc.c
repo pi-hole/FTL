@@ -439,9 +439,9 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			mintime = now - REPLY_TIMEOUT;
 
 		// Keep the queries the export has not stored yet, but no longer than
-		// a day past the cutoff. Nothing is stored with a broken database or
-		// database.maxDBdays 0, nor queries recorded at the maximum privacy
-		// level
+		// a day past the cutoff. Nothing is stored with a broken database,
+		// database.maxDBdays 0 or a query database that could not be opened,
+		// nor queries recorded at the maximum privacy level
 		if(!FTLDBerror() && config.database.maxDBdays.v.ui > 0)
 		{
 			const time_t drop_until = mintime - (time_t)(MAXLOGAGE*3600);

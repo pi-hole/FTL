@@ -38,42 +38,10 @@ static sqlite3 *_memdb = NULL;
 static bool disk_attached = false;
 // The database thread's own connection to pihole-FTL.db, kept open
 static sqlite3 *querydb = NULL;
-// Highest query ID in the disk database, the export continues above it.
-// Guarded by export_lock
-static int64_t exported_maxid = -1;
+// Unix timestamp of the newest query stored
 static double new_last_timestamp = 0;
-static uint32_t new_total = 0, new_blocked = 0;
-static int64_t memdb_queries_maxid = -1;
 static uint64_t memdb_queries_count = 0, diskdb_queries_count = 0;
 static double memdb_earliest_timestamp = 0, diskdb_earliest_timestamp = 0;
-static sqlite3_stmt *query_stmt = NULL;
-static sqlite3_stmt *domain_stmt = NULL;
-static sqlite3_stmt *client_stmt = NULL;
-static sqlite3_stmt *forward_stmt = NULL;
-static sqlite3_stmt *addinfo_stmt = NULL;
-static sqlite3_stmt *domain_id_stmt = NULL;
-static sqlite3_stmt *client_id_stmt = NULL;
-static sqlite3_stmt *forward_id_stmt = NULL;
-static sqlite3_stmt *addinfo_id_stmt = NULL;
-static sqlite3_stmt *queries_to_disk_stmt = NULL;
-#define SUBTABLE_STMTS 5
-static sqlite3_stmt *subtables_to_disk_stmts[SUBTABLE_STMTS] = { NULL };
-// Array of all prepared statements
-static sqlite3_stmt **stmts[] = { &query_stmt,
-                                  &domain_stmt,
-                                  &client_stmt,
-                                  &forward_stmt,
-                                  &addinfo_stmt,
-                                  &domain_id_stmt,
-                                  &client_id_stmt,
-                                  &forward_id_stmt,
-                                  &addinfo_id_stmt,
-                                  &queries_to_disk_stmt,
-                                  &subtables_to_disk_stmts[0],
-                                  &subtables_to_disk_stmts[1],
-                                  &subtables_to_disk_stmts[2],
-                                  &subtables_to_disk_stmts[3],
-                                  &subtables_to_disk_stmts[4] };
 
 // Process-local cache for addinfo_by_id row IDs.
 // The type is packed into the low bits of a combined key, with the actual key
@@ -177,11 +145,13 @@ static int step_and_count(sqlite3 *db, sqlite3_stmt *stmt, int64_t *changes, sql
 
 // Private prototypes
 static bool count_queries_on_disk(void);
-static void init_disk_db_idx(sqlite3 *memdb);
+static bool disk_db_maxid(sqlite3_int64 *maxid);
 
 // Open the database thread's connection to pihole-FTL.db, which the startup
-// import reads through. Memory-mapped I/O spares it a pread() per page
-static bool open_query_database(void)
+// import reads through and the export writes through. Memory-mapped I/O spares
+// a pread() per page, and in WAL mode a commit needs no fsync(). On failure,
+// error says why
+static bool open_query_database(char *error, const size_t size)
 {
 	if(querydb != NULL)
 		return true;
@@ -189,7 +159,7 @@ static bool open_query_database(void)
 	int rc = sqlite3_open_v2(config.files.database.v.s, &querydb, SQLITE_OPEN_READWRITE, NULL);
 	if(rc != SQLITE_OK)
 	{
-		log_err("Cannot open the query database %s: %s", config.files.database.v.s, sqlite3_errstr(rc));
+		snprintf(error, size, "%s", sqlite3_errstr(rc));
 		sqlite3_close(querydb);
 		querydb = NULL;
 		checkFTLDBrc(rc);
@@ -200,6 +170,9 @@ static bool open_query_database(void)
 		log_warn("Cannot set the busy handler of the query database: %s", sqlite3_errstr(rc));
 	if((rc = sqlite3_exec(querydb, "PRAGMA mmap_size = 268435456", NULL, NULL, NULL)) != SQLITE_OK)
 		log_warn("Cannot enable mmap for the query database: %s", sqlite3_errstr(rc));
+	if(config.database.useWAL.v.b &&
+	   (rc = sqlite3_exec(querydb, "PRAGMA synchronous=NORMAL", NULL, NULL, NULL)) != SQLITE_OK)
+		log_warn("Cannot set synchronous mode of the query database: %s", sqlite3_errstr(rc));
 
 	return true;
 }
@@ -382,140 +355,27 @@ bool init_memory_database(void)
 			         sqlite3_errstr(rc));
 	}
 
-	// Prepare persistent insertion/replace statements
-	// Domain, client, forward, and addinfo IDs are cached
-	rc = sqlite3_prepare_v3(_memdb, "REPLACE INTO query_storage VALUES "\
-	                                "(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &query_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(query_storage) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(domain_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?,?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &client_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(client_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(forward_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "INSERT OR IGNORE INTO addinfo_by_id (type,content) VALUES (?,?)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(addinfo_by_id) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Prepare SELECT statements for fetching linking table IDs (used once
-	// per unique entry when the row already exists from a disk import)
-	rc = sqlite3_prepare_v3(_memdb, "SELECT id FROM domain_by_id WHERE domain = ?",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &domain_id_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(domain_id) - SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "SELECT id FROM client_by_id WHERE ip = ? AND name = ?",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &client_id_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(client_id) - SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "SELECT id FROM forward_by_id WHERE forward = ?",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &forward_id_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(forward_id) - SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	rc = sqlite3_prepare_v3(_memdb, "SELECT id FROM addinfo_by_id WHERE type = ? AND content = ?",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &addinfo_id_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(addinfo_id) - SQL error prepare: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
 	// Clear process-local addinfo ID cache
 	clear_addinfo_id_cache();
 
-	// The IFNULL() is needed to handle the case when there are no queries
-	// in the on-disk database yet. In this case, we want to copy all
-	// queries from the in-memory database (including the query with ID 0)
-	// to the on-disk database.
-	// Export stops before the lowest not yet exported ID whose timestamp lies
-	// between the cutoff (?1) and now (?2), as the next export continues after
-	// the highest ID on disk and would skip it otherwise. Rows stamped after
-	// now date from before a backwards clock step and do not hold back others
-	rc = sqlite3_prepare_v3(_memdb, "INSERT INTO disk.query_storage SELECT * FROM query_storage " \
-	                                      "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
-	                                        "AND id < (SELECT IFNULL(MIN(id), 9223372036854775807) FROM query_storage "\
-	                                                  "WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.query_storage) "\
-	                                                    "AND timestamp >= ?1 AND timestamp <= ?2)",
-	                        -1, SQLITE_PREPARE_PERSISTENT, &queries_to_disk_stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		log_err("init_memory_database(queries_to_disk) - SQL error step: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	// Export linking tables to disk database
-	// We limit the export to new records to avoid the overhead of many
-	// IGNORE executions for records that are already present on disk. It
-	// follows the same logic as for the main query_storage table above.
-	const char *subtable_sql[SUBTABLE_STMTS] = {
-		"INSERT OR IGNORE INTO disk.domain_by_id SELECT * FROM domain_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.domain_by_id)",
-		"INSERT OR IGNORE INTO disk.client_by_id SELECT * FROM client_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.client_by_id)",
-		"INSERT OR IGNORE INTO disk.forward_by_id SELECT * FROM forward_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.forward_by_id)",
-		"INSERT OR IGNORE INTO disk.addinfo_by_id SELECT * FROM addinfo_by_id WHERE id > (SELECT IFNULL(MAX(id), -1) FROM disk.addinfo_by_id)",
-		"UPDATE disk.sqlite_sequence SET seq = (SELECT seq FROM sqlite_sequence WHERE disk.sqlite_sequence.name = sqlite_sequence.name)"
-	};
-
-	// Export linking tables
-	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
-	{
-		rc = sqlite3_prepare_v3(_memdb, subtable_sql[i], -1,
-		                        SQLITE_PREPARE_PERSISTENT, &subtables_to_disk_stmts[i], NULL);
-		if( rc != SQLITE_OK )
-		{
-			log_err("init_memory_database(queries_to_disk) - SQL error prepare: %s", sqlite3_errstr(rc));
-			return false;
-		}
-	}
-
-	// Initialize in-memory database starting index
-	init_disk_db_idx(_memdb);
+	// The database thread's connection, for the import at startup and the
+	// export of new queries
+	char error[128] = "the database is not usable";
+	const bool opened = attached && open_query_database(error, sizeof(error));
 
 	// New queries continue above the highest ID on disk
+	sqlite3_int64 maxid = -1;
+	disk_db_maxid(&maxid);
 	lock_shm();
-	counters->next_query_id = memdb_queries_maxid + 1;
+	counters->next_query_id = maxid + 1;
 	unlock_shm();
 
 	// Flush messages stored in the long-term database
 	flush_message_table();
+
+	// Without the connection no query is stored until FTL is restarted
+	if(attached && !opened)
+		log_query_database_error(config.files.database.v.s, error);
 
 	// Attach disk database
 	if(attached)
@@ -525,7 +385,7 @@ bool init_memory_database(void)
 
 		// Try to import queries from long-term database if available
 		// Skip if we are not supposed to load queries from disk
-		if(config.database.DBimport.v.b && open_query_database())
+		if(config.database.DBimport.v.b && querydb != NULL)
 			count_queries_on_disk();
 	}
 	else
@@ -550,15 +410,6 @@ void close_memory_database(void)
 	// Return early if there is no memory database to be closed
 	if(_memdb == NULL)
 		return;
-
-	// Finalize all statements
-	for(unsigned int i = 0; i < ArraySize(stmts); i++)
-	{
-		if(*stmts[i] == NULL)
-			continue;
-		sqlite3_finalize(*stmts[i]);
-		*stmts[i] = NULL;
-	}
 
 	// Detach disk database
 	disk_attached = false;
@@ -666,24 +517,6 @@ bool get_memdb_size(size_t *memsize, int *queries)
 		*queries = memdb_queries_count;
 
 	return true;
-}
-
-// Log the memory usage of in-memory databases
-static void log_in_memory_usage(void)
-{
-	if(!(config.debug.database.v.b))
-		return;
-
-	size_t memsize = 0;
-	int queries = 0;
-	if(get_memdb_size(&memsize, &queries))
-	{
-		char prefix[2] = { 0 };
-		double num = 0.0;
-		format_memory_size(prefix, memsize, &num);
-		log_debug(DEBUG_DATABASE, "mem database size: %.1f%s (%d queries)",
-		          num, prefix, queries);
-	}
 }
 
 // Attach database using specified path and alias
@@ -850,9 +683,14 @@ void get_import_window(double *from, double *until)
 // lock
 static unsigned int export_pos = 0;
 
-// Index of that query in the queries array. The caller holds the SHM lock
+// Index of that query in the queries array, the end of the array if the
+// connection of the export could not be opened at startup: nothing waits for
+// an export then. The caller holds the SHM lock
 unsigned int __attribute__((pure)) get_export_index(void)
 {
+	if(querydb == NULL)
+		return counters->queries;
+
 	// Both counters wrap at UINT_MAX, their difference does not. A position
 	// the garbage collector has already removed comes out above the array
 	const unsigned int idx = export_pos - get_queries_removed();
@@ -947,254 +785,6 @@ void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 		                      db_import_done ? 0.0 : import_from;
 	}
 	unlock_shm();
-}
-
-// Import linking tables and current AUTOINCREMENT values from the disk
-// database. Must be called inside a transaction, which is rolled back when FTL
-// is asked to terminate
-static bool import_linking_tables(sqlite3 *memdb)
-{
-	const char *subtable_names[] = {
-		"domain_by_id",
-		"client_by_id",
-		"forward_by_id",
-		"addinfo_by_id",
-		"sqlite_sequence"
-	};
-	const char *subtable_sql[] = {
-		"INSERT INTO domain_by_id SELECT * FROM disk.domain_by_id",
-		"INSERT INTO client_by_id SELECT * FROM disk.client_by_id",
-		"INSERT INTO forward_by_id SELECT * FROM disk.forward_by_id",
-		"INSERT INTO addinfo_by_id SELECT * FROM disk.addinfo_by_id",
-		"INSERT OR REPLACE INTO sqlite_sequence SELECT * FROM disk.sqlite_sequence"
-	};
-	static_assert(ArraySize(subtable_names) == ArraySize(subtable_sql), "Mismatched subtable arrays");
-
-	for(unsigned int i = 0; i < ArraySize(subtable_names); i++)
-	{
-		const int rc = sqlite3_exec(memdb, subtable_sql[i], NULL, NULL, NULL);
-
-		// An interrupt has rolled the transaction back already, the
-		// ROLLBACK covers a termination request between two statements
-		if(killed)
-		{
-			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-			return false;
-		}
-
-		if(rc != SQLITE_OK)
-			log_err("import_linking_tables(%s): Cannot import linking table: %s",
-			        subtable_sql[i], sqlite3_errstr(rc));
-		log_debug(DEBUG_DATABASE, "Imported %i rows from disk.%s",
-		          sqlite3_changes(memdb), subtable_names[i]);
-	}
-
-	return true;
-}
-
-// Import only the linking tables when database.DBimport is disabled. New
-// queries reference rows in these tables by ID, so their IDs have to continue
-// where the disk database left off even when no queries are imported
-bool import_linking_tables_from_disk(void)
-{
-	// Only try to import from database if it is known to not be broken
-	if(FTLDBerror())
-		return false;
-
-	int rc;
-	sqlite3 *memdb = get_memdb();
-	if((rc = sqlite3_exec(memdb, "BEGIN TRANSACTION", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_linking_tables_from_disk(): Cannot begin transaction: %s", sqlite3_errstr(rc));
-		return false;
-	}
-
-	if(!import_linking_tables(memdb))
-		return false;
-
-	if((rc = sqlite3_exec(memdb, "END", NULL, NULL, NULL)) != SQLITE_OK)
-	{
-		log_err("import_linking_tables_from_disk(): Cannot end transaction: %s", sqlite3_errstr(rc));
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	return true;
-}
-
-static bool copy_ready_queries(const bool final, unsigned int *next);
-
-// Store the queries that are ready on disk - either due to periodic dumping
-// (final = false) or because of a shutdown (final = true). When final is
-// false, only queries older than REPLY_TIMEOUT seconds are ready. This gives
-// queries some time to complete before they are stored. When final is true,
-// all queries are stored. They go through the in-memory database
-static bool store_ready_queries(const bool final)
-{
-	int rc = 0;
-	bool okay = false;
-	unsigned int insertions = 0;
-	int64_t maxid = -1;
-	bool have_maxid = false;
-	const double now = double_time();
-	const double time = final ? INFINITY : now - REPLY_TIMEOUT;
-
-	// Only try to export to database if it is known to not be broken
-	if(FTLDBerror())
-		return false;
-
-	// Start database timer
-	timer_start(DATABASE_WRITE_TIMER);
-
-	// Take the queries that are ready from shared memory
-	unsigned int next = 0;
-	if(config.database.maxDBdays.v.ui > 0 && !copy_ready_queries(final, &next))
-		return false;
-
-	// Start transaction
-	sqlite3 *memdb = get_memdb();
-	SQL_bool(memdb, "BEGIN");
-
-	// Only store queries if database.maxDBdays > 0
-	if(config.database.maxDBdays.v.ui > 0)
-	{
-		log_debug(DEBUG_DATABASE, "Storing queries on disk up to the first one with timestamp in [%f, %f] (memdb_queries_maxid = %"PRId64")",
-		          time, now + 1.0, memdb_queries_maxid);
-
-		// Bind time limits
-		// This prevents queries from the last 30 seconds from being stored
-		// immediately on-disk to give them some time to complete before finally
-		// exported. We do not limit anything when storing during termination.
-		// The second of slack keeps rows stamped just now in the window
-		if((rc = sqlite3_bind_double(queries_to_disk_stmt, 1, time)) != SQLITE_OK ||
-		   (rc = sqlite3_bind_double(queries_to_disk_stmt, 2, now + 1.0)) != SQLITE_OK)
-		{
-			log_err("export_queries_to_disk(): Failed to bind time: %s", sqlite3_errstr(rc));
-			sqlite3_reset(queries_to_disk_stmt);
-			sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-			return false;
-		}
-
-		// Perform step and get the number of queries actually inserted
-		// by the INSERT INTO ... SELECT * FROM ...
-		int64_t changes = 0;
-		if((rc = step_and_count(memdb, queries_to_disk_stmt, &changes, NULL)) == SQLITE_DONE)
-			okay = true;
-		else
-		{
-			log_err("export_queries_to_disk(): Failed to export queries: %s", sqlite3_errstr(rc));
-			log_info("    with timestamp = %f", time);
-		}
-		insertions = (unsigned int)changes;
-
-		// Finalize statement
-		sqlite3_reset(queries_to_disk_stmt);
-
-		// The next export continues above the highest ID on disk now
-		sqlite3_stmt *maxid_stmt = NULL;
-		if(okay && sqlite3_prepare_v2(memdb, "SELECT IFNULL(MAX(id), -1) FROM disk.query_storage",
-		                              -1, &maxid_stmt, NULL) == SQLITE_OK &&
-		   sqlite3_step(maxid_stmt) == SQLITE_ROW)
-		{
-			maxid = sqlite3_column_int64(maxid_stmt, 0);
-			have_maxid = true;
-		}
-		sqlite3_finalize(maxid_stmt);
-
-		/*
-		 * If there are any insertions, we:
-		 * 1. Insert (or replace) the last timestamp into the `disk.ftl` table.
-		 * 2. Update the total queries counter in the `disk.counters` table.
-		 * 3. Update the blocked queries counter in the `disk.counters` table.
-		 *
-		 * <new_total> and <new_blocked> count the queries copied for
-		 * this export, which are the ones inserted here.
-		 */
-		if(insertions > 0)
-		{
-			// Update number of queries in the disk database (actual number of insertions)
-			diskdb_queries_count += insertions;
-
-			if((rc = dbquery(memdb, "INSERT OR REPLACE INTO disk.ftl (id, value) VALUES ( %i, %f );", DB_LASTTIMESTAMP, new_last_timestamp)) != SQLITE_OK)
-				log_err("export_queries_to_disk(): Cannot update timestamp: %s", sqlite3_errstr(rc));
-
-			// Use <new_total> and <new_blocked> counters to update
-			// the respective counters in the on-disk database
-			if(!db_update_disk_counter(memdb, DB_TOTALQUERIES, new_total))
-				log_err("export_queries_to_disk(): Cannot update total queries counter: %s", sqlite3_errstr(rc));
-			else
-				// Success
-				new_total = 0;
-
-			if(!db_update_disk_counter(memdb, DB_BLOCKEDQUERIES, new_blocked))
-				log_err("export_queries_to_disk(): Cannot update blocked queries counter: %s", sqlite3_errstr(rc));
-			else
-				// Success
-				new_blocked = 0;
-		}
-	}
-	else
-	{
-		// Nothing to store, the linking tables below are still exported
-		okay = true;
-	}
-
-	// Export linking tables and current AUTOINCREMENT values to the disk database
-	const char *subtable_names[SUBTABLE_STMTS] = {
-		"domain_by_id",
-		"client_by_id",
-		"forward_by_id",
-		"addinfo_by_id",
-		"sqlite_sequence"
-	};
-
-	// Export linking tables
-	for(unsigned int i = 0; i < SUBTABLE_STMTS; i++)
-	{
-		int64_t changes = 0;
-		if((rc = step_and_count(memdb, subtables_to_disk_stmts[i], &changes, NULL)) != SQLITE_DONE)
-			log_err("export_queries_to_disk(disk.%s): Cannot export subtable: %s",
-			        subtable_names[i], sqlite3_errstr(rc));
-		sqlite3_reset(subtables_to_disk_stmts[i]);
-		log_debug(DEBUG_DATABASE, "Exported %"PRId64" rows to disk.%s", changes, subtable_names[i]);
-	}
-
-	// End transaction. A bare SQL_bool() would return with the transaction
-	// still open on the shared in-memory connection, which every later
-	// caller inherits
-	if((rc = dbquery(memdb, "END")) != SQLITE_OK)
-	{
-		log_err("export_queries_to_disk(): Cannot end transaction: %s",
-		        sqlite3_errstr(rc));
-		sqlite3_exec(memdb, "ROLLBACK", NULL, NULL, NULL);
-		return false;
-	}
-
-	// The next export continues above this ID and behind these queries
-	if(have_maxid)
-		exported_maxid = maxid;
-	if(okay && config.database.maxDBdays.v.ui > 0)
-	{
-		lock_shm();
-		export_pos = next;
-		unlock_shm();
-	}
-
-	log_debug(DEBUG_DATABASE, "Exported %u rows for disk.query_storage (took %.1f ms)",
-		  insertions, timer_elapsed_msec(DATABASE_WRITE_TIMER));
-
-	return okay;
-}
-
-// Exports run in the database thread and once more at shutdown, one at a time
-static pthread_mutex_t export_lock = PTHREAD_MUTEX_INITIALIZER;
-
-bool export_queries_to_disk(const bool final)
-{
-	pthread_mutex_lock(&export_lock);
-	const bool okay = store_ready_queries(final);
-	pthread_mutex_unlock(&export_lock);
-	return okay;
 }
 
 // Log the size of the database and how many old queries were deleted from it
@@ -1673,10 +1263,6 @@ bool create_addinfo_table(sqlite3 *db)
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
-	// New queries reference the rows of the linking tables by their IDs on
-	// disk, so the in-memory database needs these rows as well
-	import_linking_tables_from_disk();
-
 	// The columns of the queries view plus the client name, in the order of
 	// the IDs for the client name history. As in the view, an ID without a
 	// row in its linking table reads as NULL. The rows of the history window
@@ -2075,540 +1661,628 @@ void DB_read_queries(void)
 	sqlite3_finalize(stmt);
 }
 
-static void init_disk_db_idx(sqlite3 *memdb)
+// The highest query ID on disk, -1 if there is none. New queries continue
+// above it, and so does the export
+static bool disk_db_maxid(sqlite3_int64 *maxid)
 {
-	const char *querystr = "SELECT MAX(id) FROM disk.query_storage";
+	*maxid = -1;
+	if(FTLDBerror() || querydb == NULL)
+		return false;
 
-	// If the disk database is broken, we cannot import queries from it,
-	// however, as we will also never export any queries, we can safely
-	// assume any index
-	if(FTLDBerror())
-	{
-		memdb_queries_maxid = -1;
-		return;
-	}
-
-	// Prepare SQLite3 statement on first call
 	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	
-	// Perform step
-	if(rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW)
-	{
-		// We need to check that the returned value is not NULL (happens
-		// when there are no rows in the table). If it is NULL, we set
-		// memdb_queries_maxid to -1 so that the next query will be stored
-		// with index 0. If it is not NULL, we set memdb_queries_maxid to
-		// the returned value.
-		if(sqlite3_column_type(stmt, 0) == SQLITE_INTEGER)
-			memdb_queries_maxid = sqlite3_column_int64(stmt, 0);
-		else
-			memdb_queries_maxid = -1;
-	}
+	int rc = sqlite3_prepare_v2(querydb, "SELECT IFNULL(MAX(id), -1) FROM query_storage", -1, &stmt, NULL);
+	const bool okay = rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW;
+	if(okay)
+		*maxid = sqlite3_column_int64(stmt, 0);
 	else
-		log_err("init_disk_db_idx(): Failed to get MAX(id) from disk.query_storage: %s",
+		log_err("disk_db_maxid(): Failed to get MAX(id) from query_storage: %s",
 		        sqlite3_errstr(rc));
-
-	// Finalize statement
 	sqlite3_finalize(stmt);
 
-	// The export continues above the same ID
-	exported_maxid = memdb_queries_maxid;
-
-	log_debug(DEBUG_DATABASE, "Last long-term idx is %"PRId64, memdb_queries_maxid);
+	log_debug(DEBUG_DATABASE, "Last long-term idx is %"PRId64, (int64_t)*maxid);
+	return okay;
 }
 
-// Run one of the transaction statements of copy_ready_queries(). SQL_bool()
-// cannot be used there, as its early return would skip the cleanup, but its
-// logging is worth keeping: a busy database is transient and only warned about
-static bool memdb_exec(sqlite3 *memdb, const char *sql, const char *what)
-{
-	const int rc = dbquery(memdb, "%s", sql);
-	if(rc == SQLITE_OK)
-		return true;
+// The export takes this many queries from shared memory under one hold of the
+// SHM lock, as the query log does
+#define EXPORT_CHUNK 64
+// Room for the strings of the linking rows of one chunk. A string in shared
+// memory is at most a page long, a chunk ends early when the room runs out
+#define EXPORT_ROOM 65536
 
-	if(rc == SQLITE_BUSY)
-		log_warn("copy_ready_queries(): Database busy when trying to %s", what);
-	else
-		log_err("copy_ready_queries(): Failed to %s", what);
-
-	return false;
-}
-
-// Snapshot struct for lock-free SQLite writes in phase 2
-struct query_snap {
-	int64_t idx;                // ID in the database
-	double timestamp;
-	int type_val;               // pre-computed type for param 3
-	int status;                 // param 4
-	int domain_db_id;           // param 5
-	int client_db_id;           // param 6
-	int upstream_db_id;         // param 7
-	int addinfo_id;             // param 8
-	int reply;                  // param 9
-	double response;            // param 10
-	int dnssec;                 // param 11
-	int list_id;                // param 12
-	int ede;                    // param 13
-	bool has_upstream;
-	bool response_calculated;
-	bool blocked;
+// A linking row whose ID on disk is not known yet, with the strings it is found
+// by and the positions of the strings in shared memory. Its ID goes back to
+// shared memory once the run is committed, and only if the entry still has the
+// same strings
+struct found_row {
+	int db_id;
+	size_t pos;
+	size_t pos2;
 };
 
-// Copy the queries that are ready to be stored into the in-memory database,
-// export_queries_to_disk() moves them to disk from there. A query is ready
-// once it is older than REPLY_TIMEOUT, at the final export at once. Queries
-// recorded at the maximum privacy level are not stored. next is set to the
-// position (index + get_queries_removed()) the next export continues at
-static bool copy_ready_queries(const bool final, unsigned int *next)
+// One query as the export takes it from shared memory
+struct export_row {
+	sqlite3_int64 id;
+	double timestamp;
+	double response;
+	int type;
+	int status;
+	int reply;
+	int dnssec;
+	int list_id;
+	int ede;
+	bool response_calculated;
+	bool blocked;
+	bool hide_domain;
+	bool hide_client;
+	bool hide_cname;
+	// The rows on disk, 0 while not known
+	int domain_db_id;
+	int client_db_id;
+	int upstream_db_id;
+	int addinfo_id;
+	// The entries their IDs are kept with in shared memory, -1 if none: the
+	// domain and the client are hidden or the client was renamed since
+	int domainID;
+	int clientID;
+	int upstreamID;
+	struct found_row domain_at, client_at, upstream_at;
+	// ADDINFO_CNAME_DOMAIN with the CNAME domain's ID (-1 if hidden),
+	// ADDINFO_LIST_ID with the list ID, or -1 for none
+	int addinfo_type;
+	int addinfo_key;
+	// Strings of the rows not known yet, NULL otherwise
+	const char *domain;
+	const char *client_ip;
+	const char *client_name;
+	const char *upstream;
+	const char *cname;
+};
+
+struct found_addinfo {
+	int type;
+	int key;
+	int db_id;
+};
+
+// The state of one export run
+struct export_run {
+	sqlite3_stmt *stmts[9];
+	// The rows found in this run, by shared-memory ID
+	struct found_row *domains, *clients, *upstreams;
+	unsigned int n_domains, n_clients, n_upstreams;
+	struct found_addinfo *addinfo;
+	unsigned int n_addinfo, cap_addinfo;
+	// The strings of the current chunk
+	char *room;
+	size_t used;
+	// The highest ID on disk before the run, and what the run stored. Rows
+	// other processes have stored are not stored again
+	sqlite3_int64 maxid;
+	unsigned int inserted;
+	unsigned int blocked;
+	double newest;
+};
+
+enum export_stmt {
+	DOMAIN_INSERT, DOMAIN_SELECT,
+	CLIENT_INSERT, CLIENT_SELECT,
+	FORWARD_INSERT, FORWARD_SELECT,
+	ADDINFO_INSERT, ADDINFO_SELECT,
+	QUERY_INSERT
+};
+
+static const char *export_sql[] = {
+	"INSERT OR IGNORE INTO domain_by_id (domain) VALUES (?1)",
+	"SELECT id FROM domain_by_id WHERE domain = ?1",
+	"INSERT OR IGNORE INTO client_by_id (ip,name) VALUES (?1,?2)",
+	"SELECT id FROM client_by_id WHERE ip = ?1 AND name = ?2",
+	"INSERT OR IGNORE INTO forward_by_id (forward) VALUES (?1)",
+	"SELECT id FROM forward_by_id WHERE forward = ?1",
+	"INSERT OR IGNORE INTO addinfo_by_id (type,content) VALUES (?1,?2)",
+	"SELECT id FROM addinfo_by_id WHERE type = ?1 AND content = ?2",
+	"INSERT INTO query_storage VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)"
+};
+
+// Copy a string of shared memory into the room of the chunk, NULL if it does
+// not fit. The caller holds the SHM lock
+static const char *room_copy(struct export_run *run, const char *str)
 {
-	int rc;
+	const size_t len = strlen(str) + 1;
+	if(run->used + len > EXPORT_ROOM)
+		return NULL;
+	char *copy = run->room + run->used;
+	memcpy(copy, str, len);
+	run->used += len;
+	return copy;
+}
 
-	lock_shm();
+// The ID of a row found earlier in this run for the entry with these strings,
+// 0 if none
+static int __attribute__((pure)) found_id(const struct found_row *rows, const unsigned int n,
+                                          const int id, const struct found_row *at)
+{
+	if(rows == NULL || id < 0 || (unsigned int)id >= n)
+		return 0;
+	const struct found_row *row = &rows[id];
+	return row->pos == at->pos && row->pos2 == at->pos2 ? row->db_id : 0;
+}
 
-	// The first query that may still receive a reply ends the range, those
-	// after it wait for the next export. A query stamped after now dates
-	// from before a backwards clock step and does not hold back the others
-	const double now = double_time();
-	const unsigned int first = get_export_index();
-	unsigned int last = first;
-	while(last < counters->queries)
+// The ID of an addinfo row found earlier in this run, 0 if none
+static int __attribute__((pure)) found_addinfo_id(const struct export_run *run, const int type, const int key)
+{
+	for(unsigned int i = 0; i < run->n_addinfo; i++)
+		if(run->addinfo[i].type == type && run->addinfo[i].key == key)
+			return run->addinfo[i].db_id;
+	return 0;
+}
+
+// Take what the export needs from one query. False if the strings of its
+// linking rows do not fit into the room of the chunk any more. The caller
+// holds the SHM lock
+static bool take_query(const queriesData *query, struct export_row *r, struct export_run *run)
+{
+	memset(r, 0, sizeof(*r));
+	r->id = query->db;
+	r->timestamp = query->timestamp;
+	r->type = query->type != TYPE_OTHER ? query->type : query->qtype + 100;
+	r->status = query->status;
+	r->reply = query->reply;
+	r->response = query->response;
+	r->response_calculated = query->flags.response_calculated;
+	r->dnssec = query->dnssec;
+	r->list_id = query->list_id;
+	r->ede = query_get_ede(query);
+	r->blocked = query->flags.blocked;
+
+	// DOMAIN - the row cached with a domain holds its name, a query hiding
+	// the domain uses the row of the hidden domain instead
+	r->hide_domain = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
+	r->domainID = -1;
+	const domainsData *domain = getDomain(query->domainID, true);
+	if(r->hide_domain)
+		r->domain_db_id = hidden_domain_db_id;
+	else if(domain != NULL)
 	{
-		const queriesData *query = getQuery(last, true);
-		if(!final && query != NULL &&
-		   query->timestamp >= now - REPLY_TIMEOUT && query->timestamp <= now + 1.0)
-			break;
-		last++;
+		r->domainID = query->domainID;
+		r->domain_at.pos = domain->domainpos;
+		r->domain_db_id = domain->flags.in_database ? domain->db_id :
+		                  found_id(run->domains, run->n_domains, r->domainID, &r->domain_at);
 	}
-	*next = last + get_queries_removed();
-
-	// Nothing is ready yet
-	new_total = new_blocked = 0;
-	if(last == first)
-	{
-		unlock_shm();
-		return true;
-	}
-
-	sqlite3 *memdb = get_memdb();
-
-	log_debug(DEBUG_DATABASE, "Copying queries in [%u, %u) into memdb", first, last);
-
-	// ===================================================================
-	// PHASE 1: Under SHM lock — handle linking table INSERTs (need SHM
-	// string access), resolve all IDs, and snapshot scalar query data into
-	// a local array.  Only linking table INSERTs and fast field copies
-	// happen here.  The heavy query_stmt REPLACE work is deferred to phase
-	// 2 which runs without the lock.
-	// ===================================================================
-	struct query_snap *snaps = malloc((last - first) * sizeof(*snaps));
-	if(snaps == NULL)
-	{
-		log_err("copy_ready_queries(): Failed to allocate snapshot array (%u entries)", last - first);
-		unlock_shm();
+	if(r->domain_db_id == 0 && (r->domain = room_copy(run, getDomainString(query))) == NULL)
 		return false;
+
+	// CLIENT - the same applies to a query hiding its client. A query made
+	// before its client was renamed has the old name, the row cached with
+	// the client is the one of the current name
+	r->hide_client = query->privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS;
+	r->clientID = -1;
+	const clientsData *client = getClient(query->clientID, true);
+	if(r->hide_client)
+		r->client_db_id = hidden_client_db_id;
+	else if(client != NULL &&
+	        client_name_at(query->clientID, client->namepos, query->db) == client->namepos)
+	{
+		r->clientID = query->clientID;
+		r->client_at.pos = client->namepos;
+		r->client_at.pos2 = client->ippos;
+		r->client_db_id = client->flags.in_database ? client->db_id :
+		                  found_id(run->clients, run->n_clients, r->clientID, &r->client_at);
+	}
+	if(r->client_db_id == 0 &&
+	   ((r->client_ip = room_copy(run, getClientIPString(query))) == NULL ||
+	    (r->client_name = room_copy(run, getClientNameString(query))) == NULL))
+		return false;
+
+	// FORWARD - the upstream a query was sent to, if any
+	r->upstreamID = -1;
+	const upstreamsData *upstream = query->upstreamID > -1 ? getUpstream(query->upstreamID, true) : NULL;
+	if(upstream != NULL)
+	{
+		r->upstreamID = query->upstreamID;
+		r->upstream_at.pos = upstream->ippos;
+		r->upstream_at.pos2 = upstream->port;
+		r->upstream_db_id = upstream->flags.in_database ? upstream->db_id :
+		                    found_id(run->upstreams, run->n_upstreams, r->upstreamID, &r->upstream_at);
+		if(r->upstream_db_id == 0)
+		{
+			char forward[64];
+			const int len = snprintf(forward, sizeof(forward), "%s#%u", getstr(upstream->ippos), upstream->port);
+			if(len > 0 && (size_t)len < sizeof(forward) && (r->upstream = room_copy(run, forward)) == NULL)
+				return false;
+		}
 	}
 
-	unsigned int snap_count = 0;
-	bool phase1_error = false;
-	int64_t changes = 0;
-	sqlite3_int64 rowid = 0;
-
-	// The garbage collector can hold the connection for a while inside a
-	// single step. Never wait for it under the SHM lock, the next export
-	// catches up. The final export at shutdown waits, there is none after it
-	sqlite3_mutex *memdb_mutex = sqlite3_db_mutex(memdb);
-	if(memdb_mutex != NULL && final)
-		sqlite3_mutex_enter(memdb_mutex);
-	else if(memdb_mutex != NULL && sqlite3_mutex_try(memdb_mutex) != SQLITE_OK)
+	// ADDINFO - the domain of a CNAME that caused a block, otherwise the
+	// list behind the verdict, if any
+	r->addinfo_type = -1;
+	if(query->status == QUERY_GRAVITY_CNAME ||
+	   query->status == QUERY_REGEX_CNAME ||
+	   query->status == QUERY_DENYLIST_CNAME)
 	{
-		log_debug(DEBUG_DATABASE, "In-memory database busy, storing queries in the next run");
-		*next = first + get_queries_removed();
-		free(snaps);
-		unlock_shm();
-		return true;
+		r->addinfo_type = ADDINFO_CNAME_DOMAIN;
+		r->hide_cname = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
+		r->addinfo_key = r->hide_cname ? -1 : query->CNAME_domainID;
+		r->addinfo_id = r->hide_cname ? hidden_cname_db_id :
+		                lookup_addinfo_id(ADDINFO_CNAME_DOMAIN, r->addinfo_key);
+		if(r->addinfo_id == 0 && !r->hide_cname)
+			r->addinfo_id = found_addinfo_id(run, ADDINFO_CNAME_DOMAIN, r->addinfo_key);
+		if(r->addinfo_id == 0 && (r->cname = room_copy(run, getCNAMEDomainString(query))) == NULL)
+			return false;
 	}
-
-	// Wrap linking table INSERTs in a transaction for efficiency (these are
-	// mostly skipped due to in_database caching). SQL_bool() cannot be used
-	// while we hold the SHM lock, as its early return would leave the lock
-	// taken for good
-	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the linking table transaction"))
-		goto unlock_fail;
-
-	for(unsigned int queryID = first; queryID < last; queryID++)
+	else if(query->list_id != -1)
 	{
-		// Get query pointer
-		queriesData *query = getQuery(queryID, true);
-		if(query == NULL)
-		{
-			log_err("Memory error in copy_ready_queries() when trying to access query %u", queryID);
-			phase1_error = true;
-			break;
-		}
-
-		// Stored already, or never stored
-		if(query->db <= exported_maxid || query->privacylevel >= PRIVACY_MAXIMUM)
-			continue;
-
-		struct query_snap *s = &snaps[snap_count];
-
-		// The ID was handed out when the query was created
-		s->idx = query->db;
-
-		log_debug(DEBUG_DATABASE, "Storing query ID %u in in-memory-database with idx %lld",
-		          queryID, (long long)s->idx);
-
-		// Snapshot scalar fields
-		s->timestamp = query->timestamp;
-		s->type_val = (query->type != TYPE_OTHER) ? query->type : (query->qtype + 100);
-		s->status = query->status;
-		s->reply = query->reply;
-		s->response = query->response;
-		s->response_calculated = query->flags.response_calculated;
-		s->dnssec = query->dnssec;
-		s->ede = query_get_ede(query);
-		s->blocked = query->flags.blocked;
-
-		// DOMAIN - handle linking table INSERT if first encounter. The row
-		// cached with a domain holds its name, a query hiding the domain uses
-		// the row of the hidden domain instead
-		const char *domain = getDomainString(query);
-		domainsData *domaindata = getDomain(query->domainID, true);
-		const bool hide_domain = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
-		const bool store_domain = hide_domain ? hidden_domain_db_id == 0 :
-		                          domaindata != NULL && !domaindata->flags.in_database;
-		int domain_db_id = hide_domain ? hidden_domain_db_id :
-		                   domaindata != NULL ? domaindata->db_id : 0;
-
-		if(store_domain)
-		{
-			sqlite3_bind_text(domain_stmt, 1, domain, -1, SQLITE_STATIC);
-			rc = step_and_count(memdb, domain_stmt, &changes, &rowid);
-			if(rc != SQLITE_DONE)
-			{
-				log_err("Encountered error while trying to store domain");
-				sqlite3_reset(domain_stmt);
-				phase1_error = true;
-				break;
-			}
-			sqlite3_reset(domain_stmt);
-
-			if(changes > 0)
-				domain_db_id = (int)rowid;
-			else
-			{
-				sqlite3_bind_text(domain_id_stmt, 1, domain, -1, SQLITE_STATIC);
-				if(sqlite3_step(domain_id_stmt) == SQLITE_ROW)
-					domain_db_id = sqlite3_column_int(domain_id_stmt, 0);
-				sqlite3_reset(domain_id_stmt);
-			}
-
-			if(hide_domain)
-				hidden_domain_db_id = domain_db_id;
-			else if(domaindata != NULL)
-			{
-				domaindata->db_id = domain_db_id;
-				domaindata->flags.in_database = true;
-			}
-		}
-		s->domain_db_id = domain_db_id;
-
-		// CLIENT - handle linking table INSERT if first encounter. The same
-		// as for the domain applies to a query hiding its client. A query
-		// made before its client was renamed has the old name, the row cached
-		// with the client is the one of the current name
-		const char *clientIP = getClientIPString(query);
-		const char *clientName = getClientNameString(query);
-		clientsData *clientdata = getClient(query->clientID, true);
-		const bool hide_client = query->privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS;
-		const bool old_name = !hide_client && clientdata != NULL &&
-		                      client_name_at(query->clientID, clientdata->namepos, query->db) != clientdata->namepos;
-		const bool store_client = hide_client ? hidden_client_db_id == 0 :
-		                          clientdata != NULL && (!clientdata->flags.in_database || old_name);
-		int client_db_id = hide_client ? hidden_client_db_id :
-		                   clientdata != NULL && !old_name ? clientdata->db_id : 0;
-
-		if(store_client)
-		{
-			sqlite3_bind_text(client_stmt, 1, clientIP, -1, SQLITE_STATIC);
-			sqlite3_bind_text(client_stmt, 2, clientName, -1, SQLITE_STATIC);
-			rc = step_and_count(memdb, client_stmt, &changes, &rowid);
-			sqlite3_reset(client_stmt);
-			if(rc != SQLITE_DONE)
-			{
-				log_err("Encountered error while trying to store client");
-				phase1_error = true;
-				break;
-			}
-
-			if(changes > 0)
-				client_db_id = (int)rowid;
-			else
-			{
-				sqlite3_bind_text(client_id_stmt, 1, clientIP, -1, SQLITE_STATIC);
-				sqlite3_bind_text(client_id_stmt, 2, clientName, -1, SQLITE_STATIC);
-				if(sqlite3_step(client_id_stmt) == SQLITE_ROW)
-					client_db_id = sqlite3_column_int(client_id_stmt, 0);
-				sqlite3_reset(client_id_stmt);
-			}
-
-			if(hide_client)
-				hidden_client_db_id = client_db_id;
-			else if(clientdata != NULL && !old_name)
-			{
-				clientdata->db_id = client_db_id;
-				clientdata->flags.in_database = true;
-			}
-		}
-		s->client_db_id = client_db_id;
-
-		// FORWARD — handle linking table INSERT if first encounter
-		s->has_upstream = false;
-		if(query->upstreamID > -1)
-		{
-			upstreamsData *upstream = getUpstream(query->upstreamID, true);
-			if(upstream != NULL)
-			{
-				if(!upstream->flags.in_database)
-				{
-					const char *forwardIP = getstr(upstream->ippos);
-					char buffer[64];
-					const int len = snprintf(buffer, sizeof(buffer), "%s#%u", forwardIP, upstream->port);
-					if(len > 0 && (size_t)len < sizeof(buffer))
-					{
-						sqlite3_bind_text(forward_stmt, 1, buffer, len, SQLITE_STATIC);
-						rc = step_and_count(memdb, forward_stmt, &changes, &rowid);
-						sqlite3_reset(forward_stmt);
-						if(rc != SQLITE_DONE)
-						{
-							log_err("Encountered error while trying to store forward");
-							phase1_error = true;
-							break;
-						}
-
-						if(changes > 0)
-							upstream->db_id = (int)rowid;
-						else
-						{
-							sqlite3_bind_text(forward_id_stmt, 1, buffer, len, SQLITE_STATIC);
-							if(sqlite3_step(forward_id_stmt) == SQLITE_ROW)
-								upstream->db_id = sqlite3_column_int(forward_id_stmt, 0);
-							sqlite3_reset(forward_id_stmt);
-						}
-					}
-					upstream->flags.in_database = true;
-				}
-				s->upstream_db_id = upstream->db_id;
-				s->has_upstream = true;
-			}
-		}
-
-		// ADDINFO — handle linking table INSERT if not cached
-		s->addinfo_id = 0;
-		s->list_id = query->list_id;
-		if(query->status == QUERY_GRAVITY_CNAME ||
-		   query->status == QUERY_REGEX_CNAME ||
-		   query->status == QUERY_DENYLIST_CNAME)
-		{
-			const int cname_domainID = query->CNAME_domainID;
-			// The cache holds the row of the CNAME domain's name, a query
-			// hiding its domain uses the row of the hidden domain
-			const bool hide_cname = query->privacylevel >= PRIVACY_HIDE_DOMAINS;
-			int aid = hide_cname ? hidden_cname_db_id :
-			          lookup_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID);
-			if(aid == 0)
-			{
-				const char *cname = getCNAMEDomainString(query);
-				const int len = strlen(cname);
-				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_CNAME_DOMAIN);
-				sqlite3_bind_text(addinfo_stmt, 2, cname, len, SQLITE_STATIC);
-				rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
-				sqlite3_reset(addinfo_stmt);
-				if(rc != SQLITE_DONE)
-				{
-					log_err("Encountered error while trying to store addinfo");
-					phase1_error = true;
-					break;
-				}
-
-				if(changes > 0)
-					aid = (int)rowid;
-				else
-				{
-					sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_CNAME_DOMAIN);
-					sqlite3_bind_text(addinfo_id_stmt, 2, cname, len, SQLITE_STATIC);
-					if(sqlite3_step(addinfo_id_stmt) == SQLITE_ROW)
-						aid = sqlite3_column_int(addinfo_id_stmt, 0);
-					sqlite3_reset(addinfo_id_stmt);
-				}
-				if(hide_cname)
-					hidden_cname_db_id = aid;
-				else
-					store_addinfo_id(ADDINFO_CNAME_DOMAIN, cname_domainID, aid);
-			}
-			s->addinfo_id = aid;
-		}
-		else if(query->list_id != -1)
-		{
-			const int list_id = query->list_id;
-			int aid = lookup_addinfo_id(ADDINFO_LIST_ID, list_id);
-			if(aid == 0)
-			{
-				sqlite3_bind_int(addinfo_stmt, 1, ADDINFO_LIST_ID);
-				sqlite3_bind_int(addinfo_stmt, 2, list_id);
-				rc = step_and_count(memdb, addinfo_stmt, &changes, &rowid);
-				sqlite3_reset(addinfo_stmt);
-				if(rc != SQLITE_DONE)
-				{
-					log_err("Encountered error while trying to store addinfo");
-					phase1_error = true;
-					break;
-				}
-
-				if(changes > 0)
-					aid = (int)rowid;
-				else
-				{
-					sqlite3_bind_int(addinfo_id_stmt, 1, ADDINFO_LIST_ID);
-					sqlite3_bind_int(addinfo_id_stmt, 2, list_id);
-					if(sqlite3_step(addinfo_id_stmt) == SQLITE_ROW)
-						aid = sqlite3_column_int(addinfo_id_stmt, 0);
-					sqlite3_reset(addinfo_id_stmt);
-				}
-				store_addinfo_id(ADDINFO_LIST_ID, list_id, aid);
-			}
-			s->addinfo_id = aid;
-		}
-
-		snap_count++;
-	}
-
-	// Commit linking table transaction
-	if(!memdb_exec(memdb, "END", "commit the linking table transaction"))
-		goto rollback_unlock_fail;
-	if(memdb_mutex != NULL)
-		sqlite3_mutex_leave(memdb_mutex);
-
-	// Release SHM lock — all data needed for phase 2 is in the snapshot
-	unlock_shm();
-
-	// If phase 1 encountered an error, skip phase 2. Nothing is stored and
-	// the next export starts at the same query again
-	if(phase1_error)
-		goto fail;
-
-	// ===================================================================
-	// PHASE 2: Without SHM lock — bind and step query_stmt for each
-	// snapshot. This is the bulk of the SQLite work and no longer blocks
-	// the DNS processing or API threads.
-	// ===================================================================
-
-	if(!memdb_exec(memdb, "BEGIN TRANSACTION", "start the query transaction"))
-		goto fail;
-
-	unsigned int succeeded = 0;
-	for(unsigned int i = 0; i < snap_count; i++)
-	{
-		const struct query_snap *s = &snaps[i];
-
-		sqlite3_bind_int64(query_stmt, 1, s->idx);
-		sqlite3_bind_double(query_stmt, 2, s->timestamp);
-		sqlite3_bind_int(query_stmt, 3, s->type_val);
-		sqlite3_bind_int(query_stmt, 4, s->status);
-		sqlite3_bind_int(query_stmt, 5, s->domain_db_id);
-		sqlite3_bind_int(query_stmt, 6, s->client_db_id);
-
-		if(s->has_upstream)
-			sqlite3_bind_int(query_stmt, 7, s->upstream_db_id);
-		else
-			sqlite3_bind_null(query_stmt, 7);
-
-		if(s->addinfo_id > 0)
-			sqlite3_bind_int(query_stmt, 8, s->addinfo_id);
-		else
-			sqlite3_bind_null(query_stmt, 8);
-
-		sqlite3_bind_int(query_stmt, 9, s->reply);
-
-		if(s->response_calculated)
-			sqlite3_bind_double(query_stmt, 10, s->response);
-		else
-			sqlite3_bind_null(query_stmt, 10);
-
-		sqlite3_bind_int(query_stmt, 11, s->dnssec);
-
-		if(s->list_id != -1)
-			sqlite3_bind_int(query_stmt, 12, s->list_id);
-		else
-			sqlite3_bind_null(query_stmt, 12);
-
-		sqlite3_bind_int(query_stmt, 13, s->ede);
-
-		rc = sqlite3_step(query_stmt);
-		sqlite3_reset(query_stmt);
-
-		if(rc != SQLITE_DONE)
-		{
-			log_err("Encountered error while trying to store queries in query_storage: %s", sqlite3_errstr(rc));
-			break;
-		}
-
-		succeeded++;
-	}
-
-	// The export only moves on past queries that are all stored
-	if(succeeded < snap_count)
-		goto rollback_fail;
-
-	if(!memdb_exec(memdb, "END", "commit the query transaction"))
-		goto rollback_fail;
-
-	// Count what the disk is about to get
-	uint32_t blocked = 0;
-	int64_t committed_maxid = memdb_queries_maxid;
-	for(unsigned int i = 0; i < snap_count; i++)
-	{
-		const struct query_snap *s = &snaps[i];
-		if(s->blocked)
-			blocked++;
-		if(s->timestamp > new_last_timestamp)
-			new_last_timestamp = s->timestamp;
-		if(s->idx > committed_maxid)
-			committed_maxid = s->idx;
-	}
-	memdb_queries_maxid = committed_maxid;
-	memdb_queries_count += snap_count;
-	// Copied again by the next export when this one fails
-	new_total = snap_count;
-	new_blocked = blocked;
-
-	// Free snapshot array
-	free(snaps);
-
-	if(config.debug.database.v.b)
-	{
-		log_debug(DEBUG_DATABASE, "In-memory database: Inserted %u queries", snap_count);
-		log_in_memory_usage();
+		r->addinfo_type = ADDINFO_LIST_ID;
+		r->addinfo_key = query->list_id;
+		r->addinfo_id = lookup_addinfo_id(ADDINFO_LIST_ID, r->addinfo_key);
+		if(r->addinfo_id == 0)
+			r->addinfo_id = found_addinfo_id(run, ADDINFO_LIST_ID, r->addinfo_key);
 	}
 
 	return true;
+}
 
-	// Common cleanup for the transaction failures above. `SQL_bool()` is not
-	// usable there: its early return would skip the unlock and leave the SHM
-	// lock taken for good
-rollback_unlock_fail:
-	dbquery(memdb, "ROLLBACK");
-	// The hidden rows may have been stored in this transaction, look them up again
-	hidden_domain_db_id = hidden_client_db_id = hidden_cname_db_id = 0;
-unlock_fail:
-	if(memdb_mutex != NULL)
-		sqlite3_mutex_leave(memdb_mutex);
-	unlock_shm();
-	goto fail;
-rollback_fail:
-	dbquery(memdb, "ROLLBACK");
-fail:
-	free(snaps);
-	return false;
+// Find the ID of a linking table row, inserting the row if it is new. The
+// statements are bound by the caller, both are reset here
+static int linking_id(sqlite3_stmt *ins, sqlite3_stmt *sel)
+{
+	int64_t changes = 0;
+	sqlite3_int64 rowid = 0;
+	int id = 0;
+	if(step_and_count(querydb, ins, &changes, &rowid) == SQLITE_DONE)
+	{
+		if(changes > 0)
+			id = (int)rowid;
+		else if(sqlite3_step(sel) == SQLITE_ROW)
+			id = sqlite3_column_int(sel, 0);
+	}
+	sqlite3_reset(ins);
+	sqlite3_reset(sel);
+	return id;
+}
+
+// Remember a row found in this run for the entry with the shared-memory ID id
+static void remember_found(struct found_row **rows, const unsigned int n, const int id,
+                           const int db_id, const struct found_row *at)
+{
+	if(id < 0 || (unsigned int)id >= n)
+		return;
+	if(*rows == NULL && (*rows = calloc(n, sizeof(**rows))) == NULL)
+		return;
+	(*rows)[id] = *at;
+	(*rows)[id].db_id = db_id;
+}
+
+// Find or add the linking rows of one query that are not known yet. Without
+// the SHM lock, the strings are copies
+static bool find_linking_rows(struct export_row *r, struct export_run *run)
+{
+	sqlite3_stmt **s = run->stmts;
+	if(r->domain_db_id == 0)
+	{
+		sqlite3_bind_text(s[DOMAIN_INSERT], 1, r->domain, -1, SQLITE_STATIC);
+		sqlite3_bind_text(s[DOMAIN_SELECT], 1, r->domain, -1, SQLITE_STATIC);
+		r->domain_db_id = linking_id(s[DOMAIN_INSERT], s[DOMAIN_SELECT]);
+		if(r->hide_domain)
+			hidden_domain_db_id = r->domain_db_id;
+		else
+			remember_found(&run->domains, run->n_domains, r->domainID, r->domain_db_id, &r->domain_at);
+	}
+	if(r->client_db_id == 0)
+	{
+		sqlite3_bind_text(s[CLIENT_INSERT], 1, r->client_ip, -1, SQLITE_STATIC);
+		sqlite3_bind_text(s[CLIENT_INSERT], 2, r->client_name, -1, SQLITE_STATIC);
+		sqlite3_bind_text(s[CLIENT_SELECT], 1, r->client_ip, -1, SQLITE_STATIC);
+		sqlite3_bind_text(s[CLIENT_SELECT], 2, r->client_name, -1, SQLITE_STATIC);
+		r->client_db_id = linking_id(s[CLIENT_INSERT], s[CLIENT_SELECT]);
+		if(r->hide_client)
+			hidden_client_db_id = r->client_db_id;
+		else
+			remember_found(&run->clients, run->n_clients, r->clientID, r->client_db_id, &r->client_at);
+	}
+	if(r->upstreamID > -1 && r->upstream_db_id == 0 && r->upstream != NULL)
+	{
+		sqlite3_bind_text(s[FORWARD_INSERT], 1, r->upstream, -1, SQLITE_STATIC);
+		sqlite3_bind_text(s[FORWARD_SELECT], 1, r->upstream, -1, SQLITE_STATIC);
+		r->upstream_db_id = linking_id(s[FORWARD_INSERT], s[FORWARD_SELECT]);
+		remember_found(&run->upstreams, run->n_upstreams, r->upstreamID, r->upstream_db_id, &r->upstream_at);
+	}
+	if(r->addinfo_type > -1 && r->addinfo_id == 0)
+	{
+		sqlite3_bind_int(s[ADDINFO_INSERT], 1, r->addinfo_type);
+		sqlite3_bind_int(s[ADDINFO_SELECT], 1, r->addinfo_type);
+		if(r->addinfo_type == ADDINFO_CNAME_DOMAIN)
+		{
+			sqlite3_bind_text(s[ADDINFO_INSERT], 2, r->cname, -1, SQLITE_STATIC);
+			sqlite3_bind_text(s[ADDINFO_SELECT], 2, r->cname, -1, SQLITE_STATIC);
+		}
+		else
+		{
+			sqlite3_bind_int(s[ADDINFO_INSERT], 2, r->addinfo_key);
+			sqlite3_bind_int(s[ADDINFO_SELECT], 2, r->addinfo_key);
+		}
+		r->addinfo_id = linking_id(s[ADDINFO_INSERT], s[ADDINFO_SELECT]);
+		if(r->hide_cname)
+			hidden_cname_db_id = r->addinfo_id;
+		else if(r->addinfo_id > 0)
+		{
+			if(run->n_addinfo == run->cap_addinfo)
+			{
+				const unsigned int cap = run->cap_addinfo > 0 ? 2 * run->cap_addinfo : 16;
+				struct found_addinfo *grown = realloc(run->addinfo, cap * sizeof(*grown));
+				if(grown != NULL)
+				{
+					run->addinfo = grown;
+					run->cap_addinfo = cap;
+				}
+			}
+			if(run->n_addinfo < run->cap_addinfo)
+				run->addinfo[run->n_addinfo++] = (struct found_addinfo){ r->addinfo_type, r->addinfo_key, r->addinfo_id };
+		}
+	}
+
+	return r->domain_db_id > 0 && r->client_db_id > 0 &&
+	       (r->addinfo_type < 0 || r->addinfo_id > 0);
+}
+
+// Store one query on disk
+static bool store_row(struct export_row *r, struct export_run *run)
+{
+	if(!find_linking_rows(r, run))
+	{
+		log_err("export_queries_to_disk(): Cannot store the linking rows of query %lld: %s",
+		        (long long)r->id, sqlite3_errmsg(querydb));
+		return false;
+	}
+
+	sqlite3_stmt *ins = run->stmts[QUERY_INSERT];
+	sqlite3_bind_int64(ins, 1, r->id);
+	sqlite3_bind_double(ins, 2, r->timestamp);
+	sqlite3_bind_int(ins, 3, r->type);
+	sqlite3_bind_int(ins, 4, r->status);
+	sqlite3_bind_int(ins, 5, r->domain_db_id);
+	sqlite3_bind_int(ins, 6, r->client_db_id);
+	if(r->upstream_db_id > 0)
+		sqlite3_bind_int(ins, 7, r->upstream_db_id);
+	else
+		sqlite3_bind_null(ins, 7);
+	if(r->addinfo_id > 0)
+		sqlite3_bind_int(ins, 8, r->addinfo_id);
+	else
+		sqlite3_bind_null(ins, 8);
+	sqlite3_bind_int(ins, 9, r->reply);
+	if(r->response_calculated)
+		sqlite3_bind_double(ins, 10, r->response);
+	else
+		sqlite3_bind_null(ins, 10);
+	sqlite3_bind_int(ins, 11, r->dnssec);
+	if(r->list_id != -1)
+		sqlite3_bind_int(ins, 12, r->list_id);
+	else
+		sqlite3_bind_null(ins, 12);
+	sqlite3_bind_int(ins, 13, r->ede);
+
+	const int rc = sqlite3_step(ins);
+	sqlite3_reset(ins);
+	if(rc != SQLITE_DONE)
+	{
+		log_err("export_queries_to_disk(): Failed to store query %lld: %s",
+		        (long long)r->id, sqlite3_errstr(rc));
+		return false;
+	}
+
+	run->inserted++;
+	if(r->blocked)
+		run->blocked++;
+	if(r->timestamp > run->newest)
+		run->newest = r->timestamp;
+
+	return true;
+}
+
+// Write the IDs of the linking rows found in a committed run to shared
+// memory, where the entries are still the same. The caller holds the SHM lock
+static void keep_found_rows(const struct export_run *run)
+{
+	for(unsigned int i = 0; run->domains != NULL && i < run->n_domains; i++)
+	{
+		domainsData *domain = run->domains[i].db_id > 0 ? getDomain(i, true) : NULL;
+		if(domain != NULL && domain->domainpos == run->domains[i].pos)
+		{
+			domain->db_id = run->domains[i].db_id;
+			domain->flags.in_database = true;
+		}
+	}
+	for(unsigned int i = 0; run->clients != NULL && i < run->n_clients; i++)
+	{
+		clientsData *client = run->clients[i].db_id > 0 ? getClient(i, true) : NULL;
+		if(client != NULL && client->namepos == run->clients[i].pos &&
+		   client->ippos == run->clients[i].pos2)
+		{
+			client->db_id = run->clients[i].db_id;
+			client->flags.in_database = true;
+		}
+	}
+	for(unsigned int i = 0; run->upstreams != NULL && i < run->n_upstreams; i++)
+	{
+		upstreamsData *upstream = run->upstreams[i].db_id > 0 ? getUpstream(i, true) : NULL;
+		if(upstream != NULL && upstream->ippos == run->upstreams[i].pos &&
+		   upstream->port == run->upstreams[i].pos2)
+		{
+			upstream->db_id = run->upstreams[i].db_id;
+			upstream->flags.in_database = true;
+		}
+	}
+	for(unsigned int i = 0; i < run->n_addinfo; i++)
+		store_addinfo_id(run->addinfo[i].type, run->addinfo[i].key, run->addinfo[i].db_id);
+}
+
+// Release what one export run allocated
+static void free_export_run(struct export_run *run)
+{
+	if(run->domains != NULL)
+		free(run->domains);
+	if(run->clients != NULL)
+		free(run->clients);
+	if(run->upstreams != NULL)
+		free(run->upstreams);
+	if(run->addinfo != NULL)
+		free(run->addinfo);
+	if(run->room != NULL)
+		free(run->room);
+}
+
+// Store the queries that are ready on disk, in one transaction - either
+// periodically (final = false) or at shutdown (final = true). A query is
+// ready once it is older than REPLY_TIMEOUT, so it can still complete, at
+// shutdown at once. Queries recorded at the maximum privacy level are not
+// stored. The queries are taken from shared memory in chunks, and the disk is
+// written without the SHM lock
+static bool store_ready_queries(const bool final)
+{
+	// Only try to export to database if it is known to not be broken
+	if(FTLDBerror() || querydb == NULL)
+		return false;
+
+	// Nothing is stored with database.maxDBdays 0
+	if(config.database.maxDBdays.v.ui == 0)
+		return true;
+
+	// Start database timer
+	timer_start(DATABASE_WRITE_TIMER);
+
+	struct export_run run = { .maxid = -1 };
+	struct export_row rows[EXPORT_CHUNK];
+	bool okay = disk_db_maxid(&run.maxid) && (run.room = malloc(EXPORT_ROOM)) != NULL;
+	for(unsigned int i = 0; okay && i < ArraySize(export_sql); i++)
+		okay = sqlite3_prepare_v2(querydb, export_sql[i], -1, &run.stmts[i], NULL) == SQLITE_OK;
+	if(okay && dbquery(querydb, "BEGIN") != SQLITE_OK)
+		okay = false;
+	if(!okay)
+	{
+		log_err("export_queries_to_disk(): Cannot start the export: %s", sqlite3_errmsg(querydb));
+		for(unsigned int i = 0; i < ArraySize(run.stmts); i++)
+			sqlite3_finalize(run.stmts[i]);
+		free_export_run(&run);
+		return false;
+	}
+
+	// From the first query not stored yet to the first one that may still
+	// receive a reply. A query stamped after now dates from before a
+	// backwards clock step and does not hold back the others
+	const double now = double_time();
+	unsigned int pos = 0;
+	bool done = false, started = false;
+	while(okay && !done)
+	{
+		unsigned int n = 0;
+		lock_shm_reader();
+		if(!started)
+		{
+			pos = export_pos;
+			run.n_domains = counters->domains;
+			run.n_clients = counters->clients;
+			run.n_upstreams = counters->upstreams;
+			started = true;
+		}
+		// The garbage collector may have removed queries a day past the
+		// cutoff, the export goes on with the oldest one left
+		const unsigned int removed = get_queries_removed();
+		if(pos - removed > (unsigned int)counters->queries)
+			pos = removed;
+		run.used = 0;
+		while(n < EXPORT_CHUNK && pos - removed < (unsigned int)counters->queries)
+		{
+			const queriesData *query = getQuery(pos - removed, true);
+			if(query != NULL && query->db > run.maxid && query->privacylevel < PRIVACY_MAXIMUM)
+			{
+				if(!final && query->timestamp >= now - REPLY_TIMEOUT && query->timestamp <= now + 1.0)
+				{
+					done = true;
+					break;
+				}
+				// A query whose strings do not fit goes into the next
+				// chunk, which has the whole room for it
+				if(take_query(query, &rows[n], &run))
+					n++;
+				else if(n > 0)
+					break;
+				else
+					log_err("export_queries_to_disk(): Strings of query %lld too long, not stored",
+					        (long long)query->db);
+			}
+			pos++;
+		}
+		if(pos - removed >= (unsigned int)counters->queries)
+			done = true;
+		unlock_shm();
+
+		for(unsigned int i = 0; okay && i < n; i++)
+			okay = store_row(&rows[i], &run);
+
+		// A periodic export still running at shutdown leaves the rest
+		// to the final one
+		if(killed && !final)
+			done = true;
+	}
+
+	// The totals of the database, in the same transaction
+	if(okay && run.inserted > 0)
+	{
+		const double newest = run.newest > new_last_timestamp ? run.newest : new_last_timestamp;
+		if(dbquery(querydb, "INSERT OR REPLACE INTO ftl (id, value) VALUES ( %i, %f );",
+		           DB_LASTTIMESTAMP, newest) != SQLITE_OK ||
+		   !db_update_disk_counter(querydb, DB_TOTALQUERIES, (int)run.inserted) ||
+		   !db_update_disk_counter(querydb, DB_BLOCKEDQUERIES, (int)run.blocked))
+		{
+			log_err("export_queries_to_disk(): Cannot update the counters: %s", sqlite3_errmsg(querydb));
+			okay = false;
+		}
+		else
+			new_last_timestamp = newest;
+	}
+
+	for(unsigned int i = 0; i < ArraySize(run.stmts); i++)
+		sqlite3_finalize(run.stmts[i]);
+
+	if(okay && dbquery(querydb, "END") != SQLITE_OK)
+	{
+		log_err("export_queries_to_disk(): Cannot end transaction: %s", sqlite3_errmsg(querydb));
+		okay = false;
+	}
+
+	if(okay)
+	{
+		// The next export continues behind these queries, with the IDs of
+		// the linking rows found now
+		lock_shm();
+		keep_found_rows(&run);
+		export_pos = pos;
+		unlock_shm();
+		diskdb_queries_count += run.inserted;
+	}
+	else
+	{
+		// Nothing of this run is on disk, the hidden rows may not be either
+		sqlite3_exec(querydb, "ROLLBACK", NULL, NULL, NULL);
+		hidden_domain_db_id = hidden_client_db_id = hidden_cname_db_id = 0;
+	}
+
+	log_debug(DEBUG_DATABASE, "Exported %u queries to the long-term database (took %.1f ms)",
+	          okay ? run.inserted : 0, timer_elapsed_msec(DATABASE_WRITE_TIMER));
+
+	free_export_run(&run);
+
+	return okay;
+}
+
+// Exports run in the database thread and once more at shutdown, one at a time
+static pthread_mutex_t export_lock = PTHREAD_MUTEX_INITIALIZER;
+
+bool export_queries_to_disk(const bool final)
+{
+	pthread_mutex_lock(&export_lock);
+	const bool okay = store_ready_queries(final);
+	pthread_mutex_unlock(&export_lock);
+	return okay;
 }
