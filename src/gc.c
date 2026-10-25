@@ -459,6 +459,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Process all queries
 	unsigned int removed = 0;
+	int64_t last_removed_id = -1;
 	for(unsigned int i = 0; i < counters->queries; i++)
 	{
 		queriesData *query = getQuery(i, true);
@@ -534,8 +535,12 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
 
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
+			counters->queries_maxprivacy--;
+
 		// Count removed queries
 		removed++;
+		last_removed_id = query->db;
 	}
 
 	// Only perform memory operations when we actually removed queries
@@ -556,6 +561,14 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
+
+		// The bound of how far query timestamps fall out of order may be
+		// smaller without the query that set it. IDs grow with the
+		// position, so it is gone if its ID is not above the last one
+		// removed
+		if(counters->query_time_disorder > 0.0 &&
+		   counters->query_time_disorder_id <= last_removed_id)
+			retrack_query_times();
 	}
 
 	// Remove query from queries table (temp), we can release the lock for this

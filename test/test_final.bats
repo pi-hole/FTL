@@ -44,6 +44,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
+  # pytest: 2x pihole.toml writes (excludeClients cleared + restored around the sorted query log tests)
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
@@ -61,7 +62,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "53" ]]
+    [[ ${lines[0]} == "55" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -823,6 +824,8 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_import"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_import"
+  assert_success
   imported=$(curl -s "127.0.0.1/api/queries?domain=*.ids.ftl&length=100" | jq -c '.queries')
   for i in $(seq 1 30); do
     if dig A udp-3.ids.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
@@ -890,6 +893,8 @@ load 'bats_helper.bash'
   assert_success
   run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
   run bash -c "curl -s '127.0.0.1/api/queries?domain=type0.import.ftl' | jq -c '[.queries[] | [.type, .client.ip]]'"
   assert_output '[["TYPE0","10.0.100.0"]]'
   # It is counted in shared memory as well: every row read from the disk
@@ -956,4 +961,60 @@ load 'bats_helper.bash'
   refute_output
   run bash -c 'grep "CRIT:" /tmp/FTL.startup-db.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
+}
+
+@test "Long domains of imported queries fill several string blocks of one request" {
+  # 600 domains of 608 bytes: the strings of 64 rows are more than a block
+  # keeps free, so a chunk has to end early for a new block
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \".timeout 5000\" \"WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 600) INSERT INTO domain_by_id (domain) SELECT printf('%04d-%s.blocks.ftl', x, hex(zeroblob(296))) FROM c; INSERT OR IGNORE INTO client_by_id (ip, name) VALUES ('10.0.6.0', ''); INSERT INTO query_storage (timestamp, type, status, domain, client) SELECT $(( $(date +%s) - 60 )), 1, 3, d.id, c.id FROM domain_by_id d, client_by_id c WHERE d.domain LIKE '%.blocks.ftl' AND c.ip = '10.0.6.0' ORDER BY d.id;\""
+  assert_success
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  reply=$(curl -s "127.0.0.1/api/queries?domain=*.blocks.ftl&length=1000" | jq -c '[(.queries | length), ([.queries[]?.domain | length] | unique), ([.queries[]?.domain[0:4]] | unique | length), .recordsFiltered]')
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  stopped=${status}
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE domain IN (SELECT id FROM domain_by_id WHERE domain LIKE '%.blocks.ftl'); DELETE FROM domain_by_id WHERE domain LIKE '%.blocks.ftl'; DELETE FROM client_by_id WHERE ip = '10.0.6.0';"
+  assert_equal "${stopped}" "0"
+
+  printf "rows, domain lengths, distinct domains, recordsFiltered: %s\n" "${reply}"
+  assert_equal "${reply}" "[600,[608],600,600]"
+}
+
+@test "The in-memory query log has a null cursor before the first query" {
+  # FTL starts on a new database, so there is no query a cursor could point to
+  for f in /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm; do
+    if [[ -e "${f}" ]]; then mv "${f}" "${f}.kept"; fi
+  done
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  reply=$(curl -s "127.0.0.1/api/queries" | jq -c '[.cursor, .recordsTotal, (.queries | length)]')
+
+  # The database of the suite comes back also if FTL does not stop in time.
+  # Not in the shell of the kill: FTL logs the command line of the process
+  # that signals it, which would hold the string waited for
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  stopped=${status}
+  rm -f /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm
+  for f in /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm; do
+    if [[ -e "${f}.kept" ]]; then mv "${f}.kept" "${f}"; fi
+  done
+  assert_equal "${stopped}" "0"
+
+  printf "cursor, recordsTotal, rows: %s\n" "${reply}"
+  assert_equal "${reply}" "[null,0,0]"
 }
