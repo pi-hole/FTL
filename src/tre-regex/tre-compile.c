@@ -6,13 +6,6 @@
 
 */
 
-/*
-  TODO:
-   - Fix tre_ast_to_tnfa() to recurse using a stack instead of recursive
-     function calls.
-*/
-
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
@@ -1758,9 +1751,13 @@ tre_make_trans(tre_pos_and_tags_t *p1, tre_pos_and_tags_t *p2,
 /* Converts the syntax tree to a TNFA.	All the transitions in the TNFA are
    labelled with one character range (there are no transitions on empty
    strings).  The TNFA takes O(n^2) space in the worst case, `n' is size of
-   the regexp. */
+   the regexp.
+
+   This is the iterative version using an explicit stack; the previous
+   recursive implementation could overflow the C stack for large patterns. */
 static reg_errcode_t
-tre_ast_to_tnfa(tre_ast_node_t *node, tre_tnfa_transition_t *transitions,
+tre_ast_to_tnfa(tre_stack_t *stack, tre_ast_node_t *node,
+		tre_tnfa_transition_t *transitions,
 		int *counts, int *offs)
 {
   tre_union_t *uni;
@@ -1768,51 +1765,56 @@ tre_ast_to_tnfa(tre_ast_node_t *node, tre_tnfa_transition_t *transitions,
   tre_iteration_t *iter;
   reg_errcode_t errcode = REG_OK;
 
-  /* XXX - recurse using a stack!. */
-  switch (node->type)
+  STACK_PUSHR(stack, voidptr, node);
+
+  while (tre_stack_num_items(stack))
     {
-    case LITERAL:
-      break;
-    case UNION:
-      uni = (tre_union_t *)node->obj;
-      errcode = tre_ast_to_tnfa(uni->left, transitions, counts, offs);
-      if (errcode != REG_OK)
-	return errcode;
-      errcode = tre_ast_to_tnfa(uni->right, transitions, counts, offs);
-      break;
+      node = tre_stack_pop_voidptr(stack);
 
-    case CATENATION:
-      cat = (tre_catenation_t *)node->obj;
-      /* Add a transition from each position in cat->left->lastpos
-	 to each position in cat->right->firstpos. */
-      errcode = tre_make_trans(cat->left->lastpos, cat->right->firstpos,
-			       transitions, counts, offs);
-      if (errcode != REG_OK)
-	return errcode;
-      errcode = tre_ast_to_tnfa(cat->left, transitions, counts, offs);
-      if (errcode != REG_OK)
-	return errcode;
-      errcode = tre_ast_to_tnfa(cat->right, transitions, counts, offs);
-      break;
-
-    case ITERATION:
-      iter = (tre_iteration_t *)node->obj;
-      assert(iter->max == -1 || iter->max == 1);
-
-      if (iter->max == -1)
+      switch (node->type)
 	{
-	  assert(iter->min == 0 || iter->min == 1);
-	  /* Add a transition from each last position in the iterated
-	     expression to each first position. */
-	  errcode = tre_make_trans(iter->arg->lastpos, iter->arg->firstpos,
+	case LITERAL:
+	  break;
+
+	case UNION:
+	  uni = (tre_union_t *)node->obj;
+	  /* Push right before left so that left is processed first,
+	     preserving the traversal order of the recursive version. */
+	  STACK_PUSHR(stack, voidptr, uni->right);
+	  STACK_PUSHR(stack, voidptr, uni->left);
+	  break;
+
+	case CATENATION:
+	  cat = (tre_catenation_t *)node->obj;
+	  /* Add a transition from each position in cat->left->lastpos
+	     to each position in cat->right->firstpos. */
+	  errcode = tre_make_trans(cat->left->lastpos, cat->right->firstpos,
 				   transitions, counts, offs);
 	  if (errcode != REG_OK)
 	    return errcode;
+	  STACK_PUSHR(stack, voidptr, cat->right);
+	  STACK_PUSHR(stack, voidptr, cat->left);
+	  break;
+
+	case ITERATION:
+	  iter = (tre_iteration_t *)node->obj;
+	  assert(iter->max == -1 || iter->max == 1);
+
+	  if (iter->max == -1)
+	    {
+	      assert(iter->min == 0 || iter->min == 1);
+	      /* Add a transition from each last position in the iterated
+		 expression to each first position. */
+	      errcode = tre_make_trans(iter->arg->lastpos, iter->arg->firstpos,
+				       transitions, counts, offs);
+	      if (errcode != REG_OK)
+		return errcode;
+	    }
+	  STACK_PUSHR(stack, voidptr, iter->arg);
+	  break;
 	}
-      errcode = tre_ast_to_tnfa(iter->arg, transitions, counts, offs);
-      break;
     }
-  return errcode;
+  return REG_OK;
 }
 
 #define ERROR_EXIT(err)		  \
@@ -1983,7 +1985,9 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 
   for (i = 0; i < numpos; i++)
     counts[i] = 0;
-  tre_ast_to_tnfa(tree, NULL, counts, NULL);
+  errcode = tre_ast_to_tnfa(stack, tree, NULL, counts, NULL);
+  if (errcode != REG_OK)
+    ERROR_EXIT(errcode);
 
   add = 0;
   for (i = 0; i < numpos; i++)
@@ -2003,7 +2007,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   tnfa->num_transitions = add;
 
   DPRINT(("Converting to TNFA:\n"));
-  errcode = tre_ast_to_tnfa(tree, transitions, counts, offs);
+  errcode = tre_ast_to_tnfa(stack, tree, transitions, counts, offs);
   if (errcode != REG_OK)
     ERROR_EXIT(errcode);
 
