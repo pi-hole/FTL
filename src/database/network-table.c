@@ -25,6 +25,8 @@
 #include "signals.h"
 // set_event()
 #include "events.h"
+// rename_client()
+#include "name-history.h"
 // nlneigh(), nllinks(), nladdrs()
 #include "tools/netlink.h"
 // DHCPLEASESFILE
@@ -1338,7 +1340,8 @@ bool flush_network_table(void)
 		if(client == NULL || client->flags.aliasclient)
 			continue;
 
-		client->namepos = 0;
+		// Its queries so far keep the name they were made with
+		rename_client(client, clientID, 0, counters->next_query_id);
 		client->flags.nameFromDB = false;
 
 		// The (ip, name) pair changed, so the client needs a new
