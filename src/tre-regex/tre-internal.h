@@ -223,6 +223,11 @@ typedef enum {
 /* Signifies the default matching parameter value. */
 #define TRE_PARAM_DEFAULT -2
 
+/* Maximum nesting depth of approximate matching parameters the approximate
+   matcher can represent (see the costs[] array in tre-match-approx.c).  The
+   compiler rejects patterns that would exceed this. */
+#define TRE_M_MAX_DEPTH 3
+
 /* Instructions to compute submatch register values from tag values
    after a successful match.  */
 struct tre_submatch_data {

@@ -55,8 +55,6 @@ char *alloca ();
 #define TRE_M_NUM_ERR	4
 #define TRE_M_LAST	5
 
-#define TRE_M_MAX_DEPTH 3
-
 typedef struct {
   /* State in the TNFA transition table. */
   tre_tnfa_transition_t *state;
