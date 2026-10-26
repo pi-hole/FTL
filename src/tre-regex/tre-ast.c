@@ -33,7 +33,7 @@ tre_ast_new_node(tre_mem_t mem, tre_ast_type_t type, size_t size)
 }
 
 tre_ast_node_t *
-tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max, int position)
+tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max)
 {
   tre_ast_node_t *node;
   tre_literal_t *lit;
@@ -44,7 +44,7 @@ tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max, int position)
   lit = node->obj;
   lit->code_min = code_min;
   lit->code_max = code_max;
-  lit->position = position;
+  lit->position = -1;
 
   return node;
 }
