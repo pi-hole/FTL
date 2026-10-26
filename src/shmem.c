@@ -1344,13 +1344,14 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 			         sharedMemory->name, sharedMemory->fd, new_size, strerror(ret), ret);
 			exit(EXIT_FAILURE);
 		}
-
-		// Update shm counters to indicate that at least one shared memory object changed
-		shmSettings->global_shm_counter++;
-		local_shm_counter++;
 	}
 
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, new_size, MREMAP_MAYMOVE);
+	// A process forked between another thread's mremap() of this region and
+	// the pointer update below has only the moved mapping, at an address it
+	// does not know, so its remap from the old pointer fails: map it anew
+	if(new_ptr == MAP_FAILED && !resize && errno == EFAULT)
+		new_ptr = mmap(NULL, new_size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory->fd, 0);
 	if(new_ptr == MAP_FAILED)
 	{
 		log_crit("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
@@ -1373,8 +1374,34 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		          sharedMemory->ptr, new_ptr, sharedMemory->size, new_size);
 	}
 
+	// Keep the previous address so the matching global pointer can be moved
+	// from it to the new mapping below
+	void *const old_ptr = sharedMemory->ptr;
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = new_size;
+
+	// Raise the counters only once the new mapping, its size and the global
+	// pointer the getters dereference are all in place. Another process, such
+	// as a TCP worker forked from the main thread without the lock held,
+	// compares local_shm_counter with global_shm_counter in _lock_shm() to
+	// decide whether to remap, so it must never see the raised counter next to
+	// a pointer or size that still describe the old mapping
+	if(resize)
+	{
+		for(unsigned int i = 0; i < ArraySize(global_pointers); i++)
+		{
+			if(*global_pointers[i] == old_ptr)
+			{
+				*global_pointers[i] = new_ptr;
+				break;
+			}
+		}
+		// A fork copies this process at any point of this thread: make the
+		// stores above visible before the counters that announce them
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		shmSettings->global_shm_counter++;
+		local_shm_counter++;
+	}
 
 	return true;
 }
