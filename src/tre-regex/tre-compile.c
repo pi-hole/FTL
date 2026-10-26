@@ -1100,13 +1100,19 @@ tre_set_union(tre_mem_t mem, tre_pos_and_tags_t *set1, tre_pos_and_tags_t *set2,
 	    new_set[s1].params = params;
 	  else
 	    {
-	      new_set[s1].params = tre_mem_alloc(mem, sizeof(*params) *
-						 TRE_PARAM_LAST);
-	      if (!new_set[s1].params)
+	      int *merged = tre_mem_alloc(mem, sizeof(*params) *
+						  TRE_PARAM_LAST);
+	      if (!merged)
 		return NULL;
+	      /* Merge both sources, initializing every slot so that unset
+		 parameters never carry uninitialized values. */
 	      for (i = 0; i < TRE_PARAM_LAST; i++)
-		if (params[i] != TRE_PARAM_UNSET)
-		  new_set[s1].params[i] = params[i];
+		{
+		  merged[i] = new_set[s1].params[i];
+		  if (params[i] != TRE_PARAM_UNSET)
+		    merged[i] = params[i];
+		}
+	      new_set[s1].params = merged;
 	    }
 	}
     }
@@ -1142,13 +1148,19 @@ tre_set_union(tre_mem_t mem, tre_pos_and_tags_t *set1, tre_pos_and_tags_t *set2,
 	    new_set[s1 + s2].params = params;
 	  else
 	    {
-	      new_set[s1 + s2].params = tre_mem_alloc(mem, sizeof(*params) *
-						      TRE_PARAM_LAST);
-	      if (!new_set[s1 + s2].params)
+	      int *merged = tre_mem_alloc(mem, sizeof(*params) *
+						  TRE_PARAM_LAST);
+	      if (!merged)
 		return NULL;
+	      /* Merge both sources, initializing every slot so that unset
+		 parameters never carry uninitialized values. */
 	      for (i = 0; i < TRE_PARAM_LAST; i++)
-		if (params[i] != TRE_PARAM_UNSET)
-		  new_set[s1 + s2].params[i] = params[i];
+		{
+		  merged[i] = new_set[s1 + s2].params[i];
+		  if (params[i] != TRE_PARAM_UNSET)
+		    merged[i] = params[i];
+		}
+	      new_set[s1 + s2].params = merged;
 	    }
 	}
     }
