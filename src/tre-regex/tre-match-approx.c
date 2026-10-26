@@ -474,8 +474,9 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 	 pretending that all transitions are epsilon transitions, until
 	 no more states can be reached with better costs. */
       {
-	/* XXX - dynamic ringbuffer size */
-	tre_tnfa_approx_reach_t *ringbuffer[512];
+	int rb_size = 256;
+	tre_tnfa_approx_reach_t *static_ringbuffer[256];
+	tre_tnfa_approx_reach_t **ringbuffer = static_ringbuffer;
 	tre_tnfa_approx_reach_t **deque_start, **deque_end;
 
 	deque_start = deque_end = ringbuffer;
@@ -487,7 +488,34 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 	      continue;
 	    *deque_end = &reach_next[id];
 	    deque_end++;
-	    assert(deque_end != deque_start);
+	    /* Grow the buffer (moving to the heap) if full. */
+	    if (deque_end >= (ringbuffer + rb_size))
+	      {
+		tre_tnfa_approx_reach_t **larger_buf;
+		size_t os = deque_start - ringbuffer;
+		size_t oe = deque_end - ringbuffer;
+		rb_size += 512;
+		if (ringbuffer == static_ringbuffer)
+		  larger_buf = xmalloc(sizeof(*ringbuffer) * rb_size);
+		else
+		  larger_buf = xrealloc(ringbuffer, sizeof(*ringbuffer) * rb_size);
+		if (larger_buf == NULL)
+		  {
+		    if (ringbuffer != static_ringbuffer)
+		      xfree(ringbuffer);
+#ifndef TRE_USE_ALLOCA
+		    if (buf)
+		      xfree(buf);
+#endif /* !TRE_USE_ALLOCA */
+		    return REG_ESPACE;
+		  }
+		if (ringbuffer == static_ringbuffer)
+		  /* Moving from stack to heap: copy existing contents. */
+		  memcpy(larger_buf, ringbuffer, sizeof(static_ringbuffer));
+		ringbuffer = larger_buf;
+		deque_start = ringbuffer + os;
+		deque_end = ringbuffer + oe;
+	      }
 	  }
 
 	/* Repeat until the deque is empty. */
@@ -519,7 +547,7 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		/* Too many errors or cost too large. */
 		DPRINT(("  delete: from %03d: cost too large\n", id));
 		deque_start++;
-		if (deque_start >= (ringbuffer + 512))
+		if (deque_start >= (ringbuffer + rb_size))
 		  deque_start = ringbuffer;
 		continue;
 	      }
@@ -617,15 +645,17 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		/* Add to the end of the deque. */
 		*deque_end = &reach_next[dest_id];
 		deque_end++;
-		if (deque_end >= (ringbuffer + 512))
+		if (deque_end >= (ringbuffer + rb_size))
 		  deque_end = ringbuffer;
 		assert(deque_end != deque_start);
 	      }
 	    deque_start++;
-	    if (deque_start >= (ringbuffer + 512))
+	    if (deque_start >= (ringbuffer + rb_size))
 	      deque_start = ringbuffer;
 	  }
 
+	if (ringbuffer != static_ringbuffer)
+	  xfree(ringbuffer);
       }
 
 #ifdef TRE_DEBUG
