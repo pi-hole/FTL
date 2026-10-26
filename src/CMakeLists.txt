@@ -32,8 +32,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_DEFAULT_FOREIGN_KEYS=1: This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.
 # SQLITE_DQS=0: This setting disables the double-quoted string literal misfeature.
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption. It is needed for the .recover SQLite3 command.
+# SQLITE_ENABLE_DBSTAT_VTAB: Enables the dbstat virtual table. It is needed for the .diskused SQLite3 command.
 # SQLITE_TEMP_STORE=1: This option sets the default value for the temp_store pragma to 1. This means that temporary tables and indices are always stored on disk. This is the default setting.
-# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (_memdb, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
+# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (the query database, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
 # SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
 # SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
 # HAVE_MALLOC_H + HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
@@ -43,7 +44,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_ENABLE_CARRAY: Enable the carray virtual table module
 # SQLITE_ENABLE_PERCENTILE: Enable the percentile aggregate function
 # SQLITE_DEFAULT_JOURNAL_SIZE_LIMIT=33554432: Cap the rollback journal / WAL file at 32 MiB. Without this, the -wal file on the on-disk query database can grow unbounded between checkpoints on busy resolvers, increasing latency and disk usage. Applied as a compile-time default so every connection inherits it (including attached databases).
-set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_TEMP_STORE=1 -DSQLITE_DEFAULT_CACHE_SIZE=4096 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_DEFAULT_JOURNAL_SIZE_LIMIT=33554432 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_H -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=0 -DSQLITE_MAX_PREPARE_RETRY=200 -DSQLITE_ENABLE_CARRAY=1 -DSQLITE_ENABLE_PERCENTILE=1")
+set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_DQS=0 -DSQLITE_ENABLE_DBPAGE_VTAB -DSQLITE_ENABLE_DBSTAT_VTAB -DSQLITE_TEMP_STORE=1 -DSQLITE_DEFAULT_CACHE_SIZE=4096 -DSQLITE_DEFAULT_SYNCHRONOUS=1 -DSQLITE_DEFAULT_JOURNAL_SIZE_LIMIT=33554432 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DHAVE_MALLOC_H -DHAVE_MALLOC_USABLE_SIZE -DHAVE_FDATASYNC -DSQLITE_DEFAULT_WORKER_THREADS=0 -DSQLITE_MAX_PREPARE_RETRY=200 -DSQLITE_ENABLE_CARRAY=1 -DSQLITE_ENABLE_PERCENTILE=1")
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
@@ -283,6 +284,8 @@ set(sources
         main.c
         main.h
         metrics.h
+        name-history.c
+        name-history.h
         overTime.c
         overTime.h
         procps.c
@@ -492,6 +495,43 @@ if(BUILD_PTR_RESPONSE_REGRESSION)
     if(PTR_RESPONSE_REGRESSION_SANITIZE)
         target_compile_options(ptr_response_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(ptr_response_regression PRIVATE -fsanitize=address,undefined)
+    endif()
+endif()
+
+# Standalone regression harness for cache_make_stat()'s TXT_STAT_SERVERS /
+# TXT_API_* buffer bookkeeping (GHSA-8fc6-q9x4-892v). It compiles the real
+# src/dnsmasq/cache.c a second time and stubs the handful of dnsmasq externals
+# that file needs but this harness does not otherwise provide, including a
+# fake get_api_string() that deliberately shrinks the shared buffer - see
+# test/txt_stat_regression.c for why that fake stands in for the real one.
+# The "TXT stat buffer regression harness" bats test runs the resulting
+# binary. Deliberately NOT given the strict EXTRAWARN/-Werror flags applied
+# to FTL code.
+#
+# Only built on request: `./build.sh test` enables it for local runs and the
+# CI Dockerfile passes -DBUILD_TXT_STAT_REGRESSION=ON at build time.
+option(BUILD_TXT_STAT_REGRESSION "Build the TXT stat buffer regression test harness" OFF)
+if(BUILD_TXT_STAT_REGRESSION)
+    add_executable(txt_stat_regression
+            ${PROJECT_SOURCE_DIR}/test/txt_stat_regression.c
+            ${PROJECT_SOURCE_DIR}/src/dnsmasq/cache.c)
+    target_include_directories(txt_stat_regression PRIVATE
+            ${PROJECT_SOURCE_DIR}/src
+            ${PROJECT_SOURCE_DIR}/src/lua
+            ${PROJECT_SOURCE_DIR}/src/dnsmasq)
+    target_compile_definitions(txt_stat_regression PRIVATE
+            VERSION=\"${DNSMASQ_VERSION}\"
+            CONFFILE=\"/etc/pihole/dnsmasq.conf\"
+            HAVE_POLL_H)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DTXT_STAT_REGRESSION_SANITIZE=ON" test
+    # Off by default so the static (musl) CI builds, where the sanitizer
+    # runtime is not available, keep linking.
+    option(TXT_STAT_REGRESSION_SANITIZE "Build the TXT stat buffer regression test with ASan/UBSan" OFF)
+    if(TXT_STAT_REGRESSION_SANITIZE)
+        target_compile_options(txt_stat_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(txt_stat_regression PRIVATE -fsanitize=address,undefined)
     endif()
 endif()
 

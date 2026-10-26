@@ -16,6 +16,8 @@
 #include "regex_r.h"
 // parse_upstream_uri()
 #include "dotdoh/upstream_uri.h"
+// PATH_MAX
+#include <limits.h>
 
 // Stub validator for config types that need to dedicated validation as they can
 // be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
@@ -265,7 +267,9 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 			free(str);
 			return false;
 		}
-		int cidr_int = atoi(cidr);
+		// Digits only, anything else is rejected by the range checks below
+		const size_t cidr_len = strlen(cidr);
+		const int cidr_int = (cidr_len <= 3 && strspn(cidr, "0123456789") == cidr_len) ? atoi(cidr) : -1;
 		if(ip4 && (cidr_int < 0 || cidr_int > 32))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 CIDR (\"%s\")", key, cidr);
@@ -281,6 +285,32 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	}
 
 	free(str);
+	return true;
+}
+
+bool validate_cidr_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json->child; item != NULL; item = item->next, i++)
+	{
+		char ikey[128];
+		snprintf(ikey, sizeof(ikey), "%s[%d]", key, i);
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a string", ikey);
+			return false;
+		}
+		union conf_value v = { .s = item->valuestring };
+		if(!validate_cidr(&v, ikey, err))
+			return false;
+	}
+
 	return true;
 }
 
@@ -451,10 +481,9 @@ static bool paths_overlap(const char *a, const size_t alen, const char *b)
 // same directory differently - "/." and "//etc/pihole" name the root and the
 // configuration directory just as well as "/" and "/etc/pihole" do.
 //
-// Resolution is lexical, so a symbolic link still points where it points. That
-// is deliberate: realpath() needs the path to exist, which would stop a
-// directory from being configured before it is created, and planting a link in
-// the first place already requires access to the host.
+// Resolution is lexical, so a symbolic link still points where it points: a
+// directory has to be configurable before it exists. Where it does exist,
+// resolve_path() below follows the links as well.
 //
 // Returns the length written, or 0 if the path is not absolute or does not fit,
 // which callers treat as "reject" rather than "skip the check".
@@ -513,6 +542,57 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 	return o;
 }
 
+// Where a path exists, follow its symbolic links and return the target in the
+// same normalized spelling, so a comparison can be repeated on what the name
+// actually leads to. Not every link needs access to the host to plant it: the
+// kernel provides /proc/self/root, which leads to "/" for any process.
+//
+// Returns 0 if the path does not exist or the target does not fit, which
+// callers treat as "nothing to follow": the lexical check stands on its own.
+static size_t resolve_path(const char *path, char *out, const size_t outlen)
+{
+	char resolved[PATH_MAX];
+	if(realpath(path, resolved) == NULL)
+		return 0;
+
+	return normalize_path(resolved, out, outlen);
+}
+
+// Whether the document root stays clear of "/" and of Pi-hole's configuration
+// directory, both as written and where its links lead. On success, norm and
+// real hold the two spellings (rlen is 0 if the path does not exist yet) for
+// the caller's further checks.
+static bool webroot_confined(const char *key, const char *webroot,
+                             char norm[NORMALIZED_PATH_LEN], size_t *nlen,
+                             char real[NORMALIZED_PATH_LEN], size_t *rlen,
+                             char err[VALIDATOR_ERRBUF_LEN])
+{
+	*nlen = normalize_path(webroot, norm, NORMALIZED_PATH_LEN);
+	if(*nlen == 0 || *nlen == 1 || paths_overlap(norm, *nlen, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, CONFIG_DIR);
+		return false;
+	}
+
+	// The configuration directory may be reached through a link as well
+	char confdir[NORMALIZED_PATH_LEN];
+	if(resolve_path(CONFIG_DIR, confdir, sizeof(confdir)) == 0)
+		strcpy(confdir, CONFIG_DIR);
+
+	*rlen = resolve_path(webroot, real, NORMALIZED_PATH_LEN);
+	if(*rlen == 1 || (*rlen > 0 && paths_overlap(real, *rlen, confdir)))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" resolves to \"%s\", which must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, webroot, real, CONFIG_DIR);
+		return false;
+	}
+
+	return true;
+}
+
 // The files Pi-hole writes and therefore must keep out of the document root.
 // Their content follows from what clients send - logged requests, resolved
 // names, imported settings - so serving them hands that straight back out, and a
@@ -521,7 +601,7 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 // in the same file.
 #define WRITTEN_FILES(conf) { \
 	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
-	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
+	&(conf).files.database, &(conf).files.gravity, \
 	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
 
 // Check the path relationships of a complete configuration.
@@ -547,15 +627,15 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 		return false;
 	}
 
-	char wnorm[NORMALIZED_PATH_LEN];
-	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
-	if(wlen == 0 || wlen == 1 || paths_overlap(wnorm, wlen, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         conf->webserver.paths.webroot.k, CONFIG_DIR);
+	char wnorm[NORMALIZED_PATH_LEN], wreal[NORMALIZED_PATH_LEN];
+	size_t wlen, wrlen;
+	if(!webroot_confined(conf->webserver.paths.webroot.k, webroot,
+	                     wnorm, &wlen, wreal, &wrlen, err))
 		return false;
-	}
+
+	// Compare where the names lead once they exist, not only how they are
+	// written: a document root linked to the log directory spans the log
+	const char *weff = wrlen > 0 ? wreal : wnorm;
 
 	struct conf_item *written[] = WRITTEN_FILES(*conf);
 	for(size_t i = 0; i < ArraySize(written); i++)
@@ -575,56 +655,18 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 			return false;
 		}
 
-		char pnorm[NORMALIZED_PATH_LEN];
-		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
-		   paths_overlap(wnorm, wlen, pnorm))
+		char pnorm[NORMALIZED_PATH_LEN], preal[NORMALIZED_PATH_LEN];
+		const size_t plen = normalize_path(path, pnorm, sizeof(pnorm));
+		const char *peff = resolve_path(path, preal, sizeof(preal)) > 0 ? preal : pnorm;
+		if(plen == 0 ||
+		   paths_overlap(wnorm, wlen, pnorm) ||
+		   paths_overlap(weff, strlen(weff), peff))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s (\"%s\") must not be inside %s (\"%s\")",
 			         written[i]->k, path, conf->webserver.paths.webroot.k, webroot);
 			if(offender != NULL)
 				*offender = written[i];
-			return false;
-		}
-	}
-
-	// With database.forceDisk, files.tmp_db is emptied on every start and
-	// removed on stop, so it must not name a file Pi-hole keeps
-	struct conf_item *tmp_db = &conf->files.tmp_db;
-	char tnorm[NORMALIZED_PATH_LEN];
-	if(tmp_db->v.s != NULL && tmp_db->v.s[0] != '\0' &&
-	   normalize_path(tmp_db->v.s, tnorm, sizeof(tnorm)) > 0)
-	{
-		struct conf_item *kept[ArraySize(written) + 1];
-		size_t n_kept = 0;
-		for(size_t i = 0; i < ArraySize(written); i++)
-			if(written[i] != tmp_db)
-				kept[n_kept++] = written[i];
-		kept[n_kept++] = &conf->files.macvendor;
-
-		for(size_t i = 0; i < n_kept; i++)
-		{
-			char pnorm[NORMALIZED_PATH_LEN];
-			const char *path = kept[i]->v.s;
-			if(path == NULL || path[0] == '\0' ||
-			   normalize_path(path, pnorm, sizeof(pnorm)) == 0 || strcmp(tnorm, pnorm) != 0)
-				continue;
-
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be the same file as %s",
-			         tmp_db->k, tmp_db->v.s, kept[i]->k);
-			// Reset whichever of the two moved away from its default
-			if(offender != NULL)
-				*offender = compare_config_item(tmp_db->t, &tmp_db->v, &tmp_db->d) ? kept[i] : tmp_db;
-			return false;
-		}
-
-		char cnorm[NORMALIZED_PATH_LEN];
-		if(normalize_path(GLOBALTOMLPATH, cnorm, sizeof(cnorm)) > 0 && strcmp(tnorm, cnorm) == 0)
-		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s (\"%s\") must not be Pi-hole's configuration file",
-			         tmp_db->k, tmp_db->v.s);
-			if(offender != NULL)
-				*offender = tmp_db;
 			return false;
 		}
 	}
@@ -655,18 +697,9 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		return false;
 	}
 
-	char norm[NORMALIZED_PATH_LEN];
-	const size_t len = normalize_path(val->s, norm, sizeof(norm));
-
-	if(len == 0 || len == 1 || paths_overlap(norm, len, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         key, CONFIG_DIR);
-		return false;
-	}
-
-	return true;
+	char norm[NORMALIZED_PATH_LEN], real[NORMALIZED_PATH_LEN];
+	size_t nlen, rlen;
+	return webroot_confined(key, val->s, norm, &nlen, real, &rlen, err);
 }
 
 // Validate a single regular expression

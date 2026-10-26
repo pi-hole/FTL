@@ -1636,6 +1636,13 @@ static void async_event(int pipe, time_t now)
 #ifdef HAVE_DHCP
 	if (daemon->dhcp || daemon->doing_dhcp6)
 	  {
+	    /*** Pi-hole modification ***/
+	    // Remove leases the API asked to delete. A worker thread parks the
+	    // request and wakes us with EVENT_ALARM; doing it here keeps all lease
+	    // list changes on this thread. The lease file and DNS are written just
+	    // below, covering these removals too.
+	    FTL_process_lease_deletions();
+	    /****************************/
 	    lease_prune(NULL, now);
 	    lease_update_file(now);
 	    lease_update_dns(0);

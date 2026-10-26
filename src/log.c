@@ -88,7 +88,7 @@ static void reopen_log_fd(struct log_fd *log)
 	if(log->fd != -1)
 		close(log->fd);
 	if(log->path != NULL)
-		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 	else
 		log->fd = -1;
 }
@@ -175,7 +175,7 @@ void open_log_fds(bool ftl)
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			set_log_path(&ftl_log, config.files.log.ftl.v.s);
-			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 			if(ftl_log.fd == -1)
 			{
 				printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
@@ -192,7 +192,7 @@ void open_log_fds(bool ftl)
 		set_log_path(&webserver_log, config.files.log.webserver.v.s);
 		if(webserver_log.fd >= 0)
 			close(webserver_log.fd);
-		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(webserver_log.fd == -1)
 		{
 			log_warn("webserver.log is unavailable (%s); warnings are still relayed to the FTL log",
@@ -207,7 +207,7 @@ void open_log_fds(bool ftl)
 		set_log_path(&dnsmasq_log, config.files.log.dnsmasq.v.s);
 		if(dnsmasq_log.fd >= 0)
 			close(dnsmasq_log.fd);
-		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(dnsmasq_log.fd == -1)
 		{
 			// misc.hide_dnsmasq_warn only hides dnsmasq warnings from the web
@@ -742,8 +742,8 @@ void log_counter_info(void)
 	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
 	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
 	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %u", counters->domains);
-	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> Unique domains: %u", counters->domains_total);
+	log_info(" -> Unique clients: %u", counters->clients_total);
 	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
 	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }

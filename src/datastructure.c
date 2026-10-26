@@ -14,7 +14,7 @@
 #include "log.h"
 // enum REGEX
 #include "regex_r.h"
-// reload_per_client_regex()
+// gravityDB_reopen()
 #include "database/gravity-db.h"
 // bool startup
 #include "main.h"
@@ -32,6 +32,8 @@
 #include "files.h"
 // lookup_insert
 #include "lookup-table.h"
+// client_name_at()
+#include "name-history.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 // Optimized version using pointer arithmetic for better performance
@@ -344,8 +346,10 @@ int _findDomainID(const char *domainString, const bool count, int line, const ch
 	// Store pre-computed hash for faster lookups later on
 	domain->hash = hash;
 	domain->lastQuery = 0.0;
-	// Increase counter by one
-	counters->domains++;
+	// A recycled ID is a slot inside the array already
+	if(domainID == counters->domains)
+		counters->domains++;
+	counters->domains_total++;
 
 	return domainID;
 }
@@ -460,19 +464,18 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	// Store client ID
 	client->id = clientID;
 
-	// Increase counter by one
-	counters->clients++;
+	// A recycled ID is a slot inside the array already
+	if(clientID == counters->clients)
+		counters->clients++;
+	counters->clients_total++;
 
-	// Get groups for this client and set enabled regex filters
-	// Note 1: We do this only after increasing the clients counter to
-	//         ensure sufficient shared memory is available in the
-	//         pre_client_regex object.
-	// Note 2: We don't do this before starting up is done as the gravity
-	//         database may not be available. All clients initialized
-	//         during history reading get their enabled regexs reloaded
-	//         in the initial call to FTL_reload_all_domainlists()
+	// Give the client a cleared regex row now, sized by the counter above, so
+	// no regex applies before its first query resolves its groups
 	if(!startup && !aliasclient)
-		reload_per_client_regex(client, NULL);
+	{
+		add_per_client_regex(clientID);
+		reset_per_client_regex(clientID);
+	}
 
 	// Check if this client is managed by a alias-client
 	if(!aliasclient)
@@ -716,11 +719,23 @@ const char *getClientNameString(const queriesData *query)
 		if(client == NULL)
 			return "";
 
-		// Return string
-		return getstr(client->namepos);
+		// The name the client had when the query was made
+		return getstr(client_name_at(query->clientID, client->namepos, query->db));
 	}
 	else
 		return HIDDEN_CLIENT;
+}
+
+// Extended DNS error code (0 - 65535) of a query, -1 (EDE_UNSET) if it has none
+int __attribute__((pure)) query_get_ede(const queriesData *query)
+{
+	return query->flags.has_ede ? query->ede : -1;
+}
+
+void query_set_ede(queriesData *query, const int ede)
+{
+	query->flags.has_ede = ede >= 0;
+	query->ede = (uint16_t)(ede >= 0 ? ede : 0);
 }
 
 // Forget the blocking decision cached in one per-client DNS cache entry

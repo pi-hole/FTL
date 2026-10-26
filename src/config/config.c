@@ -200,6 +200,16 @@ bool __attribute__ ((pure)) check_paths_equal(char **paths1, char **paths2, unsi
 	}
 	return true;
 }
+// Passwords, write-only items and the password hashes are never logged, and
+// only sessions allowed to change the configuration may read the hashes
+bool is_secret_conf_item(const struct conf_item *conf_item)
+{
+	return conf_item->t == CONF_PASSWORD ||
+	       (conf_item->f & FLAG_WRITE_ONLY) ||
+	       strcmp(conf_item->k, "webserver.api.pwhash") == 0 ||
+	       strcmp(conf_item->k, "webserver.api.app_pwhash") == 0;
+}
+
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n)
 {
 	// Sanity check
@@ -632,6 +642,13 @@ void initConfig(struct config *conf)
 	conf->dns.doh.d.b = true;
 	conf->dns.doh.f = FLAG_RESTART_FTL;
 	conf->dns.doh.c = validate_stub;
+
+	conf->dns.dohReverseProxy.k = "dns.dohReverseProxy";
+	conf->dns.dohReverseProxy.h = "Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The client-facing connection stays HTTPS; the proxy handles the encryption and forwards plain HTTP to Pi-hole. This requires the proxy to be listed in webserver.trustedProxies and to announce the client's TLS in a PROXY protocol v2 header, e.g., HAProxy with send-proxy-v2-ssl: only such a proxy is believed, and the client address it announces is used to attribute the query. Any other plain HTTP request is still refused, so enabling this alone never exposes DNS queries in cleartext.";
+	conf->dns.dohReverseProxy.t = CONF_BOOL;
+	conf->dns.dohReverseProxy.d.b = false;
+	conf->dns.dohReverseProxy.f = FLAG_RESTART_FTL;
+	conf->dns.dohReverseProxy.c = validate_stub;
 
 	conf->dns.dot.k = "dns.dot";
 	conf->dns.dot.h = "Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL terminates DoT connections directly (RFC 7858) so downstream clients can use this Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one configured for the webserver).";
@@ -1071,21 +1088,12 @@ void initConfig(struct config *conf)
 	// a setting that will be changed very rarely, this seems the better
 	// compromise than adding special code that can transform the database
 	// while being active.
-	// The in-memory database is not affected by this setting as it uses a
-	// MEMORY journal mode anyway (there is nothing to be restored after power
-	// loss). The gravity database is also not affected as it is only written
-	// to on an individual basis (explicit API calls) and not continuously
-	// (like the query database).
+	// The gravity database is not affected as it is only written to on an
+	// individual basis (explicit API calls) and not continuously (like the
+	// query database).
 	conf->database.useWAL.f = FLAG_RESTART_FTL;
 	conf->database.useWAL.d.b = true;
 	conf->database.useWAL.c = validate_stub; // Only type-based checking
-
-	conf->database.forceDisk.k = "database.forceDisk";
-	conf->database.forceDisk.h = "Should FTL force the use of disk storage for the history database? By default, FTL uses an in-memory database for much improved performance when browsing the history from the dashboard. However, on systems with very limited RAM and only occasional usage of the web interface, it may be useful to force the use of disk storage instead of holding everything in memory.\n\n Note that using disk storage *will* reduce performance, especially on systems with slow storage media (e.g., SD cards).";
-	conf->database.forceDisk.t = CONF_BOOL;
-	conf->database.forceDisk.f = FLAG_RESTART_FTL;
-	conf->database.forceDisk.d.b = false;
-	conf->database.forceDisk.c = validate_stub; // Only type-based checking
 
 	// sub-struct database.network
 	conf->database.network.parseARPcache.k = "database.network.parseARPcache";
@@ -1111,6 +1119,14 @@ void initConfig(struct config *conf)
 	conf->webserver.domain.d.s = (char*)"pi.hole";
 	conf->webserver.domain.c = validate_domain;
 
+	conf->webserver.trustedProxies.k = "webserver.trustedProxies";
+	conf->webserver.trustedProxies.h = "Reverse proxies whose PROXY protocol v2 header is believed, e.g., HAProxy with send-proxy-v2-ssl. Requests over a connection from one of these addresses are attributed to the client the header announces instead of to the proxy, and they count as HTTPS if the header says the client used TLS. The header of any other peer is ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting those lets every local process choose the client its requests are attributed to.\n\n Example: [ \"192.168.1.10\", \"10.0.0.0/24\" ]";
+	conf->webserver.trustedProxies.a = cJSON_CreateStringReference("Array of IP addresses and/or subnets in CIDR notation");
+	conf->webserver.trustedProxies.t = CONF_JSON_STRING_ARRAY;
+	conf->webserver.trustedProxies.f = FLAG_RESTART_FTL;
+	conf->webserver.trustedProxies.d.json = cJSON_CreateArray();
+	conf->webserver.trustedProxies.c = validate_cidr_array;
+
 	conf->webserver.acl.k = "webserver.acl";
 	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
@@ -1120,7 +1136,7 @@ void initConfig(struct config *conf)
 	conf->webserver.acl.c = validate_stub; // Type-based checking + civetweb syntax checking
 
 	conf->webserver.port.k = "webserver.port";
-	conf->webserver.port.h = "Ports to be used by the webserver.\n\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. \"[::]:80\" will bind to port 80 IPv6 only.\n\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The '+' notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n\n If the port is TLS/SSL, a letter 's' (secure) must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first configured SSL port. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.\n\n When specifying 'o' (optional) behind a port, inability to use this port is not considered an error. For instance, specifying \"80o,8080o\" will allow the webserver to listen on either 80, 8080, both or even none of the two ports. This flag may be combined with 'r' and 's' like \"80or,443os,8080,4443s\" (80 redirecting to SSL if available, 443 encrypted if available, 8080 mandatory and unencrypted, 4443 mandatory and encrypted).\n\n If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
+	conf->webserver.port.h = "Ports to be used by the webserver.\n\n Comma-separated list of ports to listen on. It is possible to specify an IP address to bind to. In this case, an IP address and a colon must be prepended to the port number. For example, to bind to the loopback interface on port 80 (IPv4) and to all interfaces port 8080 (IPv4), use \"127.0.0.1:80,8080\". \"[::]:80\" can be used to listen to IPv6 connections to port 80. IPv6 addresses of network interfaces can be specified as well, e.g. \"[::1]:80\" for the IPv6 loopback interface. \"[::]:80\" will bind to port 80 IPv6 only.\n\n In order to use port 80 for all interfaces, both IPv4 and IPv6, use either the configuration \"80,[::]:80\" (create one socket for IPv4 and one for IPv6 only), or \"+80\" (create one socket for both, IPv4 and IPv6). The '+' notation to use IPv4 and IPv6 will only work if no network interface is specified. Depending on your operating system version and IPv6 network environment, some configurations might not work as expected, so you have to test to find the configuration most suitable for your needs. In case \"+80\" does not work for your environment, you need to use \"80,[::]:80\".\n\n If the port is TLS/SSL, a letter 's' (secure) must be appended, for example, \"80,443s\" will open port 80 and port 443, and connections on port 443 will be encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in redirect). Redirected ports will redirect all their traffic to the first SSL port that could be bound. For example, if webserver.port is \"80r,443s\", then all HTTP traffic coming at port 80 will be redirected to HTTPS port 443.\n\n When specifying 'o' (optional) behind a port, inability to use this port is not considered an error. For instance, specifying \"80o,8080o\" will allow the webserver to listen on either 80, 8080, both or even none of the two ports. This flag may be combined with 'r' and 's' like \"80or,443os,8080,4443s\" (80 redirecting to SSL if available, 443 encrypted if available, 8080 mandatory and unencrypted, 4443 mandatory and encrypted).\n\n If this value is not set (empty string), the web server will not be started and, hence, the API will not be available.";
 	conf->webserver.port.a = cJSON_CreateStringReference("A comma-separated list of <[ip_address:]port>");
 	conf->webserver.port.f = FLAG_RESTART_FTL;
 	conf->webserver.port.t = CONF_STRING;
@@ -1371,14 +1387,6 @@ void initConfig(struct config *conf)
 	conf->files.database.f = FLAG_RESTART_FTL;
 	conf->files.database.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-FTL.db");
 	conf->files.database.c = validate_filepath;
-
-	conf->files.tmp_db.k = "files.tmp_db";
-	conf->files.tmp_db.h = "The location of FTL's short-term temporary database (only used when database.forceDisk is true)";
-	conf->files.tmp_db.a = cJSON_CreateStringReference("Any FTL database");
-	conf->files.tmp_db.t = CONF_STRING;
-	conf->files.tmp_db.f = FLAG_RESTART_FTL;
-	conf->files.tmp_db.d.s = (char*)(PIHOLE_INSTALL_DIR "/pihole-tmp.db");
-	conf->files.tmp_db.c = validate_filepath;
 
 	conf->files.gravity.k = "files.gravity";
 	conf->files.gravity.h = "The location of Pi-hole's gravity database";
@@ -1846,6 +1854,44 @@ void reset_config_default(struct conf_item *conf_item)
 }
 
 
+// Remove the entries of a list that its validator rejects on their own and
+// return whether what remains passes, leaving the rejection in valerr otherwise
+static bool drop_invalid_entries(struct conf_item *conf_item, char valerr[VALIDATOR_ERRBUF_LEN])
+{
+	cJSON *array = conf_item->v.json;
+	if(!cJSON_IsArray(array))
+		return false;
+
+	// The validator sees a one-element list, so its message names index 0
+	char prefix[128];
+	snprintf(prefix, sizeof(prefix), "%s[0]: ", conf_item->k);
+	const size_t prefix_len = strlen(prefix);
+
+	unsigned int idx = 0;
+	for(cJSON *item = array->child, *next = NULL; item != NULL; item = next, idx++)
+	{
+		next = item->next;
+
+		cJSON *single = cJSON_CreateArray();
+		cJSON_AddItemToArray(single, cJSON_Duplicate(item, true));
+		union conf_value value = { .json = single };
+		char itemerr[VALIDATOR_ERRBUF_LEN] = { 0 };
+		const bool valid = conf_item->c(&value, conf_item->k, itemerr);
+		cJSON_Delete(single);
+		if(valid)
+			continue;
+
+		const char *reason = strncmp(itemerr, prefix, prefix_len) == 0 ? itemerr + prefix_len : itemerr;
+		log_err("Invalid value: %s[%u]: %s", conf_item->k, idx, reason);
+		log_err("----> %s[%u] has been removed", conf_item->k, idx);
+		cJSON_Delete(cJSON_DetachItemViaPointer(array, item));
+	}
+
+	// Rules spanning several entries only show on the list as a whole
+	valerr[0] = '\0';
+	return conf_item->c(&conf_item->v, conf_item->k, valerr);
+}
+
 /**
  * @brief Hold a configuration to the same rules every way of setting it obeys.
  *
@@ -1853,8 +1899,9 @@ void reset_config_default(struct conf_item *conf_item)
  * items, which a validator seeing one value at a time cannot express.
  *
  * @param conf Configuration to check
- * @param reset If true, an offending item is reset to its default and the check
- *              continues; if false, the first rejection ends it
+ * @param reset If true, an offending item is reset to its default (a list only
+ *              loses its offending entries) and the check continues; if false,
+ *              the first rejection ends it
  * @param err Buffer receiving the rejection, may be NULL when \p reset is true
  * @return Whether the configuration is acceptable
  */
@@ -1876,6 +1923,10 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s", valerr);
 			return false;
 		}
+
+		// A list loses only the entries that fail, not every entry it holds
+		if(conf_item->t == CONF_JSON_STRING_ARRAY && drop_invalid_entries(conf_item, valerr))
+			continue;
 
 		// The validator's message opens with the key, so it is not repeated
 		log_err("Invalid value: %s", valerr);
@@ -2065,7 +2116,12 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// setupVars.conf
 	get_web_port(&config);
 
-	// Open webserver.log and pihole.log at default paths (TOML was unreadable)
+	// Environment variables override these defaults as they override the
+	// values of a config file, and the result is held to the same rules
+	applyEnvVars(conf);
+	validate_config(conf, true, NULL);
+
+	// Open webserver.log and pihole.log now that their paths are known
 	open_log_fds(false);
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
