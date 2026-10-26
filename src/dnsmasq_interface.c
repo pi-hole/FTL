@@ -48,7 +48,7 @@
 #include "database/message-table.h"
 // http_init(), webserver_thread()
 #include "webserver/webserver.h"
-// init_memory_database()
+// init_query_database()
 #include "database/query-table.h"
 // reread_config()
 #include "config/config.h"
@@ -1180,9 +1180,6 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query->db = counters->next_query_id++;
 	// After the ID, which the time bound records
 	track_query_time(query);
-	query->flags.database.stored = false;
-	query->flags.database.imported = false;
-	query->flags.database.changed = true;
 	query->flags.complete = false;
 	query->flags.upstream_counted = false;
 	query->response = querytimestamp;
@@ -1370,11 +1367,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		PERF_START(_pcb);
 		blockDomain = FTL_check_blocking(domainString, query, client, domain, dns_cache_entry);
 		PERF_END(_pcb, PERF_STAT_CHECK_BLOCKING);
-	}
 
-	// Store query in database
-	if(query != NULL)
-		query->flags.database.changed = true;
+		// The query keeps the list ID of its verdict, the cache entry can
+		// be reset or decided anew later on
+		if(dns_cache_entry != NULL)
+			query->list_id = dns_cache_entry->list_id;
+	}
 
 	PERF_END(_pnq, PERF_STAT_NEW_QUERY);
 	// Release thread lock
@@ -2601,11 +2599,12 @@ bool FTL_CNAME(const char *dst, const char *src, const int id)
 		cacheStatus = query->status;
 	}
 
+	// The checks of the CNAME target ran on this query's cache entry, the
+	// list that blocked or allowed the chain stays with the query
+	query->list_id = dns_cache->list_id;
+
 	// Debug logging for deep CNAME inspection (if enabled)
 	log_debug(DEBUG_QUERIES, "Query %d: CNAME %s ---> %s", id, src, dst);
-
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
 
 	// Return result
 	unlock_shm();
@@ -2760,9 +2759,6 @@ static void FTL_forwarded(const unsigned int flags, const char *name, const unio
 	// from above as otherwise this check will always
 	// be negative
 	query_set_status(query, QUERY_FORWARDED);
-
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3110,9 +3106,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
 
-		// Mark query for updating in the database
-		query->flags.database.changed = true;
-
 		unlock_shm();
 		return;
 	}
@@ -3135,9 +3128,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
-
-		// Mark query for updating in the database
-		query->flags.database.changed = true;
 	}
 	else if((flags & (F_FORWARD | F_UPSTREAM)) && isExactMatch && query->type != TYPE_NONE)
 	{
@@ -3206,9 +3196,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Save reply type and update individual reply counters
 		query_set_reply(reply_flags, 0, addr, query, now);
-
-		// Mark query for updating in the database
-		query->flags.database.changed = true;
 	}
 	else if(flags & F_REVERSE || query->type == TYPE_PTR)
 	{
@@ -3238,9 +3225,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
-
-		// Mark query for updating in the database
-		query->flags.database.changed = true;
 	}
 	else if(flags & F_UPSTREAM && flags & F_RCODE)
 	{
@@ -3253,9 +3237,6 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 
 		// Hereby, this query is now fully determined
 		query->flags.complete = true;
-
-		// Mark query for updating in the database
-		query->flags.database.changed = true;
 	}
 	else if(isExactMatch && !query->flags.complete)
 	{
@@ -3404,9 +3385,6 @@ static void query_blocked(queriesData *query, domainsData *domain, clientsData *
 
 	// Update status
 	query_set_status(query, new_status);
-
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
 }
 
 static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id, const char *file, const int line)
@@ -3472,9 +3450,6 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 	{
 		query_set_reply(0, REPLY_NONE, addr, query, now);
 	}
-
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3599,9 +3574,6 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	// Set query reply
 	query_set_reply(0, reply, addr, query, now);
 
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
-
 	// Reset last_server
 	memset(&last_server, 0, sizeof(last_server));
 
@@ -3666,9 +3638,6 @@ static void FTL_blocked_upstream_by_header(const enum query_status new_status, c
 	// Store reply type as replied with NXDOMAIN
 	query_set_reply(F_NEG | F_NXDOMAIN, 0, NULL, query, now);
 
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
-
 	// Unlock shared memory
 	unlock_shm();
 }
@@ -3709,9 +3678,6 @@ static void FTL_blocked_upstream_by_addr(const enum query_status new_status, con
 		const char *domainName = domain ? getstr(domain->domainpos) : "<cannot access domain>";
 		log_debug(DEBUG_QUERIES, "**** %s externally blocked by address (ID %i, FTL %i, %s:%i)", domainName, id, queryID, file, line);
 	}
-
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
 
 	// Unlock shared memory
 	unlock_shm();
@@ -3956,9 +3922,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
-	// Initialize in-memory databases
-	if(!init_memory_database())
-		log_crit("Cannot initialize in-memory database.");
+	// Open the query database and prepare the import of the history
+	init_query_database();
 
 	// Verify checksum of this binary early on to ensure that the binary is
 	// not corrupted and that the binary is not tampered with. We can only
@@ -4092,10 +4057,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 
 			// Configured FTL database file
 			chown_pihole_own_dir(config.files.database.v.s, ent_pw);
-
-			// Temporary history database (database.forceDisk)
-			if(config.database.forceDisk.v.b)
-				chown_pihole_own_dir(config.files.tmp_db.v.s, ent_pw);
 
 			// Check if auxiliary files exist and change ownership
 			char *extrafile = calloc(strlen(config.files.database.v.s) + 5, sizeof(char));
@@ -4268,9 +4229,6 @@ void FTL_forwarding_retried(struct frec *forward, const int newID, const bool dn
 				// soon enough at the requestor
 				query_set_status(query, QUERY_RETRIED);
 			}
-
-			// Mark query for updating in the database
-			query->flags.database.changed = true;
 		}
 	}
 
@@ -4566,9 +4524,6 @@ void FTL_query_in_progress(const int id)
 	// Store status
 	query_set_status(query, QUERY_IN_PROGRESS);
 
-	// Mark query for updating in the database
-	query->flags.database.changed = true;
-
 	// Unlock shared memory
 	unlock_shm();
 }
@@ -4645,12 +4600,13 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// The original query may have been blocked during CNAME inspection,
-	// correct status in this case
+	// correct status and list ID in this case
 	if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
-
-	// Mark query for updating in the database
-	duplicated_query->flags.database.changed = true;
+	if(source_query->status == QUERY_GRAVITY_CNAME ||
+	   source_query->status == QUERY_REGEX_CNAME ||
+	   source_query->status == QUERY_DENYLIST_CNAME)
+		duplicated_query->list_id = source_query->list_id;
 
 	// Unlock shared memory
 	unlock_shm();

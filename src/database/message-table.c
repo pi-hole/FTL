@@ -103,6 +103,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "GRAVITY_RESTORED";
 		case TELEPORTER_SKIPPED_MESSAGE:
 			return "TELEPORTER_SKIPPED";
+		case QUERY_DATABASE_MESSAGE:
+			return "QUERY_DATABASE";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -145,6 +147,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return GRAVITY_RESTORED_MESSAGE;
 	else if (strcmp(typestr, "TELEPORTER_SKIPPED") == 0)
 		return TELEPORTER_SKIPPED_MESSAGE;
+	else if (strcmp(typestr, "QUERY_DATABASE") == 0)
+		return QUERY_DATABASE_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -272,6 +276,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 		{
 			// TELEPORTER_SKIPPED_MESSAGE: The message column contains the config key
 			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
+		},
+		{
+			// QUERY_DATABASE_MESSAGE: The message column contains the error
+			SQLITE_TEXT, // database path
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
@@ -1062,6 +1074,41 @@ static void format_teleporter_skipped_message(char *plain, const int sizeof_plai
 	free(escaped_key);
 }
 
+static void format_query_database_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                          const char *error, const char *path)
+{
+	if(snprintf(plain, sizeof_plain,
+	            "Cannot open the query database %s (%s), no queries are stored until FTL is restarted",
+	            path, error) >= sizeof_plain)
+		log_warn("format_query_database_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_error = escape_html(error);
+	char *escaped_path = escape_html(path);
+
+	// Return early if memory allocation failed
+	if(escaped_error == NULL || escaped_path == NULL)
+	{
+		if(escaped_error != NULL)
+			free(escaped_error);
+		if(escaped_path != NULL)
+			free(escaped_path);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html,
+	            "FTL could not open the query database <code>%s</code> when it started: <code>%s</code><br><br>"
+	            "No queries are stored in it until FTL is restarted.",
+	            escaped_path, escaped_error) >= sizeof_html)
+		log_warn("format_query_database_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_error);
+	free(escaped_path);
+}
+
 static void format_gravity_restored_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                             const char *status)
 {
@@ -1406,6 +1453,17 @@ bool format_messages(cJSON *array)
 				break;
 			}
 
+			case QUERY_DATABASE_MESSAGE:
+			{
+				const char *error = (const char*)sqlite3_column_text(stmt, 3);
+				const char *path = (const char*)sqlite3_column_text(stmt, 4);
+
+				format_query_database_message(plain, sizeof(plain), html, sizeof(html),
+				                              error, path);
+
+				break;
+			}
+
 			case MAX_MESSAGE: // Fall through
 			default:
 				log_warn("format_messages() - Unknown message type: %s", mtypestr);
@@ -1735,4 +1793,20 @@ void log_gravity_restored(const char *status)
 	// Log to database
 	add_message_no_args(GRAVITY_RESTORED_MESSAGE, status);
 
+}
+
+// The query database could not be opened at startup. The message only reaches
+// the message table if pihole-FTL.db can be written to by then, add_message()
+// opens a connection of its own
+void log_query_database_error(const char *path, const char *error)
+{
+	// Create message
+	char buf[2048];
+	format_query_database_message(buf, sizeof(buf), NULL, 0, error, path);
+
+	// Log to FTL.log
+	log_err("%s", buf);
+
+	// Log to database so it is visible from the web interface
+	add_message(QUERY_DATABASE_MESSAGE, error, path);
 }
