@@ -166,6 +166,7 @@ struct config {
 		struct conf_item revServers;
 		struct conf_item upstreamCA;
 		struct conf_item doh;
+		struct conf_item dohReverseProxy;
 		struct conf_item dot;
 		struct conf_item doq;
 		struct {
@@ -258,7 +259,6 @@ struct config {
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
 		struct conf_item useWAL;
-		struct conf_item forceDisk;
 		struct {
 			struct conf_item parseARPcache;
 			struct conf_item expire;
@@ -273,6 +273,7 @@ struct config {
 		struct conf_item headers;
 		struct conf_item serve_all;
 		struct conf_item advancedOpts;
+		struct conf_item trustedProxies;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
@@ -314,7 +315,6 @@ struct config {
 
 	struct {
 		struct conf_item database;
-		struct conf_item tmp_db;
 		struct conf_item gravity;
 		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
