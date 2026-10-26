@@ -820,6 +820,24 @@ setup() {
   assert_output --partial "addr2line -f -e"
 }
 
+@test "pihole-FTL wait-for finds a line written in two parts" {
+  # The first part of the line is in the file when wait-for scans it, the rest
+  # is appended once wait-for holds its inotify descriptor, i.e. after the scan
+  file="$(mktemp)"
+  printf 'first line\nsecond li' > "${file}"
+  ./pihole-FTL wait-for 'second line' "${file}" 10 0 > /dev/null 3>&- &
+  waiter=$!
+  for _ in $(seq 1 100); do
+    ls -l "/proc/${waiter}/fd" 2> /dev/null | grep -q "anon_inode:inotify" && break
+    sleep 0.05
+  done
+  printf 'ne\n' >> "${file}"
+  found=no
+  wait "${waiter}" && found=yes
+  rm -f "${file}"
+  [[ "${found}" == "yes" ]]
+}
+
 # NOTE: Log validation (WARNING/ERROR/CRIT/DB checks) moved to the final
 # log scan in run.sh, which runs after both BATS and pytest complete.
 
