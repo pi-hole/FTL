@@ -109,25 +109,11 @@ static void log_used_memory(void)
 	double sqlite3_mem_largest_block_formatted = 0.0;
 	format_memory_size(sqlite3_mem_largest_block_prefix, sqlite3_memory->largest_block, &sqlite3_mem_largest_block_formatted);
 
-	size_t memsize = 0;
-	get_memdb_size(&memsize, NULL);
-	char memdb_size_prefix[2] = { 0 };
-	double memdb_size_formatted = 0.0;
-	format_memory_size(memdb_size_prefix, memsize, &memdb_size_formatted);
-
-	log_debug(DEBUG_TIMING, "  SQLite3 (in-memory): %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations, PRAGMA size: %.2f %sB",
+	log_debug(DEBUG_TIMING, "  SQLite3 (memory): %.2f %sB usage, high-water %.2f %sB, max. block %.2f %sB, %zu allocations",
 	         sqlite3_mem_formatted, sqlite3_mem_prefix,
 	         sqlite3_mem_highwater_formatted, sqlite3_mem_highwater_prefix,
 	         sqlite3_mem_largest_block_formatted, sqlite3_mem_largest_block_prefix,
-	         sqlite3_memory->current_allocations,
-	         memdb_size_formatted, memdb_size_prefix);
-	log_debug(DEBUG_TIMING, "    Table sizes: "
-	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
-	          get_row_count("domain_by_id", true),
-	          get_row_count("client_by_id", true),
-	          get_row_count("forward_by_id", true),
-	          get_row_count("addinfo_by_id", true),
-	          get_row_count("query_storage", true));
+	         sqlite3_memory->current_allocations);
 
 	// Log on-disk database file size
 	struct stat st;
@@ -138,11 +124,11 @@ static void log_used_memory(void)
 	log_debug(DEBUG_TIMING, "  SQLite3 (on-disk): %.2f %sB", db_size_formatted, db_size_prefix);
 	log_debug(DEBUG_TIMING, "    Table sizes: "
 	         "domain_by_id=%"PRId64", client_by_id=%"PRId64", forward_by_id=%"PRId64", addinfo_by_id=%"PRId64", query_storage=%"PRId64"",
-	          get_row_count("domain_by_id", false),
-	          get_row_count("client_by_id", false),
-	          get_row_count("forward_by_id", false),
-	          get_row_count("addinfo_by_id", false),
-	          get_row_count("query_storage", false));
+	          get_row_count("domain_by_id"),
+	          get_row_count("client_by_id"),
+	          get_row_count("forward_by_id"),
+	          get_row_count("addinfo_by_id"),
+	          get_row_count("query_storage"));
 }
 
 #define DBOPEN_OR_AGAIN() { if(!db) db = dbopen(false, false); if(!db) { thread_sleepms(DB, 5000); continue; } }
@@ -153,12 +139,9 @@ void *DB_thread(void *val)
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DB], 0, 0, 0);
 
-	// Asynchronously import queries from the on-disk database. The linking
-	// tables are imported in any case as new queries continue their IDs
+	// Asynchronously import queries from the on-disk database
 	if(config.database.DBimport.v.b)
 		DB_read_queries();
-	else
-		import_linking_tables_from_disk();
 
 	// The import has put older queries in front of the ones that arrived
 	// meanwhile
@@ -227,15 +210,9 @@ void *DB_thread(void *val)
 			lastGravityStats = now;
 		}
 
-		// If the database is busy, no moving is happening and queries are retained in
-		// here until the next try. This ensures we cannot loose queries.
-		// Do this once per second
 		const bool new_second = now > before;
 		if(new_second)
-		{
-			TIMED_DB_OP(queries_to_database(false));
 			before = now;
-		}
 
 		// Check if we need to reload gravity. A swapped database is caught
 		// within one iteration, a changed timestamp once per second
@@ -256,9 +233,8 @@ void *DB_thread(void *val)
 			lastDBsave = now - now%config.database.DBinterval.v.ui;
 
 			// Save data to database
-			DBOPEN_OR_AGAIN();
 			TIMED_DB_OP(export_queries_to_disk(false));
-			DBCLOSE_OR_BREAK();
+			BREAK_IF_KILLED();
 
 			// Parse neighbor cache (fill network table)
 			set_event(PARSE_NEIGHBOR_CACHE);

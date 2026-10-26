@@ -2019,19 +2019,6 @@ except socket.timeout:
   assert_failure 3
 }
 
-@test "files.tmp_db cannot name a file Pi-hole keeps" {
-  # database.forceDisk empties files.tmp_db on every start
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
-  assert_failure 3
-}
-
 @test "Config validation: a document root that resolves to the root is rejected" {
   # Lexically /proc/self/root is a directory of its own, but it is a link
   # the kernel plants to /, so it has to be judged by where it leads

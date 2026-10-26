@@ -15,7 +15,7 @@
 #include "datastructure.h"
 // config struct
 #include "config/config.h"
-// get_memdb()
+// get_import_window(), get_db_info()
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
@@ -24,67 +24,6 @@
 #include "gc.h"
 // PRIu64
 #include <inttypes.h>
-
-#if 0
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
-{
-
-	sqlite3 *memdb = get_memdb();
-	if(memdb == NULL)
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not read from in-memory database",
-		                       NULL);
-	}
-
-	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not prepare in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Loop through returned rows and add them to the array
-	int counter = 0;
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
-	      (max_count < 0 || ++counter <= max_count))
-	{
-		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
-		if(array1_str != NULL && array1_str[0] != '\0')
-			// Only add non-empty strings
-			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
-		if(array2 != NULL)
-		{
-			// We have a second array to fill (second column in the query)
-			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
-			if(array2_str != NULL && array2_str[0] != '\0')
-				// Only add non-empty strings
-				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
-		}
-	}
-
-	// Acceptable return codes are either
-	// - SQLITE_DONE: We read all lines, or
-	// - SQLITE_ROW: We ended reading early because of set limit
-	if( rc != SQLITE_DONE && rc != SQLITE_ROW )
-	{
-		sqlite3_finalize(stmt);
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not step in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Finalize SQLite3 statement
-	sqlite3_finalize(stmt);
-
-	return 0;
-}
-#endif
 
 int api_queries_suggestions(struct ftl_conn *api)
 {
@@ -716,18 +655,25 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 	return 0;
 }
 
-// Read the query log from the on-disk database with disk=true, from the
-// in-memory one while the queries are imported, and count the matching
-// queries. Returns 0, or the status of the error reply it sent
+// Read the query log from the on-disk database, with disk=true and while the
+// queries of the history window are still being imported into shared memory,
+// and count the matching queries. Returns 0, or the status of the error reply
+// it sent
 static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req, cJSON *queries,
                             unsigned int *records)
 {
 	// Start building database query string
 	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM %s q %s", QUERYSTR,
-	         req->disk ? "disk.query_storage" : "query_storage", JOINSTR);
+	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM query_storage q %s", QUERYSTR, JOINSTR);
 
 	bool where = false;
+	// Until the import is done, the query log in memory is its window
+	double window_from = 0.0, window_until = 0.0;
+	if(!req->disk)
+	{
+		get_import_window(&window_from, &window_until);
+		add_querystr_string(querystr, "timestamp BETWEEN :tswfrom AND ", ":tswuntil", &where);
+	}
 	if(req->has_from)
 		add_querystr_string(querystr, "timestamp>=", ":tsfrom", &where);
 	if(req->has_until)
@@ -769,21 +715,22 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " ORDER BY %s %s",
 	         sort_column_sql(req->sort), req->sort_desc ? "DESC" : "ASC");
 
-	// Get connection to in-memory database
-	sqlite3 *memdb = get_memdb();
-	if(memdb == NULL)
+	// Each request reads on a connection of its own
+	sqlite3 *db = dbopen(true, false);
+	if(db == NULL)
 	{
 		return send_json_error(api, 500, // 500 Internal error
 		                       "database_error",
-		                       "Could not read from in-memory database",
+		                       "Could not read from the long-term database",
 		                       NULL);
 	}
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *read_stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &read_stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
+		dbclose(&db);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare read SQL query",
@@ -800,6 +747,8 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	} binds[] = {
 		{ ":tsfrom", false, NULL, req->from, "timestamp:from" },
 		{ ":tsuntil", false, NULL, req->until, "timestamp:until" },
+		{ ":tswfrom", false, NULL, window_from, "window:from" },
+		{ ":tswuntil", false, NULL, window_until, "window:until" },
 		{ ":domain", true, req->domain, 0.0, "domain" },
 		{ ":cip", true, req->client_ip, 0.0, "cip" },
 		{ ":cname", true, req->client_name, 0.0, "client" },
@@ -843,6 +792,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 			snprintf(message, sizeof(message), "Internal server error, failed to bind %s to SQL query",
 			         binds[i].what);
 			sqlite3_finalize(read_stmt);
+			dbclose(&db);
 			return send_json_error(api, 500,
 			                       "internal_error",
 			                       message,
@@ -920,6 +870,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		if(ret != 0)
 		{
 			sqlite3_finalize(read_stmt);
+			dbclose(&db);
 			return ret;
 		}
 		added++;
@@ -929,6 +880,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
+	dbclose(&db);
 
 	*records = counted;
 	return 0;
@@ -962,14 +914,14 @@ int api_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 		get_bool_var(api->request->query_string, "disk", &req.disk);
 
-	// The numbers of queries and the highest ID when the request arrived.
-	// Once the import is done, the in-memory query log is read from shared
-	// memory, which also has the queries that are not stored yet
-	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
-	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
+	// The newest query ID and the numbers of queries when the request
+	// arrived. Once the import is done, the in-memory query log is read from
+	// shared memory, which also has the queries that are not stored yet
+	sqlite3_int64 largest_db_index = 0, mem_dbnum = 0;
+	shm_query_log_counts(&largest_db_index, &mem_dbnum);
+	uint64_t disk_dbnum = 0;
+	get_db_info(true, &disk_dbnum, NULL);
 	const bool from_shm = !req.disk && db_import_done;
-	if(from_shm)
-		shm_query_log_counts(&largest_db_index, &mem_dbnum);
 
 	// Read the request, then the queries it selects
 	unsigned int records = 0;
@@ -1010,20 +962,20 @@ int api_queries(struct ftl_conn *api)
 	}
 	else
 	{
-		// Send cursor pointing to the firstID of the data obtained in
-		// this query. This ensures we get a static result by skipping
-		// any newer queries.
-		log_web_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
-		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
+		// Send cursor pointing to the newest query when the request
+		// arrived. This ensures we get a static result by skipping any
+		// newer queries.
+		log_web_debug(DEBUG_API, "Sending cursor %lld (newest)", largest_db_index);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", largest_db_index);
 	}
 
 	// DataTables specific properties
-	const unsigned long recordsTotal = req.disk ? disk_dbnum : mem_dbnum;
+	const unsigned long recordsTotal = req.disk ? disk_dbnum : (uint64_t)mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", req.filtering ? records : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", req.draw);
 
-	// Add number of queries and earliest timestamp in in-memory database
+	// Add earliest timestamp in memory
 	double earliest_timestamp_mem = 0.0;
 	get_db_info(false, NULL, &earliest_timestamp_mem);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", earliest_timestamp_mem);

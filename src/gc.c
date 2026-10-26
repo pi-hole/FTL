@@ -22,7 +22,7 @@
 #include "signals.h"
 // data getter functions
 #include "datastructure.h"
-// delete_old_queries_from_db()
+// get_export_index()
 #include "database/query-table.h"
 // logg_rate_limit_message()
 #include "database/message-table.h"
@@ -422,6 +422,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Get minimum timestamp to keep
 	time_t mintime = now;
+	// Index of the first query the export has not stored yet
+	unsigned int keep_from = counters->queries;
 	if(!flush)
 	{
 		// Normal GC run. Signed, maxHistory may be smaller than GCdelay
@@ -436,17 +438,24 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(mintime > now - REPLY_TIMEOUT)
 			mintime = now - REPLY_TIMEOUT;
 
-		// Keep the queries the database thread has not stored yet, but no
-		// more than the default history keeps. Nothing is stored with a
-		// broken database or at the maximum privacy level
-		const double horizon = get_export_horizon();
-		if(mintime > horizon && !FTLDBerror() &&
-		   config.misc.privacylevel.v.privacy_level < PRIVACY_MAXIMUM)
+		// Keep the queries the export has not stored yet, but no longer than
+		// a day past the cutoff. Nothing is stored with a broken database,
+		// database.maxDBdays 0 or a query database that could not be opened,
+		// nor queries recorded at the maximum privacy level
+		if(!FTLDBerror() && config.database.maxDBdays.v.ui > 0)
 		{
-			time_t limit = now + (time_t)GCdelay - (time_t)(MAXLOGAGE*3600);
-			limit -= limit % GCinterval;
-			const time_t keep = max((time_t)horizon, limit);
-			mintime = min(mintime, keep);
+			const time_t drop_until = mintime - (time_t)(MAXLOGAGE*3600);
+			keep_from = get_export_index();
+			for(unsigned int i = keep_from; i < counters->queries; i++)
+			{
+				const queriesData *query = getQuery(i, true);
+				if(query == NULL || query->privacylevel >= PRIVACY_MAXIMUM ||
+				   query->timestamp <= drop_until)
+					continue;
+				if(query->timestamp <= mintime)
+					mintime = (time_t)query->timestamp - 1;
+				break;
+			}
 		}
 	}
 
@@ -460,7 +469,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	}
 
 	// Process all queries
-	unsigned int removed = 0;
+	unsigned int removed = 0, dropped = 0;
 	int64_t last_removed_id = -1;
 	for(unsigned int i = 0; i < counters->queries; i++)
 	{
@@ -471,6 +480,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Test if this query is too new
 		if(query->timestamp > mintime)
 			break;
+
+		// Not stored for a day
+		if(i >= keep_from && query->privacylevel < PRIVACY_MAXIMUM)
+			dropped++;
 
 		// Check if this query is blocked
 		const bool blocked = is_blocked(query->status);
@@ -545,6 +558,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		last_removed_id = query->db;
 	}
 
+	if(dropped > 0)
+		log_warn("Removed %u queries from memory that could not be stored in %s for a day",
+		         dropped, config.files.database.v.s);
+
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
 	{
@@ -571,20 +588,6 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(counters->query_time_disorder > 0.0 &&
 		   counters->query_time_disorder_id <= last_removed_id)
 			retrack_query_times();
-	}
-
-	// Remove query from queries table (temp), we can release the lock for this
-	// action to prevent blocking the DNS service too long. The processed
-	// queries are already shifted out above, so a runGC() from a log flush
-	// in this window cannot process them again. A flush removes every row,
-	// a normal run keeps those the export to disk has not copied yet
-	if(flush)
-		delete_old_queries_from_db(true, mintime);
-	else
-	{
-		unlock_shm();
-		delete_exported_queries_from_memdb(mintime);
-		lock_shm();
 	}
 
 	// Recycle old clients and domains
