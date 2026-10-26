@@ -32,6 +32,8 @@
 #include "files.h"
 // lookup_insert
 #include "lookup-table.h"
+// client_name_at()
+#include "name-history.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 // Optimized version using pointer arithmetic for better performance
@@ -717,11 +719,23 @@ const char *getClientNameString(const queriesData *query)
 		if(client == NULL)
 			return "";
 
-		// Return string
-		return getstr(client->namepos);
+		// The name the client had when the query was made
+		return getstr(client_name_at(query->clientID, client->namepos, query->db));
 	}
 	else
 		return HIDDEN_CLIENT;
+}
+
+// Extended DNS error code (0 - 65535) of a query, -1 (EDE_UNSET) if it has none
+int __attribute__((pure)) query_get_ede(const queriesData *query)
+{
+	return query->flags.has_ede ? query->ede : -1;
+}
+
+void query_set_ede(queriesData *query, const int ede)
+{
+	query->flags.has_ede = ede >= 0;
+	query->ede = (uint16_t)(ede >= 0 ? ede : 0);
 }
 
 // Forget the blocking decision cached in one per-client DNS cache entry

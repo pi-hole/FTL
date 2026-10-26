@@ -1,13 +1,12 @@
 /*
-  xmalloc.h - Simple malloc debugging library API
+ * xmalloc.h - Simple malloc debugging library API
+ *
+ * This software is released under a BSD-style license.
+ * See the file LICENSE for details and copyright.
+ */
 
-  This software is released under a BSD-style license.
-  See the file LICENSE for details and copyright.
-
-*/
-
-#ifndef _XMALLOC_H
-#define _XMALLOC_H 1
+#ifndef TRE_XMALLOC_H
+#define TRE_XMALLOC_H
 
 void *xmalloc_impl(size_t size, const char *file, int line, const char *func);
 void *xcalloc_impl(size_t nmemb, size_t size, const char *file, int line,
@@ -72,6 +71,6 @@ void xmalloc_configure(int fail_after);
 #endif /* !MALLOC_DEBUGGING */
 #endif /* !XMALLOC_INTERNAL */
 
-#endif /* _XMALLOC_H */
+#endif /* TRE_XMALLOC_H */
 
 /* EOF */

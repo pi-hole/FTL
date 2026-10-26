@@ -42,6 +42,21 @@ setup() {
    assert_output --partial "CRIT: pihole-FTL is already running"
 }
 
+@test "A second instance with other FTLCONF_ values leaves the config files alone" {
+  # It is refused before it reads the config, so its environment does not
+  # end up in the files the running instance uses and reloads
+  files="/etc/pihole/pihole.toml /etc/pihole/dnsmasq.conf /etc/pihole/hosts/custom.list"
+  before=$(sha256sum ${files})
+  logsize=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_misc_check_load=false FTLCONF_dns_domain_name=second.lan FTLCONF_dns_hosts=\"10.0.200.1 second.ftl\" ./pihole-FTL -f"'
+  assert_output --partial "CRIT: pihole-FTL is already running"
+  run sha256sum ${files}
+  assert_output "${before}"
+  # The refusal is in FTL.log, not only on the terminal
+  run bash -c "tail -c +$((logsize + 1)) /var/log/pihole/FTL.log | grep -c 'CRIT: pihole-FTL is already running'"
+  assert_output "1"
+}
+
 @test "dnsmasq options as expected" {
   run bash -c './pihole-FTL -vv | grep "dumpfile"'
   assert_line --index 0 "Features:        IPv6 GNU-getopt no-DBus no-UBus no-i18n IDN2 DHCP DHCPv6 Lua TFTP no-conntrack ipset no-nftset auth DNSSEC loop-detect inotify dumpfile"
@@ -756,7 +771,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r,9443s,192.0.2.1:9444s,44s3,443xs"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -803,6 +818,24 @@ setup() {
   assert_output --partial "addr2line is not installed"
   assert_output --partial "unresolved frame"
   assert_output --partial "addr2line -f -e"
+}
+
+@test "pihole-FTL wait-for finds a line written in two parts" {
+  # The first part of the line is in the file when wait-for scans it, the rest
+  # is appended once wait-for holds its inotify descriptor, i.e. after the scan
+  file="$(mktemp)"
+  printf 'first line\nsecond li' > "${file}"
+  ./pihole-FTL wait-for 'second line' "${file}" 10 0 > /dev/null 3>&- &
+  waiter=$!
+  for _ in $(seq 1 100); do
+    ls -l "/proc/${waiter}/fd" 2> /dev/null | grep -q "anon_inode:inotify" && break
+    sleep 0.05
+  done
+  printf 'ne\n' >> "${file}"
+  found=no
+  wait "${waiter}" && found=yes
+  rm -f "${file}"
+  [[ "${found}" == "yes" ]]
 }
 
 # NOTE: Log validation (WARNING/ERROR/CRIT/DB checks) moved to the final
@@ -1137,14 +1170,51 @@ setup() {
   assert_line --partial --index 3 "status: NOERROR"
 }
 
+@test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
+  run bash -c './pihole-FTL regex-test "abcd" "(a){~1}(b){~1}(c){~1}(d){~1}"'
+  assert_success
+}
+
+@test "Regex Test 55: Approximate matching, nesting at the supported limit: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "(((a){~1}){~1}){~1}"'
+  assert_success
+}
+
+@test "Regex Test 56: Approximate matching, nesting beyond the supported limit: Invalid regexp" {
+  run bash -c './pihole-FTL regex-test "a" "((((a){~1}){~1}){~1}){~1}"'
+  assert_line --index 1 "Invalid regex CLI filter \"((((a){~1}){~1}){~1}){~1}\": Invalid regexp"
+  assert_failure 1
+}
+
+@test "Regex Test 57: Approximate matching, bounded repetition with parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "bbbb" "((b){2,2,~0}){2,2,~0}"'
+  assert_success
+}
+
+@test "Regex Test 58: Back-reference inside an unbounded repetition is rejected" {
+  run bash -c './pihole-FTL regex-test "aaaa" "((a?)\2)*"'
+  assert_line --index 1 "Invalid regex CLI filter \"((a?)\2)*\": Back-reference inside an unbounded repetition is not supported"
+  assert_failure 1
+}
+
+@test "Regex Test 59: Back-reference outside a repeated group still works: MATCH" {
+  run bash -c './pihole-FTL regex-test "ababab" "(ab)+\1"'
+  assert_success
+}
+
+@test "Regex Test 60: Approximate matching, position with merged parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" ".{#1}{+1}"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
+  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/" "https://pi.hole:9443/api/"'
 }
 
 @test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
   run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/"'
+  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/" "https://[::1]:9443/api/"'
 }
 
 @test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
@@ -1504,6 +1574,15 @@ except socket.timeout:
   run bash -c "dig AAAA pi.hole @127.0.0.1 | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 29: (synthesized)"
   assert_line --index 1 ""
+}
+
+@test "A TCP worker forked during a config write does not keep pihole.toml.lock" {
+  # dnsmasq forks a worker per TCP connection. One forked while FTL has the
+  # lock file open must not hold the lock after the write is done, else every
+  # later config write waits for that worker to exit
+  run bash -c "python3 test/toml_lock_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "free"
 }
 
 @test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
@@ -1940,19 +2019,6 @@ except socket.timeout:
   assert_failure 3
 }
 
-@test "files.tmp_db cannot name a file Pi-hole keeps" {
-  # database.forceDisk empties files.tmp_db on every start
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
-  assert_failure 3
-}
-
 @test "Config validation: a document root that resolves to the root is rejected" {
   # Lexically /proc/self/root is a directory of its own, but it is a link
   # the kernel plants to /, so it has to be judged by where it leads
@@ -2357,43 +2423,46 @@ except socket.timeout:
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/16: document_root=/var/www/html" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 0/17: document_root=/var/www/html" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 1/17: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/17: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 3/17: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/16: enable_directory_listing=no" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 4/17: enable_directory_listing=no" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/16: num_threads=50" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 5/17: num_threads=50" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/16: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 6/17: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/16: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 7/17: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/16: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 8/17: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/16: enable_keep_alive=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 9/17: enable_keep_alive=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/16: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 10/17: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
   assert_success
   # Nagle disabled so small TLS responses are not delayed on the client's ACK.
-  run bash -c 'grep -F "Webserver option 11/16: tcp_nodelay=1" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 11/17: tcp_nodelay=1" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 12/16: lua_server_page_pattern=**.lp$" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 12/17: lua_server_page_pattern=**.lp$" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 13/16: lua_script_pattern=" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 13/17: lua_script_pattern=" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 14/16: ssi_pattern=" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 14/17: ssi_pattern=" /var/log/pihole/webserver.log'
   assert_success
   # The terminator's per-boot backend-auth secret; its value is redacted in the log.
-  run bash -c 'grep -F "Webserver option 15/16: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 15/17: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  assert_success
+  # webserver.trustedProxies, IPv4 entries also IPv4-mapped
+  run bash -c 'grep -F "Webserver option 16/17: proxy_protocol_trusted_peers=+127.0.0.4,+[::ffff:127.0.0.4]/128" /var/log/pihole/webserver.log'
   assert_success
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
-  run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 17/17: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
 }
 

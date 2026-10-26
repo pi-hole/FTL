@@ -1,15 +1,18 @@
 /*
-  tre-internal.h - TRE internal definitions
-
-  This software is released under a BSD-style license.
-  See the file LICENSE for details and copyright.
-
-*/
+ * tre-internal.h - TRE internal definitions
+ *
+ * This software is released under a BSD-style license.
+ * See the file LICENSE for details and copyright.
+ */
 
 #include "tre-config.h"
 
 #ifndef TRE_INTERNAL_H
-#define TRE_INTERNAL_H 1
+#define TRE_INTERNAL_H
+
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif /* HAVE_SYS_TYPES_H */
 
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
@@ -17,10 +20,18 @@
 
 #ifdef HAVE_WCTYPE_H
 #include <wctype.h>
-#endif /* !HAVE_WCTYPE_H */
+#endif /* HAVE_WCTYPE_H */
 
 #include <ctype.h>
+#include <limits.h>
+
 #include "tre.h"
+
+#define TRE_MAX_RE	(1<<16)
+#define TRE_MAX_STRING	INT_MAX
+#define TRE_MAX_STACK	(1<<20)
+#define TRE_MAX_POS	(1<<20)
+#define TRE_MAX_TRANS	(1<<24)
 
 #ifdef TRE_DEBUG
 #include <stdio.h>
@@ -213,6 +224,11 @@ typedef enum {
 /* Signifies the default matching parameter value. */
 #define TRE_PARAM_DEFAULT -2
 
+/* Maximum nesting depth of approximate matching parameters the approximate
+   matcher can represent (see the costs[] array in tre-match-approx.c).  The
+   compiler rejects patterns that would exceed this. */
+#define TRE_M_MAX_DEPTH 3
+
 /* Instructions to compute submatch register values from tag values
    after a successful match.  */
 struct tre_submatch_data {
@@ -262,26 +278,20 @@ tre_fill_pmatch(size_t nmatch, regmatch_t pmatch[], int cflags,
 		const tre_tnfa_t *tnfa, int *tags, int match_eo);
 
 reg_errcode_t
-tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
+tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		      tre_str_type_t type, int *match_tags, int eflags,
 		      int *match_end_ofs);
 
 reg_errcode_t
-tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
-		      tre_str_type_t type, int *match_tags, int eflags,
-		      int *match_end_ofs);
-
-reg_errcode_t
-tre_tnfa_run_backtrack(const tre_tnfa_t *tnfa, const void *string,
-		       int len, tre_str_type_t type, int *match_tags,
-		       int eflags, int *match_end_ofs);
+tre_tnfa_run_backtrack(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
+		       tre_str_type_t type, int *match_tags, int eflags,
+		       int *match_end_ofs);
 
 #ifdef TRE_APPROX
 reg_errcode_t
-tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, int len,
-		    tre_str_type_t type, int *match_tags,
-		    regamatch_t *match, regaparams_t params,
-		    int eflags, int *match_end_ofs);
+tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
+		    tre_str_type_t type, int *match_tags, regamatch_t *match,
+		    regaparams_t params, int eflags, int *match_end_ofs);
 #endif /* TRE_APPROX */
 
 #endif /* TRE_INTERNAL_H */
