@@ -26,9 +26,11 @@
 
 #include "tre.h"
 
-#define TRE_MAX_RE	65536
+#define TRE_MAX_RE	(1<<16)
 #define TRE_MAX_STRING	INT_MAX
-#define TRE_MAX_STACK	1048576
+#define TRE_MAX_STACK	(1<<20)
+#define TRE_MAX_POS	(1<<20)
+#define TRE_MAX_TRANS	(1<<24)
 
 #ifdef TRE_DEBUG
 #include <stdio.h>
