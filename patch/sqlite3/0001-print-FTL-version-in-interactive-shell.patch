@@ -1,6 +1,6 @@
 --- a/src/database/shell.c
 +++ b/src/database/shell.c
-@@ -4474,6 +4474,8 @@
+@@ -4704,6 +4704,8 @@
  #include <assert.h>
  #include <string.h>
  #include <stdarg.h>
@@ -9,7 +9,7 @@
  
  #ifndef SQLITE_AMALGAMATION
  /* typedef sqlite3_uint64 u64; */
-@@ -36426,7 +36428,7 @@
+@@ -39027,7 +39029,7 @@
  **     fiddle_main          In Fiddle
  **     sqlite3_shell        Other projects that use shell.c as a subroutine
  */
@@ -18,7 +18,7 @@
  #ifdef SQLITE_DEBUG
    sqlite3_int64 mem_main_enter = 0;
  #endif
-@@ -37060,6 +37062,7 @@
+@@ -39679,6 +39681,7 @@
      if( stdin_is_interactive ){
        char *zHome;
        char *zHistory;
