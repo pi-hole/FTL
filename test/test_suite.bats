@@ -1482,6 +1482,15 @@ setup() {
   assert_line --index 1 ""
 }
 
+@test "A TCP worker forked during a config write does not keep pihole.toml.lock" {
+  # dnsmasq forks a worker per TCP connection. One forked while FTL has the
+  # lock file open must not hold the lock after the write is done, else every
+  # later config write waits for that worker to exit
+  run bash -c "python3 test/toml_lock_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "free"
+}
+
 @test "Pi-hole uses dns.reply.host.IPv4/6 replies inside CNAME chains" {
   run bash -c "dig A pihole.mydomain.net +short @127.0.0.1"
   assert_line --index 0 "pi.hole."
