@@ -220,6 +220,14 @@ if [ $WEBSERVER_ACL_RET != 0 ]; then
   RET=$WEBSERVER_ACL_RET
 fi
 
+# webserver.port combinations for the TLS terminator. Also after pytest: every
+# port change restarts FTL.
+$BATS -p "test/webserver_tls_ports.bats"
+WEBSERVER_TLS_PORTS_RET=$?
+if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
+  RET=$WEBSERVER_TLS_PORTS_RET
+fi
+
 # Restart tests. After pytest and the DoT/DoH suites, as the restarts perturb
 # the query statistics they assert on.
 $BATS -p "test/restart.bats"
