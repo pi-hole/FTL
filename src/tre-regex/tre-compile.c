@@ -852,6 +852,16 @@ tre_expand_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		if (iter->min > 1 || iter->max > 1)
 		  pos_add = 0;
 		iter_depth++;
+		if (iter->params)
+		  {
+		    /* The approximate matcher has storage for only
+		       TRE_M_MAX_DEPTH nested parameter levels; reject
+		       patterns that need more. */
+		    if (++params_depth > TRE_M_MAX_DEPTH)
+		      return REG_BADPAT;
+		    if (params_depth > *max_depth)
+		      *max_depth = params_depth;
+		  }
 		DPRINT(("iter\n"));
 		break;
 	      }
@@ -958,7 +968,7 @@ tre_expand_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		if (!tmp_l)
 		  return REG_ESPACE;
 		((tre_literal_t *)tmp_l->obj)->u.params = iter->params;
-		iter->params[TRE_PARAM_DEPTH] = params_depth + 1;
+		iter->params[TRE_PARAM_DEPTH] = params_depth;
 		tmp_r = tre_ast_new_literal(mem, PARAMETER, 0);
 		if (!tmp_r)
 		  return REG_ESPACE;
@@ -969,7 +979,7 @@ tre_expand_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		for (i = 0; i < TRE_PARAM_LAST; i++)
 		  old_params[i] = params[i];
 		((tre_literal_t *)tmp_r->obj)->u.params = old_params;
-		old_params[TRE_PARAM_DEPTH] = params_depth;
+		old_params[TRE_PARAM_DEPTH] = params_depth - 1;
 		/* XXX - this is the only place where ast_new_node is
 		   needed -- should be moved inside AST module. */
 		node_copy = tre_ast_new_node(mem, ITERATION,
@@ -987,14 +997,9 @@ tre_expand_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		memcpy(node, tmp_node, sizeof(*node));
 		node->obj = tmp_node->obj;
 		node->type = tmp_node->type;
-		params_depth++;
-		/* The approximate matcher has storage for only
-		   TRE_M_MAX_DEPTH nested parameter levels; reject
-		   patterns that need more. */
-		if (params_depth > TRE_M_MAX_DEPTH)
-		  return REG_BADPAT;
-		if (params_depth > *max_depth)
-		  *max_depth = params_depth;
+		/* Leaving this parameter scope; sibling scopes reuse the
+		   level rather than stacking on top of it. */
+		params_depth--;
 	      }
 	    break;
 	  }
