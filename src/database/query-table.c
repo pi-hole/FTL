@@ -1235,6 +1235,8 @@ void DB_read_queries(void)
 		query->domainID = domainID;
 		query->clientID = clientID;
 		query->upstreamID = upstreamID;
+		// An imported query holds no per-client DNS cache entry, the
+		// blocking decisions of this run are made by live queries
 		query->cacheID = -1;
 		// No dnsmasq ID belongs to an imported query
 		query->id = -1;
@@ -1266,7 +1268,6 @@ void DB_read_queries(void)
 		domain->lastQuery = queryTimeStamp;
 
 		// Get additional information from the additional_info column if applicable
-		int list_id_avail = false;
 		if(status == QUERY_GRAVITY_CNAME ||
 		   status == QUERY_REGEX_CNAME ||
 		   status == QUERY_DENYLIST_CNAME )
@@ -1288,23 +1289,6 @@ void DB_read_queries(void)
 					cdomain->lastQuery = queryTimeStamp;
 					cdomain->cname_refcount++;
 				}
-			}
-		}
-		else if((list_id_avail = sqlite3_column_bytes(stmt, 7) != 0))
-		{
-			// Set ID of the domainlist entry that was the reason for permitting/blocking this query
-			// We assume the value in this field is said ID when it is not a CNAME-related domain
-			// (checked above) and the value of additional_info is not NULL (0 bytes storage size)
-			query->cacheID = findCacheID(domainID, clientID, query->type, true);
-			DNSCacheData *cache = getDNSCache(query->cacheID, true);
-			if(cache != NULL)
-			{
-				cache->refcount++;
-				// Only load if
-				//  a) we have a cache entry
-				//  b) the value of additional_info is not NULL (0 bytes storage size)
-				if(list_id_avail)
-					cache->list_id = sqlite3_column_int(stmt, 7);
 			}
 		}
 
