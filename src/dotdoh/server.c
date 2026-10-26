@@ -28,6 +28,7 @@
 // dnsmasq types this module deliberately does not pull in.
 unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -591,4 +592,31 @@ __attribute__((pure)) uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len
 		if(!have || ttl < min) { min = ttl; have = true; }
 	}
 	return have ? min : 0;
+}
+
+// application/dns-message, optionally followed by whitespace and parameters
+static bool doh_media_type_ok(const char *ct)
+{
+	static const char mt[] = "application/dns-message";
+	if(strncasecmp(ct, mt, sizeof(mt) - 1) != 0)
+		return false;
+	ct += sizeof(mt) - 1;
+	while(*ct == ' ' || *ct == '\t')
+		ct++;
+	return *ct == '\0' || *ct == ';';
+}
+
+__attribute__((pure)) int doh_post_check(const char *ctype, unsigned ctype_count, long long blen)
+{
+	// A repeated field line is malformed, not an unsupported type (RFC 9110 5.3)
+	if(ctype_count > 1)
+		return 400;
+	if(ctype == NULL || !doh_media_type_ok(ctype))
+		return 415;
+	// No body at all is not a DNS message (RFC 8484 6)
+	if(blen <= 0)
+		return 400;
+	if(blen > DNS_MSG_MAX)
+		return 413;
+	return 0;
 }
