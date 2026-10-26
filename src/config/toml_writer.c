@@ -121,8 +121,9 @@ static void release_install_lock(int *fd)
 
 bool writeFTLtoml(const bool verbose, FILE *fp)
 {
-	// Return early without writing if we are in config read-only mode
-	if(config.misc.readOnly.v.b)
+	// Read-only mode keeps an existing file as it is. A missing one is still
+	// written, pihole-FTL --config and the Teleporter need it
+	if(config.misc.readOnly.v.b && file_exists(GLOBALTOMLPATH))
 	{
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 

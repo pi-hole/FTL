@@ -290,7 +290,6 @@ struct config {
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
 		struct conf_item useWAL;
-		struct conf_item forceDisk;
 		struct {
 			struct conf_item parseARPcache;
 			struct conf_item expire;
@@ -346,7 +345,6 @@ struct config {
 
 	struct {
 		struct conf_item database;
-		struct conf_item tmp_db;
 		struct conf_item gravity;
 		struct conf_item gravity_tmp;
 		struct conf_item macvendor;

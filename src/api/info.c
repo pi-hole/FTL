@@ -146,7 +146,7 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(owner, "group", group);
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
-	// Add number of queries and earliest timestamp in in-memory database
+	// Add number of queries and earliest timestamp in memory
 	double earliest_timestamp_mem = 0.0;
 	uint64_t queries_in_database = 0;
 	get_db_info(false, &queries_in_database, &earliest_timestamp_mem);

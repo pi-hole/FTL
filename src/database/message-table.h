@@ -17,7 +17,7 @@ int count_messages(void);
 bool format_messages(cJSON *array);
 bool create_message_table(sqlite3 *db);
 bool delete_message(cJSON *ids, int *deleted);
-bool flush_message_table(sqlite3 *memdb);
+bool flush_message_table(void);
 void logg_regex_warning(const char *type, const char *warning, const int dbindex, const char *regex);
 void logg_subnet_warning(const char *ip, const int matching_count, const char *matching_ids,
                          const int matching_bits, const char *chosen_match_text,
@@ -35,5 +35,6 @@ void log_verify_message(const char *expected, const char *actual);
 void log_gravity_restored(const char *status);
 void log_teleporter_skipped(const char *key);
 void log_cluster_message(const char *message);
+void log_query_database_error(const char *path, const char *error);
 
 #endif //MESSAGETABLE_H
