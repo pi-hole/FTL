@@ -90,6 +90,19 @@ pdnsutil rrset add ftl. soa.ftl. CNAME ftl.
 pdnsutil rrset add ftl. aaaa-cname.ftl. CNAME gravity-aaaa.ftl.
 pdnsutil rrset add ftl. a-cname.ftl. CNAME gravity.ftl.
 
+# Create CNAMEs for the remembered CNAME target tests in test_final.bats
+pdnsutil rrset add ftl. cname-memo-1.ftl. CNAME memo-target-1.ftl.
+pdnsutil rrset add ftl. cname-memo-2.ftl. CNAME memo-target-2.ftl.
+pdnsutil rrset add ftl. cname-memo-3.ftl. CNAME memo-target-3.ftl.
+pdnsutil rrset add ftl. cname-memo-4.ftl. CNAME memo-target-4.ftl.
+pdnsutil rrset add ftl. memo-target-1.ftl. A 192.168.6.1
+pdnsutil rrset add ftl. memo-target-1.ftl. A 192.168.6.2
+pdnsutil rrset add ftl. memo-target-1.ftl. A 192.168.6.3
+pdnsutil rrset add ftl. memo-target-1.ftl. A 192.168.6.4
+pdnsutil rrset add ftl. memo-target-2.ftl. A 192.168.6.5
+pdnsutil rrset add ftl. memo-target-3.ftl. A 192.168.6.6
+pdnsutil rrset add ftl. memo-target-4.ftl. A 192.168.6.7
+
 # Create PTR records
 pdnsutil rrset add ftl. ptr.ftl. PTR ptr.ftl.
 
