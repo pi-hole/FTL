@@ -177,6 +177,9 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);
+	double loadavg[3] = { 0.0 };
+	if(get_load_averages(loadavg) != 0)
+		return send_json_error(api, 500, "error", "Cannot read the load averages", NULL);
 
 	// Seconds since boot
 	JSON_ADD_NUMBER_TO_OBJECT(system, "uptime", info.uptime);
@@ -238,8 +241,6 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// 1, 5, and 15 minute load averages
 	cJSON *raw = JSON_NEW_ARRAY();
 	cJSON *percent = JSON_NEW_ARRAY();
-	double loadavg[3] = { 0.0 };
-	get_load_averages(loadavg);
 	for(unsigned int i = 0; i < 3; i++)
 	{
 		JSON_ADD_NUMBER_TO_ARRAY(raw, loadavg[i]);
