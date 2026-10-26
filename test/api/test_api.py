@@ -9,6 +9,7 @@ Usage:
     pytest test/api/test_api.py -v
 """
 
+import itertools
 import json
 import re
 from urllib.parse import quote
@@ -55,6 +56,12 @@ def _j(response, dump=None):
         except OSError:
             pass
     return data
+
+
+def _sort(column, direction):
+    """Query string part sorting /api/queries by a column, as DataTables does"""
+    return (f"&order%5B0%5D%5Bcolumn%5D=0&order%5B0%5D%5Bdir%5D={direction}"
+            f"&columns%5B0%5D%5Bdata%5D={column}")
 
 
 def set_config(api_session, dotted_key, value):
@@ -1530,6 +1537,79 @@ class TestQueriesAdditional:
         assert "127.0.0.1" in s["client_ip"]
         assert "A" in s["type"]
         assert "AAAA" in s["type"]
+
+
+@pytest.fixture(scope="class")
+def no_excluded_clients(api_session):
+    """The test config excludes a client, which makes every query log request
+    count its matches. Without it, a sorted request without a filter takes
+    the number of queries from shared memory"""
+    url = f"{FTL_URL}/api/config/webserver/api/excludeClients"
+    excluded = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeClients"]
+    set_config(api_session, "webserver.api.excludeClients", [])
+    yield
+    set_config(api_session, "webserver.api.excludeClients", excluded)
+
+
+@pytest.mark.usefixtures("no_excluded_clients")
+class TestQueriesSorted:
+
+    @pytest.mark.parametrize("filters", ["", "&client_ip=127.0.0.1"])
+    @pytest.mark.parametrize("column", ["status", "type", "reply"])
+    def test_queries_sorted_pages(self, api_session, column, filters):
+        """Sorted by a column with many equal keys, equal keys come in ID order
+        in the direction of the sort, and pages hold every query once. A page
+        in the back half of the result is read from the other end if it ends
+        more than 10000 rows in, as one of 10000 rows does from any start but 0"""
+        key = (lambda q: q["reply"]["type"]) if column == "reply" else (lambda q: q[column])
+        order = {}
+        for direction in ("asc", "desc"):
+            sort = _sort(column, direction) + filters
+            whole = _j(api_session.get(f"{FTL_URL}/api/queries?length=10000{sort}", timeout=5))
+            rows, total = whole["queries"], whole["recordsTotal"]
+            ids, n = [q["id"] for q in rows], len(rows)
+            assert whole["recordsFiltered"] == n
+            assert n < total if filters else n == total
+            # Equal keys are next to each other, in ID order in the direction
+            # of the sort
+            runs = [(k, [q["id"] for q in g]) for k, g in itertools.groupby(rows, key)]
+            assert len({k for k, _ in runs}) == len(runs) < n
+            for _, run in runs:
+                assert run == sorted(run, reverse=direction == "desc")
+
+            # Pages of 7 rows from the front, and the rest from a few starts
+            # in one page of 10000 rows, which is read from the other end
+            url = f"{FTL_URL}/api/queries?cursor={whole['cursor']}{sort}"
+            pages = [_j(api_session.get(f"{url}&start={start}&length=7", timeout=5))
+                     for start in range(0, n + 7, 7)]
+            assert [q["id"] for p in pages for q in p["queries"]] == ids
+            for start in (1, 7, n // 2, n - 1, n):
+                pages.append(_j(api_session.get(f"{url}&start={start}&length=10000", timeout=5)))
+                assert [q["id"] for q in pages[-1]["queries"]] == ids[start:], start
+            if filters:
+                assert {p["recordsFiltered"] for p in pages} == {n}
+            order[direction] = ids
+        # The order is total, one direction is the other one backwards
+        assert order["asc"] == order["desc"][::-1]
+
+    def test_queries_time_range(self, api_session):
+        """from is inclusive and until exclusive. Sorted by time, equal times
+        come in ID order in the direction of the sort"""
+        # Times as printed. With 15 digits a time can be a ULP off the stored
+        # one, so the range starts and ends at times printed with more
+        r = api_session.get(f"{FTL_URL}/api/queries?length=10000", timeout=5)
+        whole = r.json(parse_float=str)
+        times = sorted({q["time"] for q in whole["queries"] if len(q["time"]) > 16}, key=float)
+        begin, end = times[len(times) // 3], times[2 * len(times) // 3]
+        inside = [q for q in whole["queries"] if float(begin) <= float(q["time"]) < float(end)]
+        by_time = [q["id"] for q in sorted(inside, key=lambda q: (float(q["time"]), q["id"]))]
+        url = (f"{FTL_URL}/api/queries?length=10000&cursor={whole['cursor']}"
+               f"&from={begin}&until={end}")
+        for sort, ids in (("", [q["id"] for q in inside]), (_sort("time", "asc"), by_time),
+                          (_sort("time", "desc"), by_time[::-1])):
+            data = _j(api_session.get(url + sort, timeout=5))
+            assert [q["id"] for q in data["queries"]] == ids, sort
+            assert data["recordsFiltered"] == len(ids) > 0
 
 
 # ---------------------------------------------------------------------------
