@@ -541,6 +541,97 @@ load 'bats_helper.bash'
   assert_line --partial --index 2 "FTL terminated after"
 }
 
+# Start FTL as on a first start: the suite's pihole.toml and its backups are
+# put aside, and FTL runs on ports and files of its own with only the FTLCONF_
+# variables below and in $1. Nothing here or in first_start_stop fails, so the
+# suite's files are always put back before a test checks what it collected
+first_start=/tmp/ftlconf-first-start
+first_start_ftl() {
+  rm -rf "${first_start}"
+  mkdir -p "${first_start}/suite"
+  touch "${first_start}/FTL.log"
+  chown -R pihole:pihole "${first_start}"
+  mv /etc/pihole/pihole.toml /etc/pihole/config_backups "${first_start}/suite/" || true
+  cp -p /etc/pihole/dnsmasq.conf /etc/pihole/hosts/custom.list "${first_start}/suite/" || true
+  unset "${!FTLCONF_@}"
+  first_start_cli="$(FTLCONF_dns_port=5397 ./pihole-FTL --config dns.port 2> /dev/null || true)"
+  su pihole -s /bin/sh -c "FTLCONF_files_log_ftl=${first_start}/FTL.log FTLCONF_files_log_webserver=${first_start}/webserver.log FTLCONF_files_log_dnsmasq=${first_start}/pihole.log FTLCONF_files_database=${first_start}/pihole-FTL.db FTLCONF_dns_port=5397 FTLCONF_webserver_port=127.0.0.1:8097 FTLCONF_misc_etc_dnsmasq_d=false FTLCONF_ntp_ipv4_active=false FTLCONF_ntp_ipv6_active=false FTLCONF_ntp_sync_active=false $1 /home/pihole/pihole-FTL" || true
+  ./pihole-FTL wait-for ' -> Known forward destinations' "${first_start}/FTL.log" 60 0 > /dev/null || true
+  for i in $(seq 1 60); do
+    curl -s -f -m 1 -o /dev/null http://127.0.0.1:8097/api/config/dns/port && break
+    sleep 0.5
+  done
+}
+
+# Stop it, keep the pihole.toml it wrote and put the suite's files back
+first_start_stop() {
+  kill "$(cat /run/pihole-FTL.pid)" || true
+  ./pihole-FTL wait-for '########## FTL terminated after' "${first_start}/FTL.log" 30 0 > /dev/null || true
+  cp /etc/pihole/pihole.toml "${first_start}/pihole.toml" 2> /dev/null || true
+  for f in pihole.toml config_backups; do
+    if [[ -e "${first_start}/suite/${f}" ]]; then
+      rm -rf "/etc/pihole/${f}"
+      mv "${first_start}/suite/${f}" /etc/pihole/ || true
+    fi
+  done
+  cp -p "${first_start}/suite/dnsmasq.conf" /etc/pihole/dnsmasq.conf || true
+  cp -p "${first_start}/suite/custom.list" /etc/pihole/hosts/custom.list || true
+}
+
+@test "FTLCONF_ variables apply when FTL starts without pihole.toml" {
+  # files.tmp_db names the database, which the rules a config file is held to
+  # do not allow, so it is reset to its default
+  first_start_ftl "FTLCONF_misc_privacylevel=2 FTLCONF_dns_upstreams='127.0.0.1#5555;127.0.0.2' FTLCONF_files_tmp_db=${first_start}/pihole-FTL.db FTLCONF_debug_config=true FTLCONF_debug_database=true"
+  dns="$(dig +tries=1 +time=2 -p 5397 CHAOS TXT version.FTL @127.0.0.1 | grep -oE 'status: [A-Z]+' || true)"
+  level="$(curl -s -m 5 http://127.0.0.1:8097/api/config/misc/privacylevel | jq -c '.config.misc.privacylevel' || true)"
+  upstreams="$(curl -s -m 5 http://127.0.0.1:8097/api/config/dns/upstreams | jq -c '.config.dns.upstreams' || true)"
+  tmp_db="$(curl -s -m 5 http://127.0.0.1:8097/api/config/files/tmp_db | jq -r '.config.files.tmp_db' || true)"
+  # Only what the environment sets is forced
+  forced="$(curl -s -m 5 'http://127.0.0.1:8097/api/config/misc/privacylevel?detailed=true' | jq -r '.config.misc.privacylevel.flags.env_var' || true)"
+  unforced="$(curl -s -m 5 'http://127.0.0.1:8097/api/config/dns/blocking/mode?detailed=true' | jq -r '.config.dns.blocking.mode.flags.env_var' || true)"
+  first_start_stop
+
+  printf "DNS on port 5397: %s, privacy level: %s, upstreams: %s, tmp_db: %s, forced: %s/%s, CLI: %s\n" "${dns}" "${level}" "${upstreams}" "${tmp_db}" "${forced}" "${unforced}" "${first_start_cli}"
+  [[ "${dns}" == "status: NOERROR" ]]
+  [[ "${level}" == "2" ]]
+  [[ "${upstreams}" == '["127.0.0.1#5555","127.0.0.2"]' ]]
+  [[ "${tmp_db}" == "/etc/pihole/pihole-tmp.db" ]]
+  [[ "${forced}" == "true" && "${unforced}" == "false" ]]
+  # pihole-FTL --config still shows the plain defaults without a file
+  [[ "${first_start_cli}" == "53" ]]
+  # The new pihole.toml has them too, as forced through the environment
+  run grep -c -x -E '#   - (dns\.port|webserver\.port|misc\.privacylevel|dns\.upstreams)' "${first_start}/pihole.toml"
+  assert_output "4"
+  # The log lists the variables, and the debug flags are on from the start,
+  # debug.config already while the other variables are read
+  run grep -c "FTLCONF environment variables found" "${first_start}/FTL.log"
+  [[ ${lines[0]} -ge 1 ]]
+  run grep -c "DEBUG_CONFIG: ENV FTLCONF_misc_privacylevel = 2" "${first_start}/FTL.log"
+  [[ ${lines[0]} -ge 1 ]]
+  run grep -c "DEBUG_DATABASE: " "${first_start}/FTL.log"
+  [[ ${lines[0]} -ge 1 ]]
+}
+
+@test "FTL writes the first pihole.toml when misc.readOnly is set through the environment" {
+  # Read-only mode keeps an existing file as it is, there is none yet
+  first_start_ftl "FTLCONF_misc_readOnly=true FTLCONF_misc_privacylevel=2"
+  level="$(curl -s -m 5 http://127.0.0.1:8097/api/config/misc/privacylevel | jq -c '.config.misc.privacylevel' || true)"
+  read_only="$(curl -s -m 5 http://127.0.0.1:8097/api/config/misc/readOnly | jq -c '.config.misc.readOnly' || true)"
+  # Once it is there, it is kept: disabling blocking writes no config
+  before="$(sha256sum /etc/pihole/pihole.toml 2> /dev/null || true)"
+  blocking="$(curl -s -m 5 -X POST http://127.0.0.1:8097/api/dns/blocking -d '{"blocking":false}' | jq -r '.blocking' || true)"
+  after="$(sha256sum /etc/pihole/pihole.toml 2> /dev/null || true)"
+  first_start_stop
+
+  printf "privacy level: %s, read-only: %s, blocking: %s\n" "${level}" "${read_only}" "${blocking}"
+  [[ "${level}" == "2" && "${read_only}" == "true" ]]
+  [[ "${blocking}" == "disabled" && -n "${before}" && "${before}" == "${after}" ]]
+  run grep -c -x -E '#   - (misc\.privacylevel|misc\.readOnly)' "${first_start}/pihole.toml"
+  assert_output "2"
+  run grep -c "checksum of /etc/pihole/pihole.toml" "${first_start}/FTL.log"
+  assert_output "0"
+}
+
 @test "Queries older than database.maxDBdays are deleted in the first nightly window after the start" {
   # Start FTL at 03:50 local time, after the random cleaning minute (03:10 to
   # 03:49), with 25000 queries older than 91 days in the database. They are
