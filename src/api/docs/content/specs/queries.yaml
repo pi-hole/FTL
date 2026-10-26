@@ -111,7 +111,7 @@ components:
               type: string
           - in: query
             name: disk
-            description: Load queries from on-disk database rather than from in-memory
+            description: Load queries from the on-disk database rather than from memory
             required: false
             schema:
               type: boolean
@@ -289,7 +289,7 @@ components:
           example: 1
         earliest_timestamp:
           type: number
-          description: Earliest timestamp of queries in in-memory database (Unix time)
+          description: Earliest timestamp of queries in memory (Unix time)
           example: 1581900000.0
         earliest_timestamp_disk:
           type: number

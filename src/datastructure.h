@@ -34,7 +34,7 @@ typedef struct {
 	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status, -1 otherwise
-	int list_id; // list ID of its row in the database, -1 if none
+	int list_id; // ID of the list that blocked or allowed it, -1 if none
 	uint16_t qtype;
 	uint16_t ede; // only valid with flags.has_ede, see query_get_ede()
 	unsigned char magic;
@@ -59,12 +59,6 @@ typedef struct {
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
 		bool has_ede :1;
-		struct database_flags {
-			bool changed :1;
-			bool imported :1;
-			// The query has a row in the database (stored or imported)
-			bool stored :1;
-		} database;
 	} flags;
 } queriesData;
 
