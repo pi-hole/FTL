@@ -124,18 +124,19 @@ static int search_gravity(struct ftl_conn *api, sqlite3 *db, const char *punycod
 	const int npatterns = cJSON_GetArraySize(*abp_patterns);
 	for(int i = 0; i < npatterns; i++)
 	{
-		// Patterns are generated TLD-first, so the last one is built
-		// from the full search term. A substring search already found
-		// it, looking it up again would duplicate the row
-		if(partial && i == npatterns - 1)
-			break;
-
 		const char *pattern = cJSON_GetStringValue(cJSON_GetArrayItem(*abp_patterns, i));
 		if(pattern == NULL)
 			continue;
 
 		// Skip leading "@@" for gravity matches
 		const char *this_pattern = antigravity ? pattern : pattern + 2;
+
+		// A pattern containing the search term is a substring hit the
+		// partial search already returned, looking it up again would
+		// duplicate the row
+		if(partial && strstr(this_pattern, punycode) != NULL)
+			continue;
+
 		ret = search_table(api, db, this_pattern, table, NULL, limit, N, false, array);
 		if(ret != 200)
 			return ret;
