@@ -23,6 +23,7 @@
 #endif /* HAVE_WCTYPE_H */
 
 #include <ctype.h>
+#include <limits.h>
 
 #include "tre.h"
 
