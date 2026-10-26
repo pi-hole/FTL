@@ -2118,7 +2118,12 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// setupVars.conf
 	get_web_port(&config);
 
-	// Open webserver.log and pihole.log at default paths (TOML was unreadable)
+	// Environment variables override these defaults as they override the
+	// values of a config file, and the result is held to the same rules
+	applyEnvVars(conf);
+	validate_config(conf, true, NULL);
+
+	// Open webserver.log and pihole.log now that their paths are known
 	open_log_fds(false);
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);

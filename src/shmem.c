@@ -24,6 +24,9 @@
 #include "daemon.h"
 // NAME_MAX
 #include <limits.h>
+// SYS_futex
+#include <sys/syscall.h>
+#include <linux/futex.h>
 // gettid
 #include "daemon.h"
 // generate_backtrace()
@@ -36,7 +39,7 @@
 #include "lookup-table.h"
 
 /// The version of shared memory used
-#define SHARED_MEMORY_VERSION 19
+#define SHARED_MEMORY_VERSION 22
 
 // Every struct below is stored in shared memory, so a change to any of their
 // layouts makes a segment written by an older build unreadable and needs the
@@ -73,7 +76,7 @@ _Static_assert(sizeof(overTimeData) ==
 ASSERT_SHM_SIZE(struct lookup_table,     8,      8,      8);
 ASSERT_SHM_SIZE(fifologData,        565280, 557088, 557072);
 ASSERT_SHM_SIZE(ShmSettings,           152,    140,    140);
-ASSERT_SHM_SIZE(countersStruct,        360,    360,    360);
+ASSERT_SHM_SIZE(countersStruct,        408,    408,    404);
 
 /// The name of the shared memory. Use this when connecting to the shared memory.
 #define SHMEM_PATH "/dev/shm"
@@ -179,6 +182,10 @@ typedef struct {
 		struct timespec begin;
 		struct timespec end;
 	} time;
+	// DNS-path callers waiting for the lock, and readers sleeping until
+	// none waits, see _lock_shm_reader()
+	int dns_waiting;
+	int readers_sleeping;
 } ShmLock;
 static ShmLock *shmLock = NULL;
 static ShmSettings *shmSettings = NULL;
@@ -710,6 +717,11 @@ static void remap_shm(void)
 	local_shm_counter = shmSettings->global_shm_counter;
 }
 
+// Set while the query log reader takes the lock. It only reads, so it leaves
+// growing the shared memory arrays to the callers that add entries, which
+// also keeps a long scan from doing that work under its many short holds
+static _Thread_local bool lock_reader = false;
+
 // Obtain SHMEM lock
 void _lock_shm(const char *func, const int line, const char *file)
 {
@@ -721,7 +733,25 @@ void _lock_shm(const char *func, const int line, const char *file)
 	log_debug(DEBUG_LOCKS, "Waiting for SHM lock in %s() (%s:%i)", func, file, line);
 	log_debug(DEBUG_LOCKS, "SHM lock: %p", shmLock);
 
+	// DNS-path callers, the main threads of FTL and of its forked TCP
+	// workers, are counted while they wait
+	const bool dns_path = cached_gettid() == cached_getpid();
+	if(dns_path)
+		__atomic_add_fetch(&shmLock->dns_waiting, 1, __ATOMIC_SEQ_CST);
+
 	int result = pthread_mutex_lock(&shmLock->lock.outer);
+
+	// The last of them wakes the sleeping readers. The count stays at zero
+	// if a reader has reset it meanwhile
+	if(dns_path)
+	{
+		int count = __atomic_load_n(&shmLock->dns_waiting, __ATOMIC_SEQ_CST);
+		while(count > 0 && !__atomic_compare_exchange_n(&shmLock->dns_waiting, &count, count - 1, false,
+		                                                __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			continue;
+		if(count == 1 && __atomic_load_n(&shmLock->readers_sleeping, __ATOMIC_SEQ_CST) > 0)
+			syscall(SYS_futex, &shmLock->dns_waiting, FUTEX_WAKE, INT_MAX, NULL, NULL, 0);
+	}
 
 	// Who held the lock before us, for the recovery messages below
 	const pid_t previous_pid = shmLock->owner.pid;
@@ -757,7 +787,8 @@ void _lock_shm(const char *func, const int line, const char *file)
 	}
 
 	// Ensure we have enough shared memory available for new data
-	shm_ensure_size();
+	if(!lock_reader)
+		shm_ensure_size();
 
 	result = pthread_mutex_lock(&shmLock->lock.inner);
 
@@ -780,6 +811,45 @@ void _lock_shm(const char *func, const int line, const char *file)
 		if(result != 0)
 			log_err("Failed to make inner SHM lock consistent: %s", strerror(result));
 	}
+}
+
+// Take the lock in a reader that takes it many times (the query log), after
+// the DNS-path callers waiting for it. While one waits, sleep until the last
+// of them wakes us in _lock_shm(), at most 1 ms per round and ten rounds. If
+// all ten rounds time out while nobody holds the lock, the count is reset:
+// the callers counted are gone (a TCP worker that ran into its lifetime or was
+// killed while it waited) or have not run for ten milliseconds (a busy CPU),
+// and the decrement in _lock_shm() stops at zero for those still waiting. One
+// such round is not enough: the caller counted may have been woken by the last
+// unlock without having run yet, and reset away it would lose the lock to the
+// reader at every chunk. On a lock held nearly all the time, a caller that
+// died while counted keeps the readers sleeping for longer, until ten such
+// rounds come in a row
+void _lock_shm_reader(const char *func, const int line, const char *file)
+{
+	// SYS_futex reads two longs, while struct timespec has a 64-bit tv_sec
+	// on 32-bit musl
+	const struct { long tv_sec, tv_nsec; } ms = { 0, 1000000 };
+	unsigned int free_timeouts = 0;
+	for(unsigned int round = 0; shmLock != NULL && round < 10; round++)
+	{
+		int waiting = __atomic_load_n(&shmLock->dns_waiting, __ATOMIC_SEQ_CST);
+		if(waiting <= 0)
+			break;
+		__atomic_add_fetch(&shmLock->readers_sleeping, 1, __ATOMIC_SEQ_CST);
+		if(syscall(SYS_futex, &shmLock->dns_waiting, FUTEX_WAIT, waiting, &ms, NULL, 0) != 0 &&
+		   errno == ETIMEDOUT && shmLock->owner.pid == 0)
+			free_timeouts++;
+		else
+			free_timeouts = 0;
+		if(free_timeouts == 10)
+			__atomic_compare_exchange_n(&shmLock->dns_waiting, &waiting, 0, false,
+			                            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+		__atomic_sub_fetch(&shmLock->readers_sleeping, 1, __ATOMIC_SEQ_CST);
+	}
+	lock_reader = true;
+	_lock_shm(func, line, file);
+	lock_reader = false;
 }
 
 // Release SHM lock
@@ -1274,13 +1344,14 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 			         sharedMemory->name, sharedMemory->fd, new_size, strerror(ret), ret);
 			exit(EXIT_FAILURE);
 		}
-
-		// Update shm counters to indicate that at least one shared memory object changed
-		shmSettings->global_shm_counter++;
-		local_shm_counter++;
 	}
 
 	void *new_ptr = mremap(sharedMemory->ptr, sharedMemory->size, new_size, MREMAP_MAYMOVE);
+	// A process forked between another thread's mremap() of this region and
+	// the pointer update below has only the moved mapping, at an address it
+	// does not know, so its remap from the old pointer fails: map it anew
+	if(new_ptr == MAP_FAILED && !resize && errno == EFAULT)
+		new_ptr = mmap(NULL, new_size, PROT_READ | PROT_WRITE, MAP_SHARED, sharedMemory->fd, 0);
 	if(new_ptr == MAP_FAILED)
 	{
 		log_crit("realloc_shm(): mremap(%p, %zu, %zu, MREMAP_MAYMOVE): Failed to reallocate \"%s\": %s",
@@ -1303,8 +1374,34 @@ static bool realloc_shm(SharedMemory *sharedMemory, const size_t size1, const si
 		          sharedMemory->ptr, new_ptr, sharedMemory->size, new_size);
 	}
 
+	// Keep the previous address so the matching global pointer can be moved
+	// from it to the new mapping below
+	void *const old_ptr = sharedMemory->ptr;
 	sharedMemory->ptr = new_ptr;
 	sharedMemory->size = new_size;
+
+	// Raise the counters only once the new mapping, its size and the global
+	// pointer the getters dereference are all in place. Another process, such
+	// as a TCP worker forked from the main thread without the lock held,
+	// compares local_shm_counter with global_shm_counter in _lock_shm() to
+	// decide whether to remap, so it must never see the raised counter next to
+	// a pointer or size that still describe the old mapping
+	if(resize)
+	{
+		for(unsigned int i = 0; i < ArraySize(global_pointers); i++)
+		{
+			if(*global_pointers[i] == old_ptr)
+			{
+				*global_pointers[i] = new_ptr;
+				break;
+			}
+		}
+		// A fork copies this process at any point of this thread: make the
+		// stores above visible before the counters that announce them
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		shmSettings->global_shm_counter++;
+		local_shm_counter++;
+	}
 
 	return true;
 }
@@ -1808,6 +1905,37 @@ void update_qps(const time_t timestamp)
 	shmSettings->qps[slot]++;
 }
 
+// The queries array is in ID order and its timestamps nearly so: a query is
+// never older than any query before it by more than query_time_disorder
+// seconds, which time range searches rely on. Called with the SHM lock held
+void track_query_time(const queriesData *query)
+{
+	if(query->timestamp > counters->newest_query_time)
+		counters->newest_query_time = query->timestamp;
+	else if(counters->newest_query_time - query->timestamp > counters->query_time_disorder)
+	{
+		counters->query_time_disorder = counters->newest_query_time - query->timestamp;
+		counters->query_time_disorder_id = query->db;
+	}
+}
+
+// Track the timestamps of all queries again, in array order: after the
+// import, which fills its slots while newer queries arrive, and once the
+// garbage collector has removed the query that set the bound. Called with the
+// SHM lock held
+void retrack_query_times(void)
+{
+	counters->newest_query_time = 0.0;
+	counters->query_time_disorder = 0.0;
+	counters->query_time_disorder_id = -1;
+	for(unsigned int i = 0; i < counters->queries; i++)
+	{
+		const queriesData *query = getQuery(i, false);
+		if(query != NULL && query->magic == MAGICBYTE)
+			track_query_time(query);
+	}
+}
+
 // Reset queries per second (qps) value for the timeslot following the current
 // one
 void reset_qps(const time_t timestamp)
@@ -1993,8 +2121,18 @@ void print_recycle_list_fullness(void)
 #define STRING_DUMPFILE "/tmp/stringdump.txt"
 void dump_strings(void)
 {
-	// Dump string table to temporary file
-	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "a");
+	// Copy the string table under the lock and write the copy without it
+	lock_shm();
+	const size_t pool_size = shmSettings->next_str_pos;
+	char *pool = malloc(pool_size);
+	if(pool != NULL)
+		memcpy(pool, shm_strings.ptr, pool_size);
+	unlock_shm();
+	if(pool == NULL)
+		return;
+
+	// Dump string table to temporary file, replacing the previous dump
+	FILE *str_dumpfile = fopen(STRING_DUMPFILE, "w");
 	if(str_dumpfile != NULL)
 	{
 		char timestring[TIMESTR_SIZE] = { 0 };
@@ -2003,9 +2141,9 @@ void dump_strings(void)
 		log_info("String dump to "STRING_DUMPFILE);
 
 		size_t j = 0, non_print = 0;
-		for(size_t i = 0; i < shmSettings->next_str_pos; i++)
+		for(size_t i = 0; i < pool_size; i++)
 		{
-			char *sstr = (char*)getstr(i);
+			char *sstr = pool + i;
 			const size_t len = strlen(sstr);
 			char *buffer = sstr;
 			i += len;
@@ -2046,4 +2184,6 @@ void dump_strings(void)
 	}
 	else
 		log_err("Cannot open "STRING_DUMPFILE" for writing: %s", strerror(errno));
+
+	free(pool);
 }
