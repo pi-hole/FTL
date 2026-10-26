@@ -1,13 +1,12 @@
 /*
-  tre-mem.h - TRE memory allocator interface
-
-  This software is released under a BSD-style license.
-  See the file LICENSE for details and copyright.
-
-*/
+ * tre-mem.h - TRE memory allocator interface
+ *
+ * This software is released under a BSD-style license.
+ * See the file LICENSE for details and copyright.
+ */
 
 #ifndef TRE_MEM_H
-#define TRE_MEM_H 1
+#define TRE_MEM_H
 
 #include <stdlib.h>
 
@@ -26,7 +25,6 @@ typedef struct tre_mem_struct {
   int failed;
   void **provided;
 } *tre_mem_t;
-
 
 tre_mem_t tre_mem_new_impl(int provided, void *provided_block);
 void *tre_mem_alloc_impl(tre_mem_t mem, int provided, void *provided_block,
@@ -56,7 +54,6 @@ void *tre_mem_alloc_impl(tre_mem_t mem, int provided, void *provided_block,
    ? tre_mem_alloc_impl((mem), 1, NULL, 0, (size))			      \
    : tre_mem_alloc_impl((mem), 1, alloca(TRE_MEM_BLOCK_SIZE), 0, (size)))
 #endif /* TRE_USE_ALLOCA */
-
 
 /* Frees the memory allocator and all memory allocated with it. */
 void tre_mem_destroy(tre_mem_t mem);

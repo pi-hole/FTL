@@ -360,6 +360,9 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		//
 		// otherwise, flags will be F_UPSTREAM and the type is not set
 		// (== 0)
+	else if(flags == F_UPSTREAM && strcmp(arg, "duplicate") == 0)
+		; // Ignored - reply to a query attached to an identical one in
+		// flight (FTL_query_in_progress()), logged only with misc.extraLogging
 	else
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
@@ -1172,9 +1175,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	query_set_status_init(query, QUERY_UNKNOWN);
 	query->domainID = domainID;
 	query->clientID = clientID;
-	// Initialize database fields
-	// This query is new and not yet known to the database
-	query->db = -1;
+	// Initialize database fields. The ID is handed out under the same lock
+	// as the slot, so the IDs follow the order of the queries array
+	query->db = counters->next_query_id++;
+	// After the ID, which the time bound records
+	track_query_time(query);
+	query->flags.database.stored = false;
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
 	query->flags.complete = false;
@@ -1199,9 +1205,12 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// The currently set privacy level (at the time the query is
 	// generated) is stored in the queries structure
 	query->privacylevel = config.misc.privacylevel.v.privacy_level;
+	if(query->privacylevel >= PRIVACY_MAXIMUM)
+		counters->queries_maxprivacy++;
 
-	// Query extended DNS error
-	query->ede = EDE_UNSET;
+	// Query extended DNS error and the list ID in the database
+	query_set_ede(query, EDE_UNSET);
+	query->list_id = -1;
 
 	// Initialize cache ID, may be reusing an existing one if this
 	// (domain,client,type) tuple was already seen before
@@ -1977,6 +1986,70 @@ static bool special_domain(const queriesData *query, const char *domain)
 	return false;
 }
 
+// CNAME targets found neither blocked nor allowed, for one list generation, group
+// set and query type. Target and groups are identified by their positions in the
+// shared pools, which are never reused. Two-way set-associative, fork-private
+#define CNAME_MEMO_BITS 11
+static struct cname_memo_entry {
+	uint32_t domainpos; // the pools are sized by unsigned int counters
+	uint32_t groupspos;
+	unsigned int generation;
+	enum query_type type;
+} cname_memo[1u << CNAME_MEMO_BITS][2];
+
+// The set a target may be remembered in, or NULL if it is not remembered at all:
+// without resolved groups, and while the per-client cache is disabled
+static struct cname_memo_entry *cname_memo_set(const domainsData *domain, const clientsData *client,
+                                               const enum query_type type)
+{
+	if(!client->flags.found_group || domain->domainpos == 0 ||
+	   config.dns.cache.upstreamBlockedTTL.v.ui == 0)
+		return NULL;
+
+	const uint32_t key = domain->hash ^ ((uint32_t)client->groupspos * 2654435761u) ^ type;
+	return cname_memo[(key * 2654435761u) >> (32 - CNAME_MEMO_BITS)];
+}
+
+// Whether the check found this CNAME target neither blocked nor allowed before
+static bool cname_memo_find(const domainsData *domain, const clientsData *client, const enum query_type type)
+{
+	struct cname_memo_entry *set = cname_memo_set(domain, client, type);
+	if(set == NULL)
+		return false;
+
+	for(unsigned int way = 0; way < 2; way++)
+	{
+		if(set[way].domainpos != domain->domainpos || set[way].groupspos != client->groupspos ||
+		   set[way].type != type || set[way].generation != counters->regex_change)
+			continue;
+
+		// The entry used last stays in front, the other one is replaced first
+		if(way > 0)
+		{
+			const struct cname_memo_entry hit = set[way];
+			set[way] = set[0];
+			set[0] = hit;
+		}
+		return true;
+	}
+
+	return false;
+}
+
+// Remember a CNAME target the check found neither blocked nor allowed
+static void cname_memo_add(const domainsData *domain, const clientsData *client, const enum query_type type)
+{
+	struct cname_memo_entry *set = cname_memo_set(domain, client, type);
+	if(set == NULL)
+		return;
+
+	// Keep the entry in front unless it is from an older generation
+	if(set[0].generation == counters->regex_change)
+		set[1] = set[0];
+	set[0] = (struct cname_memo_entry){ (uint32_t)domain->domainpos, (uint32_t)client->groupspos,
+	                                    counters->regex_change, type };
+}
+
 static bool FTL_check_blocking(const char *domainstr, queriesData *query, clientsData *client, domainsData *domain, DNSCacheData *dns_cache)
 {
 	// Only check blocking conditions when global blocking is enabled
@@ -2015,8 +2088,9 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 
 	// Check if the cache record we have applies to the current query
 	// If not, ensure we re-check the domain (happens during CNAME inspection)
+	const bool cname_check = query->clientID != client->id || query->domainID != domain->id;
 	enum query_status blocking_status = QUERY_UNKNOWN;
-	if(query->clientID == client->id && query->domainID == domain->id)
+	if(!cname_check)
 		blocking_status = dns_cache->blocking_status;
 
 	// Memorize blocking status DNS cache for the domain/client combination
@@ -2217,12 +2291,21 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		return false;
 	}
 
+	// A CNAME target has no cache record of its own, the memo stands in for it
+	if(cname_check && cname_memo_find(domain, client, query->type))
+	{
+		log_debug(DEBUG_QUERIES, "%s is known as not to be blocked (CNAME target)", domainstr);
+		return false;
+	}
+
 	// when we reach this point: the query is not in FTL's cache (for this client)
 
 	// Check exact whitelist for match
 	const char *blockedDomain = domainstr;
 	PERF_START(_pcb_allow);
-	TIMED_DB_OP_RESULT(query->flags.allowed, in_allowlist(domainstr, dns_cache, client) == FOUND);
+	enum db_result allowlist;
+	TIMED_DB_OP_RESULT(allowlist, in_allowlist(domainstr, dns_cache, client));
+	query->flags.allowed = allowlist == FOUND;
 
 	// If not found: Check regex whitelist for match
 	if(!query->flags.allowed)
@@ -2278,6 +2361,10 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		// chain when the same client asks for the same domain in the future.
 		// Store domain as allowed if this is the case
 		dns_cache->flags.allowed = query->flags.allowed;
+
+		// Remember a CNAME target neither blocked nor allowed if every list could be read
+		if(cname_check && !query->flags.allowed && allowlist != LIST_NOT_AVAILABLE)
+			cname_memo_add(domain, client, query->type);
 
 		// Debug output
 		// client is guaranteed to be non-NULL above
@@ -2956,13 +3043,13 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 	// EDE analysis
 	if(addr && flags & (F_RCODE | F_SECSTAT) && addr->log.ede != EDE_UNSET)
 	{
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 		log_debug(DEBUG_QUERIES, "     EDE (1): %s (%d)", edestr(addr->log.ede), addr->log.ede);
 	}
 	ednsData *edns = getEDNS(id);
 	if(edns != NULL && edns->ede != EDE_UNSET)
 	{
-		query->ede = edns->ede;
+		query_set_ede(query, edns->ede);
 		log_debug(DEBUG_QUERIES, "     EDE (2): %s (%d)", edestr(edns->ede), edns->ede);
 	}
 
@@ -3361,7 +3448,7 @@ static void FTL_dnssec(const char *arg, const union all_addr *addr, const int id
 
 	// Store EDE
 	if(addr && addr->log.ede != EDE_UNSET)
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 
 	// Iterate through possible values
 	if(strcmp(arg, "SECURE") == 0)
@@ -3463,10 +3550,10 @@ static void FTL_upstream_error(const union all_addr *addr, const unsigned int fl
 	ednsData *edns = getEDNS(id);
 
 	if(addr->log.ede != EDE_UNSET) // This function is only called if (flags & F_RCODE)
-		query->ede = addr->log.ede;
+		query_set_ede(query, addr->log.ede);
 
 	else if(edns != NULL && edns->ede != EDE_UNSET)
-		query->ede = edns->ede;
+		query_set_ede(query, edns->ede);
 
 	// Debug logging
 	if(config.debug.queries.v.b)

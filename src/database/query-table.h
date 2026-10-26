@@ -48,7 +48,7 @@
                                         "WHEN 'integer' THEN (SELECT forward FROM forward_by_id f WHERE f.id = q.forward) ELSE forward END forward," \
                                       "CASE typeof(additional_info) "\
                                         "WHEN 'integer' THEN (SELECT content FROM addinfo_by_id a WHERE a.id = q.additional_info) ELSE additional_info END additional_info, " \
-                                      "reply_type, reply_time, dnssec, list_id FROM query_storage q"
+                                      "reply_type, reply_time, dnssec, list_id, ede FROM query_storage q"
 
 // Version 1
 #define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"

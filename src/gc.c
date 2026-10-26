@@ -38,6 +38,8 @@
 #include "lookup-table.h"
 // get_and_clear_event()
 #include "events.h"
+// name_history_gc()
+#include "name-history.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -289,8 +291,6 @@ keep_cache:
 
 		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
-
-		dump_strings();
 	}
 }
 
@@ -461,6 +461,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Process all queries
 	unsigned int removed = 0;
+	int64_t last_removed_id = -1;
 	for(unsigned int i = 0; i < counters->queries; i++)
 	{
 		queriesData *query = getQuery(i, true);
@@ -536,8 +537,12 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
 
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
+			counters->queries_maxprivacy--;
+
 		// Count removed queries
 		removed++;
+		last_removed_id = query->db;
 	}
 
 	// Only perform memory operations when we actually removed queries
@@ -558,6 +563,14 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
+
+		// The bound of how far query timestamps fall out of order may be
+		// smaller without the query that set it. IDs grow with the
+		// position, so it is gone if its ID is not above the last one
+		// removed
+		if(counters->query_time_disorder > 0.0 &&
+		   counters->query_time_disorder_id <= last_removed_id)
+			retrack_query_times();
 	}
 
 	// Remove query from queries table (temp), we can release the lock for this
@@ -577,6 +590,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Recycle old clients and domains
 	recycle();
 
+	// Client names no query in memory was made with any more
+	const queriesData *oldest = counters->queries > 0 ? getQuery(0, true) : NULL;
+	if(counters->queries == 0 || oldest != NULL)
+		name_history_gc(oldest != NULL ? oldest->db : counters->next_query_id);
+
 	// Determine if overTime memory needs to get moved. A flush keeps the
 	// current window, the removed queries were already subtracted above
 	if(!flush)
@@ -587,6 +605,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Release thread lock
 	if(!flush)
 		unlock_shm();
+
+	// dump_strings() takes the lock only to copy the string table. A log
+	// flush runs with the lock held by its caller and writes no dump
+	if(!flush && config.debug.gc.v.b)
+		dump_strings();
 }
 
 static bool check_files_on_same_device(const char *path1, const char *path2)
