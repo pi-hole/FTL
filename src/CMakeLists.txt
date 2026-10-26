@@ -34,7 +34,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption. It is needed for the .recover SQLite3 command.
 # SQLITE_ENABLE_DBSTAT_VTAB: Enables the dbstat virtual table. It is needed for the .diskused SQLite3 command.
 # SQLITE_TEMP_STORE=1: This option sets the default value for the temp_store pragma to 1. This means that temporary tables and indices are always stored on disk. This is the default setting.
-# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (_memdb, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
+# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (the query database, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
 # SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
 # SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
 # HAVE_MALLOC_H + HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
@@ -284,6 +284,8 @@ set(sources
         main.c
         main.h
         metrics.h
+        name-history.c
+        name-history.h
         overTime.c
         overTime.h
         procps.c

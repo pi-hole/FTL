@@ -19,7 +19,6 @@
 #endif /* HAVE_WCTYPE_H */
 
 #include "tre-internal.h"
-#include "tre.h"
 
 #ifdef HAVE_GETTEXT
 #include <libintl.h>

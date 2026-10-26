@@ -45,11 +45,20 @@ typedef struct {
 
 typedef struct {
 	unsigned int queries;
-	// Subset of `queries` kept out of the statistics (dns.ignoreLocalhost)
-	unsigned int hidden_queries;
 	unsigned int queries_offset;
 	// Database ID the next new query gets, see _FTL_new_query()
 	int64_t next_query_id;
+	// The newest timestamp in the queries array, how far a query's may
+	// fall behind it and the ID of the query that set this bound, see
+	// track_query_time()
+	double newest_query_time;
+	double query_time_disorder;
+	int64_t query_time_disorder_id;
+	// Queries recorded at the maximum privacy level, the query log leaves
+	// them out. Hidden queries are only counted in hidden_queries
+	unsigned int queries_maxprivacy;
+	// Subset of `queries` kept out of the statistics (dns.ignoreLocalhost)
+	unsigned int hidden_queries;
 	unsigned int upstreams;
 	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;
@@ -176,6 +185,8 @@ extern struct lookup_table *dns_cache_lookup;
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
+#define lock_shm_reader() _lock_shm_reader(__FUNCTION__, __LINE__, __FILE__)
+void _lock_shm_reader(const char* func, const int line, const char* file);
 void shm_ensure_client_size(void);
 
 // Return if the current mutex locked the SHM lock
@@ -236,6 +247,9 @@ int is_shm_fd(const int fd);
 void update_qps(const time_t timestamp);
 void reset_qps(const time_t timestamp);
 double get_qps(void) __attribute__((pure));
+
+void track_query_time(const queriesData *query);
+void retrack_query_times(void);
 
 // Recycler table functions
 bool set_next_recycled_ID(const enum memory_type type, const unsigned int id);
