@@ -660,6 +660,29 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	return true;
 }
 
+// Apply the FTLCONF_ variables to a config that was not read from a file, the
+// way readFTLtoml() applies them on top of pihole.toml
+void applyEnvVars(struct config *conf)
+{
+	// Without a file, no setting was forced before
+	cJSON *forced_vars = cJSON_CreateArray();
+
+	// debug.config first, so that its messages cover the other items
+	readEnvValue(&conf->debug.config, conf, forced_vars, NULL);
+	set_debug_flags(conf);
+
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(conf, i);
+		if(readEnvValue(conf_item, conf, forced_vars, NULL))
+			conf_item->f |= FLAG_ENV_VAR;
+	}
+	cJSON_Delete(forced_vars);
+
+	set_debug_flags(conf);
+	printFTLenv();
+}
+
 cJSON *read_forced_vars(const unsigned int version)
 {
 	// Create cJSON array to store forced variables

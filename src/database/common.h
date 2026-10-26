@@ -57,7 +57,7 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value);
 bool db_update_disk_counter(sqlite3 *db, const enum counters_table_props ID, const int change);
 const char *get_sqlite3_version(void);
-int64_t get_row_count(const char *table_name, const bool memory);
+int64_t get_row_count(const char *table_name);
 
 // Return if FTL's database is known to be broken
 // We abort execution of all database-related activities in this case

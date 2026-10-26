@@ -32,6 +32,8 @@
 #include "files.h"
 // lookup_insert
 #include "lookup-table.h"
+// client_name_at()
+#include "name-history.h"
 
 // converts upper to lower case, and leaves other characters unchanged
 // Optimized version using pointer arithmetic for better performance
@@ -717,8 +719,8 @@ const char *getClientNameString(const queriesData *query)
 		if(client == NULL)
 			return "";
 
-		// Return string
-		return getstr(client->namepos);
+		// The name the client had when the query was made
+		return getstr(client_name_at(query->clientID, client->namepos, query->db));
 	}
 	else
 		return HIDDEN_CLIENT;

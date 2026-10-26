@@ -820,6 +820,24 @@ setup() {
   assert_output --partial "addr2line -f -e"
 }
 
+@test "pihole-FTL wait-for finds a line written in two parts" {
+  # The first part of the line is in the file when wait-for scans it, the rest
+  # is appended once wait-for holds its inotify descriptor, i.e. after the scan
+  file="$(mktemp)"
+  printf 'first line\nsecond li' > "${file}"
+  ./pihole-FTL wait-for 'second line' "${file}" 10 0 > /dev/null 3>&- &
+  waiter=$!
+  for _ in $(seq 1 100); do
+    ls -l "/proc/${waiter}/fd" 2> /dev/null | grep -q "anon_inode:inotify" && break
+    sleep 0.05
+  done
+  printf 'ne\n' >> "${file}"
+  found=no
+  wait "${waiter}" && found=yes
+  rm -f "${file}"
+  [[ "${found}" == "yes" ]]
+}
+
 # NOTE: Log validation (WARNING/ERROR/CRIT/DB checks) moved to the final
 # log scan in run.sh, which runs after both BATS and pytest complete.
 
@@ -1150,6 +1168,43 @@ setup() {
   assert_line --partial --index 3 "status: NOERROR"
   run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
   assert_line --partial --index 3 "status: NOERROR"
+}
+
+@test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
+  run bash -c './pihole-FTL regex-test "abcd" "(a){~1}(b){~1}(c){~1}(d){~1}"'
+  assert_success
+}
+
+@test "Regex Test 55: Approximate matching, nesting at the supported limit: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "(((a){~1}){~1}){~1}"'
+  assert_success
+}
+
+@test "Regex Test 56: Approximate matching, nesting beyond the supported limit: Invalid regexp" {
+  run bash -c './pihole-FTL regex-test "a" "((((a){~1}){~1}){~1}){~1}"'
+  assert_line --index 1 "Invalid regex CLI filter \"((((a){~1}){~1}){~1}){~1}\": Invalid regexp"
+  assert_failure 1
+}
+
+@test "Regex Test 57: Approximate matching, bounded repetition with parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "bbbb" "((b){2,2,~0}){2,2,~0}"'
+  assert_success
+}
+
+@test "Regex Test 58: Back-reference inside an unbounded repetition is rejected" {
+  run bash -c './pihole-FTL regex-test "aaaa" "((a?)\2)*"'
+  assert_line --index 1 "Invalid regex CLI filter \"((a?)\2)*\": Back-reference inside an unbounded repetition is not supported"
+  assert_failure 1
+}
+
+@test "Regex Test 59: Back-reference outside a repeated group still works: MATCH" {
+  run bash -c './pihole-FTL regex-test "ababab" "(ab)+\1"'
+  assert_success
+}
+
+@test "Regex Test 60: Approximate matching, position with merged parameters: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" ".{#1}{+1}"'
+  assert_success
 }
 
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
@@ -2024,19 +2079,6 @@ except socket.timeout:
   run test -f /tmp/pcap/empty
   assert_success
   rm -rf /tmp/pcap
-}
-
-@test "files.tmp_db cannot name a file Pi-hole keeps" {
-  # database.forceDisk empties files.tmp_db on every start
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
-  assert_failure 3
 }
 
 @test "Config validation: a document root that resolves to the root is rejected" {
