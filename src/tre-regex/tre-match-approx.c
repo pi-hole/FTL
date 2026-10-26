@@ -194,6 +194,43 @@ tre_set_params(tre_tnfa_approx_reach_t *reach,
     reach->params.max_err = value;
 }
 
+/* Append one slot to the growable work deque used below for delete
+   handling.  The deque must never wrap around a fixed buffer (that could
+   later hand back a slot that was never written), so when it fills up it
+   is moved to the heap and kept growing.  Returns REG_OK, or REG_ESPACE
+   if out of memory, in which case any heap buffer is freed. */
+static reg_errcode_t
+tre_approx_deque_grow(tre_tnfa_approx_reach_t ***ringbuffer,
+		      tre_tnfa_approx_reach_t **static_ringbuffer,
+		      int *rb_size,
+		      tre_tnfa_approx_reach_t ***deque_start,
+		      tre_tnfa_approx_reach_t ***deque_end)
+{
+	tre_tnfa_approx_reach_t **larger_buf;
+	size_t os = *deque_start - *ringbuffer;
+	size_t oe = *deque_end - *ringbuffer;
+	int new_size = *rb_size + 512;
+
+	if (*ringbuffer == static_ringbuffer)
+	  larger_buf = xmalloc(sizeof(*larger_buf) * new_size);
+	else
+	  larger_buf = xrealloc(*ringbuffer, sizeof(*larger_buf) * new_size);
+	if (larger_buf == NULL)
+	  {
+	    if (*ringbuffer != static_ringbuffer)
+	      xfree(*ringbuffer);
+	    return REG_ESPACE;
+	  }
+	if (*ringbuffer == static_ringbuffer)
+	  /* Moving from stack to heap: copy existing contents. */
+	  memcpy(larger_buf, *ringbuffer, sizeof(*larger_buf) * (size_t)*rb_size);
+	*ringbuffer = larger_buf;
+	*rb_size = new_size;
+	*deque_start = larger_buf + os;
+	*deque_end = larger_buf + oe;
+	return REG_OK;
+}
+
 reg_errcode_t
 tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		    tre_str_type_t type, int *match_tags,
@@ -486,33 +523,16 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 	      continue;
 	    *deque_end = &reach_next[id];
 	    deque_end++;
-	    /* Grow the buffer (moving to the heap) if full. */
-	    if (deque_end >= (ringbuffer + rb_size))
+	    if (deque_end >= (ringbuffer + rb_size)
+		&& tre_approx_deque_grow(&ringbuffer, static_ringbuffer,
+					 &rb_size, &deque_start,
+					 &deque_end) != REG_OK)
 	      {
-		tre_tnfa_approx_reach_t **larger_buf;
-		size_t os = deque_start - ringbuffer;
-		size_t oe = deque_end - ringbuffer;
-		rb_size += 512;
-		if (ringbuffer == static_ringbuffer)
-		  larger_buf = xmalloc(sizeof(*ringbuffer) * rb_size);
-		else
-		  larger_buf = xrealloc(ringbuffer, sizeof(*ringbuffer) * rb_size);
-		if (larger_buf == NULL)
-		  {
-		    if (ringbuffer != static_ringbuffer)
-		      xfree(ringbuffer);
 #ifndef TRE_USE_ALLOCA
-		    if (buf)
-		      xfree(buf);
+		if (buf)
+		  xfree(buf);
 #endif /* !TRE_USE_ALLOCA */
-		    return REG_ESPACE;
-		  }
-		if (ringbuffer == static_ringbuffer)
-		  /* Moving from stack to heap: copy existing contents. */
-		  memcpy(larger_buf, ringbuffer, sizeof(static_ringbuffer));
-		ringbuffer = larger_buf;
-		deque_start = ringbuffer + os;
-		deque_end = ringbuffer + oe;
+		return REG_ESPACE;
 	      }
 	  }
 
@@ -545,8 +565,6 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		/* Too many errors or cost too large. */
 		DPRINT(("  delete: from %03d: cost too large\n", id));
 		deque_start++;
-		if (deque_start >= (ringbuffer + rb_size))
-		  deque_start = ringbuffer;
 		continue;
 	      }
 
@@ -643,13 +661,19 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		/* Add to the end of the deque. */
 		*deque_end = &reach_next[dest_id];
 		deque_end++;
-		if (deque_end >= (ringbuffer + rb_size))
-		  deque_end = ringbuffer;
-		assert(deque_end != deque_start);
+		if (deque_end >= (ringbuffer + rb_size)
+		    && tre_approx_deque_grow(&ringbuffer, static_ringbuffer,
+					     &rb_size, &deque_start,
+					     &deque_end) != REG_OK)
+		  {
+#ifndef TRE_USE_ALLOCA
+		    if (buf)
+		      xfree(buf);
+#endif /* !TRE_USE_ALLOCA */
+		    return REG_ESPACE;
+		  }
 	      }
 	    deque_start++;
-	    if (deque_start >= (ringbuffer + rb_size))
-	      deque_start = ringbuffer;
 	  }
 
 	if (ringbuffer != static_ringbuffer)
