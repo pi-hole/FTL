@@ -16,6 +16,8 @@
 #include "gc.h"
 // sqlite3_strlike()
 #include "database/sqlite3.h"
+// client_name_at()
+#include "name-history.h"
 
 /*
  * The query log from shared memory gives the answers of the SQL query in
@@ -293,7 +295,8 @@ static const char *query_client_name(const queriesData *query, size_t *pos)
 	const clientsData *client = getClient(query->clientID, true);
 	if(client == NULL)
 		return "";
-	*pos = client->namepos;
+	// The name the client had when the query was made
+	*pos = client_name_at(query->clientID, client->namepos, query->db);
 	return *pos > 0 ? getstr(*pos) : "";
 }
 
@@ -523,7 +526,11 @@ static bool query_matches(struct qlog_scan *s, const queriesData *query)
 		{
 			size_t ippos = 0, namepos = 0;
 			const char *ip = query_client_ip(query, &ippos);
-			const char *name = query_client_name(query, &namepos);
+			// Finding the name is a search in the name history, done only for
+			// the filters that look at it
+			const char *name = "";
+			if(req->has_client_name || req->has_client_search || req->N_regex_clients > 0)
+				name = query_client_name(query, &namepos);
 			if((match = cache_get(&s->clients, query->clientID, ippos, namepos)) < 0)
 			{
 				match = client_passes(req, ip, name);

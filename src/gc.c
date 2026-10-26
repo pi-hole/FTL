@@ -38,6 +38,8 @@
 #include "lookup-table.h"
 // get_and_clear_event()
 #include "events.h"
+// name_history_gc()
+#include "name-history.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -587,6 +589,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Recycle old clients and domains
 	recycle();
+
+	// Client names no query in memory was made with any more
+	const queriesData *oldest = counters->queries > 0 ? getQuery(0, true) : NULL;
+	if(counters->queries == 0 || oldest != NULL)
+		name_history_gc(oldest != NULL ? oldest->db : counters->next_query_id);
 
 	// Determine if overTime memory needs to get moved. A flush keeps the
 	// current window, the removed queries were already subtracted above
