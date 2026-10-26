@@ -406,6 +406,8 @@ components:
                   type: string
                 doh:
                   type: boolean
+                dohReverseProxy:
+                  type: boolean
                 dot:
                   type: boolean
                 doq:
@@ -620,6 +622,10 @@ components:
                 serve_all:
                   type: boolean
                 advancedOpts:
+                  type: array
+                  items:
+                    type: string
+                trustedProxies:
                   type: array
                   items:
                     type: string
@@ -998,6 +1004,7 @@ components:
             upstreams: [ "127.0.0.1#5353", "8.8.8.8" ]
             upstreamCA: ""
             doh: true
+            dohReverseProxy: false
             dot: true
             doq: true
             CNAMEdeepInspect: true
@@ -1129,6 +1136,7 @@ components:
             serve_all: false
             advancedOpts:
               - "ssl_protocol_version=4"
+            trustedProxies: []
             session:
               timeout: 300
               restore: true
