@@ -259,7 +259,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	// else: We found an environment variable with the given key
 	const char *envvar = item != NULL ? item->value : NULL;
 
-	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e, envvar);
+	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e,
+	          is_secret_conf_item(conf_item) ? "(hidden)" : envvar);
 
 	// Snapshot the previous value and type before the type switch commits
 	// the new value into conf_item->v. If the validator below rejects the
@@ -657,6 +658,29 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	log_debug(DEBUG_CONFIG, "Env var %s passed validation successfully", conf_item->k);
 
 	return true;
+}
+
+// Apply the FTLCONF_ variables to a config that was not read from a file, the
+// way readFTLtoml() applies them on top of pihole.toml
+void applyEnvVars(struct config *conf)
+{
+	// Without a file, no setting was forced before
+	cJSON *forced_vars = cJSON_CreateArray();
+
+	// debug.config first, so that its messages cover the other items
+	readEnvValue(&conf->debug.config, conf, forced_vars, NULL);
+	set_debug_flags(conf);
+
+	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+	{
+		struct conf_item *conf_item = get_conf_item(conf, i);
+		if(readEnvValue(conf_item, conf, forced_vars, NULL))
+			conf_item->f |= FLAG_ENV_VAR;
+	}
+	cJSON_Delete(forced_vars);
+
+	set_debug_flags(conf);
+	printFTLenv();
 }
 
 cJSON *read_forced_vars(const unsigned int version)

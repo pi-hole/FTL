@@ -38,6 +38,8 @@
 #include "lookup-table.h"
 // get_and_clear_event()
 #include "events.h"
+// name_history_gc()
+#include "name-history.h"
 
 // Resource checking interval
 // default: 300 seconds
@@ -99,6 +101,11 @@ static void recycle(void)
 		// Never recycle aliasclients (they are not counted above but
 		// are only indirectly referenced by other clients)
 		if(client->flags.aliasclient)
+			goto keep_client;
+
+		// Keep the rate limit of a client until reset_rate_limiting()
+		// ends it, rate-limited queries are not counted above
+		if(client->flags.rate_limited || client->rate_limit > 0)
 			goto keep_client;
 
 		if(config.debug.gc.v.b)
@@ -284,8 +291,6 @@ keep_cache:
 
 		log_debug(DEBUG_GC, "Recycled %u clients, %u domains, and %u cache records (scanned %u queries)",
 		          clients_recycled, domains_recycled, cache_recycled, counters->queries);
-
-		dump_strings();
 	}
 }
 
@@ -367,20 +372,6 @@ static int check_space(const char *file, unsigned int LastUsage)
 	return perc;
 }
 
-static int getloadavg_proc(double loadavg[3])
-{
-	FILE *f = fopen("/proc/loadavg", "r");
-	if(f == NULL)
-		return -1;
-
-	int count = fscanf(f, "%lf %lf %lf", &loadavg[0], &loadavg[1], &loadavg[2]);
-	fclose(f);
-	if (count != 3)
-		return -1;
-
-	return 0;
-}
-
 static void check_load(void)
 {
 	if(!config.misc.check.load.v.b)
@@ -388,12 +379,11 @@ static void check_load(void)
 
 	// Get CPU load averages
 	double load[3];
-	if (getloadavg_proc(load) == -1)
-		if (getloadavg(load, 3) == -1)
-			return;
+	if(get_load_averages(load) == -1)
+		return;
 
 	// Get total number of CPU cores
-	const int nprocs = get_nprocs_conf();
+	const int nprocs = get_present_cpus();
 
 	// Warn if 15 minute average of load exceeds number of available
 	// processors
@@ -434,12 +424,30 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	time_t mintime = now;
 	if(!flush)
 	{
-		// Normal GC run
-		mintime -= - GCdelay + config.webserver.api.maxHistory.v.ui;
+		// Normal GC run. Signed, maxHistory may be smaller than GCdelay
+		mintime += (time_t)GCdelay - (time_t)config.webserver.api.maxHistory.v.ui;
 
-		// Align the start time of this GC run to the GCinterval. This will also align with the
-		// oldest overTime interval after GC is done.
+		// Align the start time of this GC run to the GCinterval. Unless one of
+		// the limits below applies, this also aligns with the oldest overTime
+		// interval after GC is done.
 		mintime -= mintime % GCinterval;
+
+		// Keep the queries that may still receive a reply
+		if(mintime > now - REPLY_TIMEOUT)
+			mintime = now - REPLY_TIMEOUT;
+
+		// Keep the queries the database thread has not stored yet, but no
+		// more than the default history keeps. Nothing is stored with a
+		// broken database or at the maximum privacy level
+		const double horizon = get_export_horizon();
+		if(mintime > horizon && !FTLDBerror() &&
+		   config.misc.privacylevel.v.privacy_level < PRIVACY_MAXIMUM)
+		{
+			time_t limit = now + (time_t)GCdelay - (time_t)(MAXLOGAGE*3600);
+			limit -= limit % GCinterval;
+			const time_t keep = max((time_t)horizon, limit);
+			mintime = min(mintime, keep);
+		}
 	}
 
 	if(config.debug.gc.v.b)
@@ -453,6 +461,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Process all queries
 	unsigned int removed = 0;
+	int64_t last_removed_id = -1;
 	for(unsigned int i = 0; i < counters->queries; i++)
 	{
 		queriesData *query = getQuery(i, true);
@@ -528,8 +537,12 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Set query again to UNKNOWN to reset the counters
 		query_set_status(query, QUERY_UNKNOWN);
 
+		if(query->privacylevel >= PRIVACY_MAXIMUM)
+			counters->queries_maxprivacy--;
+
 		// Count removed queries
 		removed++;
+		last_removed_id = query->db;
 	}
 
 	// Only perform memory operations when we actually removed queries
@@ -550,20 +563,37 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 		// Invalidate the query ID cache since all logical indices shifted
 		queryIDMap_clear();
+
+		// The bound of how far query timestamps fall out of order may be
+		// smaller without the query that set it. IDs grow with the
+		// position, so it is gone if its ID is not above the last one
+		// removed
+		if(counters->query_time_disorder > 0.0 &&
+		   counters->query_time_disorder_id <= last_removed_id)
+			retrack_query_times();
 	}
 
 	// Remove query from queries table (temp), we can release the lock for this
 	// action to prevent blocking the DNS service too long. The processed
 	// queries are already shifted out above, so a runGC() from a log flush
-	// in this window cannot process them again
-	if(!flush)
+	// in this window cannot process them again. A flush removes every row,
+	// a normal run keeps those the export to disk has not copied yet
+	if(flush)
+		delete_old_queries_from_db(true, mintime);
+	else
+	{
 		unlock_shm();
-	delete_old_queries_from_db(true, mintime);
-	if(!flush)
+		delete_exported_queries_from_memdb(mintime);
 		lock_shm();
+	}
 
 	// Recycle old clients and domains
 	recycle();
+
+	// Client names no query in memory was made with any more
+	const queriesData *oldest = counters->queries > 0 ? getQuery(0, true) : NULL;
+	if(counters->queries == 0 || oldest != NULL)
+		name_history_gc(oldest != NULL ? oldest->db : counters->next_query_id);
 
 	// Determine if overTime memory needs to get moved. A flush keeps the
 	// current window, the removed queries were already subtracted above
@@ -576,11 +606,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	if(!flush)
 		unlock_shm();
 
-	// After storing data in the database for the next time,
-	// we should scan for old entries, which will then be deleted
-	// to free up pages in the database and prevent it from growing
-	// ever larger and larger
-	DBdeleteoldqueries = true;
+	// dump_strings() takes the lock only to copy the string table. A log
+	// flush runs with the lock held by its caller and writes no dump
+	if(!flush && config.debug.gc.v.b)
+		dump_strings();
 }
 
 static bool check_files_on_same_device(const char *path1, const char *path2)

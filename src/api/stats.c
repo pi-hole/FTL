@@ -154,8 +154,8 @@ int api_stats_summary(struct ftl_conn *api)
 	const int cached = get_cached_count();
 	const int total = counters->queries;
 	const int num_gravity = counters->database.gravity;
-	const int num_clients = counters->clients;
-	const int num_domains = counters->domains;
+	const int num_clients = counters->clients_total;
+	const int num_domains = counters->domains_total;
 
 	// Count clients that have been active within the most recent 24 hours
 	unsigned int activeclients = get_active_clients();

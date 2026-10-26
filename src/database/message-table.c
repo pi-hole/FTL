@@ -25,8 +25,6 @@
 #include "gc.h"
 // get_filesystem_details()
 #include "files.h"
-// get_memdb()
-#include "database/query-table.h"
 // escape_html()
 #include "webserver/http-common.h"
 // GIT_HASH, FTL_ARCH
@@ -311,8 +309,9 @@ bool create_message_table(sqlite3 *db)
 	return true;
 }
 
-// Flush message table
-bool flush_message_table(sqlite3 *memdb)
+// Split from flush_message_table() so that a failure returns through it and the
+// connection is closed exactly once. SQL_bool() returns on failure
+static bool flush_messages(sqlite3 *db)
 {
 	// Flush message table, keeping the messages that state a lasting fact
 	// rather than a condition of the run that just ended.
@@ -321,9 +320,22 @@ bool flush_message_table(sqlite3 *memdb)
 	// a restart, and it is that very import which triggers the restart - so
 	// flushing it here would delete the message before anyone could see it.
 	// These are dismissed by the user like any other message.
-	SQL_bool(memdb, "DELETE FROM disk.message WHERE type != 'TELEPORTER_SKIPPED';");
+	SQL_bool(db, "DELETE FROM message WHERE type != 'TELEPORTER_SKIPPED';");
 
 	return true;
+}
+
+// Flush message table
+bool flush_message_table(void)
+{
+	sqlite3 *db = dbopen(false, false);
+	if(db == NULL)
+		return false;
+
+	const bool okay = flush_messages(db);
+	dbclose(&db);
+
+	return okay;
 }
 
 static int _add_message(const enum message_type type,
