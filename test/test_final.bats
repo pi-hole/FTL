@@ -417,8 +417,9 @@ load 'bats_helper.bash'
   second=$!
   wait "${first}" "${second}" || true
   kill "${pid}"
-  # Queries move into the in-memory database once per second
-  sleep 2
+  # dnsmasq runs the FTL hook for the reply to the second query and logs
+  # "reply query is duplicate" only after it has answered that client
+  run bash -c "./pihole-FTL wait-for 'reply query is duplicate' /var/log/pihole/pihole.log 5 ${dnsmasq_before}"
 
   answers="$(cat "${BATS_TEST_TMPDIR}/first.out" "${BATS_TEST_TMPDIR}/second.out")"
   duplicates="$(tail -c +$((dnsmasq_before + 1)) /var/log/pihole/pihole.log | grep -c 'reply query is duplicate' || true)"
