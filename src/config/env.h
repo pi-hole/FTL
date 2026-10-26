@@ -24,6 +24,7 @@ void getEnvVars(void);
 void freeEnvVars(void);
 void printFTLenv(void);
 bool readEnvValue(struct conf_item *conf_item, struct config *newconf, cJSON *forced_vars, bool *reset)  __attribute__((nonnull(1,2,3)));
+void applyEnvVars(struct config *conf);
 cJSON *read_forced_vars(const unsigned int version);
 
 #endif //CONFIG_ENV_H

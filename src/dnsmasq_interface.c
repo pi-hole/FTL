@@ -360,6 +360,9 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		//
 		// otherwise, flags will be F_UPSTREAM and the type is not set
 		// (== 0)
+	else if(flags == F_UPSTREAM && strcmp(arg, "duplicate") == 0)
+		; // Ignored - reply to a query attached to an identical one in
+		// flight (FTL_query_in_progress()), logged only with misc.extraLogging
 	else
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
@@ -1175,6 +1178,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// Initialize database fields. The ID is handed out under the same lock
 	// as the slot, so the IDs follow the order of the queries array
 	query->db = counters->next_query_id++;
+	// After the ID, which the time bound records
+	track_query_time(query);
 	query->flags.database.stored = false;
 	query->flags.database.imported = false;
 	query->flags.database.changed = true;
@@ -1200,6 +1205,8 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// The currently set privacy level (at the time the query is
 	// generated) is stored in the queries structure
 	query->privacylevel = config.misc.privacylevel.v.privacy_level;
+	if(query->privacylevel >= PRIVACY_MAXIMUM)
+		counters->queries_maxprivacy++;
 
 	// Query extended DNS error and the list ID in the database
 	query_set_ede(query, EDE_UNSET);

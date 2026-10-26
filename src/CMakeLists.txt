@@ -284,6 +284,8 @@ set(sources
         main.c
         main.h
         metrics.h
+        name-history.c
+        name-history.h
         overTime.c
         overTime.h
         procps.c

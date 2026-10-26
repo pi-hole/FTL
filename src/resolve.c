@@ -41,6 +41,8 @@
 #include "config/password.h"
 // dotdoh_fd_track(), dotdoh_fd_close()
 #include "dotdoh/server.h"
+// rename_client()
+#include "name-history.h"
 
 // Wall-clock budget for a single PTR lookup, used both as the socket-level
 // receive timeout and as the deadline bounding the receive loops below
@@ -1358,7 +1360,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Store obtained host name (may be unchanged)
 		if(client->namepos != newnamepos)
 		{
-			client->namepos = newnamepos;
+			// Its queries so far keep the name they were made with
+			rename_client(client, clientID, newnamepos, counters->next_query_id);
 			// Reset in_database flag and cached row ID so the new
 			// (ip, name) pair gets inserted as a new record into
 			// client_by_id on the next batch insertion of queries

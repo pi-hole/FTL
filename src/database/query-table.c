@@ -31,6 +31,8 @@
 #include "files.h"
 // INFINITY
 #include <math.h>
+// name_history_import(), client_name_at()
+#include "name-history.h"
 
 static sqlite3 *_memdb = NULL;
 static bool disk_attached = false;
@@ -1769,21 +1771,21 @@ void DB_read_queries(void)
 
 	// Prepare request
 	// Filtering to the history window has already happened in
-	// import_queries_from_disk()
-	const char *querystr = "SELECT id,"\
-	                              "timestamp,"\
-	                              "type,"\
-	                              "status,"\
-	                              "domain,"\
-	                              "client,"\
-	                              "forward,"\
-	                              "additional_info,"\
-	                              "reply_type,"\
-	                              "reply_time,"\
-	                              "dnssec,"\
-	                              "list_id,"\
-	                              "ede "\
-	                       "FROM queries";
+	// import_queries_from_disk(). The columns of the queries view plus the
+	// client name, in the order of the IDs for the client name history. As
+	// in the view, an ID without a row in its linking table reads as NULL
+	const char *querystr = "SELECT q.id, q.timestamp, q.type, q.status, "
+	                              "CASE typeof(q.domain) WHEN 'integer' THEN d.domain ELSE q.domain END, "
+	                              "CASE typeof(q.client) WHEN 'integer' THEN c.ip ELSE q.client END, "
+	                              "CASE typeof(q.forward) WHEN 'integer' THEN f.forward ELSE q.forward END, "
+	                              "CASE typeof(q.additional_info) WHEN 'integer' THEN a.content ELSE q.additional_info END, "
+	                              "q.reply_type, q.reply_time, q.dnssec, q.list_id, q.ede, c.name "
+	                       "FROM query_storage q "
+	                       "LEFT JOIN domain_by_id d ON q.domain = d.id "
+	                       "LEFT JOIN client_by_id c ON q.client = c.id "
+	                       "LEFT JOIN forward_by_id f ON q.forward = f.id "
+	                       "LEFT JOIN addinfo_by_id a ON q.additional_info = a.id "
+	                       "ORDER BY q.id";
 
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
@@ -1880,6 +1882,34 @@ void DB_read_queries(void)
 		}
 		const enum dnssec_status dnssec = dnssec_int;
 
+		double reply_time = 0.0;
+		bool reply_time_avail = false;
+		if(sqlite3_column_type(stmt, 9) == SQLITE_FLOAT)
+		{
+			// The field has been added for database version 12
+			reply_time = sqlite3_column_double(stmt, 9);
+			reply_time_avail = true;
+			if(reply_time < 0.0)
+			{
+				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
+				         reply_time, dbID, queryTimeStamp);
+				continue;
+			}
+		}
+
+		// All slots reserved for the import are taken: the database has
+		// more rows than were counted
+		if((int)imported_queries >= counted_queries)
+		{
+			log_warn("Database %s has changed during import: Expected to import %i queries. Parts of the history may be missing.",
+			         config.files.database.v.s, counted_queries);
+			break;
+		}
+
+		// Rows are only skipped above this point, so a skipped row leaves
+		// nothing behind in shared memory and an imported one fills its
+		// slot completely
+
 		// Lock shared memory
 		lock_shm();
 
@@ -1900,57 +1930,25 @@ void DB_read_queries(void)
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
-		double reply_time = 0.0;
-		bool reply_time_avail = false;
-		if(sqlite3_column_type(stmt, 9) == SQLITE_FLOAT)
-		{
-			// The field has been added for database version 12
-			reply_time = sqlite3_column_double(stmt, 9);
-			reply_time_avail = true;
-			if(reply_time < 0.0)
-			{
-				log_warn("REPLY_TIME value %f is invalid, ID = %lld, timestamp = %f",
-				         reply_time, dbID, queryTimeStamp);
-				unlock_shm();
-				continue;
-			}
-		}
-
 		// Set index for this query
 		const int queryIndex = imported_queries++;
-
-		if(queryIndex >= counted_queries)
-		{
-			log_warn("Database %s has changed during import: Expected to import %i queries. Parts of the history may be missing.",
-			         config.files.database.v.s, counted_queries);
-			unlock_shm();
-			break;
-		}
 
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
 		const int domainID = findDomainID(domainname, true);
 		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
 
+		// The query keeps the client name it was stored with
+		const char *clientName = (const char *)sqlite3_column_text(stmt, 13);
+		name_history_import(clientID, dbID, addstr(clientName != NULL ? clientName : ""));
+
 		// Store this query in memory, it keeps its ID from the database
 		queriesData *query = getQuery(queryIndex, false);
 		query->magic = MAGICBYTE;
 		query->db = dbID;
 		query->timestamp = queryTimeStamp;
-		if(type < 100)
-		{
-			// Mapped query type
-			if(type >= TYPE_NONE && type < TYPE_MAX)
-				query->type = type;
-			else
-			{
-				// Invalid query type
-				log_warn("Query type %d is invalid, ID = %lld, timestamp = %f",
-				         type, dbID, queryTimeStamp);
-				unlock_shm();
-				continue;
-			}
-		}
+		if(mapped_type)
+			query->type = type;
 		else
 		{
 			// Offset query type
@@ -2502,15 +2500,19 @@ bool queries_to_database(const bool final)
 		s->domain_db_id = domain_db_id;
 
 		// CLIENT - handle linking table INSERT if first encounter. The same
-		// as for the domain applies to a query hiding its client
+		// as for the domain applies to a query hiding its client. A query
+		// made before its client was renamed has the old name, the row cached
+		// with the client is the one of the current name
 		const char *clientIP = getClientIPString(query);
 		const char *clientName = getClientNameString(query);
 		clientsData *clientdata = getClient(query->clientID, true);
 		const bool hide_client = query->privacylevel >= PRIVACY_HIDE_DOMAINS_CLIENTS;
+		const bool old_name = !hide_client && clientdata != NULL &&
+		                      client_name_at(query->clientID, clientdata->namepos, query->db) != clientdata->namepos;
 		const bool store_client = hide_client ? hidden_client_db_id == 0 :
-		                          clientdata != NULL && !clientdata->flags.in_database;
+		                          clientdata != NULL && (!clientdata->flags.in_database || old_name);
 		int client_db_id = hide_client ? hidden_client_db_id :
-		                   clientdata != NULL ? clientdata->db_id : 0;
+		                   clientdata != NULL && !old_name ? clientdata->db_id : 0;
 
 		if(store_client)
 		{
@@ -2538,7 +2540,7 @@ bool queries_to_database(const bool final)
 
 			if(hide_client)
 				hidden_client_db_id = client_db_id;
-			else if(clientdata != NULL)
+			else if(clientdata != NULL && !old_name)
 			{
 				clientdata->db_id = client_db_id;
 				clientdata->flags.in_database = true;
