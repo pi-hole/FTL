@@ -31,7 +31,7 @@
 #include <sys/resource.h>
 // free_regex()
 #include "regex_r.h"
-// close_memory_database()
+// close_query_database()
 #include "database/query-table.h"
 // http_terminate()
 #include "webserver/webserver.h"
@@ -346,9 +346,9 @@ static void terminate_threads(void)
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 
-	// Abort a long-running statement on the in-memory database (the initial
+	// Abort a long-running statement on the query database (the initial
 	// query import) so its thread can see the flag above and return
-	interrupt_memdb();
+	interrupt_import();
 
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
@@ -487,9 +487,9 @@ void cleanup(const int ret)
 	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
 
-	// Close memory database
-	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
-	close_memory_database();
+	// Close query database
+	log_debug(DEBUG_ANY, "Terminating: Closing query database");
+	close_query_database();
 
 	// Free environment variables
 	log_debug(DEBUG_ANY, "Terminating: Freeing environment variables");
@@ -541,6 +541,22 @@ int get_present_cpus(void)
 	fclose(fp);
 
 	return cpus > 0 ? cpus : get_nprocs_conf();
+}
+
+// Read the load averages from /proc/loadavg rather than sysinfo(), as only
+// the former is virtualized for containers, e.g., by LXCFS
+int get_load_averages(double load[3])
+{
+	FILE *f = fopen("/proc/loadavg", "r");
+	if(f != NULL)
+	{
+		const int count = fscanf(f, "%lf %lf %lf", &load[0], &load[1], &load[2]);
+		fclose(f);
+		if(count == 3)
+			return 0;
+	}
+
+	return getloadavg(load, 3) == 3 ? 0 : -1;
 }
 
 static float ftl_cpu_usage = 0.0f;

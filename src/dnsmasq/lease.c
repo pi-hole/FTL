@@ -1027,6 +1027,13 @@ static void kill_name(struct dhcp_lease *lease)
     lease->old_hostname = lease->hostname;
 
   lease->hostname = lease->fqdn = NULL;
+
+#ifdef HAVE_DHCP6
+  /* A lease which had a hostname when slaac_add_addrs() was called on it
+     may have slaac-address records. Since it no longer has a hostname,
+     they are no-longer valid, so update to remove them */
+  slaac_add_addrs(lease, 0, 0);
+#endif
 }
 
 void lease_calc_fqdns(void)
@@ -1151,6 +1158,10 @@ void lease_set_hostname(struct dhcp_lease *lease, const char *name, int auth, ch
   file_dirty = 1;
   dns_dirty = 1; 
   lease->flags |= LEASE_CHANGED; /* run script on change */
+#ifdef HAVE_DHCP6
+  slaac_add_addrs(lease, dnsmasq_time(), 0);
+#endif
+  
 }
 
 void lease_set_interface(struct dhcp_lease *lease, int interface, time_t now)
@@ -1250,15 +1261,6 @@ int do_script_run(time_t now)
 	}
       else 
 	{
-#ifdef HAVE_DHCP6
-	  struct slaac_address *slaac, *tmp;
-	  for (slaac = lease->slaac_address; slaac; slaac = tmp)
-	    {
-	      tmp = slaac->next;
-	      free(slaac);
-	    }
-#endif
-	  kill_name(lease);
 #ifdef HAVE_SCRIPT
 	  queue_script(ACTION_DEL, lease, lease->old_hostname, now);
 #endif
@@ -1267,7 +1269,7 @@ int do_script_run(time_t now)
 #endif
 	  old_leases = lease->next;
 	  
-	  free(lease->hostname); 
+	  kill_name(lease); /* frees slaac_addr, hostname and fqdn */
 	  free(lease->clid);
 	  free(lease->extradata);
 	  free(lease->agent_id);

@@ -868,19 +868,6 @@
   #     true or false
   useWAL = true
 
-  # Should FTL force the use of disk storage for the history database? By default, FTL
-  # uses an in-memory database for much improved performance when browsing the history
-  # from the dashboard. However, on systems with very limited RAM and only occasional
-  # usage of the web interface, it may be useful to force the use of disk storage
-  # instead of holding everything in memory.
-  #
-  # Note that using disk storage *will* reduce performance, especially on systems with
-  # slow storage media (e.g., SD cards).
-  #
-  # Allowed values are:
-  #     true or false
-  forceDisk = false
-
   [database.network]
     # Should FTL analyze the local ARP cache? When disabled, client identification and the
     # network table will stop working reliably.
@@ -1340,13 +1327,6 @@
   # Allowed values are:
   #     Any FTL database
   database = "/etc/pihole/pihole-FTL.db"
-
-  # The location of FTL's short-term temporary database (only used when
-  # database.forceDisk is true)
-  #
-  # Allowed values are:
-  #     Any FTL database
-  tmp_db = "/etc/pihole/pihole-tmp.db"
 
   # The location of Pi-hole's gravity database
   #
@@ -1816,7 +1796,7 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 172 total entries out of which 114 entries are default
+# 170 total entries out of which 112 entries are default
 # --> 58 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice

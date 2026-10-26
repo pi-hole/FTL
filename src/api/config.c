@@ -106,7 +106,7 @@ static struct {
 		.doh = { "https://dns.quad9.net@9.9.9.9/dns-query", "https://dns.quad9.net@[2620:fe::fe]/dns-query" }
 	},
 	{
-		.name = "Quad9 (unfiltered, no DNSSEC)",
+		.name = "Quad9 (unfiltered, DNSSEC)",
 		.v4 = { "9.9.9.10", "149.112.112.10" },
 		.v6 = {	"2620:fe::10", "2620:fe::fe:10" },
 		.dot = { "tls://dns10.quad9.net@9.9.9.10", "tls://dns10.quad9.net@[2620:fe::10]" },
