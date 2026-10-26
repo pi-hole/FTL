@@ -982,6 +982,8 @@ first_start_stop() {
   done
   sleep 1
   flushed="$(./pihole-FTL sqlite3 "${db}" "SELECT COUNT(*) FROM network_addresses WHERE ip = '127.0.0.92' AND COALESCE(name, '') != '';")"
+  # The queries made with the name keep it in the query log
+  kept="$(curl -s "127.0.0.1/api/queries?domain=stale-name.ftl&length=100" | jq '[.queries[] | select(.client.name == "stale-name.lan")] | length')"
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "kill $(cat /run/pihole-FTL.pid)"
@@ -993,10 +995,11 @@ first_start_stop() {
     assert_success
   done
 
-  printf "name: %s, nameUpdated: %s (seeded %s), named after flush: %s, alias: %s -> %s\n" "${name}" "${updated}" "$((now - 3600))" "${flushed}" "${alias_before}" "${alias_after}"
+  printf "name: %s, nameUpdated: %s (seeded %s), named after flush: %s, kept in the query log: %s, alias: %s -> %s\n" "${name}" "${updated}" "$((now - 3600))" "${flushed}" "${kept}" "${alias_before}" "${alias_after}"
   [[ "${name}" == "stale-name.lan" ]]
   [[ "${updated}" == "$((now - 3600))" ]]
   [[ "${flushed}" == "0" ]]
+  [[ "${kept}" -ge 2 ]]
   [[ "${alias_before}" == "flush-alias" ]]
   [[ "${alias_after}" == "flush-alias" ]]
 }
