@@ -787,15 +787,15 @@ void db_init(void)
 
 	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
 	 * If you add a new database version, ensure to update the
-	 * MEMDB_VERSION in src/database/query-table.h as well as the
+	 * FTL_DB_VERSION in src/database/query-table.h as well as the
 	 * expected database schema in the CI tests.
 	 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
-	if(dbversion != MEMDB_VERSION)
+	if(dbversion != FTL_DB_VERSION)
 	{
-		log_err("Expected query database version %d but found %d, database not available", MEMDB_VERSION, dbversion);
+		log_err("Expected query database version %d but found %d, database not available", FTL_DB_VERSION, dbversion);
 		dbclose(&db);
 		DBerror = true;
 		return;
