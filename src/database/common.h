@@ -31,7 +31,6 @@ enum counters_table_props {
 
 void db_init(void);
 int db_get_int(sqlite3* db, const enum ftl_table_props ID);
-int db_get_FTL_property(sqlite3* db, const enum ftl_table_props ID);
 bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int value);
 
 /// Execute a formatted SQL query and get the return code
@@ -45,7 +44,6 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file);
 #define dbclose_handle(db) _dbclose_handle(db, __FUNCTION__, __LINE__, __FILE__)
 int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file);
 
-void piholeFTLDB_reopen(void);
 int db_query_int(sqlite3 *db, const char *querystr);
 int db_query_int_int(sqlite3 *db, const char* querystr, const int arg);
 int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg);

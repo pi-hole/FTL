@@ -214,23 +214,8 @@ const int32_t *_getintarray(const size_t pos, int *count, const char *func, cons
 // Format an int array from SHM as comma-separated string for logging
 const char *fmt_intarray(const size_t pos, char *buf, const size_t bufsz);
 
-/**
- * Create a new overTime client shared memory block.
- * This also updates `overTimeClientData`.
- */
-void newOverTimeClient(const int clientID);
-
-/**
- * Add a new overTime slot to each overTime client shared memory block.
- * This also updates `overTimeClientData`.
- */
-void addOverTimeClientSlot(void);
-
 // Change ownership of shared memory objects
 void chown_all_shmem(struct passwd *ent_pw);
-
-// Get details about shared memory used by FTL
-void log_shmem_details(void);
 
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
 void add_per_client_regex(unsigned int clientID);
