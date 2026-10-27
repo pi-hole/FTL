@@ -36,8 +36,6 @@
 // struct config
 #include "config/config.h"
 
-#define BINARY_NAME "pihole-FTL"
-
 volatile sig_atomic_t killed = 0;
 static volatile pid_t mpid = 0;
 static time_t FTLstarttime = 0;

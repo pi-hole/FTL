@@ -18,8 +18,6 @@
 
 #define FTLCONF_PREFIX "FTLCONF_"
 
-int dist(const char *str);
-
 void getEnvVars(void);
 void freeEnvVars(void);
 void printFTLenv(void);
