@@ -623,15 +623,21 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 	JSON_COPY_STR_TO_OBJECT(item, "domain", row->domain);
 	JSON_COPY_STR_TO_OBJECT(item, "upstream", row->upstream);
 
-	cJSON *reply = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(reply, "type", get_query_reply_str(row->reply));
-	JSON_ADD_NUMBER_TO_OBJECT(reply, "time", row->reply_time);
-	JSON_ADD_ITEM_TO_OBJECT(item, "reply", reply);
+	// The nested objects are added to item before they are filled, so
+	// deleting item on failure releases them as well. The JSON_* macros
+	// cannot fill them, as they would delete only the nested object
+	cJSON *reply = cJSON_AddObjectToObject(item, "reply");
+	if(reply == NULL ||
+	   !cJSON_AddItemToObject(reply, "type", cJSON_CreateStringReference(get_query_reply_str(row->reply))) ||
+	   cJSON_AddNumberToObject(reply, "time", row->reply_time) == NULL)
+		goto oom;
 
-	cJSON *client = JSON_NEW_OBJECT();
-	JSON_COPY_STR_TO_OBJECT(client, "ip", row->client_ip);
-	JSON_COPY_STR_TO_OBJECT(client, "name", row->client_name);
-	JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
+	cJSON *client = cJSON_AddObjectToObject(item, "client");
+	if(client == NULL ||
+	   cJSON_AddStringToObject(client, "ip", row->client_ip) == NULL ||
+	   (row->client_name != NULL ? cJSON_AddStringToObject(client, "name", row->client_name) :
+	                               cJSON_AddNullToObject(client, "name")) == NULL)
+		goto oom;
 
 	// Add list_id if it exists
 	if(row->has_list_id)
@@ -640,19 +646,23 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 		JSON_ADD_NULL_TO_OBJECT(item, "list_id");
 
 	// Add EDE code and text (if applicable)
-	cJSON *ede = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(ede, "code", row->ede);
-	if(row->ede > 0)
-		JSON_REF_STR_IN_OBJECT(ede, "text", edestr(row->ede));
-	else
-		JSON_ADD_NULL_TO_OBJECT(ede, "text");
-	JSON_ADD_ITEM_TO_OBJECT(item, "ede", ede);
+	cJSON *ede = cJSON_AddObjectToObject(item, "ede");
+	if(ede == NULL ||
+	   cJSON_AddNumberToObject(ede, "code", row->ede) == NULL ||
+	   !cJSON_AddItemToObject(ede, "text", row->ede > 0 ? cJSON_CreateStringReference(edestr(row->ede)) :
+	                                                      cJSON_CreateNull()))
+		goto oom;
 
 	// Add CNAME information if it exists
 	JSON_COPY_STR_TO_OBJECT(item, "cname", row->cname);
 
 	JSON_ADD_ITEM_TO_ARRAY(queries, item);
 	return 0;
+
+oom:
+	log_err("add_query_item(): Failed to allocate JSON object");
+	cJSON_Delete(item);
+	return send_http_internal_error(api);
 }
 
 // Read the query log from the on-disk database, with disk=true and while the
