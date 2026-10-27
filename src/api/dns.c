@@ -23,9 +23,6 @@
 // Location of custom.list
 #include "config/dnsmasq_config.h"
 
-#define DOMAIN_VALIDATION_REGEX "^((-|_)*[a-z0-9]((-|_)*[a-z0-9])*(-|_)*)(\\.(-|_)*([a-z0-9]((-|_)*[a-z0-9])*))*$"
-#define LABEL_VALIDATION_REGEX "^[^\\.]{1,63}(\\.[^\\.]{1,63})*$"
-
 static int get_blocking(struct ftl_conn *api)
 {
 	// Return current status

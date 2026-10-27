@@ -22,12 +22,6 @@
 #define TIMESTR_SIZE 128
 
 // Credit: https://stackoverflow.com/a/75116514
-#define LEFT(str, w) \
-    ({int m = w + strlen(str); m % 2 ? (m + 1) / 2 : m / 2;})
-#define RIGHT(str, w) \
-({ int m = w - strlen(str); m % 2 ? (m - 1) / 2 : m / 2; })
-#define STR_CENTER(str, width) \
-    LEFT(str, width), str, RIGHT(str, width), ""
 #define FPRINTF_CENTER(fp, width, start, fmt, end, ...) ({ \
     int n = snprintf(NULL, 0, fmt, __VA_ARGS__);     \
     int m = width - n;                               \

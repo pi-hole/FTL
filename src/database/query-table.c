@@ -14,7 +14,6 @@
 #include "log.h"
 #include "config/config.h"
 #include "enums.h"
-#include "config/config.h"
 // counters
 #include "shmem.h"
 #include "overTime.h"

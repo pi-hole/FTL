@@ -73,12 +73,6 @@
 // Number of elements in an array
 #define ArraySize(X) (sizeof(X)/sizeof(*X))
 
-// Constant socket buffer length
-#define SOCKETBUFFERLEN 1024
-
-// How many client connection do we accept at once?
-#define MAXCONNS 255
-
 // Over how many queries do we iterate at most when trying to find a match?
 #define MAXITER 1000
 

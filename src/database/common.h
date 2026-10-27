@@ -79,17 +79,6 @@ extern const char *sqlite3ErrName(int rc);
 	}\
 }
 
-#define SQL_void(db, ...) {\
-	int ret;\
-	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
-		if(ret == SQLITE_BUSY)\
-			log_warn("Database busy in %s()!", __FUNCTION__);\
-		else\
-			log_err("%s() failed!", __FUNCTION__);\
-		return;\
-	}\
-}
-
 // Macro to time a database operation expression EXPR if debug.timing is
 // enabled.
 #define TIMED_DB_OP(EXPR) { \
