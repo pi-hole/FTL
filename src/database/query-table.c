@@ -26,10 +26,8 @@
 #include "database/message-table.h"
 // killed
 #include "signals.h"
-// file_exists()
+// get_FTL_db_stats()
 #include "files.h"
-// INFINITY
-#include <math.h>
 // name_history_import(), client_name_at()
 #include "name-history.h"
 

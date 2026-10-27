@@ -23,8 +23,8 @@
                                                        "client TEXT NOT NULL, " \
                                                        "forward TEXT );"
 
-// The schema version of the query database
-#define MEMDB_VERSION 22
+// The schema version of pihole-FTL.db
+#define FTL_DB_VERSION 22
 
 // Version 1
 #define CREATE_QUERIES_TIMESTAMP_INDEX		"CREATE INDEX idx_queries_timestamp ON queries (timestamp);"
