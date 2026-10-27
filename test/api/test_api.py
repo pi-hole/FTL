@@ -487,6 +487,26 @@ class TestQueries:
         assert data["queries"] == []
         assert data["recordsFiltered"] == 0, json.dumps(data, indent=2)
 
+    @pytest.mark.parametrize("disk", ("false", "true"))
+    @pytest.mark.parametrize("param, limit", (
+        ("domain", 511), ("client_ip", 511), ("client_name", 511),
+        ("upstream", 255), ("type", 31), ("status", 31), ("reply", 31),
+        ("dnssec", 31), ("columns[3][search][value]", 509),
+        ("columns[4][search][value]", 509)))
+    def test_filter_too_long(self, api_session, param, limit, disk):
+        """A filter value longer than its limit is answered with 400 naming
+        the parameter and the limit, one at the limit is not"""
+        url = f"{FTL_URL}/api/queries"
+        r = api_session.get(url, params={param: "a" * (limit + 1), "disk": disk}, timeout=5)
+        assert r.status_code == 400, r.text
+        assert _j(r)["error"] == {
+            "key": "bad_request",
+            "message": "Requested filter is too long",
+            "hint": f"{param}: at most {limit} bytes",
+        }, r.text
+        r = api_session.get(url, params={param: "a" * limit, "disk": disk}, timeout=5)
+        assert "too long" not in r.text, r.text
+
 
 # ---------------------------------------------------------------------------
 # Lua server pages

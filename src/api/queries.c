@@ -267,11 +267,33 @@ static void search_pattern(char *search, const size_t size)
 	}
 }
 
+// Read the string parameter var into dest of the given size, as
+// get_string_var() does. Returns the length of its value, zero or less when it
+// is absent or empty. A value that does not fit is answered with a 400 naming
+// the parameter (as name) and the limit, the status of that reply goes to *ret
+static int get_filter_var(struct ftl_conn *api, const char *qs, const char *var,
+                          const char *name, char *dest, const size_t size, int *ret)
+{
+	const int len = get_string_var(qs, var, dest, size);
+	if(len == -2)
+	{
+		char hint[64];
+		snprintf(hint, sizeof(hint), "%s: at most %zu bytes", name, size - 1);
+		*ret = send_json_error(api, 400,
+		                       "bad_request",
+		                       "Requested filter is too long",
+		                       hint);
+	}
+	return len;
+}
+
 // Read the request into req. Returns 0, or the status of the error reply it
 // sent. largest_id is the highest query ID a cursor may name
 static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
                                  const sqlite3_int64 largest_id)
 {
+	int ret = 0;
+
 	// We start with the most recent query at the beginning (until the
 	// cursor is changed). We send 100 queries (unless the API is asked for
 	// a different limit)
@@ -293,14 +315,18 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 		req->has_until = get_double_var(qs, "until", &req->until);
 
 		// Domain filtering?
-		if(GET_STR("domain", req->domain, qs) > 0)
+		if(get_filter_var(api, qs, "domain", "domain", req->domain,
+		                  sizeof(req->domain), &ret) > 0)
 		{
 			req->has_domain = true;
 			req->domain_like = is_wildcard(req->domain);
 		}
+		if(ret != 0)
+			return ret;
 
 		// Upstream filtering?
-		if(GET_STR("upstream", req->upstreamname, qs) > 0)
+		if(get_filter_var(api, qs, "upstream", "upstream", req->upstreamname,
+		                  sizeof(req->upstreamname), &ret) > 0)
 		{
 			// If there is a space in the upstream name, truncate
 			// the string to the first space. This is necessary as
@@ -323,20 +349,28 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 				req->upstream_like = is_wildcard(req->upstreamname);
 			}
 		}
+		if(ret != 0)
+			return ret;
 
 		// Client IP filtering?
-		if(GET_STR("client_ip", req->client_ip, qs) > 0)
+		if(get_filter_var(api, qs, "client_ip", "client_ip", req->client_ip,
+		                  sizeof(req->client_ip), &ret) > 0)
 		{
 			req->has_client_ip = true;
 			req->client_ip_like = is_wildcard(req->client_ip);
 		}
+		if(ret != 0)
+			return ret;
 
 		// Client filtering?
-		if(GET_STR("client_name", req->client_name, qs) > 0)
+		if(get_filter_var(api, qs, "client_name", "client_name", req->client_name,
+		                  sizeof(req->client_name), &ret) > 0)
 		{
 			req->has_client_name = true;
 			req->client_name_like = is_wildcard(req->client_name);
 		}
+		if(ret != 0)
+			return ret;
 
 		// DataTables server-side processing protocol
 		// Draw counter: This is used by DataTables to ensure that the
@@ -389,10 +423,11 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 
 		// Query type, status, reply type and DNSSEC status filtering?
 		// Checked below, after the exclusion regexes
-		GET_STR("type", typename, qs);
-		GET_STR("status", statusname, qs);
-		GET_STR("reply", replyname, qs);
-		GET_STR("dnssec", dnssecname, qs);
+		if(get_filter_var(api, qs, "type", "type", typename, sizeof(typename), &ret) == -2 ||
+		   get_filter_var(api, qs, "status", "status", statusname, sizeof(statusname), &ret) == -2 ||
+		   get_filter_var(api, qs, "reply", "reply", replyname, sizeof(replyname), &ret) == -2 ||
+		   get_filter_var(api, qs, "dnssec", "dnssec", dnssecname, sizeof(dnssecname), &ret) == -2)
+			return ret;
 
 		// Sorting?
 		int sort_column = -1;
@@ -425,8 +460,16 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 			char *search = j == 0 ? req->domain_search : req->client_search;
 			char search_col[] = "columns%5BX%5D%5Bsearch%5D%5Bvalue%5D";
 			search_col[10] = '3' + j;
-			if(get_string_var(qs, search_col, search, QLOG_SEARCH_LEN) <= 0)
+			char search_name[] = "columns[X][search][value]";
+			search_name[8] = '3' + j;
+			// Leave room for the two wildcards search_pattern() may add
+			if(get_filter_var(api, qs, search_col, search_name, search,
+			                  QLOG_SEARCH_LEN - 2, &ret) <= 0)
+			{
+				if(ret != 0)
+					return ret;
 				continue;
+			}
 
 			// columns[X][data] is the name of column X
 			char search_col_id[] = "columns%5BX%5D%5Bdata%5D";
