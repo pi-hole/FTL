@@ -241,6 +241,7 @@ int main (int argc, char *argv[])
 
 	cleanup(exit_code);
 
+#ifndef FTL_EXIT_ON_RESTART
 	if(exit_code == RESTART_FTL_CODE)
 	{
 		// A binary without file capabilities only keeps the ambient set
@@ -253,6 +254,7 @@ int main (int argc, char *argv[])
 		alarm(0);
 		execvp(argv[0], argv);
 	}
+#endif
 
 	return exit_code;
 }
