@@ -26,6 +26,7 @@
 #include "config/config.h"
 // gravity_running
 #include "daemon.h"
+#include "install_paths.h"
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[], const char *extra_env)
 {
@@ -235,7 +236,7 @@ int api_action_gravity(struct ftl_conn *api)
 		                       "Gravity is already running",
 		                       NULL);
 
-	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
+	const int ret = run_and_stream_command(api, PIHOLE_SCRIPT, (const char *const []){ "pihole", "-g", NULL }, extra_env);
 	atomic_store(&gravity_running, false);
 
 	// If a termination/restart was requested while gravity was running,
