@@ -297,8 +297,15 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
   reach_next_i = reach_next;
   while (/*CONSTCOND*/(void)1,1)
     {
+      /* An anchored match can only start at the beginning of the string,
+	 so stop once no state is left. */
+      if (match_eo < 0 && tnfa->anchored && pos > 0)
+	{
+	  if (reach_next_i == reach_next)
+	    break;
+	}
       /* If no match found yet, add the initial states to `reach_next'. */
-      if (match_eo < 0)
+      else if (match_eo < 0)
 	{
 	  DPRINT((" init >"));
 	  trans_i = tnfa->initial;

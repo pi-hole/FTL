@@ -254,6 +254,8 @@ struct tnfa {
   tre_submatch_data_t *submatch_data;
   char *firstpos_chars;
   int first_char;
+  /* Every match starts at the beginning of the string. */
+  int anchored;
   unsigned int num_submatches;
   tre_tag_direction_t *tag_directions;
   int *minimal_tags;
