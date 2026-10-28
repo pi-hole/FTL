@@ -1316,6 +1316,113 @@ tre_union_is_flat(tre_ast_node_t *node)
 }
 
 
+/* Finds the longest run of single characters that every match of `tree'
+   contains, and stores it in `tnfa->must'.  Only the top-level chain of
+   catenations is considered.  Each character may have two alternatives,
+   e.g. both cases of a letter under REG_ICASE, and zero-width nodes do
+   not interrupt a run. */
+static reg_errcode_t
+tre_compute_must(tre_stack_t *stack, tre_ast_node_t *tree, tre_tnfa_t *tnfa)
+{
+  size_t bottom = tre_stack_num_items(stack);
+  unsigned char *run, *tmp;
+  size_t run_len = 0, size = 64;
+  int consumed = 0, run_at_start = 0;
+  reg_errcode_t status;
+
+  run = xmalloc(size * 2);
+  if (run == NULL)
+    return REG_ESPACE;
+
+  STACK_PUSH(stack, voidptr, tree);
+  while (status == REG_OK)
+    {
+      tre_ast_node_t *node = NULL;
+      long c1 = -1, c2 = -1;
+
+      if (tre_stack_num_items(stack) > bottom)
+	node = tre_stack_pop_voidptr(stack);
+      if (node != NULL && node->type == CATENATION)
+	{
+	  tre_catenation_t *cat = node->obj;
+	  STACK_PUSHX(stack, voidptr, cat->right);
+	  STACK_PUSHX(stack, voidptr, cat->left);
+	  continue;
+	}
+      if (node != NULL && node->type == LITERAL)
+	{
+	  tre_literal_t *lit = node->obj;
+	  if (IS_EMPTY(lit) || IS_ASSERTION(lit) || IS_TAG(lit))
+	    continue;
+	  if (lit->code_min == lit->code_max && !lit->u.class
+	      && !lit->neg_classes)
+	    c1 = c2 = lit->code_min;
+	}
+      else if (node != NULL && node->type == UNION)
+	{
+	  tre_union_t *uni = node->obj;
+	  tre_literal_t *l = uni->left->obj, *r = uni->right->obj;
+	  if (uni->left->type == LITERAL && uni->right->type == LITERAL
+	      && l->code_min == l->code_max && r->code_min == r->code_max
+	      && !l->u.class && !r->u.class
+	      && !l->neg_classes && !r->neg_classes)
+	    {
+	      c1 = l->code_min;
+	      c2 = r->code_min;
+	    }
+	}
+
+      if (c1 >= 0 && c2 >= 0 && c1 <= 255 && c2 <= 255)
+	{
+	  if (run_len == 0)
+	    run_at_start = !consumed;
+	  consumed = 1;
+	  if (run_len == size)
+	    {
+	      tmp = xrealloc(run, size * 4);
+	      if (tmp == NULL)
+		{
+		  status = REG_ESPACE;
+		  break;
+		}
+	      run = tmp;
+	      size *= 2;
+	    }
+	  run[run_len * 2] = (unsigned char)c1;
+	  run[run_len * 2 + 1] = (unsigned char)c2;
+	  run_len++;
+	  continue;
+	}
+
+      /* This node ends the current run.  Keep it if it is the longest. */
+      if (run_len > tnfa->must_len)
+	{
+	  tmp = xmalloc(run_len * 2);
+	  if (tmp == NULL)
+	    {
+	      status = REG_ESPACE;
+	      break;
+	    }
+	  memcpy(tmp, run, run_len * 2);
+	  if (tnfa->must != NULL)
+	    xfree(tnfa->must);
+	  tnfa->must = tmp;
+	  tnfa->must_len = run_len;
+	  tnfa->must_at_start = run_at_start;
+	}
+      run_len = 0;
+      consumed = 1;
+      if (node == NULL)
+	break;
+    }
+
+  while (tre_stack_num_items(stack) > bottom)
+    tre_stack_pop_voidptr(stack);
+  xfree(run);
+  return status;
+}
+
+
 /* Computes and fills in the fields `nullable', `position`, `firstpos',
    and `lastpos' for the nodes of the AST `tree'; `nextpos' points to an
    integer indicating the next available position, and will be updated on
@@ -1960,6 +2067,13 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   tnfa->have_approx = parse_ctx.have_approx;
   tnfa->num_submatches = parse_ctx.submatch_id;
 
+  if (parse_ctx.mb_cur_max == 1 && !tnfa->have_approx)
+    {
+      errcode = tre_compute_must(stack, tree, tnfa);
+      if (errcode != REG_OK)
+	ERROR_EXIT(errcode);
+    }
+
   /* Set up tags for submatch addressing.  If REG_NOSUB is set and the
      regexp does not have back references, this can be skipped. */
   if (tnfa->have_backrefs || !(cflags & REG_NOSUB))
@@ -2278,6 +2392,8 @@ tre_free(regex_t *preg)
     xfree(tnfa->tag_directions);
   if (tnfa->firstpos_chars)
     xfree(tnfa->firstpos_chars);
+  if (tnfa->must)
+    xfree(tnfa->must);
   if (tnfa->minimal_tags)
     xfree(tnfa->minimal_tags);
   xfree(tnfa);
