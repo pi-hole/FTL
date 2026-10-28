@@ -66,6 +66,10 @@ char *alloca ();
 #include "tre-match-utils.h"
 #include "xmalloc.h"
 
+/* Matching data up to this size is kept on the stack instead of being
+   allocated for each match. */
+#define TRE_MATCH_STACK_BUF 4096
+
 
 
 typedef struct {
@@ -128,6 +132,13 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
   int str_user_end = 0;
 
   char *buf;
+#ifndef TRE_USE_ALLOCA
+  union {
+    char c[TRE_MATCH_STACK_BUF];
+    long l;
+    void *p;
+  } stack_buf;
+#endif /* !TRE_USE_ALLOCA */
   tre_tnfa_transition_t *trans_i;
   tre_tnfa_reach_t *reach, *reach_next, *reach_i, *reach_next_i;
   tre_reach_pos_t *reach_pos;
@@ -162,7 +173,9 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
   /* Allocate memory for temporary data required for matching.	This needs to
      be done for every matching operation to be thread safe.  This allocates
      everything in a single large block from the stack frame using alloca()
-     or with malloc() if alloca is unavailable. */
+     or, if alloca is unavailable, from a fixed stack buffer when it is large
+     enough and with malloc() otherwise.  Every field is initialized before
+     it is read, so the block is not cleared. */
   {
     size_t tbytes, rbytes, pbytes, xbytes, total_bytes;
     char *tmp_buf;
@@ -179,11 +192,13 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 #ifdef TRE_USE_ALLOCA
     buf = alloca(total_bytes);
 #else /* !TRE_USE_ALLOCA */
-    buf = xmalloc(total_bytes);
+    if (total_bytes <= sizeof(stack_buf))
+      buf = stack_buf.c;
+    else
+      buf = xmalloc(total_bytes);
 #endif /* !TRE_USE_ALLOCA */
     if (buf == NULL)
       return REG_ESPACE;
-    memset(buf, 0, total_bytes);
 
     /* Get the various pointers within tmp_buf (properly aligned). */
     tmp_tags = (void *)buf;
@@ -223,7 +238,7 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
       if (str_byte == NULL)
 	{
 #ifndef TRE_USE_ALLOCA
-	  if (buf)
+	  if (buf != stack_buf.c)
 	    xfree(buf);
 #endif /* !TRE_USE_ALLOCA */
 	  return REG_NOMATCH;
@@ -504,7 +519,7 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
   ret = match_eo >= 0 ? REG_OK : REG_NOMATCH;
 
 #ifndef TRE_USE_ALLOCA
-  if (buf)
+  if (buf != stack_buf.c)
     xfree(buf);
 #endif /* !TRE_USE_ALLOCA */
   return ret;
