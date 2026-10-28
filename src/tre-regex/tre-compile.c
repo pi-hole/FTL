@@ -705,6 +705,7 @@ tre_copy_ast(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *ast,
 		    break;
 		  }
 		tmp = (*result)->obj;
+		tmp->single_position = uni->single_position;
 		result = &tmp->left;
 		STACK_PUSHX(stack, voidptr, uni->right);
 		STACK_PUSHX(stack, int, COPY_RECURSE);
@@ -1292,9 +1293,27 @@ tre_match_empty(tre_stack_t *stack, tre_ast_node_t *node, int *tags,
 typedef enum {
   NPFL_RECURSE,
   NPFL_POST_UNION,
+  NPFL_POST_SHARED_UNION,
   NPFL_POST_CATENATION,
   NPFL_POST_ITERATION
 } tre_npfl_stack_symbol_t;
+
+
+/* Returns 1 if every alternative of the union `node' is a plain character
+   literal, i.e. no tags or other nodes were inserted between them. */
+static int
+tre_union_is_flat(tre_ast_node_t *node)
+{
+  while (node->type == UNION)
+    {
+      tre_union_t *uni = node->obj;
+      if (uni->right->type != LITERAL
+	  || IS_SPECIAL((tre_literal_t *)uni->right->obj))
+	return 0;
+      node = uni->left;
+    }
+  return node->type == LITERAL && !IS_SPECIAL((tre_literal_t *)node->obj);
+}
 
 
 /* Computes and fills in the fields `nullable', `position`, `firstpos',
@@ -1306,6 +1325,10 @@ tre_compute_npfl(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
 		 int *nextpos)
 {
   size_t bottom = tre_stack_num_items(stack);
+  /* While `shared_depth' > 0, the literals belong to a single position
+     union and all of them get `shared_pos'. */
+  int shared_depth = 0;
+  int shared_pos = -1;
 
   STACK_PUSHR(stack, voidptr, tree);
   STACK_PUSHR(stack, int, NPFL_RECURSE);
@@ -1360,9 +1383,9 @@ tre_compute_npfl(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
 		    /* Literal at position i: nullable = false, firstpos = {i},
 		       lastpos = {i}. */
 		    node->nullable = 0;
-		    if (*nextpos == TRE_MAX_POS)
+		    if (shared_depth == 0 && *nextpos == TRE_MAX_POS)
 		      return REG_ESPACE;
-		    lit->position = (*nextpos)++;
+		    lit->position = shared_depth > 0 ? shared_pos : (*nextpos)++;
 		    node->firstpos =
 		      tre_set_one(mem, lit->position, lit->code_min,
 				  lit->code_max, 0, NULL, -1);
@@ -1383,7 +1406,19 @@ tre_compute_npfl(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
 	      /* Compute the attributes for the two subtrees, and after that
 		 for this node. */
 	      STACK_PUSHR(stack, voidptr, node);
-	      STACK_PUSHR(stack, int, NPFL_POST_UNION);
+	      if (((tre_union_t *)node->obj)->single_position
+		  && (shared_depth > 0 || tre_union_is_flat(node)))
+		{
+		  if (shared_depth++ == 0)
+		    {
+		      if (*nextpos == TRE_MAX_POS)
+			return REG_ESPACE;
+		      shared_pos = (*nextpos)++;
+		    }
+		  STACK_PUSHR(stack, int, NPFL_POST_SHARED_UNION);
+		}
+	      else
+		STACK_PUSHR(stack, int, NPFL_POST_UNION);
 	      STACK_PUSHR(stack, voidptr, ((tre_union_t *)node->obj)->right);
 	      STACK_PUSHR(stack, int, NPFL_RECURSE);
 	      STACK_PUSHR(stack, voidptr, ((tre_union_t *)node->obj)->left);
@@ -1412,6 +1447,9 @@ tre_compute_npfl(tre_mem_t mem, tre_stack_t *stack, tre_ast_node_t *tree,
 	    }
 	  break; /* end case: NPFL_RECURSE */
 
+	case NPFL_POST_SHARED_UNION:
+	  shared_depth--;
+	  /*FALLTHROUGH*/
 	case NPFL_POST_UNION:
 	  {
 	    tre_union_t *uni = (tre_union_t *)node->obj;
