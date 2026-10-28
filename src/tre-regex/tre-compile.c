@@ -2162,9 +2162,12 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
     ERROR_EXIT(REG_ESPACE);
   tnfa->initial = initial;
 
+  tnfa->anchored = !(cflags & REG_NEWLINE);
   i = 0;
   for (p = tree->firstpos; p->position >= 0; p++)
     {
+      if (!(p->assertions & ASSERT_AT_BOL))
+	tnfa->anchored = 0;
       initial[i].state = transitions + offs[p->position];
       initial[i].state_id = p->position;
       initial[i].tags = NULL;
@@ -2192,6 +2195,8 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
       i++;
     }
   initial[i].state = NULL;
+  if (i == 0)
+    tnfa->anchored = 0;
 
   tnfa->num_transitions = add;
   tnfa->final = transitions + offs[tree->lastpos[0].position];
