@@ -292,8 +292,18 @@ unsigned int get_year(const time_t timein)
 
 static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t timein)
 {
-	struct tm tm;
-	gmtime_r(&timein, &tm);
+	// Everything up to the seconds changes once a second, format it only then
+	static _Thread_local char prefix[32];
+	static _Thread_local time_t prefix_time = -1;
+	if(timein != prefix_time)
+	{
+		struct tm tm;
+		gmtime_r(&timein, &tm);
+		snprintf(prefix, sizeof(prefix), "%04d-%02d-%02dT%02d:%02d:%02d",
+		         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		         tm.tm_hour, tm.tm_min, tm.tm_sec);
+		prefix_time = timein;
+	}
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -302,18 +312,7 @@ static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t time
 	if(tv.tv_sec == timein)
 		millisec = tv.tv_usec / 1000;
 
-	snprintf(timestring, TIMESTR_SIZE,
-	         "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
-	         tm.tm_year + 1900,
-	         tm.tm_mon + 1,
-	         tm.tm_mday,
-	         tm.tm_hour,
-	         tm.tm_min,
-	         tm.tm_sec,
-	         millisec);
-
-	// Ensure null termination
-	timestring[TIMESTR_SIZE - 1] = '\0';
+	snprintf(timestring, TIMESTR_SIZE, "%s.%03dZ", prefix, millisec);
 }
 
 // Escape a string into a caller-supplied buffer for JSON output.
