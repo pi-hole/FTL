@@ -2357,7 +2357,7 @@ setup() {
   # reader once the busy handler of the write was seen waiting (debug.database
   # is enabled in the test configuration)
   rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
-  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   cat > /tmp/gravity_reader.sql << 'SQL'
 BEGIN;
 SELECT count(*) FROM domainlist;
@@ -2381,11 +2381,12 @@ SQL
   put=$!
 
   # Release the reader as soon as the write is waiting for it. This is well
-  # within the busy timeout, however long the request took to get there
+  # within the busy timeout, however long the request took to get there.
+  # Only the log written since this test started is searched, so each check
+  # stays short however large FTL.log has grown
   write_waited=no
   for _ in $(seq 1 100); do
-    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
-    if [ "${busy_now}" -gt "${busy_before}" ]; then
+    if tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -q "Database busy - waiting"; then
       write_waited=yes
       break
     fi
