@@ -694,6 +694,110 @@ first_start_stop() {
   [[ ${lines[0]} -ge 1 ]]
 }
 
+@test "The queries ring keeps its queries in order when it grows while wrapped" {
+  # A flush moves the start of the ring behind the last query. Filling the
+  # ring from there makes it grow while wrapped, a first time moving its
+  # newest part and, with the start placed past the growth step by a second
+  # flush, a second time moving its oldest part. Only the shared memory debug
+  # output is on, as the ring is filled three times over
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.ring
+  sed -i '/^\[debug\]/,/^\[/{/^ *shmem = /!s/^\( *[a-z]* = \)true/\1false/}' /etc/pihole/pihole.toml
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A ring-start.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  # Sends $2 queries for ring-$1-<n>.ftl, prints how many were answered
+  send() {
+    python3 - "$1" "$2" << 'EOF'
+import socket, struct, sys
+tag, n = sys.argv[1], int(sys.argv[2])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(2)
+s.connect(("127.0.0.1", 53))
+sent = got = 0
+while got < n:
+    while sent < n and sent - got < 32:
+        name = b"".join(bytes([len(l)]) + l for l in f"ring-{tag}-{sent}.ftl".encode().split(b".")) + b"\0"
+        s.send(struct.pack(">HHHHHH", sent & 0xffff, 0x0100, 1, 0, 0, 0) + name + struct.pack(">HH", 1, 1))
+        sent += 1
+    try:
+        s.recv(4096)
+        got += 1
+    except socket.timeout:
+        break
+print(got)
+EOF
+  }
+  # The number of slots of the queries array (64 bytes each) when it was
+  # created or last grown
+  slots() {
+    tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -oE '(name "/FTL-[0-9]+-queries" and size [0-9]+)|(Resizing "/FTL-[0-9]+-queries" from .* to \([0-9]+)' |
+      awk '/ and size / { n = $NF / 64 } /Resizing/ { match($0, /to \([0-9]+/); n = substr($0, RSTART + 4, RLENGTH - 4) } END { print n }'
+  }
+  flush() {
+    # The flush keeps the queries of the current second
+    sleep 1
+    curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status
+  }
+
+  run flush
+  assert_output "success"
+  size=$(slots)
+  run send a $((size + 16))
+  assert_output "$((size + 16))"
+
+  # The second flush leaves the start halfway between the growth step and the
+  # end of the grown ring
+  run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -oE 'Grew the queries ring wrapped at [0-9]+'"
+  assert_success
+  wrapped=${output##* }
+  grown=$(slots)
+  target=$(( (grown + grown - size) / 2 ))
+  run send b $(( ((target - wrapped - size - 16) % grown + grown) % grown ))
+  assert_success
+  run flush
+  assert_output "success"
+  run send c $((grown + 16))
+  assert_output "$((grown + 16))"
+
+  # Both ways of growing: the newest part moved first, the oldest part second
+  run bash -c "tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -oE 'Grew the queries ring wrapped at [0-9]+ of [0-9]+ slots, moved [0-9]+ queries'"
+  printf "%s\n" "${lines[@]}"
+  [[ ${#lines[@]} -eq 2 ]]
+  read -r at of moved <<< "$(echo "${lines[0]}" | grep -oE '[0-9]+' | tr '\n' ' ')"
+  [[ ${moved} -eq ${at} ]]
+  read -r at of moved <<< "$(echo "${lines[1]}" | grep -oE '[0-9]+' | tr '\n' ' ')"
+  [[ ${moved} -eq $((of - at)) ]]
+
+  # All queries of the last round are in memory, in the order they were sent
+  run bash -c "curl -s '127.0.0.1/api/queries?domain=ring-c-*&length=10000' | jq -r '.recordsFiltered, ([.queries | sort_by(.id)[].domain | ltrimstr(\"ring-c-\") | rtrimstr(\".ftl\") | tonumber] | . == ([range(0; length)]))'"
+  printf "%s\n" "${lines[@]}"
+  assert_line --index 0 "$((grown + 16))"
+  assert_line --index 1 "true"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  cp -p /tmp/pihole.toml.ring /etc/pihole/pihole.toml
+  ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE domain IN (SELECT id FROM domain_by_id WHERE domain GLOB 'ring-*.ftl'); DELETE FROM domain_by_id WHERE domain GLOB 'ring-*.ftl';"
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.ring.log
+  run bash -c 'grep "ERROR: " /tmp/FTL.ring.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Terminator: bind\(\) to 192\.0\.2\.1#9444 failed)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.ring.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
 @test "Queries go to disk as the query log shows them, with their list IDs and the totals" {
   # The final export at the stop stores the queries, a restart reads them back
   ids_before=$(./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "SELECT IFNULL(MAX(id), -1) FROM query_storage;")
