@@ -307,6 +307,19 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
       /* If no match found yet, add the initial states to `reach_next'. */
       else if (match_eo < 0)
 	{
+	  /* With no state active, skip characters that cannot start a
+	     match. */
+	  if (reach_next_i == reach_next && type == STR_BYTE && !tnfa->anchored)
+	    {
+	      if (tnfa->first_char >= 0)
+		while (next_c != (tre_char_t)tnfa->first_char && next_c != L'\0'
+		       && (len < 0 || pos < len))
+		  GET_NEXT_WCHAR();
+	      else if (tnfa->firstpos_chars != NULL)
+		while (!tnfa->firstpos_chars[(unsigned char)next_c]
+		       && next_c != L'\0' && (len < 0 || pos < len))
+		  GET_NEXT_WCHAR();
+	    }
 	  DPRINT((" init >"));
 	  trans_i = tnfa->initial;
 	  while (trans_i->state != NULL)
