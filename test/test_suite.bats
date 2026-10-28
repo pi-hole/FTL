@@ -1280,6 +1280,14 @@ setup() {
   assert_line --index 0 "4"
 }
 
+@test "pihole.log lines carry the PID of the process that logged them" {
+  # gravity.ftl was queried over UDP and over TCP above; the TCP query is
+  # logged by a forked child
+  run bash -c "grep -E '^[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} dnsmasq\[[0-9]+\]: .*query\[A\] gravity\.ftl from ' /var/log/pihole/pihole.log | sed -E 's/^.{15} dnsmasq\[([0-9]+)\]: .*/\1/' | sort -u"
+  assert_line "$(cat /run/pihole-FTL.pid)"
+  assert [ "${#lines[@]}" -ge 2 ]
+}
+
 # NOTE: HTTP 404 tests moved to pytest (test/api/test_api.py)
 
 @test "LUA: Interpreter returns FTL version" {
