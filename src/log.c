@@ -312,7 +312,13 @@ static void get_timestr_iso8601(char timestring[TIMESTR_SIZE], const time_t time
 	if(tv.tv_sec == timein)
 		millisec = tv.tv_usec / 1000;
 
-	snprintf(timestring, TIMESTR_SIZE, "%s.%03dZ", prefix, millisec);
+	memcpy(timestring, prefix, 19);
+	timestring[19] = '.';
+	timestring[20] = '0' + millisec / 100;
+	timestring[21] = '0' + millisec / 10 % 10;
+	timestring[22] = '0' + millisec % 10;
+	timestring[23] = 'Z';
+	timestring[24] = '\0';
 }
 
 // Escape a string into a caller-supplied buffer for JSON output.
