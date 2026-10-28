@@ -1533,29 +1533,40 @@ void shm_ensure_client_size(void)
 // Enlarge shared memory to be able to hold at least one new record
 static void shm_ensure_size(void)
 {
-	if(counters->queries + counters->queries_offset >= counters->queries_MAX-1)
+	if(counters->queries >= counters->queries_MAX-1)
 	{
-		// Try to compact before growing: reclaim dead space at the front
-		if(counters->queries_offset > 0)
+		// The queries array is a ring. A wrapped one moves a part of it
+		// below, so it grows by an eighth to keep that rare while the load
+		// rises
+		const unsigned int old_max = counters->queries_MAX;
+		const unsigned int offset = counters->queries_offset;
+		queries = enlarge_shmem_struct(QUERIES, offset > 0 ? max(old_max / 8, pagesize) : 1);
+		if(queries == NULL)
 		{
-			memmove(queries, queries + counters->queries_offset,
-			        counters->queries * sizeof(queriesData));
-			memset(queries + counters->queries, 0,
-			       counters->queries_offset * sizeof(queriesData));
-			counters->queries_offset = 0;
-			queryIDMap_clear();
+			log_crit("Memory allocation failed! Exiting");
+			exit(EXIT_FAILURE);
 		}
 
-		// After compaction, check if we still need to grow
-		if(counters->queries >= counters->queries_MAX-1)
+		// The new slots have to follow the newest query: move the newest
+		// part behind the oldest one if it fits, otherwise the oldest part
+		// to the end
+		const unsigned int step = counters->queries_MAX - old_max;
+		if(offset > 0 && offset <= step)
 		{
-			queries = enlarge_shmem_struct(QUERIES, 1);
-			if(queries == NULL)
-			{
-				log_crit("Memory allocation failed! Exiting");
-				exit(EXIT_FAILURE);
-			}
+			memcpy(queries + old_max, queries, (size_t)offset * sizeof(queriesData));
+			memset(queries, 0, (size_t)offset * sizeof(queriesData));
 		}
+		else if(offset > 0)
+		{
+			memmove(queries + offset + step, queries + offset,
+			        (size_t)(old_max - offset) * sizeof(queriesData));
+			memset(queries + offset, 0,
+			       (size_t)min(step, old_max - offset) * sizeof(queriesData));
+			counters->queries_offset += step;
+		}
+		if(offset > 0)
+			log_debug(DEBUG_SHMEM, "Grew the queries ring wrapped at %u of %u slots, moved %u queries",
+			          offset, old_max, offset <= step ? offset : old_max - offset);
 	}
 	if(counters->upstreams >= counters->upstreams_MAX-1)
 	{
@@ -1746,12 +1757,14 @@ queriesData *_getQuery(const unsigned int queryID, const bool checkMagic, const 
 		return NULL;
 	}
 
-	// Apply offset for physical array access
-	const unsigned int physID = queryID + counters->queries_offset;
-
 	// Check allowed range
-	if(!check_range(physID, counters->queries_MAX, "query", func, line, file))
+	if(!check_range(queryID, counters->queries_MAX, "query", func, line, file))
 		return NULL;
+
+	// The queries array is a ring starting at queries_offset
+	unsigned int physID = queryID + counters->queries_offset;
+	if(physID >= counters->queries_MAX)
+		physID -= counters->queries_MAX;
 
 	// Check magic byte
 	if(check_magic(physID, checkMagic, queries[physID].magic, "query", func, line, file))

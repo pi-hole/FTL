@@ -553,9 +553,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->privacylevel >= PRIVACY_MAXIMUM)
 			counters->queries_maxprivacy--;
 
-		// Count removed queries
+		// Count removed queries, new queries take over the wiped slot
 		removed++;
 		last_removed_id = query->db;
+		memset(query, 0, sizeof(*query));
 	}
 
 	if(dropped > 0)
@@ -565,16 +566,10 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Only perform memory operations when we actually removed queries
 	if(removed > 0)
 	{
-		// Instead of memmove-ing all surviving queries to the front
-		// (which copies potentially millions of entries under the SHM lock),
-		// we simply advance the queries_offset. The _getQuery() function
-		// adds this offset when translating logical indices to physical
-		// array positions, so all code transparently sees the correct data.
-		//
-		// Dead space at the front [0..offset-1] is reclaimed lazily:
-		// shm_ensure_size() compacts (memmove + reset offset) only when
-		// the physical array actually runs out of room.
-		counters->queries_offset += removed;
+		// The queries array is a ring, removing queries from the front
+		// only advances its start. _getQuery() translates logical
+		// indices to physical array positions
+		counters->queries_offset = (counters->queries_offset + removed) % counters->queries_MAX;
 		counters->queries -= removed;
 		queries_removed += removed;
 
