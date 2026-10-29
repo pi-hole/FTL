@@ -161,7 +161,7 @@ static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 	if(opened)
 	{
 		*restart = merge_config_file();
-		if(config.misc.readOnly.v.b)
+		if(config.misc.readOnly.v.b && file_exists(GLOBALTOMLPATH))
 		{
 			release_install_lock(&install_lock);
 			return true;
