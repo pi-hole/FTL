@@ -25,6 +25,14 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "Static TLS of the binary stays small" {
+  # glibc takes static TLS out of every thread's stack and CivetWeb pins its
+  # threads to 1 MiB, so large _Thread_local buffers break thread creation there
+  tls="$(readelf -lW ./pihole-FTL | awk '$1 == "TLS" { print $6 }')"
+  printf 'PT_TLS MemSiz: %s\n' "${tls:-none}"
+  [[ $(( ${tls:-0} )) -lt $(( 128 * 1024 )) ]]
+}
+
 @test "A leftover world-readable CLI password file is replaced" {
   # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
   holder=$(cat /tmp/cli_pw_holder.pid)
