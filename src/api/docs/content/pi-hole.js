@@ -106,7 +106,7 @@ function setStyle(style) {
 
 function setTheme(theme) {
 	const docEl = document.getElementById('thedoc');
-	docEl.setAttribute('theme', theme);
+	docEl.setAttribute('color-scheme', theme);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -2,7 +2,7 @@
 .btn {
   padding: 6px 12px;
   font-size:13px;
-  background-color: var(--primary-color);
+  background-color: var(--primary);
   color: #fff;
   border: none;
   margin: 0 2px;
@@ -30,12 +30,18 @@
 
 .btn:hover {
   background: #fff;
-  color: var(--primary-color);
+  color: var(--primary);
+}
+
+rapi-doc::part(section-header) {
+  background-color: #222;
+  color: #fff;
 }
 
 .logo-slot {
   padding: 10px 0 10px 16px;
   width: 50px;
+  height: auto;
 }
 
 .header-slot {
