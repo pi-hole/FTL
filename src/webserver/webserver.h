@@ -18,11 +18,6 @@
 // struct mg_connection
 #include "webserver/civetweb/civetweb.h"
 
-// Hard-coded maximum number of allowed web server threads
-#define MAX_WEBTHREADS 64
-// Macro to limiting a numeric value to a certain minimum and maximum
-#define LIMIT_MIN_MAX(a, b, c) ((a) < (b) ? (b) : (a) > (c) ? (c) : (a))
-
 void http_init(void);
 void http_terminate(void);
 void *webserver_thread(void *val);

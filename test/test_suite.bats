@@ -2549,7 +2549,7 @@ except socket.timeout:
   # reader once the busy handler of the write was seen waiting (debug.database
   # is enabled in the test configuration)
   rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
-  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   cat > /tmp/gravity_reader.sql << 'SQL'
 BEGIN;
 SELECT count(*) FROM domainlist;
@@ -2568,21 +2568,19 @@ SQL
   reader_ready=no
   [ -f /tmp/gravity_reader_ready ] && reader_ready=yes
 
+  # Release the reader as soon as the write is waiting for it. This is well
+  # within the busy timeout, however long the request took to get there.
+  # The watch starts before the write and reads only what was logged since
+  # this test started
+  ./pihole-FTL wait-for "Database busy - waiting" /var/log/pihole/FTL.log 5 "$logsize_before" > /dev/null 3>&- &
+  waiter=$!
+
   # Write while the reader holds its lock
   curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}' > /tmp/gravity_put_result 2> /dev/null 3>&- &
   put=$!
 
-  # Release the reader as soon as the write is waiting for it. This is well
-  # within the busy timeout, however long the request took to get there
   write_waited=no
-  for _ in $(seq 1 100); do
-    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
-    if [ "${busy_now}" -gt "${busy_before}" ]; then
-      write_waited=yes
-      break
-    fi
-    sleep 0.05
-  done
+  wait "${waiter}" && write_waited=yes
   touch /tmp/gravity_reader_release
 
   wait "${put}" || true
