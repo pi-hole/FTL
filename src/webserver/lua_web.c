@@ -80,10 +80,12 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	// Build minimal api struct to check authentication
-	struct ftl_conn api = { 0 };
-	api.conn = conn;
-	api.request = req_info;
-	api.now = double_time();
+	struct ftl_conn api = {
+		.conn = conn,
+		.request = req_info,
+		.method = http_method(conn),
+		.now = double_time()
+	};
 
 	// Check if the request is for the API under <webhome>api
 	// (it is posted at /api)

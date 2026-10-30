@@ -540,6 +540,22 @@ int get_present_cpus(void)
 	return cpus > 0 ? cpus : get_nprocs_conf();
 }
 
+// Read the load averages from /proc/loadavg rather than sysinfo(), as only
+// the former is virtualized for containers, e.g., by LXCFS
+int get_load_averages(double load[3])
+{
+	FILE *f = fopen("/proc/loadavg", "r");
+	if(f != NULL)
+	{
+		const int count = fscanf(f, "%lf %lf %lf", &load[0], &load[1], &load[2]);
+		fclose(f);
+		if(count == 3)
+			return 0;
+	}
+
+	return getloadavg(load, 3) == 3 ? 0 : -1;
+}
+
 static float ftl_cpu_usage = 0.0f;
 static float total_cpu_usage = 0.0f;
 void calc_cpu_usage(const unsigned int interval)

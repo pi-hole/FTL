@@ -2073,6 +2073,11 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// setupVars.conf
 	get_web_port(&config);
 
+	// Environment variables override these defaults as they override the
+	// values of a config file, and the result is held to the same rules
+	applyEnvVars(conf);
+	validate_config(conf, true, NULL);
+
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
 	char errbuf[ERRBUF_SIZE] = { 0 };

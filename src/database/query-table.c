@@ -103,7 +103,9 @@ static struct {
 // Pack addinfo type and key into a single integer
 static inline int addinfo_pack(const int type, const int key)
 {
-	return (key << ADDINFO_TYPE_BITS) | (type & ((1 << ADDINFO_TYPE_BITS) - 1));
+	// Shift as unsigned: list IDs can be negative, and left-shifting a
+	// negative int is undefined behaviour
+	return (int)(((unsigned int)key << ADDINFO_TYPE_BITS) | (type & ((1u << ADDINFO_TYPE_BITS) - 1)));
 }
 
 static inline int lookup_addinfo_id(const int type, const int key)
@@ -1676,9 +1678,10 @@ void DB_read_queries(void)
 			continue;
 		}
 
+		// Unmapped query types are stored as 100 + the DNS type (0 to 65535)
 		const int type = sqlite3_column_int(stmt, 2);
 		const bool mapped_type = type >= TYPE_NONE && type < TYPE_MAX;
-		const bool offset_type = type > 100 && type <= (100 + UINT16_MAX);
+		const bool offset_type = type >= 100 && type <= (100 + UINT16_MAX);
 		if(!mapped_type && !offset_type)
 		{
 			log_warn("Database: TYPE should not be %i", type);

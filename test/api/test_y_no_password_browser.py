@@ -88,6 +88,18 @@ class TestCrossSite:
         r = _auth({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"})
         assert r.status_code == 200
 
+    @pytest.mark.parametrize("site", ["cross-site", "same-site"])
+    def test_link_to_the_dashboard_is_authorized(self, site):
+        r = requests.get(f"{FTL_URL}/admin/", allow_redirects=False, timeout=5,
+                         headers={"Sec-Fetch-Site": site, "Sec-Fetch-Mode": "navigate"})
+        assert r.status_code != 403
+
+    def test_cross_site_dashboard_fetch_is_refused(self):
+        r = requests.get(f"{FTL_URL}/admin/", allow_redirects=False, timeout=5,
+                         headers={"Origin": EVIL, "Sec-Fetch-Site": "cross-site",
+                                  "Sec-Fetch-Mode": "cors"})
+        assert r.status_code == 403
+
     def test_navigating_post_is_refused(self):
         r = _auth({"Origin": EVIL, "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate",
                    "Content-Type": "text/plain"}, method="POST", data='{"password":""}')

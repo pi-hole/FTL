@@ -317,6 +317,9 @@ void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, 
 		//
 		// otherwise, flags will be F_UPSTREAM and the type is not set
 		// (== 0)
+	else if(flags == F_UPSTREAM && strcmp(arg, "duplicate") == 0)
+		; // Ignored - reply to a query attached to an identical one in
+		// flight (FTL_query_in_progress()), logged only with misc.extraLogging
 	else
 		FTL_reply(flags, name, addr, arg, id, path, line);
 }
