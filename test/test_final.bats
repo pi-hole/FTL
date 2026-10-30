@@ -793,7 +793,8 @@ first_start_stop() {
   # rename and more than one chunk of the export later
   cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.rename
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
+  # Without dns.hostsLocal, the renames do not restart FTL
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_dns_hostsLocal=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
@@ -1271,8 +1272,9 @@ three.rename.ftl|new-rename.ftl"
   cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.names
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   # Without the history of the earlier tests, the resolver has only the names
-  # of this test to look up
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
+  # of this test to look up. Without dns.hostsLocal, the renames do not
+  # restart FTL
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_dns_hostsLocal=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
