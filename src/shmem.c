@@ -1518,16 +1518,43 @@ void shm_ensure_client_size(void)
 			exit(EXIT_FAILURE);
 		}
 	}
-	if(counters->clients_lookup_size >= counters->clients_lookup_MAX-1)
+}
+
+// Double a lookup table once it is three quarters full, linear probing slows
+// down quickly above that
+void shm_ensure_lookup_size(const enum memory_type type)
+{
+	unsigned int size = 0, max = 0;
+	struct lookup_table **table = NULL;
+	if(type == CLIENTS_LOOKUP)
 	{
-		// Have to reallocate shared memory
-		clients_lookup = enlarge_shmem_struct(CLIENTS_LOOKUP, 1);
-		if(clients_lookup == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
+		size = counters->clients_lookup_size;
+		max = counters->clients_lookup_MAX;
+		table = &clients_lookup;
 	}
+	else if(type == DOMAINS_LOOKUP)
+	{
+		size = counters->domains_lookup_size;
+		max = counters->domains_lookup_MAX;
+		table = &domains_lookup;
+	}
+	else
+	{
+		size = counters->dns_cache_lookup_size;
+		max = counters->dns_cache_lookup_MAX;
+		table = &dns_cache_lookup;
+	}
+
+	if(size < lookup_capacity(max) / 4 * 3)
+		return;
+
+	*table = enlarge_shmem_struct(type, max);
+	if(*table == NULL)
+	{
+		log_crit("Memory allocation failed! Exiting");
+		exit(EXIT_FAILURE);
+	}
+	lookup_rehash(type);
 }
 
 // Enlarge shared memory to be able to hold at least one new record
@@ -1601,26 +1628,6 @@ static void shm_ensure_size(void)
 	{
 		// Have to reallocate shared memory
 		if(enlarge_shmem_struct(INTARRAYS, 1) == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
-	if(counters->domains_lookup_size >= counters->domains_lookup_MAX-1)
-	{
-		// Have to reallocate shared memory
-		domains_lookup = enlarge_shmem_struct(DOMAINS_LOOKUP, 1);
-		if(domains_lookup == NULL)
-		{
-			log_crit("Memory allocation failed! Exiting");
-			exit(EXIT_FAILURE);
-		}
-	}
-	if(counters->dns_cache_lookup_size >= counters->dns_cache_lookup_MAX-1)
-	{
-		// Have to reallocate shared memory
-		dns_cache_lookup = enlarge_shmem_struct(DNS_CACHE_LOOKUP, 1);
-		if(dns_cache_lookup == NULL)
 		{
 			log_crit("Memory allocation failed! Exiting");
 			exit(EXIT_FAILURE);

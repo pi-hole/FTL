@@ -26,10 +26,9 @@
 
 /**
  * @struct lookup_table
- * @brief A structure to hold binary search data.
+ * @brief A slot of a lookup hash table.
  *
- * This structure is used to store data for binary search operations.
- * It contains an identifier and a hash value.
+ * It contains an identifier and a hash value, a zero hash marks an empty slot.
  *
  * @var lookup_table::id
  * The identifier for the data.
@@ -42,8 +41,15 @@ struct lookup_table {
 	uint32_t hash;
 };
 
+// Usable slots: the largest power of two within the allocated entries
+static inline unsigned int lookup_capacity(const unsigned int max)
+{
+	return max < 2 ? 0 : 1u << (31 - __builtin_clz(max));
+}
+
 bool lookup_insert(const enum memory_type type, const unsigned int id, const uint32_t hash);
 bool lookup_remove(const enum memory_type type, const unsigned int id, const uint32_t hash);
+void lookup_rehash(const enum memory_type type);
 bool lookup_find_id(const enum memory_type type, const uint32_t hash, const struct lookup_data *lookup_data,
                     unsigned int *matchingID,
                     bool (*cmp_func)(const struct lookup_table *entry, const struct lookup_data *lookup_data));

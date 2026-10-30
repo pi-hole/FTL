@@ -72,6 +72,128 @@ bool db_import_done = false;
 // This has the side-effect of recycling intermediate domains
 // seen during CNAME inspection, too, as they are never referenced
 // by any query (only head and tail of the CNAME chain are)
+// Remove the client in slot i of the lookup table if it can be recycled. A
+// later entry may move into the slot, so true means it has to be checked again
+static bool recycle_client(const unsigned int i)
+{
+	if(clients_lookup[i].hash == 0)
+		return false;
+	const unsigned int clientID = clients_lookup[i].id;
+	clientsData *client = getClient(clientID, true);
+	if(client == NULL)
+		return false;
+
+	// Skip if still referenced by at least one query
+	if(client->count > 0)
+		return false;
+
+	// Never recycle aliasclients (they are not counted above but
+	// are only indirectly referenced by other clients)
+	if(client->flags.aliasclient)
+		return false;
+
+	// Keep the rate limit of a client until reset_rate_limiting()
+	// ends it, rate-limited queries are not counted above
+	if(client->flags.rate_limited || client->rate_limit > 0)
+		return false;
+
+	if(config.debug.gc.v.b)
+	{
+		char timestring[TIMESTR_SIZE];
+		get_timestr(timestring, client->lastQuery, true, false);
+
+		log_debug(DEBUG_GC, "Recycling client %s (ID %u, last query was %s)",
+		          getstr(client->ippos), clientID, timestring);
+	}
+
+	// Add ID of recycled client to recycle table
+	set_next_recycled_ID(CLIENTS, clientID);
+
+	// Wipe client's memory
+	memset(client, 0, sizeof(clientsData));
+	lookup_remove(CLIENTS_LOOKUP, clientID, clients_lookup[i].hash);
+	return true;
+}
+
+// Same for the domain in slot i of the lookup table
+static bool recycle_domain(const unsigned int i, const double twentyfour_hrs_ago)
+{
+	if(domains_lookup[i].hash == 0)
+		return false;
+	const unsigned int domainID = domains_lookup[i].id;
+	domainsData *domain = getDomain(domainID, true);
+	if(domain == NULL)
+		return false;
+
+	// Skip if still referenced by any query or CNAME chain
+	if(domain->count > 0 || domain->cname_refcount > 0)
+		return false;
+
+	// Only recycle domains when their last query was more than 24
+	// hours ago. This ensures that we do not recycle domains that
+	// have recently been seen but which are not part of any query
+	// (e.g., intermediate domains during CNAME inspection)
+	if(domain->lastQuery > twentyfour_hrs_ago)
+		return false;
+
+	if(config.debug.gc.v.b)
+	{
+		char timestring[TIMESTR_SIZE];
+		get_timestr(timestring, domain->lastQuery, true, false);
+
+		log_debug(DEBUG_GC, "Recycling domain %s (ID %u, last query was %s)",
+		          getstr(domain->domainpos), domainID, timestring);
+	}
+
+	// Add ID of recycled domain to recycle table
+	set_next_recycled_ID(DOMAINS, domainID);
+
+	// Wipe domain's memory
+	memset(domain, 0, sizeof(domainsData));
+	lookup_remove(DOMAINS_LOOKUP, domainID, domains_lookup[i].hash);
+	return true;
+}
+
+// Same for the DNS cache record in slot i of the lookup table
+static bool recycle_cache(const unsigned int i)
+{
+	if(dns_cache_lookup[i].hash == 0)
+		return false;
+	const unsigned int cacheID = dns_cache_lookup[i].id;
+	DNSCacheData *cache = getDNSCache(cacheID, true);
+	if(cache == NULL)
+		return false;
+
+	// Skip if still referenced by at least one query
+	if(cache->refcount > 0)
+		return false;
+
+	// If this cache entry held a CNAME domain reference, decrement
+	// that domain's cname_refcount. CNAME_domainID is initialized
+	// to (unsigned int)-1 in findCacheID() and only set to a valid
+	// value when cname_refcount is incremented
+	// (dnsmasq_interface.c, CNAME chain blocking). We check the
+	// sentinel rather than blocking_status because gravity reloads
+	// can reset blocking_status to QUERY_UNKNOWN without clearing
+	// CNAME_domainID.
+	if(cache->CNAME_domainID != (unsigned int)-1)
+	{
+		domainsData *cname_domain = getDomain(cache->CNAME_domainID, true);
+		if(cname_domain != NULL)
+			cname_domain->cname_refcount--;
+	}
+
+	log_debug(DEBUG_GC, "Recycling cache entry with ID %u", cacheID);
+
+	// Add ID of recycled cache entry to recycle table
+	set_next_recycled_ID(DNS_CACHE, cacheID);
+
+	// Wipe cache entry's memory
+	memset(cache, 0, sizeof(DNSCacheData));
+	lookup_remove(DNS_CACHE_LOOKUP, cacheID, dns_cache_lookup[i].hash);
+	return true;
+}
+
 static void recycle(void)
 {
 	// Get current time
@@ -82,115 +204,23 @@ static void recycle(void)
 	// A client can be recycled when no active query references it,
 	// which is indicated by client->count == 0 (maintained incrementally
 	// during query creation and GC removal).
-	// We iterate over the lookup table and compact in-place: entries
-	// whose backing data is recycled are dropped, surviving entries are
-	// shifted forward to maintain sorted order for binary search.
+	// We iterate over the lookup table and remove recycled entries. The
+	// slot is checked again as a later entry may have moved into it.
 	unsigned int clients_recycled = 0;
-	unsigned int cwrite = 0;
-	for(unsigned int i = 0; i < counters->clients_lookup_size; i++)
-	{
-		const unsigned int clientID = clients_lookup[i].id;
-		clientsData *client = getClient(clientID, true);
-		if(client == NULL)
-			continue;
-
-		// Skip if still referenced by at least one query
-		if(client->count > 0)
-			goto keep_client;
-
-		// Never recycle aliasclients (they are not counted above but
-		// are only indirectly referenced by other clients)
-		if(client->flags.aliasclient)
-			goto keep_client;
-
-		// Keep the rate limit of a client until reset_rate_limiting()
-		// ends it, rate-limited queries are not counted above
-		if(client->flags.rate_limited || client->rate_limit > 0)
-			goto keep_client;
-
-		if(config.debug.gc.v.b)
-		{
-			char timestring[TIMESTR_SIZE];
-			get_timestr(timestring, client->lastQuery, true, false);
-
-			log_debug(DEBUG_GC, "Recycling client %s (ID %u, last query was %s)",
-			          getstr(client->ippos), clientID, timestring);
-		}
-
-		// Add ID of recycled client to recycle table
-		set_next_recycled_ID(CLIENTS, clientID);
-
-		// Wipe client's memory
-		memset(client, 0, sizeof(clientsData));
-
-		clients_recycled++;
-		continue;
-
-keep_client:
-		if(cwrite != i)
-			clients_lookup[cwrite] = clients_lookup[i];
-		cwrite++;
-	}
-	if(clients_recycled > 0)
-	{
-		memset(clients_lookup + cwrite, 0,
-		       (counters->clients_lookup_size - cwrite) * sizeof(*clients_lookup));
-		counters->clients_lookup_size = cwrite;
-	}
+	for(unsigned int i = 0; i < counters->clients_lookup_MAX; i++)
+		while(recycle_client(i))
+			clients_recycled++;
 
 	// Recycle domains
 	// A domain can be recycled when no active query references it either
 	// directly (domain->count == 0) or via CNAME chain
 	// (domain->cname_refcount == 0), and its last query was > 24h ago.
 	unsigned int domains_recycled = 0;
-	unsigned int dwrite = 0;
-	for(unsigned int i = 0; i < counters->domains_lookup_size; i++)
-	{
-		const unsigned int domainID = domains_lookup[i].id;
-		domainsData *domain = getDomain(domainID, true);
-		if(domain == NULL)
-			continue;
-
-		// Skip if still referenced by any query or CNAME chain
-		if(domain->count > 0 || domain->cname_refcount > 0)
-			goto keep_domain;
-
-		// Only recycle domains when their last query was more than 24
-		// hours ago. This ensures that we do not recycle domains that
-		// have recently been seen but which are not part of any query
-		// (e.g., intermediate domains during CNAME inspection)
-		if(domain->lastQuery > twentyfour_hrs_ago)
-			goto keep_domain;
-
-		if(config.debug.gc.v.b)
-		{
-			char timestring[TIMESTR_SIZE];
-			get_timestr(timestring, domain->lastQuery, true, false);
-
-			log_debug(DEBUG_GC, "Recycling domain %s (ID %u, last query was %s)",
-			          getstr(domain->domainpos), domainID, timestring);
-		}
-
-		// Add ID of recycled domain to recycle table
-		set_next_recycled_ID(DOMAINS, domainID);
-
-		// Wipe domain's memory
-		memset(domain, 0, sizeof(domainsData));
-
-		domains_recycled++;
-		continue;
-
-keep_domain:
-		if(dwrite != i)
-			domains_lookup[dwrite] = domains_lookup[i];
-		dwrite++;
-	}
+	for(unsigned int i = 0; i < counters->domains_lookup_MAX; i++)
+		while(recycle_domain(i, twentyfour_hrs_ago))
+			domains_recycled++;
 	if(domains_recycled > 0)
 	{
-		memset(domains_lookup + dwrite, 0,
-		       (counters->domains_lookup_size - dwrite) * sizeof(*domains_lookup));
-		counters->domains_lookup_size = dwrite;
-
 		// Cached CNAME addinfo row IDs are keyed on domain IDs that
 		// may now be handed out to other domains
 		clear_addinfo_id_cache();
@@ -201,55 +231,9 @@ keep_domain:
 	// which is indicated by cache->refcount == 0 (maintained
 	// incrementally).
 	unsigned int cache_recycled = 0;
-	unsigned int kwrite = 0;
-	for(unsigned int i = 0; i < counters->dns_cache_lookup_size; i++)
-	{
-		const unsigned int cacheID = dns_cache_lookup[i].id;
-		DNSCacheData *cache = getDNSCache(cacheID, true);
-		if(cache == NULL)
-			continue;
-
-		// Skip if still referenced by at least one query
-		if(cache->refcount > 0)
-			goto keep_cache;
-
-		// If this cache entry held a CNAME domain reference, decrement
-		// that domain's cname_refcount. CNAME_domainID is initialized
-		// to (unsigned int)-1 in findCacheID() and only set to a valid
-		// value when cname_refcount is incremented
-		// (dnsmasq_interface.c, CNAME chain blocking). We check the
-		// sentinel rather than blocking_status because gravity reloads
-		// can reset blocking_status to QUERY_UNKNOWN without clearing
-		// CNAME_domainID.
-		if(cache->CNAME_domainID != (unsigned int)-1)
-		{
-			domainsData *cname_domain = getDomain(cache->CNAME_domainID, true);
-			if(cname_domain != NULL)
-				cname_domain->cname_refcount--;
-		}
-
-		log_debug(DEBUG_GC, "Recycling cache entry with ID %u", cacheID);
-
-		// Add ID of recycled cache entry to recycle table
-		set_next_recycled_ID(DNS_CACHE, cacheID);
-
-		// Wipe cache entry's memory
-		memset(cache, 0, sizeof(DNSCacheData));
-
-		cache_recycled++;
-		continue;
-
-keep_cache:
-		if(kwrite != i)
-			dns_cache_lookup[kwrite] = dns_cache_lookup[i];
-		kwrite++;
-	}
-	if(cache_recycled > 0)
-	{
-		memset(dns_cache_lookup + kwrite, 0,
-		       (counters->dns_cache_lookup_size - kwrite) * sizeof(*dns_cache_lookup));
-		counters->dns_cache_lookup_size = kwrite;
-	}
+	for(unsigned int i = 0; i < counters->dns_cache_lookup_MAX; i++)
+		while(recycle_cache(i))
+			cache_recycled++;
 
 	// Scan number of recycled clients, domains, and cache entries if in
 	// debug mode

@@ -21,138 +21,36 @@
 // PRIu32
 #include <inttypes.h>
 
-/**
- * @brief Compare two hash values.
- *
- * This function compares two 32-bit hash values and returns:
- * - -1 if the first hash is less than the second hash.
- * -  1 if the first hash is greater than the second hash.
- * -  0 if both hashes are equal.
- *
- * @param a The first hash value to compare.
- * @param b The second hash value to compare.
- * @return An integer indicating the result of the comparison.
- */
-static inline int cmp_hash(const uint32_t a, const uint32_t b)
+// The lookup tables are open-addressing hash tables with linear probing. A
+// zero hash marks an empty slot (fresh shared memory is zeroed), so a real
+// hash of zero is stored as one.
+static inline uint32_t slot_hash(const uint32_t hash)
 {
-	// Compare hash values
-	if(a < b)
-		// First hash is less than second hash
-		return -1;
-	if(a > b)
-		// First hash is greater than second hash
-		return 1;
-
-	// Match
-	return 0;
+	return hash != 0 ? hash : 1u;
 }
 
-/**
- * @file datastructure.c
- * @brief Implements a binary search algorithm for lookup_table structures.
- *
- * @param key Pointer to the lookup_table structure to search for (element to find).
- * @param base Pointer to the base of the array of lookup_table structures to search in.
- * @param size Number of elements in the array to search in.
- * @param try Pointer to a pointer where the address of the found element will be stored.
- * @return true if the element is found, false otherwise.
- *
- * This function performs a binary search on an array of lookup_table structures.
- * It compares the key with the middle element of the array and decides whether
- * to search in the left or right half of the array. The search continues until
- * the element is found or the array is exhausted. This function is used to find
- * an element in a sorted array of lookup_table structures based on the hash value.
- * Finding the element in the array is done in O(log n) time complexity.
- *
- * This function is different from the standard bsearch function in that it
- * always returns the address of where the element would be found if it were in the
- * array - even if the element is not found. This is useful for inserting new
- * elements subsequently as we already have the correct position in the array
- * without resorting to do a linear search to find the insertion point later on.
- * We, instead, make the function return false if the element is not found.
- *
- * The standard library's bsearch() function, however, returns a pointer to the
- * found element or NULL (!) if the element is not found which provides no
- * information about the position where the element would need to be inserted.
- */
-static bool binsearch(struct lookup_table *base, const uint32_t hash,
-                      size_t size, struct lookup_table **try)
+
+// Fibonacci hashing also spreads the bit-packed DNS cache hashes
+static inline unsigned int home_slot(const uint32_t hash, const unsigned int cap)
 {
-	// Initialize the base pointer to the start of the array
-	*try = base;
-
-	// Run while there are elements left to be searched in the base array
-	while(size > 0)
-	{
-		// Use unsigned arithmetic to avoid overflow when calculating
-		// the middle element of the array
-		const size_t mid = size / 2;
-		// Update the base pointer to the middle element of the array
-		*try = base + mid;
-
-		// Compare the key with the current element
-		const int sign = cmp_hash(hash, (*try)->hash);
-
-		if(sign == 0)
-		{
-			// If the key matches the element, we found at least one
-			// occurrence of the key in the array
-			return true;
-		}
-		else if(size == 1)
-		{
-			// If there's only one element left and it doesn't
-			// match, break the loop as the key is not in the array
-			// => return false
-
-			// If the key is greater than the middle element, the
-			// key would be inserted after the middle element
-			if(sign > 0)
-				(*try)++;
-
-			// Break the loop, we have not found the key but
-			// know that it would need to be inserted at *try
-			break;
-		}
-		else if(sign < 0)
-		{
-			// If the key is less than the middle element, search in
-			// the (relative) left half (XXXX-----) and try again
-
-			// base stays the same
-			size = mid; // size is now the left half
-		}
-		else
-		{
-			// If the key is greater than the middle element, search
-			// in the (relative) right half (-----XXXX) and try again
-
-			base = *try; // base is now the beginning of the right half
-			size -= mid; // size is now the right half
-		}
-	}
-
-	// If the key was not found, return false
-	return false;
+	return (uint32_t)(hash * 2654435769u) >> (32 - __builtin_ctz(cap));
 }
 
 /**
  * @brief Retrieves the appropriate lookup table and its size based on the specified memory type.
- *
- * This function assigns the correct lookup table and its corresponding size to the provided pointers
- * based on the given memory type. If the memory type is invalid, an error is logged and the function
- * returns false.
  *
  * @param type The memory type for which the lookup table is requested. It can be one of the following:
  *             - CLIENTS_LOOKUP
  *             - DOMAINS_LOOKUP
  *             - DNS_CACHE_LOOKUP
  * @param table A pointer to a pointer that will be assigned the address of the appropriate lookup table.
- * @param size A pointer to a pointer that will be assigned the address of the size of the appropriate lookup table.
+ * @param size A pointer to a pointer that will be assigned the address of the number of entries.
+ * @param cap A pointer that will be assigned the number of usable slots (a power of two).
  * @param name A pointer to a pointer that will be assigned the name of the appropriate lookup table.
  * @return true if the lookup table and size were successfully retrieved, false if the memory type is invalid.
  */
-static bool get_table(const enum memory_type type, struct lookup_table **table, unsigned int **size, const char **name)
+static bool get_table(const enum memory_type type, struct lookup_table **table, unsigned int **size,
+                      unsigned int *cap, const char **name)
 {
 	// Get the correct lookup_table array based on the type
 	if(type == CLIENTS_LOOKUP)
@@ -160,18 +58,21 @@ static bool get_table(const enum memory_type type, struct lookup_table **table, 
 		*name = "clients";
 		*table = clients_lookup;
 		*size = &counters->clients_lookup_size;
+		*cap = lookup_capacity(counters->clients_lookup_MAX);
 	}
 	else if(type == DOMAINS_LOOKUP)
 	{
 		*name = "domains";
 		*table = domains_lookup;
 		*size = &counters->domains_lookup_size;
+		*cap = lookup_capacity(counters->domains_lookup_MAX);
 	}
 	else if(type == DNS_CACHE_LOOKUP)
 	{
 		*name = "DNS cache";
 		*table = dns_cache_lookup;
 		*size = &counters->dns_cache_lookup_size;
+		*cap = lookup_capacity(counters->dns_cache_lookup_MAX);
 	}
 	else
 	{
@@ -179,15 +80,23 @@ static bool get_table(const enum memory_type type, struct lookup_table **table, 
 		return false;
 	}
 
-	return true;
+	return *cap > 0;
+}
+
+// Put an entry into its first free slot
+static void place(struct lookup_table *table, const unsigned int cap, const struct lookup_table entry)
+{
+	unsigned int pos = home_slot(entry.hash, cap);
+	while(table[pos].hash != 0)
+		pos = (pos + 1) & (cap - 1);
+	table[pos] = entry;
 }
 
 /**
  * @brief Inserts an element into the lookup table.
  *
- * This function inserts an element with the specified ID and hash into the
- * lookup table corresponding to the given memory type. If the element already
- * exists in the table, it logs a message and returns without making any changes.
+ * The table is grown first if it is getting full, so there is always an empty
+ * slot to end a probe sequence.
  *
  * @param type The memory type that determines which lookup table to use.
  * @param id The ID of the element to be inserted.
@@ -196,47 +105,64 @@ static bool get_table(const enum memory_type type, struct lookup_table **table, 
  */
 bool lookup_insert(const enum memory_type type, const unsigned int id, const uint32_t hash)
 {
+	shm_ensure_lookup_size(type);
 
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
-	unsigned int *size = NULL;
+	unsigned int *size = NULL, cap = 0;
 	const char *name = NULL;
-	if(!get_table(type, &table, &size, &name))
+	if(!get_table(type, &table, &size, &cap, &name))
 		return false;
 
-	// Find the correct position in the lookup_table array
-	// We do not check the return value as we are inserting a new element
-	// and don't care if elements with the same hash value exist already
-	struct lookup_table *try = table;
-	binsearch(table, hash, *size, &try);
-
-	// Calculate the position where the element would be inserted
-	const size_t pos = try - table;
-
-	// Move all elements from the insertion point to the end of the array
-	// one position to the right to make space for the new element
-	// Don't move anything if the element is added at the end of the array
-	if(pos < *size)
-		memmove(try + 1, try, (*size - pos) * sizeof(struct lookup_table));
-
-	// Prepare the new lookup_table element and insert it at the correct
-	// position
-	table[pos] = (struct lookup_table){ .id = id, .hash = hash };
-
-	// Increase the number of elements in the array
+	place(table, cap, (struct lookup_table){ .id = id, .hash = slot_hash(hash) });
 	(*size)++;
 
 	return true;
 }
 
 /**
+ * @brief Re-places all entries of a lookup table after it grew.
+ *
+ * @param type The memory type that determines which lookup table to use.
+ */
+void lookup_rehash(const enum memory_type type)
+{
+	struct lookup_table *table = NULL;
+	unsigned int *size = NULL, cap = 0;
+	const char *name = NULL;
+	if(!get_table(type, &table, &size, &cap, &name))
+		return;
+
+	unsigned int n = 0;
+	for(unsigned int i = 0; i < cap; i++)
+		if(table[i].hash != 0)
+			n++;
+
+	struct lookup_table *entries = calloc(n + 1, sizeof(*entries));
+	if(entries == NULL)
+	{
+		log_crit("Memory allocation failed while rehashing the %s lookup table! Exiting", name);
+		exit(EXIT_FAILURE);
+	}
+
+	n = 0;
+	for(unsigned int i = 0; i < cap; i++)
+		if(table[i].hash != 0)
+			entries[n++] = table[i];
+
+	memset(table, 0, cap * sizeof(*table));
+	for(unsigned int i = 0; i < n; i++)
+		place(table, cap, entries[i]);
+	*size = n;
+
+	free(entries);
+}
+
+/**
  * @brief Removes an element from the lookup table.
  *
- * This function removes an element with the specified ID and hash from the
- * lookup table corresponding to the given memory type. If the element does not
- * exist in the table, it logs a message and returns without making any changes.
- * If the element is found, it is removed from the table and the remaining
- * elements are shifted to the left to fill the gap and maintain the order.
+ * Later entries of the same probe sequence are shifted back into the gap
+ * (backward-shift deletion), so no tombstones are needed.
  *
  * @param type The memory type that determines which lookup table to use.
  * @param id The ID of the element to be removed.
@@ -247,61 +173,38 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 {
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
-	unsigned int *size = NULL;
+	unsigned int *size = NULL, cap = 0;
 	const char *name = NULL;
-	if(!get_table(type, &table, &size, &name))
+	if(!get_table(type, &table, &size, &cap, &name))
 		return false;
 
-	// Find the correct position in the lookup_table array
-	struct lookup_table *try = NULL;
-	if(!binsearch(table, hash, *size, &try))
+	const uint32_t h = slot_hash(hash);
+	const unsigned int mask = cap - 1;
+	unsigned int pos = home_slot(h, cap);
+	while(table[pos].hash != 0 && (table[pos].hash != h || table[pos].id != id))
+		pos = (pos + 1) & mask;
+
+	if(table[pos].hash == 0)
 	{
-		// The element is not in the array
-		log_warn("Element to be removed (hash %u) is not in the %s lookup table",
-		         hash, name);
+		// The element is not in the table
+		log_warn("Element to be removed (ID %u, hash %u) not in %s lookup table",
+		         id, hash, name);
 		return true;
 	}
 
-	// Calculate the position where the element is located
-	size_t pos = try - table;
-
-	// If binsearch finds the element, it returns the address *one*
-	// of the elements matching the hash value. We need to find the
-	// first element with the same hash value and then iterate over
-	// all elements with the same hash value to find the correct one
-	// where the ID matches as well.
-	while(pos > 0 && table[pos - 1].hash == hash)
-		pos--;
-
-	// Iterate over all elements with the same hash value
-	while(pos < *size && table[pos].hash == hash)
+	// An entry may move into the gap unless its home slot lies between
+	// the gap and its current slot
+	for(unsigned int next = (pos + 1) & mask; table[next].hash != 0; next = (next + 1) & mask)
 	{
-		// If the ID matches, we found the correct element
-		if(table[pos].id == id)
+		const unsigned int home = home_slot(table[next].hash, cap);
+		if(((next - home) & mask) >= ((next - pos) & mask))
 		{
-			// Move all elements from the position to the end of the array
-			// one position to the left to remove the element
-			// Don't move anything if the element is removed from the end of the array
-			if(pos < *size - 1)
-				memmove(table + pos, table + pos + 1,
-				        (*size - pos - 1) * sizeof(struct lookup_table));
-
-			// Decrease the number of elements in the array
-			(*size)--;
-
-			// Zero out the memory of the removed element
-			memset(table + *size, 0, sizeof(struct lookup_table));
-
-			return true;
+			table[pos] = table[next];
+			pos = next;
 		}
-
-		// Move to the next element with the same hash value
-		pos++;
 	}
-
-	// The element is not in the array
-	log_warn("Element to be removed (ID %u, hash %u) not in %s lookup table",
-	         id, hash, name);
+	table[pos] = (struct lookup_table){ 0 };
+	(*size)--;
 
 	return true;
 }
@@ -309,10 +212,7 @@ bool lookup_remove(const enum memory_type type, const unsigned int id, const uin
 /**
  * @brief Finds an element in the lookup table based on the given type and hash.
  *
- * This function searches for an element in the lookup table that matches the
- * specified type and hash. If an element with the same hash is found, it iterates
- * over all elements with the same hash to find the correct one where the ID matches
- * as well.
+ * Several elements may share a hash value, cmp_func decides which one matches.
  *
  * @param type The type of memory to search in.
  * @param hash The hash value of the element to find.
@@ -327,42 +227,19 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 {
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
-	unsigned int *size = NULL;
+	unsigned int *size = NULL, cap = 0;
 	const char *name = NULL;
-	if(!get_table(type, &table, &size, &name))
+	if(!get_table(type, &table, &size, &cap, &name))
 		return false;
 
-	// Find the correct position in the lookup_table array
-	struct lookup_table *try = NULL;
-	if(!binsearch(table, hash, *size, &try))
-		return false;
-
-	// Calculate the position where the element is located
-	size_t pos = try - table;
-
-	// If binsearch finds the element, it returns the address *one*
-	// of the elements matching the hash value. We need to find the
-	// first element with the same hash value and then iterate over
-	// all elements with the same hash value to find the correct one
-	// where the ID matches as well.
-	while(pos > 0 && table[pos - 1].hash == hash)
-		pos--;
-
-	// Iterate over all elements with the same hash value
-	while(pos < *size && table[pos].hash == hash)
+	const uint32_t h = slot_hash(hash);
+	for(unsigned int pos = home_slot(h, cap); table[pos].hash != 0; pos = (pos + 1) & (cap - 1))
 	{
-		// If the ID matches, we found the correct element
-		if(cmp_func(&table[pos], lookup_data))
+		if(table[pos].hash == h && cmp_func(&table[pos], lookup_data))
 		{
-			// Store the matching ID
 			*matchingID = table[pos].id;
-
-			// Return success
 			return true;
 		}
-
-		// Move to the next element with the same hash value
-		pos++;
 	}
 
 	return false;
@@ -371,37 +248,48 @@ bool lookup_find_id(const enum memory_type type, const uint32_t hash, const stru
 /**
  * @brief Searches for hash collisions in the lookup table of the specified memory type.
  *
- * This function my be used to assess the quality of the hash function.
+ * This function my be used to assess the quality of the hash function. It also
+ * reports entries that cannot be found because their probe sequence is broken.
  *
  * @param type The type of memory for which to search for hash collisions. This can be one of:
  *             - CLIENTS_LOOKUP: Searches for collisions in the clients lookup table.
  *             - DOMAINS_LOOKUP: Searches for collisions in the domains lookup table.
  *             - DNS_CACHE_LOOKUP: Searches for collisions in the DNS cache lookup table.
- *
- * The function retrieves the appropriate lookup table based on the provided type and iterates
- * through it to find and log any hash collisions. The logged information varies depending on the
- * type of lookup table being searched.
  */
 static void lookup_find_hash_collisions_table(const enum memory_type type)
 {
 	// Get the correct lookup_table array based on the type
 	struct lookup_table *table = NULL;
-	unsigned int *size = NULL;
+	unsigned int *size = NULL, cap = 0;
 	const char *name = NULL;
-	if(!get_table(type, &table, &size, &name))
+	if(!get_table(type, &table, &size, &cap, &name))
 		return;
 
 	log_info("Searching for hash collisions in %s lookup table", name);
 
-	// Do a linear search to find hash collisions in the sorted array
+	// Walk from each entry's home slot to the entry itself: earlier entries
+	// with the same hash are collisions, an empty slot on the way means the
+	// entry cannot be found
 	unsigned int collisions = 0, errors = 0;
-	for(size_t i = 1; i < *size; i++)
+	for(unsigned int i = 0; i < cap; i++)
 	{
-		// If the hash value of the current element is the same as the previous element
-		if(table[i].hash == table[i - 1].hash)
+		if(table[i].hash == 0)
+			continue;
+
+		for(unsigned int pos = home_slot(table[i].hash, cap); pos != i; pos = (pos + 1) & (cap - 1))
 		{
-			// Get the corresponding ID of the previous and this element
-			unsigned int id1 = table[i - 1].id;
+			if(table[pos].hash == 0)
+			{
+				log_err("Entry at slot %u (ID %u, hash %"PRIu32") cannot be found in %s lookup table",
+				        i, table[i].id, table[i].hash, name);
+				errors++;
+				break;
+			}
+			if(table[pos].hash != table[i].hash)
+				continue;
+
+			// Get the corresponding ID of the earlier and this element
+			unsigned int id1 = table[pos].id;
 			unsigned int id2 = table[i].id;
 
 			if(type == CLIENTS_LOOKUP)
@@ -413,8 +301,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const char *name1 = client1 ? getstr(client1->namepos) : "<invalid>";
 				const char *name2 = client2 ? getstr(client2->namepos) : "<invalid>";
 
-				log_info("Hash collision %"PRIu32" found at position %zu/%zu between client IDs %u (%s) and %u (%s)",
-				         table[i].hash, i - 1, i, id1, name1, id2, name2);
+				log_info("Hash collision %"PRIu32" found at slots %u/%u between client IDs %u (%s) and %u (%s)",
+				         table[i].hash, pos, i, id1, name1, id2, name2);
 			}
 			else if(type == DOMAINS_LOOKUP)
 			{
@@ -425,8 +313,8 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const char *name1 = domain1 ? getstr(domain1->domainpos) : "<invalid>";
 				const char *name2 = domain2 ? getstr(domain2->domainpos) : "<invalid>";
 
-				log_info("Hash collision %"PRIu32" found at position %zu/%zu between domain IDs %u (%s) and %u (%s)",
-				         table[i].hash, i - 1, i, id1, name1, id2, name2);
+				log_info("Hash collision %"PRIu32" found at slots %u/%u between domain IDs %u (%s) and %u (%s)",
+				         table[i].hash, pos, i, id1, name1, id2, name2);
 			}
 			else if(type == DNS_CACHE_LOOKUP)
 			{
@@ -434,36 +322,21 @@ static void lookup_find_hash_collisions_table(const enum memory_type type)
 				const DNSCacheData *cache1 = getDNSCache(id1, true);
 				const DNSCacheData *cache2 = getDNSCache(id2, true);
 
-				log_info("Hash collision %"PRIu32" found at position %zu/%zu between DNS cache IDs %u (%u/%u/%u) and %u (%u/%u/%u)",
-				         table[i].hash, i - 1, i,
+				log_info("Hash collision %"PRIu32" found at slots %u/%u between DNS cache IDs %u (%u/%u/%u) and %u (%u/%u/%u)",
+				         table[i].hash, pos, i,
 				         id1, cache1->clientID, cache1->domainID, cache1->query_type,
 				         id2, cache2->clientID, cache2->domainID, cache2->query_type);
 			}
 
 			collisions++;
 		}
-		else if(table[i].hash < table[i - 1].hash)
-		{
-			// Log an error if the array is not sorted, the equality
-			// check was already done in the previous if statement
-			//
-			// This is really an error as, when the array is not
-			// sorted, the binary search algorithm will not be able
-			// to find elements possibly even causing artificial
-			// hash collisions above as the same entry might be
-			// inserted multiple times
-			log_err("Array is not sorted at position %zu/%zu: %"PRIu32" > %"PRIu32,
-			        i - 1, i, table[i - 1].hash, table[i].hash);
-
-			errors++;
-		}
 	}
 
 	// Log results, if there are any collisions or errors, log as error,
 	// otherwise as info message
 	const int priority = collisions > 0 || errors > 0 ? LOG_ERR : LOG_INFO;
-	log_lvl(priority, "Found %u hash collisions and %u sorting errors in %s lookup table (scanned %u elements)",
-	        collisions, errors, name, *size);
+	log_lvl(priority, "Found %u hash collisions and %u unreachable entries in %s lookup table (%u entries in %u slots)",
+	        collisions, errors, name, *size, cap);
 }
 
 /**

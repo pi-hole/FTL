@@ -178,6 +178,7 @@ struct recycler_tables {
 extern struct lookup_table *clients_lookup;
 extern struct lookup_table *domains_lookup;
 extern struct lookup_table *dns_cache_lookup;
+void shm_ensure_lookup_size(const enum memory_type type);
 #endif
 
 /// Block until a lock can be obtained
