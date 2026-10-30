@@ -12,6 +12,7 @@ Usage:
 import itertools
 import json
 import re
+import subprocess
 from urllib.parse import quote
 
 import pytest
@@ -1630,6 +1631,57 @@ class TestQueriesSorted:
             data = _j(api_session.get(url + sort, timeout=5))
             assert [q["id"] for q in data["queries"]] == ids, sort
             assert data["recordsFiltered"] == len(ids) > 0
+
+    def test_queries_on_disk_filtered_pages(self, api_session):
+        """Filtered and sorted pages of the on-disk query log hold the rows
+        SQLite selects for them, and recordsFiltered counts all matches. The
+        thirty queries are two days old, so only the database has them"""
+        def sql(statement):
+            return subprocess.run(["./pihole-FTL", "sqlite3", "/etc/pihole/pihole-FTL.db",
+                                   ".timeout 5000", statement],
+                                  capture_output=True, text=True, timeout=30, check=True).stdout
+
+        domains = ",".join(f"('p{n}.paging.ftl')" for n in range(10))
+        sql("INSERT OR IGNORE INTO client_by_id (ip) VALUES ('127.0.0.99');"
+            f"INSERT OR IGNORE INTO domain_by_id (domain) VALUES {domains};"
+            "INSERT INTO query_storage (timestamp, type, status, domain, client) "
+            "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 29) "
+            "SELECT CAST(strftime('%s', 'now') AS INTEGER) - 172800 + i, 1 + i % 2, 2, "
+            "(SELECT id FROM domain_by_id WHERE domain = 'p' || (i % 10) || '.paging.ftl'), "
+            "(SELECT id FROM client_by_id WHERE ip = '127.0.0.99' AND name IS NULL) FROM n;")
+        try:
+            rows = ("FROM query_storage q JOIN domain_by_id d ON q.domain = d.id "
+                    "WHERE d.domain GLOB 'p*.paging.ftl'")
+            url = f"{FTL_URL}/api/queries?disk=true&domain=*.paging.ftl&client_ip=127.0.0.99"
+
+            # Newest first, the default order
+            ids = [int(i) for i in sql(f"SELECT q.id {rows} ORDER BY q.id DESC;").split()]
+            assert len(ids) == 30
+            for start in (0, 7, 28):
+                page = _j(api_session.get(f"{url}&start={start}&length=7", timeout=5))
+                assert [q["id"] for q in page["queries"]] == ids[start:start + 7], start
+                assert page["recordsFiltered"] == 30
+
+            # Another filter narrows the rows and the count
+            aaaa = [int(i) for i in sql(f"SELECT q.id {rows} AND q.type = 2 ORDER BY q.id DESC;").split()]
+            page = _j(api_session.get(f"{url}&type=AAAA&start=5&length=5", timeout=5))
+            assert [q["id"] for q in page["queries"]] == aaaa[5:10]
+            assert page["recordsFiltered"] == len(aaaa) == 15
+
+            # Sorted by a column with equal keys, the pages add up to all rows
+            # once each, in the order of a single request
+            sort = _sort("domain", "asc")
+            whole = _j(api_session.get(f"{url}{sort}&length=30", timeout=5))
+            pages = [q["id"] for start in range(0, 30, 7)
+                     for q in _j(api_session.get(f"{url}{sort}&start={start}&length=7", timeout=5))["queries"]]
+            assert pages == [q["id"] for q in whole["queries"]]
+            assert sorted(pages) == sorted(ids)
+            assert [q["domain"] for q in whole["queries"]] == sorted(f"p{n}.paging.ftl" for n in range(10) for _ in range(3))
+        finally:
+            sql("DELETE FROM query_storage WHERE domain IN "
+                "(SELECT id FROM domain_by_id WHERE domain GLOB 'p*.paging.ftl');"
+                "DELETE FROM domain_by_id WHERE domain GLOB 'p*.paging.ftl';"
+                "DELETE FROM client_by_id WHERE ip = '127.0.0.99';")
 
 
 # ---------------------------------------------------------------------------
