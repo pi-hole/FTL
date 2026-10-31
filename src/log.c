@@ -442,31 +442,42 @@ const char *debugstr(const enum debug_flag flag)
 // bits extracted in my_syslog().
 bool FTL_write_dnsmasq_log(const char *message, const char *func)
 {
-	// Locale-independent and thread-safe (unlike ctime()), and keeps the
-	// on-disk format byte-identical to what dnsmasq wrote before.
+	// The prefix changes at most once a second, so format it only then:
+	// ctime_r() costs more than everything else on this path together.
+	// func is always one of my_syslog()'s string literals
+	static _Thread_local char prefix[64];
+	static _Thread_local size_t prefix_len = 0;
+	static _Thread_local time_t prefix_time = 0;
+	static _Thread_local pid_t prefix_pid = 0;
+	static _Thread_local const char *prefix_func = NULL;
 	time_t now = time(NULL);
-	char ctime_buf[26];
-	const char *ctime_str = ctime_r(&now, ctime_buf);
-	if(ctime_str == NULL)
-		ctime_str = "Thu Jan  1 00:00:00 1970\n";
-	char ts_buf[16];
-	snprintf(ts_buf, sizeof(ts_buf), "%.15s", ctime_str + 4);
+	const pid_t pid = getpid();
+	if(func == NULL)
+		func = "";
+	if(prefix_len == 0 || now != prefix_time || pid != prefix_pid || func != prefix_func)
+	{
+		// Locale-independent and thread-safe (unlike ctime()), and keeps the
+		// on-disk format byte-identical to what dnsmasq wrote before.
+		char ctime_buf[26];
+		const char *ctime_str = ctime_r(&now, ctime_buf);
+		if(ctime_str == NULL)
+			ctime_str = "Thu Jan  1 00:00:00 1970\n";
+		const int len = snprintf(prefix, sizeof(prefix), "%.15s dnsmasq%s[%d]: ", ctime_str + 4, func, pid);
+		prefix_len = len > 0 && len < (int)sizeof(prefix) ? (size_t)len : 0;
+		prefix_time = now;
+		prefix_pid = pid;
+		prefix_func = func;
+	}
 
 	char line[2048];
-	int off = snprintf(line, sizeof(line), "%s dnsmasq%s[%d]: ", ts_buf, func ? func : "", getpid());
+	size_t off = prefix_len;
+	memcpy(line, prefix, off);
 
-	// Clamp before using off as an offset - snprintf returns the would-be
-	// length on truncation and sizeof(line) - off would underflow otherwise;
-	// it may also return negative on an encoding error
-	if(off < 0 || off >= (int)sizeof(line))
-		off = sizeof(line) - 1;
-
+	// Truncate so that the newline below still fits
 	const char *msg = message ? message : "";
-	off += snprintf(line + off, sizeof(line) - off, "%s", msg);
-
-	// Clamp to buffer end - snprintf returns would-be length on truncation
-	if(off < 0 || off >= (int)sizeof(line))
-		off = sizeof(line) - 1;
+	const size_t len = strnlen(msg, sizeof(line) - 1 - off);
+	memcpy(line + off, msg, len);
+	off += len;
 
 	if(off > 0 && line[off - 1] != '\n')
 		line[off++] = '\n';
