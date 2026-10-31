@@ -422,7 +422,7 @@ bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 
 void init_config_mutex(void);
-enum blocking_status get_blockingstatus(void) __attribute__((pure));
+enum blocking_status get_blockingstatus(void);
 void set_blockingstatus(bool enabled);
 
 // Add enum items with descriptions
