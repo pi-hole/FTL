@@ -4335,6 +4335,13 @@ static void terminator_quic_stop(void)
 		h3_workers_n = 0;
 
 		quic_running = false;
+		// Wake the event loop so it sees the flag before its poll() times out
+		if(h3_wake_fd >= 0)
+		{
+			const uint64_t one = 1;
+			if(write(h3_wake_fd, &one, sizeof(one)) != (ssize_t)sizeof(one))
+				{ /* the loop still exits after its poll() timeout */ }
+		}
 		if(quic_tid_valid)
 		{
 			pthread_join(quic_tid, NULL);
