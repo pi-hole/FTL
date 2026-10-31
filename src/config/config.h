@@ -166,7 +166,9 @@ struct config {
 		struct conf_item revServers;
 		struct conf_item upstreamCA;
 		struct conf_item doh;
+		struct conf_item dohReverseProxy;
 		struct conf_item dot;
+		struct conf_item doq;
 		struct {
 			struct conf_item name;
 			struct conf_item local;
@@ -257,7 +259,6 @@ struct config {
 		struct conf_item maxDBdays;
 		struct conf_item DBinterval;
 		struct conf_item useWAL;
-		struct conf_item forceDisk;
 		struct {
 			struct conf_item parseARPcache;
 			struct conf_item expire;
@@ -272,6 +273,7 @@ struct config {
 		struct conf_item headers;
 		struct conf_item serve_all;
 		struct conf_item advancedOpts;
+		struct conf_item trustedProxies;
 		struct {
 			struct conf_item timeout;
 			struct conf_item restore;
@@ -313,7 +315,6 @@ struct config {
 
 	struct {
 		struct conf_item database;
-		struct conf_item tmp_db;
 		struct conf_item gravity;
 		struct conf_item gravity_tmp;
 		struct conf_item macvendor;
@@ -398,6 +399,7 @@ bool migrate_config_v6(void);
 bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
+bool is_secret_conf_item(const struct conf_item *conf_item) __attribute__((pure));
 struct conf_item *get_debug_item(struct config *conf, const enum debug_flag debug);
 unsigned int config_path_depth(char **paths) __attribute__ ((pure));
 void lock_config(void);
@@ -419,8 +421,6 @@ void reset_config_default(struct conf_item *conf_item);
 bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 
-// Defined in toml_reader.c
-bool readDebugSettings(void);
 void init_config_mutex(void);
 enum blocking_status get_blockingstatus(void) __attribute__((pure));
 void set_blockingstatus(bool enabled);

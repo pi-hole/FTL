@@ -259,7 +259,8 @@
 
   # Path to a CA certificate bundle used to verify encrypted upstream servers (DoT/DoH).
   # If left empty, the system default trust store is used. Only relevant when at least
-  # one dns.upstreams entry uses the tls:// or https:// scheme.
+  # one dns.upstreams entry uses an encrypted scheme (tls://, https://, h3://, doq:// or
+  # quic://).
   #
   # Allowed values are:
   #     A path to a PEM CA bundle, or empty for the system default trust store
@@ -276,6 +277,19 @@
   #     true or false
   doh = true
 
+  # Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The
+  # client-facing connection stays HTTPS; the proxy handles the encryption and forwards
+  # plain HTTP to Pi-hole. This requires the proxy to be listed in
+  # webserver.trustedProxies and to announce the client's TLS in a PROXY protocol v2
+  # header, e.g., HAProxy with send-proxy-v2-ssl: only such a proxy is believed, and the
+  # client address it announces is used to attribute the query. Any other plain HTTP
+  # request is still refused, so enabling this alone never exposes DNS queries in
+  # cleartext.
+  #
+  # Allowed values are:
+  #     true or false
+  dohReverseProxy = true ### CHANGED, default = false
+
   # Enable the inbound DNS-over-TLS (DoT) server on port 853. When enabled, FTL
   # terminates DoT connections directly (RFC 7858) so downstream clients can use this
   # Pi-hole as their encrypted resolver. Requires a valid TLS certificate (the same one
@@ -284,6 +298,17 @@
   # Allowed values are:
   #     true or false
   dot = true
+
+  # Enable the inbound DNS-over-QUIC (DoQ) server on UDP port 853. When enabled, FTL
+  # terminates DoQ connections directly (RFC 9250) so downstream clients can use this
+  # Pi-hole as their encrypted resolver. DoQ carries DNS on QUIC streams and shares port
+  # number 853 with DoT without colliding (UDP vs. TCP). Requires a valid TLS
+  # certificate (the same one configured for the webserver) and an FTL built with QUIC
+  # support.
+  #
+  # Allowed values are:
+  #     true or false
+  doq = true
 
   [dns.domain]
     # The DNS domain used by your Pi-hole.
@@ -388,8 +413,7 @@
     #       In NULL mode, which is both the default and recommended mode for Pi-hole
     #       FTLDNS, blocked queries will be answered with the "unspecified address"
     #       (0.0.0.0 or ::). The "unspecified address" is a reserved IP address specified
-    #       by RFC 3513 - Internet Protocol Version 6 (IPv6) Addressing Architecture,
-    #       section 2.5.2.
+    #       by RFC 4291 - IP Version 6 Addressing Architecture, section 2.5.2.
     #   - "IP_NODATA_AAAA"
     #       In IP-NODATA-AAAA mode, blocked queries will be answered with the local IPv4
     #       addresses of your Pi-hole. Blocked AAAA queries will be answered with
@@ -687,7 +711,7 @@
     #
     # Allowed values are:
     #     A valid IPv4 address, or empty string (""). For wildcard (0.0.0.0)
-    address = ""
+    address = "127.0.0.1" ### CHANGED, default = ""
 
   [ntp.ipv6]
     # Should FTL act as network time protocol (NTP) server (IPv6)?
@@ -845,19 +869,6 @@
   #     true or false
   useWAL = true
 
-  # Should FTL force the use of disk storage for the history database? By default, FTL
-  # uses an in-memory database for much improved performance when browsing the history
-  # from the dashboard. However, on systems with very limited RAM and only occasional
-  # usage of the web interface, it may be useful to force the use of disk storage
-  # instead of holding everything in memory.
-  #
-  # Note that using disk storage *will* reduce performance, especially on systems with
-  # slow storage media (e.g., SD cards).
-  #
-  # Allowed values are:
-  #     true or false
-  forceDisk = false
-
   [database.network]
     # Should FTL analyze the local ARP cache? When disabled, client identification and the
     # network table will stop working reliably.
@@ -892,6 +903,11 @@
   # list is traversed, and the last (!) match wins. IPv6 addresses may be specified in
   # CIDR-form [a:b::c]/64.
   #
+  # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
+  # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS
+  # queries if dns.doh is enabled and dns.listeningMode allows it, all its other
+  # requests are refused.
+  #
   # Example 1: "+127.0.0.1,+[::1]" ---> deny all access, except from 127.0.0.1 and ::1
   #
   # Example 2: "+192.168.0.0/16" ---> deny all accesses, except from the 192.168.0.0/16
@@ -925,9 +941,9 @@
   # If the port is TLS/SSL, a letter 's' (secure) must be appended, for example,
   # "80,443s" will open port 80 and port 443, and connections on port 443 will be
   # encrypted. For non-encrypted ports, it is allowed to append letter 'r' (as in
-  # redirect). Redirected ports will redirect all their traffic to the first configured
-  # SSL port. For example, if webserver.port is "80r,443s", then all HTTP traffic coming
-  # at port 80 will be redirected to HTTPS port 443.
+  # redirect). Redirected ports will redirect all their traffic to the first SSL port
+  # that could be bound. For example, if webserver.port is "80r,443s", then all HTTP
+  # traffic coming at port 80 will be redirected to HTTPS port 443.
   #
   # When specifying 'o' (optional) behind a port, inability to use this port is not
   # considered an error. For instance, specifying "80o,8080o" will allow the webserver
@@ -941,7 +957,7 @@
   #
   # Allowed values are:
   #     A comma-separated list of <[ip_address:]port>
-  port = "80o,443os,[::]:80o,[::]:443os,8081r" ### CHANGED, default = "80o,443os,[::]:80o,[::]:443os"
+  port = "80o,443os,[::]:80o,[::]:443os,8081r,9443s,192.0.2.1:9444s,44s3,443xs" ### CHANGED, default = "80o,443os,[::]:80o,[::]:443os"
 
   # Maximum number of worker threads allowed.
   #
@@ -1025,6 +1041,21 @@
   # Allowed values are:
   #     An array of permitted CivetWeb options
   advancedOpts = []
+
+  # Reverse proxies whose PROXY protocol v2 header is believed, e.g., HAProxy with
+  # send-proxy-v2-ssl. Requests over a connection from one of these addresses are
+  # attributed to the client the header announces instead of to the proxy, and they
+  # count as HTTPS if the header says the client used TLS. The header of any other peer
+  # is ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting
+  # those lets every local process choose the client its requests are attributed to.
+  #
+  # Example: [ "192.168.1.10", "10.0.0.0/24" ]
+  #
+  # Allowed values are:
+  #     Array of IP addresses and/or subnets in CIDR notation
+  trustedProxies = [
+    "127.0.0.4"
+  ] ### CHANGED, default = []
 
   [webserver.session]
     # Session timeout in seconds.
@@ -1312,13 +1343,6 @@
   # Allowed values are:
   #     Any FTL database
   database = "/etc/pihole/pihole-FTL.db"
-
-  # The location of FTL's short-term temporary database (only used when
-  # database.forceDisk is true)
-  #
-  # Allowed values are:
-  #     Any FTL database
-  tmp_db = "/etc/pihole/pihole-tmp.db"
 
   # The location of Pi-hole's gravity database
   #
@@ -1788,8 +1812,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 170 total entries out of which 113 entries are default
-# --> 57 entries are modified
+# 171 total entries out of which 111 entries are default
+# --> 60 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

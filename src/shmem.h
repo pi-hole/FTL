@@ -46,9 +46,23 @@ typedef struct {
 typedef struct {
 	unsigned int queries;
 	unsigned int queries_offset;
+	// Database ID the next new query gets, see _FTL_new_query()
+	int64_t next_query_id;
+	// The newest timestamp in the queries array, how far a query's may
+	// fall behind it and the ID of the query that set this bound, see
+	// track_query_time()
+	double newest_query_time;
+	double query_time_disorder;
+	int64_t query_time_disorder_id;
+	// Queries recorded at the maximum privacy level, the query log leaves
+	// them out
+	unsigned int queries_maxprivacy;
 	unsigned int upstreams;
+	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;
 	unsigned int domains;
+	unsigned int clients_total;
+	unsigned int domains_total;
 	unsigned int queries_MAX;
 	unsigned int upstreams_MAX;
 	unsigned int clients_MAX;
@@ -70,6 +84,7 @@ typedef struct {
 	unsigned int dns_cache_lookup_size;
 	unsigned int intarrays_MAX;
 	unsigned int regex_change;
+	unsigned int aliasclients; // rows of the last alias-client import
 	struct {
 		int gravity;
 		int antigravity;
@@ -168,6 +183,8 @@ extern struct lookup_table *dns_cache_lookup;
 /// Block until a lock can be obtained
 #define lock_shm() _lock_shm(__FUNCTION__, __LINE__, __FILE__)
 void _lock_shm(const char* func, const int line, const char* file);
+#define lock_shm_reader() _lock_shm_reader(__FUNCTION__, __LINE__, __FILE__)
+void _lock_shm_reader(const char* func, const int line, const char* file);
 void shm_ensure_client_size(void);
 
 // Return if the current mutex locked the SHM lock
@@ -197,23 +214,8 @@ const int32_t *_getintarray(const size_t pos, int *count, const char *func, cons
 // Format an int array from SHM as comma-separated string for logging
 const char *fmt_intarray(const size_t pos, char *buf, const size_t bufsz);
 
-/**
- * Create a new overTime client shared memory block.
- * This also updates `overTimeClientData`.
- */
-void newOverTimeClient(const int clientID);
-
-/**
- * Add a new overTime slot to each overTime client shared memory block.
- * This also updates `overTimeClientData`.
- */
-void addOverTimeClientSlot(void);
-
 // Change ownership of shared memory objects
 void chown_all_shmem(struct passwd *ent_pw);
-
-// Get details about shared memory used by FTL
-void log_shmem_details(void);
 
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
 void add_per_client_regex(unsigned int clientID);
@@ -228,6 +230,9 @@ int is_shm_fd(const int fd);
 void update_qps(const time_t timestamp);
 void reset_qps(const time_t timestamp);
 double get_qps(void) __attribute__((pure));
+
+void track_query_time(const queriesData *query);
+void retrack_query_times(void);
 
 // Recycler table functions
 bool set_next_recycled_ID(const enum memory_type type, const unsigned int id);

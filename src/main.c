@@ -9,6 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "FTL.h"
+// setrlimit(), RLIMIT_NOFILE
+#include <sys/resource.h>
+// uintmax_t
+#include <inttypes.h>
 #include "daemon.h"
 #include "log.h"
 #include "config/setupVars.h"
@@ -45,6 +49,32 @@ bool startup = true;
 bool forked = false;
 jmp_buf exit_jmp;
 
+// Raise the RLIMIT_NOFILE soft limit to the hard limit
+static void raise_open_file_limit(void)
+{
+	struct rlimit lim;
+	if(getrlimit(RLIMIT_NOFILE, &lim) != 0)
+	{
+		log_warn("Cannot read the open-file limit: %s", strerror(errno));
+		return;
+	}
+
+	if(lim.rlim_cur == lim.rlim_max)
+		return;
+
+	const rlim_t was = lim.rlim_cur;
+	lim.rlim_cur = lim.rlim_max;
+	if(setrlimit(RLIMIT_NOFILE, &lim) != 0)
+	{
+		log_warn("Cannot raise the open-file limit from %ju: %s",
+		         (uintmax_t)was, strerror(errno));
+		return;
+	}
+
+	log_info("Raised the open-file limit from %ju to %ju",
+	         (uintmax_t)was, (uintmax_t)lim.rlim_max);
+}
+
 int main (int argc, char *argv[])
 {
 	// Initialize locale (needed for libidn)
@@ -77,19 +107,25 @@ int main (int argc, char *argv[])
 	log_info("########## FTL started on %s! ##########", hostname());
 	log_FTL_version(false);
 
+	// Give the whole process the fd headroom the platform already permits,
+	// so the webserver cannot exhaust the table out from under the resolver
+	raise_open_file_limit();
+
 	// Catch signals not handled by dnsmasq
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
+
+	// Check if another FTL process is already running. This comes before
+	// reading the config, which rewrites pihole.toml, dnsmasq.conf and
+	// custom.list, the files a running instance uses and reloads
+	if(another_FTL())
+		return EXIT_FAILURE;
 
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
-
-	// Check if another FTL process is already running
-	if(another_FTL())
-		return EXIT_FAILURE;
 
 	// Set process priority
 	set_nice();
@@ -180,24 +216,20 @@ int main (int argc, char *argv[])
 	// be terminating immediately
 	sleepms(250);
 
-	// Save new queries to database. The initial import still occupies the
-	// in-memory database when it is not done, and there is nothing to export
-	// before it is. terminate_threads() aborts it
+	// Save new queries to database. There is nothing to export before the
+	// initial import is done, terminate_threads() aborts it
 	if(db_import_done)
 	{
 		// The database thread has seen killed by now but may still be
-		// inside its periodic export on the shared in-memory connection
-		// or the daily cleanup, which locks the disk file. Let it return
-		// before the final export touches either
+		// inside its periodic export or the daily cleanup, which locks the
+		// disk file. Let it return before the final export. A periodic
+		// export still running when it gives up finishes first
 		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
 		if(!joined)
 			log_warn("Database thread still busy after %d seconds, exporting anyway",
 			         DB_THREAD_JOIN_TIMEOUT);
 
-		// Store what the periodic runs have not, then move it to disk. Not
-		// while the database thread may still be inside a run of its own
-		if(joined)
-			queries_to_database(true);
+		// Store what the periodic runs have not
 		if(export_queries_to_disk(true))
 			log_info("Finished final database update");
 		else

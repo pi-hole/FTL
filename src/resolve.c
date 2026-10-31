@@ -31,14 +31,16 @@
 #include "events.h"
 // resolve_regex_cnames()
 #include "regex_r.h"
-// statis_assert()
-#include <assert.h>
 #include <poll.h>
 #include <time.h>
 // TCP_MAX_QUERIES
 #include "dnsmasq/config.h"
 // get_secure_randomness()
 #include "config/password.h"
+// dotdoh_fd_track(), dotdoh_fd_close()
+#include "dotdoh/server.h"
+// rename_client()
+#include "name-history.h"
 
 // Wall-clock budget for a single PTR lookup, used both as the socket-level
 // receive timeout and as the deadline bounding the receive loops below
@@ -50,7 +52,7 @@ static unsigned char *nameFromDNS(unsigned char *reader, unsigned char *buffer, 
 
 // Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
 // builds due to the use of __attribute__((packed)) in the following structs
-// Their correct size is ensured for each by check_struct_sizes() below
+// Their correct size is enforced for each by the _Static_assert below
 _Pragma("GCC diagnostic push")
 _Pragma("GCC diagnostic ignored \"-Wattributes\"")
 
@@ -94,15 +96,10 @@ struct R_DATA
 } __attribute__((packed));
 _Pragma("GCC diagnostic pop")
 
-static bool check_struct_sizes(void)
-{
-	// Check sizes of structs
-	assert(sizeof(struct DNS_HEADER) == 12);
-	assert(sizeof(struct QUESTION) == 4);
-	assert(sizeof(struct R_DATA) == 10);
-
-	return true;
-}
+// Wire-format sizes, checked at compile time as assert() is gone with NDEBUG
+_Static_assert(sizeof(struct DNS_HEADER) == 12, "DNS_HEADER must be 12 bytes");
+_Static_assert(sizeof(struct QUESTION) == 4, "QUESTION must be 4 bytes");
+_Static_assert(sizeof(struct R_DATA) == 10, "R_DATA must be 10 bytes");
 
 // Pointers to resource record contents
 struct RES_RECORD
@@ -264,6 +261,9 @@ int create_socket(bool tcp)
 		log_err("Unable to create DNS resolver socket: %s", strerror(errno));
 		return -1;
 	}
+	// A TCP connection forks a dnsmasq worker, which must not keep this end open
+	if(tcp)
+		dotdoh_fd_track(sock);
 
 	// Set timeout for socket
 	struct timeval tv;
@@ -272,7 +272,10 @@ int create_socket(bool tcp)
 	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
 	{
 		log_err("Unable to set DNS resolver socket timeout: %s", strerror(errno));
-		close(sock);
+		if(tcp)
+			dotdoh_fd_close(sock);
+		else
+			close(sock);
 		return -1;
 	}
 
@@ -290,7 +293,10 @@ int create_socket(bool tcp)
 	if(connect(sock, (struct sockaddr*)&dest, sizeof(dest)) < 0)
 	{
 		log_err("Unable to connect to DNS resolver: %s", strerror(errno));
-		close(sock);
+		if(tcp)
+			dotdoh_fd_close(sock);
+		else
+			close(sock);
 		return -1;
 	}
 
@@ -1128,7 +1134,7 @@ static enum resolve_result resolveAndAddHostname(size_t ippos, size_t oldnamepos
 			// Only attempt to resolve the hostname if we have a
 			// valid socket
 			resolved = resolveHostname(tcp_sock, true, newname, ipaddr, false, NULL);
-			close(tcp_sock);
+			dotdoh_fd_close(tcp_sock);
 		}
 		else
 			log_warn("Unable to create TCP socket for DNS resolution");
@@ -1337,7 +1343,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		// Store obtained host name (may be unchanged)
 		if(client->namepos != newnamepos)
 		{
-			client->namepos = newnamepos;
+			// Its queries so far keep the name they were made with
+			rename_client(client, clientID, newnamepos, counters->next_query_id);
 			// Reset in_database flag and cached row ID so the new
 			// (ip, name) pair gets inserted as a new record into
 			// client_by_id on the next batch insertion of queries
@@ -1481,13 +1488,6 @@ void *DNSclient_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
-
-	// Test struct sizes
-	if(!check_struct_sizes())
-	{
-		log_err("Struct sizes do not match expected sizes, aborting resolver thread");
-		return NULL;
-	}
 
 	// Initial delay until we first try to resolve anything
 	thread_sleepms(DNSclient, 2000);

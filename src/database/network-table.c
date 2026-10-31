@@ -865,7 +865,7 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 		// NULL or valid-but-wrong. Reading from this snapshot avoids both a
 		// NULL dereference and cross-client contamination; the pointer is only
 		// re-fetched (and NULL-checked) where we must write back to it.
-		const char snap_hwlen = client->hwlen;
+		const int8_t snap_hwlen = client->hwlen;
 		unsigned char snap_hwaddr[6] = { 0 };
 		if(snap_hwlen == 6)
 			memcpy(snap_hwaddr, client->hwaddr, sizeof(snap_hwaddr));
@@ -2155,11 +2155,10 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int aliasclient_id = DB_FAILED;
-	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
+	const char *querystr = "SELECT aliasclient_id FROM network "
+	                       "WHERE aliasclient_id IS NOT NULL AND id = "
 	                       "(SELECT network_id FROM network_addresses "
-	                       "WHERE ip = ? "
-	                             "AND aliasclient_id IS NOT NULL "
-	                       "GROUP BY ip HAVING max(lastSeen));";
+	                       "WHERE ip = ? GROUP BY ip HAVING max(lastSeen));";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{

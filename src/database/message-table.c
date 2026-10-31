@@ -25,8 +25,6 @@
 #include "gc.h"
 // get_filesystem_details()
 #include "files.h"
-// get_memdb()
-#include "database/query-table.h"
 // escape_html()
 #include "webserver/http-common.h"
 // GIT_HASH, FTL_ARCH
@@ -105,6 +103,8 @@ static const char *get_message_type_str(const enum message_type type)
 			return "GRAVITY_RESTORED";
 		case TELEPORTER_SKIPPED_MESSAGE:
 			return "TELEPORTER_SKIPPED";
+		case QUERY_DATABASE_MESSAGE:
+			return "QUERY_DATABASE";
 		case MAX_MESSAGE:
 		default:
 			return "UNKNOWN";
@@ -147,6 +147,8 @@ static enum message_type get_message_type_from_string(const char *typestr)
 		return GRAVITY_RESTORED_MESSAGE;
 	else if (strcmp(typestr, "TELEPORTER_SKIPPED") == 0)
 		return TELEPORTER_SKIPPED_MESSAGE;
+	else if (strcmp(typestr, "QUERY_DATABASE") == 0)
+		return QUERY_DATABASE_MESSAGE;
 	else
 		return MAX_MESSAGE;
 }
@@ -278,6 +280,14 @@ static unsigned char message_blob_types[MAX_MESSAGE][5] =
 			SQLITE_NULL, // not used
 			SQLITE_NULL, // not used
 			SQLITE_NULL // not used
+		},
+		{
+			// QUERY_DATABASE_MESSAGE: The message column contains the error
+			SQLITE_TEXT, // database path
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL, // not used
+			SQLITE_NULL // not used
 		}
 	};
 // Create message table in the database
@@ -311,8 +321,9 @@ bool create_message_table(sqlite3 *db)
 	return true;
 }
 
-// Flush message table
-bool flush_message_table(sqlite3 *memdb)
+// Split from flush_message_table() so that a failure returns through it and the
+// connection is closed exactly once. SQL_bool() returns on failure
+static bool flush_messages(sqlite3 *db)
 {
 	// Flush message table, keeping the messages that state a lasting fact
 	// rather than a condition of the run that just ended.
@@ -321,9 +332,22 @@ bool flush_message_table(sqlite3 *memdb)
 	// a restart, and it is that very import which triggers the restart - so
 	// flushing it here would delete the message before anyone could see it.
 	// These are dismissed by the user like any other message.
-	SQL_bool(memdb, "DELETE FROM disk.message WHERE type != 'TELEPORTER_SKIPPED';");
+	SQL_bool(db, "DELETE FROM message WHERE type != 'TELEPORTER_SKIPPED';");
 
 	return true;
+}
+
+// Flush message table
+bool flush_message_table(void)
+{
+	sqlite3 *db = dbopen(false, false);
+	if(db == NULL)
+		return false;
+
+	const bool okay = flush_messages(db);
+	dbclose(&db);
+
+	return okay;
 }
 
 static int _add_message(const enum message_type type,
@@ -584,7 +608,7 @@ bool delete_message(cJSON *ids, int *deleted)
 static void format_regex_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *type, const char *regex, const char *warning, const int dbindex)
 {
 	if(snprintf(plain, sizeof_plain, "Invalid regex %s filter \"%s\": %s",
-	            type, regex, warning) > sizeof_plain)
+	            type, regex, warning) >= sizeof_plain)
 		log_warn("format_regex_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -605,7 +629,7 @@ static void format_regex_message(char *plain, const int sizeof_plain, char *html
 	}
 
 	if(snprintf(html, sizeof_html, "Encountered an error when processing <a href=\"groups-domains.lp?domainid=%d\">regex %s filter with ID %d</a>: <pre>%s</pre>Error message: <pre>%s</pre>",
-	            dbindex, type, dbindex, escaped_regex, escaped_warning) > sizeof_html)
+	            dbindex, type, dbindex, escaped_regex, escaped_warning) >= sizeof_html)
 		log_warn("format_regex_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_regex);
@@ -617,7 +641,7 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 	if(snprintf(plain, sizeof_plain, "Client %s is managed by %i groups (IDs %s), all describing the same subnet. "
 	            "FTL chose the most recent entry %s (ID %i) to obtain the group configuration for this client.",
 	            ip, matching_count, matching_ids,
-	            chosen_match_text, chosen_match_id) > sizeof_plain)
+	            chosen_match_text, chosen_match_id) >= sizeof_plain)
 		log_warn("format_subnet_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -642,7 +666,7 @@ static void format_subnet_message(char *plain, const int sizeof_plain, char *htm
 
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> is managed by %i groups (IDs [%s]), all describing the same subnet:<pre>%s</pre>"
 	            "FTL chose the most recent entry (ID %i) to obtain the group configuration for this client.",
-	            escaped_ip, matching_count, escaped_ids, escaped_names, chosen_match_id) > sizeof_html)
+	            escaped_ip, matching_count, escaped_ids, escaped_names, chosen_match_id) >= sizeof_html)
 		log_warn("format_subnet_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_ip);
@@ -655,7 +679,7 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 	// Format the plain text message (the JSON string is already escaped and
 	// contains "" around the string)
 	if(snprintf(plain, sizeof_plain, "Host name of client \"%s\" => %s contains (at least) one invalid character at position %i",
-			ip, name, pos) > sizeof_plain)
+			ip, name, pos) >= sizeof_plain)
 		log_warn("format_hostname_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -680,7 +704,7 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 	// an out-of-bounds read.
 	const unsigned char badchar = (pos >= 0 && (size_t)pos < strlen(name)) ? (unsigned char)name[pos] : 0;
 	if(snprintf(html, sizeof_html, "Host name of client <code>%s</code> => <code>%s</code> contains (at least) one invalid character (hex %02x) at position %i",
-			escaped_ip, escaped_name, badchar, pos) > sizeof_html)
+			escaped_ip, escaped_name, badchar, pos) >= sizeof_html)
 		log_warn("format_hostname_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_ip);
@@ -689,7 +713,7 @@ static void format_hostname_message(char *plain, const int sizeof_plain, char *h
 
 static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
 {
-	if(snprintf(plain, sizeof_plain, "Error in dnsmasq configuration: %s", message) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Error in dnsmasq configuration: %s", message) >= sizeof_plain)
 		log_warn("format_dnsmasq_config_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -702,7 +726,7 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 	if(escaped_message == NULL)
 		return;
 
-	if(snprintf(html, sizeof_html, "FTL failed to start due to %s.", escaped_message) > sizeof_html)
+	if(snprintf(html, sizeof_html, "FTL failed to start due to %s.", escaped_message) >= sizeof_html)
 		log_warn("format_dnsmasq_config_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_message);
@@ -711,7 +735,7 @@ static void format_dnsmasq_config_message(char *plain, const int sizeof_plain, c
 static void format_rate_limit_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *clientIP, const int count, const int interval, const int turnaround)
 {
 	if(snprintf(plain, sizeof_plain, "Rate-limiting %s for at least %d second%s",
-	            clientIP, turnaround, turnaround == 1 ? "" : "s") > sizeof_plain)
+	            clientIP, turnaround, turnaround == 1 ? "" : "s") >= sizeof_plain)
 		log_warn("format_rate_limit_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -725,7 +749,7 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 		return;
 
 	if(snprintf(html, sizeof_html, "Client <code>%s</code> has been rate-limited for at least %d second%s (current limit: %d queries per %d seconds)",
-	            escaped_clientIP, turnaround, turnaround == 1 ? "" : "s", count, interval) > sizeof_html)
+	            escaped_clientIP, turnaround, turnaround == 1 ? "" : "s", count, interval) >= sizeof_html)
 		log_warn("format_rate_limit_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_clientIP);
@@ -733,7 +757,7 @@ static void format_rate_limit_message(char *plain, const int sizeof_plain, char 
 
 static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *message)
 {
-	if(snprintf(plain, sizeof_plain, "dnsmasq: %s", message) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "dnsmasq: %s", message) >= sizeof_plain)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -747,7 +771,7 @@ static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, cha
 	if(escaped_message == NULL)
 		return;
 
-	if(snprintf(html, sizeof_html, "<code>dnsmasq</code> warning:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", escaped_message) > sizeof_html)
+	if(snprintf(html, sizeof_html, "<code>dnsmasq</code> warning:<pre>%s</pre>Check out <a href=\"https://docs.pi-hole.net/ftldns/dnsmasq_warn/\" target=\"_blank\">our documentation</a> for further information.", escaped_message) >= sizeof_html)
 		log_warn("format_dnsmasq_warn_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_message);
@@ -756,7 +780,7 @@ static void format_dnsmasq_warn_message(char *plain, const int sizeof_plain, cha
 static void format_load_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const double load, const int nprocs)
 {
 	if(snprintf(plain, sizeof_plain, "Long-term load (15min avg) larger than number of processors: %.1f > %d",
-	            load, nprocs) > sizeof_plain)
+	            load, nprocs) >= sizeof_plain)
 		log_warn("format_load_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -764,14 +788,14 @@ static void format_load_message(char *plain, const int sizeof_plain, char *html,
 		return;
 
 	if(snprintf(html, sizeof_html, "Long-term load (15min avg) larger than number of processors: <strong>%.1f &gt; %d</strong><br>This may slow down DNS resolution and can cause bottlenecks.",
-	            load, nprocs) > sizeof_html)
+	            load, nprocs) >= sizeof_html)
 		log_warn("format_load_message(): Buffer too small to hold HTML message, warning truncated");
 }
 
 static void format_shmem_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html, const char *path, int shmem, const char *msg)
 {
 	if(snprintf(plain, sizeof_plain, "Shared memory shortage (%s) ahead: %d%% is used (%s)",
-	            path, shmem, msg) > sizeof_plain)
+	            path, shmem, msg) >= sizeof_plain)
 		log_warn("format_messages(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -792,7 +816,7 @@ static void format_shmem_message(char *plain, const int sizeof_plain, char *html
 	}
 
 	if(snprintf(html, sizeof_html, "Shared memory shortage (<code>%s</code>) ahead: <strong>%d%%</strong> is used<br>%s",
-	            escaped_path, shmem, escaped_msg) > sizeof_html)
+	            escaped_path, shmem, escaped_msg) >= sizeof_html)
 		log_warn("log_resource_shortage(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_path);
@@ -803,7 +827,7 @@ static void format_disk_message(char *plain, const int sizeof_plain, char *html,
                                 const char *path, const int disk, const char *msg)
 {
 	if(snprintf(plain, sizeof_plain, "Disk shortage ahead: %d%% is used (%s) on partition containing the file %s",
-	            disk, msg, path) > sizeof_plain)
+	            disk, msg, path) >= sizeof_plain)
 		log_warn("format_disk_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -824,7 +848,7 @@ static void format_disk_message(char *plain, const int sizeof_plain, char *html,
 	}
 
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on partition containing the file <code>%s</code>",
-	            disk, escaped_msg, escaped_path) > sizeof_html)
+	            disk, escaped_msg, escaped_path) >= sizeof_html)
 		log_warn("format_disk_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_path);
@@ -835,7 +859,7 @@ static void format_disk_message_extended(char *plain, const int sizeof_plain, ch
                                          const int disk, const char *msg, const char *mnt_type, const char *mnt_dir)
 {
 	if(snprintf(plain, sizeof_plain, "Disk shortage ahead: %d%% is used (%s) on %s filesystem mounted at %s",
-	            disk, msg, mnt_type, mnt_dir) > sizeof_plain)
+	            disk, msg, mnt_type, mnt_dir) >= sizeof_plain)
 		log_warn("format_disk_message_extended(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -859,7 +883,7 @@ static void format_disk_message_extended(char *plain, const int sizeof_plain, ch
 	}
 
 	if(snprintf(html, sizeof_html, "Disk shortage ahead: <strong>%d%%</strong> is used (%s) on %s filesystem mounted at <code>%s</code>",
-	            disk, escaped_msg, escaped_mnt_type, escaped_mnt_dir) > sizeof_html)
+	            disk, escaped_msg, escaped_mnt_type, escaped_mnt_dir) >= sizeof_html)
 		log_warn("format_disk_message_extended(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_mnt_type);
@@ -871,7 +895,7 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
                                                const char *address, int dbindex)
 {
 	if(snprintf(plain, sizeof_plain, "List with ID %d (%s) was inaccessible during last gravity run",
-	        dbindex, address) > sizeof_plain)
+	        dbindex, address) >= sizeof_plain)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -885,7 +909,7 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 		return;
 
 	if(snprintf(html, sizeof_html, "<a href=\"groups/lists?listid=%i\">List with ID <strong>%d</strong> (<code>%s</code>)</a> was inaccessible during last gravity run",
-	            dbindex, dbindex, escaped_address) > sizeof_html)
+	            dbindex, dbindex, escaped_address) >= sizeof_html)
 		log_warn("format_inaccessible_adlist_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_address);
@@ -894,7 +918,7 @@ static void format_inaccessible_adlist_message(char *plain, const int sizeof_pla
 static void format_certificate_domain_mismatch(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                                const char *certfile, const char*domain)
 {
-	if(snprintf(plain, sizeof_plain, "SSL/TLS certificate %s does not match domain %s!", certfile, domain) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "SSL/TLS certificate %s does not match domain %s!", certfile, domain) >= sizeof_plain)
 		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -914,7 +938,7 @@ static void format_certificate_domain_mismatch(char *plain, const int sizeof_pla
 		return;
 	}
 
-	if(snprintf(html, sizeof_html, "SSL/TLS certificate %s does not match domain <strong>%s</strong>!", escaped_certfile, escaped_domain) > sizeof_html)
+	if(snprintf(html, sizeof_html, "SSL/TLS certificate %s does not match domain <strong>%s</strong>!", escaped_certfile, escaped_domain) >= sizeof_html)
 		log_warn("format_certificate_domain_mismatch(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_certfile);
@@ -924,7 +948,7 @@ static void format_certificate_domain_mismatch(char *plain, const int sizeof_pla
 static void format_connection_error(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                     const char *server, const char *reason, const char *error)
 {
-	if(snprintf(plain, sizeof_plain, "Connection error (%s): %s (%s)", server, reason, error) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Connection error (%s): %s (%s)", server, reason, error) >= sizeof_plain)
 		log_warn("format_connection_error(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -947,7 +971,7 @@ static void format_connection_error(char *plain, const int sizeof_plain, char *h
 		return;
 	}
 
-	if(snprintf(html, sizeof_html, "Connection error (<strong>%s</strong>): %s (<strong>%s</strong>)", escaped_server, escaped_reason, escaped_error) > sizeof_html)
+	if(snprintf(html, sizeof_html, "Connection error (<strong>%s</strong>): %s (<strong>%s</strong>)", escaped_server, escaped_reason, escaped_error) >= sizeof_html)
 		log_warn("format_connection_error(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_reason);
@@ -958,7 +982,7 @@ static void format_connection_error(char *plain, const int sizeof_plain, char *h
 static void format_ntp_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
                                const char *message, const char *level, const char *who)
 {
-	if(snprintf(plain, sizeof_plain, "%s NTP %s: %s", level, who, message) > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "%s NTP %s: %s", level, who, message) >= sizeof_plain)
 		log_warn("format_ntp_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -981,7 +1005,7 @@ static void format_ntp_message(char *plain, const int sizeof_plain, char *html, 
 		return;
 	}
 
-	if(snprintf(html, sizeof_html, "%s in NTP %s:<pre>%s</pre>", escaped_level, escaped_who, escaped_message) > sizeof_html)
+	if(snprintf(html, sizeof_html, "%s in NTP %s:<pre>%s</pre>", escaped_level, escaped_who, escaped_message) >= sizeof_html)
 		log_warn("format_ntp_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_level);
@@ -994,7 +1018,7 @@ static void format_verify_message(char *plain, const int sizeof_plain, char *htm
                                   const char *commit, const char *arch)
 {
 	if(snprintf(plain, sizeof_plain, "%s - expected \"%s\", but got \"%s\" - FTL commit is %s on %s",
-	            message, expected, actual, commit, arch) > sizeof_plain)
+	            message, expected, actual, commit, arch) >= sizeof_plain)
 		log_warn("format_verify_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -1012,7 +1036,7 @@ static void format_verify_message(char *plain, const int sizeof_plain, char *htm
 		return;
 
 	if(snprintf(html, sizeof_html, "%s<br>Expected: <pre>%s</pre><br>Actual: <pre>%s</pre><br>FTL commit is <code>%s</code> on <code>%s</code>",
-	            escaped_message, escaped_expected, escaped_actual, escaped_commit, escaped_arch) > sizeof_html)
+	            escaped_message, escaped_expected, escaped_actual, escaped_commit, escaped_arch) >= sizeof_html)
 		log_warn("format_verify_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_message);
@@ -1026,7 +1050,7 @@ static void format_teleporter_skipped_message(char *plain, const int sizeof_plai
                                               const char *key)
 {
 	if(snprintf(plain, sizeof_plain,
-	            "Teleporter import skipped %s: this setting can only be changed on the host", key) > sizeof_plain)
+	            "Teleporter import skipped %s: this setting can only be changed on the host", key) >= sizeof_plain)
 		log_warn("format_teleporter_skipped_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -1044,10 +1068,45 @@ static void format_teleporter_skipped_message(char *plain, const int sizeof_plai
 	            "This setting can only be changed on the host itself, not through the web interface or the API. "
 	            "Everything else in the archive was imported as usual and the value configured on this host was kept.<br><br>"
 	            "To change it, edit <code>%s</code>, set the matching environment variable, or use <code>pihole-FTL --config</code>.",
-	            escaped_key, GLOBALTOMLPATH) > sizeof_html)
+	            escaped_key, GLOBALTOMLPATH) >= sizeof_html)
 		log_warn("format_teleporter_skipped_message(): Buffer too small to hold HTML message, warning truncated");
 
 	free(escaped_key);
+}
+
+static void format_query_database_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
+                                          const char *error, const char *path)
+{
+	if(snprintf(plain, sizeof_plain,
+	            "Cannot open the query database %s (%s), no queries are stored until FTL is restarted",
+	            path, error) >= sizeof_plain)
+		log_warn("format_query_database_message(): Buffer too small to hold plain message, warning truncated");
+
+	// Return early if HTML text is not required
+	if(sizeof_html < 1 || html == NULL)
+		return;
+
+	char *escaped_error = escape_html(error);
+	char *escaped_path = escape_html(path);
+
+	// Return early if memory allocation failed
+	if(escaped_error == NULL || escaped_path == NULL)
+	{
+		if(escaped_error != NULL)
+			free(escaped_error);
+		if(escaped_path != NULL)
+			free(escaped_path);
+		return;
+	}
+
+	if(snprintf(html, sizeof_html,
+	            "FTL could not open the query database <code>%s</code> when it started: <code>%s</code><br><br>"
+	            "No queries are stored in it until FTL is restarted.",
+	            escaped_path, escaped_error) >= sizeof_html)
+		log_warn("format_query_database_message(): Buffer too small to hold HTML message, warning truncated");
+
+	free(escaped_error);
+	free(escaped_path);
 }
 
 static void format_gravity_restored_message(char *plain, const int sizeof_plain, char *html, const int sizeof_html,
@@ -1055,7 +1114,7 @@ static void format_gravity_restored_message(char *plain, const int sizeof_plain,
 {
 	const bool failed = strcmp(status, "failed") == 0;
 
-	if(snprintf(plain, sizeof_plain, "Gravity database restore %s", failed ? "failed" : "successful") > sizeof_plain)
+	if(snprintf(plain, sizeof_plain, "Gravity database restore %s", failed ? "failed" : "successful") >= sizeof_plain)
 		log_warn("format_gravity_restored_message(): Buffer too small to hold plain message, warning truncated");
 
 	// Return early if HTML text is not required
@@ -1064,7 +1123,7 @@ static void format_gravity_restored_message(char *plain, const int sizeof_plain,
 
 	if(failed)
 	{
-		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-red\">failed</strong><br><br>Please check your filesystem for corruption, and your disk space for availability.") > sizeof_html)
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-red\">failed</strong><br><br>Please check your filesystem for corruption, and your disk space for availability.") >= sizeof_html)
 			log_warn("format_gravity_restored_message(): Buffer too small to hold HTML message, warning truncated");
 	}
 	else
@@ -1075,7 +1134,7 @@ static void format_gravity_restored_message(char *plain, const int sizeof_plain,
 		if(escaped_status == NULL)
 			return;
 
-		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-green\">successful</strong><br>The gravity database was restored using the automatic backup created on %s<br><br>Please check your filesystem for corruption, and your disk space for availability.", escaped_status) > sizeof_html)
+		if(snprintf(html, sizeof_html, "Gravity database damaged, restore attempt <strong class=\"log-green\">successful</strong><br>The gravity database was restored using the automatic backup created on %s<br><br>Please check your filesystem for corruption, and your disk space for availability.", escaped_status) >= sizeof_html)
 			log_warn("format_gravity_restored_message(): Buffer too small to hold HTML message, warning truncated");
 
 		free(escaped_status);
@@ -1390,6 +1449,17 @@ bool format_messages(cJSON *array)
 
 				format_teleporter_skipped_message(plain, sizeof(plain), html, sizeof(html),
 				                                  key);
+
+				break;
+			}
+
+			case QUERY_DATABASE_MESSAGE:
+			{
+				const char *error = (const char*)sqlite3_column_text(stmt, 3);
+				const char *path = (const char*)sqlite3_column_text(stmt, 4);
+
+				format_query_database_message(plain, sizeof(plain), html, sizeof(html),
+				                              error, path);
 
 				break;
 			}
@@ -1723,4 +1793,20 @@ void log_gravity_restored(const char *status)
 	// Log to database
 	add_message_no_args(GRAVITY_RESTORED_MESSAGE, status);
 
+}
+
+// The query database could not be opened at startup. The message only reaches
+// the message table if pihole-FTL.db can be written to by then, add_message()
+// opens a connection of its own
+void log_query_database_error(const char *path, const char *error)
+{
+	// Create message
+	char buf[2048];
+	format_query_database_message(buf, sizeof(buf), NULL, 0, error, path);
+
+	// Log to FTL.log
+	log_err("%s", buf);
+
+	// Log to database so it is visible from the web interface
+	add_message(QUERY_DATABASE_MESSAGE, error, path);
 }

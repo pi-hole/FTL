@@ -15,6 +15,8 @@
 #include "database/gravity-db.h"
 // match_regex()
 #include "regex_r.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 // parse_groupIDs()
 #include "webserver/http-common.h"
 #include <idn2.h>
@@ -109,35 +111,35 @@ static int search_gravity(struct ftl_conn *api, sqlite3 *db, const char *punycod
                           const bool partial, const bool antigravity)
 {
 	enum gravity_list_type table = antigravity ? GRAVITY_ANTIGRAVITY : GRAVITY_GRAVITY;
-	if(partial)
+
+	// Search for the term itself, either exactly or as a substring
+	int ret = search_table(api, db, punycode, table, NULL, limit, N, partial, array);
+	if(ret != 200)
+		return ret;
+
+	// ABP-style entries are stored as "||domain^" and do not spell out the
+	// subdomains they cover, so a search for www.example.com finds
+	// ||example.com^ only if we look up the generated patterns ourselves
+	*abp_patterns = gen_abp_patterns(punycode);
+	const int npatterns = cJSON_GetArraySize(*abp_patterns);
+	for(int i = 0; i < npatterns; i++)
 	{
-		// Search for partial matches in (anti/)gravity
-		const int ret = search_table(api, db, punycode, table, NULL, limit, N, partial, array);
+		const char *pattern = cJSON_GetStringValue(cJSON_GetArrayItem(*abp_patterns, i));
+		if(pattern == NULL)
+			continue;
+
+		// Skip leading "@@" for gravity matches
+		const char *this_pattern = antigravity ? pattern : pattern + 2;
+
+		// A pattern containing the search term is a substring hit the
+		// partial search already returned, looking it up again would
+		// duplicate the row
+		if(partial && strstr(this_pattern, punycode) != NULL)
+			continue;
+
+		ret = search_table(api, db, this_pattern, table, NULL, limit, N, false, array);
 		if(ret != 200)
 			return ret;
-	}
-	else
-	{
-		// Search for exact matches in (anti/)gravity
-		int ret = search_table(api, db, punycode, table, NULL, limit, N, false, array);
-		if(ret != 200)
-			return ret;
-
-		// Search for ABP matches in (anti/)gravity
-		*abp_patterns = gen_abp_patterns(punycode);
-		cJSON *abp_pattern = NULL;
-		cJSON_ArrayForEach(abp_pattern, *abp_patterns)
-		{
-			const char *pattern = cJSON_GetStringValue(abp_pattern);
-			if(pattern == NULL)
-				continue;
-
-			// Skip leading "@@" for gravity matches
-			const char *this_pattern = antigravity ? pattern : pattern + 2;
-			ret = search_table(api, db, this_pattern, table, NULL, limit, N, partial, array);
-			if(ret != 200)
-				return ret;
-		}
 	}
 
 	return 200;
@@ -290,9 +292,14 @@ int api_search(struct ftl_conn *api)
 		goto search_fail;
 	}
 
-	// Search through all regex filters
+	// Search through all regex filters. The compiled regex live in this
+	// process and are freed and rebuilt under the SHM lock on every list
+	// reload, so the match runs under it as well (it is short, unlike the
+	// LIKE searches above)
 	regex_ids = JSON_NEW_OBJECT();
+	lock_shm();
 	check_all_regex(punycode, regex_ids);
+	unlock_shm();
 	cJSON *deny_ids = cJSON_GetObjectItem(regex_ids, "deny");
 	cJSON *allow_ids = cJSON_GetObjectItem(regex_ids, "allow");
 

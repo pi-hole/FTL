@@ -9,6 +9,7 @@ Usage:
     pytest test/api/test_api.py -v
 """
 
+import itertools
 import json
 import re
 from urllib.parse import quote
@@ -55,6 +56,12 @@ def _j(response, dump=None):
         except OSError:
             pass
     return data
+
+
+def _sort(column, direction):
+    """Query string part sorting /api/queries by a column, as DataTables does"""
+    return (f"&order%5B0%5D%5Bcolumn%5D=0&order%5B0%5D%5Bdir%5D={direction}"
+            f"&columns%5B0%5D%5Bdata%5D={column}")
 
 
 def set_config(api_session, dotted_key, value):
@@ -354,6 +361,50 @@ class TestDomainSearch:
         assert search["results"]["total"] > 0, \
             f"Expected partial matches for 'gravity':\n{json.dumps(data, indent=2)}"
 
+    def test_partial_matching_abp_subdomain(self, api_session):
+        """Partial matching must resolve ABP-style entries like exact matching.
+
+        The gravity table stores "||special.gravity.ftl^", which a plain
+        substring search for a subdomain of it cannot find.
+        """
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert search["results"]["gravity"] == {"allow": 0, "block": 1}, \
+            json.dumps(data, indent=2)
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_antigravity_subdomain(self, api_session):
+        """ABP-style antigravity entries are found for subdomains, too."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_leading_dot(self, api_session):
+        """A leading dot is stripped from the ABP patterns, so the pattern
+        built from the full term is no substring hit and must be looked up."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_no_duplicates(self, api_session):
+        """The substring hit and the generated ABP pattern must not both count."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # History
@@ -435,6 +486,26 @@ class TestQueries:
         data = _j(api_session.get(f"{FTL_URL}/api/queries?status=UNKNOWN", timeout=5))
         assert data["queries"] == []
         assert data["recordsFiltered"] == 0, json.dumps(data, indent=2)
+
+    @pytest.mark.parametrize("disk", ("false", "true"))
+    @pytest.mark.parametrize("param, limit", (
+        ("domain", 511), ("client_ip", 511), ("client_name", 511),
+        ("upstream", 255), ("type", 31), ("status", 31), ("reply", 31),
+        ("dnssec", 31), ("columns[3][search][value]", 509),
+        ("columns[4][search][value]", 509)))
+    def test_filter_too_long(self, api_session, param, limit, disk):
+        """A filter value longer than its limit is answered with 400 naming
+        the parameter and the limit, one at the limit is not"""
+        url = f"{FTL_URL}/api/queries"
+        r = api_session.get(url, params={param: "a" * (limit + 1), "disk": disk}, timeout=5)
+        assert r.status_code == 400, r.text
+        assert _j(r)["error"] == {
+            "key": "bad_request",
+            "message": "Requested filter is too long",
+            "hint": f"{param}: at most {limit} bytes",
+        }, r.text
+        r = api_session.get(url, params={param: "a" * limit, "disk": disk}, timeout=5)
+        assert "too long" not in r.text, r.text
 
 
 # ---------------------------------------------------------------------------
@@ -1124,7 +1195,10 @@ class TestInfo:
         s = data["system"]
         assert "uptime" in s
         assert s["memory"]["ram"]["total"] > 0
-        assert s["cpu"]["nprocs"] > 0
+        # All CPUs present, not only those in FTL's affinity mask
+        with open("/sys/devices/system/cpu/present") as f:
+            ranges = [r.split("-") for r in f.read().strip().split(",")]
+        assert s["cpu"]["nprocs"] == sum(int(r[-1]) - int(r[0]) + 1 for r in ranges)
         assert "ftl" in s
         assert "%mem" in s["ftl"]
         assert "%cpu" in s["ftl"]
@@ -1193,6 +1267,40 @@ class TestLogs:
     def test_webserver_log(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/logs/webserver", timeout=5))
         assert len(data["log"]) > 0
+
+    def test_dnsmasq_log_wraps(self, api_session):
+        """Once the log has wrapped, it returns its last 512 messages in order
+        and nextID picks up exactly where an earlier reply ended."""
+        import socket
+        import struct
+
+        # dnsmasq logs pi.hole queries but FTL does not count them, so they
+        # fill the log without changing what other tests expect
+        query = struct.pack('!HHHHHH', 0x4242, 0x0100, 1, 0, 0, 0) + \
+            b'\x02pi\x04hole\x00' + struct.pack('!HH', 1, 1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            for _ in range(600):
+                sock.sendto(query, ('127.0.0.1', 53))
+                sock.recvfrom(512)
+        finally:
+            sock.close()
+
+        url = f"{FTL_URL}/api/logs/dnsmasq"
+        data = _j(api_session.get(url, timeout=5))
+        log, next_id = data["log"], data["nextID"]
+        assert len(log) == 512, len(log)
+        stamps = [entry["timestamp"] for entry in log]
+        assert stamps == sorted(stamps)
+
+        # Lines logged in between can only add to the end of these replies
+        tail = _j(api_session.get(f"{url}?nextID={next_id - 10}", timeout=5))["log"]
+        assert tail[:10] == log[-10:], json.dumps(tail[:10], indent=2)
+        oldest = _j(api_session.get(f"{url}?nextID=0", timeout=5))["log"]
+        assert len(oldest) == 512, len(oldest)
+        newer = _j(api_session.get(f"{url}?nextID={next_id}", timeout=5))["log"]
+        assert all(entry["timestamp"] >= stamps[-1] for entry in newer)
 
 
 # ---------------------------------------------------------------------------
@@ -1449,6 +1557,79 @@ class TestQueriesAdditional:
         assert "127.0.0.1" in s["client_ip"]
         assert "A" in s["type"]
         assert "AAAA" in s["type"]
+
+
+@pytest.fixture(scope="class")
+def no_excluded_clients(api_session):
+    """The test config excludes a client, which makes every query log request
+    count its matches. Without it, a sorted request without a filter takes
+    the number of queries from shared memory"""
+    url = f"{FTL_URL}/api/config/webserver/api/excludeClients"
+    excluded = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeClients"]
+    set_config(api_session, "webserver.api.excludeClients", [])
+    yield
+    set_config(api_session, "webserver.api.excludeClients", excluded)
+
+
+@pytest.mark.usefixtures("no_excluded_clients")
+class TestQueriesSorted:
+
+    @pytest.mark.parametrize("filters", ["", "&client_ip=127.0.0.1"])
+    @pytest.mark.parametrize("column", ["status", "type", "reply"])
+    def test_queries_sorted_pages(self, api_session, column, filters):
+        """Sorted by a column with many equal keys, equal keys come in ID order
+        in the direction of the sort, and pages hold every query once. A page
+        in the back half of the result is read from the other end if it ends
+        more than 10000 rows in, as one of 10000 rows does from any start but 0"""
+        key = (lambda q: q["reply"]["type"]) if column == "reply" else (lambda q: q[column])
+        order = {}
+        for direction in ("asc", "desc"):
+            sort = _sort(column, direction) + filters
+            whole = _j(api_session.get(f"{FTL_URL}/api/queries?length=10000{sort}", timeout=5))
+            rows, total = whole["queries"], whole["recordsTotal"]
+            ids, n = [q["id"] for q in rows], len(rows)
+            assert whole["recordsFiltered"] == n
+            assert n < total if filters else n == total
+            # Equal keys are next to each other, in ID order in the direction
+            # of the sort
+            runs = [(k, [q["id"] for q in g]) for k, g in itertools.groupby(rows, key)]
+            assert len({k for k, _ in runs}) == len(runs) < n
+            for _, run in runs:
+                assert run == sorted(run, reverse=direction == "desc")
+
+            # Pages of 7 rows from the front, and the rest from a few starts
+            # in one page of 10000 rows, which is read from the other end
+            url = f"{FTL_URL}/api/queries?cursor={whole['cursor']}{sort}"
+            pages = [_j(api_session.get(f"{url}&start={start}&length=7", timeout=5))
+                     for start in range(0, n + 7, 7)]
+            assert [q["id"] for p in pages for q in p["queries"]] == ids
+            for start in (1, 7, n // 2, n - 1, n):
+                pages.append(_j(api_session.get(f"{url}&start={start}&length=10000", timeout=5)))
+                assert [q["id"] for q in pages[-1]["queries"]] == ids[start:], start
+            if filters:
+                assert {p["recordsFiltered"] for p in pages} == {n}
+            order[direction] = ids
+        # The order is total, one direction is the other one backwards
+        assert order["asc"] == order["desc"][::-1]
+
+    def test_queries_time_range(self, api_session):
+        """from is inclusive and until exclusive. Sorted by time, equal times
+        come in ID order in the direction of the sort"""
+        # Times as printed. With 15 digits a time can be a ULP off the stored
+        # one, so the range starts and ends at times printed with more
+        r = api_session.get(f"{FTL_URL}/api/queries?length=10000", timeout=5)
+        whole = r.json(parse_float=str)
+        times = sorted({q["time"] for q in whole["queries"] if len(q["time"]) > 16}, key=float)
+        begin, end = times[len(times) // 3], times[2 * len(times) // 3]
+        inside = [q for q in whole["queries"] if float(begin) <= float(q["time"]) < float(end)]
+        by_time = [q["id"] for q in sorted(inside, key=lambda q: (float(q["time"]), q["id"]))]
+        url = (f"{FTL_URL}/api/queries?length=10000&cursor={whole['cursor']}"
+               f"&from={begin}&until={end}")
+        for sort, ids in (("", [q["id"] for q in inside]), (_sort("time", "asc"), by_time),
+                          (_sort("time", "desc"), by_time[::-1])):
+            data = _j(api_session.get(url + sort, timeout=5))
+            assert [q["id"] for q in data["queries"]] == ids, sort
+            assert data["recordsFiltered"] == len(ids) > 0
 
 
 # ---------------------------------------------------------------------------

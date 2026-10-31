@@ -75,8 +75,6 @@ int send_json_error_free(struct ftl_conn *api, const int code,
 int send_json_success(struct ftl_conn *api);
 const char *get_http_method_str(const enum http_method method) __attribute__((const));
 
-void http_reread_index_html(void);
-
 // Cookie routines
 bool http_get_cookie_int(struct ftl_conn *api, const char *cookieName, int *i);
 bool http_get_cookie_str(struct ftl_conn *api, const char *cookieName, char *str, size_t str_size);

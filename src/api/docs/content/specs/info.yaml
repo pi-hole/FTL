@@ -474,13 +474,13 @@ components:
                       description: raw values
                       items:
                         type: number
-                      example: [0.58837890625, 0.64990234375, 0.66748046875]
+                      example: [0.58, 0.65, 0.67]
                     percent:
                       type: array
                       description: raw values
                       items:
                         type: number
-                      example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+                      example: [7.25, 8.125, 8.375]
             ftl:
               type: object
               description: FTL process info
@@ -998,11 +998,11 @@ components:
                   example: "pihole"
         queries:
           type: integer
-          description: Number of queries in in-memory database
+          description: Number of queries in memory
           example: 536956
         earliest_timestamp:
           type: number
-          description: Unix timestamp of the earliest query in the in-memory database (Defaults to 0.0 if no queries are stored in memory)
+          description: Unix timestamp of the earliest query in memory (Defaults to 0.0 if there are no queries in memory)
           example: 1611742120.5
         queries_disk:
           type: integer

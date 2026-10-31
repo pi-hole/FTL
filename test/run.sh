@@ -56,6 +56,15 @@ cp test/test.crt /etc/pihole/test.crt
 cp test/pihole.toml /etc/pihole/pihole.toml
 chown pihole:pihole /etc/pihole/pihole.toml
 
+# Leave a world-readable CLI password file behind, as an interrupted shutdown
+# can, and keep it open like a local reader could. FTL has to replace it rather
+# than write the new password into it
+printf 'stale\n' > /etc/pihole/cli_pw
+chmod 0666 /etc/pihole/cli_pw
+chown pihole:pihole /etc/pihole/cli_pw
+sleep 600 < /etc/pihole/cli_pw > /dev/null 2>&1 &
+echo $! > /tmp/cli_pw_holder.pid
+
 # Prepare 01-pihole-tests.conf
 mkdir -p /etc/dnsmasq.d
 cp test/01-pihole-tests.conf /etc/dnsmasq.d/01-pihole-tests.conf
@@ -87,6 +96,9 @@ rm -f "${SHIM_PAD_LOG}"
 # skips the DoH3 test when it is absent. Clear any stale marker to avoid a false ready.
 export SHIM_H3_READY="/tmp/dotdoh_h3_ready"
 rm -f "${SHIM_H3_READY}"
+# Same marker for the shim's DoQ (QUIC) listener, waited on by dotdoh.bats.
+export SHIM_DOQ_READY="/tmp/dotdoh_doq_ready"
+rm -f "${SHIM_DOQ_READY}"
 # Capture the shim's own output so a failure to bring up the HTTP/3 listener
 # (aioquic missing, or an aioquic error) is visible to dotdoh.bats, which dumps
 # this on the DoH3 test failure instead of leaving the reason on the console.
@@ -175,18 +187,45 @@ fi
 # Encrypted-upstream (DoT/DoH) end-to-end tests. Run after pytest: switching the
 # upstream restarts FTL, which would otherwise perturb the query statistics the
 # API tests assert on. test_final still counts this file's config writes below.
-$BATS -p "test/dotdoh.bats"
-DOTDOH_RET=$?
-if [ $DOTDOH_RET != 0 ]; then
-  RET=$DOTDOH_RET
+# Skip on riscv64 - the emulated runner is far too slow for the encrypted
+# transports: every DoT/DoH/DoQ query carries a TLS or QUIC handshake, and the
+# QUIC ones time out long before they complete under emulation.
+if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+  $BATS -p "test/dotdoh.bats"
+  DOTDOH_RET=$?
+  if [ $DOTDOH_RET != 0 ]; then
+    RET=$DOTDOH_RET
+  fi
+else
+  echo "Skipping encrypted-upstream tests (too slow on ${CI_ARCH})"
 fi
 
 # Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
 # queries add to the query statistics the API tests assert on.
-$BATS -p "test/dotdoh_server.bats"
-DOTDOH_SERVER_RET=$?
-if [ $DOTDOH_SERVER_RET != 0 ]; then
-  RET=$DOTDOH_SERVER_RET
+if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+  $BATS -p "test/dotdoh_server.bats"
+  DOTDOH_SERVER_RET=$?
+  if [ $DOTDOH_SERVER_RET != 0 ]; then
+    RET=$DOTDOH_SERVER_RET
+  fi
+else
+  echo "Skipping inbound encrypted-DNS tests (too slow on ${CI_ARCH})"
+fi
+
+# webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
+# restarts FTL.
+$BATS -p "test/webserver_acl.bats"
+WEBSERVER_ACL_RET=$?
+if [ $WEBSERVER_ACL_RET != 0 ]; then
+  RET=$WEBSERVER_ACL_RET
+fi
+
+# webserver.port combinations for the TLS terminator. Also after pytest: every
+# port change restarts FTL.
+$BATS -p "test/webserver_tls_ports.bats"
+WEBSERVER_TLS_PORTS_RET=$?
+if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
+  RET=$WEBSERVER_TLS_PORTS_RET
 fi
 
 # Run final BATS suite — log validation and FTL termination
