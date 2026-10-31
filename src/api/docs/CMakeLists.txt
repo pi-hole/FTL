@@ -19,6 +19,7 @@ set(sources
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/action_yaml.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/auth_yaml.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/clients_yaml.h
+        ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/cluster_yaml.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/config_yaml.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/common_yaml.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/dhcp_yaml.h

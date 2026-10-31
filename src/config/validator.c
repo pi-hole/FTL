@@ -9,6 +9,10 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+// CLUSTER_SECRET_FILE
+#include "config/password.h"
+// CLUSTER_MAX_PEERS, CLUSTER_URLLEN
+#include "cluster/cluster.h"
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -1268,4 +1272,292 @@ void resolve_config_paths(struct config *conf)
 		log_err("----> %s has been reset to its default value", offender->k);
 		reset_config_default(offender);
 	}
+}
+
+// A round scheduled further ahead than this is a clock that moved rather than
+// an interval somebody chose, and the thread treats it as one - so a number
+// above it would have the cluster deciding it had travelled in time every tick
+bool validate_cluster_interval(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(val->ui >= 1 && val->ui <= CLUSTER_MAX_INTERVAL)
+		return true;
+
+	snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not between 1 and %u seconds",
+	         key, (unsigned int)CLUSTER_MAX_INTERVAL);
+
+	return false;
+}
+
+bool validate_cluster_members(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// Check if it's an array
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json != NULL ? val->json->child : NULL; item != NULL; item = item->next, i++)
+	{
+		// Check if it's a string
+		if(!cJSON_IsString(item))
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a string", key, i);
+			return false;
+		}
+
+		// The URL is everything up to the first comma, the (optional)
+		// app password is everything behind it. Splitting on the first
+		// comma only allows passwords containing commas themselves.
+		const char *url = item->valuestring;
+		const char *comma = strchr(url, ',');
+		const size_t urllen = comma != NULL ? (size_t)(comma - url) : strlen(url);
+
+		size_t hostoffset = 0;
+		if(urllen > 7 && strncmp(url, "http://", 7) == 0)
+			hostoffset = 7;
+		else if(urllen > 8 && strncmp(url, "https://", 8) == 0)
+			hostoffset = 8;
+		else
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> does not start with http:// or https://", key, i);
+			return false;
+		}
+
+		// A URL without a host is never reachable
+		if(urllen == hostoffset || url[hostoffset] == '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> has no host part", key, i);
+			return false;
+		}
+
+		// The peers used to carry their credentials here, which they no
+		// longer do - say so instead of letting curl fail on the comma
+		if(strchr(url, ',') != NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN,
+			         "%s[%d]: only the URL belongs here, the nodes authenticate with the shared secret in %s",
+			         key, i, CLUSTER_SECRET_FILE);
+			return false;
+		}
+
+		// Whitespace in a URL is always a typo and curl would reject it anyway
+		for(size_t j = 0; j < urllen; j++)
+		{
+			if(isspace((unsigned char)url[j]))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> contains whitespace", key, i);
+				return false;
+			}
+		}
+
+		// The endpoint paths are appended to this as it stands, so a
+		// trailing slash asks the peer for //api/cluster/status, which
+		// no route matches - and a browser address bar produces one
+		if(url[urllen - 1] == '/')
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> ends in a slash", key, i);
+			return false;
+		}
+
+		// A longer entry would be cut down to a different host
+		if(urllen >= CLUSTER_URLLEN)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <url> is longer than %d characters",
+			         key, i, CLUSTER_URLLEN - 1);
+			return false;
+		}
+	}
+
+	// Beyond this the last entries would be dropped - the same ones on every
+	// node, which takes that node out of the cluster in both directions
+	if(i > CLUSTER_MAX_PEERS)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: a cluster holds at most %d nodes",
+		         key, CLUSTER_MAX_PEERS);
+		return false;
+	}
+
+	return true;
+}
+
+// Is the address the host part of a member URL? Only literal addresses can be
+// compared here, names are checked again before the address is claimed
+static bool member_literal(const int family, const void *addr)
+{
+	const cJSON *members = config.cluster.members.v.json;
+	for(const cJSON *item = cJSON_IsArray(members) ? members->child : NULL; item != NULL; item = item->next)
+	{
+		char buf[INET6_ADDRSTRLEN] = "";
+		unsigned char member[sizeof(struct in6_addr)] = { 0 };
+		if(cJSON_IsString(item) &&
+		   cluster_peer_address(item->valuestring, family, buf, sizeof(buf)) &&
+		   inet_pton(family, buf, member) == 1 &&
+		   memcmp(member, addr, family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr)) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+// Is the address one of this machine's own? A host address (/32, /128) is
+// what FTL places for the virtual IP itself, so only a subnet address counts
+static bool own_subnet_address(const int family, const void *addr)
+{
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) != 0)
+		return false;
+
+	bool found = false;
+	for(struct ifaddrs *ifa = ifap; ifa != NULL && !found; ifa = ifa->ifa_next)
+	{
+		if(ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL || ifa->ifa_addr->sa_family != family)
+			continue;
+
+		const unsigned char *a = NULL, *m = NULL;
+		size_t len = 0;
+		if(family == AF_INET)
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_addr)->sin_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_netmask)->sin_addr;
+			len = sizeof(struct in_addr);
+		}
+		else
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_addr)->sin6_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_netmask)->sin6_addr;
+			len = sizeof(struct in6_addr);
+		}
+
+		bool host_mask = true;
+		for(size_t i = 0; i < len; i++)
+			host_mask &= m[i] == 0xff;
+
+		found = !host_mask && memcmp(a, addr, len) == 0;
+	}
+
+	freeifaddrs(ifap);
+
+	return found;
+}
+
+// Is the address the network or broadcast address of one of this machine's
+// subnets? Neither is a host, and the broadcast address reaches all of them
+static bool own_subnet_reserved(const int family, const void *addr)
+{
+	struct ifaddrs *ifap = NULL;
+	if(getifaddrs(&ifap) != 0)
+		return false;
+
+	bool found = false;
+	for(struct ifaddrs *ifa = ifap; ifa != NULL && !found; ifa = ifa->ifa_next)
+	{
+		if(ifa->ifa_addr == NULL || ifa->ifa_netmask == NULL || ifa->ifa_addr->sa_family != family)
+			continue;
+
+		const unsigned char *a = NULL, *m = NULL;
+		size_t len = 0;
+		if(family == AF_INET)
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_addr)->sin_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in *)(void *)ifa->ifa_netmask)->sin_addr;
+			len = sizeof(struct in_addr);
+		}
+		else
+		{
+			a = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_addr)->sin6_addr;
+			m = (const unsigned char *)&((const struct sockaddr_in6 *)(void *)ifa->ifa_netmask)->sin6_addr;
+			len = sizeof(struct in6_addr);
+		}
+
+		// Only where there is a host part of at least two bits: a /31 or
+		// /127 has no network address, a /32 or /128 has no subnet at all
+		unsigned int hostbits = 0;
+		for(size_t i = 0; i < len; i++)
+			for(unsigned int b = 0; b < 8; b++)
+				if(!(m[i] & (1u << b)))
+					hostbits++;
+		if(hostbits < 2)
+			continue;
+
+		bool same_net = true, zeros = true, ones = true;
+		const unsigned char *v = addr;
+		for(size_t i = 0; i < len; i++)
+		{
+			same_net &= (v[i] & m[i]) == (a[i] & m[i]);
+			zeros &= (v[i] & ~m[i] & 0xff) == 0;
+			ones &= (v[i] | m[i]) == 0xff;
+		}
+
+		// IPv6 has no broadcast, its all-zero host part is the subnet-router
+		// anycast address
+		found = same_net && (zeros || (family == AF_INET && ones));
+	}
+
+	freeifaddrs(ifap);
+
+	return found;
+}
+
+bool validate_cluster_vip(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// An empty string disables the virtual IP address
+	if(val->s == NULL || strlen(val->s) == 0)
+		return true;
+
+	int family = AF_INET;
+	struct in_addr addr4 = { 0 };
+	struct in6_addr addr6 = { 0 };
+	if(inet_pton(AF_INET, val->s, &addr4) != 1)
+	{
+		family = AF_INET6;
+		if(inet_pton(AF_INET6, val->s, &addr6) != 1)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 or IPv6 address (\"%s\")", key, val->s);
+			return false;
+		}
+	}
+
+	// Every DHCP client is told to use this address, and the elected node adds
+	// it to its interface, so it has to be one address of the local network
+	bool unusable = false;
+	if(family == AF_INET)
+	{
+		const uint32_t a = ntohl(addr4.s_addr);
+		unusable = a == INADDR_ANY || a == INADDR_BROADCAST ||
+		           (a >> 24) == 127 || IN_MULTICAST(a) || (a >> 16) == 0xa9fe;
+	}
+	else
+		unusable = IN6_IS_ADDR_UNSPECIFIED(&addr6) || IN6_IS_ADDR_LOOPBACK(&addr6) ||
+		           IN6_IS_ADDR_MULTICAST(&addr6) || IN6_IS_ADDR_LINKLOCAL(&addr6) ||
+		           IN6_IS_ADDR_V4MAPPED(&addr6);
+	if(unusable)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is not a unicast address a network can share (unspecified, loopback, multicast, broadcast and link-local addresses are not)",
+		         key, val->s);
+		return false;
+	}
+
+	const void *addr = family == AF_INET ? (const void *)&addr4 : (const void *)&addr6;
+	if(own_subnet_reserved(family, addr))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is the network or broadcast address of this node's subnet, the virtual IP has to be a host address",
+		         key, val->s);
+		return false;
+	}
+
+	// A member's own address would be taken away from that member as soon as
+	// another one is elected
+	if(own_subnet_address(family, addr) || member_literal(family, addr))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" is the address of a cluster member, the virtual IP has to be an unused one",
+		         key, val->s);
+		return false;
+	}
+
+	return true;
 }

@@ -27,6 +27,8 @@
 #include "config/env.h"
 // log_teleporter_skipped()
 #include "database/message-table.h"
+// cluster_dhcp_reread()
+#include "cluster/dhcp.h"
 
 // Private prototypes
 static bool parseTOML(toml_result_t *toml, const unsigned int version);
@@ -359,6 +361,10 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 
 		// Try to parse config item
 		readTOMLvalue(new_conf_item, new_conf_item->p[level-1], table[level-2], newconf);
+
+		// A running node may hold DHCP back for its cluster
+		if(old_conf_item != NULL && new_conf_item == &newconf->dhcp.active)
+			cluster_dhcp_reread(&new_conf_item->v.b);
 
 		// Check if we need to restart FTL
 		if(old_conf_item != NULL &&
