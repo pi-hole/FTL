@@ -30,6 +30,10 @@
 #include "gc.h"
 // open(), O_WRONLY, O_CREAT, O_APPEND, O_CLOEXEC
 #include <fcntl.h>
+// _Atomic
+#include <stdatomic.h>
+// mmap()
+#include <sys/mman.h>
 
 static bool print_log = true, print_stdout = true;
 bool debug_flags[DEBUG_MAX] = { false };
@@ -46,6 +50,49 @@ static struct log_fd ftl_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd webserver_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 
+// pihole.log is written by a thread of its own, as a write can block on the
+// file system (e.g., while the journal commits) and must not stall DNS. Lines
+// are appended to one buffer while the thread writes out the other
+#define LOG_QUEUE_SIZE (512u*1024u)
+// Warnings and errors per buffer, relayed to syslog if the buffer cannot be
+// written. Each line has a 15-byte timestamp and a newline, so every line of a
+// full buffer gets a slot. Slots are only backed by memory once used
+#define LOG_QUEUE_WARN (LOG_QUEUE_SIZE/16u)
+struct log_batch {
+	char *buf;
+	size_t used;
+	unsigned int nwarn;
+	struct {
+		size_t off;
+		size_t len;
+		int prio;
+	} warn[LOG_QUEUE_WARN];
+};
+static struct log_batch log_batches[2];
+static struct {
+	pthread_mutex_t lock;
+	pthread_cond_t wake;
+	pthread_cond_t space;
+	struct log_batch *cur;
+	unsigned long queued;
+	unsigned long fork_wait;
+	bool fork_waiting;
+	bool hurry;
+	bool running;
+} log_queue = { .lock = PTHREAD_MUTEX_INITIALIZER, .space = PTHREAD_COND_INITIALIZER, .cur = &log_batches[0] };
+// Bytes written or dropped by the writer thread. Shared with forked TCP
+// workers, which wait for the lines the parent queued before the fork
+static _Atomic unsigned long *log_done = NULL;
+// Held by the writer thread while it writes a batch and by a flush while it
+// truncates, so a batch taken before a flush is never written after it.
+// dnsmasq_log.lock is held only briefly, so fork() never waits for disk I/O
+static pthread_mutex_t log_write_lock = PTHREAD_MUTEX_INITIALIZER;
+// Advanced by a log flush, so lines taken before it are not written after it
+static _Atomic unsigned int log_queue_generation = 0;
+// Lines are queued only once pihole.log was written successfully. Otherwise,
+// they are written directly so the caller can relay warnings to syslog
+static _Atomic bool dnsmasq_log_ok = false;
+
 // dnsmasq forks per TCP query while FTL threads may be mid-write; without
 // atfork handling the child would inherit a locked log mutex and hang on the
 // first my_syslog() there.  Lock/unlock all log mutexes around fork().
@@ -54,18 +101,34 @@ static void log_atfork_prepare(void)
 	pthread_mutex_lock(&ftl_log.lock);
 	pthread_mutex_lock(&webserver_log.lock);
 	pthread_mutex_lock(&dnsmasq_log.lock);
+	pthread_mutex_lock(&log_queue.lock);
 }
 static void log_atfork_parent(void)
 {
 	pthread_mutex_unlock(&ftl_log.lock);
 	pthread_mutex_unlock(&webserver_log.lock);
 	pthread_mutex_unlock(&dnsmasq_log.lock);
+	// The child waits for the queued lines, so write them out without delay
+	if(log_queue.running && log_queue.cur->used > 0)
+	{
+		log_queue.hurry = true;
+		pthread_cond_signal(&log_queue.wake);
+	}
+	pthread_mutex_unlock(&log_queue.lock);
 }
 static void log_atfork_child(void)
 {
 	pthread_mutex_unlock(&ftl_log.lock);
 	pthread_mutex_unlock(&webserver_log.lock);
 	pthread_mutex_unlock(&dnsmasq_log.lock);
+	// Only the parent runs the writer thread and writes what is queued, the
+	// child writes its own lines directly once the parent's are written
+	log_queue.running = false;
+	log_queue.cur->used = 0;
+	log_queue.cur->nwarn = 0;
+	log_queue.fork_wait = log_queue.queued;
+	log_queue.fork_waiting = log_done != NULL;
+	pthread_mutex_unlock(&log_queue.lock);
 }
 
 // Return 1 if this fd is associated with any logfile to avoid
@@ -97,6 +160,39 @@ static void reopen_log_fd(struct log_fd *log)
 // through the logger, which would re-enter here under the lock already held
 #undef write
 
+static bool write_all(const int fd, const char *line, size_t len)
+{
+	ssize_t written = 0;
+	while(written < (ssize_t)len)
+	{
+		ssize_t rc = write(fd, line + written, len - written);
+		if(rc == -1)
+		{
+			if(errno == EINTR)
+				continue;
+			return false;
+		}
+		written += rc;
+	}
+
+	return true;
+}
+
+// Write to a log whose lock the caller holds
+static bool write_log_locked(struct log_fd *log, const char *line, size_t len)
+{
+	// Reopen the log if requested.  This must be tested before the fd == -1
+	// check so that SIGUSR2 can revive a log whose initial open failed (missing
+	// directory, transient EACCES, ...).
+	reopen_log_fd(log);
+
+	// No usable descriptor: let the caller fall back to another channel
+	if(log->fd == -1)
+		return false;
+
+	return write_all(log->fd, line, len);
+}
+
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
 // per-file so SIGUSR2 only touches the fd that actually needs it.
@@ -109,35 +205,9 @@ static bool write_log_line(struct log_fd *log, const char *line, size_t len)
 	// log->fd and log->reopen_needed are only accessed under the lock so a
 	// reopen (e.g. from flush_dnsmasq_log()) can never race a concurrent write
 	pthread_mutex_lock(&log->lock);
-
-	// Reopen the log if requested.  This must be tested before the fd == -1
-	// check so that SIGUSR2 can revive a log whose initial open failed (missing
-	// directory, transient EACCES, ...).
-	reopen_log_fd(log);
-
-	// No usable descriptor: let the caller fall back to another channel
-	if(log->fd == -1)
-	{
-		pthread_mutex_unlock(&log->lock);
-		return false;
-	}
-
-	ssize_t written = 0;
-	while(written < (ssize_t)len)
-	{
-		ssize_t rc = write(log->fd, line + written, len - written);
-		if(rc == -1)
-		{
-			if(errno == EINTR)
-				continue;
-			pthread_mutex_unlock(&log->lock);
-			return false;
-		}
-		written += rc;
-	}
-
+	const bool written = write_log_locked(log, line, len);
 	pthread_mutex_unlock(&log->lock);
-	return true;
+	return written;
 }
 
 void clear_debug_flags(void)
@@ -434,13 +504,71 @@ const char *debugstr(const enum debug_flag flag)
 	}
 }
 
+// Hand a line to the writer thread, waiting while the queue is full. The
+// message starts at msg_off. Returns false if the thread is not running
+static bool queue_dnsmasq_log(const char *line, const size_t len, const size_t msg_off, const int priority)
+{
+	const bool warn = priority <= LOG_WARNING;
+
+	pthread_mutex_lock(&log_queue.lock);
+	while(log_queue.running && log_queue.cur->used + len > LOG_QUEUE_SIZE)
+	{
+		// Do not let the writer thread wait for more lines
+		pthread_cond_signal(&log_queue.wake);
+		pthread_cond_wait(&log_queue.space, &log_queue.lock);
+	}
+
+	if(!log_queue.running)
+	{
+		pthread_mutex_unlock(&log_queue.lock);
+		return false;
+	}
+
+	struct log_batch *cur = log_queue.cur;
+	if(warn && cur->nwarn < LOG_QUEUE_WARN)
+	{
+		cur->warn[cur->nwarn].off = cur->used + msg_off;
+		cur->warn[cur->nwarn].len = len > msg_off + 1 ? len - msg_off - 1 : 0;
+		cur->warn[cur->nwarn].prio = priority;
+		cur->nwarn++;
+	}
+	memcpy(cur->buf + cur->used, line, len);
+	const bool was_empty = cur->used == 0;
+	cur->used += len;
+	log_queue.queued += len;
+	pthread_mutex_unlock(&log_queue.lock);
+
+	// The writer thread sleeps only while the queue is empty
+	if(was_empty)
+		pthread_cond_signal(&log_queue.wake);
+
+	return true;
+}
+
+// In a forked TCP worker, wait (up to 200 ms) until the lines the parent
+// queued before the fork are written, so they precede the worker's own lines
+static void wait_for_parent_log(void)
+{
+	if(!log_queue.fork_waiting)
+		return;
+	log_queue.fork_waiting = false;
+
+	const struct timespec ms = { 0, 1000000L };
+	for(unsigned int i = 0; i < 200; i++)
+	{
+		if((long)(atomic_load(log_done) - log_queue.fork_wait) >= 0)
+			break;
+		nanosleep(&ms, NULL);
+	}
+}
+
 // Write a dnsmasq log line to pihole.log in dnsmasq's exact on-disk format.
 // The message is the bare body (no timestamp, no prefix) as handed to
 // FTL_dnsmasq_log() from my_syslog().  We reproduce dnsmasq's format:
 //   "Jan  1 12:00:00 dnsmasq-dhcp[12345]: <message>\n"
 // where the func suffix (e.g. "-dhcp", "-tftp") comes from the priority
 // bits extracted in my_syslog().
-bool FTL_write_dnsmasq_log(const char *message, const char *func)
+bool FTL_write_dnsmasq_log(const char *message, const char *func, const int priority)
 {
 	// Locale-independent and thread-safe (unlike ctime()), and keeps the
 	// on-disk format byte-identical to what dnsmasq wrote before.
@@ -460,6 +588,7 @@ bool FTL_write_dnsmasq_log(const char *message, const char *func)
 	// it may also return negative on an encoding error
 	if(off < 0 || off >= (int)sizeof(line))
 		off = sizeof(line) - 1;
+	const int msg_off = off;
 
 	const char *msg = message ? message : "";
 	off += snprintf(line + off, sizeof(line) - off, "%s", msg);
@@ -471,7 +600,156 @@ bool FTL_write_dnsmasq_log(const char *message, const char *func)
 	if(off > 0 && line[off - 1] != '\n')
 		line[off++] = '\n';
 
-	return write_log_line(&dnsmasq_log, line, off);
+	if(atomic_load(&dnsmasq_log_ok) && queue_dnsmasq_log(line, off, msg_off, priority))
+		return true;
+
+	wait_for_parent_log();
+	const bool written = write_log_line(&dnsmasq_log, line, off);
+	if(written)
+		atomic_store(&dnsmasq_log_ok, true);
+	return written;
+}
+
+// Wait until the writer thread is woken up, but at most ms milliseconds
+static void log_queue_wait(const long ms)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	ts.tv_sec += ms / 1000;
+	ts.tv_nsec += (ms % 1000) * 1000000L;
+	if(ts.tv_nsec >= 1000000000L)
+	{
+		ts.tv_sec++;
+		ts.tv_nsec -= 1000000000L;
+	}
+	pthread_cond_timedwait(&log_queue.wake, &log_queue.lock, &ts);
+}
+
+// Write a batch to pihole.log through a duplicate of its fd, so the log lock
+// is not held during the write and a reopen cannot close the fd meanwhile
+static bool write_log_batch(const struct log_batch *batch)
+{
+	pthread_mutex_lock(&dnsmasq_log.lock);
+	reopen_log_fd(&dnsmasq_log);
+	const int fd = dnsmasq_log.fd == -1 ? -1 : fcntl(dnsmasq_log.fd, F_DUPFD_CLOEXEC, 0);
+	pthread_mutex_unlock(&dnsmasq_log.lock);
+	if(fd == -1)
+		return false;
+
+	const bool written = write_all(fd, batch->buf, batch->used);
+	close(fd);
+	return written;
+}
+
+// Write out the lines queued for pihole.log until FTL shuts down, also those
+// queued during the shutdown
+void *dnsmasq_log_thread(void *val)
+{
+	(void)val; // Mark parameter as unused
+
+	// Set thread name
+	prctl(PR_SET_NAME, thread_names[LOG_WRITER], 0, 0, 0);
+
+	// Cancelling the thread while it waits would leave the queue locked
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+
+	char *front = malloc(LOG_QUEUE_SIZE);
+	char *back = malloc(LOG_QUEUE_SIZE);
+	if(front == NULL || back == NULL)
+	{
+		log_err("Cannot allocate memory for the pihole.log queue, writing it directly");
+		free(front);
+		free(back);
+		return NULL;
+	}
+
+	// Without it, forked TCP workers do not wait for the queued lines
+	_Atomic unsigned long *done = mmap(NULL, sizeof(*done), PROT_READ|PROT_WRITE,
+	                                   MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+	if(done == MAP_FAILED)
+	{
+		log_warn("Cannot share the pihole.log queue state: %s", strerror(errno));
+		done = NULL;
+	}
+
+	// Wait on a clock that is not affected by setting the system time
+	pthread_condattr_t attr;
+	pthread_condattr_init(&attr);
+	pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+	pthread_cond_init(&log_queue.wake, &attr);
+	pthread_condattr_destroy(&attr);
+
+	pthread_mutex_lock(&log_queue.lock);
+	if(done != NULL)
+		atomic_store(done, log_queue.queued);
+	log_done = done;
+	log_batches[0].buf = front;
+	log_batches[1].buf = back;
+	log_queue.cur = &log_batches[0];
+	log_queue.cur->used = 0;
+	log_queue.cur->nwarn = 0;
+	log_queue.running = true;
+	while(true)
+	{
+		// Wake up regularly to notice a shutdown
+		while(log_queue.cur->used == 0 && !killed)
+			log_queue_wait(500);
+
+		// Shutting down and everything is written
+		if(log_queue.cur->used == 0)
+			break;
+
+		// Collect lines for a moment, so the DNS thread wakes this thread up
+		// only once per batch
+		if(!killed && !log_queue.hurry)
+			log_queue_wait(10);
+
+		// Lines flushed meanwhile
+		if(log_queue.cur->used == 0)
+			continue;
+
+		// Swap buffers so new lines can be queued while these are written
+		struct log_batch *batch = log_queue.cur;
+		const unsigned int generation = log_queue_generation;
+		log_queue.cur = batch == &log_batches[0] ? &log_batches[1] : &log_batches[0];
+		log_queue.cur->used = 0;
+		log_queue.cur->nwarn = 0;
+		log_queue.hurry = false;
+		pthread_cond_broadcast(&log_queue.space);
+		pthread_mutex_unlock(&log_queue.lock);
+
+		// Drop the lines if pihole.log was flushed after they were taken
+		bool failed = false;
+		pthread_mutex_lock(&log_write_lock);
+		if(generation == log_queue_generation && !write_log_batch(batch))
+		{
+			atomic_store(&dnsmasq_log_ok, false);
+			failed = true;
+		}
+		pthread_mutex_unlock(&log_write_lock);
+
+		// Relay the warnings and errors that did not make it to pihole.log
+		if(failed)
+			for(unsigned int i = 0; i < batch->nwarn; i++)
+				syslog(batch->warn[i].prio, "%.*s", (int)batch->warn[i].len,
+				       batch->buf + batch->warn[i].off);
+
+		if(log_done != NULL)
+			atomic_fetch_add(log_done, batch->used);
+
+		pthread_mutex_lock(&log_queue.lock);
+	}
+
+	// Lines are written directly from now on
+	log_queue.running = false;
+	log_batches[0].buf = NULL;
+	log_batches[1].buf = NULL;
+	pthread_cond_broadcast(&log_queue.space);
+	pthread_mutex_unlock(&log_queue.lock);
+
+	free(front);
+	free(back);
+	return NULL;
 }
 
 void __attribute__ ((format (printf, 3, 4))) _FTL_log(const int priority, const enum debug_flag flag, const char *format, ...)
@@ -1028,8 +1306,21 @@ bool flush_dnsmasq_log(void)
 	// Lock shared memory
 	lock_shm();
 
+	// Drop the lines not written yet, including those the writer thread has
+	// already taken from the queue
+	pthread_mutex_lock(&log_queue.lock);
+	if(log_done != NULL)
+		atomic_fetch_add(log_done, log_queue.cur->used);
+	log_queue.cur->used = 0;
+	log_queue.cur->nwarn = 0;
+	log_queue_generation++;
+	pthread_cond_broadcast(&log_queue.space);
+	pthread_mutex_unlock(&log_queue.lock);
+
 	// Truncate pihole.log via its cached fd; O_APPEND appends future writes
-	// to the empty file.  Lock order stays SHM first, then the per-file lock.
+	// to the empty file.  Lock order stays SHM first, then the write lock and
+	// the per-file lock.
+	pthread_mutex_lock(&log_write_lock);
 	pthread_mutex_lock(&dnsmasq_log.lock);
 
 	// Reopen first if logrotate's SIGUSR2 fired since the last write, so the
@@ -1042,6 +1333,7 @@ bool flush_dnsmasq_log(void)
 	else if(ftruncate(dnsmasq_log.fd, 0) == -1)
 		trunc_err = errno;       // the fd stays usable for future writes
 	pthread_mutex_unlock(&dnsmasq_log.lock);
+	pthread_mutex_unlock(&log_write_lock);
 
 	// Flush the FIFO, in-memory datastructure and database even if the
 	// truncation above failed; the log file is then just left non-empty

@@ -3993,6 +3993,14 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 		exit(EXIT_FAILURE);
 	}
 
+	// Start thread writing pihole.log
+	if(dnsmasq_start &&
+	   pthread_create( &threads[LOG_WRITER], &attr, dnsmasq_log_thread, NULL ) != 0)
+	{
+		log_crit("Unable to create log writer thread. Exiting...");
+		exit(EXIT_FAILURE);
+	}
+
 #ifdef HAVE_TLS
 	// Start webserver thread
 	if(pthread_create( &threads[WEBSERVER], &attr, webserver_thread, NULL ) != 0)
@@ -4646,7 +4654,7 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 	// Write to pihole.log via shared writer (FTL owns this file now).
 	// If pihole.log is unavailable, fall back to syslog for warnings and
 	// errors so they are not silently lost for the lifetime of the process.
-	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
+	if(!FTL_write_dnsmasq_log(payload, func, priority) && priority <= LOG_WARNING)
 		syslog(priority, "%s", payload);
 
 	/* Pi-hole diagnosis system */
