@@ -2019,6 +2019,68 @@ except socket.timeout:
   assert_failure 3
 }
 
+@test "files.pcap is only accepted where dnsmasq can record" {
+  # The files.pcap writability check must leave no empty file behind, as
+  # dnsmasq refuses one without a PCAP header
+  rm -rf /tmp/pcap
+  mkdir /tmp/pcap
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/new'
+  assert_line --index 0 '/tmp/pcap/new'
+  assert_success
+  run test -e /tmp/pcap/new
+  assert_failure
+
+  mkfifo /tmp/pcap/fifo
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/fifo'
+  assert_line --index 0 '/tmp/pcap/fifo'
+  assert_success
+  run test -p /tmp/pcap/fifo
+  assert_success
+
+  # dnsmasq refuses an empty file behind a symlink, which is not removed
+  touch /tmp/pcap/target
+  ln -s /tmp/pcap/target /tmp/pcap/link
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/link'
+  assert_output --partial 'Cannot write to /tmp/pcap/link, disabling PCAP recording'
+  run test -L /tmp/pcap/link
+  assert_success
+  run test -f /tmp/pcap/target
+  assert_success
+
+  # A symlink to an existing capture is accepted
+  python3 -c 'import struct; open("/tmp/pcap/capture", "wb").write(struct.pack("=IHHiIII", 0xa1b2c3d4, 2, 4, 0, 0, 4296, 101))'
+  ln -s /tmp/pcap/capture /tmp/pcap/caplink
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/caplink'
+  assert_line --index 0 '/tmp/pcap/caplink'
+  assert_success
+
+  # dnsmasq refuses a file that is not a PCAP capture and cannot open a socket
+  echo "not a pcap file" > /tmp/pcap/junk
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/junk'
+  assert_output --partial 'Cannot write to /tmp/pcap/junk, disabling PCAP recording'
+  python3 -c 'import socket; socket.socket(socket.AF_UNIX).bind("/tmp/pcap/sock")'
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/sock'
+  assert_output --partial 'Cannot write to /tmp/pcap/sock, disabling PCAP recording'
+
+  # A dangling symlink is not created through
+  ln -s /tmp/pcap/missing /tmp/pcap/dangling
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/dangling'
+  assert_output --partial 'Cannot write to /tmp/pcap/dangling, disabling PCAP recording'
+  run test -L /tmp/pcap/dangling
+  assert_success
+  run test -e /tmp/pcap/missing
+  assert_failure
+
+  # Testing a config does not remove an existing empty file
+  touch /tmp/pcap/empty
+  run bash -c './pihole-FTL --config -t files.pcap /tmp/pcap/empty'
+  assert_line --index 0 '/tmp/pcap/empty'
+  assert_success
+  run test -f /tmp/pcap/empty
+  assert_success
+  rm -rf /tmp/pcap
+}
+
 @test "Config validation: a document root that resolves to the root is rejected" {
   # Lexically /proc/self/root is a directory of its own, but it is a link
   # the kernel plants to /, so it has to be judged by where it leads
