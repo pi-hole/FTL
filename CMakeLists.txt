@@ -40,4 +40,15 @@ if(PIHOLE_INSTALL_DIR MATCHES "%")
 endif()
 add_compile_definitions(PIHOLE_INSTALL_DIR="${PIHOLE_INSTALL_DIR}")
 
+set(PIHOLE_SCRIPT "/usr/local/bin/pihole" CACHE STRING "Path of the pihole script FTL runs for gravity updates")
+if(NOT PIHOLE_SCRIPT MATCHES "^/")
+    message(FATAL_ERROR "PIHOLE_SCRIPT must be an absolute path, got \"${PIHOLE_SCRIPT}\"")
+endif()
+add_compile_definitions(PIHOLE_SCRIPT="${PIHOLE_SCRIPT}")
+
+option(FTL_EXIT_ON_RESTART "Exit with the restart code instead of re-executing FTL, leaving the restart to a supervisor" OFF)
+if(FTL_EXIT_ON_RESTART)
+    add_compile_definitions(FTL_EXIT_ON_RESTART)
+endif()
+
 add_subdirectory(src)
