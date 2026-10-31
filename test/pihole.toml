@@ -280,11 +280,15 @@
   # Serve DoH to a trusted reverse proxy that terminates TLS in front of Pi-hole. The
   # client-facing connection stays HTTPS; the proxy handles the encryption and forwards
   # plain HTTP to Pi-hole. This requires the proxy to be listed in
-  # webserver.trustedProxies and to announce the client's TLS in a PROXY protocol v2
-  # header, e.g., HAProxy with send-proxy-v2-ssl: only such a proxy is believed, and the
-  # client address it announces is used to attribute the query. Any other plain HTTP
-  # request is still refused, so enabling this alone never exposes DNS queries in
-  # cleartext.
+  # webserver.trustedProxies and to announce the client's TLS, in a PROXY protocol v2
+  # header (e.g., HAProxy with send-proxy-v2-ssl) or with X-Forwarded-Proto (e.g.,
+  # nginx, Traefik or Caddy): only such a proxy is believed, and the client address it
+  # announces is used to attribute the query. Any other plain HTTP request is still
+  # refused, so enabling this alone never exposes DNS queries in cleartext.
+  #
+  # The proxy has to connect to a webserver.port entry without the redirect flag (r), as
+  # a redirect port answers a request that announces its TLS in X-Forwarded-Proto with a
+  # redirect.
   #
   # Allowed values are:
   #     true or false
@@ -906,7 +910,9 @@
   # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
   # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS
   # queries if dns.doh is enabled and dns.listeningMode allows it, all its other
-  # requests are refused.
+  # requests are refused. Behind a reverse proxy listed in webserver.trustedProxies, the
+  # ACL applies to the client the proxy announces, and DNS-over-HTTPS queries of a
+  # refused client are refused as well.
   #
   # Example 1: "+127.0.0.1,+[::1]" ---> deny all access, except from 127.0.0.1 and ::1
   #
@@ -1042,12 +1048,14 @@
   #     An array of permitted CivetWeb options
   advancedOpts = []
 
-  # Reverse proxies whose PROXY protocol v2 header is believed, e.g., HAProxy with
-  # send-proxy-v2-ssl. Requests over a connection from one of these addresses are
-  # attributed to the client the header announces instead of to the proxy, and they
-  # count as HTTPS if the header says the client used TLS. The header of any other peer
-  # is ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting
-  # those lets every local process choose the client its requests are attributed to.
+  # Reverse proxies trusted to name the client. Over a connection from one of these
+  # addresses, a PROXY protocol v2 header (e.g., HAProxy with send-proxy-v2-ssl) names
+  # the client of all its requests and whether that client used TLS. With
+  # dns.dohReverseProxy enabled, a DoH request from such a proxy without that header is
+  # served if X-Forwarded-Proto is "https" (e.g., nginx, Traefik or Caddy), and it is
+  # attributed to the client X-Forwarded-For names. The headers of any other peer are
+  # ignored. A proxy on the same host connects from 127.0.0.1 or ::1, and trusting those
+  # lets every local process choose the client its requests are attributed to.
   #
   # Example: [ "192.168.1.10", "10.0.0.0/24" ]
   #
