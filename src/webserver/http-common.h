@@ -52,6 +52,9 @@ struct ftl_conn {
 	} payload;
 	struct {
 		bool restart :1;
+		// Skip the collecting delay: the request is an explicit action
+		// rather than one of a burst of settings changes
+		bool restart_now :1;
 		const char *restart_reason;
 	} ftl;
 	struct session session;
