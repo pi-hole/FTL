@@ -1052,6 +1052,92 @@ three.rename.ftl|new-rename.ftl"
   assert_success
 }
 
+@test "Host names inherited from the network table expire and stay gone after a flush" {
+  # The resolver is off for the main suite. With it on and no PTR record, a
+  # new client takes the name its address has in network_addresses
+  now=$(date +%s)
+  db=/etc/pihole/pihole-FTL.db
+  run ./pihole-FTL sqlite3 "${db}" ".timeout 5000" "DELETE FROM network_addresses WHERE ip IN ('127.0.0.92', '127.0.0.93'); DELETE FROM network WHERE hwaddr IN ('ip-127.0.0.92', 'ip-127.0.0.93'); DELETE FROM aliasclient WHERE id = 9001;
+    INSERT INTO aliasclient (id, name) VALUES (9001, 'flush-alias');
+    INSERT INTO network (hwaddr, interface, firstSeen, lastQuery, numQueries, macVendor) VALUES ('ip-127.0.0.92', 'lo', ${now}, ${now}, 0, '');
+    INSERT INTO network_addresses (network_id, ip, lastSeen, name, nameUpdated) VALUES (last_insert_rowid(), '127.0.0.92', ${now}, 'stale-name.lan', $((now - 3600)));
+    INSERT INTO network (hwaddr, interface, firstSeen, lastQuery, numQueries, macVendor, aliasclient_id) VALUES ('ip-127.0.0.93', 'lo', ${now}, ${now}, 0, '', 9001);
+    INSERT INTO network_addresses (network_id, ip, lastSeen) VALUES (last_insert_rowid(), '127.0.0.93', ${now});"
+  assert_success
+
+  # pihole.toml keeps values set via the environment, restore them below
+  keys="resolver.resolveIPv4 resolver.networkNames resolver.refreshNames dns.piholePTR"
+  declare -A saved
+  for key in ${keys}; do
+    saved[${key}]="$(./pihole-FTL --config "${key}")"
+  done
+
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_networkNames=true FTLCONF_resolver_refreshNames=ALL FTLCONF_dns_piholePTR=NONE /home/pihole/pihole-FTL"'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  dig +short +tries=3 +time=2 -b 127.0.0.92 stale-name.ftl @127.0.0.1 > /dev/null
+  dig +short +tries=3 +time=2 -b 127.0.0.93 flush-alias.ftl @127.0.0.1 > /dev/null
+
+  # Wait until the resolver has picked up the inherited name
+  top_name() {
+    curl -s "127.0.0.1/api/stats/top_clients?count=10000" | jq -r --arg ip "$1" '.clients[] | select(.ip == $ip) | .name'
+  }
+  for i in $(seq 1 60); do
+    name="$(top_name 127.0.0.92)"
+    [[ "${name}" == "stale-name.lan" ]] && break
+    kill -SIGRTMIN+4 "$(cat /run/pihole-FTL.pid)"
+    sleep 1
+  done
+  alias_before="$(top_name aliasclient-9001)"
+
+  # Two network table updates must not refresh the inherited name
+  for round in 1 2; do
+    ./pihole-FTL sqlite3 "${db}" ".timeout 5000" "UPDATE network SET numQueries = 0 WHERE hwaddr = 'ip-127.0.0.92';"
+    dig +short +tries=3 +time=2 -b 127.0.0.92 stale-name.ftl @127.0.0.1 > /dev/null
+    kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+    for i in $(seq 1 30); do
+      [[ "$(./pihole-FTL sqlite3 "${db}" "SELECT numQueries FROM network WHERE hwaddr = 'ip-127.0.0.92';")" -ge 1 ]] && break
+      sleep 1
+    done
+  done
+  sleep 1
+  updated="$(./pihole-FTL sqlite3 "${db}" "SELECT nameUpdated FROM network_addresses WHERE ip = '127.0.0.92';")"
+
+  # A flush drops the name for good, but keeps the alias-client's own name
+  curl -s -X POST 127.0.0.1/api/action/flush/network > /dev/null
+  alias_after="$(top_name aliasclient-9001)"
+  dig +short +tries=3 +time=2 -b 127.0.0.92 stale-name.ftl @127.0.0.1 > /dev/null
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)"
+  for i in $(seq 1 30); do
+    [[ "$(./pihole-FTL sqlite3 "${db}" "SELECT COUNT(*) FROM network_addresses WHERE ip = '127.0.0.92';")" -ge 1 ]] && break
+    sleep 1
+  done
+  sleep 1
+  flushed="$(./pihole-FTL sqlite3 "${db}" "SELECT COUNT(*) FROM network_addresses WHERE ip = '127.0.0.92' AND COALESCE(name, '') != '';")"
+  # The queries made with the name keep it in the query log
+  kept="$(curl -s "127.0.0.1/api/queries?domain=stale-name.ftl&length=100" | jq '[.queries[] | select(.client.name == "stale-name.lan")] | length')"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  for key in ${keys}; do
+    run ./pihole-FTL --config "${key}" "${saved[${key}]}"
+    assert_success
+  done
+
+  printf "name: %s, nameUpdated: %s (seeded %s), named after flush: %s, kept in the query log: %s, alias: %s -> %s\n" "${name}" "${updated}" "$((now - 3600))" "${flushed}" "${kept}" "${alias_before}" "${alias_after}"
+  [[ "${name}" == "stale-name.lan" ]]
+  [[ "${updated}" == "$((now - 3600))" ]]
+  [[ "${flushed}" == "0" ]]
+  [[ "${kept}" -ge 2 ]]
+  [[ "${alias_before}" == "flush-alias" ]]
+  [[ "${alias_after}" == "flush-alias" ]]
+}
+
 @test "Query IDs are kept across a restart and continue above the imported ones" {
   # The TCP queries are created in forked TCP workers, which number them from
   # the same counter as the main process

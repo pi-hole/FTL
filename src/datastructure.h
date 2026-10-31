@@ -107,6 +107,10 @@ typedef struct {
 		bool rate_limited:1;
 		bool in_database:1;
 		bool groups_looked_up:1; // get_client_groupids() ran at least once
+		// Name was inherited from network_addresses, not resolved via
+		// PTR. Such a name must not be written back to the table, it
+		// would keep refreshing its own expiry timestamp.
+		bool nameFromDB:1;
 	} flags;
 	int count;
 	int blockedcount;
