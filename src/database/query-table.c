@@ -471,6 +471,14 @@ void get_import_window(double *from, double *until)
 // lock
 static unsigned int export_pos = 0;
 
+// Number of queries imported from the long-term database at startup. Guarded
+// by the SHM lock
+static unsigned int imported_queries_total = 0;
+unsigned int __attribute__((pure)) get_imported_queries(void)
+{
+	return imported_queries_total;
+}
+
 // Index of that query in the queries array, the end of the array if the
 // connection of the export could not be opened at startup: nothing waits for
 // an export then. The caller holds the SHM lock
@@ -533,6 +541,7 @@ static bool count_queries_on_disk(void)
 	// The slots reserved for the import are already in the database, the
 	// export starts above them
 	export_pos = counted_queries + get_queries_removed();
+	imported_queries_total = counted_queries;
 	// Unlock shared memory
 	unlock_shm();
 
@@ -1380,6 +1389,7 @@ void DB_read_queries(void)
 		counters->queries -= gap;
 		// The moved queries are not exported yet
 		export_pos -= gap;
+		imported_queries_total -= gap;
 
 		// Invalidate the query ID cache since the indices shifted
 		queryIDMap_clear();

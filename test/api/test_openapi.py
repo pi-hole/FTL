@@ -69,14 +69,16 @@ class TestEndpointResponses:
     def test_get_endpoint_responses(self, openapi, ftl):
         """Each GET endpoint's response matches its OpenAPI spec.
 
-        Skips /api/action/* endpoints (would trigger unwanted actions).
-        Reports all failures with the endpoint path for easy identification.
+        Skips /api/action/* endpoints (would trigger unwanted actions) and
+        /api/metrics, which takes a bearer token instead of a session and is
+        tested in test_m_prometheus.py. Reports all failures with the
+        endpoint path for easy identification.
         """
         all_errors = {}
         teleporter_archive = None
 
         for path in openapi.endpoints["get"]:
-            if path.startswith("/api/action"):
+            if path.startswith("/api/action") or path == "/api/metrics":
                 continue
             with ResponseVerifyer(ftl, openapi) as verifyer:
                 errors = verifyer.verify_endpoint(path)

@@ -43,6 +43,7 @@ bool delete_recent_queries_from_db(const double mintime);
 bool add_additional_info_column(sqlite3 *db);
 void DB_read_queries(void);
 unsigned int get_export_index(void) __attribute__((pure));
+unsigned int get_imported_queries(void) __attribute__((pure));
 void clear_addinfo_id_cache(void);
 
 bool optimize_queries_table(sqlite3 *db);
