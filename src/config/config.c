@@ -2108,6 +2108,7 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	if(file_exists(GLOBALTOMLPATH))
 	{
 		const char new_name[] = GLOBALTOMLPATH ".broken";
+		log_warn("%s could not be read or parsed, moving it to %s", GLOBALTOMLPATH, new_name);
 		rotate_files(new_name, NULL);
 		rename(GLOBALTOMLPATH, new_name);
 	}
