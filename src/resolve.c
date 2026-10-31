@@ -94,12 +94,7 @@ struct R_DATA
 } __attribute__((packed));
 _Pragma("GCC diagnostic pop")
 
-// The sizes above are wire-format guarantees: these structs are read from and
-// written to packets arriving from upstream servers, so they must hold in every
-// build. assert() is compiled away as soon as NDEBUG is defined, which is the
-// release configuration, so the guarantees are stated as _Static_assert. The
-// build uses -std=c17 (src/CMakeLists.txt) and _Static_assert is already used
-// in Pi-hole-authored code, for example in src/dotdoh/proxy.c and src/shmem.c.
+// Wire-format sizes, checked at compile time as assert() is gone with NDEBUG
 _Static_assert(sizeof(struct DNS_HEADER) == 12, "DNS_HEADER must be 12 bytes");
 _Static_assert(sizeof(struct QUESTION) == 4, "QUESTION must be 4 bytes");
 _Static_assert(sizeof(struct R_DATA) == 10, "R_DATA must be 10 bytes");
