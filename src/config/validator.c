@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+#include <errno.h>
+#include <limits.h>
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -146,6 +148,51 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 	return true;
 }
 
+// dnsmasq ends a line at a # that starts it or follows whitespace
+static void cut_comment(char *s)
+{
+	for(char *c = s; *c != '\0'; c++)
+	{
+		if(*c == '#' && (c == s || isspace((unsigned char)c[-1])))
+		{
+			*c = '\0';
+			return;
+		}
+	}
+}
+
+// Reduce a dns.cnameRecords entry in place to what dnsmasq needs to see: no
+// comment and no whitespace around the commas. dnsmasq turns whitespace in front
+// of a comma into an additional CNAME for the root name.
+void normalize_cname(char *s)
+{
+	cut_comment(s);
+
+	size_t w = 0;
+	for(char *p = s; ; )
+	{
+		char *comma = strchr(p, ',');
+		size_t len = comma != NULL ? (size_t)(comma - p) : strlen(p);
+		while(len > 0 && isspace((unsigned char)*p))
+		{
+			p++;
+			len--;
+		}
+		while(len > 0 && isspace((unsigned char)p[len - 1]))
+			len--;
+
+		if(w > 0)
+			s[w++] = ',';
+		memmove(s + w, p, len);
+		w += len;
+
+		if(comma == NULL)
+			break;
+		p = comma + 1;
+	}
+	s[w] = '\0';
+}
+
 // Validate the dns.cnames array
 // Each entry needs to be a string in form "<cname>,[<cname>,]<target>[,<TTL>]"
 // Newline characters are not allowed in any of the entries
@@ -174,6 +221,12 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// Check if it's in the form "<cname>,[<cnameX>,]<target>[,<TTL>]"
 		// <cnameX> is optional and may be repeated
 		char *str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
 		char *tmp = str, *s = NULL;
 		unsigned int j = 0;
 
@@ -210,6 +263,48 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				return false;
 			}
 		}
+
+		// Every alias and the target have to be valid domains. As in dnsmasq,
+		// spaces around the commas are ignored, and the last of at least
+		// three elements is the TTL if it is a number
+		str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
+		tmp = str;
+		for(unsigned int k = 0; (s = strsep(&tmp, ",")) != NULL; k++)
+		{
+			while(isspace((unsigned char)*s))
+				s++;
+			size_t slen = strlen(s);
+			while(slen > 0 && isspace((unsigned char)s[slen - 1]))
+				s[--slen] = '\0';
+
+			if(k == j - 1 && j > 2 && slen > 0 && strspn(s, "0123456789") == slen)
+			{
+				// The TTL has to fit into an int
+				errno = 0;
+				const unsigned long ttl = strtoul(s, NULL, 10);
+				if(errno != 0 || ttl > INT_MAX)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid TTL (\"%s\")", key, i, s);
+					free(str);
+					return false;
+				}
+				break;
+			}
+
+			if(!valid_domain(s, slen, false))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid domain (\"%s\")", key, i, s);
+				free(str);
+				return false;
+			}
+		}
+		free(str);
 	}
 
 	return true;

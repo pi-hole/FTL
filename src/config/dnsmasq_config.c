@@ -18,6 +18,8 @@
 #include "datastructure.h"
 // struct config
 #include "config/config.h"
+// normalize_cname()
+#include "config/validator.h"
 // JSON array functions
 #include "webserver/cJSON/cJSON.h"
 // encrypted upstreams: parse_upstream_uri() + the deterministic loopback tuple
@@ -872,8 +874,16 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		cJSON *server = NULL;
 		cJSON_ArrayForEach(server, conf->dns.cnameRecords.v.json)
 		{
-			if(server != NULL && cJSON_IsString(server))
-				fprintf(pihole_conf, "cname=%s\n", server->valuestring);
+			if(server == NULL || !cJSON_IsString(server))
+				continue;
+
+			// dnsmasq mis-parses whitespace in front of a comma
+			char *entry = strdup(server->valuestring);
+			if(entry == NULL)
+				continue;
+			normalize_cname(entry);
+			fprintf(pihole_conf, "cname=%s\n", entry);
+			free(entry);
 		}
 		fputs("\n", pihole_conf);
 	}
