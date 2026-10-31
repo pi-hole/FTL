@@ -49,6 +49,11 @@ setup_file() {
     /var/log/pihole/FTL.log 5 "$before" >/dev/null 2>&1 || true
 }
 
+teardown() {
+  # Free the ports of the upstreams a test started, they would outlive it
+  pkill -f 'dotdoh_query.py slowserver' 2>/dev/null || true
+}
+
 @test "dotdoh-server: the inbound DoT listener came up on port 853" {
   run bash -c 'grep -F "dotdoh: DoT server listening on port 853" /var/log/pihole/FTL.log'
   assert_success
@@ -84,6 +89,156 @@ setup_file() {
   assert_success
   run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
   assert_output "OK"
+}
+
+@test "dotdoh-server: a DoH answer larger than a UDP reply arrives complete" {
+  # big.ftl has six TXT records of 250 bytes, more than dnsmasq answers over
+  # UDP, so the handoff fetches the answer again over TCP
+  local ca q a
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_big_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_big_a.bin"
+  python3 test/dotdoh_query.py emit big.ftl "$q" 16
+  run curl -s --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py checkcount "$a" 6
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a DoH query too long for a UDP query to dnsmasq resolves" {
+  # 1250 bytes plus the client attribution exceed the 1232 bytes dnsmasq reads
+  # from a UDP query, so the handoff has to use TCP
+  local ca q a
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_long_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_long_a.bin"
+  python3 test/dotdoh_query.py emitpad "$DOMAIN" 1250 "$q"
+  run curl -s --max-time 5 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a slow DoH query is counted once" {
+  # The upstream for slow.ftl answers after 1.5 s. A resend of the handoff in
+  # the meantime would be another query for FTL
+  local ca q a ready name i out
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_slow_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_slow_a.bin"
+  ready="${BATS_FILE_TMPDIR}/slow_upstream.ready"
+  name="once.slow.ftl"
+  python3 test/dotdoh_query.py slowserver 5556 1500 "$ready" 20 >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 20); do [[ -f "$ready" ]] && break; sleep 0.1; done
+  python3 test/dotdoh_query.py emit "$name" "$q"
+  run curl -s --max-time 10 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+  out=$(curl -s "${FTL_URL}/api/queries?domain=${name}")
+  run python3 -c 'import json, sys; print(len(json.loads(sys.argv[1])["queries"]))' "$out"
+  assert_output "1"
+}
+
+# Starts the slow.ftl upstream on 5556 answering at once, apart from the first
+# copy of a drop-* name
+start_dropping_upstream() {
+  local ready i
+  ready="${BATS_TEST_TMPDIR}/drop_upstream.ready"
+  python3 test/dotdoh_query.py slowserver 5556 0 "$ready" 10 >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 20); do [[ -f "$ready" ]] && break; sleep 0.1; done
+}
+
+# Prints how often the query log holds the name $1 and the reply type of its first entry
+queries_and_reply() {
+  local out
+  # Queries reach the database the API reads from once a second
+  sleep 1.5
+  out=$(curl -s "${FTL_URL}/api/queries?domain=${1}")
+  python3 -c 'import json, sys; q = json.loads(sys.argv[1])["queries"]
+print(len(q), q[0]["reply"]["type"] if q else "-")' "$out"
+}
+
+@test "dotdoh-server: a DoH query whose upstream query is lost is answered once" {
+  # The handoff repeats a query unanswered after 0.9 s, which dnsmasq
+  # forwards again. The repeat is not another query
+  local ca q a name
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_drop_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_drop_a.bin"
+  name="drop-doh.slow.ftl"
+  start_dropping_upstream
+  python3 test/dotdoh_query.py emit "$name" "$q"
+  run curl -s --max-time 8 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+  run queries_and_reply "$name"
+  assert_output "1 IP"
+}
+
+@test "dotdoh-server: a DoH3 query whose upstream query is lost is answered once" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local name="drop-doh3.slow.ftl"
+  start_dropping_upstream
+  run python3 test/dotdoh_query.py doh3 127.0.0.1 443 "$name" "$EXPECT_IP"
+  assert_output "OK"
+  run queries_and_reply "$name"
+  assert_output "1 IP"
+}
+
+@test "dotdoh-server: a DoH query fails over when the preferred upstream goes silent" {
+  # The first failover.ftl query goes to both upstreams, and the one answering
+  # at once becomes dnsmasq's choice. It stops after that query, so only the
+  # repeat of the next one has dnsmasq try the other upstream
+  local ca q a fast slow pid name i
+  ca="$(pwd)/test/test_ca.crt"
+  q="${BATS_FILE_TMPDIR}/doh_failover_q.bin"
+  a="${BATS_FILE_TMPDIR}/doh_failover_a.bin"
+  fast="${BATS_TEST_TMPDIR}/failover_fast.ready"
+  slow="${BATS_TEST_TMPDIR}/failover_slow.ready"
+  python3 test/dotdoh_query.py slowserver 5557 0 "$fast" 3 >/dev/null 2>&1 3>&- &
+  pid=$!
+  python3 test/dotdoh_query.py slowserver 5558 300 "$slow" 20 >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 20); do [[ -f "$fast" && -f "$slow" ]] && break; sleep 0.1; done
+  python3 test/dotdoh_query.py emit "first.failover.ftl" "$q"
+  run curl -s --max-time 5 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+  wait "$pid"
+
+  name="second.failover.ftl"
+  python3 test/dotdoh_query.py emit "$name" "$q"
+  run curl -s --max-time 8 --cacert "$ca" --resolve "pi.hole:443:127.0.0.1" \
+           --interface "$CLIENT" \
+           -H 'content-type: application/dns-message' \
+           --data-binary "@$q" \
+           "https://pi.hole/dns-query" --output "$a"
+  assert_success
+  run python3 test/dotdoh_query.py check "$a" "$EXPECT_IP"
+  assert_output "OK"
+  run queries_and_reply "$name"
+  assert_output "1 IP"
 }
 
 @test "dotdoh-server: a DoH answer carries a Cache-Control max-age (RFC 8484)" {

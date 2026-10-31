@@ -25,6 +25,13 @@
 #                                                 connections to the first, then
 #                                                 time one query on the second
 #                                                 and count the idle ones closed
+#   emitpad <domain> <size> <outfile>             like emit, padded to <size> bytes
+#                                                 with an EDNS padding option
+#   slowserver <port> <ms> <ready> <secs>         plain UDP server on loopback that
+#                                                 answers A queries after <ms>, for
+#                                                 <secs>; creates <ready> once bound
+#                                                 and leaves the first copy of each
+#                                                 drop-* name unanswered
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -50,6 +57,54 @@ def build_query(qname, qtype=1):
         body += bytes([len(label)]) + label.encode()
     body += b"\x00" + struct.pack("!HH", qtype, 1)  # QTYPE, QCLASS=IN
     return header + body
+
+
+def build_padded_query(qname, size):
+    """build_query() plus an OPT record whose padding option (RFC 7830) brings
+    the message to exactly size bytes."""
+    q = bytearray(build_query(qname))
+    pad = size - len(q) - 11 - 4
+    if pad < 0:
+        sys.exit("size %d is too small" % size)
+    q[10:12] = struct.pack("!H", 1)  # ARCOUNT
+    q += b"\x00" + struct.pack("!HHIH", 41, 1232, 0, 4 + pad)
+    q += struct.pack("!HH", 12, pad) + bytes(pad)
+    return bytes(q)
+
+
+def slow_server(port, delay_ms, readyfile, secs):
+    """Answer A queries on 127.0.0.1:port with 192.168.1.1 after delay_ms until
+    secs pass. readyfile is created once the socket is bound."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.1", port))
+    open(readyfile, "w").close()
+    end = time.monotonic() + secs
+    dropped = set()
+    while time.monotonic() < end:
+        s.settimeout(max(end - time.monotonic(), 0.01))
+        try:
+            query, peer = s.recvfrom(65535)
+        except socket.timeout:
+            break
+        if len(query) < 12:
+            continue
+        i = 12
+        while i < len(query) and query[i] != 0:
+            i += 1 + query[i]
+        qend = i + 5
+        # A lost query: only a repeat of a drop-* name is answered
+        name = bytes(query[12:i]).lower()
+        if name[1:6] == b"drop-" and name not in dropped:
+            dropped.add(name)
+            continue
+        time.sleep(delay_ms / 1000.0)
+        reply = bytearray(query[:qend])
+        reply[2] |= 0x80
+        reply[3] = 0x80  # RA, NOERROR
+        reply[6:12] = struct.pack("!HHH", 1, 0, 0)
+        reply += struct.pack("!HHHIH", 0xC00C, 1, 1, 60, 4) + socket.inet_aton("192.168.1.1")
+        s.sendto(bytes(reply), peer)
+    s.close()
 
 
 def tcp_keep(host, port, count, suffix):
@@ -148,10 +203,18 @@ def dns_udp(host, port, packet, source):
         s.close()
 
 
-def validate(answer, expected_ip):
+def check_id(answer, qid):
+    """Fail unless answer carries the query's message ID."""
+    (aid,) = struct.unpack("!H", answer[:2])
+    if aid != qid:
+        sys.exit("message ID 0x%04x, expected 0x%04x" % (aid, qid))
+
+
+def validate(answer, expected_ip, qid=0x1234):
     """Fail (raise SystemExit) unless answer is a positive reply for expected_ip."""
     if len(answer) < 12:
         sys.exit("answer too short (%d bytes)" % len(answer))
+    check_id(answer, qid)
     flags, _, ancount = struct.unpack("!HHH", answer[2:8])
     if not (flags & 0x8000):
         sys.exit("QR bit not set (not a response)")
@@ -574,15 +637,23 @@ def proxy_request(host, port, client_ip, source, req, pad=0, drip=0.0, ssl=True)
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
+        sys.exit("usage: dotdoh_query.py <emit|emitpad|emitqr|emiturl|slowserver|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
                  "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn|"
                  "dohproxy|dohproxyget|dohproxyplain|dohproxypad|dohproxydrip|dohproxyerror|dohproxymethod|proxyget> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
+        qtype = int(sys.argv[4]) if len(sys.argv) > 4 else 1
         with open(outfile, "wb") as f:
-            f.write(build_query(domain))
+            f.write(build_query(domain, qtype))
+    elif cmd == "emitpad":
+        _, _, domain, size, outfile = sys.argv[:5]
+        with open(outfile, "wb") as f:
+            f.write(build_padded_query(domain, int(size)))
+    elif cmd == "slowserver":
+        _, _, port, delay_ms, readyfile, secs = sys.argv[:6]
+        slow_server(int(port), int(delay_ms), readyfile, float(secs))
     elif cmd == "emitqr":
         # A message with the QR (response) bit set, which is not a query.
         _, _, domain, outfile = sys.argv[:4]
@@ -608,6 +679,22 @@ def main():
         _, _, infile, expected_ip = sys.argv[:4]
         with open(infile, "rb") as f:
             validate(f.read(), expected_ip)
+        print("OK")
+    elif cmd == "checkcount":
+        # A complete (not truncated) positive answer with this many records
+        _, _, infile, count = sys.argv[:4]
+        with open(infile, "rb") as f:
+            answer = f.read()
+        if len(answer) < 12:
+            sys.exit("answer too short (%d bytes)" % len(answer))
+        check_id(answer, 0x1234)
+        flags, _, ancount = struct.unpack("!HHH", answer[2:8])
+        if flags & 0x0200:
+            sys.exit("answer is truncated (TC set)")
+        if flags & 0x000F:
+            sys.exit("non-zero RCODE %d" % (flags & 0x000F))
+        if ancount != int(count):
+            sys.exit("%d answer records, expected %s" % (ancount, count))
         print("OK")
     elif cmd == "dot":
         _, _, host, port, domain, source, cafile, expected_ip = sys.argv[:8]
@@ -699,7 +786,7 @@ def main():
         query = build_query(domain)
         query = b"\x00\x00" + query[2:]
         answers = doq_exchange(host, int(port), [query], source=source)
-        validate(answers[0], expected_ip)
+        validate(answers[0], expected_ip, qid=0)
         print("OK")
     elif cmd == "doqnodata":
         # Cross-family pi.hole over DoQ: with the connected-address hint conveyed,
@@ -720,7 +807,7 @@ def main():
         if len(answers) != int(count):
             sys.exit("DoQ: got %d/%s answers" % (len(answers), count))
         for a in answers:
-            validate(a, expected_ip)
+            validate(a, expected_ip, qid=0)
         print("OK")
     elif cmd == "doqgarbage":
         # A framed but non-DNS message must not wedge the listener.
