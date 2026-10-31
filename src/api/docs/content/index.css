@@ -34,7 +34,7 @@
 }
 
 rapi-doc::part(section-header) {
-  background-color: #222;
+  background-color: #16161a;
   color: #fff;
 }
 
@@ -72,7 +72,7 @@ rapi-doc::part(section-header) {
   justify-content: space-between;
   color:#fff;
   text-align:center;
-  background-color:#222;
+  background-color: #16161a;
 }
 .footer-slot > div {
   flex: 0 0 auto;
