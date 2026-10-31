@@ -79,20 +79,26 @@ load 'bats_helper.bash'
   # setupVars.conf import again
   run bash -c 'grep -c "DEBUG_CONFIG: Config file written to /etc/pihole/dnsmasq.conf" /var/log/pihole/FTL.log'
   printf "dnsmasq.conf write count: %s\n" "${lines[0]}"
+  # On RISCV64, pytest is skipped, so only the BATS writes occur (1x)
+  # Otherwise, the pytest dns/hosts config array PUT + DELETE add 2 more: with
+  # dns.hostsLocal the local= lines are derived from the records, so changing
+  # them rewrites dnsmasq.conf as well, and the ZIP restore drops the reverse
+  # server of the v5 setupVars.conf import again. The config restore after the
+  # first v5 Teleporter import clears dns.hosts, which rewrites it once more (8x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "1"
   else
-    assert_line --index 0 "5"
+    assert_line --index 0 "8"
   fi
   run bash -c 'grep -c "DEBUG_CONFIG: HOSTS file written to /etc/pihole/hosts/custom.list" /var/log/pihole/FTL.log'
   printf "custom.list write count: %s\n" "${lines[0]}"
-  # On RISCV64, pytest is skipped, so only BATS writes occur (7x)
+  # On RISCV64, pytest is skipped, so only BATS writes occur (8x)
   # Otherwise, pytest dns/hosts config array PUT + DELETE add 2 more, and
-  # the config restore after the first v5 Teleporter import clears dns.hosts (10x)
+  # the config restore after the first v5 Teleporter import clears dns.hosts (11x)
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "7"
+    assert_line --index 0 "8"
   else
-    assert_line --index 0 "10"
+    assert_line --index 0 "11"
   fi
 }
 
@@ -787,7 +793,8 @@ first_start_stop() {
   # rename and more than one chunk of the export later
   cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.rename
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
+  # Without dns.hostsLocal, the renames do not restart FTL
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_dns_hostsLocal=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
@@ -1265,8 +1272,9 @@ three.rename.ftl|new-rename.ftl"
   cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.names
   logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
   # Without the history of the earlier tests, the resolver has only the names
-  # of this test to look up
-  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
+  # of this test to look up. Without dns.hostsLocal, the renames do not
+  # restart FTL
+  run bash -c 'su pihole -s /bin/sh -c "FTLCONF_database_DBimport=false FTLCONF_dns_hostsLocal=false FTLCONF_resolver_resolveIPv4=true FTLCONF_resolver_refreshNames=ALL /home/pihole/pihole-FTL"'
   assert_success
   run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
   assert_success
