@@ -715,9 +715,10 @@ oom:
 static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req, cJSON *queries,
                             unsigned int *records)
 {
-	// Start building database query string
-	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM query_storage q %s", QUERYSTR, JOINSTR);
+	// The conditions, the filters on the joined tables as ID subqueries so
+	// SQLite tests them before it joins anything
+	char conds[QUERYSTRBUFFERLEN] = { 0 };
+	char *querystr = conds;
 
 	bool where = false;
 	// Until the import is done, the query log in memory is its window
@@ -732,7 +733,8 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	if(req->has_until)
 		add_querystr_string(querystr, "timestamp<", ":tsuntil", &where);
 	if(req->has_domain)
-		add_querystr_string(querystr, req->domain_like ? "d.domain LIKE" : "d.domain=", ":domain", &where);
+		add_querystr_string(querystr, req->domain_like ? "q.domain IN (SELECT id FROM domain_by_id WHERE domain LIKE " :
+		                                                 "q.domain IN (SELECT id FROM domain_by_id WHERE domain=", ":domain)", &where);
 	if(req->upstream == QLOG_UPSTREAM_BLOCKLIST)
 		add_querystr_string(querystr, "q.status IN ", get_blocked_statuslist(), &where);
 	else if(req->upstream == QLOG_UPSTREAM_CACHE)
@@ -740,11 +742,14 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	else if(req->upstream == QLOG_UPSTREAM_PERMITTED)
 		add_querystr_string(querystr, "q.status IN ", get_permitted_statuslist(), &where);
 	else if(req->upstream == QLOG_UPSTREAM_NAME)
-		add_querystr_string(querystr, req->upstream_like ? "f.forward LIKE" : "f.forward=", ":upstream", &where);
+		add_querystr_string(querystr, req->upstream_like ? "q.forward IN (SELECT id FROM forward_by_id WHERE forward LIKE " :
+		                                                   "q.forward IN (SELECT id FROM forward_by_id WHERE forward=", ":upstream)", &where);
 	if(req->has_client_ip)
-		add_querystr_string(querystr, req->client_ip_like ? "c.ip LIKE" : "c.ip=", ":cip", &where);
+		add_querystr_string(querystr, req->client_ip_like ? "q.client IN (SELECT id FROM client_by_id WHERE ip LIKE " :
+		                                                    "q.client IN (SELECT id FROM client_by_id WHERE ip=", ":cip)", &where);
 	if(req->has_client_name)
-		add_querystr_string(querystr, req->client_name_like ? "c.name LIKE" : "c.name=", ":cname", &where);
+		add_querystr_string(querystr, req->client_name_like ? "q.client IN (SELECT id FROM client_by_id WHERE name LIKE " :
+		                                                      "q.client IN (SELECT id FROM client_by_id WHERE name=", ":cname)", &where);
 	if(req->cursor_set)
 		add_querystr_string(querystr, "q.id<=", ":cursor", &where);
 	// Unmapped query types are stored as 100 + the DNS type, so OTHER
@@ -758,15 +763,20 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	if(req->has_dnssec)
 		add_querystr_string(querystr, "q.dnssec=", ":dnssec", &where);
 	if(req->has_domain_search)
-		add_querystr_string(querystr, "d.domain LIKE", ":domain_search ESCAPE '\\'", &where);
+		add_querystr_string(querystr, "q.domain IN (SELECT id FROM domain_by_id WHERE domain LIKE ", ":domain_search ESCAPE '\\')", &where);
 	// We search both client IP and name
 	if(req->has_client_search)
-		add_querystr_string(querystr, "c.ip LIKE :client_search ESCAPE '\\' OR c.name LIKE", ":client_search ESCAPE '\\'", &where);
+		add_querystr_string(querystr, "q.client IN (SELECT id FROM client_by_id WHERE ip LIKE :client_search ESCAPE '\\' OR name LIKE ",
+		                    ":client_search ESCAPE '\\')", &where);
 
-	// Finish preparing query string
-	const size_t strpos = strlen(querystr);
-	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " ORDER BY %s %s",
-	         sort_column_sql(req->sort), req->sort_desc ? "DESC" : "ASC");
+	// Without exclusion regexes, which have to see every row, SQLite pages
+	// itself and a count of the conditions gives the number of matches
+	const bool sql_paging = req->N_regex_domains == 0 && req->N_regex_clients == 0;
+	char pagestr[2 * QUERYSTRBUFFERLEN] = { 0 };
+	snprintf(pagestr, sizeof(pagestr), "%s FROM query_storage q %s%s ORDER BY %s %s%s",
+	         QUERYSTR, JOINSTR, conds, sort_column_sql(req->sort), req->sort_desc ? "DESC" : "ASC",
+	         sql_paging ? " LIMIT :limit OFFSET :offset" : "");
+	querystr = pagestr;
 
 	// Each request reads on a connection of its own
 	sqlite3 *db = dbopen(true, false);
@@ -778,11 +788,20 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		                       NULL);
 	}
 
-	// Prepare SQLite3 statement
-	sqlite3_stmt *read_stmt = NULL;
+	// Prepare the SQLite3 statements, the count only when it is needed. It
+	// keeps the inner joins, which leave out rows without a domain or client
+	sqlite3_stmt *read_stmt = NULL, *count_stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
+	if(rc == SQLITE_OK && sql_paging && req->filtering)
+	{
+		char countstr[2 * QUERYSTRBUFFERLEN] = { 0 };
+		snprintf(countstr, sizeof(countstr), "SELECT COUNT(*) FROM query_storage q "
+		         "JOIN client_by_id c ON q.client = c.id JOIN domain_by_id d ON q.domain = d.id%s", conds);
+		rc = sqlite3_prepare_v2(db, countstr, -1, &count_stmt, NULL);
+	}
 	if( rc != SQLITE_OK )
 	{
+		sqlite3_finalize(read_stmt);
 		dbclose(&db);
 		return send_json_error(api, 500,
 		                       "internal_error",
@@ -813,38 +832,45 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		{ ":cursor", false, NULL, 0.0, "count" },
 		{ ":domain_search", true, req->domain_search, 0.0, "domain_search" },
 		{ ":client_search", true, req->client_search, 0.0, "client_search" },
+		{ ":limit", false, NULL, req->length, "limit" },
+		{ ":offset", false, NULL, 0.0, "offset" },
 	};
-	for(unsigned int i = 0; i < ArraySize(binds); i++)
+	for(unsigned int i = 0; i < 2 * ArraySize(binds); i++)
 	{
-		const int idx = sqlite3_bind_parameter_index(read_stmt, binds[i].name);
+		sqlite3_stmt *stmt = i < ArraySize(binds) ? read_stmt : count_stmt;
+		const unsigned int b = i % ArraySize(binds);
+		const int idx = stmt != NULL ? sqlite3_bind_parameter_index(stmt, binds[b].name) : 0;
 		if(idx <= 0)
 			continue;
-		if(binds[i].text)
+		if(binds[b].text)
 		{
-			log_web_debug(DEBUG_API, "adding %s = \"%s\" to query", binds[i].name, binds[i].str);
-			rc = sqlite3_bind_text(read_stmt, idx, binds[i].str, -1, SQLITE_STATIC);
+			log_web_debug(DEBUG_API, "adding %s = \"%s\" to query", binds[b].name, binds[b].str);
+			rc = sqlite3_bind_text(stmt, idx, binds[b].str, -1, SQLITE_STATIC);
 		}
-		else if(strcmp(binds[i].name, ":cursor") == 0)
+		else if(strcmp(binds[b].name, ":offset") == 0)
+			rc = sqlite3_bind_int64(stmt, idx, req->start);
+		else if(strcmp(binds[b].name, ":cursor") == 0)
 		{
 			log_web_debug(DEBUG_API, "adding :cursor = %"PRIu64" to query", req->cursor);
-			rc = sqlite3_bind_int64(read_stmt, idx, req->cursor);
+			rc = sqlite3_bind_int64(stmt, idx, req->cursor);
 		}
-		else if(strncmp(binds[i].name, ":ts", 3) == 0)
+		else if(strncmp(binds[b].name, ":ts", 3) == 0)
 		{
-			log_web_debug(DEBUG_API, "adding %s = %lf to query", binds[i].name, binds[i].num);
-			rc = sqlite3_bind_double(read_stmt, idx, binds[i].num);
+			log_web_debug(DEBUG_API, "adding %s = %lf to query", binds[b].name, binds[b].num);
+			rc = sqlite3_bind_double(stmt, idx, binds[b].num);
 		}
 		else
 		{
-			log_web_debug(DEBUG_API, "adding %s = %d to query", binds[i].name, (int)binds[i].num);
-			rc = sqlite3_bind_int(read_stmt, idx, (int)binds[i].num);
+			log_web_debug(DEBUG_API, "adding %s = %d to query", binds[b].name, (int)binds[b].num);
+			rc = sqlite3_bind_int(stmt, idx, (int)binds[b].num);
 		}
 		if(rc != SQLITE_OK)
 		{
 			char message[96] = { 0 };
 			snprintf(message, sizeof(message), "Internal server error, failed to bind %s to SQL query",
-			         binds[i].what);
+			         binds[b].what);
 			sqlite3_finalize(read_stmt);
+			sqlite3_finalize(count_stmt);
 			dbclose(&db);
 			return send_json_error(api, 500,
 			                       "internal_error",
@@ -892,9 +918,9 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		}
 
 		// Server-side pagination: skip all records before start, take
-		// length of them
+		// length of them, unless SQLite already did
 		counted++;
-		if(counted <= req->start)
+		if(!sql_paging && counted <= req->start)
 			continue;
 		if(added >= (unsigned int)req->length)
 		{
@@ -923,6 +949,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		if(ret != 0)
 		{
 			sqlite3_finalize(read_stmt);
+			sqlite3_finalize(count_stmt);
 			dbclose(&db);
 			return ret;
 		}
@@ -931,8 +958,25 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	log_web_debug(DEBUG_API, "Sending %u queries (counted %u, skipped %u)",
 	              added, counted, regex_skipped);
 
+	// The number of matches, counted by SQLite when it paged
+	if(count_stmt != NULL)
+	{
+		if((rc = sqlite3_step(count_stmt)) != SQLITE_ROW)
+		{
+			sqlite3_finalize(read_stmt);
+			sqlite3_finalize(count_stmt);
+			dbclose(&db);
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Internal server error, failed to count the queries",
+			                       sqlite3_errstr(rc));
+		}
+		counted = sqlite3_column_int(count_stmt, 0);
+	}
+
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
+	sqlite3_finalize(count_stmt);
 	dbclose(&db);
 
 	*records = counted;
