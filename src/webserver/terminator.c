@@ -97,7 +97,8 @@ static atomic_int active_handlers = 0;
 // bound a single source). Mirrors DOT_MAX_CONNS_PER_IP in dot_server.c. Sized to
 // a quarter of the global caps; a browser or DoH client stays well under it.
 #define TERMINATOR_MAX_CONNS_PER_IP 64
-struct ip_slot { uint8_t key[16]; unsigned count; };
+// served: when a DoH3 worker last took one of the source's jobs, under h3_jobs_mtx
+struct ip_slot { uint8_t key[16]; unsigned count; unsigned jobs; uint64_t served; };
 // One slot per distinct source. Sized for the combined worst case of both
 // subsystems (TCP handlers and HTTP/3 connections, each with its own global cap
 // and both keyed into this one table), so a free slot always exists while either
@@ -138,7 +139,7 @@ static bool ip_reserve(const uint8_t key[16])
 	if(slot != NULL)
 		ok = slot->count < TERMINATOR_MAX_CONNS_PER_IP ? (slot->count++, true) : false;
 	else if(freeslot != NULL)
-	{ memcpy(freeslot->key, key, 16); freeslot->count = 1; ok = true; }
+	{ memcpy(freeslot->key, key, 16); freeslot->count = 1; freeslot->jobs = 0; freeslot->served = 0; ok = true; }
 	else
 		ok = false;
 	pthread_mutex_unlock(&ip_table_mtx);
@@ -2639,6 +2640,7 @@ struct h3_stream {
 	// Native DoH served in the terminator (resolve off-loaded to a worker).
 	bool is_doh;
 	bool resolving;          // a DoH resolve job is in flight for this stream
+	struct h3_job *job;      // that job until it is drained or cancelled
 	bool close_pending;      // nghttp3 closed the stream while resolving; free be after
 
 	// Backend connection (non-blocking)
@@ -2688,18 +2690,67 @@ struct h3_job {
 	int64_t  stream_id;
 	char client[INET6_ADDRSTRLEN];
 	char dest[INET6_ADDRSTRLEN];
-	uint8_t  query[DNS_MSG_MAX];  size_t qlen;
-	uint8_t  answer[DNS_MSG_MAX]; ssize_t alen;
+	uint8_t ipkey[16];              // source counted in ip_table while the job lives
+	struct ip_slot *slot;           // its ip_table slot, held by the job's connection
+	bool cancelled;                 // client gone, do not resolve; under h3_jobs_mtx
+	uint8_t *answer; ssize_t alen;  // allocated by the worker at the answer's size
+	size_t   qlen;
+	uint8_t  query[];
 };
 #define H3_DOH_WORKERS 4
+// Jobs dispatched and not yet drained. Beyond this, a request is answered 503
+// instead of waiting behind a queue its client has likely given up on
+#define H3_DOH_MAX_JOBS 256
+// A single source gets a quarter of them, like TERMINATOR_MAX_CONNS_PER_IP
+#define H3_DOH_MAX_JOBS_PER_IP (H3_DOH_MAX_JOBS / 4)
+
+// Count a DoH resolve against its source (which holds an ip_table slot through
+// its connection). Returns the slot, or NULL when the source is at
+// H3_DOH_MAX_JOBS_PER_IP. Pair every slot returned with one ip_job_done(key)
+static struct ip_slot *ip_job_start(const uint8_t key[16])
+{
+	struct ip_slot *slot = NULL;
+	pthread_mutex_lock(&ip_table_mtx);
+	for(size_t i = 0; i < sizeof(ip_table) / sizeof(ip_table[0]); i++)
+		if(ip_table[i].count > 0 && memcmp(ip_table[i].key, key, 16) == 0)
+		{
+			if(ip_table[i].jobs < H3_DOH_MAX_JOBS_PER_IP)
+			{
+				ip_table[i].jobs++;
+				slot = &ip_table[i];
+			}
+			break;
+		}
+	pthread_mutex_unlock(&ip_table_mtx);
+	return slot;
+}
+
+static void ip_job_done(const uint8_t key[16])
+{
+	pthread_mutex_lock(&ip_table_mtx);
+	for(size_t i = 0; i < sizeof(ip_table) / sizeof(ip_table[0]); i++)
+		if(ip_table[i].count > 0 && memcmp(ip_table[i].key, key, 16) == 0)
+		{
+			if(ip_table[i].jobs > 0)
+				ip_table[i].jobs--;
+			break;
+		}
+	pthread_mutex_unlock(&ip_table_mtx);
+}
 static int h3_wake_fd = -1;
 static uint64_t h3_gen_ctr = 0;                 // loop-thread only
+static unsigned h3_jobs_n = 0;                  // loop-thread only
 static pthread_t h3_workers[H3_DOH_WORKERS];
 static unsigned h3_workers_n = 0;
 static bool h3_workers_stop = false;
 static pthread_mutex_t h3_jobs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  h3_jobs_cv  = PTHREAD_COND_INITIALIZER;
-static struct h3_job *h3_jobs_pending;          // loop -> worker
+static struct h3_job *h3_jobs_pending;          // loop -> worker, oldest first
+static struct h3_job *h3_jobs_pending_tail;
+// The source each worker is resolving for (NULL when idle) and the count behind
+// ip_slot.served, both guarded by h3_jobs_mtx
+static struct ip_slot *h3_jobs_running[H3_DOH_WORKERS];
+static uint64_t h3_jobs_served = 0;
 static struct h3_job *h3_jobs_done;             // worker -> loop
 
 // Monotonic timestamp in nanoseconds for nghttp3's rate limiter / bookkeeping.
@@ -2728,8 +2779,11 @@ static struct h3_stream *h3_stream_new(struct h3_conn *c, SSL *ssl, bool uni_loc
 	s->uni_local = uni_local;
 	s->be_fd = -1;
 	s->id = (int64_t)SSL_get_stream_id(ssl);
-	s->next = c->streams;
-	c->streams = s;
+	// Append, so requests are read and dispatched in the order they arrived
+	struct h3_stream **pp = &c->streams;
+	while(*pp != NULL)
+		pp = &(*pp)->next;
+	*pp = s;
 	return s;
 }
 
@@ -2911,10 +2965,20 @@ static void h3_doh_dispatch(struct h3_stream *s)
 	if(client[0] == '\0' || !dotdoh_source_allowed(client))
 	{ h3_gateway_error(s, "403"); return; }
 
-	struct h3_job *job = calloc(1, sizeof(*job));
+	struct ip_slot *slot = h3_jobs_n < H3_DOH_MAX_JOBS ? ip_job_start(s->conn->ipkey) : NULL;
+	if(slot == NULL)
+	{ h3_gateway_error(s, "503"); return; }
+
+	struct h3_job *job = calloc(1, sizeof(*job) + qlen);
 	if(job == NULL)
-	{ h3_gateway_error(s, "500"); return; }
+	{
+		ip_job_done(s->conn->ipkey);
+		h3_gateway_error(s, "500");
+		return;
+	}
 	job->conn_gen = s->conn->gen;
+	memcpy(job->ipkey, s->conn->ipkey, sizeof(job->ipkey));
+	job->slot = slot;
 	job->stream_id = s->id;
 	snprintf(job->client, sizeof(job->client), "%s", client);
 	snprintf(job->dest, sizeof(job->dest), "%s", dest);
@@ -2922,10 +2986,15 @@ static void h3_doh_dispatch(struct h3_stream *s)
 	job->qlen = qlen;
 
 	s->resolving = true;
+	s->job = job;
 	s->conn->inflight++;
+	h3_jobs_n++;
 	pthread_mutex_lock(&h3_jobs_mtx);
-	job->next = h3_jobs_pending;
-	h3_jobs_pending = job;
+	if(h3_jobs_pending_tail != NULL)
+		h3_jobs_pending_tail->next = job;
+	else
+		h3_jobs_pending = job;
+	h3_jobs_pending_tail = job;
 	pthread_cond_signal(&h3_jobs_cv);
 	pthread_mutex_unlock(&h3_jobs_mtx);
 }
@@ -3779,6 +3848,47 @@ static int h3_event_timeout_ms(SSL *const *listeners, unsigned n, struct h3_conn
 	return best;
 }
 
+// Unlink the oldest job of the source with the fewest jobs in progress and, of
+// those, served least recently, so busy sources take turns. A cancelled job goes
+// first as it costs nothing. Caller holds h3_jobs_mtx
+static struct h3_job *h3_job_take(void)
+{
+	struct h3_job **best = NULL, *best_prev = NULL, *prev = NULL;
+	unsigned best_busy = H3_DOH_WORKERS + 1;
+	uint64_t best_served = 0;
+	for(struct h3_job **pp = &h3_jobs_pending; *pp != NULL; prev = *pp, pp = &(*pp)->next)
+	{
+		const struct h3_job *j = *pp;
+		if(j->cancelled)
+		{
+			best = pp;
+			best_prev = prev;
+			break;
+		}
+		unsigned busy = 0;
+		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
+			if(h3_jobs_running[i] == j->slot)
+				busy++;
+		if(busy < best_busy || (busy == best_busy && j->slot->served < best_served))
+		{
+			best = pp;
+			best_prev = prev;
+			best_busy = busy;
+			best_served = j->slot->served;
+		}
+	}
+	if(best == NULL)
+		return NULL;
+	struct h3_job *job = *best;
+	*best = job->next;
+	if(h3_jobs_pending_tail == job)
+		h3_jobs_pending_tail = best_prev;
+	job->next = NULL;
+	if(!job->cancelled)
+		job->slot->served = ++h3_jobs_served;
+	return job;
+}
+
 // HTTP/3 event-loop thread: own the UDP socket, the QUIC listener, and every
 // connection and stream. One poll() over the shared UDP socket drives OpenSSL's
 // event handling; the rest is bookkeeping to bridge HTTP/3 to the backend.
@@ -3786,29 +3896,38 @@ static int h3_event_timeout_ms(SSL *const *listeners, unsigned n, struct h3_conn
 // answer back and wake the loop. Works only on the copied-in/out job bytes.
 static void *h3_doh_worker(void *arg)
 {
-	(void)arg;
+	const unsigned idx = (unsigned)(uintptr_t)arg;
 	prctl(PR_SET_NAME, "terminator-doh", 0, 0, 0);
+	uint8_t *answer = malloc(DNS_MSG_MAX);
 	for(;;)
 	{
 		pthread_mutex_lock(&h3_jobs_mtx);
 		while(h3_jobs_pending == NULL && !h3_workers_stop)
 			pthread_cond_wait(&h3_jobs_cv, &h3_jobs_mtx);
-		if(h3_jobs_pending == NULL && h3_workers_stop)
+		// Stopping drops the jobs still queued, terminator_quic_stop() frees them
+		if(h3_workers_stop)
 		{
 			pthread_mutex_unlock(&h3_jobs_mtx);
 			break;
 		}
-		struct h3_job *job = h3_jobs_pending;
-		if(job != NULL)
-			h3_jobs_pending = job->next;
+		struct h3_job *job = h3_job_take();
+		const bool cancelled = job != NULL && job->cancelled;
+		if(job != NULL && !cancelled)
+			h3_jobs_running[idx] = job->slot;
 		pthread_mutex_unlock(&h3_jobs_mtx);
 		if(job == NULL)
 			continue;
 
-		job->alen = dotdoh_server_resolve(job->client, job->dest[0] != '\0' ? job->dest : NULL,
-		                                  job->query, job->qlen, job->answer, sizeof(job->answer));
+		job->alen = answer == NULL || cancelled ? -1 :
+		            dotdoh_server_resolve(job->client, job->dest[0] != '\0' ? job->dest : NULL,
+		                                  job->query, job->qlen, answer, DNS_MSG_MAX);
+		if(job->alen > 0 && (job->answer = malloc((size_t)job->alen)) != NULL)
+			memcpy(job->answer, answer, (size_t)job->alen);
+		else if(job->alen > 0)
+			job->alen = -1;
 
 		pthread_mutex_lock(&h3_jobs_mtx);
+		h3_jobs_running[idx] = NULL;
 		job->next = h3_jobs_done;
 		h3_jobs_done = job;
 		pthread_mutex_unlock(&h3_jobs_mtx);
@@ -3816,6 +3935,8 @@ static void *h3_doh_worker(void *arg)
 		if(write(h3_wake_fd, &one, sizeof(one)) != (ssize_t)sizeof(one))
 			{ /* the loop also drains every iteration, so a lost wake only adds latency */ }
 	}
+	if(answer != NULL)
+		free(answer);
 	return NULL;
 }
 
@@ -3833,6 +3954,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 	{
 		struct h3_job *job = done;
 		done = done->next;
+		h3_jobs_n--;
+		ip_job_done(job->ipkey);
 
 		struct h3_conn *c = NULL;
 		for(struct h3_conn *x = conns; x != NULL; x = x->next)
@@ -3845,6 +3968,7 @@ static void h3_drain_resolved(struct h3_conn *conns)
 			if(s != NULL)
 			{
 				s->resolving = false;
+				s->job = NULL;
 				if(s->close_pending || s->reset || s->error)
 				{
 					// Client bailed while resolving: run the deferred cleanup.
@@ -3854,6 +3978,8 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					s->be.resp_hdr_len = s->be.resp_hdr_cap = 0;
 					s->be.body_len = s->be.body_off = s->be.body_cap = 0;
 				}
+				else if(job->cancelled)
+					h3_reset_stream(s);
 				else if(job->alen == DOTDOH_MALFORMED)
 					h3_gateway_error(s, "400");
 				else if(job->alen <= 0)
@@ -3870,7 +3996,26 @@ static void h3_drain_resolved(struct h3_conn *conns)
 					h3_doh_respond(s, job->answer, job->alen);
 			}
 		}
+		if(job->answer != NULL)
+			free(job->answer);
 		free(job);
+	}
+}
+
+// Cancel the queued DoH resolves of a closing connection, or of the streams the
+// client reset or stopped reading (loop thread). A resolve already started runs on
+static void h3_cancel_abandoned(struct h3_conn *c, bool closing)
+{
+	for(struct h3_stream *s = c->streams; s != NULL; s = s->next)
+	{
+		if(s->job == NULL)
+			continue;
+		if(!closing && s->ssl != NULL && SSL_get_stream_write_state(s->ssl) == SSL_STREAM_STATE_OK)
+			continue;
+		pthread_mutex_lock(&h3_jobs_mtx);
+		s->job->cancelled = true;
+		pthread_mutex_unlock(&h3_jobs_mtx);
+		s->job = NULL;
 	}
 }
 
@@ -4122,6 +4267,8 @@ static void *quic_accept_loop(void *arg)
 			struct h3_conn *c = *pp;
 			SSL_CONN_CLOSE_INFO info;
 			const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
+			if(c->inflight > 0)
+				h3_cancel_abandoned(c, c->dead || closed);
 			// Keep a connection with an in-flight DoH resolve until its worker's
 			// answer has been drained, so its stable `gen` stays valid for lookup.
 			if((c->dead || closed) && c->inflight == 0)
@@ -4286,7 +4433,8 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 	h3_wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 	if(h3_wake_fd >= 0)
 		for(unsigned i = 0; i < H3_DOH_WORKERS; i++)
-			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker, NULL) == 0)
+			if(pthread_create(&h3_workers[h3_workers_n], NULL, h3_doh_worker,
+			                  (void *)(uintptr_t)h3_workers_n) == 0)
 				h3_workers_n++;
 
 	if(pthread_create(&quic_tid, NULL, quic_accept_loop, NULL) != 0)
@@ -4343,10 +4491,18 @@ static void terminator_quic_stop(void)
 
 		// Free any results the loop did not drain and any still-queued jobs.
 		for(struct h3_job *j = h3_jobs_done; j != NULL; )
-		{ struct h3_job *n = j->next; free(j); j = n; }
+		{
+			struct h3_job *n = j->next;
+			ip_job_done(j->ipkey);
+			if(j->answer != NULL)
+				free(j->answer);
+			free(j);
+			j = n;
+		}
 		for(struct h3_job *j = h3_jobs_pending; j != NULL; )
-		{ struct h3_job *n = j->next; free(j); j = n; }
-		h3_jobs_done = h3_jobs_pending = NULL;
+		{ struct h3_job *n = j->next; ip_job_done(j->ipkey); free(j); j = n; }
+		h3_jobs_done = h3_jobs_pending = h3_jobs_pending_tail = NULL;
+		h3_jobs_n = 0;
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 	}
 	for(unsigned i = 0; i < n_quic_fds; i++)
