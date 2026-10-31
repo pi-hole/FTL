@@ -1952,16 +1952,22 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 
 
 /**
- * @brief Determine and set default webserver ports if not imported from setupVars.conf.
+ * @brief Determine and set default webserver ports if neither imported from
+ * setupVars.conf nor set by an environment variable.
  *
  * @param conf Pointer to the configuration structure.
  */
 static void get_web_port(struct config *conf)
 {
 	// Determine default webserver ports if not imported from setupVars.conf
-	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
+	if(conf->webserver.port.f & FLAG_CONF_IMPORTED)
 	{
 		log_info("Webserver ports already imported from legacy config files, skipping default port detection");
+		return;
+	}
+	if(conf->webserver.port.f & FLAG_ENV_VAR)
+	{
+		log_info("Webserver ports set by environment variable, skipping default port detection");
 		return;
 	}
 
@@ -2113,13 +2119,15 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine and set default webserver ports if not imported from
-	// setupVars.conf
+	// Environment variables override the defaults as they override the
+	// values of a config file
+	applyEnvVars(conf);
+
+	// Determine and set default webserver ports if neither imported from
+	// setupVars.conf nor set by an environment variable
 	get_web_port(&config);
 
-	// Environment variables override these defaults as they override the
-	// values of a config file, and the result is held to the same rules
-	applyEnvVars(conf);
+	// Hold the result to the rules of a config file
 	validate_config(conf, true, NULL);
 
 	// Open webserver.log and pihole.log now that their paths are known

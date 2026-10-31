@@ -588,9 +588,14 @@ first_start_stop() {
   [[ ${lines[0]} -ge 1 ]]
   run grep -c "DEBUG_DATABASE: " "${first_start}/FTL.log"
   [[ ${lines[0]} -ge 1 ]]
-  # A missing file is not reported as a parse error
+  # A missing file is not reported as a parse error, and the default port
+  # detection leaves alone the ports the environment sets
   run grep -c "Cannot parse" "${first_start}/FTL.log"
   assert_output "0"
+  run grep -c "Config initialized with webserver ports" "${first_start}/FTL.log"
+  assert_output "0"
+  run grep -c "Webserver ports set by environment variable" "${first_start}/FTL.log"
+  assert_output "1"
 }
 
 @test "FTL writes the first pihole.toml when misc.readOnly is set through the environment" {
