@@ -210,8 +210,8 @@ void open_log_fds(bool ftl)
 		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(dnsmasq_log.fd == -1)
 		{
-			// misc.hide_dnsmasq_warn only hides dnsmasq warnings from the web
-			// diagnosis table; it does not affect how they are logged here
+			// misc.hide_dnsmasq_warn hides dnsmasq warnings from FTL.log and
+			// the web diagnosis, not from pihole.log or syslog
 			log_warn("pihole.log is unavailable (%s); dnsmasq warnings are relayed to syslog",
 			         strerror(errno));
 		}
