@@ -428,8 +428,9 @@ static bool query_matches(struct qlog_scan *s, const queriesData *query)
 	const struct qlog_request *req = s->req;
 
 	// Neither queries after the cursor nor those recorded at the maximum
-	// privacy level are shown
-	if(query->db > (int64_t)req->cursor || query->privacylevel >= PRIVACY_MAXIMUM)
+	// privacy level or hidden by dns.ignoreLocalhost are shown
+	if(query->db > (int64_t)req->cursor || query->privacylevel >= PRIVACY_MAXIMUM ||
+	   query->flags.hidden)
 		return false;
 	if(req->has_from && !(query->timestamp >= req->from))
 		return false;
@@ -943,7 +944,7 @@ void shm_query_log_counts(sqlite3_int64 *newest_id, sqlite3_int64 *total)
 {
 	lock_shm();
 	*newest_id = counters->next_query_id - 1;
-	*total = counters->queries - counters->queries_maxprivacy;
+	*total = counters->queries - counters->queries_maxprivacy - counters->hidden_queries;
 	unlock_shm();
 }
 
@@ -996,15 +997,16 @@ int queries_from_shm(struct ftl_conn *api, const struct qlog_request *req, cJSON
 	// A page in the back half of a sorted result is the mirrored page of the
 	// opposite order, read backwards. With the ID as the last key, the order
 	// is total, so this is exact and needs a smaller heap. Without a filter,
-	// and while no query of the maximum privacy level is in memory, every
-	// query up to the cursor is in the result. Otherwise count first
+	// and while no query of the maximum privacy level and no hidden query is
+	// in memory, every query up to the cursor is in the result. Otherwise
+	// count first
 	s.ws = req->start;
 	s.we = s.k;
 	if(s.heap_mode && s.k > QLOG_FLIP_MIN && !s.oom)
 	{
 		const int left = (int)(hi - get_queries_removed());
 		uint64_t total = left > 0 ? (uint64_t)left : 0;
-		if(req->filtering || counters->queries_maxprivacy > 0)
+		if(req->filtering || counters->queries_maxprivacy > 0 || counters->hidden_queries > 0)
 		{
 			s.count_only = true;
 			scan(&s, lo, hi);

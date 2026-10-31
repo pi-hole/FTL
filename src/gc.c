@@ -94,9 +94,15 @@ static void recycle(void)
 		if(client == NULL)
 			continue;
 
-		// Skip if still referenced by at least one query
+		// Skip if still referenced by at least one query, hidden or not
 		if(client->count > 0)
 			goto keep_client;
+		if(client->hiddencount > 0)
+		{
+			// Only hidden queries are left, so this client is no statistic
+			client->flags.hidden_only = true;
+			goto keep_client;
+		}
 
 		// Never recycle aliasclients (they are not counted above but
 		// are only indirectly referenced by other clients)
@@ -154,6 +160,12 @@ keep_client:
 		// Skip if still referenced by any query or CNAME chain
 		if(domain->count > 0 || domain->cname_refcount > 0)
 			goto keep_domain;
+		if(domain->hiddencount > 0)
+		{
+			// Only hidden queries are left, see the clients above
+			domain->flags.hidden_only = true;
+			goto keep_domain;
+		}
 
 		// Only recycle domains when their last query was more than 24
 		// hours ago. This ensures that we do not recycle domains that
@@ -441,7 +453,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Keep the queries the export has not stored yet, but no longer than
 		// a day past the cutoff. Nothing is stored with a broken database,
 		// database.maxDBdays 0 or a query database that could not be opened,
-		// nor queries recorded at the maximum privacy level
+		// nor queries recorded at the maximum privacy level or hidden by
+		// dns.ignoreLocalhost
 		if(!FTLDBerror() && config.database.maxDBdays.v.ui > 0)
 		{
 			const time_t drop_until = mintime - (time_t)(MAXLOGAGE*3600);
@@ -449,7 +462,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 			for(unsigned int i = keep_from; i < counters->queries; i++)
 			{
 				const queriesData *query = getQuery(i, true);
-				if(query == NULL || query->privacylevel >= PRIVACY_MAXIMUM ||
+				if(query == NULL || query->flags.hidden ||
+				   query->privacylevel >= PRIVACY_MAXIMUM ||
 				   query->timestamp <= drop_until)
 					continue;
 				if(query->timestamp <= mintime)
@@ -481,24 +495,32 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		if(query->timestamp > mintime)
 			break;
 
+		// A hidden query never entered any statistic, so nothing has to be
+		// given back here either - only the references that keep its client,
+		// domain and cache record alive (below) were taken for it
+		const bool hidden = query->flags.hidden;
+
 		// Not stored for a day
-		if(i >= keep_from && query->privacylevel < PRIVACY_MAXIMUM)
+		if(i >= keep_from && !hidden && query->privacylevel < PRIVACY_MAXIMUM)
 			dropped++;
 
 		// Check if this query is blocked
-		const bool blocked = is_blocked(query->status);
+		const bool blocked = !hidden && is_blocked(query->status);
 
 		// Adjust client counter (total and overTime)
 		const int timeidx = getOverTimeID(query->timestamp);
 		clientsData *client = getClient(query->clientID, true);
 		if(client != NULL)
-			change_clientcount(client, -1, blocked ? -1 : 0, timeidx, -1);
+			change_clientcount(client, -1, blocked ? -1 : 0, timeidx, -1, hidden);
 
 		// Adjust domain counter (no overTime information)
 		domainsData *domain = getDomain(query->domainID, true);
 		if(domain != NULL)
 		{
-			domain->count--;
+			if(hidden)
+				domain->hiddencount--;
+			else
+				domain->count--;
 			if(blocked)
 				domain->blockedcount--;
 		}
@@ -506,8 +528,9 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Adjust upstream counter (no overTime information)
 		// Only if this query still holds a count. query_blocked() hands
 		// it back when a forwarded query turns out to be blocked, and
-		// the query keeps its upstreamID after that
-		if(query->flags.upstream_counted && query->upstreamID > -1)
+		// the query keeps its upstreamID after that. A hidden query never
+		// took one
+		if(query->flags.upstream_counted && !hidden && query->upstreamID > -1)
 		{
 			upstreamsData *upstream = getUpstream(query->upstreamID, true);
 			if(upstream != NULL)
@@ -533,24 +556,31 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 				cname_domain->cname_refcount--;
 		}
 
-		// Update reply counters
-		counters->reply[query->reply]--;
-		log_debug(DEBUG_STATUS, "reply type %u removed (GC), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
+		if(hidden)
+		{
+			counters->hidden_queries--;
+		}
+		else
+		{
+			// Update reply counters
+			counters->reply[query->reply]--;
+			log_debug(DEBUG_STATUS, "reply type %u removed (GC), ID = %d, new count = %u", query->reply, query->id, counters->reply[query->reply]);
 
-		// Update type counters
-		counters->querytype[query->type]--;
-		log_debug(DEBUG_STATUS, "query type %u removed (GC), ID = %d, new count = %u", query->type, query->id, counters->querytype[query->type]);
+			// Update type counters
+			counters->querytype[query->type]--;
+			log_debug(DEBUG_STATUS, "query type %u removed (GC), ID = %d, new count = %u", query->type, query->id, counters->querytype[query->type]);
 
-		// Subtract UNKNOWN from the counters before
-		// setting the status if different.
-		// Minus one here and plus one below = net zero
-		counters->status[QUERY_UNKNOWN]--;
-		log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %u", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
+			// Subtract UNKNOWN from the counters before
+			// setting the status if different.
+			// Minus one here and plus one below = net zero
+			counters->status[QUERY_UNKNOWN]--;
+			log_debug(DEBUG_STATUS, "status %d removed (GC), ID = %d, new count = %u", QUERY_UNKNOWN, query->id, counters->status[QUERY_UNKNOWN]);
 
-		// Set query again to UNKNOWN to reset the counters
-		query_set_status(query, QUERY_UNKNOWN);
+			// Set query again to UNKNOWN to reset the counters
+			query_set_status(query, QUERY_UNKNOWN);
+		}
 
-		if(query->privacylevel >= PRIVACY_MAXIMUM)
+		if(!hidden && query->privacylevel >= PRIVACY_MAXIMUM)
 			counters->queries_maxprivacy--;
 
 		// Count removed queries

@@ -578,7 +578,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	const int db_allowed_regex_enabled = counters->database.domains.allowed.regex.enabled;
 	const int db_denied_regex_total = counters->database.domains.denied.regex.total;
 	const int db_denied_regex_enabled = counters->database.domains.denied.regex.enabled;
-	const int clients_total = counters->clients_total;
+	const int clients_total = get_visible_client_count();
 	const int privacylevel = config.misc.privacylevel.v.privacy_level;
 	const double qps = get_qps();
 

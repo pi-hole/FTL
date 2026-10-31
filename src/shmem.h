@@ -55,8 +55,10 @@ typedef struct {
 	double query_time_disorder;
 	int64_t query_time_disorder_id;
 	// Queries recorded at the maximum privacy level, the query log leaves
-	// them out
+	// them out. Hidden queries are only counted in hidden_queries
 	unsigned int queries_maxprivacy;
+	// Subset of `queries` kept out of the statistics (dns.ignoreLocalhost)
+	unsigned int hidden_queries;
 	unsigned int upstreams;
 	// Array lengths (recycled slots are reused) and the totals ever added
 	unsigned int clients;
