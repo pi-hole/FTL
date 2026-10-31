@@ -3910,8 +3910,16 @@ static void chown_pihole_own_dir(const char *path, struct passwd *pwd)
 		log_warn("Not changing ownership of %s, it is outside of /etc/pihole and /var/log/pihole", path);
 }
 
+// TCP children dnsmasq serves to clients, see dnsmasq_max_tcp_children()
+static unsigned int tcp_children = 0;
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 {
+	// With DNSSEC, dnsmasq adds slots reserved for its own validation queries.
+	// No query has drawn on them yet, so the reserve still has its full size here
+	if(daemon != NULL && daemon->max_procs > daemon->dnssec_tcp_slot_reserved)
+		tcp_children = daemon->max_procs - daemon->dnssec_tcp_slot_reserved;
+
 	// Going into daemon mode involves storing the
 	// PID of the generated child process. If FTL
 	// is asked to stay in foreground, we just save
@@ -4783,17 +4791,17 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 }
 
 /**
- * @brief Retrieves dnsmasq's limit on concurrent TCP children (--max-tcp-connections).
+ * @brief Retrieves dnsmasq's limit on concurrent client TCP children (--max-tcp-connections).
  *
  * @return The configured limit, or dnsmasq's default if it is not known yet.
  */
 unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
 {
-	// Read when the listeners start, i.e. after the config is parsed. Fall back to
+	// Set when the listeners start, i.e. after the config is parsed. Fall back to
 	// dnsmasq's own default if that ordering ever changes, so the derived cap can
 	// never come out as zero and refuse everything.
-	if(daemon != NULL && daemon->max_procs > 0)
-		return (unsigned int)daemon->max_procs;
+	if(tcp_children > 0)
+		return tcp_children;
 	return MAX_PROCS;
 }
 

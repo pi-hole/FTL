@@ -1311,6 +1311,7 @@ extern struct daemon {
   int    fd_save;          /*      "        "        */
   pid_t *tcp_pids;
   int *tcp_pipes;
+  char *tcp_type;
   int pipe_to_parent;
   int numrrand;
   struct randfd *randomsocks;
@@ -1370,7 +1371,7 @@ extern struct daemon {
   /* file for packet dumps. */
   int dumpfd;
 #endif
-  int max_procs;
+  int max_procs, dnssec_tcp_slot_reserved;
   uint max_procs_used;
 } *daemon;
 
