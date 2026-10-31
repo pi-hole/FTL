@@ -1052,6 +1052,31 @@ three.rename.ftl|new-rename.ftl"
   assert_success
 }
 
+@test "A gravity database whose timestamp changes in place is reloaded each time" {
+  # The update keeps the size of the file, only its modification time tells
+  # FTL to read the timestamp again
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  for round in 1 2; do
+    size_before=$(stat -c%s /etc/pihole/gravity.db)
+    logsize_update=$(stat -c%s /var/log/pihole/FTL.log)
+    printf ".timeout 30000\nUPDATE info SET value = CAST(value AS INTEGER) + 1 WHERE property = 'updated';\n" | ./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db
+    assert_equal "$(stat -c%s /etc/pihole/gravity.db)" "${size_before}"
+    run bash -c "./pihole-FTL wait-for 'Gravity database has been updated, reloading now' /var/log/pihole/FTL.log 5 $logsize_update"
+    assert_success
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+}
+
 @test "Query IDs are kept across a restart and continue above the imported ones" {
   # The TCP queries are created in forked TCP workers, which number them from
   # the same counter as the main process
