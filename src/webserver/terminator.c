@@ -990,9 +990,8 @@ static ssize_t h1_read(SSL *ssl, int fd, void *buf, size_t max, uint64_t deadlin
 // rest of the connection once a non-DoH request appears) to CivetWeb via relay().
 static void terminator_h1_serve(SSL *ssl, int client_fd)
 {
-	// Off the small handler-thread stack, as on the h2 path.
-	static _Thread_local uint8_t query[DNS_MSG_MAX];
-	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	// Off the small handler-thread stack and out of static TLS, as on the h2 path
+	static _Thread_local uint8_t *bufs = NULL;
 	char buf[H1_HEAD_MAX + 512];
 	size_t have = 0;
 
@@ -1077,6 +1076,10 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 			return;
 		}
 
+		uint8_t *query = dotdoh_thread_buf(&bufs, 2 * DNS_MSG_MAX);
+		if(query == NULL)
+		{ h1_doh_error(ssl, "500 Internal Server Error", NULL); return; }
+		uint8_t *answer = query + DNS_MSG_MAX;
 		size_t qlen = 0;
 		size_t consumed = head_len;
 		if(is_post)
@@ -1123,7 +1126,7 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 			const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
 			if(vlen <= 0)
 			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
-			const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+			const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, DNS_MSG_MAX);
 			if(dlen <= 0)
 			{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 			qlen = (size_t)dlen;
@@ -1140,7 +1143,7 @@ static void terminator_h1_serve(SSL *ssl, int client_fd)
 		{ h1_doh_error(ssl, "403 Forbidden", NULL); return; }
 
 		const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
-		                                           query, qlen, answer, sizeof(answer));
+		                                           query, qlen, answer, DNS_MSG_MAX);
 		if(alen == DOTDOH_MALFORMED)
 		{ h1_doh_error(ssl, "400 Bad Request", NULL); return; }
 		if(alen <= 0)
@@ -1787,9 +1790,13 @@ static nghttp2_ssize h2_body_read(nghttp2_session *session, int32_t stream_id,
 // handler thread, so the blocking resolve only stalls this one connection.
 static void h2_doh_serve(struct h2_stream *s)
 {
-	// Off the small handler-thread stack, like the CivetWeb DoH path's buffers.
-	static _Thread_local uint8_t query[DNS_MSG_MAX];
-	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	// Off the small handler-thread stack and out of static TLS, like the
+	// CivetWeb DoH path's buffers
+	static _Thread_local uint8_t *bufs = NULL;
+	uint8_t *query = dotdoh_thread_buf(&bufs, 2 * DNS_MSG_MAX);
+	if(query == NULL)
+	{ h2_gateway_error(s, "500"); return; }
+	uint8_t *answer = query + DNS_MSG_MAX;
 	size_t qlen = 0;
 
 	if(strcmp(s->method, "POST") == 0)
@@ -1810,7 +1817,7 @@ static void h2_doh_serve(struct h2_stream *s)
 		const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
 		if(vlen <= 0)
 		{ h2_gateway_error(s, "400"); return; }
-		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, DNS_MSG_MAX);
 		if(dlen <= 0)
 		{ h2_gateway_error(s, "400"); return; }
 		qlen = (size_t)dlen;
@@ -1850,7 +1857,7 @@ static void h2_doh_serve(struct h2_stream *s)
 	{ h2_gateway_error(s, "403"); return; }
 
 	const ssize_t alen = dotdoh_server_resolve(client, dest[0] != '\0' ? dest : NULL,
-	                                           query, qlen, answer, sizeof(answer));
+	                                           query, qlen, answer, DNS_MSG_MAX);
 	if(alen == DOTDOH_MALFORMED)
 	{ h2_gateway_error(s, "400"); return; }
 	if(alen <= 0)
@@ -2872,7 +2879,10 @@ static void h3_doh_respond(struct h3_stream *s, const uint8_t *answer, ssize_t a
 // time, POST once the body is complete. Errors answer synchronously.
 static void h3_doh_dispatch(struct h3_stream *s)
 {
-	static _Thread_local uint8_t query[DNS_MSG_MAX]; // loop thread only
+	static _Thread_local uint8_t *query_buf = NULL; // loop thread only
+	uint8_t *query = dotdoh_thread_buf(&query_buf, DNS_MSG_MAX);
+	if(query == NULL)
+	{ h3_gateway_error(s, "500"); return; }
 	size_t qlen = 0;
 
 	if(strcmp(s->method, "POST") == 0)
@@ -2892,7 +2902,7 @@ static void h3_doh_dispatch(struct h3_stream *s)
 		const int vlen = qs != NULL ? query_param(qs + 1, "dns", b64, sizeof(b64)) : -1;
 		if(vlen <= 0)
 		{ h3_gateway_error(s, "400"); return; }
-		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+		const ssize_t dlen = base64url_decode(b64, (size_t)vlen, query, DNS_MSG_MAX);
 		if(dlen <= 0)
 		{ h3_gateway_error(s, "400"); return; }
 		qlen = (size_t)dlen;
