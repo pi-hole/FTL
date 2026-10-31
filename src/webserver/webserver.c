@@ -44,6 +44,8 @@
 #include <arpa/inet.h>
 // isxdigit()
 #include <ctype.h>
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 #ifdef HAVE_TLS
 #include <openssl/ssl.h>
@@ -2015,15 +2017,24 @@ void http_init(void)
 	{
 		if(backend_port <= 0)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
-		else if(!terminator_start(tls_listeners, n_tls_listeners, backend_port, config.webserver.tls.cert.v.s))
+		else
 		{
-			bool mandatory = false;
-			for(unsigned i = 0; i < n_tls_listeners; i++)
-				mandatory |= !tls_listeners[i].optional;
-			if(mandatory)
-				log_err("Failed to start the TLS terminator on port %d", terminator_port);
-			else
-				log_info("None of the optional TLS ports could be bound, TLS is not available");
+			// Pass a copy that a concurrent replace_config() cannot free
+			lock_shm();
+			const char *path = config.webserver.tls.cert.v.s;
+			char *cert = path != NULL ? strdup(path) : NULL;
+			unlock_shm();
+			if(cert == NULL || !terminator_start(tls_listeners, n_tls_listeners, backend_port, cert))
+			{
+				bool mandatory = false;
+				for(unsigned i = 0; i < n_tls_listeners; i++)
+					mandatory |= !tls_listeners[i].optional;
+				if(mandatory)
+					log_err("Failed to start the TLS terminator on port %d", terminator_port);
+				else
+					log_info("None of the optional TLS ports could be bound, TLS is not available");
+			}
+			free(cert);
 		}
 
 		// Advertise the first TLS port that actually came up
