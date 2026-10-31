@@ -224,7 +224,9 @@ int main (int argc, char *argv[])
 		// inside its periodic export or the daily cleanup, which locks the
 		// disk file. Let it return before the final export. A periodic
 		// export still running when it gives up finishes first
+		crash_watchdog_progress();
 		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
+		crash_watchdog_progress();
 		if(!joined)
 			log_warn("Database thread still busy after %d seconds, exporting anyway",
 			         DB_THREAD_JOIN_TIMEOUT);
@@ -234,6 +236,7 @@ int main (int argc, char *argv[])
 			log_info("Finished final database update");
 		else
 			log_err("Final database update failed");
+		crash_watchdog_progress();
 	}
 
 	cleanup(exit_code);

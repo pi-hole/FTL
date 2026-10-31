@@ -792,6 +792,16 @@ setup() {
   assert_output --partial "--- end of backtrace"
 }
 
+@test "A crashed thread cannot keep FTL from exiting" {
+  # The thread crashes holding a stdio lock exit() waits for, the crash
+  # watchdog ends the process after 40 seconds without progress
+  run bash -c 'timeout -k 5 60 ./pihole-FTL crash-thread'
+  printf "%s\n" "${lines[@]}"
+  assert_output --partial "FTL crashed"
+  assert_output --partial "FTL did not shut down after the crash, exiting now"
+  assert_failure 1
+}
+
 @test "'pihole-FTL backtrace' resolves source locations when addr2line is present" {
   if ! command -v addr2line >/dev/null 2>&1; then
     skip "addr2line not installed; resolution-dependent assertion skipped"

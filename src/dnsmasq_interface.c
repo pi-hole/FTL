@@ -3936,6 +3936,9 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
 
+	// Make sure a crash cannot leave this process hanging in its shutdown
+	start_crash_watchdog();
+
 	// Initialize thread attributes object with default attribute values
 	// Do NOT detach threads as we want to join them during shutdown with a
 	// fixed timeout to give them time to clean up and finish their work
