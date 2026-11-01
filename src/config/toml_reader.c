@@ -228,11 +228,9 @@ bool readFTLtoml(struct config *oldconf, struct config *newconf,
 	toml_result_t result = { 0 };
 	if(!teleporter)
 	{
+		// openFTLtoml() and parseTOML() log why this fails
 		if(!parseTOML(&result, version))
-		{
-			log_err("Cannot parse TOML file: %s", result.errmsg);
 			return false;
-		}
 		// Get top table
 		toml = result.toptab;
 	}
