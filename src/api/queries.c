@@ -788,7 +788,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		                       NULL);
 	}
 
-	// Prepare the SQLite3 statements, the count only when it is needed. It
+	// Prepare the SQLite3 statements, then count only when it is needed. It
 	// keeps the inner joins, which leave out rows without a domain or client
 	sqlite3_stmt *read_stmt = NULL, *count_stmt = NULL;
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
