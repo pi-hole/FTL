@@ -4600,9 +4600,14 @@ void FTL_multiple_replies(const int id, int *firstID)
 			cname_domain->cname_refcount++;
 	}
 
-	// The original query may have been blocked during CNAME inspection,
-	// correct status and list ID in this case
-	if(source_query->status != QUERY_FORWARDED)
+	// The original query may have been blocked by its upstream or during
+	// CNAME inspection, correct status and list ID in this case. A blocked
+	// status goes through query_blocked() so the duplicate is counted as
+	// blocked for its domain and client like every other blocked query
+	if(is_blocked(source_query->status))
+		query_blocked(duplicated_query, getDomain(duplicated_query->domainID, true),
+		              getClient(duplicated_query->clientID, true), source_query->status);
+	else if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
 	if(source_query->status == QUERY_GRAVITY_CNAME ||
 	   source_query->status == QUERY_REGEX_CNAME ||
