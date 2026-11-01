@@ -4557,18 +4557,19 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	if(*firstID == -1)
 	{
-		// This is not yet a duplicate, we just store the ID
-		// of the successful reply here so we can get it quicker
-		// during the next loop iterations
+		// This is not yet a duplicate, we just store the dnsmasq ID of the
+		// successful reply here. It is looked up again for every duplicate
+		// as the GC may move the queries while the lock is released
 		unlock_shm();
-		*firstID = queryID;
+		*firstID = id;
 		return;
 	}
 
 	// Get (read-only) pointer of the query that contains all relevant
 	// information (all others are mere duplicates and were only added to the
 	// list of duplicates rather than havong been forwarded on their own)
-	const queriesData *source_query = getQuery(*firstID, true);
+	const int sourceID = findQueryID(*firstID);
+	const queriesData *source_query = sourceID < 0 ? NULL : getQuery(sourceID, true);
 	// Get query pointer of duplicated reply
 	queriesData *duplicated_query = getQuery(queryID, true);
 
@@ -4580,7 +4581,7 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// Debug logging
-	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
+	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", sourceID, queryID);
 
 	// Copy relevant information over
 	counters->reply[duplicated_query->reply]--;
