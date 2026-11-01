@@ -1320,6 +1320,16 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 			continue;
 		}
 
+		// The slot may have been recycled and handed to another client
+		// while the lock was released, the name belongs to ipaddr only
+		if(client->ippos != ippos)
+		{
+			log_debug(DEBUG_RESOLVER, "Client ID %u no longer is %s, skipping the result", clientID, ipaddr);
+			skipped++;
+			unlock_shm();
+			continue;
+		}
+
 		if(res != RESOLVE_OK)
 		{
 			// We could not resolve the hostname, so we keep the old one
