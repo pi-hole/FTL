@@ -143,6 +143,7 @@ struct enum_options {
 struct config {
 	struct {
 		struct conf_item upstreams;
+		struct conf_item fastRetry;
 		struct conf_item CNAMEdeepInspect;
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
