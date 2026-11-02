@@ -87,6 +87,8 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	// Cleared once the client stops taking the output
+	bool sending = true;
 	if(cpid == -1)
 	{
 		// Neither branch below tests for this, and the parent one ends in
@@ -182,14 +184,23 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Send 200 OK with chunked size (-1)
 		mg_send_http_ok(api->conn, "text/plain", -1);
 
-		// Stream the redirected STDOUT/STDERR until EOF
+		// Stream the redirected STDOUT/STDERR until EOF. A chunk that
+		// cannot be sent means the client went away or stopped reading
+		// for longer than the request timeout. Keep draining the pipe
+		// without sending then, so the command does not block on it. The
+		// response ends without its last chunk, the client sees a
+		// truncated transfer when civetweb closes the connection
 		char buf[1024];
 		ssize_t nread;
 		while((nread = read(pipefd[0], buf, sizeof(buf))) > 0)
 		{
 			// Send what read() returned as one chunk, the output may
 			// contain NUL bytes
-			mg_send_chunk(api->conn, buf, (unsigned int)nread);
+			if(sending && mg_send_chunk(api->conn, buf, (unsigned int)nread) < 0)
+			{
+				log_web_debug(DEBUG_API, "Client does not take the command output anymore");
+				sending = false;
+			}
 		}
 
 		// Get the exit status of the command from the status pipe
@@ -232,7 +243,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	// The response is already committed as 200 chunked text/plain, so a status
 	// sent from here is dropped by civetweb and the caller would see success
 	// whatever happened
-	if(code != EXIT_SUCCESS || crashed)
+	if(sending && (code != EXIT_SUCCESS || crashed))
 	{
 		const char *const failmsg = "Gravity failed\n";
 		mg_send_chunk(api->conn, failmsg, (unsigned int)strlen(failmsg));
@@ -240,7 +251,8 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 
 	// Send final chunk of size 0 showing end of data. Nothing may be written
 	// after it - the message ends here
-	mg_printf(api->conn, "0\r\n\r\n");
+	if(sending)
+		mg_printf(api->conn, "0\r\n\r\n");
 
 	return (code == EXIT_SUCCESS && !crashed) ? 200 : 500;
 }
