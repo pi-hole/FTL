@@ -377,6 +377,8 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 		// Error
 		log_err("Invalid decoded salt length: %zu, should be %d",
 		        salt_len, SALT_LEN);
+		free(*salt);
+		*salt = NULL;
 		return false;
 	}
 
@@ -386,6 +388,8 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	{
 		// Error
 		log_err("Error while decoding hash");
+		free(*salt);
+		*salt = NULL;
 		return false;
 	}
 	if(hash_len != SHA256_DIGEST_SIZE)
@@ -393,6 +397,10 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 		// Error
 		log_err("Invalid decoded hash length: %zu, should be %d",
 		        hash_len, SHA256_DIGEST_SIZE);
+		free(*salt);
+		free(*hash);
+		*salt = NULL;
+		*hash = NULL;
 		return false;
 	}
 
