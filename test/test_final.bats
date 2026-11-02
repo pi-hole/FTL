@@ -325,6 +325,34 @@ load 'bats_helper.bash'
   [[ "${results}" == " false:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:${blocked}/${blocked}" ]]
 }
 
+@test "A blocked answer copied to a duplicate query counts as blocked for both" {
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  # Two identical queries without EDNS(0) from one client, sent at once. The
+  # recursor holds the answer back (test/pdns/luadns.lua), so dnsmasq attaches
+  # the second query to the first, and the answer is too large for either of
+  # them, so both get a truncated reply through FTL_multiple_replies()
+  run python3 -c '
+import socket, struct
+question = b"\x0cslow-blocked\x03ftl\x00" + struct.pack(">HH", 1, 1)
+socks = []
+for qid in (1, 2):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.52", 0))
+    s.settimeout(10)
+    s.sendto(struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 0) + question, ("127.0.0.1", 53))
+    socks.append(s)
+for s in socks:
+    print("truncated" if s.recv(4096)[2] & 0x02 else "full")'
+  assert_line --index 0 "truncated"
+  assert_line --index 1 "truncated"
+
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  [[ "${log}" == *"DEBUG_QUERIES: **** sending reply "* ]]
+  # The original and the duplicate are both blocked by the upstream's answer
+  run bash -c "curl -s '127.0.0.1/api/stats/top_clients?blocked=true&count=1000' | jq '.clients[] | select(.ip == \"127.0.0.52\") | .count'"
+  assert_output "2"
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
