@@ -517,6 +517,26 @@ for s in socks:
   assert_output --partial "Gravity failed"
 }
 
+@test "The gravity action does not hand FTL's sockets to the command" {
+  # Stand-in for pihole -g that lists what its file descriptors point at. Those
+  # of FTL's helper process waiting for it cannot be read here: FTL has file
+  # capabilities, which keeps the pihole user out of the helper's /proc entry
+  if [ -e /usr/local/bin/pihole ]; then
+    mv /usr/local/bin/pihole /usr/local/bin/pihole.test-backup
+  fi
+  printf '#!/bin/sh\nfor fd in /proc/$$/fd/*; do echo "${fd##*/} $(readlink "$fd")"; done\n' > /usr/local/bin/pihole
+  chmod +x /usr/local/bin/pihole
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/gravity'
+  rm -f /usr/local/bin/pihole
+  if [ -e /usr/local/bin/pihole.test-backup ]; then
+    mv /usr/local/bin/pihole.test-backup /usr/local/bin/pihole
+  fi
+  printf "%s\n" "${output}"
+  assert_line --regexp '^1 pipe:'
+  refute_output --partial "socket:"
+  refute_output --partial "inotify"
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
