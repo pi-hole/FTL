@@ -3919,6 +3919,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(daemonmode)
 		go_daemon();
 
+	// Make sure a crash cannot leave this process hanging in its shutdown.
+	// No earlier: this thread would not survive the fork in go_daemon()
+	start_crash_watchdog();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
@@ -3935,9 +3939,6 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	// Helper processes are already split from the main instance
 	// so they will not listen to real-time signals
 	handle_realtime_signals();
-
-	// Make sure a crash cannot leave this process hanging in its shutdown
-	start_crash_watchdog();
 
 	// Initialize thread attributes object with default attribute values
 	// Do NOT detach threads as we want to join them during shutdown with a

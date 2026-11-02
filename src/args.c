@@ -340,8 +340,8 @@ void parse_args(int argc, char *argv[])
 		log_ctrl(false, true);
 		// There is no dnsmasq to stop here, see terminate()
 		dnsmasq_failed = true;
-		handle_signals();
 		start_crash_watchdog();
+		handle_signals();
 		pthread_t tid;
 		if(pthread_create(&tid, NULL, crash_holding_lock, NULL) == 0)
 			pthread_join(tid, NULL);

@@ -1403,6 +1403,7 @@ static void terminate(void)
 static void *crash_watchdog(void *arg)
 {
 	(void)arg;
+	prctl(PR_SET_NAME, "crash-watchdog", 0, 0, 0);
 	while(sem_wait(&crash_sem) != 0 && errno == EINTR);
 
 	// Every finished shutdown step restarts the countdown
@@ -1419,8 +1420,9 @@ static void *crash_watchdog(void *arg)
 
 	static const char msg[] = "CRIT: FTL did not shut down after the crash, exiting now\n";
 	log_ftl_raw(msg, sizeof(msg) - 1);
-	// Nothing left to do if this fails, we exit right after
-	const ssize_t ret = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+	// libc's write(): FTLwrite() logs a failure, which may wait for a lock
+	// the crashed thread holds. Nothing left to do if this fails
+	const ssize_t ret = (write)(STDERR_FILENO, msg, sizeof(msg) - 1);
 	(void)ret;
 	_exit(EXIT_FAILURE);
 }
