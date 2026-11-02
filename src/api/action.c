@@ -26,6 +26,32 @@
 #include "config/config.h"
 // gravity_running
 #include "daemon.h"
+// syscall(), SYS_close_range
+#include <sys/syscall.h>
+
+// Close every file descriptor above STDERR except <keep>. Neither the command
+// nor the helper process waiting for it may hold on to dnsmasq's listening
+// sockets or our internal pipes: they run in a session of their own and
+// outlive an FTL that dies meanwhile. This runs in the helper, a child of a
+// multithreaded process, so it does not allocate or lock anything
+static void close_inherited_fds(const int keep)
+{
+#ifdef SYS_close_range
+	const unsigned int above = keep < 3 ? 3 : (unsigned int)keep + 1;
+	if((keep <= 3 || syscall(SYS_close_range, 3, keep - 1, 0) == 0) &&
+	   syscall(SYS_close_range, above, ~0U, 0) == 0)
+		return;
+#endif
+	// Without close_range(), close them one by one. FTL's descriptors are
+	// nowhere near this cap, which keeps a huge RLIMIT_NOFILE from turning
+	// this into millions of calls
+	long max_fd = sysconf(_SC_OPEN_MAX);
+	if(max_fd <= 0 || max_fd > 65536)
+		max_fd = 65536;
+	for(long fd = 3; fd < max_fd; fd++)
+		if(fd != keep)
+			close((int)fd);
+}
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[], const char *extra_env)
 {
@@ -98,6 +124,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Redirect STDERR into our pipe
 		dup2(pipefd[1], STDERR_FILENO);
 		dup2(pipefd[1], STDOUT_FILENO);
+
+		// Keep nothing of FTL but the status pipe, the command inherits
+		// what is left
+		close_inherited_fds(statusfd[1]);
 
 		// Set extra environment variable if requested
 		if(extra_env != NULL)
