@@ -848,6 +848,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		}
 	}
 
+	bool out_of_memory = false;
 	if(cJSON_GetArraySize(conf->dns.cnameRecords.v.json) > 0)
 	{
 		fputs("# User-defined custom CNAMEs\n", pihole_conf);
@@ -860,7 +861,11 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 			// dnsmasq mis-parses whitespace in front of a comma
 			char *entry = strdup(server->valuestring);
 			if(entry == NULL)
-				continue;
+			{
+				// Fail the write, a config without this record must not go live
+				out_of_memory = true;
+				break;
+			}
 			normalize_cname(entry);
 			fprintf(pihole_conf, "cname=%s\n", entry);
 			free(entry);
@@ -962,11 +967,12 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// part-way through would be renamed over the live dnsmasq config as a
 	// truncated file that dnsmasq would happily start from
 	// The reason goes into errbuf as the callers report it as their hint
-	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
-	                          fsync(fileno(pihole_conf)) != 0;
+	const bool write_failed = out_of_memory || fflush(pihole_conf) != 0 ||
+	                          ferror(pihole_conf) != 0 || fsync(fileno(pihole_conf)) != 0;
 	if(write_failed)
 	{
-		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s",
+		         strerror(out_of_memory ? ENOMEM : errno));
 		log_err("%s", errbuf);
 	}
 
