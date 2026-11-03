@@ -82,14 +82,17 @@
 // DOQ_MAX_CONNS_PER_IP this bounds what one connection costs; the global
 // DOQ_MAX_STREAMS above is what actually caps total in-flight queries.
 #define DOQ_MAX_STREAMS_PER_CONN 16
-// Most queries a single connection may serve before we close it.
-#define DOQ_MAX_QUERIES 64
 // Wall-clock budget for one query, re-armed once the query has been read, and
 // swept on each poll wake-up: it bounds first the read phase and then the
 // resolve+write phase, so neither a slow-drip stream nor a hung resolve can pin
 // a slot.
 #define DOQ_QUERY_TIMEOUT_S 10
-// Absolute cap on a whole connection's lifetime, independent of activity.
+// Absolute cap on a whole connection's lifetime, independent of activity. When
+// it runs out the connection accepts no new stream and is closed with
+// DOQ_NO_ERROR once the queries in flight are answered, so the client learns
+// about it from the connection close, not from a lost query. Together with the
+// stream caps and the idle cap this bounds a connection, so unlike DoT there is
+// no cap on the number of queries.
 #define DOQ_CONN_MAX_LIFETIME_S 120
 // Idle cap: a connection without an in-flight query is closed after this long,
 // so parked connections do not hold slots.
@@ -160,7 +163,7 @@ struct doq_conn {
 	bool used;
 	SSL *ssl;                      // OpenSSL QUIC connection object
 	int nstreams;                  // streams currently attached to this conn
-	int served;                    // queries answered so far (keep-alive cap)
+	bool retiring;                 // takes no new stream, closed once none is left
 	bool closing;                  // CONNECTION_CLOSE initiated, see doq_close_conn()
 	uint64_t close_code;           // DoQ error code the connection is closed with
 	uint64_t close_deadline;       // monotonic ms by which a closing conn is freed
@@ -1063,7 +1066,6 @@ static int drive_write(struct doq_stream *s)
 	// FIN the response. Either way the stream is done and gets reaped; OpenSSL
 	// keeps flushing concluded send data after the stream object is freed.
 	SSL_stream_conclude(s->ssl, 0);
-	s->conn->served++;
 	return -1; // finished: the caller reaps the slot
 }
 
@@ -1113,22 +1115,16 @@ static int drive_stream(struct doq_stream *s)
 
 // Accept every QUIC stream the client has opened on this connection. Only
 // client-initiated bidirectional streams carry queries; a unidirectional stream
-// is not part of DoQ, so it is reset rather than served.
+// is not part of DoQ, so it is reset rather than served. Streams a retiring or
+// closing connection does not accept stay queued in OpenSSL and end with the
+// connection.
 static void conn_accept_streams(struct doq_conn *c)
 {
-	for(;;)
+	while(!c->closing && !c->retiring)
 	{
 		SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
 		if(st == NULL)
 			break;
-		if(c->served >= DOQ_MAX_QUERIES)
-		{
-			// Keep-alive budget exhausted: stop serving and let the connection go.
-			doq_reset_stream(st, DOQ_EXCESSIVE_LOAD);
-			SSL_free(st);
-			doq_close_conn(c, DOQ_NO_ERROR);
-			break;
-		}
 		if((SSL_get_stream_type(st) & SSL_STREAM_TYPE_WRITE) == 0)
 		{
 			// A receive-only (unidirectional) stream cannot carry a response.
@@ -1236,9 +1232,12 @@ static void doq_reap(void)
 		SSL_CONN_CLOSE_INFO info;
 		const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
 		const bool idle = c->nstreams == 0 && now >= c->idle_deadline;
+		// Past its lifetime it answers what is in flight and then closes
+		if(now >= c->hard_deadline)
+			c->retiring = true;
 		if(closed)
 			conn_free(c);
-		else if(idle || now >= c->hard_deadline)
+		else if(idle || (c->retiring && c->nstreams == 0))
 			doq_close_conn(c, DOQ_NO_ERROR);
 	}
 }

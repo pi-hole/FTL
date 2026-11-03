@@ -220,6 +220,14 @@ setup_file() {
   assert_output "closed 2"
 }
 
+@test "dotdoh-server: a DoQ connection keeps serving a pipelining client past 64 queries" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 70 queries with up to 8 in flight on one connection: all answered, none
+  # reset and the connection stays open
+  run python3 test/dotdoh_query.py doqpipeline 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 70 8
+  assert_output "answered 70 reset 0 closed None"
+}
+
 @test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # RFC 9250 Sec. 4.3.2: DOQ_INTERNAL_ERROR (0x1), not DOQ_NO_ERROR

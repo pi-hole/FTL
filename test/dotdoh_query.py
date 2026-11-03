@@ -642,6 +642,34 @@ def doq_busy_error(host, port, qname, source, count):
         c.close()
 
 
+def doq_pipeline(host, port, qname, source, expected_ip, count, window):
+    """Ask count queries on one connection, at most window of them in flight.
+    Returns how many were answered, how many were reset and the close code the
+    connection ended with (None if it did not end within 1 s of the last
+    answer or reset; a close of the server arrives well within that)."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    sent, inflight = 0, []
+    last = time.monotonic()
+    try:
+        while c.closed is None and (sent < count or inflight) and time.monotonic() - last < 3:
+            while sent < count and len(inflight) < window:
+                inflight.append(c.send(framed))
+                sent += 1
+            c.pump()
+            for sid in [s for s in inflight if c.done(s)]:
+                inflight.remove(sid)
+                last = time.monotonic()
+        c.wait(lambda: False, 1 - (time.monotonic() - last))
+        for answer in c.answers.values():
+            validate(answer, expected_ip)
+        closed = c.closed if c.closed is not None and c.closed_at - last <= 1 else None
+        return len(c.answers), len(c.resets), closed
+    finally:
+        c.close()
+
+
 def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
     """Plaintext DoH request as a reverse proxy at address source sends it: a
     PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
@@ -902,6 +930,12 @@ def main():
         # must still reach the client as a connection close with that code
         _, _, host, port, domain, source, count = sys.argv[:7]
         print("closed %s" % doq_busy_error(host, int(port), domain, source, int(count)))
+    elif cmd == "doqpipeline":
+        # <count> queries on one connection, at most <window> of them in flight
+        _, _, host, port, domain, source, expected_ip, count, window = sys.argv[:9]
+        answered, reset, closed = doq_pipeline(host, int(port), domain, source, expected_ip,
+                                               int(count), int(window))
+        print("answered %d reset %d closed %s" % (answered, reset, closed))
     else:
         sys.exit("unknown subcommand: %s" % cmd)
 
