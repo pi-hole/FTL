@@ -94,6 +94,12 @@
 // Idle cap: a connection without an in-flight query is closed after this long,
 // so parked connections do not hold slots.
 #define DOQ_CONN_IDLE_TIMEOUT_S 30
+// Most a closing connection keeps its slot (ms). OpenSSL sends the
+// CONNECTION_CLOSE once the answers already written are acknowledged, and
+// reports the connection terminated after its closing period (three PTOs); a
+// peer that stops acknowledging gets the close without that flush when this
+// runs out.
+#define DOQ_CLOSE_TIMEOUT_MS 1000
 
 // Per-stream buffers, same layout as the DoT listener: rbuf accumulates the
 // length-prefixed client query, abuf holds the raw answer, wbuf holds the framed
@@ -155,7 +161,9 @@ struct doq_conn {
 	SSL *ssl;                      // OpenSSL QUIC connection object
 	int nstreams;                  // streams currently attached to this conn
 	int served;                    // queries answered so far (keep-alive cap)
-	bool dead;                     // tear down at the end of the iteration
+	bool closing;                  // CONNECTION_CLOSE initiated, see doq_close_conn()
+	uint64_t close_code;           // DoQ error code the connection is closed with
+	uint64_t close_deadline;       // monotonic ms by which a closing conn is freed
 	time_t hard_deadline;          // absolute cap on the connection's lifetime
 	time_t idle_deadline;          // closed when it expires with no live stream
 	char client[INET6_ADDRSTRLEN]; // downstream client IP (attribution + logging)
@@ -192,6 +200,14 @@ static time_t doq_now(void)
 	return ts.tv_sec;
 }
 
+// The same clock in milliseconds, for the short close bound.
+static uint64_t doq_now_ms(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
+
 // Abort one stream with a DoQ application error code (RFC 9250 Sec. 4.3).
 static void doq_reset_stream(SSL *ssl, uint64_t code)
 {
@@ -199,15 +215,34 @@ static void doq_reset_stream(SSL *ssl, uint64_t code)
 	SSL_stream_reset(ssl, &args, sizeof(args));
 }
 
-// Close a connection immediately with a DoQ application error code, without
-// blocking the loop on the flush.
-static void doq_close_conn(SSL *ssl, uint64_t code)
+// Drive the shutdown of a connection with its close code, without blocking.
+// Unless force is set, OpenSSL first waits for the stream data already written
+// to be acknowledged and then sends the CONNECTION_CLOSE on its own; with force
+// the close goes out right away, from within this call. Returns true once the
+// connection has terminated (its closing period is over).
+static bool doq_shutdown(struct doq_conn *c, bool force)
 {
 	SSL_SHUTDOWN_EX_ARGS args;
 	memset(&args, 0, sizeof(args));
-	args.quic_error_code = code;
-	SSL_shutdown_ex(ssl, SSL_SHUTDOWN_FLAG_RAPID | SSL_SHUTDOWN_FLAG_NO_BLOCK,
-	                &args, sizeof(args));
+	args.quic_error_code = c->close_code;
+	const uint64_t flags = SSL_SHUTDOWN_FLAG_NO_BLOCK |
+	                       (force ? SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH : 0);
+	return SSL_shutdown_ex(c->ssl, flags, &args, sizeof(args)) == 1;
+}
+
+// Close a connection with a DoQ application error code (RFC 9250 Sec. 4.3).
+// The connection keeps its slot until the close has been sent and the closing
+// period is over, bounded by DOQ_CLOSE_TIMEOUT_MS (see doq_reap()), as freeing
+// it earlier would discard the CONNECTION_CLOSE. The first close decides the
+// code; a later one does not overwrite it.
+static void doq_close_conn(struct doq_conn *c, uint64_t code)
+{
+	if(c->closing)
+		return;
+	c->closing = true;
+	c->close_code = code;
+	c->close_deadline = doq_now_ms() + DOQ_CLOSE_TIMEOUT_MS;
+	doq_shutdown(c, false);
 }
 
 // ALPN selection: accept only "doq". QUIC mandates ALPN, so a client offering
@@ -610,8 +645,11 @@ static void conn_free(struct doq_conn *c)
 			stream_free(&g_streams[i]);
 	if(c->ssl != NULL)
 	{
-		// Best-effort immediate close; do not block the loop flushing it.
-		doq_close_conn(c->ssl, DOQ_NO_ERROR);
+		// A connection freed before its close completed (on a timeout, a
+		// certificate reload or thread exit) sends its CONNECTION_CLOSE now,
+		// without the flush: SSL_free() would discard it otherwise. The code is
+		// DOQ_NO_ERROR unless an earlier close chose another one.
+		doq_shutdown(c, true);
 		SSL_free(c->ssl);
 	}
 	memset(c, 0, sizeof(*c));
@@ -868,8 +906,7 @@ static int drive_read(struct doq_stream *s)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s was too short or had a non-zero "
 		          "Message ID, closing the connection", s->conn->client);
-		doq_close_conn(s->conn->ssl, DOQ_PROTOCOL_ERROR);
-		s->conn->dead = true;
+		doq_close_conn(s->conn, DOQ_PROTOCOL_ERROR);
 		return -1;
 	}
 
@@ -878,8 +915,7 @@ static int drive_read(struct doq_stream *s)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s carried edns-tcp-keepalive, "
 		          "closing the connection", s->conn->client);
-		doq_close_conn(s->conn->ssl, DOQ_PROTOCOL_ERROR);
-		s->conn->dead = true;
+		doq_close_conn(s->conn, DOQ_PROTOCOL_ERROR);
 		return -1;
 	}
 
@@ -901,8 +937,7 @@ static int drive_read(struct doq_stream *s)
 		// RFC 9250 Sec. 4.3.3: an unexpected message (QR set) is a protocol error
 		log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s is not a query, closing the connection",
 		          s->conn->client);
-		doq_close_conn(s->conn->ssl, DOQ_PROTOCOL_ERROR);
-		s->conn->dead = true;
+		doq_close_conn(s->conn, DOQ_PROTOCOL_ERROR);
 		return -1;
 	}
 	if(flen < 0)
@@ -1091,8 +1126,8 @@ static void conn_accept_streams(struct doq_conn *c)
 			// Keep-alive budget exhausted: stop serving and let the connection go.
 			doq_reset_stream(st, DOQ_EXCESSIVE_LOAD);
 			SSL_free(st);
-			c->dead = true;
-			continue;
+			doq_close_conn(c, DOQ_NO_ERROR);
+			break;
 		}
 		if((SSL_get_stream_type(st) & SSL_STREAM_TYPE_WRITE) == 0)
 		{
@@ -1138,18 +1173,31 @@ static int doq_event_timeout_ms(void)
 			if(ms < best)
 				best = ms < 0 ? 0 : (int)ms;
 		}
+	const uint64_t now = doq_now_ms();
 	for(int i = 0; i < DOQ_MAX_CONNS; i++)
-		if(g_conns[i].used &&
-		   SSL_get_event_timeout(g_conns[i].ssl, &tv, &inf) == 1 && !inf)
+	{
+		if(!g_conns[i].used)
+			continue;
+		if(SSL_get_event_timeout(g_conns[i].ssl, &tv, &inf) == 1 && !inf)
 		{
 			const long ms = tv.tv_sec * 1000 + tv.tv_usec / 1000;
 			if(ms < best)
 				best = ms < 0 ? 0 : (int)ms;
 		}
+		// Wake up for the close bound too
+		if(g_conns[i].closing)
+		{
+			const uint64_t left = g_conns[i].close_deadline > now ?
+			                      g_conns[i].close_deadline - now : 0;
+			if(left < (uint64_t)best)
+				best = (int)left;
+		}
+	}
 	return best;
 }
 
-// Tear down connections that are dead, closed by the peer, or over a deadline.
+// Tear down connections that are closed by the peer, or over a deadline, and
+// free closing ones once their close is complete.
 static void doq_reap(void)
 {
 	const time_t now = doq_now();
@@ -1174,11 +1222,24 @@ static void doq_reap(void)
 		struct doq_conn *c = &g_conns[i];
 		if(!c->used)
 			continue;
+		if(c->closing)
+		{
+			// Nothing more can be written once the shutdown has begun, so
+			// queries still in flight on it cannot be answered.
+			for(int k = 0; k < DOQ_MAX_STREAMS && c->nstreams > 0; k++)
+				if(g_streams[k].used && g_streams[k].conn == c)
+					stream_free(&g_streams[k]);
+			if(doq_shutdown(c, false) || doq_now_ms() >= c->close_deadline)
+				conn_free(c);
+			continue;
+		}
 		SSL_CONN_CLOSE_INFO info;
 		const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
 		const bool idle = c->nstreams == 0 && now >= c->idle_deadline;
-		if(c->dead || closed || idle || now >= c->hard_deadline)
+		if(closed)
 			conn_free(c);
+		else if(idle || now >= c->hard_deadline)
+			doq_close_conn(c, DOQ_NO_ERROR);
 	}
 }
 
@@ -1314,7 +1375,7 @@ void *dotdoh_doq_thread(void *val)
 		for(int i = 0; i < g_nlisten; i++)
 			listener_accept_all(g_listeners[i].ssl);
 		for(int i = 0; i < DOQ_MAX_CONNS; i++)
-			if(g_conns[i].used && !g_conns[i].dead)
+			if(g_conns[i].used && !g_conns[i].closing)
 				conn_accept_streams(&g_conns[i]);
 
 		// Drive every live stream. QUIC readiness is not an fd condition, so the
@@ -1322,14 +1383,17 @@ void *dotdoh_doq_thread(void *val)
 		// each wake-up; the loopback states only run when their fd is ready. The
 		// accepts above may have freed a polled slot and handed it to a new stream,
 		// whose fd these revents do not describe, so the generation must match.
+		// Streams of a closing connection are left for doq_reap() to free: their
+		// answers can no longer be written.
 		for(nfds_t i = 0; i < n; i++)
 			if(pstream[i] != NULL && pstream[i]->used && pstream[i]->gen == pgen[i] &&
-			   pfd[i].revents != 0 && drive_stream(pstream[i]) < 0)
+			   !pstream[i]->conn->closing && pfd[i].revents != 0 &&
+			   drive_stream(pstream[i]) < 0)
 				stream_free(pstream[i]);
 		for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		{
 			struct doq_stream *s = &g_streams[i];
-			if(!s->used || s->upfd >= 0)
+			if(!s->used || s->upfd >= 0 || s->conn->closing)
 				continue; // loopback states are driven by their fd above
 			if(drive_stream(s) < 0)
 				stream_free(s);

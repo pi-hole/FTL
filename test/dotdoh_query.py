@@ -511,6 +511,137 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
     sys.exit("DoQ: handshake with ALPN %r was accepted, expected refusal" % alpn)
 
 
+class DoqConn:
+    """One DoQ client connection pumped by hand, for the tests that need exact
+    control over when each stream is opened, or several connections at once."""
+
+    def __init__(self, host, port, source=None):
+        QuicConfiguration, QuicConnection, self.events = _doq_import()
+        cfg = QuicConfiguration(is_client=True, alpn_protocols=["doq"])
+        cfg.verify_mode = ssl.CERT_NONE
+        cfg.server_name = "pi.hole"
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        self.sock = socket.socket(family, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
+        if source:
+            self.sock.bind((source, 0))
+        self.conn = QuicConnection(configuration=cfg)
+        self.conn.connect((host, port), now=time.monotonic())
+        self.handshaked = False
+        self.closed = None  # error code of the connection close, once it ended
+        self.closed_at = None
+        self.bufs = {}
+        self.answers = {}   # stream id -> answer
+        self.resets = {}    # stream id -> application error code
+        self.flush()
+
+    def flush(self):
+        for data, dest in self.conn.datagrams_to_send(now=time.monotonic()):
+            try:
+                self.sock.sendto(data, dest)
+            except OSError:
+                pass
+
+    def pump(self, wait=0.01):
+        if select.select([self.sock], [], [], wait)[0]:
+            while True:
+                try:
+                    data, src = self.sock.recvfrom(65536)
+                except BlockingIOError:
+                    break
+                self.conn.receive_datagram(data, src, now=time.monotonic())
+        timer = self.conn.get_timer()
+        if timer is not None and time.monotonic() >= timer:
+            self.conn.handle_timer(now=time.monotonic())
+        while True:
+            event = self.conn.next_event()
+            if event is None:
+                break
+            if isinstance(event, self.events.HandshakeCompleted):
+                self.handshaked = True
+            elif isinstance(event, self.events.ConnectionTerminated):
+                self.closed = event.error_code
+                self.closed_at = time.monotonic()
+            elif isinstance(event, self.events.StreamReset):
+                self.resets[event.stream_id] = event.error_code
+            elif isinstance(event, self.events.StreamDataReceived):
+                buf = self.bufs.setdefault(event.stream_id, bytearray())
+                buf.extend(event.data)
+                alen = (buf[0] << 8) | buf[1] if len(buf) >= 2 else -1
+                if 0 <= alen <= len(buf) - 2:
+                    self.answers.setdefault(event.stream_id, bytes(buf[2:2 + alen]))
+        self.flush()
+
+    def ignore(self, min_len, timeout):
+        """Drop whatever arrives, as if it was lost on the way, until a datagram
+        of at least min_len bytes was dropped or timeout passed. Returns how
+        many such datagrams were dropped (0 or 1)."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if select.select([self.sock], [], [], end - time.monotonic())[0]:
+                try:
+                    data, _ = self.sock.recvfrom(65536)
+                except BlockingIOError:
+                    continue
+                if len(data) >= min_len:
+                    return 1
+        return 0
+
+    def wait(self, cond, timeout):
+        """Pump until cond() holds, the connection ended or timeout passed."""
+        end = time.monotonic() + timeout
+        while not cond() and self.closed is None and time.monotonic() < end:
+            self.pump()
+        return cond()
+
+    def send(self, data, fin=True):
+        sid = self.conn.get_next_available_stream_id()
+        self.conn.send_stream_data(sid, data, end_stream=fin)
+        self.flush()
+        return sid
+
+    def done(self, sid):
+        return sid in self.answers or sid in self.resets
+
+    def close(self):
+        try:
+            self.conn.close()
+            self.flush()
+        finally:
+            self.sock.close()
+
+
+def doq_connect(host, port, source=None):
+    c = DoqConn(host, port, source)
+    if not c.wait(lambda: c.handshaked, 10):
+        sys.exit("DoQ: no handshake")
+    return c
+
+
+def doq_busy_error(host, port, qname, source, count):
+    """Ask count queries one after the other on one connection, then one more
+    whose answer is lost on the way and so not acknowledged, and then one with a
+    non-zero Message ID. Returns the close code the connection ended with (None
+    if it did not end within 3 s). Fails if no answer was lost, as the close
+    then does not have to wait for one."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    try:
+        for _ in range(count):
+            sid = c.send(struct.pack("!H", len(query)) + query)
+            c.wait(lambda: c.done(sid), 10)
+        c.send(struct.pack("!H", len(query)) + query)
+        # The answer repeats the query and adds QUIC overhead (header, frame,
+        # 16-byte AEAD tag), so a datagram this large is more than an ACK
+        if c.ignore(2 + len(query) + 32, 5) == 0:
+            sys.exit("DoQ: no answer arrived to be lost")
+        c.send(struct.pack("!H", len(query)) + b"\x12\x34" + query[2:])
+        c.wait(lambda: False, 3)
+        return c.closed
+    finally:
+        c.close()
+
+
 def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
     """Plaintext DoH request as a reverse proxy at address source sends it: a
     PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
@@ -766,6 +897,11 @@ def main():
         _, _, host, port, alpn, source = sys.argv[:6]
         doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
+    elif cmd == "doqbusyerror":
+        # A protocol error on a connection with an answer not acknowledged yet
+        # must still reach the client as a connection close with that code
+        _, _, host, port, domain, source, count = sys.argv[:7]
+        print("closed %s" % doq_busy_error(host, int(port), domain, source, int(count)))
     else:
         sys.exit("unknown subcommand: %s" % cmd)
 

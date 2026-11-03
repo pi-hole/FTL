@@ -212,6 +212,14 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: DoQ delivers the connection close on a connection that just answered queries" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # The close waits for the client to acknowledge the last answer, which was
+  # lost once, and then has to be sent rather than freed with the connection
+  run python3 test/dotdoh_query.py doqbusyerror 127.0.0.1 853 "$DOMAIN" "$CLIENT" 10
+  assert_output "closed 2"
+}
+
 @test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # RFC 9250 Sec. 4.3.2: DOQ_INTERNAL_ERROR (0x1), not DOQ_NO_ERROR
