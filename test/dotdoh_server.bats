@@ -185,10 +185,21 @@ setup_file() {
 
 @test "dotdoh-server: a burst of 30 DoQ queries on one connection is answered in full" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
-  # More than the 16 streams one connection may hold at once: the others wait
+  # More than the 16 streams one client may hold at once: the others wait
   # for a free slot instead of being reset
   run python3 test/dotdoh_query.py doqmulti 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 30
   assert_output "OK"
+}
+
+@test "dotdoh-server: a DoQ client holding many streams leaves slots for another one" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.7 opens 32 streams that never deliver their query, as many as the
+  # listener has slots (DOQ_MAX_STREAMS). It gets 16 of them
+  # (DOQ_MAX_STREAMS_PER_SOURCE), so the query from $CLIENT is answered, and
+  # those 16 are reset together with DOQ_INTERNAL_ERROR after the read deadline
+  # (DOQ_READ_TIMEOUT_S). Update the numbers here when these constants change.
+  run python3 test/dotdoh_query.py doqhold 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 127.0.0.7
+  assert_output "other client answered True, 16 held streams reset with codes [1]"
 }
 
 @test "dotdoh-server: the DoQ listener rejects a client not offering the doq ALPN" {

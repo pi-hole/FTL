@@ -670,6 +670,45 @@ def doq_pipeline(host, port, qname, source, expected_ip, count, window):
         c.close()
 
 
+def doq_hold(host, port, qname, source, expected_ip, holder):
+    """From holder, open 16 streams on each of two connections and send only one
+    byte on each, as a client holding stream slots would. Then ask one query
+    from source. Returns whether it was answered within 3 s, and the reset codes
+    of the held streams reset in the first wave: from the first reset, within 8 s
+    of opening them, until 1 s later. The streams FTL accepted in one go share a
+    read deadline, the ones it accepts after that are reset seconds later."""
+    held = []
+    try:
+        for _ in range(2):
+            held.append(doq_connect(host, port, holder))
+            for _ in range(16):
+                held[-1].send(b"\x00", fin=False)
+        start = time.monotonic()
+        while time.monotonic() - start < 0.5:
+            for c in held:
+                c.pump(0.01)
+        v = doq_connect(host, port, source)
+        try:
+            query = b"\x00\x00" + build_query(qname)[2:]
+            sid = v.send(struct.pack("!H", len(query)) + query)
+            answered = v.wait(lambda: sid in v.answers, 3)
+            if answered:
+                validate(v.answers[sid], expected_ip)
+        finally:
+            v.close()
+        while time.monotonic() - start < 8 and not any(c.resets for c in held):
+            for c in held:
+                c.pump(0.01)
+        settle = time.monotonic() + 1
+        while time.monotonic() < settle:
+            for c in held:
+                c.pump(0.01)
+        return answered, [code for c in held for code in c.resets.values()]
+    finally:
+        for c in held:
+            c.close()
+
+
 def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
     """Plaintext DoH request as a reverse proxy at address source sends it: a
     PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
@@ -936,6 +975,13 @@ def main():
         answered, reset, closed = doq_pipeline(host, int(port), domain, source, expected_ip,
                                                int(count), int(window))
         print("answered %d reset %d closed %s" % (answered, reset, closed))
+    elif cmd == "doqhold":
+        # One client holding many streams must leave slots for another, and
+        # streams that never deliver their query must not hold one for long
+        _, _, host, port, domain, source, expected_ip, holder = sys.argv[:8]
+        answered, codes = doq_hold(host, int(port), domain, source, expected_ip, holder)
+        print("other client answered %s, %d held streams reset with codes %s"
+              % (answered, len(codes), sorted(set(codes))))
     else:
         sys.exit("unknown subcommand: %s" % cmd)
 

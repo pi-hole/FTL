@@ -72,22 +72,24 @@
 // Cap concurrent QUIC connections so a flood cannot exhaust memory.
 #define DOQ_MAX_CONNS 64
 // Cap concurrent connections from a single source IP so one client cannot hold
-// every slot.
+// every connection slot.
 #define DOQ_MAX_CONNS_PER_IP 16
 // Cap in-flight queries across all connections. Each holds ~192 KiB of pooled
 // I/O buffers plus one loopback socket to dnsmasq, so this - not the connection
 // count - is what bounds the listener's footprint and its load on dnsmasq.
 #define DOQ_MAX_STREAMS 32
-// Most concurrent streams a single connection may hold. Together with
-// DOQ_MAX_CONNS_PER_IP this bounds what one connection costs; the global
-// DOQ_MAX_STREAMS above is what actually caps total in-flight queries. A stream
-// beyond a cap is accepted once a slot frees; until then it waits in OpenSSL,
-// whose stream limit and flow control bound what a client can queue there.
-#define DOQ_MAX_STREAMS_PER_CONN 16
-// Wall-clock budget for one query, re-armed once the query has been read, and
-// swept on each poll wake-up: it bounds first the read phase and then the
-// resolve+write phase, so neither a slow-drip stream nor a hung resolve can pin
-// a slot.
+// Most concurrent streams all connections from one source IP may hold
+// together, so that one client cannot take every slot of DOQ_MAX_STREAMS, the
+// way DoT leaves half of its connection slots to other clients. A stream beyond
+// a cap is accepted once a slot frees; until then it waits in OpenSSL, whose
+// stream limit and flow control bound what a client can queue there.
+#define DOQ_MAX_STREAMS_PER_SOURCE (DOQ_MAX_STREAMS / 2)
+// Wall-clock budgets for one query, swept on each poll wake-up: the first
+// bounds the read phase and the second, armed once the query has been read,
+// the resolve+write phase, so neither a slow-drip stream nor a hung resolve can
+// pin a slot. A DoQ query arrives in one or two datagrams, so a stream that
+// still has not delivered it after a few seconds is not going to.
+#define DOQ_READ_TIMEOUT_S 3
 #define DOQ_QUERY_TIMEOUT_S 10
 // Absolute cap on a whole connection's lifetime, independent of activity. When
 // it runs out the connection accepts no new stream and is closed with
@@ -152,7 +154,7 @@ struct doq_stream {
 	bool up_pooled;          // upfd came from the shared pool (may be stale)
 	bool up_retried;         // already re-connected once for this query
 	short up_ev;             // POLLIN or POLLOUT while waiting on upfd
-	time_t deadline;         // absolute monotonic deadline for this query
+	uint64_t deadline;       // monotonic ms deadline for this query phase
 	bool client_padded;      // the query carried an EDNS Padding option
 
 	uint8_t *rbuf; size_t have;           // client read accumulation
@@ -592,10 +594,17 @@ static void stream_free(struct doq_stream *s)
 // they cannot tell a reused slot from the stream it held before.
 static uint64_t g_stream_gen = 0;
 
-// Whether this connection may take another stream now (see DOQ_MAX_STREAMS).
+// Whether this connection may take another stream now (see
+// DOQ_MAX_STREAMS_PER_SOURCE).
 static bool conn_has_room(const struct doq_conn *c)
 {
-	return g_nstreams < DOQ_MAX_STREAMS && c->nstreams < DOQ_MAX_STREAMS_PER_CONN;
+	if(g_nstreams >= DOQ_MAX_STREAMS)
+		return false;
+	int same_src = 0;
+	for(int i = 0; i < DOQ_MAX_CONNS; i++)
+		if(g_conns[i].used && strcmp(g_conns[i].client, c->client) == 0)
+			same_src += g_conns[i].nstreams;
+	return same_src < DOQ_MAX_STREAMS_PER_SOURCE;
 }
 
 // Take a stream slot for an accepted QUIC stream; the caller checked
@@ -632,7 +641,7 @@ static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
 	s->ssl = ssl;
 	s->gen = ++g_stream_gen;
 	s->st = DQ_READ;
-	s->deadline = doq_now() + DOQ_QUERY_TIMEOUT_S;
+	s->deadline = doq_now_ms() + DOQ_READ_TIMEOUT_S * 1000u;
 	c->nstreams++;
 	g_nstreams++;
 	return s;
@@ -924,7 +933,7 @@ static int drive_read(struct doq_stream *s)
 
 	// A full query is buffered at rbuf[off .. off+qlen). Give it a fresh
 	// deadline now that the read phase is over.
-	s->deadline = doq_now() + DOQ_QUERY_TIMEOUT_S;
+	s->deadline = doq_now_ms() + DOQ_QUERY_TIMEOUT_S * 1000u;
 
 	// Remember whether it asked for padding (before we attribute it), then build
 	// the client-attributed, framed query straight into wbuf, conveying the local
@@ -1209,6 +1218,15 @@ static int doq_event_timeout_ms(void)
 				best = (int)left;
 		}
 	}
+	// Wake up for the stream deadlines too
+	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
+		if(g_streams[i].used)
+		{
+			const uint64_t left = g_streams[i].deadline > now ?
+			                      g_streams[i].deadline - now : 0;
+			if(left < (uint64_t)best)
+				best = (int)left;
+		}
 	return best;
 }
 
@@ -1217,6 +1235,7 @@ static int doq_event_timeout_ms(void)
 static void doq_reap(void)
 {
 	const time_t now = doq_now();
+	const uint64_t now_ms = doq_now_ms();
 
 	// Streams first: a stream over its deadline is a stalled query, not
 	// necessarily a bad connection, so only the stream goes.
@@ -1225,7 +1244,7 @@ static void doq_reap(void)
 		struct doq_stream *s = &g_streams[i];
 		if(!s->used)
 			continue;
-		if(now >= s->deadline)
+		if(now_ms >= s->deadline)
 		{
 			log_debug(DEBUG_TLS, "dotdoh: DoQ query from %s timed out", s->conn->client);
 			doq_reset_stream(s->ssl, DOQ_INTERNAL_ERROR);
@@ -1418,6 +1437,14 @@ void *dotdoh_doq_thread(void *val)
 		}
 
 		doq_reap();
+		// Send the resets and FINs queued above now: OpenSSL would otherwise
+		// send them only on the next wake-up, which may be a second away
+		// That tick also reads datagrams, so take the connections it completed
+		for(int i = 0; i < g_nlisten; i++)
+		{
+			SSL_handle_events(g_listeners[i].ssl);
+			listener_accept_all(g_listeners[i].ssl);
+		}
 		// Streams that waited for a slot freed above
 		conns_accept_streams();
 	}
