@@ -67,6 +67,8 @@
 #include "webserver/webserver.h"
 // cJSON_Version()
 #include "webserver/cJSON/cJSON.h"
+// TOMLC17_RELEASE_AFTER
+#include "config/tomlc17/tomlc17.h"
 #include "config/cli.h"
 #include "config/config.h"
 // compression functions
@@ -1225,6 +1227,11 @@ void parse_args(int argc, char *argv[])
 			printf("****************************** %s%scJSON%s ********************************\n",
 			       yellow, bold, normal);
 			printf("Version:         %s%s%s%s\n", green, bold, cJSON_Version(), normal);
+			printf("\n");
+			printf("***************************** %s%stomlc17%s *******************************\n",
+			       yellow, bold, normal);
+			// The version macro is not updated for every tag and may lag behind
+			printf("Version:         %s%s%s%s\n", green, bold, TOMLC17_RELEASE_AFTER, normal);
 			printf("\n");
 			exit(EXIT_SUCCESS);
 		}
