@@ -183,6 +183,14 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a burst of 30 DoQ queries on one connection is answered in full" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # More than the 16 streams one connection may hold at once: the others wait
+  # for a free slot instead of being reset
+  run python3 test/dotdoh_query.py doqmulti 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 30
+  assert_output "OK"
+}
+
 @test "dotdoh-server: the DoQ listener rejects a client not offering the doq ALPN" {
   # QUIC mandates ALPN and RFC 9250 defines exactly one token for DoQ, so a client
   # offering "h3" instead must not be served.

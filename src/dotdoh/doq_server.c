@@ -80,7 +80,9 @@
 #define DOQ_MAX_STREAMS 32
 // Most concurrent streams a single connection may hold. Together with
 // DOQ_MAX_CONNS_PER_IP this bounds what one connection costs; the global
-// DOQ_MAX_STREAMS above is what actually caps total in-flight queries.
+// DOQ_MAX_STREAMS above is what actually caps total in-flight queries. A stream
+// beyond a cap is accepted once a slot frees; until then it waits in OpenSSL,
+// whose stream limit and flow control bound what a client can queue there.
 #define DOQ_MAX_STREAMS_PER_CONN 16
 // Wall-clock budget for one query, re-armed once the query has been read, and
 // swept on each poll wake-up: it bounds first the read phase and then the
@@ -590,19 +592,17 @@ static void stream_free(struct doq_stream *s)
 // they cannot tell a reused slot from the stream it held before.
 static uint64_t g_stream_gen = 0;
 
-// Take a stream slot for an accepted QUIC stream. Returns NULL (having freed the
-// stream object) when a cap is reached or an allocation fails.
+// Whether this connection may take another stream now (see DOQ_MAX_STREAMS).
+static bool conn_has_room(const struct doq_conn *c)
+{
+	return g_nstreams < DOQ_MAX_STREAMS && c->nstreams < DOQ_MAX_STREAMS_PER_CONN;
+}
+
+// Take a stream slot for an accepted QUIC stream; the caller checked
+// conn_has_room(). Returns NULL (having freed the stream object) when an
+// allocation fails.
 static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
 {
-	if(g_nstreams >= DOQ_MAX_STREAMS || c->nstreams >= DOQ_MAX_STREAMS_PER_CONN)
-	{
-		log_debug(DEBUG_TLS, "dotdoh: DoQ stream limit reached, resetting a stream from %s",
-		          c->client);
-		// Tell the client we are overloaded rather than dropping it silently.
-		doq_reset_stream(ssl, DOQ_EXCESSIVE_LOAD);
-		SSL_free(ssl);
-		return NULL;
-	}
 	struct doq_stream *s = NULL;
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		if(!g_streams[i].used) { s = &g_streams[i]; break; }
@@ -1115,12 +1115,12 @@ static int drive_stream(struct doq_stream *s)
 
 // Accept every QUIC stream the client has opened on this connection. Only
 // client-initiated bidirectional streams carry queries; a unidirectional stream
-// is not part of DoQ, so it is reset rather than served. Streams a retiring or
-// closing connection does not accept stay queued in OpenSSL and end with the
-// connection.
+// is not part of DoQ, so it is reset rather than served. Streams beyond the
+// stream caps stay queued in OpenSSL until a slot frees, and those a retiring
+// or closing connection does not accept end with the connection.
 static void conn_accept_streams(struct doq_conn *c)
 {
-	while(!c->closing && !c->retiring)
+	while(!c->closing && !c->retiring && conn_has_room(c))
 	{
 		SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
 		if(st == NULL)
@@ -1139,6 +1139,26 @@ static void conn_accept_streams(struct doq_conn *c)
 		if(drive_stream(s) < 0)
 			stream_free(s);
 	}
+}
+
+// Accept new streams on every connection. Each pass starts with the connection
+// after the one the previous pass started with, so while all stream slots are
+// taken a freed one does not always go to the same connection.
+static void conns_accept_streams(void)
+{
+	static int first = 0;
+	int started = -1;
+	for(int k = 0; k < DOQ_MAX_CONNS; k++)
+	{
+		const int i = (first + k) % DOQ_MAX_CONNS;
+		if(!g_conns[i].used)
+			continue;
+		if(started < 0)
+			started = i;
+		conn_accept_streams(&g_conns[i]);
+	}
+	if(started >= 0)
+		first = (started + 1) % DOQ_MAX_CONNS;
 }
 
 // Accept every connection whose handshake completed on this listener.
@@ -1231,7 +1251,8 @@ static void doq_reap(void)
 		}
 		SSL_CONN_CLOSE_INFO info;
 		const bool closed = SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1;
-		const bool idle = c->nstreams == 0 && now >= c->idle_deadline;
+		const bool idle = c->nstreams == 0 && now >= c->idle_deadline &&
+		                  SSL_get_accept_stream_queue_len(c->ssl) == 0;
 		// Past its lifetime it answers what is in flight and then closes
 		if(now >= c->hard_deadline)
 			c->retiring = true;
@@ -1373,9 +1394,7 @@ void *dotdoh_doq_thread(void *val)
 		// New connections, then new streams on existing connections.
 		for(int i = 0; i < g_nlisten; i++)
 			listener_accept_all(g_listeners[i].ssl);
-		for(int i = 0; i < DOQ_MAX_CONNS; i++)
-			if(g_conns[i].used && !g_conns[i].closing)
-				conn_accept_streams(&g_conns[i]);
+		conns_accept_streams();
 
 		// Drive every live stream. QUIC readiness is not an fd condition, so the
 		// stream states that read or write on the connection are simply retried
@@ -1399,6 +1418,8 @@ void *dotdoh_doq_thread(void *val)
 		}
 
 		doq_reap();
+		// Streams that waited for a slot freed above
+		conns_accept_streams();
 	}
 
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
