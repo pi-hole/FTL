@@ -8,9 +8,10 @@
 *  Talks HTTP/3 over QUIC to the real upstream resolver. Like the TCP client it
 *  is strict and fail-closed: a failed handshake or exchange returns -1 and the
 *  query is dropped, so FTL fails over to the next server rather than downgrading
-*  to plaintext. Each upstream owns a QUIC pool; a worker performs one exchange
-*  over its own short-lived QUIC connection, so many workers run concurrently
-*  without sharing a (non-thread-safe) OpenSSL QUIC connection object.
+*  to plaintext. Each upstream owns a pool of QUIC connections that are kept warm
+*  between exchanges. A worker borrows one exclusively for an exchange, so many
+*  workers run concurrently without sharing a (non-thread-safe) OpenSSL QUIC
+*  connection object.
 *
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
@@ -42,15 +43,14 @@
 // response), so a bad upstream cannot pin a worker; on expiry, dnsmasq fails over.
 #define QUIC_EXCHANGE_TIMEOUT_MS 10000
 
-// Per-upstream QUIC pool. In the connection-per-exchange model it holds only the
-// immutable upstream descriptor and the stats (lock-guarded); the QUIC connection
-// is short-lived on the worker stack for one exchange.
-struct quic_pool {
-	struct upstream_uri u;      // upstream descriptor (immutable)
-	int max;                    // connection cap (immutable; informational here)
-	pthread_mutex_t lock;       // guards stats
-	struct dotdoh_stats stats;
-};
+// A pooled connection is not reused within this margin of its negotiated idle
+// timeout, so it is not taken just as the server drops it
+#define QUIC_IDLE_MARGIN_MS 2000
+// Idle timeout assumed when none was negotiated: NATs drop idle UDP mappings
+#define QUIC_IDLE_DEFAULT_MS 30000
+// Least time a reused connection gets to have a request acknowledged, see
+// conn_exchange()
+#define QUIC_REUSE_PROBE_MIN_MS 1000
 
 // Monotonic timestamp in nanoseconds for nghttp3's bookkeeping.
 static nghttp3_tstamp h3_now(void)
@@ -58,27 +58,6 @@ static nghttp3_tstamp h3_now(void)
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (nghttp3_tstamp)ts.tv_sec * 1000000000ull + (nghttp3_tstamp)ts.tv_nsec;
-}
-
-struct quic_pool *quic_pool_new(const struct upstream_uri *u, int max_conns)
-{
-	if(quic_client_ctx() == NULL || u == NULL || max_conns < 1)
-		return NULL;
-	struct quic_pool *p = calloc(1, sizeof(*p));
-	if(p == NULL)
-		return NULL;
-	p->u = *u;
-	p->max = max_conns;
-	pthread_mutex_init(&p->lock, NULL);
-	return p;
-}
-
-void quic_pool_free(struct quic_pool *p)
-{
-	if(p == NULL)
-		return;
-	pthread_mutex_destroy(&p->lock);
-	free(p);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,15 +89,37 @@ struct quic_xfer {
 	bool overflow;          // response body exceeded answer_sz
 	bool done;              // request stream closed
 	bool failed;            // request stream closed with an error
+	bool lost;              // the connection turned out closed or dead before answering
 };
 
-// One QUIC connection plus its HTTP/3 session and stream table, for one exchange.
+// One pooled QUIC connection plus its HTTP/3 session and stream table. Borrowed
+// exclusively by one worker between borrow and return, so nothing here needs its
+// own lock.
 struct quic_client_conn {
 	SSL *ssl;                              // QUIC connection object
+	int fd;                                // its UDP socket, owned by the BIO
 	nghttp3_conn *h3;
 	struct qstream streams[QUIC_MAX_STREAMS];
 	int nstreams;
 	struct quic_xfer x;
+	bool in_use;
+	bool pooled;                           // kept in a slot, else closed after its exchange
+	bool goaway;                           // server is shutting the connection down
+	uint64_t handshake_ms;                 // time it took to connect
+	uint64_t idle_timeout_ms;              // negotiated idle timeout
+	uint64_t last_used_ms;                 // when last returned to the pool
+	unsigned queries_served;               // exchanges on this connection
+};
+
+// Per-upstream pool: a bounded set of connections kept warm and the diagnostic
+// counters. The lock guards every field except u/max (immutable after creation).
+struct quic_pool {
+	struct upstream_uri u;                 // upstream descriptor (immutable)
+	int max;                               // cap of pooled connections (immutable)
+	pthread_mutex_t lock;
+	struct quic_client_conn **slots;       // max entries, NULL = empty slot
+	int nconns;                            // non-NULL slots (open or connecting)
+	struct dotdoh_stats stats;
 };
 
 static struct qstream *find_stream(struct quic_client_conn *c, int64_t id)
@@ -127,6 +128,20 @@ static struct qstream *find_stream(struct quic_client_conn *c, int64_t id)
 		if(c->streams[i].id == id)
 			return &c->streams[i];
 	return NULL;
+}
+
+// Free a request stream once its exchange is over, so the table does not fill up
+// over many exchanges on one connection
+static void remove_stream(struct quic_client_conn *c, const int64_t id)
+{
+	for(int i = 0; i < c->nstreams; i++)
+	{
+		if(c->streams[i].id != id)
+			continue;
+		SSL_free(c->streams[i].ssl);
+		c->streams[i] = c->streams[--c->nstreams];
+		return;
+	}
 }
 
 // Register a QUIC stream object in the connection's table. Returns false (and does
@@ -221,10 +236,20 @@ static int quic_cb_stream_close(nghttp3_conn *h3, int64_t stream_id,
 	return 0;
 }
 
+// The server sent GOAWAY: no new requests on this connection
+static int quic_cb_shutdown(nghttp3_conn *h3, int64_t id, void *conn_user_data)
+{
+	(void)h3; (void)id;
+	struct quic_client_conn *c = conn_user_data;
+	c->goaway = true;
+	return 0;
+}
+
 static const nghttp3_callbacks quic_callbacks = {
 	.stream_close = quic_cb_stream_close,
 	.recv_data    = quic_cb_recv_data,
 	.recv_header  = quic_cb_recv_header,
+	.shutdown     = quic_cb_shutdown,
 };
 
 // Fill one nghttp3_nv from NUL-terminated name/value strings.
@@ -463,17 +488,12 @@ static bool conn_submit_request(struct quic_client_conn *c, const struct upstrea
 	                                   &dr, c) == 0;
 }
 
-ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qlen,
-                           uint8_t *answer, size_t answer_sz)
+// Open the UDP socket, run the handshake and set up HTTP/3 on c. On failure,
+// everything is torn down again and false returned.
+static bool conn_connect(struct quic_client_conn *c, const struct upstream_uri *u,
+                         const uint64_t deadline)
 {
-	SSL_CTX *qctx = quic_client_ctx();
-	if(qctx == NULL || p == NULL || query == NULL || answer == NULL)
-		return -1;
-	if(qlen == 0 || qlen > DNS_MSG_MAX)
-		return -1;
-
-	const struct upstream_uri *u = &p->u;
-	const uint64_t deadline = quic_now_ms() + QUIC_EXCHANGE_TIMEOUT_MS;
+	const uint64_t start = quic_now_ms();
 
 	// 1. Connected, non-blocking UDP socket to the upstream.
 	int fd = -1;
@@ -481,15 +501,13 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 	if(!quic_udp_connect(u->connect_host, u->port, deadline, &fd, &peer))
 	{
 		log_warn("dotdoh: DoH3 connect to %s#%d failed", u->connect_host, u->port);
-		return -1;
+		return false;
 	}
 
 	// 2. QUIC connection object over that socket.
-	struct quic_client_conn c;
-	memset(&c, 0, sizeof(c));
-	c.ssl = SSL_new(qctx);
-	BIO *bio = c.ssl != NULL ? BIO_new_dgram(fd, BIO_CLOSE) : NULL;
-	if(c.ssl == NULL || bio == NULL)
+	c->ssl = SSL_new(quic_client_ctx());
+	BIO *bio = c->ssl != NULL ? BIO_new_dgram(fd, BIO_CLOSE) : NULL;
+	if(c->ssl == NULL || bio == NULL)
 	{
 		// SSL_set_bio() has not run, so the SSL does not own the fd: a BIO (BIO_CLOSE)
 		// closes it on BIO_free(), else close it directly; SSL_free() alone leaks it.
@@ -497,94 +515,347 @@ ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qle
 			BIO_free(bio);
 		else
 			close(fd);
-		if(c.ssl != NULL)
-			SSL_free(c.ssl);
+		if(c->ssl != NULL)
+			SSL_free(c->ssl);
+		c->ssl = NULL;
 		BIO_ADDR_free(peer);
-		return -1;
+		return false;
 	}
-	SSL_set_bio(c.ssl, bio, bio); // SSL owns the BIO (and the fd via BIO_CLOSE)
+	SSL_set_bio(c->ssl, bio, bio); // SSL owns the BIO (and the fd via BIO_CLOSE)
+	c->fd = fd;
 
 	// ALPN "h3" (opts into HTTP/3), the initial peer address, non-blocking mode
 	// and manual stream control - we accept and drive every stream by hand.
 	static const unsigned char alpn_h3[] = { 2, 'h', '3' };
-	SSL_set_alpn_protos(c.ssl, alpn_h3, sizeof(alpn_h3));
-	SSL_set1_initial_peer_addr(c.ssl, peer);
+	SSL_set_alpn_protos(c->ssl, alpn_h3, sizeof(alpn_h3));
+	SSL_set1_initial_peer_addr(c->ssl, peer);
 	BIO_ADDR_free(peer);
-	SSL_set_blocking_mode(c.ssl, 0);
-	SSL_set_default_stream_mode(c.ssl, SSL_DEFAULT_STREAM_MODE_NONE);
+	SSL_set_blocking_mode(c->ssl, 0);
+	SSL_set_default_stream_mode(c->ssl, SSL_DEFAULT_STREAM_MODE_NONE);
 
 	// Bind the certificate verification name; a failed set is fatal (fail-closed).
-	const bool vok = quic_bind_verify_name(c.ssl, u->verify_name);
+	const bool vok = quic_bind_verify_name(c->ssl, u->verify_name);
 
-	ssize_t rv = -1;
-	bool connected = false;
-
-	// 3. Handshake (fail-closed: bad chain/hostname aborts here).
-	if(vok && quic_do_handshake(c.ssl, fd, deadline))
+	// 3. Handshake (fail-closed: bad chain/hostname aborts here), then the
+	// HTTP/3 session with its control/QPACK streams.
+	if(!vok || !quic_do_handshake(c->ssl, fd, deadline) || !conn_setup_h3(c))
 	{
-		connected = true;
-		// 4. HTTP/3 session + control/QPACK streams, then submit the request.
-		if(conn_setup_h3(&c) &&
-		   conn_submit_request(&c, u, query, qlen, answer, answer_sz))
-		{
-			// 5. Drive the exchange until the request stream closes or we run out
-			// of time.
-			for(;;)
-			{
-				if(conn_pump_write(&c) < 0)
-					break;
-				SSL_handle_events(c.ssl);
-				conn_accept_streams(&c);
-				bool read_err = false;
-				for(int i = 0; i < c.nstreams; i++)
-				{
-					struct qstream *s = &c.streams[i];
-					if(s->local_uni || s->read_done)
-						continue;
-					if(stream_pump_read(&c, s) < 0)
-					{
-						read_err = true;
-						break;
-					}
-				}
-				if(read_err)
-					break;
-				// Reading may have produced control/QPACK output (and acks); flush.
-				if(conn_pump_write(&c) < 0)
-					break;
-				SSL_handle_events(c.ssl);
-				if(c.x.done)
-					break;
-				if(quic_now_ms() >= deadline)
-					break;
-				quic_wait(c.ssl, fd, deadline);
-			}
+		conn_teardown(c);
+		return false;
+	}
 
-			// A cleanly closed request stream carrying a 200 with a non-empty body
-			// is the only success; anything else fails closed.
-			if(c.x.done && !c.x.failed && !c.x.overflow &&
-			   c.x.status == 200 && c.x.answer_len > 0)
-				rv = (ssize_t)c.x.answer_len;
+	uint64_t idle = 0;
+	if(SSL_get_feature_negotiated_uint(c->ssl, SSL_VALUE_QUIC_IDLE_TIMEOUT, &idle) != 1 || idle == 0)
+		idle = QUIC_IDLE_DEFAULT_MS;
+	c->idle_timeout_ms = idle;
+	c->handshake_ms = quic_now_ms() - start;
+	return true;
+}
+
+// Run one DoH POST on the connected c. Returns the answer length or -1, after
+// which the connection must not be reused.
+static ssize_t conn_exchange(struct quic_client_conn *c, const struct upstream_uri *u,
+                             const uint8_t *query, size_t qlen,
+                             uint8_t *answer, size_t answer_sz,
+                             const uint64_t deadline, const bool reused)
+{
+	// No stream is the request stream yet, and failing the checks below means
+	// the server closed the connection while it sat in the pool
+	memset(&c->x, 0, sizeof(c->x));
+	c->x.req_sid = -1;
+	c->x.lost = true;
+
+	// Process what arrived while the connection sat in the pool, such as the
+	// server closing it or a GOAWAY, before sending a new request on it
+	SSL_handle_events(c->ssl);
+	conn_accept_streams(c);
+	for(int i = 0; i < c->nstreams; i++)
+		if(!c->streams[i].local_uni && !c->streams[i].read_done &&
+		   stream_pump_read(c, &c->streams[i]) < 0)
+			return -1;
+	SSL_CONN_CLOSE_INFO info;
+	if(c->goaway || SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
+		return -1;
+	c->x.lost = false;
+
+	if(!conn_submit_request(c, u, query, qlen, answer, answer_sz))
+		return -1;
+
+	// A live server acknowledges the request within a round trip, however long
+	// it takes to answer it. A reused connection the server lost without telling
+	// us is given up when that does not happen, rather than at the deadline
+	uint64_t probe = 0;
+	if(reused)
+		probe = quic_now_ms() + (2 * c->handshake_ms > QUIC_REUSE_PROBE_MIN_MS ?
+		                    2 * c->handshake_ms : QUIC_REUSE_PROBE_MIN_MS);
+
+	// Drive the exchange until the request stream closes or we run out of time.
+	for(;;)
+	{
+		if(conn_pump_write(c) < 0)
+			break;
+		SSL_handle_events(c->ssl);
+		conn_accept_streams(c);
+		bool read_err = false;
+		for(int i = 0; i < c->nstreams; i++)
+		{
+			struct qstream *s = &c->streams[i];
+			if(s->local_uni || s->read_done)
+				continue;
+			if(stream_pump_read(c, s) < 0)
+			{
+				read_err = true;
+				break;
+			}
+		}
+		if(read_err)
+			break;
+		// Reading may have produced control/QPACK output (and acks); flush.
+		if(conn_pump_write(c) < 0)
+			break;
+		SSL_handle_events(c->ssl);
+		if(c->x.done || SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
+			break;
+		const uint64_t now = quic_now_ms();
+		if(now >= deadline)
+			break;
+		if(probe != 0 && now >= probe)
+		{
+			const struct qstream *req = find_stream(c, c->x.req_sid);
+			uint64_t unacked = 0;
+			if(c->x.status == 0 && req != NULL &&
+			   (SSL_get_stream_write_buf_used(req->ssl, &unacked) != 1 || unacked > 0))
+			{
+				c->x.lost = true;
+				break;
+			}
+			probe = 0;
+		}
+		quic_wait(c->ssl, c->fd, probe != 0 && probe < deadline ? probe : deadline);
+	}
+
+	// Closed or reset by the upstream before any response, e.g., a Stateless
+	// Reset after a restart: the query is safe to send again on a new connection
+	if(c->x.status == 0 && SSL_get_conn_close_info(c->ssl, &info, sizeof(info)) == 1)
+		c->x.lost = true;
+
+	// A cleanly closed request stream carrying a 200 with a non-empty body
+	// is the only success; anything else fails closed.
+	if(!c->x.done || c->x.failed || c->x.overflow ||
+	   c->x.status != 200 || c->x.answer_len == 0)
+		return -1;
+
+	remove_stream(c, c->x.req_sid);
+	return (ssize_t)c->x.answer_len;
+}
+
+// --- pool bookkeeping (all callers hold p->lock) ---------------------------
+
+// Record a connection's reuse depth as it is retired, then tear it down and
+// clear its slot, if it has one.
+static void retire(struct quic_pool *p, struct quic_client_conn *c)
+{
+	p->stats.sessions_closed++;
+	p->stats.queries_per_session_sum += c->queries_served;
+	if(c->queries_served > p->stats.queries_per_session_max)
+		p->stats.queries_per_session_max = c->queries_served;
+	for(int i = 0; c->pooled && i < p->max; i++)
+	{
+		if(p->slots[i] == c)
+		{
+			p->slots[i] = NULL;
+			p->nconns--;
+			break;
 		}
 	}
+	conn_teardown(c);
+	free(c);
+}
 
-	// 6. Accounting + teardown.
-	pthread_mutex_lock(&p->lock);
-	if(connected)
+struct quic_pool *quic_pool_new(const struct upstream_uri *u, int max_conns)
+{
+	if(quic_client_ctx() == NULL || u == NULL || max_conns < 1)
+		return NULL;
+	struct quic_pool *p = calloc(1, sizeof(*p));
+	if(p == NULL)
+		return NULL;
+	p->slots = calloc((size_t)max_conns, sizeof(*p->slots));
+	if(p->slots == NULL)
 	{
-		p->stats.conns_opened++;
-		p->stats.handshakes_fresh_cold++; // QUIC exchange = one fresh connection
-		p->stats.sessions_closed++;
-		p->stats.queries_per_session_sum += (rv >= 0) ? 1u : 0u;
-		if(rv >= 0 && p->stats.queries_per_session_max < 1)
-			p->stats.queries_per_session_max = 1;
+		free(p);
+		return NULL;
 	}
-	if(rv >= 0)
-		p->stats.queries_total++;
+	p->u = *u;
+	p->max = max_conns;
+	pthread_mutex_init(&p->lock, NULL);
+	return p;
+}
+
+void quic_pool_free(struct quic_pool *p)
+{
+	if(p == NULL)
+		return;
+	pthread_mutex_lock(&p->lock);
+	for(int i = 0; i < p->max; i++)
+		if(p->slots[i] != NULL)
+			retire(p, p->slots[i]);
+	pthread_mutex_unlock(&p->lock);
+	pthread_mutex_destroy(&p->lock);
+	free(p->slots);
+	free(p);
+}
+
+// Borrow a ready connection: reuse a warm one unless fresh_only is set, reap ones
+// close to their idle timeout or shutting down, or open a fresh one. It is pooled
+// while under the cap, else closed after its exchange: waiting for a pooled one
+// would serialize a burst of queries. Sets *reused, returns NULL if no connection
+// could be opened.
+static struct quic_client_conn *borrow(struct quic_pool *p, uint64_t deadline,
+                                       const bool fresh_only, bool *reused)
+{
+	pthread_mutex_lock(&p->lock);
+	int free_slot = -1;
+	struct quic_client_conn *warm = NULL;
+	const uint64_t now = quic_now_ms();
+	// Scan every slot, so expired connections are reaped under light traffic too
+	for(int i = 0; i < p->max; i++)
+	{
+		struct quic_client_conn *c = p->slots[i];
+		if(c != NULL && !c->in_use)
+		{
+			const uint64_t idle_age = now > c->last_used_ms ? now - c->last_used_ms : 0;
+			if(!c->goaway && idle_age + QUIC_IDLE_MARGIN_MS < c->idle_timeout_ms)
+			{
+				if(warm == NULL && !fresh_only)
+					warm = c;
+				continue;
+			}
+			p->stats.conns_reaped_idle++;
+			retire(p, c);
+		}
+		if(p->slots[i] == NULL && free_slot < 0)
+			free_slot = i;
+	}
+
+	if(warm != NULL)
+	{
+		// Reuse this warm connection.
+		warm->in_use = true;
+		pthread_mutex_unlock(&p->lock);
+		*reused = true;
+		return warm;
+	}
+
+	// Nothing warm; open a fresh connection.
+	struct quic_client_conn *c = calloc(1, sizeof(*c));
+	if(c == NULL)
+	{
+		pthread_mutex_unlock(&p->lock);
+		return NULL;
+	}
+	c->fd = -1;
+	c->in_use = true;
+	if(free_slot >= 0)
+	{
+		c->pooled = true;
+		p->slots[free_slot] = c;
+		p->nconns++;
+	}
 	pthread_mutex_unlock(&p->lock);
 
-	conn_teardown(&c);
-	return rv;
+	const bool ok = conn_connect(c, &p->u, deadline);
+
+	pthread_mutex_lock(&p->lock);
+	if(!ok)
+	{
+		// Never became a connection; drop the slot without reuse stats.
+		if(c->pooled)
+		{
+			p->slots[free_slot] = NULL;
+			p->nconns--;
+		}
+		free(c);
+		pthread_mutex_unlock(&p->lock);
+		return NULL;
+	}
+	p->stats.conns_opened++;
+	p->stats.handshakes_fresh_cold++;
+	pthread_mutex_unlock(&p->lock);
+	*reused = false;
+	return c;
+}
+
+// Return a connection after a successful exchange: keep it warm and account the
+// query.
+static void return_ok(struct quic_pool *p, struct quic_client_conn *c)
+{
+	pthread_mutex_lock(&p->lock);
+	c->in_use = false;
+	c->last_used_ms = quic_now_ms();
+	c->queries_served++;
+	p->stats.queries_total++;
+	if(!c->pooled)
+		retire(p, c);
+	pthread_mutex_unlock(&p->lock);
+}
+
+// Discard a connection after a failed exchange: tear it down and free its slot.
+// When it was lost, the idle ones not used since the exchange started likely
+// were as well, e.g., after an upstream restart, so retire those too.
+static void return_dead(struct quic_pool *p, struct quic_client_conn *c, bool lost,
+                        const uint64_t start_ms)
+{
+	pthread_mutex_lock(&p->lock);
+	retire(p, c);
+	if(lost)
+	{
+		p->stats.conns_dead_on_reuse++;
+		for(int i = 0; i < p->max; i++)
+		{
+			struct quic_client_conn *o = p->slots[i];
+			if(o != NULL && !o->in_use && o->last_used_ms < start_ms)
+			{
+				p->stats.conns_reaped_idle++;
+				retire(p, o);
+			}
+		}
+	}
+	pthread_mutex_unlock(&p->lock);
+}
+
+ssize_t quic_pool_exchange(struct quic_pool *p, const uint8_t *query, size_t qlen,
+                           uint8_t *answer, size_t answer_sz)
+{
+	if(quic_client_ctx() == NULL || p == NULL || query == NULL || answer == NULL)
+		return -1;
+	if(qlen == 0 || qlen > DNS_MSG_MAX)
+		return -1;
+
+	// One budget for the whole exchange (both attempts share it). A pooled
+	// connection the upstream lost, closed or reset before answering is replaced
+	// once by a fresh one; any other failure fails closed.
+	const uint64_t start = quic_now_ms();
+	const uint64_t deadline = start + QUIC_EXCHANGE_TIMEOUT_MS;
+
+	for(int attempt = 0; attempt < 2; attempt++)
+	{
+		bool reused = false;
+		struct quic_client_conn *c = borrow(p, deadline, attempt > 0, &reused);
+		if(c == NULL)
+			break;
+
+		const ssize_t r = conn_exchange(c, &p->u, query, qlen, answer, answer_sz, deadline, reused);
+		if(r >= 0)
+		{
+			return_ok(p, c);
+			return r;
+		}
+		const bool lost = reused && c->x.lost;
+		return_dead(p, c, lost, start);
+		if(!lost)
+			break;
+	}
+	return -1;
 }
 
 void quic_pool_get_stats(struct quic_pool *p, struct dotdoh_stats *out)
