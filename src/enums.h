@@ -364,4 +364,12 @@ enum verify_result {
 	VERIFY_NO_CHECKSUM
 } __attribute__ ((packed));
 
+enum dnsmasq_func {
+	DNSMASQ_FUNC_NONE,
+	DNSMASQ_FUNC_TFTP,
+	DNSMASQ_FUNC_DHCP,
+	DNSMASQ_FUNC_SCRIPT,
+	DNSMASQ_FUNC_DEBUG,
+} __attribute__ ((packed));
+
 #endif // ENUMS_H
