@@ -4445,8 +4445,9 @@ void FTL_process_lease_deletions(void)
 	pthread_mutex_unlock(&lease_delete_lock);
 }
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint, bool *timed_out)
 {
+	*timed_out = false;
 	if(!daemon->dhcp)
 	{
 		*hint = "DHCP is not enabled";
@@ -4488,6 +4489,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 			}
 		pthread_mutex_unlock(&lease_delete_lock);
 		*hint = "timed out waiting for the resolver to remove the lease";
+		*timed_out = true;
 		return false;
 	}
 	pthread_mutex_unlock(&lease_delete_lock);
