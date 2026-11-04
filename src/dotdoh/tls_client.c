@@ -38,6 +38,7 @@
 // For the bounded, non-blocking connect and the socket-level send timeout below.
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <poll.h>
@@ -258,6 +259,11 @@ static int net_connect_timeout(int *out_fd, const char *host,
 		const int fd = socket(cur->ai_family, cur->ai_socktype | SOCK_CLOEXEC, cur->ai_protocol);
 		if(fd < 0)
 			continue;
+
+		// Requests are small writes (an h2 POST is HEADERS, then DATA): send
+		// each at once instead of letting Nagle wait for the server's ACK
+		const int one = 1;
+		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
 		// Non-blocking connect, then wait for writability within the deadline.
 		const int flags = fcntl(fd, F_GETFL, 0);

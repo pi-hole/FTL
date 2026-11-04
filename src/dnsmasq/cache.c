@@ -1056,9 +1056,18 @@ int cache_recv_insert(time_t now, int fd)
 		unsigned short class = C_IN;
 		struct blockdata *block = NULL;
 
-		if ((flags & F_RR) && !(flags & F_NEG) && (flags & F_KEYTAG)
-		    && !(block = addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
-		  continue;
+		/* Note that blockdata_read() can return NULL either
+		   because the stream ended, OR memory allocation failed.
+		   We continue here rather than returning 0 to finish draining 
+		   the pipe in the second case. If the stream ended, the read
+		   of the next length at the top of the loop will fail
+		   and we'll return 0 there. */
+		if (flags & F_RR)
+		  {
+		    if (!(flags & F_NEG) && (flags & F_KEYTAG) &&
+			!(block = addr.rrblock.rrdata = blockdata_read(fd, addr.rrblock.datalen)))
+		      continue;
+		  }
 #ifdef HAVE_DNSSEC
 		else if (flags & F_DNSKEY)
 		  {
@@ -1996,14 +2005,14 @@ int cache_make_stat(struct txt_record *t)
     /* Pi-hole modification */
     case TXT_API_DOMAIN:
     {
-      t->len = get_api_string(&buff, true);
+      t->len = get_api_string(&buff, &bufflen, true);
       t->txt = (unsigned char *)buff;
 
       return 1;
     }
     case TXT_API_LOCAL:
     {
-      t->len = get_api_string(&buff, false);
+      t->len = get_api_string(&buff, &bufflen, false);
       t->txt = (unsigned char *)buff;
 
       return 1;

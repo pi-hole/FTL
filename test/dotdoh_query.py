@@ -16,6 +16,15 @@
 #   emit  <domain> <outfile>                      write the raw DNS query wire
 #   check <infile> <expected-ip>                  validate a DNS answer file
 #   dot   <host> <port> <domain> <src> <ca> <ip>  full DoT exchange + validate
+#   emitqr <domain> <outfile>                     like emit, but with QR set
+#   dotqr <host> <port> <domain> <src> <ca>       DoT query with QR set, print
+#                                                 the RCODE of the reply
+#   tcpkeep <host> <port> <count> <suffix>        <count> plain TCP queries, one
+#                                                 at a time, keeping each open
+#   tcpcross <ip#port> <ip#port> <count> <domain> <count> idle answered TCP
+#                                                 connections to the first, then
+#                                                 time one query on the second
+#                                                 and count the idle ones closed
 #
 # The whole 127.0.0.0/8 is loopback on Linux, so binding <src> (e.g. 127.0.0.2)
 # as the source address while connecting to 127.0.0.1 lets the test assert that
@@ -25,10 +34,12 @@
 # Please see LICENSE file for your rights under this license.
 
 import base64
+import select
 import socket
 import ssl
 import struct
 import sys
+import time
 
 
 def build_query(qname, qtype=1):
@@ -39,6 +50,64 @@ def build_query(qname, qtype=1):
         body += bytes([len(label)]) + label.encode()
     body += b"\x00" + struct.pack("!HH", qtype, 1)  # QTYPE, QCLASS=IN
     return header + body
+
+
+def tcp_keep(host, port, count, suffix):
+    """Send count queries for distinct names under suffix over plain TCP, one
+    connection each and one at a time, keeping every connection open until the
+    end. Each needs its own upstream exchange, so FTL forks a TCP child for each
+    that holds its own connection to the upstream. Returns the rcodes."""
+    socks = []
+    rcodes = []
+    try:
+        for i in range(count):
+            s = socket.create_connection((host, port), timeout=15)
+            socks.append(s)
+            rcodes.append(tcp_ask(s, "tk%d.%s" % (i, suffix)))
+    finally:
+        for s in socks:
+            s.close()
+    return rcodes
+
+
+def tcp_ask(sock, qname):
+    """One length-prefixed query on sock. Returns the rcode, or -1 on EOF or
+    timeout without an answer."""
+    q = build_query(qname)
+    sock.sendall(struct.pack("!H", len(q)) + q)
+    try:
+        n = struct.unpack("!H", recvall(sock, 2))[0]
+        return recvall(sock, n)[3] & 0x0F
+    except (OSError, struct.error, TypeError, IndexError):
+        return -1
+
+
+def tcp_cross(hold, wait, count, qname):
+    """Open count TCP connections to hold, get one answer on each and leave them
+    idle, then time one query on a fresh connection to wait. Returns the rcode,
+    the seconds it took and how many idle connections FTL closed by 0.5 s later."""
+    def addr(t):
+        h, p = t.rsplit("#", 1)
+        return (h, int(p))
+    socks = []
+    try:
+        for _ in range(count):
+            s = socket.create_connection(addr(hold), timeout=15)
+            socks.append(s)
+            tcp_ask(s, qname)
+        time.sleep(0.3)
+        t0 = time.monotonic()
+        s = socket.create_connection(addr(wait), timeout=15)
+        socks.append(s)
+        rcode = tcp_ask(s, qname)
+        secs = time.monotonic() - t0
+        time.sleep(0.5)
+        idle = socks[:count]
+        closed = sum(1 for c in select.select(idle, [], [], 0)[0] if c.recv(1) == b"")
+        return rcode, secs, closed
+    finally:
+        for s in socks:
+            s.close()
 
 
 def build_forged_query(qname, fake_client_ip):
@@ -130,8 +199,9 @@ def _dot_ctx(cafile):
     return ctx
 
 
-def dot_exchange(host, port, qname, source, cafile, qtype=1):
-    """Send qname over DoT (TLS + 2-byte length prefix) and return the answer."""
+def dot_exchange(host, port, qname, source, cafile, qtype=1, query=None):
+    """Send qname (or the raw query) over DoT (TLS + 2-byte length prefix) and
+    return the answer."""
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     ctx = _dot_ctx(cafile)
     raw = socket.socket(family, socket.SOCK_STREAM)
@@ -143,7 +213,8 @@ def dot_exchange(host, port, qname, source, cafile, qtype=1):
     # though we dial the loopback IP.
     conn = ctx.wrap_socket(raw, server_hostname="pi.hole")
     try:
-        query = build_query(qname, qtype)
+        if query is None:
+            query = build_query(qname, qtype)
         conn.sendall(struct.pack("!H", len(query)) + query)
         hdr = recvall(conn, 2)
         if hdr is None:
@@ -303,15 +374,232 @@ def doh3(host, port, qname, expected_ip):
     validate(answer, expected_ip)
 
 
+
+# --- DoQ (DNS-over-QUIC, RFC 9250) client -----------------------------------
+#
+# aioquic's asyncio connect() always binds the wildcard address, but the inbound
+# tests must query FTL from a specific loopback source to prove client
+# attribution. So we drive aioquic's sans-IO QuicConnection over a socket we own
+# and pump datagrams ourselves - which also gives us the exact stream control DoQ
+# needs (one query per bidirectional stream, FIN in both directions).
+
+
+def _doq_import():
+    try:
+        from aioquic.quic.configuration import QuicConfiguration
+        from aioquic.quic.connection import QuicConnection
+        from aioquic.quic import events as quic_events
+        return QuicConfiguration, QuicConnection, quic_events
+    except Exception as exc:
+        sys.exit("SKIP: aioquic unavailable (%s)" % (exc,))
+
+
+def doq_exchange(host, port, queries, source=None, alpn="doq", server_name="pi.hole",
+                 timeout=20.0, outcome=None):
+    """Send each wire message in `queries` on its own QUIC stream and return the
+    list of answers, in the order the queries were submitted. With `outcome`, a
+    stream reset or connection close is recorded there instead of failing."""
+    import select
+    import time
+
+    QuicConfiguration, QuicConnection, quic_events = _doq_import()
+
+    cfg = QuicConfiguration(is_client=True, alpn_protocols=[alpn])
+    # The shared test cert chains to a keyUsage-less CA (OpenSSL >= 4.0 rejects
+    # it); these tests exercise the DoQ transport, not the PKI, so skip
+    # verification here - test.crt itself is asserted by the DoT cert test.
+    cfg.verify_mode = ssl.CERT_NONE
+    cfg.server_name = server_name
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    if source:
+        sock.bind((source, 0))
+    addr = (host, port)
+
+    conn = QuicConnection(configuration=cfg)
+    now = time.monotonic
+    conn.connect(addr, now=now())
+
+    pending = list(queries)
+    streams = []          # submitted stream ids, in order
+    bufs = {}             # stream id -> accumulated bytes
+    answers = {}          # stream id -> answer
+    resets = {}           # stream id -> application error code
+    handshaked = False
+    deadline = now() + timeout
+    terminated = None
+
+    def flush():
+        for data, dest in conn.datagrams_to_send(now=now()):
+            sock.sendto(data, dest)
+
+    try:
+        flush()
+        while now() < deadline and len(answers) + len(resets) < len(queries):
+            timer = conn.get_timer()
+            wait = min(deadline, timer) - now() if timer is not None else deadline - now()
+            r, _, _ = select.select([sock], [], [], max(0.0, min(wait, 1.0)))
+            if r:
+                while True:
+                    try:
+                        data, src = sock.recvfrom(65536)
+                    except BlockingIOError:
+                        break
+                    conn.receive_datagram(data, src, now=now())
+            timer = conn.get_timer()
+            if timer is not None and now() >= timer:
+                conn.handle_timer(now=now())
+
+            while True:
+                event = conn.next_event()
+                if event is None:
+                    break
+                if isinstance(event, quic_events.HandshakeCompleted):
+                    handshaked = True
+                elif isinstance(event, quic_events.ConnectionTerminated):
+                    terminated = event
+                    deadline = 0.0
+                    break
+                elif isinstance(event, quic_events.StreamReset):
+                    resets[event.stream_id] = event.error_code
+                elif isinstance(event, quic_events.StreamDataReceived):
+                    buf = bufs.setdefault(event.stream_id, bytearray())
+                    buf.extend(event.data)
+                    if len(buf) >= 2:
+                        alen = (buf[0] << 8) | buf[1]
+                        if len(buf) >= 2 + alen and event.stream_id not in answers:
+                            answers[event.stream_id] = bytes(buf[2:2 + alen])
+
+            if handshaked and pending:
+                for query in pending:
+                    sid = conn.get_next_available_stream_id()
+                    streams.append(sid)
+                    conn.send_stream_data(
+                        sid, struct.pack("!H", len(query)) + query, end_stream=True)
+                pending = []
+            flush()
+
+        conn.close()
+        flush()
+    finally:
+        sock.close()
+
+    if outcome is not None:
+        outcome["resets"] = list(resets.values())
+        outcome["closed"] = terminated.error_code if terminated is not None else None
+        return [answers[sid] for sid in streams if sid in answers]
+    if terminated is not None and len(answers) < len(queries):
+        sys.exit("DoQ: connection terminated (%s: %s)"
+                 % (terminated.error_code, terminated.reason_phrase))
+    if len(answers) < len(queries):
+        sys.exit("DoQ: timed out with %d/%d answers" % (len(answers), len(queries)))
+    return [answers[sid] for sid in streams]
+
+
+def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
+    """Fail unless a QUIC handshake offering `alpn` is refused by the server."""
+    try:
+        doq_exchange(host, port, [build_query("a.ftl")], source=source, alpn=alpn,
+                     timeout=timeout)
+    except SystemExit as exc:
+        msg = str(exc.code) if exc.code is not None else ""
+        if msg.startswith("SKIP:"):
+            raise
+        return  # terminated or timed out: the server refused it, as required
+    sys.exit("DoQ: handshake with ALPN %r was accepted, expected refusal" % alpn)
+
+
+def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
+    """Plaintext DoH request as a reverse proxy at address source sends it: a
+    PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
+    carries the query as body, any other method as the GET "dns" parameter.
+    Returns (HTTP status, lowercased response headers, body)."""
+    query = build_query(qname)
+    if method == "POST":
+        req = (b"POST /dns-query HTTP/1.1\r\nHost: pi.hole\r\n"
+               b"Content-Type: application/dns-message\r\n"
+               b"Content-Length: " + str(len(query)).encode() + b"\r\n"
+               b"Connection: close\r\n\r\n" + query)
+    else:
+        dns = base64.urlsafe_b64encode(query).rstrip(b"=")
+        req = (method.encode() + b" /dns-query?dns=" + dns + b" HTTP/1.1\r\n"
+               b"Host: pi.hole\r\nConnection: close\r\n\r\n")
+    return proxy_request(host, port, client_ip, source, req, pad, drip, ssl)
+
+
+def proxy_request(host, port, client_ip, source, req, pad=0, drip=0.0, ssl=True):
+    """Send req from address source behind a PROXY v2 header announcing
+    client_ip, over TLS unless ssl is False. Returns (HTTP status, lowercased response headers,
+    body). pad adds another TLV of that many bytes, drip sends the header after
+    its fixed 16 bytes one byte per drip seconds. A connection closed without
+    an answer reports status "none"."""
+    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    # PP2_TYPE_SSL (client=SSL or plain, verify=0)
+    tlvs = bytes([0x20, 0x00, 0x05, 0x01 if ssl else 0x00, 0, 0, 0, 0])
+    if pad:
+        tlvs += bytes([0xE1]) + struct.pack("!H", pad) + bytes(pad)
+    body = addrs + tlvs
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    resp = b""
+    with socket.create_connection((host, port), timeout=5, source_address=(source, 0)) as s:
+        try:
+            if drip:
+                s.sendall(hdr[:16])
+                for i in range(16, len(hdr)):
+                    s.sendall(hdr[i:i + 1])
+                    time.sleep(drip)
+                s.sendall(req)
+            else:
+                s.sendall(hdr + req)
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                resp += chunk
+        except OSError:
+            pass
+    if not resp:
+        return "none", {}, b""
+    head, _, payload = resp.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    status = lines[0].split(" ", 2)[1]
+    headers = {}
+    for line in lines[1:]:
+        name, _, value = line.partition(":")
+        headers[name.strip().lower()] = value.strip()
+    return status, headers, payload
+
+
 def main():
     if len(sys.argv) < 2:
-        sys.exit("usage: dotdoh_query.py <emit|emiturl|check|dot|dotmulti|dotgarbage|forge|dotcert|doh3> ...")
+        sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
+                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn|"
+                 "dohproxy|dohproxyget|dohproxyplain|dohproxypad|dohproxydrip|dohproxyerror|dohproxymethod|proxyget> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
         _, _, domain, outfile = sys.argv[:4]
         with open(outfile, "wb") as f:
             f.write(build_query(domain))
+    elif cmd == "emitqr":
+        # A message with the QR (response) bit set, which is not a query.
+        _, _, domain, outfile = sys.argv[:4]
+        q = bytearray(build_query(domain))
+        q[2] |= 0x80
+        with open(outfile, "wb") as f:
+            f.write(bytes(q))
+    elif cmd == "tcpkeep":
+        _, _, host, port, count, suffix = sys.argv[:6]
+        rcodes = tcp_keep(host, int(port), int(count), suffix)
+        # NOERROR or NXDOMAIN came from the upstream, anything else did not
+        ok = sum(1 for r in rcodes if r in (0, 3))
+        print("%d/%d answered %s" % (ok, len(rcodes), rcodes))
+    elif cmd == "tcpcross":
+        _, _, hold, wait, count, domain = sys.argv[:7]
+        rcode, secs, closed = tcp_cross(hold, wait, int(count), domain)
+        print("waiter rcode %d after %.2f s, %d idle closed" % (rcode, secs, closed))
     elif cmd == "emiturl":
         # Unpadded base64url of the query, for a DoH GET ?dns= parameter.
         _, _, domain = sys.argv[:3]
@@ -326,6 +614,12 @@ def main():
         answer = dot_exchange(host, int(port), domain, source, cafile)
         validate(answer, expected_ip)
         print("OK")
+    elif cmd == "dotqr":
+        _, _, host, port, domain, source, cafile = sys.argv[:7]
+        q = bytearray(build_query(domain))
+        q[2] |= 0x80
+        answer = dot_exchange(host, int(port), domain, source, cafile, query=bytes(q))
+        print("RCODE=%d" % (answer[3] & 0x0F))
     elif cmd == "dotnodata":
         _, _, host, port, domain, source, cafile = sys.argv[:7]
         answer = dot_exchange(host, int(port), domain, source, cafile, qtype=28)
@@ -351,9 +645,126 @@ def main():
         _, _, host, port, source, expected_pem = sys.argv[:6]
         dot_peercert(host, int(port), source, expected_pem)
         print("OK")
+    elif cmd in ("dohproxy", "dohproxyget", "dohproxyplain"):
+        # dohproxyget also prints the Cache-Control header of the answer,
+        # dohproxyplain announces a client that did not use TLS
+        _, _, host, port, domain, client_ip, source, expected_ip = sys.argv[:8]
+        method = "GET" if cmd == "dohproxyget" else "POST"
+        status, headers, answer = doh_proxy(host, int(port), domain, client_ip, source, method,
+                                            ssl=cmd != "dohproxyplain")
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
+        if cmd == "dohproxyget":
+            print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd in ("dohproxypad", "dohproxydrip"):
+        # dohproxy with another TLV of <arg> bytes, or with the header after its
+        # fixed part dripped one byte per <arg> seconds
+        _, _, host, port, domain, client_ip, source, expected_ip, arg = sys.argv[:10]
+        if cmd == "dohproxypad":
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, source, pad=int(arg))
+        else:
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, source, drip=float(arg))
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
+    elif cmd == "proxyget":
+        # Status of a GET of any path behind the PROXY v2 header
+        _, _, host, port, path, client_ip, source = sys.argv[:8]
+        req = ("GET %s HTTP/1.1\r\nHost: pi.hole\r\nConnection: close\r\n\r\n" % path).encode()
+        status, _, _ = proxy_request(host, int(port), client_ip, source, req)
+        print("HTTP %s" % status)
+    elif cmd == "dohproxyerror":
+        # Status, Content-Type and first body line of a refused request
+        _, _, host, port, domain, client_ip, source = sys.argv[:8]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, source)
+        print("HTTP %s type=%s body=%s" % (status, headers.get("content-type", ""),
+                                          body.decode("latin-1").split("\n")[0]))
+    elif cmd == "dohproxymethod":
+        # Status, Allow header and body length of a request with any method
+        _, _, host, port, method, domain, client_ip, source = sys.argv[:9]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, source, method)
+        print("HTTP %s allow=%s body=%d" % (status, headers.get("allow", ""), len(body)))
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]
         doh3(host, int(port), domain, expected_ip)
+        print("OK")
+    elif cmd == "doq":
+        # RFC 9250 Sec. 4.2.1: a DoQ query carries Message ID 0.
+        _, _, host, port, domain, source, expected_ip = sys.argv[:7]
+        query = build_query(domain)
+        query = b"\x00\x00" + query[2:]
+        answers = doq_exchange(host, int(port), [query], source=source)
+        validate(answers[0], expected_ip)
+        print("OK")
+    elif cmd == "doqnodata":
+        # Cross-family pi.hole over DoQ: with the connected-address hint conveyed,
+        # the family the client did not connect over is answered NODATA. Without
+        # the hint the answer falls back to the loopback handoff's interface and
+        # leaks ::1 (or 127.0.0.1), so this is what proves the hint arrives.
+        _, _, host, port, domain, source = sys.argv[:6]
+        query = b"\x00\x00" + build_query(domain, qtype=28)[2:]
+        answers = doq_exchange(host, int(port), [query], source=source)
+        validate_nodata(answers[0])
+        print("OK")
+    elif cmd == "doqmulti":
+        # Several queries multiplexed on one QUIC connection, each on its own
+        # bidirectional stream - the DoQ equivalent of DoT keep-alive.
+        _, _, host, port, domain, source, expected_ip, count = sys.argv[:8]
+        query = b"\x00\x00" + build_query(domain)[2:]
+        answers = doq_exchange(host, int(port), [query] * int(count), source=source)
+        if len(answers) != int(count):
+            sys.exit("DoQ: got %d/%s answers" % (len(answers), count))
+        for a in answers:
+            validate(a, expected_ip)
+        print("OK")
+    elif cmd == "doqgarbage":
+        # A framed but non-DNS message must not wedge the listener.
+        _, _, host, port, source = sys.argv[:5]
+        try:
+            doq_exchange(host, int(port), [b"\xde\xad\xbe\xef" * 4], source=source,
+                         timeout=8.0)
+        except SystemExit as exc:
+            msg = str(exc.code) if exc.code is not None else ""
+            if msg.startswith("SKIP:"):
+                raise
+            # No answer (or a reset stream) is a perfectly good outcome here; the
+            # follow-up query in the bats test proves the listener still serves.
+        print("OK")
+    elif cmd == "doqerror":
+        # RFC 9250 Sec. 4.3: a query the server cannot serve gets a stream reset
+        # or connection close with a DoQ error code, never a bare teardown
+        _, _, host, port, kind, source, expected = sys.argv[:7]
+        query = b"\x00\x00" + build_query("a.ftl")[2:]
+        if kind == "msgid":
+            query = b"\x12\x34" + query[2:]   # Sec. 4.2.1: the ID MUST be 0
+        elif kind == "short":
+            query = query[:4]                  # shorter than a DNS header
+        elif kind == "qr":
+            query = query[:2] + bytes([query[2] | 0x80]) + query[3:]   # not a query
+        elif kind == "unattributable":
+            # An OPT RR that is not the last record cannot carry the client option
+            query = query[:10] + struct.pack("!H", 2) + query[12:]
+            query += b"\x00" + struct.pack("!HHIH", 41, 4096, 0, 0)
+            query += b"\x00" + struct.pack("!HHIH", 1, 1, 0, 4) + bytes([1, 2, 3, 4])
+        else:
+            sys.exit("unknown kind: %s" % kind)
+        outcome = {}
+        doq_exchange(host, int(port), [query], source=source, timeout=8.0, outcome=outcome)
+        got = ("reset:%d" % outcome["resets"][0]) if outcome["resets"] else \
+              ("close:%d" % outcome["closed"]) if outcome["closed"] is not None else "none"
+        if got != expected:
+            sys.exit("DoQ: got %s, expected %s" % (got, expected))
+        print("OK")
+    elif cmd == "doqalpn":
+        # QUIC mandates ALPN and RFC 9250 Sec. 4.1 defines exactly one token for
+        # DoQ, so a client offering something else must be refused.
+        _, _, host, port, alpn, source = sys.argv[:6]
+        doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
     else:
         sys.exit("unknown subcommand: %s" % cmd)

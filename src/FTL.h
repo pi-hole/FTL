@@ -73,12 +73,6 @@
 // Number of elements in an array
 #define ArraySize(X) (sizeof(X)/sizeof(*X))
 
-// Constant socket buffer length
-#define SOCKETBUFFERLEN 1024
-
-// How many client connection do we accept at once?
-#define MAXCONNS 255
-
 // Over how many queries do we iterate at most when trying to find a match?
 #define MAXITER 1000
 
@@ -150,6 +144,11 @@
 // How often should we delete old queries from the database? [seconds]
 // Default: 86400 (once per day)
 #define DATABASE_DELETE_OLD_QUERIES_INTERVAL 86400
+
+// How many old queries should be deleted from the database at once? The
+// database thread continues with the rest after its other tasks
+// Default: 10000
+#define DATABASE_DELETE_BATCH 10000
 
 // How long does main() wait for the database thread to finish its current
 // operation before it runs the final export at shutdown? [seconds]

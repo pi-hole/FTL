@@ -15,7 +15,6 @@ enum memory_type {
 	UPSTREAMS,
 	CLIENTS,
 	DOMAINS,
-	OVERTIME,
 	DNS_CACHE,
 	STRINGS,
 	CLIENTS_LOOKUP,
@@ -211,7 +210,6 @@ enum timers {
 	DATABASE_WRITE_TIMER,
 	EXIT_TIMER,
 	GC_TIMER,
-	LISTS_TIMER,
 	REGEX_TIMER,
 	ARP_TIMER,
 	LAST_TIMER
@@ -255,14 +253,8 @@ enum thread_types {
 	WEBSERVER,
 	DOTDOH,
 	DOTDOH_DOT,
+	DOTDOH_DOQ,
 	THREADS_MAX
-} __attribute__ ((packed));
-
-enum telnet_type {
-	TELNETv4,
-	TELNETv6,
-	TELNET_SOCK,
-	TELNET_MAX
 } __attribute__ ((packed));
 
 enum message_type {
@@ -283,6 +275,7 @@ enum message_type {
 	VERIFY_MESSAGE,
 	GRAVITY_RESTORED_MESSAGE,
 	TELEPORTER_SKIPPED_MESSAGE,
+	QUERY_DATABASE_MESSAGE,
 	MAX_MESSAGE,
 } __attribute__ ((packed));
 

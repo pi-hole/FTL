@@ -20,7 +20,7 @@
 #include <stdarg.h>
 #include "sqlite3.h"
 
-static const char zUsage[] = 
+static const char zUsage[] =
   "sqlite3_rsync ORIGIN REPLICA ?OPTIONS?\n"
   "\n"
   "One of ORIGIN or REPLICA is a pathname to a database on the local\n"
@@ -32,6 +32,7 @@ static const char zUsage[] =
   "\n"
   "   --exe PATH      Name of the sqlite3_rsync program on the remote side\n"
   "   --help          Show this help screen\n"
+  "   -p|--port PORT  Run SSH over TCP port PORT instead of the default 22\n"
   "   --protocol N    Use sync protocol version N.\n"
   "   --ssh PATH      Name of the SSH program used to reach the remote side\n"
   "   -v              Verbose.  Multiple v's for increasing output\n"
@@ -324,15 +325,29 @@ static int popen2(
 ** Close the connection to a child process previously created using
 ** popen2().
 */
-static void pclose2(FILE *pIn, FILE *pOut, int childPid){
+static int pclose2(FILE *pIn, FILE *pOut, int childPid){
 #ifdef _WIN32
   /* Not implemented, yet */
   fclose(pIn);
   fclose(pOut);
+  return 0;
 #else
+  int wp, rc = 0;
   fclose(pIn);
   fclose(pOut);
-  while( waitpid(0, 0, WNOHANG)>0 ) {}
+  do{
+    wp = waitpid(0, &rc, WNOHANG);
+    if( wp>0 ){
+      if( WIFEXITED(rc) ){
+        rc = WEXITSTATUS(rc);
+      }else if( WIFSIGNALED(rc) ){
+        rc = WTERMSIG(rc);
+      }else{
+        rc = 0/*???*/;
+      }
+    }
+  } while( wp>0 );
+  return rc;
 #endif
 }
 /*****************************************************************************
@@ -367,22 +382,7 @@ static void pclose2(FILE *pIn, FILE *pOut, int childPid){
 **    5      First byte of a 4-byte UTF-8
 */
 static const char aSafeChar[256] = {
-#ifdef _WIN32
-/* Windows
-** Prohibit:  all control characters, including tab, \r and \n.
-** Escape:    (space) " # $ % & ' ( ) * ; < > ? [ ] ^ ` { | }
-*/
-/*  x0  x1  x2  x3  x4  x5  x6  x7  x8  x9  xa  xb  xc  xd  xe  xf  */
-     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2, /* 0x */
-     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2, /* 1x */
-     1,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0, /* 2x */
-     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  0,  1,  1, /* 3x */
-     1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /* 4x */
-     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  1,  1,  0, /* 5x */
-     1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /* 6x */
-     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  0,  1, /* 7x */
-#else
-/* Unix
+/*
 ** Prohibit:  all control characters, including tab, \r and \n
 ** Escape:    (space) ! " # $ % & ' ( ) * ; < > ? [ \ ] ^ ` { | }
 */
@@ -395,7 +395,6 @@ static const char aSafeChar[256] = {
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  0, /* 5x */
      1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, /* 6x */
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  0,  1, /* 7x */
-#endif
     /* all bytes 0x80 through 0xbf are unescaped, being secondary
     ** bytes to UTF8 characters.  Bytes 0xc0 through 0xff are the
     ** first byte of a UTF8 character and do get escaped */
@@ -410,51 +409,55 @@ static const char aSafeChar[256] = {
 };
 
 /*
+** Return true if the input contains special characters that need
+** to be escaped.
+*/
+int need_escape(const char *zIn){
+  size_t i;
+  unsigned char c;
+
+  /* Look for characters that need to be escaped */
+  for(i=0; (c = (unsigned char)zIn[i])!=0; i++){
+    if( aSafeChar[c] ) return 1;
+  }
+  return 0;
+}
+
+/*
+** Increment this global variable whenever the isFilename==2 hex encoding
+** is used.
+*/
+static int nHexEncode = 0;
+
+/*
 ** pStr is a shell command under construction.  This routine safely
-** appends filename argument zIn.  It returns 0 on success or non-zero
-** on any error.
+** appends filename argument zIn.
 **
 ** The argument is escaped if it contains white space or other characters
 ** that need to be escaped for the shell.  If zIn contains characters
 ** that cannot be safely escaped, then throw a fatal error.
 **
-** If the isFilename argument is true, then the argument is expected
-** to be a filename.  As shell commands commonly have command-line
+** If the isFilename argument is 1 or 2, then the argument is expected
+** to be a filename.  isFilename==1 means to use shell-style escaping
+** as the argument is going directly to the shell.  isFilename==2 means
+** to escape as hexadecimal (using A-P as the hex digits) instead of
+** shell escaping.  isFilename==2 argument are interpreted by another
+** instance of sqlite3_rsync which knows how to decode them.
+**
+** For isFilename==1, because shell commands commonly have command-line
 ** options that begin with "-" and since we do not want an attacker
 ** to be able to invoke these switches using filenames that begin
-** with "-", if zIn begins with "-", prepend an additional "./"
-** (or ".\\" on Windows).
+** with "-", if zIn begins with "-", prepend an additional "./".
+**
+** For isFilename==2, if the filename could be mistaken for a hexadecimal
+** string (if it is an even number of characters and all characters are
+** between A and P) then "./" is prepended so that the receiver
+** will know that it is not an encoded filename.
 */
-int append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
-  int i;
-  unsigned char c;
-  int needEscape = 0;
+void append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
   int n = sqlite3_str_length(pStr);
   char *z = sqlite3_str_value(pStr);
-
-  /* Look for illegal byte-sequences and byte-sequences that require
-  ** escaping.  No control-characters are allowed.  All spaces and
-  ** non-ASCII unicode characters and some punctuation characters require
-  ** escaping. */
-  for(i=0; (c = (unsigned char)zIn[i])!=0; i++){
-    if( aSafeChar[c] ){
-      unsigned char x = aSafeChar[c];
-      needEscape = 1;
-      if( x==2 ){
-        /* Bad ASCII character */
-        return 1;
-      }else if( x>2 ){
-        if( (zIn[i+1]&0xc0)!=0x80
-         || (x>=4 && (zIn[i+2]&0xc0)!=0x80)
-         || (x==5 && (zIn[i+3]&0xc0)!=0x80)
-        ){
-          /* Bad UTF8 character */
-          return 1;
-        }
-        i += x-2;
-      }
-    }
-  }
+  size_t nIn = strlen(zIn);
 
   /* Separate from the previous argument by a space */
   if( n>0 && !isspace(z[n-1]) ){
@@ -462,22 +465,31 @@ int append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
   }
 
   /* Check for characters that need quoting */
-  if( !needEscape ){
-    if( isFilename && zIn[0]=='-' ){
+  if( !need_escape(zIn) ){
+    if( (isFilename>=1 && zIn[0]=='-')
+     || (isFilename==2 && (nIn&1)==0 && strspn(zIn,"ABCDEFGHIJKLMNOP")==nIn)
+    ){
       sqlite3_str_appendchar(pStr, 1, '.');
-#if defined(_WIN32)
-      sqlite3_str_appendchar(pStr, 1, '\\');
-#else
       sqlite3_str_appendchar(pStr, 1, '/');
-#endif
     }
     sqlite3_str_appendall(pStr, zIn);
+  }else if( isFilename==2 ){
+    /* Encode as hexadecimal using A-P as the hex digits. */
+    size_t j;
+    for(j=0; j<nIn; j++){
+      sqlite3_str_appendchar(pStr, 1, (((zIn[j])>>4)&0xf)+'A');
+      sqlite3_str_appendchar(pStr, 1, ((zIn[j])&0xf)+'A');
+    }
+    nHexEncode++;
   }else{
+    /* Use shell escapes */
 #if defined(_WIN32)
     /* Quoting strategy for windows:
     ** Put the entire name inside of "...".  Any " characters within
     ** the name get doubled.
     */
+    size_t i;
+    unsigned char c;
     sqlite3_str_appendchar(pStr, 1, '"');
     if( isFilename && zIn[0]=='-' ){
       sqlite3_str_appendchar(pStr, 1, '.');
@@ -499,6 +511,8 @@ int append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
     ** name, then put \ before each special character.
     */
     if( strchr(zIn,'\'') ){
+      unsigned char c;
+      size_t i;
       if( isFilename && zIn[0]=='-' ){
         sqlite3_str_appendchar(pStr, 1, '.');
         sqlite3_str_appendchar(pStr, 1, '/');
@@ -520,7 +534,6 @@ int append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
     }
 #endif
   }
-  return 0;
 }
 
 /* Add an approprate PATH= argument to the SSH command under construction
@@ -566,7 +579,38 @@ int append_escaped_arg(sqlite3_str *pStr, const char *zIn, int isFilename){
 */
 void add_path_argument(sqlite3_str *pStr){
   append_escaped_arg(pStr,
-     "PATH=$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$PATH", 0);
+     "PATH=$HOME/bin:/usr/local/bin:/opt/homebrew/bin"
+     ":/opt/local/bin:$PATH", 0);
+}
+
+/*
+** The input is a filename, possibly encoded as hexadecimal using
+** characters 'A' through 'P' as the hexadecimal digits (instead of
+** the usual '0' through 'F').
+**
+** Return a copy of that filename, decoded if necessary.
+*/
+static char *decode_filename(const char *zIn){
+  size_t n;
+  if( zIn==0 ) return 0;
+  n = strlen(zIn);
+  if( (n&1)==1 || strspn(zIn,"ABCDEFGHIJKLMNOP")!=n ){
+    /* Name is literal.  No decoding required. */
+    return sqlite3_mprintf("%s", zIn);
+  }else{
+    /* Name is hex encoded.  Need to decode it. */
+    char *zOut = sqlite3_malloc64(n/2 + 1);
+    size_t i;
+    if( zOut==0 ){
+      fprintf(stderr, "out of memory\n");
+      exit(1);
+    }
+    for(i=0; i<n/2; i++){
+      zOut[i] = (zIn[i*2]-'A')*16 + zIn[i*2+1]-'A';
+    }
+    zOut[i] =  0;
+    return zOut;
+  }
 }
 
 /*****************************************************************************
@@ -1005,11 +1049,11 @@ void writeByte(SQLiteRsync *p, int c){
   p->nOut++;
 }
 
-/* Read a power of two encoded as a single byte.
+/* Read a power of two page size encoded as a single byte.
 */
 int readPow2(SQLiteRsync *p){
   int x = readByte(p);
-  if( x<0 || x>=32 ){
+  if( x<0 || x>16 ){
     logError(p, "read invalid page size %d\n", x);
     return 0;
   }
@@ -1293,6 +1337,10 @@ static int runSqlReturnText(
 */
 static void closeDb(SQLiteRsync *p){
   if( p->db ){
+    sqlite3_stmt *pStmt;
+    while( (pStmt = sqlite3_next_stmt(p->db, 0))!=0 ){
+      sqlite3_finalize(pStmt);
+    }
     sqlite3_close(p->db);
     p->db = 0;
   }
@@ -1538,7 +1586,7 @@ static void originSide(SQLiteRsync *p){
           sqlite3_finalize(pInsHash);
           pCkHash = 0;
           pInsHash = 0;
-          if( mxHash<p->nPage ){
+          if( mxHash<=p->nPage ){
             runSql(p, "WITH RECURSIVE c(n) AS"
                       " (VALUES(%d) UNION ALL SELECT n+1 FROM c WHERE n<%d)"
                       " INSERT INTO badHash SELECT n, 1 FROM c",
@@ -1651,7 +1699,7 @@ static void sendHashMessages(
   writeByte(p, REPLICA_READY);
   fflush(p->pOut);
   p->nRound++;
-  if( p->zDebugFile ) debugMessage(p, "-> REPLICA_READY\n", iHash);
+  if( p->zDebugFile ) debugMessage(p, "-> REPLICA_READY\n");
 }
 
 /*
@@ -1736,7 +1784,6 @@ static void subdivideHashRange(
 static void replicaSide(SQLiteRsync *p){
   int c;
   sqlite3_stmt *pIns = 0;
-  unsigned int szOPage = 0;
   char eJMode = 0;               /* Journal mode prior to sync */
   char buf[65536];
 
@@ -1762,10 +1809,12 @@ static void replicaSide(SQLiteRsync *p){
       case ORIGIN_BEGIN: {
         unsigned int nOPage = 0;
         unsigned int nRPage = 0, szRPage = 0;
+        unsigned int szOPage = 0;
         int rc = 0;
         u8 iProtocol;
 
         closeDb(p);
+        pIns = 0;
         iProtocol = readByte(p);
         szOPage = readPow2(p);
         readUint32(p, &nOPage);
@@ -1795,8 +1844,10 @@ static void replicaSide(SQLiteRsync *p){
           reportError(p, "cannot open in-memory database: %s",
                       sqlite3_errmsg(p->db));
           closeDb(p);
+          pIns = 0;
           break;
         }
+        sqlite3_db_config(p->db, SQLITE_DBCONFIG_WRITABLE_SCHEMA, 1, 0);
         runSql(p, "ATTACH %Q AS 'replica'", p->zReplica);
         if( p->wrongEncoding ){
           p->wrongEncoding = 0;
@@ -1810,6 +1861,7 @@ static void replicaSide(SQLiteRsync *p){
         }
         if( p->nErr ){
           closeDb(p);
+          pIns = 0;
           break;
         }
         runSql(p,
@@ -1852,7 +1904,7 @@ static void replicaSide(SQLiteRsync *p){
             nRPage);
         }else{
           runSql(p,"INSERT INTO sendHash VALUES(1,1)");
-          subdivideHashRange(p, 2, nRPage);
+          subdivideHashRange(p, 2, nRPage-1);
         }
         sendHashMessages(p, 1, 1);
         runSql(p, "PRAGMA writable_schema=ON");
@@ -1918,7 +1970,7 @@ static void replicaSide(SQLiteRsync *p){
           );
           if( pIns==0 ) break;
         }
-        readBytes(p, szOPage, buf);
+        readBytes(p, p->szPage, buf);
         if( p->nErr ) break;
         if( pgno==1 &&  eJMode==2 && buf[18]==1 ){
           /* Do not switch the replica out of WAL mode if it started in 
@@ -1927,7 +1979,7 @@ static void replicaSide(SQLiteRsync *p){
         }
         p->nPageSent++;
         sqlite3_bind_int64(pIns, 1, pgno);
-        sqlite3_bind_blob(pIns, 2, buf, szOPage, SQLITE_STATIC);
+        sqlite3_bind_blob(pIns, 2, buf, p->szPage, SQLITE_STATIC);
         rc = sqlite3_step(pIns);
         if( rc!=SQLITE_DONE ){
           reportError(p, "SQL statement [%s] failed (pgno=%u): %s",
@@ -1944,7 +1996,6 @@ static void replicaSide(SQLiteRsync *p){
     }
   }
 
-  if( pIns ) sqlite3_finalize(pIns);
   closeDb(p);
 }
 
@@ -2015,6 +2066,10 @@ static char *hostSeparator(const char *zIn){
   return zPath;
 }
 
+/* work-around the Microsoft "WorstFit" bug */
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(main)
+#define main utf8_main
+#endif
 
 /*
 ** Parse command-line arguments.  Dispatch subroutines to do the
@@ -2052,6 +2107,7 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
   FILE *pOut = 0;
   int childPid = 0;
   const char *zSsh = "ssh";
+  int iPort = 0;
   const char *zExe = "sqlite3_rsync";
   char *zCmd = 0;
   sqlite3_int64 tmStart;
@@ -2059,10 +2115,12 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
   sqlite3_int64 tmElapse;
   const char *zRemoteErrFile = 0;
   const char *zRemoteDebugFile = 0;
+  int nEncoded = 0;
 
 #define cli_opt_val cmdline_option_value(argc, argv, ++i)
   memset(&ctx, 0, sizeof(ctx));
   ctx.iProtocol = PROTOCOL_VERSION;
+  sqlite3_initialize();
   for(i=1; i<argc; i++){
     const char *z = argv[i];
     if( z[0]=='-' && z[1]=='-' && z[2]!=0 ) z++;
@@ -2091,12 +2149,35 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
       zSsh = cli_opt_val;
       continue;
     }
+    if( strcmp(z, "-port")==0 || strcmp(z, "-p")==0 ){
+      const char *zPort = cli_opt_val;
+      iPort = atoi(zPort);
+      if( iPort<1 || iPort>65535 ){
+        fprintf(stderr, "invalid TCP port number: \"%s\"\n", zPort);
+        return 1;
+      }
+      continue;
+    }
     if( strcmp(z, "-exe")==0 ){
       zExe = cli_opt_val;
+      if( need_escape(zExe) ){
+        fprintf(stderr, "executable name uses special characters: \"%s\"\n",
+                zExe);
+        return 1;
+      }
       continue;
     }
     if( strcmp(z, "-wal-only")==0 ){
       ctx.bWalOnly = 1;
+      continue;
+    }
+    if( strcmp(z, "-encoded-filenames")==0 ){
+      /* Internal use only */
+      nEncoded = atoi(cli_opt_val);
+      if( nEncoded<1 ){
+        fprintf(stderr, "invalid argument to %s\n", argv[i-1]);
+        return 1;
+      }
       continue;
     }
     if( strcmp(z, "-version")==0 ){
@@ -2163,9 +2244,18 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
         append_escaped_arg(pStr, argv[k], i!=k);
       }
       printf("%s\n", sqlite3_str_value(pStr));
+
+      /* Do it a second time using the hex encoding */
+      pStr = sqlite3_str_new(0);
+      nHexEncode = 0;
+      for(k=0; k<argc; k++){
+        append_escaped_arg(pStr, argv[k], (i!=k)*2);
+      }
+      printf("%s\n", sqlite3_str_value(pStr));
+      printf("nHexEncode: %d\n", nHexEncode);
       return 0;
     }
-    if( z[i]=='-' ){
+    if( z[0]=='-' ){
       fprintf(stderr,
          "unknown option: \"%s\". Use --help for more detail.\n", z);
       return 1;
@@ -2187,9 +2277,23 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     fprintf(stderr, "missing REPLICA database filename\n");
     return 1;
   }
-  if( isOrigin && isReplica ){
-    fprintf(stderr, "bad option combination\n");
-    return 1;
+  if( isOrigin || isReplica ){
+    if( isOrigin && isReplica ){
+      fprintf(stderr, "bad option combination\n");
+      return 1;
+    }
+    if( nEncoded ){
+      ctx.zOrigin = decode_filename(ctx.zOrigin);
+      ctx.zReplica = decode_filename(ctx.zReplica);
+      ctx.zErrFile = decode_filename(ctx.zErrFile);
+      ctx.zDebugFile = decode_filename(ctx.zDebugFile);
+    }
+  }else{
+    /* Must be the local side */
+    if( nHexEncode ){
+      fprintf(stderr,"incorrect use of \"--encoded-filenames\"\n");
+      return 1;
+    }
   }
   if( isOrigin ){
     ctx.pIn = stdin;
@@ -2213,10 +2317,6 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     replicaSide(&ctx);
     return 0;
   }
-  if( ctx.zReplica==0 ){
-    fprintf(stderr, "missing REPLICA database filename\n");
-    return 1;
-  }
   tmStart = currentTime();
   zDiv = hostSeparator(ctx.zOrigin);
   if( zDiv ){
@@ -2232,8 +2332,9 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     for(iRetry=0; 1 /*exit-via-break*/; iRetry++){
       sqlite3_str *pStr = sqlite3_str_new(0);
       append_escaped_arg(pStr, zSsh, 1);
+      if( iPort>0 ) sqlite3_str_appendf(pStr, " -p %d", iPort);
       sqlite3_str_appendf(pStr, " -e none");
-      append_escaped_arg(pStr, ctx.zOrigin, 0);
+      append_escaped_arg(pStr, ctx.zOrigin, 1);
       if( iRetry ) add_path_argument(pStr);
       append_escaped_arg(pStr, zExe, 1);
       append_escaped_arg(pStr, "--origin", 0);
@@ -2243,17 +2344,20 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
       }
       if( zRemoteErrFile ){
         append_escaped_arg(pStr, "--errorfile", 0);
-        append_escaped_arg(pStr, zRemoteErrFile, 1);
+        append_escaped_arg(pStr, zRemoteErrFile, 2);
       }
       if( zRemoteDebugFile ){
         append_escaped_arg(pStr, "--debugfile", 0);
-        append_escaped_arg(pStr, zRemoteDebugFile, 1);
+        append_escaped_arg(pStr, zRemoteDebugFile, 2);
       }
       if( ctx.bWalOnly ){
         append_escaped_arg(pStr, "--wal-only", 0);
       }
-      append_escaped_arg(pStr, zDiv, 1);
-      append_escaped_arg(pStr, file_tail(ctx.zReplica), 1);
+      append_escaped_arg(pStr, zDiv, 2);
+      append_escaped_arg(pStr, file_tail(ctx.zReplica), 2);
+      if( nHexEncode>0 ){
+        sqlite3_str_appendf(pStr, " --encoded-filenames %d", nHexEncode);
+      }
       if( ctx.eVerbose<2 && iRetry==0 ){
         append_escaped_arg(pStr, "2>/dev/null", 0);
       }
@@ -2280,8 +2384,9 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     for(iRetry=0; 1 /*exit-by-break*/; iRetry++){
       sqlite3_str *pStr = sqlite3_str_new(0);
       append_escaped_arg(pStr, zSsh, 1);
+      if( iPort>0 ) sqlite3_str_appendf(pStr, " -p %d", iPort);
       sqlite3_str_appendf(pStr, " -e none");
-      append_escaped_arg(pStr, ctx.zReplica, 0);
+      append_escaped_arg(pStr, ctx.zReplica, 1);
       if( iRetry==1 ) add_path_argument(pStr);
       append_escaped_arg(pStr, zExe, 1);
       append_escaped_arg(pStr, "--replica", 0);
@@ -2291,17 +2396,20 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
       }
       if( zRemoteErrFile ){
         append_escaped_arg(pStr, "--errorfile", 0);
-        append_escaped_arg(pStr, zRemoteErrFile, 1);
+        append_escaped_arg(pStr, zRemoteErrFile, 2);
       }
       if( zRemoteDebugFile ){
         append_escaped_arg(pStr, "--debugfile", 0);
-        append_escaped_arg(pStr, zRemoteDebugFile, 1);
+        append_escaped_arg(pStr, zRemoteDebugFile, 2);
       }
       if( ctx.bWalOnly ){
         append_escaped_arg(pStr, "--wal-only", 0);
       }
-      append_escaped_arg(pStr, file_tail(ctx.zOrigin), 1);
-      append_escaped_arg(pStr, zDiv, 1);
+      append_escaped_arg(pStr, file_tail(ctx.zOrigin), 2);
+      append_escaped_arg(pStr, zDiv, 2);
+      if( nHexEncode>0 ){
+        sqlite3_str_appendf(pStr, " --encoded-filenames %d", nHexEncode);
+      }
       if( ctx.eVerbose<2 && iRetry==0 ){
         append_escaped_arg(pStr, "2>/dev/null", 0);
       }
@@ -2330,14 +2438,17 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     }
     if( zRemoteErrFile ){
       append_escaped_arg(pStr, "--errorfile", 0);
-      append_escaped_arg(pStr, zRemoteErrFile, 1);
+      append_escaped_arg(pStr, zRemoteErrFile, 2);
     }
     if( zRemoteDebugFile ){
       append_escaped_arg(pStr, "--debugfile", 0);
-      append_escaped_arg(pStr, zRemoteDebugFile, 1);
+      append_escaped_arg(pStr, zRemoteDebugFile, 2);
     }
-    append_escaped_arg(pStr, ctx.zOrigin, 1);
-    append_escaped_arg(pStr, ctx.zReplica, 1);
+    append_escaped_arg(pStr, ctx.zOrigin, 2);
+    append_escaped_arg(pStr, ctx.zReplica, 2);
+    if( nHexEncode>0 ){
+      sqlite3_str_appendf(pStr, " --encoded-filenames %d", nHexEncode);
+    }
     zCmd = sqlite3_str_finish(pStr);
     if( ctx.eVerbose>=2 ) printf("%s\n", zCmd);
     if( popen2(zCmd, &ctx.pIn, &ctx.pOut, &childPid, 0) ){
@@ -2346,7 +2457,7 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
     }
     originSide(&ctx);
   }
-  pclose2(ctx.pIn, ctx.pOut, childPid);
+  ctx.nErr += !!pclose2(ctx.pIn, ctx.pOut, childPid);
   if( ctx.pLog ) fclose(ctx.pLog);
   tmEnd = currentTime();
   tmElapse = tmEnd - tmStart;  /* Elapse time in milliseconds */
@@ -2389,5 +2500,6 @@ int sqlite3_rsync_main(int argc, char const * const *argv){
   if( pIn!=0 && pOut!=0 ){
     pclose2(pIn, pOut, childPid);
   }
+  sqlite3_shutdown();
   return ctx.nErr;
 }

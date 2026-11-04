@@ -26,6 +26,32 @@
 #include "config/config.h"
 // gravity_running
 #include "daemon.h"
+// syscall(), SYS_close_range
+#include <sys/syscall.h>
+
+// Close every file descriptor above STDERR except <keep>. Neither the command
+// nor the helper process waiting for it may hold on to dnsmasq's listening
+// sockets or our internal pipes: they run in a session of their own and
+// outlive an FTL that dies meanwhile. This runs in the helper, a child of a
+// multithreaded process, so it does not allocate or lock anything
+static void close_inherited_fds(const int keep)
+{
+#ifdef SYS_close_range
+	const unsigned int above = keep < 3 ? 3 : (unsigned int)keep + 1;
+	if((keep <= 3 || syscall(SYS_close_range, 3, keep - 1, 0) == 0) &&
+	   syscall(SYS_close_range, above, ~0U, 0) == 0)
+		return;
+#endif
+	// Without close_range(), close them one by one. FTL's descriptors are
+	// nowhere near this cap, which keeps a huge RLIMIT_NOFILE from turning
+	// this into millions of calls
+	long max_fd = sysconf(_SC_OPEN_MAX);
+	if(max_fd <= 0 || max_fd > 65536)
+		max_fd = 65536;
+	for(long fd = 3; fd < max_fd; fd++)
+		if(fd != keep)
+			close((int)fd);
+}
 
 static int run_and_stream_command(struct ftl_conn *api, const char *path, const char *const args[], const char *extra_env)
 {
@@ -61,6 +87,8 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 	pid_t cpid = fork();
 	int code = -1;
 	bool crashed = false;
+	// Cleared once the client stops taking the output
+	bool sending = true;
 	if(cpid == -1)
 	{
 		// Neither branch below tests for this, and the parent one ends in
@@ -98,6 +126,10 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Redirect STDERR into our pipe
 		dup2(pipefd[1], STDERR_FILENO);
 		dup2(pipefd[1], STDOUT_FILENO);
+
+		// Keep nothing of FTL but the status pipe, the command inherits
+		// what is left
+		close_inherited_fds(statusfd[1]);
 
 		// Set extra environment variable if requested
 		if(extra_env != NULL)
@@ -152,24 +184,23 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		// Send 200 OK with chunked size (-1)
 		mg_send_http_ok(api->conn, "text/plain", -1);
 
-		// Read readirected STDOUT/STDERR until EOF
-		// We are only interested in the last pipe line
-		char errbuf[1024] = "";
+		// Stream the redirected STDOUT/STDERR until EOF. A chunk that
+		// cannot be sent means the client went away or stopped reading
+		// for longer than the request timeout. Keep draining the pipe
+		// without sending then, so the command does not block on it. The
+		// response ends without its last chunk, the client sees a
+		// truncated transfer when civetweb closes the connection
+		char buf[1024];
 		ssize_t nread;
-		while((nread = read(pipefd[0], errbuf, sizeof(errbuf) - 1)) > 0)
+		while((nread = read(pipefd[0], buf, sizeof(buf))) > 0)
 		{
-			// NUL-terminate what we just read so the string
-			// operations below cannot read past the buffer
-			errbuf[nread] = '\0';
-			// Send chunked data
-			// The chunked size is the length of the string in hex and has to be
-			// transferred in advance, followed by \r\n as line separator and
-			// followed by a chunk of data (the string itself) of the specified
-			// size
-			mg_printf(api->conn, "%zX\r\n%s\r\n", strlen(errbuf), errbuf);
-
-			// Reset buffer
-			memset(errbuf, 0, sizeof(errbuf));
+			// Send what read() returned as one chunk, the output may
+			// contain NUL bytes
+			if(sending && mg_send_chunk(api->conn, buf, (unsigned int)nread) < 0)
+			{
+				log_web_debug(DEBUG_API, "Client does not take the command output anymore");
+				sending = false;
+			}
 		}
 
 		// Get the exit status of the command from the status pipe
@@ -208,16 +239,22 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 		close(pipefd[0]);
 	}
 
-	// Send final chunk of size 0 showing end of data
-	mg_printf(api->conn, "0\r\n\r\n");
+	// Report a failure inside the stream, while it can still reach the client.
+	// The response is already committed as 200 chunked text/plain, so a status
+	// sent from here is dropped by civetweb and the caller would see success
+	// whatever happened
+	if(sending && (code != EXIT_SUCCESS || crashed))
+	{
+		const char *const failmsg = "Gravity failed\n";
+		mg_send_chunk(api->conn, failmsg, (unsigned int)strlen(failmsg));
+	}
 
-	if(code == EXIT_SUCCESS && !crashed)
-		return send_json_success(api);
-	else
-		return send_json_error(api, 500,
-		                       "server_error",
-		                       "Gravity failed",
-		                       NULL);
+	// Send final chunk of size 0 showing end of data. Nothing may be written
+	// after it - the message ends here
+	if(sending)
+		mg_printf(api->conn, "0\r\n\r\n");
+
+	return (code == EXIT_SUCCESS && !crashed) ? 200 : 500;
 }
 
 int api_action_gravity(struct ftl_conn *api)
@@ -231,9 +268,17 @@ int api_action_gravity(struct ftl_conn *api)
 
 	const char *extra_env = color ? "FORCE_COLOR" : NULL;
 
-	gravity_running = 1;
+	// Refuse a second run while one is in flight, both would rebuild the same
+	// database
+	bool idle = false;
+	if(!atomic_compare_exchange_strong(&gravity_running, &idle, true))
+		return send_json_error(api, 409,
+		                       "gravity_running",
+		                       "Gravity is already running",
+		                       NULL);
+
 	const int ret = run_and_stream_command(api, "/usr/local/bin/pihole", (const char *const []){ "pihole", "-g", NULL }, extra_env);
-	gravity_running = 0;
+	atomic_store(&gravity_running, false);
 
 	// If a termination/restart was requested while gravity was running,
 	// act on it now rather than waiting up to ~1s for the GC thread to pick it up

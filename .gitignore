@@ -6,6 +6,7 @@ pihole-FTL*
 /gzip_regression
 /dotdoh_regression
 /ptr_response_regression
+/txt_stat_regression
 
 # Generated pihole.toml file
 pihole.toml

@@ -64,8 +64,11 @@ char *alloca ();
 
 #include "tre-internal.h"
 #include "tre-match-utils.h"
-#include "tre.h"
 #include "xmalloc.h"
+
+/* Matching data up to this size is kept on the stack instead of being
+   allocated for each match. */
+#define TRE_MATCH_STACK_BUF 4096
 
 
 
@@ -82,7 +85,7 @@ typedef struct {
 
 #ifdef TRE_DEBUG
 static void
-tre_print_reach(const tre_tnfa_t *tnfa, tre_tnfa_reach_t *reach, int num_tags)
+tre_print_reach(const tre_tnfa_reach_t *reach, int num_tags)
 {
   int i;
 
@@ -107,14 +110,14 @@ tre_print_reach(const tre_tnfa_t *tnfa, tre_tnfa_reach_t *reach, int num_tags)
 #endif /* TRE_DEBUG */
 
 reg_errcode_t
-tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
+tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		      tre_str_type_t type, int *match_tags, int eflags,
 		      int *match_end_ofs)
 {
   /* State variables required by GET_NEXT_WCHAR. */
   tre_char_t prev_c = 0, next_c = 0;
   const char *str_byte = string;
-  int pos = -1;
+  ssize_t pos = -1;
   unsigned int pos_add_next = 1;
 #ifdef TRE_WCHAR
   const wchar_t *str_wide = string;
@@ -122,12 +125,20 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
   mbstate_t mbstate;
 #endif /* TRE_MBSTATE */
 #endif /* TRE_WCHAR */
+  reg_errcode_t ret;
   int reg_notbol = eflags & REG_NOTBOL;
   int reg_noteol = eflags & REG_NOTEOL;
   int reg_newline = tnfa->cflags & REG_NEWLINE;
   int str_user_end = 0;
 
   char *buf;
+#ifndef TRE_USE_ALLOCA
+  union {
+    char c[TRE_MATCH_STACK_BUF];
+    long l;
+    void *p;
+  } stack_buf;
+#endif /* !TRE_USE_ALLOCA */
   tre_tnfa_transition_t *trans_i;
   tre_tnfa_reach_t *reach, *reach_next, *reach_i, *reach_next_i;
   tre_reach_pos_t *reach_pos;
@@ -138,6 +149,15 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
   int new_match = 0;
   int *tmp_tags = NULL;
   int *tmp_iptr;
+
+  /*
+   * TRE internals tend to use int instead of size_t for positions or
+   * lengths and don't check for overflow.  This will take time to fix
+   * properly.  In the meantime, simply limit the input to what we can
+   * handle.
+   */
+  if (len > TRE_MAX_STRING)
+    len = TRE_MAX_STRING;
 
 #ifdef TRE_MBSTATE
   memset(&mbstate, '\0', sizeof(mbstate));
@@ -153,9 +173,11 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
   /* Allocate memory for temporary data required for matching.	This needs to
      be done for every matching operation to be thread safe.  This allocates
      everything in a single large block from the stack frame using alloca()
-     or with malloc() if alloca is unavailable. */
+     or, if alloca is unavailable, from a fixed stack buffer when it is large
+     enough and with malloc() otherwise.  Every field is initialized before
+     it is read, so the block is not cleared. */
   {
-    int tbytes, rbytes, pbytes, xbytes, total_bytes;
+    size_t tbytes, rbytes, pbytes, xbytes, total_bytes;
     char *tmp_buf;
     /* Compute the length of the block we need. */
     tbytes = sizeof(*tmp_tags) * num_tags;
@@ -170,11 +192,13 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
 #ifdef TRE_USE_ALLOCA
     buf = alloca(total_bytes);
 #else /* !TRE_USE_ALLOCA */
-    buf = xmalloc((unsigned)total_bytes);
+    if (total_bytes <= sizeof(stack_buf))
+      buf = stack_buf.c;
+    else
+      buf = xmalloc(total_bytes);
 #endif /* !TRE_USE_ALLOCA */
     if (buf == NULL)
       return REG_ESPACE;
-    memset(buf, 0, (size_t)total_bytes);
 
     /* Get the various pointers within tmp_buf (properly aligned). */
     tmp_tags = (void *)buf;
@@ -214,7 +238,7 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
       if (str_byte == NULL)
 	{
 #ifndef TRE_USE_ALLOCA
-	  if (buf)
+	  if (buf != stack_buf.c)
 	    xfree(buf);
 #endif /* !TRE_USE_ALLOCA */
 	  return REG_NOMATCH;
@@ -266,16 +290,36 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
     }
 #endif
 
-  DPRINT(("length: %d\n", len));
+  DPRINT(("length: %zd\n", len));
   DPRINT(("pos:chr/code | states and tags\n"));
   DPRINT(("-------------+------------------------------------------------\n"));
 
   reach_next_i = reach_next;
   while (/*CONSTCOND*/(void)1,1)
     {
-      /* If no match found yet, add the initial states to `reach_next'. */
-      if (match_eo < 0)
+      /* An anchored match can only start at the beginning of the string,
+	 so stop once no state is left. */
+      if (match_eo < 0 && tnfa->anchored && pos > 0)
 	{
+	  if (reach_next_i == reach_next)
+	    break;
+	}
+      /* If no match found yet, add the initial states to `reach_next'. */
+      else if (match_eo < 0)
+	{
+	  /* With no state active, skip characters that cannot start a
+	     match. */
+	  if (reach_next_i == reach_next && type == STR_BYTE && !tnfa->anchored)
+	    {
+	      if (tnfa->first_char >= 0)
+		while (next_c != (tre_char_t)tnfa->first_char && next_c != L'\0'
+		       && (len < 0 || pos < len))
+		  GET_NEXT_WCHAR();
+	      else if (tnfa->firstpos_chars != NULL)
+		while (!tnfa->firstpos_chars[(unsigned char)next_c]
+		       && next_c != L'\0' && (len < 0 || pos < len))
+		  GET_NEXT_WCHAR();
+	    }
 	  DPRINT((" init >"));
 	  trans_i = tnfa->initial;
 	  while (trans_i->state != NULL)
@@ -334,7 +378,7 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
 	      if (str_user_end)
 		break;
 	    }
-	  else if (next_c == L'\0')
+	  else if (next_c == L'\0' || pos >= TRE_MAX_STRING)
 	    break;
 	}
       else
@@ -346,10 +390,10 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
       GET_NEXT_WCHAR();
 
 #ifdef TRE_DEBUG
-      DPRINT(("%3d:%2lc/%05d |", pos - 1, (tre_cint_t)prev_c, (int)prev_c));
-      tre_print_reach(tnfa, reach_next, num_tags);
-      DPRINT(("%3d:%2lc/%05d |", pos, (tre_cint_t)next_c, (int)next_c));
-      tre_print_reach(tnfa, reach_next, num_tags);
+      DPRINT(("%3zd:%2lc/%05d |", pos - 1, (tre_cint_t)prev_c, (int)prev_c));
+      tre_print_reach(reach_next, num_tags);
+      DPRINT(("%3zd:%2lc/%05d |", pos, (tre_cint_t)next_c, (int)next_c));
+      tre_print_reach(reach_next, num_tags);
 #endif /* TRE_DEBUG */
 
       /* Swap `reach' and `reach_next'. */
@@ -491,13 +535,14 @@ tre_tnfa_run_parallel(const tre_tnfa_t *tnfa, const void *string, int len,
 
   DPRINT(("match end offset = %d\n", match_eo));
 
+  *match_end_ofs = match_eo;
+  ret = match_eo >= 0 ? REG_OK : REG_NOMATCH;
+
 #ifndef TRE_USE_ALLOCA
-  if (buf)
+  if (buf != stack_buf.c)
     xfree(buf);
 #endif /* !TRE_USE_ALLOCA */
-
-  *match_end_ofs = match_eo;
-  return match_eo >= 0 ? REG_OK : REG_NOMATCH;
+  return ret;
 }
 
 /* EOF */

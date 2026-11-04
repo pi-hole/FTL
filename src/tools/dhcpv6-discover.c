@@ -32,6 +32,9 @@
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
 
+// escape_data()
+#include "log.h"
+
 /**
  * @brief Resolves an IPv6 address by hostname and interface name.
  *
@@ -343,8 +346,6 @@ static int parse_dnssl(const uint8_t *opt)
 
 	for(unsigned int i = 0; i < optlen; i++)
 	{
-		char str[256] = { 0 };
-
 		// Check if the base is empty
 		if (!base[i])
 			break;
@@ -358,15 +359,15 @@ static int parse_dnssl(const uint8_t *opt)
 				return -1;
 			}
 
-			// Copy the domain name to the string
-			memcpy(str, &base[i + 1], base[i]);
-			str[base[i]] = 0;
+			// Escape the label, any host on the link can send it
+			char *label = escape_data((const char *)&base[i + 1], base[i]);
 
 			// Move to the next domain name
 			i += base[i] + 1;
 
 			// Print the domain name
-			printf("%s%s", str, base[i] ? "." : "");
+			printf("%s%s", label != NULL ? label : "?", base[i] ? "." : "");
+			free(label);
 
 		} while(base[i]);
 

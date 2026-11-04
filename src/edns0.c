@@ -55,9 +55,10 @@
 
 static ednsData edns = { 0 };
 
-ednsData *getEDNS(void)
+// Only the query or reply whose packet carried the data may consume it
+ednsData *getEDNS(const int id)
 {
-	if(edns.valid)
+	if(edns.valid && edns.id == abs(id))
 	{
 		// Return pointer to ednsData structure and reset it for the
 		// next query
@@ -378,6 +379,7 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 	// Reset EDNS(0) data
 	memset(&edns, 0, sizeof(ednsData));
 	edns.ede = EDE_UNSET;
+	edns.id = abs(daemon->log_display_id);
 	edns.valid = true;
 
 	size_t offset; // The header is 11 bytes before the beginning of OPTION-DATA

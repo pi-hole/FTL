@@ -27,15 +27,16 @@ typedef struct {
 	// x86_64).
 	double response;
 	double timestamp;
-	sqlite3_int64 db;
+	sqlite3_int64 db; // ID in the database, handed out when the query is created
 	unsigned int domainID;
 	unsigned int clientID;
 	int upstreamID; // -1 if not forwarded
 	int cacheID;
 	int id; // the ID is a (signed) int in dnsmasq, so no need for a long int here
 	int CNAME_domainID; // only valid if query has a CNAME blocking status, -1 otherwise
-	int ede;
+	int list_id; // ID of the list that blocked or allowed it, -1 if none
 	uint16_t qtype;
+	uint16_t ede; // only valid with flags.has_ede, see query_get_ede()
 	unsigned char magic;
 	enum query_status status;
 	enum query_type type;
@@ -57,10 +58,7 @@ typedef struct {
 		// is returned exactly once - either by query_blocked() when the
 		// query stops being a forwarded one, or by the GC when it expires
 		bool upstream_counted :1;
-		struct database_flags {
-			bool changed :1;
-			bool imported :1;
-		} database;
+		bool has_ede :1;
 	} flags;
 } queriesData;
 
@@ -91,14 +89,16 @@ typedef struct {
 typedef struct {
 	// Hot fields ordered first for cache locality; cold overTime[] array at
 	// end. Contains size_t fields -> size differs by architecture (64-bit:
-	// 684 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
+	// 688 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
 	// On 64-bit, 4 bytes between hash (offset 48) and groupspos (offset
 	// 56) are intentional alignment padding: they ensure ippos lands at
 	// offset 64, the start of cache line 1. Without them, ippos would be
 	// at offset 60 and straddle the cache line boundary (bytes 60–67),
 	// causing a split load on every client IP comparison.
 	unsigned char magic;
-	char hwlen;
+	// -1 before the first MAC lookup, 0 if it found none. Explicitly signed,
+	// plain char is unsigned on ARM and RISC-V
+	int8_t hwlen;
 	unsigned char hwaddr[16]; // See DHCP_CHADDR_MAX in dnsmasq/dhcp-protocol.h
 	struct client_flags {
 		bool new:1;
@@ -106,6 +106,7 @@ typedef struct {
 		bool aliasclient:1;
 		bool rate_limited:1;
 		bool in_database:1;
+		bool groups_looked_up:1; // get_client_groupids() ran at least once
 	} flags;
 	int count;
 	int blockedcount;
@@ -121,9 +122,10 @@ typedef struct {
 	size_t ifacepos;
 	double firstSeen;
 	double lastQuery;
+	uint32_t lastMACLookup; // last recorded MAC lookup, see SHM_TIME_EPOCH
 	// overTime is accessed only every 10 minutes (cold), so it lives at the
 	// end to keep hot fields within the first two 64-byte cache lines:
-	// line 0 (0–63): magic...hash + groupspos; line 1 (64–127): ippos...lastQuery.
+	// line 0 (0–63): magic...hash + groupspos; line 1 (64–127): ippos...lastMACLookup.
 	int overTime[OVERTIME_SLOTS];
 } clientsData;
 
@@ -222,6 +224,8 @@ const char *getDomainString(const queriesData *query);
 const char *getCNAMEDomainString(const queriesData *query);
 const char *getClientIPString(const queriesData *query);
 const char *getClientNameString(const queriesData *query);
+int query_get_ede(const queriesData *query) __attribute__((pure));
+void query_set_ede(queriesData *query, const int ede);
 
 void change_clientcount(clientsData *client, const int total, const int blocked, const int overTimeIdx, const int overTimeMod);
 const char *get_query_type_str(const enum query_type type, const queriesData *query, char buffer[20]);

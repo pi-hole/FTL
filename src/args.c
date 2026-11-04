@@ -51,6 +51,8 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// dnsmasq_failed
+#include "daemon.h"
 // regex_speedtest()
 #include "regex_r.h"
 // init_shmem()
@@ -242,6 +244,23 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 	return strncasecmp(input, start, strlen(start)) == 0;
 }
 
+// Takes a stdio lock and crashes, see the "crash-thread" subcommand
+static void *crash_holding_lock(void *arg)
+{
+	(void)arg;
+	FILE *fp = fopen("/dev/null", "r");
+	if(fp != NULL)
+		flockfile(fp);
+	void *addr = mmap(NULL, 4096u, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(addr != MAP_FAILED)
+	{
+		volatile char *ptr = (volatile char *)addr;
+		*ptr = 'x'; // Write to PROT_NONE page - SIGSEGV SEGV_ACCERR
+	}
+	raise(SIGSEGV);
+	return NULL;
+}
+
 #ifdef HAVE_TLS
 // Return the value part of an OpenSSL_version() string, skipping the leading
 // "label: " prefix that most of them carry (e.g. "built on: <date>").
@@ -309,6 +328,23 @@ void parse_args(int argc, char *argv[])
 			*ptr = 'x'; // Write to PROT_NONE page — SIGSEGV SEGV_ACCERR
 		}
 		raise(SIGSEGV); // Fallback: mmap should never fail in practice
+		exit(EXIT_FAILURE);
+	}
+
+	// Crash a thread while it holds a stdio lock, like a thread crashing
+	// inside getgrgid() does. exit() then waits for that lock forever (on
+	// musl), so the crash watchdog has to end this process
+	if(argc == 2 && strcmp(argv[1], "crash-thread") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		// There is no dnsmasq to stop here, see terminate()
+		dnsmasq_failed = true;
+		start_crash_watchdog();
+		handle_signals();
+		pthread_t tid;
+		if(pthread_create(&tid, NULL, crash_holding_lock, NULL) == 0)
+			pthread_join(tid, NULL);
 		exit(EXIT_FAILURE);
 	}
 
@@ -635,18 +671,21 @@ void parse_args(int argc, char *argv[])
 	{
 		const bool antigravity = strcmp(argv[1], "antigravity") == 0;
 
-		// pihole-FTL gravity parseList <infile> <outfile> <adlistID>
-		if(argc == 6 && strcasecmp(argv[2], "parseList") == 0)
+		// pihole-FTL gravity parseList <infile> <outfile> <adlistID> [<source URL>]
+		if((argc == 6 || argc == 7) && strcasecmp(argv[2], "parseList") == 0)
 		{
+			// The optional source URL lets us suppress the invalid-entry
+			// sample for local (file://) lists, whose contents must not leak
+			const char *source_url = argc == 7 ? argv[6] : NULL;
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity));
+			exit(gravity_parseList(argv[3], argv[4], argv[5], false, antigravity, source_url));
 		}
 
 		// pihole-FTL gravity checkList <infile>
 		if(argc == 4 && strcasecmp(argv[2], "checkList") == 0)
 		{
 			// Parse the given list and write the result to the given file
-			exit(gravity_parseList(argv[3], "", "-1", true, antigravity));
+			exit(gravity_parseList(argv[3], "", "-1", true, antigravity, NULL));
 		}
 
 		printf("Incorrect usage of pihole-FTL gravity subcommand\n");
