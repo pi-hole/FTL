@@ -661,7 +661,14 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			continue;
 		}
 
-		if(keep_utf8 ? ((unsigned char)*src >= 0x20u && *src != 0x7F)
+		// backslash matches isprint(), but escape it to distinguish a literal \n from a newline
+		if(*src == '\\')
+		{
+			*dst++ = '\\';
+			*dst++ = '\\';
+			src++;
+		}
+		else if(keep_utf8 ? ((unsigned char)*src >= 0x20u && *src != 0x7F)
 		             : isprint((unsigned char)*src))
 		{
 			*dst++ = *src++;
@@ -671,10 +678,6 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			// Handle special characters
 			switch(*src)
 			{
-				case '\\':
-					*dst++ = '\\';
-					*dst++ = '\\';
-					break;
 				case '\n':
 					*dst++ = '\\';
 					*dst++ = 'n';
