@@ -353,7 +353,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error);
+				char *json_error_escaped = escape_control_chars(json_error);
+				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error_escaped != NULL ? json_error_escaped : "(unable to display)");
+				free(json_error_escaped);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))

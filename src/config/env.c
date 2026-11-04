@@ -220,7 +220,7 @@ static void invalid_enum_item(const char *envvar, struct conf_item *conf_item, s
 
 	// Build the error message. Mark it as allocated so printFTLenv()
 	// actually frees it again instead of leaking it on every reload.
-	if(asprintf(&item->error, "= %s is invalid, allowed options are: %s",
+	if(asprintf(&item->error, "= \"%s\" is invalid, allowed options are: %s",
 	            escaped_value ? escaped_value : "(null)",
 	            allowed_values ? allowed_values : "(null)") > 0)
 		item->error_allocated = true;

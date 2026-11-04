@@ -1968,6 +1968,16 @@ except socket.timeout:
   run ./pihole-FTL --config "${esc}not-an-option"
   assert_line --index 0 "Unknown config option \x1B[2Jnot-an-option, did you mean:"
   assert_failure 4
+
+  # JSON parse errors must escape control characters too
+  run ./pihole-FTL --config dns.hosts "$(printf 'x\033[2J')"
+  assert_line --index 0 'Config setting dns.hosts is invalid: not valid JSON, error at: x\x1B[2J'
+  assert_failure 2
+
+  # A backslash is escaped as well and does not swallow the rest of the value
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 a\\b.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("a\\b.example")'
+  assert_failure 3
 }
 
 @test "Config validation working on the CLI (validator-based checking)" {
