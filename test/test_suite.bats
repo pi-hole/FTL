@@ -2449,6 +2449,14 @@ except socket.timeout:
   run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
   assert_line --index 0 "true"
   assert_line --index 1 ""
+  # adding -t (test a value) yields the same completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.networking t'
+  assert_line --index 0 "true"
+  assert_line --index 1 ""
 }
 
 

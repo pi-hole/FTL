@@ -1651,9 +1651,18 @@ void suggest_complete(const int argc, char *argv[])
 	{
 		getLogFilePath(false);
 		initConfig(&config);
-		if(argc == 5)
+
+		// Check if -t was specified
+		const bool test_value = strcmp(argv[4], "-t") == 0;
+		const int config_arg = test_value ? 5 : 4;
+
+		if(argc == config_arg + 1)
 		{
-			// pihole-FTL --config ...
+			// suggest --config -t
+			if(!test_value && (strlen(last_word) == 0 || strStartsWith("-t", last_word)))
+				puts("-t");
+
+			// Completing --config [-t] <key>
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
@@ -1663,15 +1672,17 @@ void suggest_complete(const int argc, char *argv[])
 					puts(conf_item->k);
 			}
 		}
-		else if(argc == 6)
+		else if(argc == config_arg + 2)
 		{
-			// pihole-FTL --config <some key> ...
+			// pihole-FTL --config [-t] <key> <value>
+			// Suggest values for the specific key provided in argv[config_arg]
+			const char *key = argv[config_arg];
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
 				if(!conf_item)
 					continue;
-				if(strcmp(conf_item->k, argv[4]) == 0)
+				if(strcmp(conf_item->k, key) == 0)
 				{
 					// See if we can suggest a value
 					switch(conf_item->t)
@@ -1679,7 +1690,7 @@ void suggest_complete(const int argc, char *argv[])
 						case CONF_BOOL:
 						case CONF_ALL_DEBUG_BOOL:
 						{
-							// pihole-FTL --config <boolean option>> ...
+							// pihole-FTL --config <boolean option> ...
 							const char *options[] = {
 								"true", "false"
 							};
@@ -1839,11 +1850,17 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_PRIVACY_LEVEL:
-							// This enum is in reality a numeric value
-							printf("%d\n", (int)conf_item->d.privacy_level);
-							break;
+						{
+								// This enum is in reality a numeric value
+								char privacy_level[12];
+								snprintf(privacy_level, sizeof(privacy_level), "%d", (int)conf_item->d.privacy_level);
 
-							case CONF_PASSWORD:
+								if(strlen(last_word) == 0 || strStartsWith(privacy_level, last_word))
+									puts(privacy_level);
+								break;
+						}
+
+						case CONF_PASSWORD:
 							// No suggestions
 							break;
 
@@ -1851,18 +1868,21 @@ void suggest_complete(const int argc, char *argv[])
 						{
 							char ip[INET_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET, &conf_item->d.in_addr.s_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 
 						case CONF_STRUCT_IN6_ADDR:
 						{
 							char ip[INET6_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET6, &conf_item->d.in6_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 					}
+					break;
 				}
 			}
 		}
