@@ -3927,6 +3927,10 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 	if(daemonmode)
 		go_daemon();
 
+	// Make sure a crash cannot leave this process hanging in its shutdown.
+	// No earlier: this thread would not survive the fork in go_daemon()
+	start_crash_watchdog();
+
 	// Initialize query database (pihole-FTL.db)
 	db_init();
 
