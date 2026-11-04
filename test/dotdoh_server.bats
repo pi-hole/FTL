@@ -711,3 +711,59 @@ setup_file() {
   echo "dnsmasq TCP workers: before=${before} after=${after}"
   [[ "$after" -le "$((before + 2))" ]]
 }
+
+# Serve slow.ftl on port 5556, answering after 1.5 s and logging each name to $1.
+# Waits for an earlier server on the port to go away, exits after 40 s at most
+slow_upstream() {
+  local ready i
+  ready="${BATS_FILE_TMPDIR}/slow_upstream.$$.$RANDOM"
+  python3 test/dotdoh_query.py slowdns 5556 1500 "$ready" 40 "$1" >/dev/null 2>&1 3>&- &
+  for i in $(seq 1 300); do [[ -f "$ready" ]] && break; sleep 0.1; done
+}
+
+@test "dotdoh-server: DoH3 backlogs from several clients do not hold up another" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow elapsed
+  # Five clients with six slow names each keep all four resolvers busy for 11 s.
+  # Taking turns, the client after them waits two rounds of 1.5 s at most
+  slow_upstream "${BATS_FILE_TMPDIR}/fair.log"
+  slow=$!
+  run python3 test/dotdoh_query.py doh3fair 127.0.0.1 443 fair.slow.ftl 5 6 "$DOMAIN"
+  kill "$slow"
+  echo "$output"
+  [[ "$output" =~ ^last\ client\ 200\ after\ ([0-9]+)\.[0-9]+\ s,\ the\ others\ 30/30 ]]
+  elapsed="${BASH_REMATCH[1]}"
+  [[ "$elapsed" -lt 5 ]]
+}
+
+@test "dotdoh-server: DoH3 requests are not resolved once their connection is closed" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow log count
+  # Twelve slow names take three rounds of the four resolvers, only the first
+  # starts before the client goes away
+  log="${BATS_FILE_TMPDIR}/closed.log"
+  slow_upstream "$log"
+  slow=$!
+  run python3 test/dotdoh_query.py doh3abandon 127.0.0.1 443 closed.slow.ftl 12 close 3.5
+  kill "$slow"
+  assert_output "OK"
+  # Count names, dnsmasq may send a query upstream more than once
+  count=$(sort -u "$log" | grep -c "closed.slow.ftl")
+  echo "upstream got ${count} of 12"
+  [[ "$count" -le 4 ]]
+}
+
+@test "dotdoh-server: cancelled DoH3 requests are not resolved" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local slow log count
+  log="${BATS_FILE_TMPDIR}/cancelled.log"
+  slow_upstream "$log"
+  slow=$!
+  run python3 test/dotdoh_query.py doh3abandon 127.0.0.1 443 cancelled.slow.ftl 12 reset 3.5
+  kill "$slow"
+  assert_output "OK"
+  # Count names, dnsmasq may send a query upstream more than once
+  count=$(sort -u "$log" | grep -c "cancelled.slow.ftl")
+  echo "upstream got ${count} of 12"
+  [[ "$count" -le 4 ]]
+}
