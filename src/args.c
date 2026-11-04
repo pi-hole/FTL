@@ -1784,11 +1784,17 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_PRIVACY_LEVEL:
+						{
 							// This enum is in reality a numeric value
-							printf("%d\n", (int)conf_item->d.privacy_level);
-							break;
+							char privacy_level[12];
+							snprintf(privacy_level, sizeof(privacy_level), "%d", (int)conf_item->d.privacy_level);
 
-							case CONF_PASSWORD:
+							if(strlen(last_word) == 0 || strStartsWith(privacy_level, last_word))
+								puts(privacy_level);
+							break;
+						}
+
+						case CONF_PASSWORD:
 							// No suggestions
 							break;
 
@@ -1796,18 +1802,21 @@ void suggest_complete(const int argc, char *argv[])
 						{
 							char ip[INET_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET, &conf_item->d.in_addr.s_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 
 						case CONF_STRUCT_IN6_ADDR:
 						{
 							char ip[INET6_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET6, &conf_item->d.in6_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 					}
+					break;
 				}
 			}
 		}
