@@ -1417,7 +1417,7 @@ static void *crash_watchdog(void *arg)
 	}
 
 	static const char msg[] = "CRIT: FTL did not shut down after the crash, exiting now\n";
-	log_ftl_raw(msg, sizeof(msg) - 1);
+	log_write_raw(LOG_CRIT, 0, "FTL did not shut down after the crash, exiting now");
 	// libc's write(): FTLwrite() logs a failure, which may wait for a lock
 	// the crashed thread holds. Nothing left to do if this fails
 	const ssize_t ret = (write)(STDERR_FILENO, msg, sizeof(msg) - 1);

@@ -518,19 +518,28 @@ static void sink_open(loggerSink *sink, const bool is_ftl)
 	sink->ino = st.st_ino;
 }
 
-// Write a bare FTL.log warning from the logger thread itself (bypassing the
-// queue - we ARE the logger).  Failure to open web/pihole logs uses this so
-// the "still relayed to the FTL log" guarantee holds even though the warning
-// cannot be enqueued.
-static void __attribute__ ((format(printf, 2, 3))) logger_write_direct_warning(loggerSink *sink, const char *fmt, ...)
+
+// Generic raw writer for FTL.log: formats like _FTL_log() but writes directly
+// to the FTL.log file descriptor, bypassing the log queue.  Intended for
+// callers that cannot safely enqueue (the logger thread itself and the crash
+// handler).  Falls back to syslog when FTL.log is unavailable.
+void __attribute__ ((format (printf, 3, 4))) log_write_raw(const int priority,
+                                                          const enum debug_flag flag,
+                                                          const char *format, ...)
 {
 	char msg[LOGGER_MAX_MESSAGE];
 	va_list args;
-	va_start(args, fmt);
-	vsnprintf(msg, sizeof(msg), fmt, args);
+	va_start(args, format);
+	int mlen = vsnprintf(msg, sizeof(msg), format, args);
 	va_end(args);
+	if(mlen < 0)
+		mlen = 0;
+	if(mlen > (int)sizeof(msg) - 1)
+		mlen = (int)sizeof(msg) - 1;
+	// Ensure NUL termination for the syslog fallback
+	msg[mlen] = '\0';
 
-	// Build the idstr of the logger thread itself
+	// Build the idstr of the producing process/thread
 	struct log_record me = { 0 };
 	me.pid = getpid();
 	me.tid = gettid();
@@ -541,17 +550,30 @@ static void __attribute__ ((format(printf, 2, 3))) logger_write_direct_warning(l
 	char timestring[TIMESTR_SIZE];
 	get_timestr(timestring, double_time(), true, false);
 
-	// Sized so the longest message (LOGGER_MAX_MESSAGE bytes) plus the
-	// timestamp, idstr and fixed prefix can never be truncated
+	const char *prio = priostr(priority, flag);
+
 	char line[LOGGER_MAX_MESSAGE + 512];
-	int off = snprintf(line, sizeof(line), "%s [%s] WARNING: %s",
-	                   timestring, idstr, msg);
+	int off = snprintf(line, sizeof(line), "%s [%s] %s: ", timestring, idstr, prio);
 	if(off < 0 || off >= (int)sizeof(line))
 		off = (int)sizeof(line) - 1;
+
+	if(mlen > 0)
+	{
+		const size_t space = sizeof(line) - (size_t)off - 1u;  // room for '\\n'
+		const size_t copy = (size_t)mlen < space ? (size_t)mlen : space;
+		memcpy(line + off, msg, copy);
+		off += (int)copy;
+	}
 	line[off++] = '\n';
 
-	if(!sink_write(sink, line, (size_t)off))
-		syslog(LOG_WARNING, "%s", msg);
+	if(sink_ftl.fd < 0)
+	{
+		syslog(priority, "%s", msg);
+		return;
+	}
+
+	if(!sink_write(&sink_ftl, line, (size_t)off))
+		syslog(priority, "%s", msg);
 }
 
 // ---- Record rendering -----------------------------------------------------------
@@ -739,17 +761,17 @@ static void logger_update_paths(void)
 	// Emit the "unavailable" warnings via the normal path (mirroring the old
 	// log_warn()) now that the sinks are (re)opened
 	if(sink_webserver.fd < 0 && webserver_path[0] != '\0')
-		logger_write_direct_warning(&sink_ftl,
+		log_write_raw(LOG_WARNING, DEBUG_NONE,
 			"webserver.log is unavailable (%s); warnings are still relayed to the FTL log",
 			strerror(webserver_error));
 	if(sink_dnsmasq.fd < 0 && dnsmasq_path[0] != '\0')
 	{
 		if(hide_dnsmasq_warn)
-			logger_write_direct_warning(&sink_ftl,
+			log_write_raw(LOG_WARNING, DEBUG_NONE,
 				"pihole.log is unavailable (%s); dnsmasq warnings are hidden (misc.hide_dnsmasq_warn)",
 				strerror(dnsmasq_error));
 		else
-			logger_write_direct_warning(&sink_ftl,
+			log_write_raw(LOG_WARNING, DEBUG_NONE,
 				"pihole.log is unavailable (%s); dnsmasq warnings are still relayed to the FTL log",
 				strerror(dnsmasq_error));
 	}
