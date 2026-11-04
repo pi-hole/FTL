@@ -908,9 +908,20 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config)
 
 		// If we reach this point, a valid setting was found and changed
 
-		// Validate new value (if validation function is defined)
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
+		if(new_item->t == CONF_JSON_STRING_ARRAY && new_item->v.json != NULL &&
+		   cJSON_GetArraySize(new_item->v.json) > CONF_ARRAY_MAX)
+		{
+			snprintf(errbuf, sizeof(errbuf), "%s: array too large", new_item->k);
+			free_config(&newconf, false);
+			return send_json_error(api, 400,
+			                       "bad_request",
+			                       "Config item validation failed",
+			                       errbuf);
+		}
+
+		// Validate new value (if validation function is defined)
+		if(!conf_item->c(&new_item->v, conf_item->k, errbuf))
 		{
 			free_config(&newconf, false);
 			return send_json_error(api, 400,
@@ -1239,6 +1250,17 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(api->method == HTTP_PUT)
 		{
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
+			if(new_item->t == CONF_JSON_STRING_ARRAY && new_item->v.json != NULL &&
+			   cJSON_GetArraySize(new_item->v.json) > CONF_ARRAY_MAX)
+			{
+				snprintf(errbuf, sizeof(errbuf), "%s: array too large", new_item->k);
+				free_config(&newconf, false);
+				free_config_path(requested_path);
+				return send_json_error(api, 400,
+				                       "bad_request",
+				                       "Invalid value",
+				                       errbuf);
+			}
 			if(!new_item->c(&new_item->v, new_item->k, errbuf))
 			{
 				free_config(&newconf, false);

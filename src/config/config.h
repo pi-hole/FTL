@@ -41,6 +41,8 @@
 
 // Size of the buffer used to report possible errors during config validation
 #define VALIDATOR_ERRBUF_LEN 256
+// Must not exceed ARRAY_MAX in the vendored tomlc17 parser
+#define CONF_ARRAY_MAX (1 << 14)
 
 // Location of the legacy (pre-v6.0) config file
 #define GLOBALCONFFILE_LEGACY PIHOLE_INSTALL_DIR "/pihole-FTL.conf"

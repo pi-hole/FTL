@@ -640,7 +640,12 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 
 	// Validate enum value if it is valid and validation function is defined
 	char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-	if(conf_item->c != NULL && !conf_item->c(&conf_item->v, conf_item->k, errbuf))
+	const bool array_too_large = conf_item->t == CONF_JSON_STRING_ARRAY &&
+	                             conf_item->v.json != NULL &&
+	                             cJSON_GetArraySize(conf_item->v.json) > CONF_ARRAY_MAX;
+	if(array_too_large)
+		snprintf(errbuf, sizeof(errbuf), "%s: array too large", conf_item->k);
+	if(array_too_large || (conf_item->c != NULL && !conf_item->c(&conf_item->v, conf_item->k, errbuf)))
 	{
 		log_debug(DEBUG_CONFIG, "Config item validation failed for %s: %s", conf_item->k, errbuf);
 

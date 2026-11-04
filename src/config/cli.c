@@ -496,7 +496,15 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 	{
 		// Config item changed
 
-		// Validate new value(if validation function is defined)
+		if(new_item->t == CONF_JSON_STRING_ARRAY && new_item->v.json != NULL &&
+		   cJSON_GetArraySize(new_item->v.json) > CONF_ARRAY_MAX)
+		{
+			free_config(&newconf, false);
+			log_err("Invalid value: %s: array too large", new_item->k);
+			return 3;
+		}
+
+		// Validate new value (if validation function is defined)
 		if(new_item->c != NULL)
 		{
 			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
