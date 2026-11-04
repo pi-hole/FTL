@@ -1131,6 +1131,35 @@ class TestMethodNotAllowed:
 
 
 # ---------------------------------------------------------------------------
+# Embedded API documentation
+# ---------------------------------------------------------------------------
+
+class TestDocs:
+
+    def test_files_referenced_by_index_are_served(self, api_session):
+        """Every file index.html loads is embedded, scripts as JavaScript.
+
+        Browsers refuse to run a module script served with any other type.
+        """
+        r = api_session.get(f"{FTL_URL}/api/docs/", timeout=5)
+        assert r.status_code == 200, \
+            f"Expected 200, got {r.status_code} {r.text}"
+        # RapiDoc is an ES module, a classic script fails on its export
+        assert '<script type="module" src="external/rapidoc-min.js">' in r.text, \
+            f"Unexpected index.html:\n{r.text}"
+        refs = re.findall(r'(?:src|href|spec-url)\s*=\s*"([^"]+)"', r.text)
+        assert "specs/main.yaml" in refs, f"Unexpected index.html:\n{r.text}"
+        for ref in refs:
+            f = api_session.get(f"{FTL_URL}/api/docs/{ref}", timeout=5)
+            assert f.status_code == 200, \
+                f"{ref}: expected 200, got {f.status_code}"
+            if ref.endswith(".js"):
+                mime = f.headers["Content-Type"].split(";")[0].strip()
+                assert mime in ("application/javascript", "text/javascript"), \
+                    f"{ref}: unexpected Content-Type {f.headers['Content-Type']}"
+
+
+# ---------------------------------------------------------------------------
 # Info endpoints
 # ---------------------------------------------------------------------------
 
