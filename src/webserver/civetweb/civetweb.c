@@ -4690,8 +4690,11 @@ mg_send_http_error_impl(struct mg_connection *conn,
 		}
 		mg_response_header_send(conn);
 
-		/* HTTP responses 1xx, 204 and 304 MUST NOT send a body */
-		if (has_body) {
+		/* HTTP responses 1xx, 204 and 304 MUST NOT send a body, and neither
+		 * may any response to a HEAD request */
+		if (has_body
+		    && ((conn->request_info.request_method == NULL)
+		        || (0 != strcmp(conn->request_info.request_method, "HEAD")))) {
 			/* For other errors, send a generic error message. */
 			const char *status_text = mg_get_response_code_text(conn, status);
 			mg_printf(conn, "Error %d: %s\n", status, status_text);
@@ -7063,6 +7066,18 @@ mg_read(struct mg_connection *conn, void *buf, size_t len)
 					break;
 				}
 
+				/* The chunk size comes from the peer. A value that does not
+				 * fit into the rest of the int64_t range either overflows
+				 * content_len or, cast to int64_t, makes it negative, which
+				 * mg_read_inner() takes as "read until the connection is
+				 * closed". Compare as uint64_t: unsigned long may be 32 bit.
+				 * Here content_len == consumed_content >= 0. */
+				if ((uint64_t)chunkSize
+				    > (uint64_t)(INT64_MAX - conn->content_len)) {
+					conn->is_chunked = 2;
+					return -1;
+				}
+
 				/* append a new chunk */
 				conn->content_len += (int64_t)chunkSize;
 			}
@@ -7343,12 +7358,16 @@ mg_printf(struct mg_connection *conn, const char *fmt, ...)
 }
 
 
-CIVETWEB_API int
-mg_url_decode(const char *src,
+/* allow_space: accept a literal space in src. A multipart/form-data file
+ * name is a quoted string, not URL encoded, and browsers send spaces in it
+ * as they are. Control characters are rejected in either case. */
+static int
+url_decode_ex(const char *src,
               int src_len,
               char *dst,
               int dst_len,
-              int is_form_url_encoded)
+              int is_form_url_encoded,
+              int allow_space)
 {
 	int i, j, a, b;
 
@@ -7364,6 +7383,8 @@ mg_url_decode(const char *src,
 			i += 2;
 		} else if (is_form_url_encoded && (src[i] == '+')) {
 			dst[j] = ' ';
+		} else if (allow_space && (src[i] == ' ')) {
+			dst[j] = ' ';
 		} else if ((unsigned char)src[i] <= ' ') {
 			return -1; /* invalid character */
 		} else {
@@ -7376,6 +7397,17 @@ mg_url_decode(const char *src,
 	dst[j] = '\0'; /* Null-terminate the destination */
 
 	return (i >= src_len) ? j : -1;
+}
+
+
+CIVETWEB_API int
+mg_url_decode(const char *src,
+              int src_len,
+              char *dst,
+              int dst_len,
+              int is_form_url_encoded)
+{
+	return url_decode_ex(src, src_len, dst, dst_len, is_form_url_encoded, 0);
 }
 
 
@@ -10745,8 +10777,24 @@ handle_static_file_request(struct mg_connection *conn,
 			    &filep->access); /* ignore error on read only file */
 			return;
 		}
+		/* A byte range is satisfiable only if the first byte position is
+		 * below the file size, and (for a range with an end) the end is
+		 * not before the start. An unsatisfiable range must be answered
+		 * with 416, not a 206 carrying a negative Content-Length
+		 * (RFC 9110, 15.5.17 / RFC 7233, 4.4). */
+		if ((r1 >= cl) || ((n == 2) && (r2 < r1))) {
+			mg_send_http_error(conn,
+			                   416, /* 416 = Range Not Satisfiable */
+			                   "%s",
+			                   "Error: Requested range not satisfiable");
+			(void)mg_fclose(
+			    &filep->access); /* ignore error on read only file */
+			return;
+		}
 		conn->status_code = 206;
-		cl = (n == 2) ? (((r2 > cl) ? cl : r2) - r1 + 1) : (cl - r1);
+		/* Clamp the last byte to the final valid offset (size - 1), so the
+		 * length never claims more bytes than the file actually holds. */
+		cl = (n == 2) ? (((r2 >= cl) ? (cl - 1) : r2) - r1 + 1) : (cl - r1);
 		mg_snprintf(conn,
 		            NULL, /* range buffer is big enough */
 		            range,
@@ -11398,6 +11446,13 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	ri->num_headers = parse_http_headers(&buf, ri->http_headers);
 	if (ri->num_headers < 0) {
 		/* Error while parsing headers */
+		return -1;
+	}
+	if ((ri->num_headers == (int)MG_MAX_HEADERS) && (*buf != '\r')
+	    && (*buf != '\n') && (*buf != '\0')) {
+		/* More than MG_MAX_HEADERS headers. Do not silently drop the
+		 * rest: a dropped Content-Length or Transfer-Encoding would
+		 * change the request framing. */
 		return -1;
 	}
 
