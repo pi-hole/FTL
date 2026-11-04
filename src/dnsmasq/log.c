@@ -317,6 +317,14 @@ void my_syslog(int priority, const char *format, ...)
 	return;
       func = "-debug";
     }
+
+  /*************************** Pi-hole specific logging **************************/
+  char buffer[MAX_MESSAGE + 1u];
+  va_start(ap, format);
+  len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
+  va_end(ap);
+  FTL_dnsmasq_log(buffer, priority, len > MAX_MESSAGE ? MAX_MESSAGE : len);
+
   
 #ifdef LOG_PRI
   priority = LOG_PRI(priority);
@@ -324,14 +332,6 @@ void my_syslog(int priority, const char *format, ...)
   /* Solaris doesn't have LOG_PRI */
   priority &= LOG_PRIMASK;
 #endif
-
-  /*************************** Pi-hole specific logging **************************/
-  char buffer[MAX_MESSAGE + 1u];
-  va_start(ap, format);
-  len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
-  va_end(ap);
-  FTL_dnsmasq_log(buffer, priority, func, len > MAX_MESSAGE ? MAX_MESSAGE : len);
-
   /* Pi-hole: FTL owns pihole.log.  Bypass dnsmasq's file-write path
      and syslog fallback entirely.
      Keep echo_stderr so dnsmasq --test errors reach stderr (captured

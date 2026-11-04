@@ -165,6 +165,7 @@ static pthread_mutex_t snapshot_mutex = PTHREAD_MUTEX_INITIALIZER;
 static void *logger_thread_main(void *arg);
 static void logger_wake(void);
 static void publish_sink_fds(void);
+static const char *dnsmasq_func_name(enum dnsmasq_func func);
 
 // ---- Ring queue (Vyukov bounded MPSC with per-slot seq markers) -------------
 static bool log_ring_enqueue(struct log_record *rec, log_ring_counter_t *claimed)
@@ -313,7 +314,7 @@ void log_record_init(struct log_record *rec, const enum log_source source,
 	// re-sampled when the logger thread drains the record.
 	rec->ts = double_time();
 	rec->priority = priority;
-	rec->flag = flag;
+	rec->u.flag = flag;
 	rec->source = source;
 	rec->pid = getpid();
 	rec->tid = gettid();
@@ -322,7 +323,6 @@ void log_record_init(struct log_record *rec, const enum log_source source,
 	// lines) must still be rendered as the main process, not as a fork.
 	rec->is_fork = is_fork(main_pid(), rec->pid);
 	rec->len = 0;
-	rec->func[0] = '\0';
 	rec->message[0] = '\0';
 }
 
@@ -414,7 +414,7 @@ static const char *logger_prio(const struct log_record *rec)
 {
 	if(rec->source == LOG_SOURCE_DNSMASQ && rec->priority == LOG_DEBUG)
 		return "DEBUG";
-	return priostr(rec->priority, rec->flag);
+	return priostr(rec->priority, rec->u.flag);
 }
 
 // ---- Sink primitives ------------------------------------------------------------
@@ -621,7 +621,7 @@ static void logger_dnsmasq_line(struct log_record *rec)
 
 	char line[2048];
 	int off = snprintf(line, sizeof(line), "%s dnsmasq%s[%d]: ",
-	                   ts_buf, rec->func, (int)rec->pid);
+	                   ts_buf, dnsmasq_func_name(rec->u.func), (int)rec->pid);
 	if(off < 0 || off >= (int)sizeof(line))
 		off = (int)sizeof(line) - 1;
 
@@ -1021,4 +1021,17 @@ int __attribute__((pure)) is_log_fd(const int fd)
 		if(atomic_load_explicit(&logger_fds[i], memory_order_acquire) == fd)
 			return true;
 	return false;
+}
+
+static const char *dnsmasq_func_name(enum dnsmasq_func func)
+{
+	switch(func)
+	{
+		case DNSMASQ_FUNC_TFTP:   return "-tftp";
+		case DNSMASQ_FUNC_DHCP:   return "-dhcp";
+		case DNSMASQ_FUNC_SCRIPT: return "-script";
+		case DNSMASQ_FUNC_DEBUG:  return "-debug";
+		case DNSMASQ_FUNC_NONE:
+		default:                  return "";
+    }
 }

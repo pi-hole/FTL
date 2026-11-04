@@ -52,15 +52,17 @@ enum log_source {
 // must never contain pointers or heap-allocated payloads: records produced by
 // dnsmasq TCP-query forks are consumed by the main process' logger thread.
 struct log_record {
-	double ts;               // production time (epoch seconds, double_time())
-	int priority;            // syslog priority (see sys/syslog.h)
-	enum debug_flag flag;    // FTL debug flag (used by priostr/debugstr)
-	enum log_source source;  // who produced the record
-	pid_t pid;               // producing process
-	pid_t tid;               // producing thread
-	bool is_fork;            // pid != main_pid() at production time
-	size_t len;              // byte length of message (excluding NUL)
-	char func[16];           // dnsmasq component suffix ("-dhcp", "-tftp", ...)
+	double ts;                  // production time (epoch seconds, double_time())
+	int priority;               // syslog priority (see sys/syslog.h)
+	enum log_source source;     // who produced the record
+	union {                     // union: mutually exclusive on source
+		enum debug_flag flag;   // FTL debug flag (used by priostr/debugstr)
+		enum dnsmasq_func func; // dnsmasq component suffix ("-dhcp", "-tftp", ...)
+	} u;
+	pid_t pid;                  // producing process
+	pid_t tid;                  // producing thread
+	bool is_fork;               // pid != main_pid() at production time
+	size_t len;                 // byte length of message (excluding NUL)
 	char message[LOGGER_MAX_MESSAGE];
 };
 

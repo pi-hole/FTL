@@ -4664,7 +4664,7 @@ static void _query_set_dnssec(queriesData *query, const enum dnssec_status dnsse
 }
 
 // Add dnsmasq log line to internal FIFO buffer (can be queried via the API)
-void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, const int length)
+void FTL_dnsmasq_log(const char *payload, const int priority, const int length)
 {
 	// Build a canonical log record and enqueue it.  The logger thread renders
 	// all sinks (pihole.log and the FIFO), so this producer is lock-free and
@@ -4673,16 +4673,22 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 	struct log_record rec;
 	log_record_init(&rec, LOG_SOURCE_DNSMASQ, priority, DEBUG_NONE);
 
-	// Copy the function suffix that dnsmasq embeds in its syslog format
-	// ("dnsmasq-dhcp", "dnsmasq-tftp", ...); the payload follows it.
-	if(func != NULL)
-	{
-		const size_t funclen = strlen(func);
-		if(funclen < sizeof(rec.func))
-		{
-			memcpy(rec.func, func, funclen);
-			rec.func[funclen] = '\0';
-		}
+	switch (priority & LOG_FACMASK) {
+		case MS_TFTP:
+			rec.u.func = DNSMASQ_FUNC_TFTP;
+			break;
+		case MS_DHCP:
+			rec.u.func = DNSMASQ_FUNC_DHCP;
+			break;
+		case MS_SCRIPT:
+			rec.u.func = DNSMASQ_FUNC_SCRIPT;
+			break;
+		case MS_DEBUG:
+			rec.u.func = DNSMASQ_FUNC_DEBUG;
+			break;
+		default:
+			rec.u.func = DNSMASQ_FUNC_NONE;
+			break;
 	}
 
 	// Copy the dnsmasq payload into the record.  length includes the NUL
@@ -4703,7 +4709,7 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 	log_ring_push(&rec);
 
 	/* Pi-hole diagnosis system */
-	if(priority == LOG_WARNING)
+	if(LOG_PRI(priority) == LOG_WARNING)
 		dnsmasq_diagnosis_warning(payload);
 }
 
