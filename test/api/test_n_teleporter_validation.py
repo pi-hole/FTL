@@ -168,6 +168,19 @@ def test_invalid_value_is_refused(ftl, key, value, expected_item):
         f"{expected_item}: configuration was modified by a refused import"
 
 
+def test_file_name_with_space(ftl):
+    """An upload whose file name has a space in it, as browsers name a second
+    download, is read like any other."""
+    key, value, expected_item = INVALID_VALUES[0]
+    archive = _replace(_replace(_current_toml(), "hosts", "[]"), key, value)
+    response = ftl.POST("/api/teleporter", None, AuthenticationMethods.HEADER,
+                        {"file": ("pi-hole teleporter (1).zip", _archive(archive),
+                                  "application/zip")})
+
+    # Refused for the value inside, so the upload itself was accepted
+    assert "error" in response, f"archive was accepted, response: {response}"
+    hint = str(response["error"].get("hint", ""))
+    assert expected_item in hint, f"upload not read, response: {response}"
 
 
 def test_migrated_value_is_validated(ftl):
