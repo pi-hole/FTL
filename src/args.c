@@ -1585,9 +1585,18 @@ void suggest_complete(const int argc, char *argv[])
 	{
 		getLogFilePath(false);
 		initConfig(&config);
-		if(argc == 5)
+
+		// Check if -t was specified
+		const bool test_value = strcmp(argv[4], "-t") == 0;
+		const int config_arg = test_value ? 5 : 4;
+
+		if(argc == config_arg + 1)
 		{
-			// pihole-FTL --config ...
+			// suggest --config -t
+			if(!test_value && (strlen(last_word) == 0 || strStartsWith("-t", last_word)))
+				puts("-t");
+
+			// Completing --config [-t] <key>
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
@@ -1597,15 +1606,17 @@ void suggest_complete(const int argc, char *argv[])
 					puts(conf_item->k);
 			}
 		}
-		else if(argc == 6)
+		else if(argc == config_arg + 2)
 		{
-			// pihole-FTL --config <some key> ...
+			// pihole-FTL --config [-t] <key> <value>
+			// Suggest values for the specific key provided in argv[config_arg]
+			const char *key = argv[config_arg];
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
 				if(!conf_item)
 					continue;
-				if(strcmp(conf_item->k, argv[4]) == 0)
+				if(strcmp(conf_item->k, key) == 0)
 				{
 					// See if we can suggest a value
 					switch(conf_item->t)
@@ -1613,7 +1624,7 @@ void suggest_complete(const int argc, char *argv[])
 						case CONF_BOOL:
 						case CONF_ALL_DEBUG_BOOL:
 						{
-							// pihole-FTL --config <boolean option>> ...
+							// pihole-FTL --config <boolean option> ...
 							const char *options[] = {
 								"true", "false"
 							};
