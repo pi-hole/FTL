@@ -3375,9 +3375,14 @@ bool gravity_updated(const bool check_timestamp)
 	sqlite3 *db = NULL;
 	sqlite3_stmt *query_stmt = NULL;
 
+	// The file as of the last timestamp check, once its time is old enough to trust
+	static struct timespec checked_mtime = { 0 };
+	static off_t checked_size = -1;
+
 	// pihole -g swaps in a new file, whatever its timestamp says
 	struct stat st;
-	if(stat(config.files.gravity.v.s, &st) == 0)
+	const bool have_stat = stat(config.files.gravity.v.s, &st) == 0;
+	if(have_stat)
 	{
 		pthread_mutex_lock(&gravity_file_lock);
 		const bool replaced = gravity_file.ino != 0 &&
@@ -3397,6 +3402,12 @@ bool gravity_updated(const bool check_timestamp)
 	}
 
 	if(!check_timestamp)
+		return false;
+
+	// Every committed write changes the file, so an unchanged one cannot hold
+	// a new timestamp and need not be opened
+	if(have_stat && st.st_size == checked_size &&
+	   st.st_mtim.tv_sec == checked_mtime.tv_sec && st.st_mtim.tv_nsec == checked_mtime.tv_nsec)
 		return false;
 
 	// Check if database is a readable file
@@ -3451,6 +3462,17 @@ bool gravity_updated(const bool check_timestamp)
 
 	// Get timestamp from database
 	const sqlite3_int64 updated = sqlite3_column_int64(query_stmt, 0);
+
+	// File times come from a coarse clock, a write right after this check
+	// may keep the same one. Only a modification time that is already a few
+	// seconds old is trusted to skip the next checks
+	if(have_stat && st.st_mtim.tv_sec < time(NULL) - 2)
+	{
+		checked_mtime = st.st_mtim;
+		checked_size = st.st_size;
+	}
+	else
+		checked_size = -1;
 
 	// Check if timestamp differs from the database loaded
 	pthread_mutex_lock(&gravity_file_lock);
