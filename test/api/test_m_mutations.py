@@ -156,6 +156,14 @@ class TestDeleteClients:
 # DELETE lists
 # ---------------------------------------------------------------------------
 
+def _gravity_sql(sql):
+    """Run sql on gravity.db and return its output."""
+    import subprocess
+    return subprocess.run(["./pihole-FTL", "sqlite3", "/etc/pihole/gravity.db",
+                           ".timeout 5000", sql],
+                          capture_output=True, text=True, timeout=10).stdout.strip()
+
+
 class TestDeleteLists:
 
     def test_delete_list_returns_204(self, api_session):
@@ -186,6 +194,41 @@ class TestDeleteLists:
         # Verify gone
         r = api_session.get(f"{url}?type=block", timeout=5)
         assert r.status_code == 404 or _j(r).get("lists", []) == []
+
+    def test_delete_list_leaves_its_domains_to_the_next_gravity_run(self, api_session):
+        # The domains of a deleted list stay in gravity and antigravity, but
+        # the views stop exposing them at once
+        address = "https://pytest-orphans.example.com/list.txt"
+        url = f"{FTL_URL}/api/lists/{quote(address, safe='')}"
+        for kind in ("block", "allow"):
+            r = api_session.put(f"{url}?type={kind}",
+                                json={"comment": "pytest orphans", "groups": [0],
+                                      "enabled": True},
+                                timeout=10)
+            assert r.status_code in (200, 201), \
+                f"PUT {kind} failed: {r.status_code} {r.text}"
+
+        counts = ("SELECT (SELECT count(*) FROM gravity WHERE domain = 'orphan-block.example')"
+                  " || ' ' || (SELECT count(*) FROM vw_gravity WHERE domain = 'orphan-block.example')"
+                  " || ' ' || (SELECT count(*) FROM antigravity WHERE domain = 'orphan-allow.example')"
+                  " || ' ' || (SELECT count(*) FROM vw_antigravity WHERE domain = 'orphan-allow.example');")
+        try:
+            _gravity_sql("INSERT INTO gravity (domain, adlist_id) SELECT 'orphan-block.example', id"
+                         f" FROM adlist WHERE address = '{address}' AND type = 0;"
+                         "INSERT INTO antigravity (domain, adlist_id) SELECT 'orphan-allow.example', id"
+                         f" FROM adlist WHERE address = '{address}' AND type = 1;")
+            assert _gravity_sql(counts) == "1 1 1 1"
+
+            for kind in ("block", "allow"):
+                r = api_session.delete(f"{url}?type={kind}", timeout=10)
+                assert r.status_code == 204, \
+                    f"DELETE {kind}: expected 204, got {r.status_code} {r.text}"
+            assert _gravity_sql(counts) == "1 0 1 0"
+        finally:
+            _gravity_sql("DELETE FROM gravity WHERE domain = 'orphan-block.example';"
+                         "DELETE FROM antigravity WHERE domain = 'orphan-allow.example';")
+            for kind in ("block", "allow"):
+                api_session.delete(f"{url}?type={kind}", timeout=10)
 
     def test_delete_nonexistent_list_returns_404(self, api_session):
         encoded = quote("https://no-such.invalid/block.txt", safe="")
