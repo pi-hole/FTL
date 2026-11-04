@@ -75,7 +75,6 @@ typedef struct {
 	unsigned int reply_domain;
 	unsigned int dns_cache_size;
 	unsigned int dns_cache_MAX;
-	unsigned int per_client_regex_MAX;
 	unsigned int clients_lookup_MAX;
 	unsigned int clients_lookup_size;
 	unsigned int domains_lookup_MAX;
@@ -218,11 +217,6 @@ const char *fmt_intarray(const size_t pos, char *buf, const size_t bufsz);
 void chown_all_shmem(struct passwd *ent_pw);
 
 // Per-client regex buffer storing whether or not a specific regex is enabled for a particular client
-void add_per_client_regex(unsigned int clientID);
-void reset_per_client_regex(const unsigned int clientID);
-bool get_per_client_regex(const unsigned int clientID, const unsigned int regexID);
-const bool *get_client_regex_row(const unsigned int clientID);
-void set_per_client_regex(const unsigned int clientID, const unsigned int regexID, const bool value);
 
 // Used in dnsmasq/utils.c
 int is_shm_fd(const int fd);
