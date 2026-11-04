@@ -371,6 +371,24 @@ for s in socks:
   assert_success
 }
 
+@test "A recycled client leaves the summary's client total" {
+  dig +short +tries=1 +time=2 -b 127.0.0.57 recycled-total.ftl @127.0.0.1 > /dev/null
+  before="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  # A flush removes the queries in memory, so the GC recycles the clients
+  # without queries, 127.0.0.57 among them. It keeps the queries of the
+  # current second, which would keep their clients
+  sleep 2
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_output "success"
+  flushed="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  dig +short +tries=1 +time=2 -b 127.0.0.57 recycled-total.ftl @127.0.0.1 > /dev/null
+  after="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  printf "clients.total: before %s, after the flush %s, after a new query %s\n" "${before}" "${flushed}" "${after}"
+  [[ ${flushed} -lt ${before} ]]
+  # The client counts once more
+  [[ ${after} -eq $((flushed + 1)) ]]
+}
+
 @test "Clients in recycled slots do not make the clients array longer" {
   # The regex reload logs the length of the clients array. 50 clients, a
   # flush that recycles all clients, 50 other clients: the second 50 reuse
