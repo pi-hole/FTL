@@ -665,6 +665,109 @@ void __attribute__ ((format (printf, 3, 4))) log_write_raw(const int priority,
 		sink_flush(&sink_ftl);
 }
 
+// ---- Timestamp cache (logger thread only) -------------------------------------
+// get_timestr() does a localtime_r() plus a full snprintf() per record.  At
+// high log rates the date/time prefix only changes once per second, so cache it
+// and only format the sub-second fraction per record.
+// Returns a pointer into a function-static cache (logger thread only).  The
+// seconds part of the timestamp is cached and copied verbatim; only the
+// sub-second digits are filled in per record, avoiding snprintf() entirely on
+// the hot path.
+static const char *logger_cached_timestr(const double timein)
+{
+	const time_t seconds = (time_t)timein;
+
+	static time_t cached_sec = (time_t)-1;
+	static char cached_prefix[32];
+	static int prefix_len = 0;
+	static char cached_zone[16];
+	static char cached_ts[TIMESTR_SIZE];
+
+	if(seconds != cached_sec)
+	{
+		struct tm tm;
+		localtime_r(&seconds, &tm);
+		prefix_len = snprintf(cached_prefix, sizeof(cached_prefix),
+		                     "%d-%02d-%02d %02d:%02d:%02d",
+		                     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		                     tm.tm_hour, tm.tm_min, tm.tm_sec);
+		if(tm.tm_zone != NULL)
+			snprintf(cached_zone, sizeof(cached_zone), "%s", tm.tm_zone);
+		else
+			cached_zone[0] = '\0';
+		cached_sec = seconds;
+	}
+
+	const bool micros = config.debug.extra.v.b;
+	const double frac = timein - seconds;
+	const int subsec = (int)(frac * (micros ? 1000000.0 : 1000.0));
+
+	memcpy(cached_ts, cached_prefix, (size_t)prefix_len);
+	int pos = prefix_len;
+	cached_ts[pos++] = '.';
+	if(micros)
+	{
+		cached_ts[pos + 0] = (char)('0' + (subsec / 100000) % 10);
+		cached_ts[pos + 1] = (char)('0' + (subsec / 10000) % 10);
+		cached_ts[pos + 2] = (char)('0' + (subsec / 1000) % 10);
+		cached_ts[pos + 3] = (char)('0' + (subsec / 100) % 10);
+		cached_ts[pos + 4] = (char)('0' + (subsec / 10) % 10);
+		cached_ts[pos + 5] = (char)('0' + subsec % 10);
+		pos += 6;
+	}
+	else
+	{
+		cached_ts[pos + 0] = (char)('0' + (subsec / 100) % 10);
+		cached_ts[pos + 1] = (char)('0' + (subsec / 10) % 10);
+		cached_ts[pos + 2] = (char)('0' + subsec % 10);
+		pos += 3;
+	}
+	cached_ts[pos++] = ' ';
+	size_t zlen = strlen(cached_zone);
+	if((size_t)pos + zlen < TIMESTR_SIZE)
+	{
+		memcpy(cached_ts + pos, cached_zone, zlen);
+		pos += (int)zlen;
+	}
+	cached_ts[pos] = '\0';
+	return cached_ts;
+}
+
+// Cached 15-character timestamp used by pihole.log, built by hand from the
+// broken-down time so we never call ctime_r().  Format matches the previous
+// "%.15s" of ctime()+4 output, e.g. "Nov  5 12:34:56".
+// Returns a pointer into a function-static cache (logger thread only).  Callers
+// must consume the result before the next call, which is fine on the single
+// consumer thread.
+static const char *logger_cached_ctime15(const double timein)
+{
+	const time_t seconds = (time_t)timein;
+
+	static const char *const months[12] = {
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+	};
+
+	static time_t cached_sec = (time_t)-1;
+	static char cached_ts[16];
+
+	if(seconds != cached_sec)
+	{
+		struct tm tm;
+		localtime_r(&seconds, &tm);
+
+		const char *mon = (tm.tm_mon >= 0 && tm.tm_mon < 12)
+		                      ? months[tm.tm_mon]
+		                      : "???";
+
+		snprintf(cached_ts, sizeof(cached_ts), "%s %2d %02d:%02d:%02d",
+		         mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+		cached_sec = seconds;
+	}
+
+	return cached_ts;
+}
+
 // ---- Record rendering -----------------------------------------------------------
 // Render one "TIMESTRING [idstr] PRIO: <message>\n" line (the FTL.log and
 // webserver.log format) into the given sink.  Returns false when no write
@@ -672,8 +775,7 @@ void __attribute__ ((format (printf, 3, 4))) log_write_raw(const int priority,
 static bool logger_file_line(loggerSink *sink, const struct log_record *rec,
                              const char *prio)
 {
-	char timestring[TIMESTR_SIZE];
-	get_timestr(timestring, rec->ts, true, false);
+	const char *timestring = logger_cached_timestr(rec->ts);
 
 	char idstr[42];
 	logger_get_idstr(idstr, sizeof(idstr), rec);
@@ -700,17 +802,11 @@ static bool logger_file_line(loggerSink *sink, const struct log_record *rec,
 // pihole.log, byte-identical to the previous FTL_write_dnsmasq_log()
 static void logger_dnsmasq_line(struct log_record *rec)
 {
-	time_t now = (time_t)rec->ts;
-	char ctime_buf[26];
-	const char *ctime_str = ctime_r(&now, ctime_buf);
-	if(ctime_str == NULL)
-		ctime_str = "Thu Jan  1 00:00:00 1970\n";
-	char ts_buf[16];
-	snprintf(ts_buf, sizeof(ts_buf), "%.15s", ctime_str + 4);
+	const char *ts_str = logger_cached_ctime15(rec->ts);
 
 	char line[2048];
 	int off = snprintf(line, sizeof(line), "%s dnsmasq%s[%d]: ",
-	                   ts_buf, dnsmasq_func_name(rec->u.func), (int)rec->pid);
+	                   ts_str, dnsmasq_func_name(rec->u.func), (int)rec->pid);
 	if(off < 0 || off >= (int)sizeof(line))
 		off = (int)sizeof(line) - 1;
 
