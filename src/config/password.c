@@ -435,6 +435,32 @@ static void refund_password_attempt(void)
 	pthread_mutex_unlock(&rate_limit_lock);
 }
 
+// Replace a verified SHA256^2 hash by a BALLOON hash. Only called on login,
+// where no config lock is held: the PATCH and reread paths reach
+// verify_password() with the (non-recursive) config lock already taken
+static void upgrade_legacy_password(const char *password)
+{
+	char *new_hash = create_password(password);
+	char *legacy = double_sha256_password(password);
+
+	// The password may have been changed since it was verified
+	lock_config();
+	if(new_hash != NULL && legacy != NULL &&
+	   strcmp(config.webserver.api.pwhash.v.s, legacy) == 0)
+	{
+		log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+		if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
+			free(config.webserver.api.pwhash.v.s);
+		config.webserver.api.pwhash.v.s = new_hash;
+		config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
+		writeFTLtoml(true, NULL);
+	}
+	else
+		free(new_hash);
+	unlock_config();
+	free(legacy);
+}
+
 enum password_result verify_login(const char *password)
 {
 	// Check if this is the CLI password
@@ -446,6 +472,9 @@ enum password_result verify_login(const char *password)
 
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
+
+	if(pw == PASSWORD_CORRECT && config.webserver.api.pwhash.v.s[0] != '$')
+		upgrade_legacy_password(password);
 
 	// Check if an application password is set and if it matches. The check
 	// above already counted this attempt against the rate limit, so this one
@@ -532,24 +561,9 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		const bool result = strcmp(pwhash, supplied) == 0;
 		free(supplied);
 
-		// Upgrade double-hashed password to BALLOON hash
-		if(result)
-		{
-			char *new_hash = create_password(password);
-			if(new_hash != NULL)
-			{
-				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
-				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
-					free(config.webserver.api.pwhash.v.s);
-				config.webserver.api.pwhash.v.s = new_hash;
-				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-				writeFTLtoml(true, NULL);
-			}
-
-			// Successful logins do not count against rate-limiting
-			if(rate_limiting)
-				refund_password_attempt();
-		}
+		// Successful logins do not count against rate-limiting
+		if(result && rate_limiting)
+			refund_password_attempt();
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
