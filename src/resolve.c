@@ -1320,8 +1320,7 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			// Recycled while the lock was released, getClient() logs
-			// anything else that makes it return NULL
+			// Recycled while the lock was released
 			log_debug(DEBUG_RESOLVER, "Client ID %u was recycled while resolving %s, skipping", clientID, ipaddr);
 			skipped++;
 			unlock_shm();
