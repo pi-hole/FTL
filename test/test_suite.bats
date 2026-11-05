@@ -2017,6 +2017,35 @@ setup() {
   assert_failure 3
 }
 
+@test "Config validation: --config -t does not require write permission" {
+  # Invalid values are rejected, even as nobody in read-only mode
+  run su nobody -s /bin/sh -c \
+    'FTLCONF_misc_readOnly=true ./pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --partial 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
+  # Valid values can be tested without write permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config -t ntp.sync.count 42'
+  assert_equal "${lines[-1]}" '42'
+  assert_success
+
+  # Applying changes still requires permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config ntp.sync.count 42'
+  assert_line --partial "Permission error: User nobody is not allowed to edit Pi-hole's config"
+  assert_failure
+
+  # Read-only mode prevents changes
+  run env FTLCONF_misc_readOnly=true ./pihole-FTL --config ntp.sync.count 42
+  assert_line --partial 'Config is in read-only mode, changes are not allowed (misc.readOnly = true)'
+  assert_failure
+
+  # No changes were applied
+  run ./pihole-FTL --config ntp.sync.count
+  assert_line --index 0 '8'
+}
+
 @test "Config validation: a document root that resolves to the root is rejected" {
   # Lexically /proc/self/root is a directory of its own, but it is a link
   # the kernel plants to /, so it has to be judged by where it leads

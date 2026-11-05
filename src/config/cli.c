@@ -384,32 +384,36 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 
 int set_config_from_CLI(const char *key, const char *value, const bool test_only)
 {
-	// Check if we are either
-	// - root, or
-	// - pihole with CAP_CHOWN capability on the pihole-FTL binary
-	const uid_t euid = geteuid();
-	const struct passwd *current_user = getpwuid(euid);
-	const bool is_root = euid == 0;
-	const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
-	const bool have_chown_cap = check_capability(CAP_CHOWN);
-	if(!is_root && !(is_pihole && have_chown_cap))
+	// Testing whether a config value is valid never writes to the config file
+	if(!test_only)
 	{
-		if(is_pihole)
-			printf("Permission error: CAP_CHOWN is missing on the binary\n");
-		else
-			printf("Permission error: User %s is not allowed to edit Pi-hole's config\n",
-			       current_user != NULL ? current_user->pw_name : "(unknown)");
+		// Check if we are either
+		// - root, or
+		// - pihole with CAP_CHOWN capability on the pihole-FTL binary
+		const uid_t euid = geteuid();
+		const struct passwd *current_user = getpwuid(euid);
+		const bool is_root = euid == 0;
+		const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
+		const bool have_chown_cap = check_capability(CAP_CHOWN);
+		if(!is_root && !(is_pihole && have_chown_cap))
+		{
+			if(is_pihole)
+				printf("Permission error: CAP_CHOWN is missing on the binary\n");
+			else
+				printf("Permission error: User %s is not allowed to edit Pi-hole's config\n",
+				       current_user != NULL ? current_user->pw_name : "(unknown)");
 
-		printf("Please run this command using sudo\n\n");
-		return EXIT_FAILURE;
-	}
+			printf("Please run this command using sudo\n\n");
+			return EXIT_FAILURE;
+		}
 
-	// Return early if the user tries to change some settings but the config
-	// is in read-only mode
-	if(config.misc.readOnly.v.b)
-	{
-		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
-		return EXIT_FAILURE;
+		// Return early if the user tries to change some settings but the config
+		// is in read-only mode
+		if(config.misc.readOnly.v.b)
+		{
+			printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
+			return EXIT_FAILURE;
+		}
 	}
 
 	// Identify config option
