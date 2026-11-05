@@ -24,6 +24,8 @@
 // dbquery()
 #include "database/common.h"
 // MAX_ROTATIONS
+// cluster_sync_lock()
+#include "cluster/sync.h"
 #include "files.h"
 //basename()
 #include <libgen.h>
@@ -355,7 +357,14 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	   data.filesize >= 40 &&
 	   memcmp(data.data, "\x50\x4b\x03\x04", 4) == 0)
 	{
-		return process_received_zip(api, &data);
+		// The fourth writer of the configuration, and it takes the lock
+		// the other three take: a peer's push arriving mid-restore would
+		// otherwise install a copy taken before it and answer 200 to both
+		cluster_sync_lock();
+		const int code = process_received_zip(api, &data);
+		cluster_note_list_write();
+		cluster_sync_unlock();
+		return code;
 	}
 	// Check if we received something that claims to be a TAR.GZ archive
 	// - filename should end in ".tar.gz"
@@ -367,7 +376,11 @@ static int api_teleporter_POST(struct ftl_conn *api)
 	        data.filesize >= 40 &&
 	        memcmp(data.data, "\x1f\x8b", 2) == 0)
 	{
-		return process_received_tar_gz(api, &data);
+		cluster_sync_lock();
+		const int code = process_received_tar_gz(api, &data);
+		cluster_note_list_write();
+		cluster_sync_unlock();
+		return code;
 	}
 
 	// else: invalid file
@@ -383,7 +396,7 @@ static int process_received_zip(struct ftl_conn *api, struct upload_data *data)
 	char hint[ERRBUF_SIZE];
 	memset(hint, 0, sizeof(hint));
 	cJSON *json_files = JSON_NEW_ARRAY();
-	const char *error = read_teleporter_zip(data->data, data->filesize, hint, data->import, json_files);
+	const char *error = read_teleporter_zip(data->data, data->filesize, 0, hint, data->import, json_files);
 	if(error != NULL)
 	{
 		const size_t msglen = strlen(error) + strlen(hint) + 4;

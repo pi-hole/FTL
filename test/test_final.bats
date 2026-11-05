@@ -14,7 +14,7 @@ load 'bats_helper.bash'
 }
 
 @test "No ERROR messages in FTL.log (besides known/intended errors)" {
-  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)|(Terminator: bind\(\) to 192\.0\.2\.1#9444 failed)|(Could not extract a TLS port from .80o,\[::\]:80o,8081r,192\.168\.1\.256:443s,44s3.)"'
+  run bash -c 'grep "ERROR: " /var/log/pihole/FTL.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)|(Teleporter: dns\.(hostRecord|cnameRecords|hosts|revServers)(\[|:))|(FOREIGN KEY constraint failed; \[INSERT INTO domainlist_by_group )|(Invalid value: dns\.hosts\[1\]: invalid hostname)|(----> dns\.hosts\[1\] has been removed)|(Terminator: bind\(\) to 192\.0\.2\.1#9444 failed)|(Could not extract a TLS port from .80o,\[::\]:80o,8081r,192\.168\.1\.256:443s,44s3.)|(The configuration was applied but could not be written to /etc/pihole/pihole\.toml)"'
   refute_output
 }
 
@@ -43,6 +43,7 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (TOTP stress test secret set + remove)
   # pytest: 2x pihole.toml writes (auth security test password set + remove)
   # pytest: 2x pihole.toml writes (auth security test TOTP secret set + remove)
+  # pytest: 3x pihole.toml writes (auth security test legacy hash set, upgraded at login, password restored)
   # pytest: 2x pihole.toml writes (top_domains exclude filter set + reset)
   # pytest: 2x pihole.toml writes (excludeClients cleared + restored around the sorted query log tests)
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
@@ -53,6 +54,19 @@ load 'bats_helper.bash'
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
+  # test_y_cluster.py: 10x pihole.toml writes. That file needs a node with a web
+  #   password (an empty pwhash makes FTL serve every request, so its refusal
+  #   tests would assert nothing) and with clustering switched on, and it puts
+  #   both back afterwards: password set + cleared, clustering enabled + disabled.
+  #   A signed push changes misc.check.load and a second one puts it back. A
+  #   push pihole.toml cannot take is put back by another one, which finds the
+  #   file unchanged. The 2FA test makes every member https:// and sets a 2FA
+  #   secret, then puts both back.
+  #   Measured over two consecutive runs against the same node.
+  #
+  #   This count also depends on test/pihole.toml being what this build writes:
+  #   FTL rewrites the file at startup when it is not, which is one more write
+  #   before any test has run.
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
@@ -63,7 +77,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "17"
   else
-    [[ ${lines[0]} == "64" ]]
+    [[ ${lines[0]} == "77" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

@@ -63,6 +63,7 @@ struct ftl_conn {
 char *json_formatter(const cJSON *object);
 
 int send_http(struct ftl_conn *api, const char *mime_type, const char *msg);
+void send_http_ok_signed(struct ftl_conn *api, const char *mime_type, const char *body, const size_t len);
 int send_http_code(struct ftl_conn *api, const char *mime_type, int code, const char *msg);
 int send_http_internal_error(struct ftl_conn *api);
 int send_json_unauthorized(struct ftl_conn *api);
