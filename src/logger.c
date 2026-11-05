@@ -171,12 +171,19 @@ static void logger_wake(void);
 static void publish_sink_fds(void);
 static const char *dnsmasq_func_name(enum dnsmasq_func func);
 
+// Result of a ring enqueue attempt.
+typedef enum {
+	LOG_RING_OK      = 0,  // record enqueued successfully
+	LOG_RING_FULL    = 1,  // queue is full (tail - head >= capacity)
+	LOG_RING_RACE    = 2,  // CAS on tail failed (concurrent producer won the race)
+} log_ring_result_e;
+
 // ---- Ring queue (Vyukov bounded MPSC with per-slot seq markers) -------------
-static bool log_ring_enqueue(struct log_record *rec, log_ring_counter_t *claimed)
+static log_ring_result_e log_ring_enqueue(struct log_record *rec, log_ring_counter_t *claimed)
 {
 	logRing *r = ring;
 	if (r == NULL)
-		return false;
+		return LOG_RING_FULL;
 
 	log_ring_counter_t tail = atomic_load_explicit(&r->tail, memory_order_relaxed);
 	for (;;)
@@ -186,13 +193,14 @@ static bool log_ring_enqueue(struct log_record *rec, log_ring_counter_t *claimed
 		// written over a slot the consumer has not yet consumed.
 		const log_ring_counter_t head = atomic_load_explicit(&r->head, memory_order_acquire);
 		if (tail - head >= LOGGER_RING_SLOTS)
-			return false;
+			return LOG_RING_FULL;
 
 		if (atomic_compare_exchange_weak_explicit(&r->tail, &tail, tail + 1,
 		                                          memory_order_relaxed,
 		                                          memory_order_relaxed))
 			break;
 		// tail was updated by the failed CAS; re-check capacity and retry
+		return LOG_RING_RACE;
 	}
 
 	const log_ring_counter_t slot = tail % LOGGER_RING_SLOTS;
@@ -201,7 +209,7 @@ static bool log_ring_enqueue(struct log_record *rec, log_ring_counter_t *claimed
 	// (via the copying read) only after seeing this marker.
 	atomic_store_explicit(&r->seq[slot], tail + 1, memory_order_release);
 	*claimed = tail;
-	return true;
+	return LOG_RING_OK;
 }
 
 static bool log_ring_pop(struct log_record *rec)
@@ -342,7 +350,8 @@ static bool try_enqueue(struct log_record *rec)
 	log_ring_counter_t claimed;
 	for (;;)
 	{
-		if (log_ring_enqueue(rec, &claimed))
+		const log_ring_result_e result = log_ring_enqueue(rec, &claimed);
+		if (result == LOG_RING_OK)
 		{
 			// Wake the consumer only when OUR record made the previously
 			// empty queue non-empty (head == claimed still holds).  If the
@@ -354,13 +363,33 @@ static bool try_enqueue(struct log_record *rec)
 			return true;
 		}
 
-		if (retries++ >= max_retries)
+		if (result == LOG_RING_FULL)
 		{
-			atomic_fetch_add_explicit(&ring->dropped, 1, memory_order_relaxed);
-			return false;
+			if (retries++ >= max_retries)
+			{
+				atomic_fetch_add_explicit(&ring->dropped, 1, memory_order_relaxed);
+				return false;
+			}
 		}
-		// Bounded spin instead of usleep: this may run inside a crash handler.
-		sched_yield();
+		// For LOG_RING_RACE we retry immediately without counting against max_retries
+		// since it's a transient contention, not actual backpressure.
+
+		// Progressive backpressure:
+		// - first 10 attempts: sched_yield() only (fast path for brief contention)
+		// - next 90 attempts: 100us sleep (gives consumer time to drain)
+		// - beyond that: 1ms sleep (heavy backpressure for sustained overload)
+		if (retries < 10)
+		{
+			sched_yield();
+		}
+		else if (retries < 100)
+		{
+			usleep(100);
+		}
+		else
+		{
+			usleep(1000);
+		}
 	}
 }
 
