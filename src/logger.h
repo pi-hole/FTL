@@ -39,6 +39,16 @@
 // while the consumer was already draining).
 #define LOGGER_POLL_TIMEOUT_MS 20
 
+// Size of the per-sink userspace write buffer used to batch log lines before
+// issuing a single write() syscall.  Batching amortizes syscall and filesystem
+// (e.g. btrfs delalloc) overhead at high log rates.  Set to 0 at compile time
+// (-DLOGGER_SINK_BUFFER_SIZE=0) to disable batching and write each record
+// directly, restoring the original per-record write() behavior.  The value must
+// be large enough to hold at least one full log line (a few KiB is plenty).
+#ifndef LOGGER_SINK_BUFFER_SIZE
+#define LOGGER_SINK_BUFFER_SIZE 65536u
+#endif
+
 // Who produced a log record.  Decides which file sink (FTL.log vs.
 // webserver.log vs. pihole.log) a record is written to and which FIFO buffer
 // it is relayed to.

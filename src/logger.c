@@ -143,6 +143,10 @@ typedef struct {
 	int fd;                      // -1 when closed/unavailable
 	dev_t dev;                   // identity of the file fd was opened on,
 	ino_t ino;                   // for the stale-descriptor guard in sink_close()
+#if LOGGER_SINK_BUFFER_SIZE > 0
+	char buf[LOGGER_SINK_BUFFER_SIZE];  // userspace write batch buffer
+	size_t used;                        // bytes currently buffered
+#endif
 } loggerSink;
 
 static loggerSink sink_ftl = { .path = { 0 }, .fd = -1 };
@@ -418,6 +422,86 @@ static const char *logger_prio(const struct log_record *rec)
 }
 
 // ---- Sink primitives ------------------------------------------------------------
+#if LOGGER_SINK_BUFFER_SIZE > 0
+static bool sink_flush(loggerSink *sink)
+{
+	if(sink->fd < 0)
+	{
+		sink->used = 0;
+		return false;
+	}
+	if(sink->used == 0)
+		return true;
+
+	size_t written = 0;
+	while(written < sink->used)
+	{
+		ssize_t rc = write(sink->fd, sink->buf + written, sink->used - written);
+		if(rc < 0)
+		{
+			if(errno == EINTR)
+				continue;
+			sink->used = 0;
+			return false;
+		}
+		if(rc == 0)
+		{
+			sink->used = 0;
+			return false;
+		}
+		written += (size_t)rc;
+	}
+	sink->used = 0;
+	return true;
+}
+
+static bool sink_write(loggerSink *sink, const char *buf, const size_t len)
+{
+	if(sink->fd < 0)
+	{
+		sink->used = 0;
+		return false;
+	}
+
+	if(len >= LOGGER_SINK_BUFFER_SIZE)
+	{
+		if(!sink_flush(sink))
+			return false;
+
+		size_t written = 0;
+		while(written < len)
+		{
+			ssize_t rc = write(sink->fd, buf + written, len - written);
+			if(rc < 0)
+			{
+				if(errno == EINTR)
+					continue;
+				return false;
+			}
+			if(rc == 0)
+				return false;
+			written += (size_t)rc;
+		}
+		return true;
+	}
+
+	if(sink->used + len > LOGGER_SINK_BUFFER_SIZE)
+	{
+		if(!sink_flush(sink))
+			return false;
+	}
+
+	memcpy(sink->buf + sink->used, buf, len);
+	sink->used += len;
+	return true;
+}
+#else
+static bool sink_flush(loggerSink *sink)
+{
+	(void)sink;
+	return true;
+}
+
 static bool sink_write(loggerSink *sink, const char *buf, const size_t len)
 {
 	if(sink->fd < 0)
@@ -439,9 +523,12 @@ static bool sink_write(loggerSink *sink, const char *buf, const size_t len)
 	}
 	return true;
 }
+#endif
 
 static void sink_close(loggerSink *sink)
 {
+	sink_flush(sink);
+
 	if(sink->fd < 0)
 		return;
 
@@ -574,6 +661,8 @@ void __attribute__ ((format (printf, 3, 4))) log_write_raw(const int priority,
 
 	if(!sink_write(&sink_ftl, line, (size_t)off))
 		syslog(priority, "%s", msg);
+	else
+		sink_flush(&sink_ftl);
 }
 
 // ---- Record rendering -----------------------------------------------------------
@@ -698,6 +787,10 @@ static void logger_drain(void)
 	struct log_record rec;
 	while(log_ring_pop(&rec))
 		logger_dispatch(&rec);
+
+	sink_flush(&sink_ftl);
+	sink_flush(&sink_webserver);
+	sink_flush(&sink_dnsmasq);
 }
 
 // ---- Flush ------------------------------------------------------------------
@@ -707,6 +800,10 @@ static void logger_do_flush(void)
 	// and truncate pihole.log so an API flush empties exactly the records
 	// produced before the request was posted.
 	logger_drain();
+
+	sink_flush(&sink_ftl);
+	sink_flush(&sink_webserver);
+	sink_flush(&sink_dnsmasq);
 
 	int trunc_err = 0;
 	// Clear the dnsmasq FIFO.  Same single-writer argument as logger_fifo():
