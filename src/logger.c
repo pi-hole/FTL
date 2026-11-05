@@ -678,7 +678,7 @@ static const char *logger_cached_timestr(const double timein)
 	const time_t seconds = (time_t)timein;
 
 	static time_t cached_sec = (time_t)-1;
-	static char cached_prefix[32];
+	static char cached_prefix[128];
 	static int prefix_len = 0;
 	static char cached_zone[16];
 	static char cached_ts[TIMESTR_SIZE];
@@ -749,7 +749,7 @@ static const char *logger_cached_ctime15(const double timein)
 	};
 
 	static time_t cached_sec = (time_t)-1;
-	static char cached_ts[16];
+	static char cached_ts[32];
 
 	if(seconds != cached_sec)
 	{
