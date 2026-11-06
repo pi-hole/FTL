@@ -377,6 +377,8 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 		// Error
 		log_err("Invalid decoded salt length: %zu, should be %d",
 		        salt_len, SALT_LEN);
+		free(*salt);
+		*salt = NULL;
 		return false;
 	}
 
@@ -386,6 +388,8 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 	{
 		// Error
 		log_err("Error while decoding hash");
+		free(*salt);
+		*salt = NULL;
 		return false;
 	}
 	if(hash_len != SHA256_DIGEST_SIZE)
@@ -393,6 +397,10 @@ static bool parse_PHC_string(const char *phc, size_t *s_cost, size_t *t_cost, ui
 		// Error
 		log_err("Invalid decoded hash length: %zu, should be %d",
 		        hash_len, SHA256_DIGEST_SIZE);
+		free(*salt);
+		free(*hash);
+		*salt = NULL;
+		*hash = NULL;
 		return false;
 	}
 
@@ -411,6 +419,22 @@ char * __attribute__((malloc)) create_password(const char *password)
 	return balloon_password(password, salt, true);
 }
 
+// Password attempts within the current second, shared by all webserver worker
+// threads, so they are guarded by a mutex to keep the rate limit effective
+static pthread_mutex_t rate_limit_lock = PTHREAD_MUTEX_INITIALIZER;
+static time_t last_password_attempt = 0;
+static unsigned int num_password_attempts = 0;
+
+// Hand back the attempt a correct password used up, successful logins do not
+// count against the rate limit
+static void refund_password_attempt(void)
+{
+	pthread_mutex_lock(&rate_limit_lock);
+	if(num_password_attempts > 0)
+		num_password_attempts--;
+	pthread_mutex_unlock(&rate_limit_lock);
+}
+
 enum password_result verify_login(const char *password)
 {
 	// Check if this is the CLI password
@@ -423,11 +447,14 @@ enum password_result verify_login(const char *password)
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
 
-	// Check if an application password is set and if it matches
+	// Check if an application password is set and if it matches. The check
+	// above already counted this attempt against the rate limit, so this one
+	// does not count it again, and a correct app password hands it back
 	if(pw == PASSWORD_INCORRECT &&
 	   strlen(config.webserver.api.app_pwhash.v.s) > 0 &&
-	   verify_password(password, config.webserver.api.app_pwhash.v.s, true) == PASSWORD_CORRECT)
+	   verify_password(password, config.webserver.api.app_pwhash.v.s, false) == PASSWORD_CORRECT)
 	{
+		refund_password_attempt();
 		log_debug(DEBUG_API, "App password correct");
 		return APPPASSWORD_CORRECT;
 	}
@@ -446,34 +473,31 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 	if(password == NULL || password[0] == '\0')
 		return PASSWORD_INCORRECT;
 
-	// Check if there has already been one login attempt within this second.
-	// verify_password() runs concurrently from multiple webserver worker
-	// threads, so the shared counters must be guarded by a mutex to keep
-	// the rate limit effective.
-	static pthread_mutex_t rate_limit_lock = PTHREAD_MUTEX_INITIALIZER;
-	static time_t last_password_attempt = 0;
-	static unsigned int num_password_attempts = 0;
-	pthread_mutex_lock(&rate_limit_lock);
-	if(rate_limiting &&
-	   last_password_attempt > 0 &&
-	   last_password_attempt == time(NULL))
+	// Check if there have already been login attempts within this second. A
+	// check without rate limiting leaves the counters alone
+	if(rate_limiting)
 	{
-		// Check if we have reached the maximum number of attempts
-		if(++num_password_attempts > MAX_PASSWORD_ATTEMPTS_PER_SECOND)
+		pthread_mutex_lock(&rate_limit_lock);
+		if(last_password_attempt > 0 &&
+		   last_password_attempt == time(NULL))
 		{
-			// Rate limit reached
-			pthread_mutex_unlock(&rate_limit_lock);
-			sleepms(250);
-			return PASSWORD_RATE_LIMITED;
+			// Check if we have reached the maximum number of attempts
+			if(++num_password_attempts > MAX_PASSWORD_ATTEMPTS_PER_SECOND)
+			{
+				// Rate limit reached
+				pthread_mutex_unlock(&rate_limit_lock);
+				sleepms(250);
+				return PASSWORD_RATE_LIMITED;
+			}
 		}
+		else
+		{
+			// Reset counter
+			num_password_attempts = 1;
+			last_password_attempt = time(NULL);
+		}
+		pthread_mutex_unlock(&rate_limit_lock);
 	}
-	else
-	{
-		// Reset counter
-		num_password_attempts = 1;
-		last_password_attempt = time(NULL);
-	}
-	pthread_mutex_unlock(&rate_limit_lock);
 
 	// Check password hash format
 	if(pwhash[0] == '$')
@@ -495,15 +519,9 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 		free(salt);
 		free(config_hash);
 
-		// Successful logins do not count against rate-limiting. Take the
-		// same lock the increment above uses - this is a read-modify-write
-		// on a variable that mutex otherwise protects
-		if(result)
-		{
-			pthread_mutex_lock(&rate_limit_lock);
-			num_password_attempts--;
-			pthread_mutex_unlock(&rate_limit_lock);
-		}
+		// Successful logins do not count against rate-limiting
+		if(result && rate_limiting)
+			refund_password_attempt();
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}
@@ -529,9 +547,8 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 			}
 
 			// Successful logins do not count against rate-limiting
-			pthread_mutex_lock(&rate_limit_lock);
-			num_password_attempts--;
-			pthread_mutex_unlock(&rate_limit_lock);
+			if(rate_limiting)
+				refund_password_attempt();
 		}
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;

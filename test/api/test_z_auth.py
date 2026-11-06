@@ -34,6 +34,8 @@ class TestAuthWorkflow:
     05: setting a regular password via API
     06: incorrect password is rejected
     07: correct password is accepted
+    07g: correct app-password logins do not use up the rate limit
+    07h: wrong passwords one after the other still hit the rate limit
     08: rate limiting is enforced after many wrong attempts
     09: removing the password via API
     10: no password set => session valid again
@@ -263,10 +265,6 @@ class TestAuthWorkflow:
 
     def test_07f_app_session_cannot_read_secrets(self):
         """An app session without app_sudo cannot export the config or read the password hashes."""
-        # An app-password login is checked against both hashes, which counts
-        # two attempts against the per-second rate limit, so start in a
-        # second the logins above have not used
-        time.sleep(1.1)
         r = requests.post(
             f"{FTL_URL}/api/auth",
             json={"password": TestAuthWorkflow._app_password},
@@ -288,6 +286,60 @@ class TestAuthWorkflow:
             assert api["app_pwhash"] == "********"
         finally:
             requests.delete(f"{FTL_URL}/api/auth", headers=headers, timeout=5)
+
+    # -- 07g: correct app-password logins do not use up the rate limit --
+
+    def test_07g_app_password_logins_in_a_row(self):
+        """Correct app-password logins hand their attempt back like correct passwords do.
+
+        Each one is checked against the main hash first, and that check
+        counts the attempt. The logins start right after a second begins, so
+        as many of them as possible fall into it, more than the three
+        attempts the limit allows on most machines.
+        """
+        time.sleep(1.02 - time.time() % 1)
+        statuses = []
+        sids = []
+        for _ in range(5):
+            r = requests.post(
+                f"{FTL_URL}/api/auth",
+                json={"password": TestAuthWorkflow._app_password},
+                timeout=10,
+            )
+            statuses.append(r.status_code)
+            if r.status_code == 200:
+                sids.append(r.json()["session"]["sid"])
+        for sid in sids:
+            requests.delete(f"{FTL_URL}/api/auth", headers={"X-FTL-SID": sid}, timeout=5)
+        assert statuses == [200, 200, 200, 200, 200]
+
+    # -- 07h: wrong passwords one after the other still hit the rate limit --
+
+    def test_07h_wrong_passwords_in_a_row_are_limited(self):
+        """With an app password set, wrong passwords sent one at a time still reach the limit.
+
+        The app password is checked without counting the attempt again, and
+        that check must not reset the counter either. Machines too slow to
+        fit more than the three allowed attempts into one second cannot
+        show it, the test is skipped there.
+        """
+        time.sleep(1.02 - time.time() % 1)
+        seconds = []
+        statuses = []
+        for _ in range(12):
+            start = time.time()
+            r = requests.post(f"{FTL_URL}/api/auth", json={"password": "wrong-07h"}, timeout=10)
+            end = time.time()
+            if int(end) == int(start):
+                seconds.append(int(start))
+            statuses.append(r.status_code)
+            # A slow machine cannot show it, no need to try all twelve there
+            if r.status_code == 429 or end - start > 0.25:
+                break
+        time.sleep(1.1)
+        if 429 not in statuses and max(seconds.count(x) for x in set(seconds) or [0]) <= 4:
+            pytest.skip("fewer than five attempts fit into one second here")
+        assert 429 in statuses, f"no 429 among {statuses}"
 
     # -- 08: rate limiting enforced --
 

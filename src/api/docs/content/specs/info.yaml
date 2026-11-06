@@ -474,13 +474,13 @@ components:
                       description: raw values
                       items:
                         type: number
-                      example: [0.58837890625, 0.64990234375, 0.66748046875]
+                      example: [0.58, 0.65, 0.67]
                     percent:
                       type: array
                       description: raw values
                       items:
                         type: number
-                      example: [4.903157711029053, 5.415853023529053, 5.562337398529053]
+                      example: [7.25, 8.125, 8.375]
             ftl:
               type: object
               description: FTL process info

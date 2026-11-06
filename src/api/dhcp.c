@@ -73,7 +73,7 @@ int api_dhcp_leases_GET(struct ftl_conn *api)
 }
 
 // defined in dnsmasq_interface.c
-extern bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint);
+extern bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint, bool *timed_out);
 
 // Delete DHCP leases
 int api_dhcp_leases_DELETE(struct ftl_conn *api)
@@ -97,7 +97,18 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api)
 	log_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
 
 	const char *hint = NULL;
-	const bool found = FTL_unlink_DHCP_lease(api->item, &hint);
+	bool timed_out = false;
+	const bool found = FTL_unlink_DHCP_lease(api->item, &hint, &timed_out);
+	if(timed_out)
+	{
+		// The resolver was too busy to answer in time, the request may
+		// succeed when it is repeated
+		return send_json_error(api,
+		                       503,
+		                       "service_unavailable",
+		                       "Failed to delete DHCP lease",
+		                       hint);
+	}
 	if(!found && hint != NULL)
 	{
 		// Send error when something went wrong (hint is not NULL)
