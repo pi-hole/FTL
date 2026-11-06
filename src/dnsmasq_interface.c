@@ -76,6 +76,8 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line);
 static void FTL_dnssec(const char *result, const union all_addr *addr, const int id, const char *file, const int line);
 static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[ADDRSTRLEN+1], in_port_t *port);
+static void mysockaddr_extract_key_port(const union mysockaddr *addr, struct client_key *key, in_port_t *port);
+static const char *client_ip(char clientIP[ADDRSTRLEN+1], const struct client_key *key);
 static void alladdr_extract_ip(union all_addr *addr, const sa_family_t family, char ip[ADDRSTRLEN+1]);
 static void check_pihole_PTR(char *domain);
 #define query_set_dnssec(query, dnssec) _query_set_dnssec(query, dnssec, __FILE__, __LINE__)
@@ -986,6 +988,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	const sa_family_t family = addr ? addr->sa.sa_family : AF_INET;
 	in_port_t clientPort = daemon->port;
 	bool internal_query = false;
+	// Clients are looked up by their binary address. clientIP is only set
+	// for EDNS(0) clients, see client_ip() for all others
+	struct client_key client_key = { 0 };
 	char clientIP[ADDRSTRLEN+1] = { 0 };
 	// Set when clientIP comes from EDNS(0) rather than the packet source
 	bool edns_client = false;
@@ -1019,19 +1024,27 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	else if(addr)
 	{
 		// Use original requestor
-		mysockaddr_extract_ip_port(addr, clientIP, &clientPort);
+		mysockaddr_extract_key_port(addr, &client_key, &clientPort);
 	}
 	else
 	{
 		// No client address available, this is an automatically generated (e.g.
-		// DNSSEC) query
+		// DNSSEC) query, attributed to "::"
 		internal_query = true;
-		strcpy(clientIP, "::");
+		client_key.family = AF_INET6;
 	}
 
+	// An EDNS(0) client that is no IP address keeps an all-zero key and is
+	// looked up by its string below
+	if(edns_client)
+		client_key_from_str(&client_key, clientIP);
+
 	// Check if user wants to skip queries coming from localhost
+	static const struct client_key localhost4 = { .family = AF_INET, .addr = { 127, 0, 0, 1 } };
+	static const struct client_key localhost6 = { .family = AF_INET6, .addr = { [15] = 1 } };
 	if(config.dns.ignoreLocalhost.v.b &&
-	   (strcmp(clientIP, "127.0.0.1") == 0 || strcmp(clientIP, "::1") == 0))
+	   (memcmp(&client_key, &localhost4, sizeof(client_key)) == 0 ||
+	    memcmp(&client_key, &localhost6, sizeof(client_key)) == 0))
 		return false;
 
 	// Lock shared memory
@@ -1041,7 +1054,9 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 	// Find client IP
 	PERF_START(_pfc);
-	const int clientID = findClientID(clientIP, true, false, querytimestamp);
+	const int clientID = client_key.family != AF_UNSPEC ?
+	                     findClientIDaddr(&client_key, true, querytimestamp) :
+	                     findClientID(clientIP, true, false, querytimestamp);
 	PERF_END(_pfc, PERF_STAT_FIND_CLIENT);
 
 	// Get client pointer
@@ -1097,7 +1112,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 
 		// clientIP is a local buffer, so it stays valid here
 		if(rate_limit_count > 0)
-			logg_rate_limit_message(clientIP, rate_limit_count);
+			logg_rate_limit_message(client_ip(clientIP, &client_key), rate_limit_count);
 
 		return true;
 	}
@@ -1123,7 +1138,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 		log_debug(DEBUG_QUERIES, "**** new %sIPv%d %s%s \"%s\" from %s/%s#%d (ID %i, FTL %i, %s:%i)",
 		          proto == TCP ? "TCP " : proto == UDP ? "UDP " : "", family == AF_INET ? 4 : 6,
 		          types, querytype == TYPE_NONE ? "" : " query", name, interface,
-		          internal_query ? "<internal>" : clientIP, clientPort,
+		          internal_query ? "<internal>" : client_ip(clientIP, &client_key), clientPort,
 		          id, queryID, short_path(file), line);
 	}
 
@@ -1254,7 +1269,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 				{
 					const char *clientName = getstr(client->namepos);
 					log_debug(DEBUG_CLIENTS, "Client %s (%s) changed interface: %s -> %s",
-					          clientIP, clientName, oldiface, interface);
+					          client_ip(clientIP, &client_key), clientName, oldiface, interface);
 				}
 
 				// Adopt the new interface so the in-memory
@@ -1345,14 +1360,14 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 			if(hwlen == 6)
 			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned hardware address "
-				          "%02X:%02X:%02X:%02X:%02X:%02X", clientIP,
+				          "%02X:%02X:%02X:%02X:%02X:%02X", client_ip(clientIP, &client_key),
 				          hwaddr[0], hwaddr[1], hwaddr[2],
 				          hwaddr[3], hwaddr[4], hwaddr[5]);
 			}
 			else
 			{
 				log_debug(DEBUG_ARP, "find_mac(\"%s\") returned %i bytes of data",
-				          clientIP, hwlen);
+				          client_ip(clientIP, &client_key), hwlen);
 			}
 		}
 	}
@@ -2818,6 +2833,31 @@ static void mysockaddr_extract_ip_port(const union mysockaddr *server, char ip[A
 		                server->in.sin_port :
 		                server->in6.sin6_port);
 	}
+}
+
+// Same as mysockaddr_extract_ip_port(), but into a client lookup key, which
+// spares formatting the address on every query
+static void mysockaddr_extract_key_port(const union mysockaddr *addr, struct client_key *key, in_port_t *port)
+{
+	if(addr->sa.sa_family == AF_INET)
+	{
+		client_key_set(key, AF_INET, &addr->in.sin_addr);
+		*port = ntohs(addr->in.sin_port);
+	}
+	else
+	{
+		client_key_set(key, AF_INET6, &addr->in6.sin6_addr);
+		*port = ntohs(addr->in6.sin6_port);
+	}
+}
+
+// The client string of a query, formatted from its key only when needed.
+// EDNS(0) clients have it already
+static const char *client_ip(char clientIP[ADDRSTRLEN+1], const struct client_key *key)
+{
+	if(clientIP[0] == '\0')
+		inet_ntop(key->family, key->addr, clientIP, ADDRSTRLEN);
+	return clientIP;
 }
 
 // Compute cache/upstream response time

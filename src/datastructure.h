@@ -86,15 +86,19 @@ typedef struct {
 	double lastQuery;
 } upstreamsData;
 
+// Client lookup key, IPv4 in the first four address bytes and the rest zero.
+// All-zero (AF_UNSPEC) for clients without an address, found by their string
+struct client_key {
+	uint8_t family;
+	unsigned char addr[16];
+};
+
 typedef struct {
 	// Hot fields ordered first for cache locality; cold overTime[] array at
 	// end. Contains size_t fields -> size differs by architecture (64-bit:
-	// 688 bytes for OVERTIME_SLOTS=145; 32-bit: ~668 bytes).
-	// On 64-bit, 4 bytes between hash (offset 48) and groupspos (offset
-	// 56) are intentional alignment padding: they ensure ippos lands at
-	// offset 64, the start of cache line 1. Without them, ippos would be
-	// at offset 60 and straddle the cache line boundary (bytes 60–67),
-	// causing a split load on every client IP comparison.
+	// 704 bytes for OVERTIME_SLOTS=145; 32-bit: 688 on armhf, 684 on i386).
+	// key is compared on every lookup and shares cache line 0 with magic
+	// and flags, its family fills the padding byte after flags.
 	unsigned char magic;
 	// -1 before the first MAC lookup, 0 if it found none. Explicitly signed,
 	// plain char is unsigned on ARM and RISC-V
@@ -108,6 +112,7 @@ typedef struct {
 		bool in_database:1;
 		bool groups_looked_up:1; // get_client_groupids() ran at least once
 	} flags;
+	struct client_key key;
 	int count;
 	int blockedcount;
 	int aliasclient_id; // -1 if not an alias-client
@@ -125,7 +130,7 @@ typedef struct {
 	uint32_t lastMACLookup; // last recorded MAC lookup, see SHM_TIME_EPOCH
 	// overTime is accessed only every 10 minutes (cold), so it lives at the
 	// end to keep hot fields within the first two 64-byte cache lines:
-	// line 0 (0–63): magic...hash + groupspos; line 1 (64–127): ippos...lastMACLookup.
+	// line 0 (0-63): magic...numQueriesARP; line 1 (64-127): hash...lastMACLookup.
 	int overTime[OVERTIME_SLOTS];
 } clientsData;
 
@@ -182,6 +187,7 @@ typedef struct {
 struct lookup_data {
 	const char *domain;
 	const char *client;
+	const struct client_key *client_key; // NULL to look up by client string
 	unsigned int domainID;
 	unsigned int clientID;
 	enum query_type query_type;
@@ -198,6 +204,10 @@ int _findUpstreamID(const char *upstream, const in_port_t port, int line, const 
 int _findDomainID(const char *domain, const bool count, int line, const char *func, const char *file);
 #define findClientID(client, count, aliasclient, now) _findClientID(client, count, aliasclient, now, __LINE__, __FUNCTION__, __FILE__)
 int _findClientID(const char *client, const bool count, const bool aliasclient, const double now, int line, const char *func, const char *file);
+#define findClientIDaddr(key, count, now) _findClientIDaddr(key, count, now, __LINE__, __FUNCTION__, __FILE__)
+int _findClientIDaddr(const struct client_key *key, const bool count, const double now, int line, const char *func, const char *file);
+void client_key_set(struct client_key *key, const int family, const void *addr);
+bool client_key_from_str(struct client_key *key, const char *ip);
 #define findCacheID(domainID, clientID, query_type, create_new) _findCacheID(domainID, clientID, query_type, create_new, __FUNCTION__, __LINE__, __FILE__)
 int _findCacheID(const unsigned int domainID, const unsigned int clientID, const enum query_type query_type, const bool create_new, const char *func, const int line, const char *file);
 bool isValidIPv4(const char *addr);
@@ -262,5 +272,6 @@ DNSCacheData *_getDNSCache(const unsigned int cacheID, const bool checkMagic, co
 
 // Helper functions
 uint32_t __attribute__ ((pure)) hashStr(const char *s);
+uint32_t __attribute__ ((pure)) hashBytes(const void *data, const size_t len);
 
 #endif //DATASTRUCTURE_H

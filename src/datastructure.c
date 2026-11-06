@@ -91,6 +91,19 @@ uint32_t __attribute__ ((pure)) hashStr(const char *s)
 	return hash;
 }
 
+// FNV-1a as in hashStr(), over a fixed number of bytes, e.g., a client address
+uint32_t __attribute__ ((pure)) hashBytes(const void *data, const size_t len)
+{
+	const unsigned char *p = data;
+	uint32_t hash = 2166136261u; // FNV offset basis
+	for(size_t i = 0; i < len; i++)
+	{
+		hash ^= p[i];
+		hash *= 16777619u; // FNV prime
+	}
+	return hash;
+}
+
 /**
  * @brief Computes a hash value for the cache IDs using a simple XOR operation.
  *
@@ -374,18 +387,49 @@ static bool cmp_client(const struct lookup_table *entry, const struct lookup_dat
 	if(client == NULL)
 		return false;
 
-	// Compare client strings
-	return strcmp(getstr(client->ippos), lookup_data->client) == 0;
+	// Compare binary client addresses, an alias-client has none
+	if(lookup_data->client_key != NULL)
+		return !client->flags.aliasclient &&
+		       memcmp(&client->key, lookup_data->client_key, sizeof(client->key)) == 0;
+
+	// Compare client strings, only of clients without an address
+	return client->key.family == AF_UNSPEC &&
+	       strcmp(getstr(client->ippos), lookup_data->client) == 0;
 }
 
-int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
-                  const double now, int line, const char *func, const char *file)
+// Lookup key of an IPv4 (struct in_addr) or IPv6 (struct in6_addr) address
+void client_key_set(struct client_key *key, const int family, const void *addr)
 {
-	// Get client hash
-	const uint32_t hash = hashStr(clientIP);
+	*key = (struct client_key){ .family = family };
+	memcpy(key->addr, addr, family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr));
+}
 
-	// Use lookup table to speed up domain lookups
-	const struct lookup_data lookup_data = { .client = clientIP };
+// Parse an IP address string into a lookup key, false if it is none
+bool client_key_from_str(struct client_key *key, const char *ip)
+{
+	*key = (struct client_key){ 0 };
+	if(inet_pton(AF_INET, ip, key->addr) == 1)
+		key->family = AF_INET;
+	else if(inet_pton(AF_INET6, ip, key->addr) == 1)
+		key->family = AF_INET6;
+	else
+	{
+		// A failed inet_pton() may have written part of an address
+		*key = (struct client_key){ 0 };
+		return false;
+	}
+
+	return true;
+}
+
+// Find a client by its address (key) or, if key is NULL, by its string. A new
+// client gets clientIP as its string, formatted from the key if NULL
+static int find_client(const uint32_t hash, const struct client_key *key, const char *clientIP,
+                       const bool count, const bool aliasclient, const double now,
+                       int line, const char *func, const char *file)
+{
+	// Use lookup table to speed up client lookups
+	const struct lookup_data lookup_data = { .client = clientIP, .client_key = key };
 	unsigned int clientID = 0;
 	if(lookup_find_id(CLIENTS_LOOKUP, hash, &lookup_data, &clientID, cmp_client))
 	{
@@ -418,6 +462,14 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		return -1;
 	}
 
+	// The string of a client is formatted only once, when it is created
+	char ipstr[INET6_ADDRSTRLEN] = { 0 };
+	if(key != NULL && clientIP == NULL)
+	{
+		inet_ntop(key->family, key->addr, ipstr, sizeof(ipstr));
+		clientIP = ipstr;
+	}
+
 	log_debug(DEBUG_GC, "New client: %s (ID %u)", clientIP, clientID);
 
 	// Insert domain into lookup table
@@ -431,6 +483,8 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 	client->blockedcount = 0;
 	// Store client IP - no need to check for NULL here as it doesn't harm
 	client->ippos = addstr(clientIP);
+	// Store the lookup key, all-zero for a client without an address
+	client->key = key != NULL ? *key : (struct client_key){ 0 };
 	// Store pre-computed hash for faster lookups later on
 	client->hash = hash;
 	// Initialize client hostname
@@ -482,6 +536,24 @@ int _findClientID(const char *clientIP, const bool count, const bool aliasclient
 		reset_aliasclient(NULL, client);
 
 	return clientID;
+}
+
+int _findClientIDaddr(const struct client_key *key, const bool count,
+                      const double now, int line, const char *func, const char *file)
+{
+	return find_client(hashBytes(key, sizeof(*key)), key, NULL, count, false, now, line, func, file);
+}
+
+int _findClientID(const char *clientIP, const bool count, const bool aliasclient,
+                  const double now, int line, const char *func, const char *file)
+{
+	// Alias-clients have no address, they and the rare string that is not
+	// an IP address are looked up by their string
+	struct client_key key;
+	if(!aliasclient && client_key_from_str(&key, clientIP))
+		return find_client(hashBytes(&key, sizeof(key)), &key, clientIP, count, false, now, line, func, file);
+
+	return find_client(hashStr(clientIP), NULL, clientIP, count, aliasclient, now, line, func, file);
 }
 
 /**
