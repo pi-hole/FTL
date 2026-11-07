@@ -105,6 +105,30 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 // static TLS, which glibc takes from every thread's stack. NULL when out of memory.
 uint8_t *dotdoh_thread_buf(uint8_t **slot, size_t size);
 
+// Longest query dnsmasq accepts over TCP, and over UDP (dnsmasq_interface.c)
+size_t FTL_dnsmasq_query_max(void) __attribute__((pure));
+size_t FTL_dnsmasq_udp_query_max(void) __attribute__((pure));
+
+// UDP handoff of the DoT and DoQ reactors, answered from dnsmasq's main cache. A
+// socket whose answer arrived goes back with dotdoh_udp_give(), any other one is
+// closed with dotdoh_fd_close(), the idle ones with dotdoh_udp_release()
+int dotdoh_udp_take(void);
+void dotdoh_udp_give(int fd);
+void dotdoh_udp_release(void);
+// Send the message under a random ID, saving the client's in id, or send it once
+// more (id NULL). On failure the client's ID is back in the message
+bool dotdoh_udp_send(int fd, uint8_t *msg, size_t len, uint8_t id[2]);
+// Read the answer to msg. Returns its length with the client's ID id put back, 0
+// for a truncated answer, DOTDOH_UDP_PENDING while none has arrived, or -1
+#define DOTDOH_UDP_PENDING (-2)
+ssize_t dotdoh_udp_recv(int fd, const uint8_t *msg, size_t len, const uint8_t id[2],
+                        uint8_t *answer, size_t answer_sz);
+// When an unanswered UDP handoff is sent once more, which makes dnsmasq try all
+// servers. Ahead of dnsmasq's fast retry (1 s by default) to the same server
+#define LOOPBACK_UDP_RESEND_MS 900
+// Monotonic milliseconds, for the resend timers
+int64_t dotdoh_msec(void);
+
 // Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
 // handoffs and the connections accepted by the encrypted-upstream proxy). A
 // forked dnsmasq TCP worker inherits them and must close them, or it never
