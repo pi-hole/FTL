@@ -279,9 +279,6 @@ static int pool_n = 0;
 // its answer arrives before we give up. Failover to another server or DNSSEC
 // validation over TCP can still take longer than this
 #define LOOPBACK_IO_TIMEOUT_S 12
-// When an unanswered UDP handoff is repeated, which makes dnsmasq try all servers.
-// Ahead of dnsmasq's fast retry (1 s by default), which resends to the same server
-#define LOOPBACK_UDP_RESEND_MS 900
 
 // Children to leave dnsmasq for plain TCP queries and DNSSEC fallback, which
 // draw on the same pool. Encrypted listeners get the rest.
@@ -556,11 +553,11 @@ static int64_t monotonic_msec(void)
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-static bool loopback_udp_send(const uint8_t *query, const size_t qlen)
+static bool loopback_udp_send(const int fd, const uint8_t *query, const size_t qlen)
 {
 	ssize_t sent;
 	do
-		sent = send(udp_fd, query, qlen, 0);
+		sent = send(fd, query, qlen, 0);
 	while(sent < 0 && errno == EINTR);
 	if(sent < 0)
 		log_debug(DEBUG_RESOLVER, "dotdoh: send to loopback DNS failed: %s", strerror(errno));
@@ -582,7 +579,7 @@ static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
 		pthread_setspecific(udp_fd_key, &udp_fd);
 	}
 
-	if(!loopback_udp_send(query, qlen))
+	if(!loopback_udp_send(udp_fd, query, qlen))
 		return -1;
 
 	// Wait as long as the TCP handoff does
@@ -597,7 +594,7 @@ static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
 		{
 			// A failed resend leaves the first copy to be answered
 			resent = true;
-			loopback_udp_send(query, qlen);
+			loopback_udp_send(udp_fd, query, qlen);
 		}
 		struct pollfd pfd = { .fd = udp_fd, .events = POLLIN };
 		const int ready = poll(&pfd, 1, (int)((resent ? end : resend) - now));
@@ -628,6 +625,79 @@ static ssize_t loopback_udp_exchange(const uint8_t *query, const size_t qlen,
 
 	log_debug(DEBUG_RESOLVER, "dotdoh: no answer from loopback DNS");
 	return -1;
+}
+
+// UDP sockets of the DoT and DoQ reactors. Each carries one query at a time, so
+// an answer on it belongs to the exchange holding it. A reactor keeps its idle
+// sockets, and one goes back only once the answer to its query has arrived
+#define UDP_IDLE_MAX 16
+static _Thread_local int udp_idle[UDP_IDLE_MAX];
+static _Thread_local unsigned int udp_nidle = 0;
+
+int64_t dotdoh_msec(void)
+{
+	return monotonic_msec();
+}
+
+int dotdoh_udp_take(void)
+{
+	if(udp_nidle > 0)
+		return udp_idle[--udp_nidle];
+	return loopback_udp_open();
+}
+
+void dotdoh_udp_give(const int fd)
+{
+	if(udp_nidle < UDP_IDLE_MAX)
+		udp_idle[udp_nidle++] = fd;
+	else
+		dotdoh_fd_close(fd);
+}
+
+void dotdoh_udp_release(void)
+{
+	while(udp_nidle > 0)
+		dotdoh_fd_close(udp_idle[--udp_nidle]);
+}
+
+bool dotdoh_udp_send(const int fd, uint8_t *msg, const size_t len, uint8_t id[2])
+{
+	if(id == NULL)
+		return loopback_udp_send(fd, msg, len);
+
+	// The random ID tells this query's answer apart from late answers to
+	// earlier ones. A failed send leaves the client's ID in place
+	memcpy(id, msg, 2);
+	if(get_secure_randomness(msg, 2) && loopback_udp_send(fd, msg, len))
+		return true;
+	memcpy(msg, id, 2);
+	return false;
+}
+
+ssize_t dotdoh_udp_recv(const int fd, const uint8_t *msg, const size_t len, const uint8_t id[2],
+                        uint8_t *answer, const size_t answer_sz)
+{
+	for(;;)
+	{
+		const ssize_t rlen = recv_nowarn(fd, answer, answer_sz, MSG_DONTWAIT);
+		if(rlen < 0)
+		{
+			if(errno == EINTR)
+				continue;
+			if(errno == EAGAIN)
+				return DOTDOH_UDP_PENDING;
+			log_debug(DEBUG_RESOLVER, "dotdoh: read from loopback DNS failed: %s", strerror(errno));
+			return -1;
+		}
+		if(!answers_query(msg, len, answer, (size_t)rlen))
+			continue;
+
+		// A truncated answer has to be fetched over TCP
+		if((answer[2] & 0x02) != 0)
+			return 0;
+		memcpy(answer, id, 2);
+		return rlen;
+	}
 }
 
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS

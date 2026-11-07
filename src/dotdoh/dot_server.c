@@ -202,6 +202,7 @@ static time_t dot_now(void)
 enum dot_state {
 	DS_HANDSHAKE,  // SSL_accept
 	DS_READ,       // read a length-prefixed query over TLS
+	DS_UP_UDP,     // wait for dnsmasq's answer over loopback UDP
 	DS_UP_CONNECT, // connect() to the loopback DNS listener (non-blocking)
 	DS_UP_WRITE,   // write the framed query to the loopback listener
 	DS_UP_READ,    // read the framed answer from the loopback listener
@@ -216,6 +217,9 @@ struct dot_conn {
 	                         // pool for one query; -1 when none is open
 	bool up_reused;          // upfd came from the shared pool (may be stale)
 	bool up_retried;         // already reconnected once for the current query
+	int udpfd;               // loopback UDP socket awaiting an answer, else -1
+	int64_t udp_resend;      // when the query is sent once more, 0 once it was
+	uint8_t qid[2];          // the client's ID while the query carries a random one
 	enum dot_state st;
 	int active_fd;           // fd this connection is currently waiting on
 	short active_ev;         // POLLIN or POLLOUT
@@ -253,6 +257,9 @@ static void conn_free(struct dot_conn *c)
 	// to the pool in drive_up_read()), so it is closed rather than pooled.
 	if(c->upfd >= 0)
 		dotdoh_loopback_drop(c->upfd);
+	// An answer may still arrive on it, so it is not reused
+	if(c->udpfd >= 0)
+		dotdoh_fd_close(c->udpfd);
 	// Keep the I/O buffers attached to the slot for the next connection to reuse
 	// (they are freed once, at thread shutdown); reset only the bookkeeping.
 	uint8_t *rbuf = c->rbuf, *abuf = c->abuf, *wbuf = c->wbuf;
@@ -310,6 +317,7 @@ static struct dot_conn *conn_new(int cfd, const char *client, const char *dest)
 	c->used = true;
 	c->cfd = cfd;
 	c->upfd = -1;
+	c->udpfd = -1;
 	c->st = DS_HANDSHAKE;
 	c->active_fd = cfd;
 	c->active_ev = POLLIN;
@@ -477,6 +485,53 @@ static int conn_retry_upstream(struct dot_conn *c)
 // switch): 1 = keep driving (state advanced, loop again), 0 = yield until the next
 // poll (active_fd/active_ev set for the wait), -1 = close and free the connection.
 
+// Hand the framed query in wbuf to dnsmasq over a loopback TCP connection
+static int conn_resolve_tcp(struct dot_conn *c)
+{
+	// The socket is handed back to the pool after each answer, so this query
+	// takes one of its own. Warm sockets still come from there, which is what
+	// keeps dnsmasq from forking a child per query.
+	c->up_retried = false;
+	c->up_reused = false;
+	const int rs = conn_start_resolve(c);
+	if(rs == -2)
+	{
+		// At the concurrency limit. Answer SERVFAIL so the client backs off and
+		// keeps its session; tearing the connection down would cost it a fresh
+		// TLS handshake exactly when we are already overloaded.
+		return conn_answer_error(c, DOT_RCODE_SERVFAIL);
+	}
+	if(rs != 0)
+		return -1;
+	// If the non-blocking connect is still in flight it set DS_UP_CONNECT and a
+	// POLLOUT wait; yield so the SO_ERROR check runs only once the socket is
+	// actually connected. A loopback connect usually completes immediately
+	// (DS_UP_WRITE), in which case we keep driving.
+	if(c->st == DS_UP_CONNECT)
+		return 0;
+	return 1;
+}
+
+// Send the query in wbuf to dnsmasq over loopback UDP and wait for its answer.
+// False if that fails, the query then goes over TCP
+static bool conn_start_udp(struct dot_conn *c)
+{
+	const int fd = dotdoh_udp_take();
+	if(fd < 0)
+		return false;
+	if(!dotdoh_udp_send(fd, c->wbuf + 2, c->wlen - 2, c->qid))
+	{
+		dotdoh_fd_close(fd);
+		return false;
+	}
+	c->udpfd = fd;
+	c->udp_resend = dotdoh_msec() + LOOPBACK_UDP_RESEND_MS;
+	c->st = DS_UP_UDP;
+	c->active_fd = fd;
+	c->active_ev = POLLIN;
+	return true;
+}
+
 // DS_READ: buffer and deframe one client query. On a complete query, attribute it
 // to the real downstream client and kick off the loopback resolve.
 static int drive_read(struct dot_conn *c)
@@ -540,28 +595,16 @@ static int drive_read(struct dot_conn *c)
 	memmove(c->rbuf, c->rbuf + consumed, c->have - consumed);
 	c->have -= consumed;
 
-	// The socket is handed back to the pool after each answer, so this query
-	// takes one of its own. Warm sockets still come from there, which is what
-	// keeps dnsmasq from forking a child per query.
-	c->up_retried = false;
-	c->up_reused = false;
-	const int rs = conn_start_resolve(c);
-	if(rs == -2)
-	{
-		// At the concurrency limit. Answer SERVFAIL so the client backs off and
-		// keeps its session; tearing the connection down would cost it a fresh
-		// TLS handshake exactly when we are already overloaded.
+	// dnsmasq ignores a longer query over UDP and TCP alike
+	const size_t mlen = c->wlen - 2;
+	if(mlen > FTL_dnsmasq_query_max())
 		return conn_answer_error(c, DOT_RCODE_SERVFAIL);
-	}
-	if(rs != 0)
-		return -1;
-	// If the non-blocking connect is still in flight it set DS_UP_CONNECT and a
-	// POLLOUT wait; yield so the SO_ERROR check runs only once the socket is
-	// actually connected. A loopback connect usually completes immediately
-	// (DS_UP_WRITE), in which case we keep driving.
-	if(c->st == DS_UP_CONNECT)
+
+	// Over UDP, dnsmasq answers from the cache of its main process and needs no
+	// fork. A query longer than dnsmasq reads from a datagram goes over TCP
+	if(mlen <= FTL_dnsmasq_udp_query_max() && conn_start_udp(c))
 		return 0;
-	return 1;
+	return conn_resolve_tcp(c);
 }
 
 // DS_UP_WRITE: write the framed query to the loopback upstream. A hard error on a
@@ -582,6 +625,24 @@ static int drive_up_write(struct dot_conn *c)
 	// Query sent; prepare to read the framed answer.
 	c->alen = 0; c->agot = 0; c->up_lengot = 0;
 	c->st = DS_UP_READ;
+	return 1;
+}
+
+// Pad the answer in abuf when the query asked for it and frame it for the TLS
+// write back to the client
+static int conn_frame_answer(struct dot_conn *c)
+{
+	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
+	if(c->client_padded)
+		c->alen = edns_pad_response(c->abuf, c->alen, ABUF_SZ);
+
+	// Frame the answer into wbuf for the TLS write.
+	const ssize_t flen = dot_frame(c->abuf, c->alen, c->wbuf, WBUF_SZ);
+	if(flen < 0)
+		return -1;
+	c->wlen = (size_t)flen;
+	c->woff = 0;
+	c->st = DS_WRITE;
 	return 1;
 }
 
@@ -633,18 +694,41 @@ static int drive_up_read(struct dot_conn *c)
 		c->up_retried = false;
 	}
 
-	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
-	if(c->client_padded)
-		c->alen = edns_pad_response(c->abuf, c->alen, ABUF_SZ);
+	return conn_frame_answer(c);
+}
 
-	// Frame the answer into wbuf for the TLS write.
-	const ssize_t flen = dot_frame(c->abuf, c->alen, c->wbuf, WBUF_SZ);
-	if(flen < 0)
-		return -1;
-	c->wlen = (size_t)flen;
-	c->woff = 0;
-	c->st = DS_WRITE;
-	return 1;
+// DS_UP_UDP: read dnsmasq's answer. A truncated answer, or a failed read, sends
+// the query over TCP instead
+static int drive_up_udp(struct dot_conn *c)
+{
+	// Behind the query kept in abuf, which a refusal of the TCP handoff needs
+	uint8_t *answer = c->abuf + c->qsave;
+	const ssize_t r = dotdoh_udp_recv(c->udpfd, c->wbuf + 2, c->wlen - 2, c->qid,
+	                                  answer, ABUF_SZ - c->qsave);
+	if(r == DOTDOH_UDP_PENDING)
+	{
+		c->active_fd = c->udpfd;
+		c->active_ev = POLLIN;
+		return 0;
+	}
+
+	// The socket is free for the next query once an answer arrived
+	if(r >= 0)
+		dotdoh_udp_give(c->udpfd);
+	else
+		dotdoh_fd_close(c->udpfd);
+	c->udpfd = -1;
+	c->udp_resend = 0;
+	if(r <= 0)
+	{
+		memcpy(c->wbuf + 2, c->qid, sizeof(c->qid));
+		c->woff = 0;
+		return conn_resolve_tcp(c);
+	}
+
+	memmove(c->abuf, answer, (size_t)r);
+	c->alen = (size_t)r;
+	return conn_frame_answer(c);
 }
 
 // Drive a connection's state machine as far as it can go without blocking.
@@ -677,6 +761,13 @@ static int drive_conn(struct dot_conn *c)
 			const int r = drive_read(c);
 			if(r <= 0) return r; // 0 = yield (wait armed), -1 = close
 			continue;            // 1 = state advanced, keep driving
+		}
+
+		case DS_UP_UDP:
+		{
+			const int r = drive_up_udp(c);
+			if(r <= 0) return r; // 0 = yield (wait armed), -1 = close
+			continue;            // 1 = answer framed or handed to TCP
 		}
 
 		case DS_UP_CONNECT:
@@ -919,6 +1010,7 @@ void *dotdoh_dot_thread(void *val)
 			pc[n] = NULL; n++;
 		}
 		const time_t now = dot_now();
+		const int64_t now_ms = dotdoh_msec();
 		int timeout_ms = 1000; // also bounds how quickly we notice `killed`
 		for(int i = 0; i < DOT_MAX_CONNS; i++)
 		{
@@ -930,6 +1022,8 @@ void *dotdoh_dot_thread(void *val)
 			const long ms = (long)(c->deadline - now) * 1000;
 			if(ms < timeout_ms)
 				timeout_ms = ms < 0 ? 0 : (int)ms;
+			if(c->st == DS_UP_UDP && c->udp_resend > 0 && c->udp_resend - now_ms < timeout_ms)
+				timeout_ms = c->udp_resend <= now_ms ? 0 : (int)(c->udp_resend - now_ms);
 		}
 
 		const int pr = poll(pfd, n, timeout_ms);
@@ -958,6 +1052,19 @@ void *dotdoh_dot_thread(void *val)
 					dot_accept_all(pfd[i].fd);
 		}
 
+		// Send a query dnsmasq has not answered in time once more. A failed
+		// resend leaves the first copy to be answered
+		const int64_t resend_ms = dotdoh_msec();
+		for(int i = 0; i < DOT_MAX_CONNS; i++)
+		{
+			struct dot_conn *c = &g_conns[i];
+			if(c->used && c->st == DS_UP_UDP && c->udp_resend > 0 && resend_ms >= c->udp_resend)
+			{
+				dotdoh_udp_send(c->udpfd, c->wbuf + 2, c->wlen - 2, NULL);
+				c->udp_resend = 0;
+			}
+		}
+
 		// Sweep connections that overran their deadline (slow-loris / stalled).
 		const time_t swept = dot_now();
 		for(int i = 0; i < DOT_MAX_CONNS; i++)
@@ -972,6 +1079,7 @@ void *dotdoh_dot_thread(void *val)
 	for(int i = 0; i < DOT_MAX_CONNS; i++)
 		if(g_conns[i].used)
 			conn_free(&g_conns[i]);
+	dotdoh_udp_release();
 	// Release the pooled per-connection buffers (kept attached across reuse). Only
 	// slots that actually served a connection have them; guard against NULL as
 	// FTL's free() wrapper warns on a NULL argument.

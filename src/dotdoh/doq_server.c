@@ -136,6 +136,7 @@ static time_t g_cert_mtime = 0;
 // Stream state machine. The order is the lifecycle of one query.
 enum doq_state {
 	DQ_READ,       // read the length-prefixed query off the QUIC stream
+	DQ_UP_UDP,     // wait for dnsmasq's answer over loopback UDP
 	DQ_UP_CONNECT, // connect() to the loopback DNS listener (non-blocking)
 	DQ_UP_WRITE,   // write the framed query to the loopback listener
 	DQ_UP_READ,    // read the framed answer from the loopback listener
@@ -154,6 +155,9 @@ struct doq_stream {
 	bool up_pooled;          // upfd came from the shared pool (may be stale)
 	bool up_retried;         // already re-connected once for this query
 	short up_ev;             // POLLIN or POLLOUT while waiting on upfd
+	int udpfd;               // loopback UDP socket awaiting an answer, else -1
+	int64_t udp_resend;      // when the query is sent once more, 0 once it was
+	uint8_t qid[2];          // the client's ID while the query carries a random one
 	uint64_t deadline;       // monotonic ms deadline for this query phase
 	bool client_padded;      // the query carried an EDNS Padding option
 
@@ -579,6 +583,9 @@ static void stream_free(struct doq_stream *s)
 		SSL_free(s->ssl);
 	if(s->upfd >= 0)
 		dotdoh_loopback_drop(s->upfd);
+	// An answer may still arrive on it, so it is not reused
+	if(s->udpfd >= 0)
+		dotdoh_fd_close(s->udpfd);
 	if(s->conn != NULL)
 		s->conn->nstreams--;
 	// Keep the pooled I/O buffers attached to the slot for the next stream (they
@@ -587,6 +594,7 @@ static void stream_free(struct doq_stream *s)
 	memset(s, 0, sizeof(*s));
 	s->rbuf = rbuf; s->abuf = abuf; s->wbuf = wbuf;
 	s->upfd = -1;
+	s->udpfd = -1;
 	g_nstreams--;
 }
 
@@ -624,6 +632,7 @@ static struct doq_stream *stream_new(struct doq_conn *c, SSL *ssl)
 	uint8_t *rbuf = s->rbuf, *abuf = s->abuf, *wbuf = s->wbuf;
 	memset(s, 0, sizeof(*s));
 	s->upfd = -1; // hold the "no loopback socket open" invariant from the start
+	s->udpfd = -1;
 	s->rbuf = rbuf != NULL ? rbuf : malloc(RBUF_SZ);
 	s->abuf = abuf != NULL ? abuf : malloc(ABUF_SZ);
 	s->wbuf = wbuf != NULL ? wbuf : malloc(WBUF_SZ);
@@ -885,6 +894,34 @@ static int stream_retry_upstream(struct doq_stream *s)
 // switch): 1 = keep driving (state advanced, loop again), 0 = yield until the
 // next poll, -1 = the stream is finished or broken and must be torn down.
 
+// Hand the framed query in wbuf to dnsmasq over a loopback TCP connection
+static int stream_resolve_tcp(struct doq_stream *s)
+{
+	if(stream_start_resolve(s) != 0)
+		return -1;
+	// A loopback connect usually completes immediately (DQ_UP_WRITE); if it is
+	// still in flight, yield so the SO_ERROR check runs once it is connected.
+	return s->st == DQ_UP_CONNECT ? 0 : 1;
+}
+
+// Send the query in wbuf to dnsmasq over loopback UDP and wait for its answer.
+// False if that fails, the query then goes over TCP
+static bool stream_start_udp(struct doq_stream *s)
+{
+	const int fd = dotdoh_udp_take();
+	if(fd < 0)
+		return false;
+	if(!dotdoh_udp_send(fd, s->wbuf + 2, s->wlen - 2, s->qid))
+	{
+		dotdoh_fd_close(fd);
+		return false;
+	}
+	s->udpfd = fd;
+	s->udp_resend = dotdoh_msec() + LOOPBACK_UDP_RESEND_MS;
+	s->st = DQ_UP_UDP;
+	return true;
+}
+
 // DQ_READ: buffer and deframe the client query. On a complete query, attribute
 // it to the real downstream client and kick off the loopback resolve.
 static int drive_read(struct doq_stream *s)
@@ -977,11 +1014,19 @@ static int drive_read(struct doq_stream *s)
 	}
 	s->have = 0;
 
-	if(stream_start_resolve(s) != 0)
+	// dnsmasq ignores a longer query over UDP and TCP alike
+	const size_t mlen = s->wlen - 2;
+	if(mlen > FTL_dnsmasq_query_max())
+	{
+		doq_reset_stream(s->ssl, DOQ_INTERNAL_ERROR);
 		return -1;
-	// A loopback connect usually completes immediately (DQ_UP_WRITE); if it is
-	// still in flight, yield so the SO_ERROR check runs once it is connected.
-	return s->st == DQ_UP_CONNECT ? 0 : 1;
+	}
+
+	// Over UDP, dnsmasq answers from the cache of its main process and needs no
+	// fork. A query longer than dnsmasq reads from a datagram goes over TCP
+	if(mlen <= FTL_dnsmasq_udp_query_max() && stream_start_udp(s))
+		return 0;
+	return stream_resolve_tcp(s);
 }
 
 // DQ_UP_WRITE: write the framed, attributed query to the loopback upstream.
@@ -1002,6 +1047,23 @@ static int drive_up_write(struct doq_stream *s)
 	s->alen = 0; s->agot = 0; s->up_lengot = 0;
 	s->st = DQ_UP_READ;
 	s->up_ev = POLLIN;
+	return 1;
+}
+
+// Pad the answer in abuf when the query asked for it and frame it for the write
+// back to the client
+static int stream_frame_answer(struct doq_stream *s)
+{
+	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
+	if(s->client_padded)
+		s->alen = edns_pad_response(s->abuf, s->alen, ABUF_SZ);
+
+	const ssize_t flen = dot_frame(s->abuf, s->alen, s->wbuf, WBUF_SZ);
+	if(flen < 0)
+		return -1;
+	s->wlen = (size_t)flen;
+	s->woff = 0;
+	s->st = DQ_WRITE;
 	return 1;
 }
 
@@ -1043,17 +1105,34 @@ static int drive_up_read(struct doq_stream *s)
 	s->up_pooled = false;
 	s->up_ev = 0;
 
-	// RFC 7830 Sec. 4: a padded query MUST get a padded answer. We pad only then.
-	if(s->client_padded)
-		s->alen = edns_pad_response(s->abuf, s->alen, ABUF_SZ);
+	return stream_frame_answer(s);
+}
 
-	const ssize_t flen = dot_frame(s->abuf, s->alen, s->wbuf, WBUF_SZ);
-	if(flen < 0)
-		return -1;
-	s->wlen = (size_t)flen;
-	s->woff = 0;
-	s->st = DQ_WRITE;
-	return 1;
+// DQ_UP_UDP: read dnsmasq's answer. A truncated answer, or a failed read, sends
+// the query over TCP instead
+static int drive_up_udp(struct doq_stream *s)
+{
+	const ssize_t r = dotdoh_udp_recv(s->udpfd, s->wbuf + 2, s->wlen - 2, s->qid,
+	                                  s->abuf, ABUF_SZ);
+	if(r == DOTDOH_UDP_PENDING)
+		return 0;
+
+	// The socket is free for the next query once an answer arrived
+	if(r >= 0)
+		dotdoh_udp_give(s->udpfd);
+	else
+		dotdoh_fd_close(s->udpfd);
+	s->udpfd = -1;
+	s->udp_resend = 0;
+	if(r <= 0)
+	{
+		memcpy(s->wbuf + 2, s->qid, sizeof(s->qid));
+		s->woff = 0;
+		return stream_resolve_tcp(s);
+	}
+
+	s->alen = (size_t)r;
+	return stream_frame_answer(s);
 }
 
 // DQ_WRITE: write the framed answer back on the QUIC stream and FIN it, which is
@@ -1089,6 +1168,10 @@ static int drive_stream(struct doq_stream *s)
 		{
 		case DQ_READ:
 			r = drive_read(s);
+			break;
+
+		case DQ_UP_UDP:
+			r = drive_up_udp(s);
 			break;
 
 		case DQ_UP_CONNECT:
@@ -1227,6 +1310,14 @@ static int doq_event_timeout_ms(void)
 			if(left < (uint64_t)best)
 				best = (int)left;
 		}
+	// A UDP handoff due to be sent once more
+	const int64_t now_ms = dotdoh_msec();
+	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
+	{
+		const struct doq_stream *s = &g_streams[i];
+		if(s->used && s->udpfd >= 0 && s->udp_resend > 0 && s->udp_resend - now_ms < best)
+			best = s->udp_resend <= now_ms ? 0 : (int)(s->udp_resend - now_ms);
+	}
 	return best;
 }
 
@@ -1296,7 +1387,7 @@ void *dotdoh_doq_thread(void *val)
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
-		g_streams[i].upfd = -1;
+		g_streams[i].upfd = g_streams[i].udpfd = -1;
 
 	// Wait for the webserver thread to write the TLS certificate before loading
 	// it. On a fresh install it does not exist yet; retrying (instead of exiting)
@@ -1385,10 +1476,20 @@ void *dotdoh_doq_thread(void *val)
 		for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		{
 			struct doq_stream *s = &g_streams[i];
-			if(!s->used || s->upfd < 0 || s->up_ev == 0)
+			if(!s->used)
 				continue;
-			pfd[n].fd = s->upfd;
-			pfd[n].events = s->up_ev;
+			if(s->udpfd >= 0)
+			{
+				pfd[n].fd = s->udpfd;
+				pfd[n].events = POLLIN;
+			}
+			else if(s->upfd >= 0 && s->up_ev != 0)
+			{
+				pfd[n].fd = s->upfd;
+				pfd[n].events = s->up_ev;
+			}
+			else
+				continue;
 			pfd[n].revents = 0;
 			pstream[n] = s;
 			pgen[n] = s->gen;
@@ -1430,10 +1531,24 @@ void *dotdoh_doq_thread(void *val)
 		for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		{
 			struct doq_stream *s = &g_streams[i];
-			if(!s->used || s->upfd >= 0 || s->conn->closing)
+			if(!s->used || s->upfd >= 0 || s->udpfd >= 0 || s->conn->closing)
 				continue; // loopback states are driven by their fd above
 			if(drive_stream(s) < 0)
 				stream_free(s);
+		}
+
+		// Send a query dnsmasq has not answered in time once more. A failed
+		// resend leaves the first copy to be answered
+		const int64_t resend_ms = dotdoh_msec();
+		for(int i = 0; i < DOQ_MAX_STREAMS; i++)
+		{
+			struct doq_stream *s = &g_streams[i];
+			if(s->used && s->udpfd >= 0 && s->udp_resend > 0 && resend_ms >= s->udp_resend &&
+			   !s->conn->closing)
+			{
+				dotdoh_udp_send(s->udpfd, s->wbuf + 2, s->wlen - 2, NULL);
+				s->udp_resend = 0;
+			}
 		}
 
 		doq_reap();
@@ -1455,6 +1570,7 @@ void *dotdoh_doq_thread(void *val)
 	for(int i = 0; i < DOQ_MAX_CONNS; i++)
 		if(g_conns[i].used)
 			conn_free(&g_conns[i]);
+	dotdoh_udp_release();
 	// Release the pooled per-stream buffers (kept attached across reuse). Only
 	// slots that actually served a stream have them; guard against NULL as FTL's
 	// free() wrapper warns on a NULL argument.
