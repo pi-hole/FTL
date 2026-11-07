@@ -210,6 +210,21 @@ def check_id(answer, qid):
         sys.exit("message ID 0x%04x, expected 0x%04x" % (aid, qid))
 
 
+def check_count(answer, count, qid):
+    """Fail unless answer is complete (not truncated), positive and holds count
+    records."""
+    if len(answer) < 12:
+        sys.exit("answer too short (%d bytes)" % len(answer))
+    check_id(answer, qid)
+    flags, _, ancount = struct.unpack("!HHH", answer[2:8])
+    if flags & 0x0200:
+        sys.exit("answer is truncated (TC set)")
+    if flags & 0x000F:
+        sys.exit("non-zero RCODE %d" % (flags & 0x000F))
+    if ancount != count:
+        sys.exit("%d answer records, expected %d" % (ancount, count))
+
+
 def validate(answer, expected_ip, qid=0x1234):
     """Fail (raise SystemExit) unless answer is a positive reply for expected_ip."""
     if len(answer) < 12:
@@ -685,16 +700,19 @@ def main():
         _, _, infile, count = sys.argv[:4]
         with open(infile, "rb") as f:
             answer = f.read()
-        if len(answer) < 12:
-            sys.exit("answer too short (%d bytes)" % len(answer))
-        check_id(answer, 0x1234)
-        flags, _, ancount = struct.unpack("!HHH", answer[2:8])
-        if flags & 0x0200:
-            sys.exit("answer is truncated (TC set)")
-        if flags & 0x000F:
-            sys.exit("non-zero RCODE %d" % (flags & 0x000F))
-        if ancount != int(count):
-            sys.exit("%d answer records, expected %s" % (ancount, count))
+        check_count(answer, int(count), 0x1234)
+        print("OK")
+    elif cmd == "dotcount":
+        _, _, host, port, domain, source, cafile, qtype, count = sys.argv[:9]
+        answer = dot_exchange(host, int(port), domain, source, cafile, qtype=int(qtype))
+        check_count(answer, int(count), 0x1234)
+        print("OK")
+    elif cmd == "doqcount":
+        _, _, host, port, domain, source, qtype, count = sys.argv[:8]
+        query = build_query(domain, int(qtype))
+        query = b"\x00\x00" + query[2:]
+        answers = doq_exchange(host, int(port), [query], source=source)
+        check_count(answers[0], int(count), 0)
         print("OK")
     elif cmd == "dot":
         _, _, host, port, domain, source, cafile, expected_ip = sys.argv[:8]

@@ -241,6 +241,78 @@ print(len(q), q[0]["reply"]["type"] if q else "-")' "$out"
   assert_output "1 IP"
 }
 
+@test "dotdoh-server: a DoT answer larger than a UDP reply arrives complete" {
+  local ca
+  ca="$(pwd)/test/test_ca.crt"
+  run python3 test/dotdoh_query.py dotcount 127.0.0.1 853 big.ftl "$CLIENT" "$ca" 16 6
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a DoQ answer larger than a UDP reply arrives complete" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  run python3 test/dotdoh_query.py doqcount 127.0.0.1 853 big.ftl "$CLIENT" 16 6
+  assert_output "OK"
+}
+
+# Prints the status of the newest query for the name $1 from the client $2
+newest_status() {
+  local out
+  out=$(curl -s "${FTL_URL}/api/queries?domain=${1}&client_ip=${2}")
+  python3 -c 'import json, sys; q = json.loads(sys.argv[1])["queries"]
+print(q[0]["status"] if q else "-")' "$out"
+}
+
+@test "dotdoh-server: a DoT query is answered from the cache of dnsmasq's main process" {
+  # A forked dnsmasq child answers from the cache it inherited. The name is
+  # cached only after the handoff was used, and the slow.ftl upstream does not
+  # answer over TCP, so only a UDP handoff gets this answer
+  local ca name="fresh-dot.slow.ftl"
+  ca="$(pwd)/test/test_ca.crt"
+  start_dropping_upstream
+  run python3 test/dotdoh_query.py dot 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$ca" "$EXPECT_IP"
+  assert_output "OK"
+  run dig +short @127.0.0.1 "$name"
+  assert_output "$EXPECT_IP"
+  run python3 test/dotdoh_query.py dot 127.0.0.1 853 "$name" "$CLIENT" "$ca" "$EXPECT_IP"
+  assert_output "OK"
+  run newest_status "$name" "$CLIENT"
+  assert_output "CACHE"
+}
+
+@test "dotdoh-server: a DoQ query is answered from the cache of dnsmasq's main process" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local name="fresh-doq.slow.ftl"
+  start_dropping_upstream
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP"
+  assert_output "OK"
+  run dig +short @127.0.0.1 "$name"
+  assert_output "$EXPECT_IP"
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$name" "$CLIENT" "$EXPECT_IP"
+  assert_output "OK"
+  run newest_status "$name" "$CLIENT"
+  assert_output "CACHE"
+}
+
+@test "dotdoh-server: a DoT query whose upstream query is lost is answered once" {
+  local ca name="drop-dot.slow.ftl"
+  ca="$(pwd)/test/test_ca.crt"
+  start_dropping_upstream
+  run python3 test/dotdoh_query.py dot 127.0.0.1 853 "$name" "$CLIENT" "$ca" "$EXPECT_IP"
+  assert_output "OK"
+  run queries_and_reply "$name"
+  assert_output "1 IP"
+}
+
+@test "dotdoh-server: a DoQ query whose upstream query is lost is answered once" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  local name="drop-doq.slow.ftl"
+  start_dropping_upstream
+  run python3 test/dotdoh_query.py doq 127.0.0.1 853 "$name" "$CLIENT" "$EXPECT_IP"
+  assert_output "OK"
+  run queries_and_reply "$name"
+  assert_output "1 IP"
+}
+
 @test "dotdoh-server: a DoH answer carries a Cache-Control max-age (RFC 8484)" {
   local ca q; ca="$(pwd)/test/test_ca.crt"; q="${BATS_FILE_TMPDIR}/cc_q.bin"
   python3 test/dotdoh_query.py emit "$DOMAIN" "$q"
