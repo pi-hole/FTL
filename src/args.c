@@ -1652,14 +1652,18 @@ void suggest_complete(const int argc, char *argv[])
 		getLogFilePath(false);
 		initConfig(&config);
 
-		// Check if -t was specified
+		// Check if -t or -q was specified
 		const bool test_value = strcmp(argv[4], "-t") == 0;
-		const int config_arg = test_value ? 5 : 4;
+		const bool quiet_value = strcmp(argv[4], "-q") == 0;
+		const bool flag_value = test_value || quiet_value;
+		const int config_arg = flag_value ? 5 : 4;
 
 		if(argc == config_arg + 1)
 		{
-			// suggest --config -t
-			if(!test_value && (strlen(last_word) == 0 || strStartsWith("-t", last_word)))
+			// suggest --config -t / -q (mutually exclusive, the first applies to setting only & the latter to querying only)
+			if(!flag_value && (strlen(last_word) == 0 || strStartsWith("-q", last_word)))
+				puts("-q");
+			if(!flag_value && (strlen(last_word) == 0 || strStartsWith("-t", last_word)))
 				puts("-t");
 
 			// Completing --config [-t] <key>
@@ -1672,7 +1676,8 @@ void suggest_complete(const int argc, char *argv[])
 					puts(conf_item->k);
 			}
 		}
-		else if(argc == config_arg + 2)
+		// -q (suppress errors) only applies to querying values, not setting them
+		else if(argc == config_arg + 2 && !quiet_value)
 		{
 			// pihole-FTL --config [-t] <key> <value>
 			// Suggest values for the specific key provided in argv[config_arg]

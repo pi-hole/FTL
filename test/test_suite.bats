@@ -115,7 +115,7 @@ setup() {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
   assert_line --index 1 ""
@@ -1541,7 +1541,7 @@ except socket.timeout:
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   refute_output
-  
+
 }
 
 @test "Pi-hole use interface-dependent replies for pi.hole" {
@@ -1624,7 +1624,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
 
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
- 
+
   # Wait for change to become effective
   run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
@@ -2088,7 +2088,7 @@ except socket.timeout:
   assert_line --index 0 '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]'
 }
 
-@test "DNS hosts sanitization: Comments are handled correctly" { 
+@test "DNS hosts sanitization: Comments are handled correctly" {
   # Set dns.hosts with entries containing comments
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
@@ -2457,6 +2457,14 @@ except socket.timeout:
   run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.networking t'
   assert_line --index 0 "true"
   assert_line --index 1 ""
+  # adding -q (quiet query) yields the same key completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  # -q is only for querying a value, so no value is suggested
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.networking t'
+  assert_output ""
 }
 
 
