@@ -14,7 +14,6 @@
 #include "log.h"
 #include "config/config.h"
 #include "enums.h"
-#include "config/config.h"
 // counters
 #include "shmem.h"
 #include "overTime.h"
@@ -26,10 +25,8 @@
 #include "database/message-table.h"
 // killed
 #include "signals.h"
-// file_exists()
+// get_FTL_db_stats()
 #include "files.h"
-// INFINITY
-#include <math.h>
 // name_history_import(), client_name_at()
 #include "name-history.h"
 

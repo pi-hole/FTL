@@ -2812,7 +2812,7 @@ void FTL_dnsmasq_reload(void)
 	check_capabilities();
 
 	// Report blocking mode
-	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
+	log_info("Blocking status is %s", get_blocking_status_str(get_blockingstatus()));
 
 	// Set resolver as ready
 	resolver_ready = true;
@@ -3941,14 +3941,26 @@ static void chown_pihole_own_dir(const char *path, struct passwd *pwd)
 		log_warn("Not changing ownership of %s, it is outside of /etc/pihole and /var/log/pihole", path);
 }
 
+// TCP children dnsmasq serves to clients, see dnsmasq_max_tcp_children()
+static unsigned int tcp_children = 0;
+
 void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 {
+	// With DNSSEC, dnsmasq adds slots reserved for its own validation queries.
+	// No query has drawn on them yet, so the reserve still has its full size here
+	if(daemon != NULL && daemon->max_procs > daemon->dnssec_tcp_slot_reserved)
+		tcp_children = daemon->max_procs - daemon->dnssec_tcp_slot_reserved;
+
 	// Going into daemon mode involves storing the
 	// PID of the generated child process. If FTL
 	// is asked to stay in foreground, we just save
 	// the PID of the current process in the PID file
 	if(daemonmode)
 		go_daemon();
+
+	// Make sure a crash cannot leave this process hanging in its shutdown.
+	// No earlier: this thread would not survive the fork in go_daemon()
+	start_crash_watchdog();
 
 	// Initialize query database (pihole-FTL.db)
 	db_init();
@@ -4464,8 +4476,9 @@ void FTL_process_lease_deletions(void)
 	pthread_mutex_unlock(&lease_delete_lock);
 }
 
-bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
+bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint, bool *timed_out)
 {
+	*timed_out = false;
 	if(!daemon->dhcp)
 	{
 		*hint = "DHCP is not enabled";
@@ -4507,6 +4520,7 @@ bool FTL_unlink_DHCP_lease(const char *ipaddr, const char **hint)
 			}
 		pthread_mutex_unlock(&lease_delete_lock);
 		*hint = "timed out waiting for the resolver to remove the lease";
+		*timed_out = true;
 		return false;
 	}
 	pthread_mutex_unlock(&lease_delete_lock);
@@ -4588,18 +4602,19 @@ void FTL_multiple_replies(const int id, int *firstID)
 
 	if(*firstID == -1)
 	{
-		// This is not yet a duplicate, we just store the ID
-		// of the successful reply here so we can get it quicker
-		// during the next loop iterations
+		// This is not yet a duplicate, we just store the dnsmasq ID of the
+		// successful reply here. It is looked up again for every duplicate
+		// as the GC may move the queries while the lock is released
 		unlock_shm();
-		*firstID = queryID;
+		*firstID = id;
 		return;
 	}
 
 	// Get (read-only) pointer of the query that contains all relevant
 	// information (all others are mere duplicates and were only added to the
 	// list of duplicates rather than havong been forwarded on their own)
-	const queriesData *source_query = getQuery(*firstID, true);
+	const int sourceID = findQueryID(*firstID);
+	const queriesData *source_query = sourceID < 0 ? NULL : getQuery(sourceID, true);
 	// Get query pointer of duplicated reply
 	queriesData *duplicated_query = getQuery(queryID, true);
 
@@ -4611,7 +4626,7 @@ void FTL_multiple_replies(const int id, int *firstID)
 	}
 
 	// Debug logging
-	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", *firstID, queryID);
+	log_debug(DEBUG_QUERIES, "**** sending reply %d also to %d", sourceID, queryID);
 
 	// Copy relevant information over, a hidden duplicate was never counted
 	if(!duplicated_query->flags.hidden)
@@ -4636,9 +4651,14 @@ void FTL_multiple_replies(const int id, int *firstID)
 			cname_domain->cname_refcount++;
 	}
 
-	// The original query may have been blocked during CNAME inspection,
-	// correct status and list ID in this case
-	if(source_query->status != QUERY_FORWARDED)
+	// The original query may have been blocked by its upstream or during
+	// CNAME inspection, correct status and list ID in this case. A blocked
+	// status goes through query_blocked() so the duplicate is counted as
+	// blocked for its domain and client like every other blocked query
+	if(is_blocked(source_query->status))
+		query_blocked(duplicated_query, getDomain(duplicated_query->domainID, true),
+		              getClient(duplicated_query->clientID, true), source_query->status);
+	else if(source_query->status != QUERY_FORWARDED)
 		query_set_status(duplicated_query, source_query->status);
 	if(source_query->status == QUERY_GRAVITY_CNAME ||
 	   source_query->status == QUERY_REGEX_CNAME ||
@@ -4820,17 +4840,17 @@ void FTL_connection_error(const char *reason, const union mysockaddr *addr, cons
 }
 
 /**
- * @brief Retrieves dnsmasq's limit on concurrent TCP children (--max-tcp-connections).
+ * @brief Retrieves dnsmasq's limit on concurrent client TCP children (--max-tcp-connections).
  *
  * @return The configured limit, or dnsmasq's default if it is not known yet.
  */
 unsigned int __attribute__ ((pure)) dnsmasq_max_tcp_children(void)
 {
-	// Read when the listeners start, i.e. after the config is parsed. Fall back to
+	// Set when the listeners start, i.e. after the config is parsed. Fall back to
 	// dnsmasq's own default if that ordering ever changes, so the derived cap can
 	// never come out as zero and refuse everything.
-	if(daemon != NULL && daemon->max_procs > 0)
-		return (unsigned int)daemon->max_procs;
+	if(tcp_children > 0)
+		return tcp_children;
 	return MAX_PROCS;
 }
 

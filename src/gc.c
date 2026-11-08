@@ -142,6 +142,11 @@ keep_client:
 		memset(clients_lookup + cwrite, 0,
 		       (counters->clients_lookup_size - cwrite) * sizeof(*clients_lookup));
 		counters->clients_lookup_size = cwrite;
+
+		// The total counts the clients FTL knows, a client coming back
+		// later is counted again when it is created anew
+		counters->clients_total -= clients_recycled < counters->clients_total ?
+		                           clients_recycled : counters->clients_total;
 	}
 
 	// Recycle domains
@@ -202,6 +207,10 @@ keep_domain:
 		memset(domains_lookup + dwrite, 0,
 		       (counters->domains_lookup_size - dwrite) * sizeof(*domains_lookup));
 		counters->domains_lookup_size = dwrite;
+
+		// Same for the domains
+		counters->domains_total -= domains_recycled < counters->domains_total ?
+		                           domains_recycled : counters->domains_total;
 
 		// Cached CNAME addinfo row IDs are keyed on domain IDs that
 		// may now be handed out to other domains

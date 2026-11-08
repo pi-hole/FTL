@@ -18,10 +18,6 @@
 // enum conf_type
 #include "config/config.h"
 
-// Common definitions
-#define LOCALHOSTv4 "127.0.0.1"
-#define LOCALHOSTv6 "::1"
-
 // API router
 int api_handler(struct mg_connection *conn, void *ignored);
 
@@ -52,7 +48,7 @@ int api_history_database_clients(struct ftl_conn *api);
 // Query methods
 int api_queries(struct ftl_conn *api);
 int api_queries_suggestions(struct ftl_conn *api);
-bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
+bool compile_filter_regex(struct ftl_conn *api, const struct conf_item *item,
                           regex_t **regex, unsigned int *N_regex, int *ret);
 void free_filter_regex(regex_t *regex, const unsigned int N_regex);
 
@@ -101,7 +97,6 @@ int api_dns_blocking(struct ftl_conn *api);
 
 // List methods
 int api_list(struct ftl_conn *api);
-int api_group(struct ftl_conn *api);
 
 // Auth method
 void init_api_sessions(void);

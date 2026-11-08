@@ -18,6 +18,8 @@
 #include "datastructure.h"
 // struct config
 #include "config/config.h"
+// normalize_cname()
+#include "config/validator.h"
 // JSON array functions
 #include "webserver/cJSON/cJSON.h"
 // encrypted upstreams: parse_upstream_uri() + the deterministic loopback tuple
@@ -446,8 +448,11 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 				// nothing and only add failover delay.
 				if(enc >= DOTDOH_MAX_UPSTREAMS)
 				{
+					char *escaped = escape_control_chars(server->valuestring);
 					log_warn("Ignoring encrypted upstream '%s': at most %d are supported",
-					         server->valuestring, DOTDOH_MAX_UPSTREAMS);
+					         escaped != NULL ? escaped : "(unable to display)",
+					         DOTDOH_MAX_UPSTREAMS);
+					free(escaped);
 					continue;
 				}
 				// Settle on a tuple that actually binds (redrawing on a collision) so
@@ -554,6 +559,14 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		fputs("\n", pihole_conf);
 	}
 
+	if(conf->dns.fastRetry.v.ui > 0)
+	{
+		fputs("# Retransmit an unanswered upstream query after this many milliseconds,\n", pihole_conf);
+		fputs("# doubling the interval for every further attempt\n", pihole_conf);
+		fprintf(pihole_conf, "fast-dns-retry=%u\n", conf->dns.fastRetry.v.ui);
+		fputs("\n", pihole_conf);
+	}
+
 	// Check if an explicit interface is configured
 	char interface[MAXIFACESTRLEN];
 	strncpy(interface, conf->dns.interface.v.s, sizeof(interface) - 1);
@@ -623,14 +636,20 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		   strcmp(active, "true") != 0 &&
 		   strcmp(active, "1") != 0)
 		{
-			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s", revServer->valuestring);
+			char *escaped = escape_control_chars(revServer->valuestring);
+			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s",
+			          escaped != NULL ? escaped : "(unable to display)");
+			free(escaped);
 			free(copy);
 			continue;
 		}
 
 		if(active == NULL || cidr == NULL || target == NULL)
 		{
-			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", idx, revServer->valuestring);
+			char *escaped = escape_control_chars(revServer->valuestring);
+			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", idx,
+			        escaped != NULL ? escaped : "(unable to display)");
+			free(escaped);
 			free(copy);
 			continue;
 		}
@@ -866,14 +885,27 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 		}
 	}
 
+	bool out_of_memory = false;
 	if(cJSON_GetArraySize(conf->dns.cnameRecords.v.json) > 0)
 	{
 		fputs("# User-defined custom CNAMEs\n", pihole_conf);
 		cJSON *server = NULL;
 		cJSON_ArrayForEach(server, conf->dns.cnameRecords.v.json)
 		{
-			if(server != NULL && cJSON_IsString(server))
-				fprintf(pihole_conf, "cname=%s\n", server->valuestring);
+			if(server == NULL || !cJSON_IsString(server))
+				continue;
+
+			// dnsmasq mis-parses whitespace in front of a comma
+			char *entry = strdup(server->valuestring);
+			if(entry == NULL)
+			{
+				// Fail the write, a config without this record must not go live
+				out_of_memory = true;
+				break;
+			}
+			normalize_cname(entry);
+			fprintf(pihole_conf, "cname=%s\n", entry);
+			free(entry);
 		}
 		fputs("\n", pihole_conf);
 	}
@@ -981,11 +1013,12 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	// part-way through would be renamed over the live dnsmasq config as a
 	// truncated file that dnsmasq would happily start from
 	// The reason goes into errbuf as the callers report it as their hint
-	const bool write_failed = fflush(pihole_conf) != 0 || ferror(pihole_conf) != 0 ||
-	                          fsync(fileno(pihole_conf)) != 0;
+	const bool write_failed = out_of_memory || fflush(pihole_conf) != 0 ||
+	                          ferror(pihole_conf) != 0 || fsync(fileno(pihole_conf)) != 0;
 	if(write_failed)
 	{
-		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s", strerror(errno));
+		snprintf(errbuf, ERRBUF_SIZE, "Cannot write "DNSMASQ_TEMP_CONF": %s",
+		         strerror(out_of_memory ? ENOMEM : errno));
 		log_err("%s", errbuf);
 	}
 

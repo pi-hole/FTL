@@ -38,10 +38,6 @@ bool ntp_start_sync_thread(pthread_attr_t *attr);
 // Sync RTC time
 bool ntp_sync_rtc(void);
 
-// Number of NTP queries to average. The more queries, the more accurate the
-// time, but the longer it takes to synchronize. The minimum is 1.
-#define NTP_AVERGAGE_COUNT 8
-
 // Delay between consecutive NTP queries in microseconds
 #define NTP_DELAY 500000
 

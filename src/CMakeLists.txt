@@ -725,12 +725,9 @@ add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to 
         )
 
 ######### Installation target ############
-# Install the binary
+# Install the binary ...
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-find_program(SETCAP setcap)
-# After installing the binary, we set the capabilities on the binary ...
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 # ... and verify the binary integrity
 install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

@@ -100,6 +100,11 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
 
+// Per-thread heap buffer of `size` bytes kept in the thread-local pointer
+// *slot: allocated on first use, freed at thread exit. Large buffers stay out of
+// static TLS, which glibc takes from every thread's stack. NULL when out of memory.
+uint8_t *dotdoh_thread_buf(uint8_t **slot, size_t size);
+
 // Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
 // handoffs and the connections accepted by the encrypted-upstream proxy). A
 // forked dnsmasq TCP worker inherits them and must close them, or it never

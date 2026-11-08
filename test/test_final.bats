@@ -53,6 +53,7 @@ load 'bats_helper.bash'
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
+  # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
@@ -63,9 +64,9 @@ load 'bats_helper.bash'
   # config already matches, so they log "pihole.toml unchanged" - which the
   # next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "19"
+    assert_line --index 0 "25"
   else
-    [[ ${lines[0]} == "66" ]]
+    [[ ${lines[0]} == "72" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -113,8 +114,9 @@ load 'bats_helper.bash'
       else
         ./pihole-FTL --config dns.blocking.active "${state}" > /dev/null
       fi
-      # The lists are reloaded and the verdicts reset after a change
-      run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+      # Enabling reloads the lists and resets the verdicts, disabling only logs
+      [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+      run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
       results="${results} ${via}-${state}:${status}:$(dig +short +tries=1 +time=2 -b 127.0.0.35 denied.ftl @127.0.0.1)"
     done
   done
@@ -306,16 +308,18 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
   before="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
 
-  # Each change flushes the cache and reloads the lists, the second answer
+  # Only enabling flushes the cache and reloads the lists, the second answer
   # comes from the cache
   results=""
   for state in false true; do
     logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
     curl -s -o /dev/null -X POST 127.0.0.1/api/dns/blocking -d "{\"blocking\":${state}}"
-    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+    [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+    run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
     first="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
     second="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
-    results="${results} ${state}:${status}:${first//$'\n'/,}/${second//$'\n'/,}"
+    flushed="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Flushing cache' || true)"
+    results="${results} ${state}:${status}:${flushed}:${first//$'\n'/,}/${second//$'\n'/,}"
   done
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -324,7 +328,35 @@ load 'bats_helper.bash'
 
   printf "blocked: %s, before: %s, results:%s\n" "${blocked}" "${before}" "${results}"
   [[ "${before}" == "${blocked}" ]]
-  [[ "${results}" == " false:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:${blocked}/${blocked}" ]]
+  [[ "${results}" == " false:0:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:1:${blocked}/${blocked}" ]]
+}
+
+@test "A blocked answer copied to a duplicate query counts as blocked for both" {
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  # Two identical queries without EDNS(0) from one client, sent at once. The
+  # recursor holds the answer back (test/pdns/luadns.lua), so dnsmasq attaches
+  # the second query to the first, and the answer is too large for either of
+  # them, so both get a truncated reply through FTL_multiple_replies()
+  run python3 -c '
+import socket, struct
+question = b"\x0cslow-blocked\x03ftl\x00" + struct.pack(">HH", 1, 1)
+socks = []
+for qid in (1, 2):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.52", 0))
+    s.settimeout(10)
+    s.sendto(struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 0) + question, ("127.0.0.1", 53))
+    socks.append(s)
+for s in socks:
+    print("truncated" if s.recv(4096)[2] & 0x02 else "full")'
+  assert_line --index 0 "truncated"
+  assert_line --index 1 "truncated"
+
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  [[ "${log}" == *"DEBUG_QUERIES: **** sending reply "* ]]
+  # The original and the duplicate are both blocked by the upstream's answer
+  run bash -c "curl -s '127.0.0.1/api/stats/top_clients?blocked=true&count=1000' | jq '.clients[] | select(.ip == \"127.0.0.52\") | .count'"
+  assert_output "2"
 }
 
 @test "Flushing the logs keeps older history and the overTime window" {
@@ -343,6 +375,24 @@ load 'bats_helper.bash'
   # disabled below would otherwise continue from it
   run bash -c './pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" "DELETE FROM query_storage WHERE id < 0;"'
   assert_success
+}
+
+@test "A recycled client leaves the summary's client total" {
+  dig +short +tries=1 +time=2 -b 127.0.0.57 recycled-total.ftl @127.0.0.1 > /dev/null
+  before="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  # A flush removes the queries in memory, so the GC recycles the clients
+  # without queries, 127.0.0.57 among them. It keeps the queries of the
+  # current second, which would keep their clients
+  sleep 2
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/flush/logs | jq -r .status'
+  assert_output "success"
+  flushed="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  dig +short +tries=1 +time=2 -b 127.0.0.57 recycled-total.ftl @127.0.0.1 > /dev/null
+  after="$(curl -s 127.0.0.1/api/stats/summary | jq .clients.total)"
+  printf "clients.total: before %s, after the flush %s, after a new query %s\n" "${before}" "${flushed}" "${after}"
+  [[ ${flushed} -lt ${before} ]]
+  # The client counts once more
+  [[ ${after} -eq $((flushed + 1)) ]]
 }
 
 @test "Clients in recycled slots do not make the clients array longer" {
@@ -491,6 +541,26 @@ load 'bats_helper.bash'
   assert_output --partial "Gravity failed"
 }
 
+@test "The gravity action does not hand FTL's sockets to the command" {
+  # Stand-in for pihole -g that lists what its file descriptors point at. Those
+  # of FTL's helper process waiting for it cannot be read here: FTL has file
+  # capabilities, which keeps the pihole user out of the helper's /proc entry
+  if [ -e /usr/local/bin/pihole ]; then
+    mv /usr/local/bin/pihole /usr/local/bin/pihole.test-backup
+  fi
+  printf '#!/bin/sh\nfor fd in /proc/$$/fd/*; do echo "${fd##*/} $(readlink "$fd")"; done\n' > /usr/local/bin/pihole
+  chmod +x /usr/local/bin/pihole
+  run bash -c 'curl -s -X POST 127.0.0.1/api/action/gravity'
+  rm -f /usr/local/bin/pihole
+  if [ -e /usr/local/bin/pihole.test-backup ]; then
+    mv /usr/local/bin/pihole.test-backup /usr/local/bin/pihole
+  fi
+  printf "%s\n" "${output}"
+  assert_line --regexp '^1 pipe:'
+  refute_output --partial "socket:"
+  refute_output --partial "inotify"
+}
+
 @test "FTL terminates with message" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   # Kill pihole-FTL after having completed all tests
@@ -590,6 +660,14 @@ first_start_stop() {
   [[ ${lines[0]} -ge 1 ]]
   run grep -c "DEBUG_DATABASE: " "${first_start}/FTL.log"
   [[ ${lines[0]} -ge 1 ]]
+  # A missing file is not reported as a parse error, and the default port
+  # detection leaves alone the ports the environment sets
+  run grep -c "Cannot parse" "${first_start}/FTL.log"
+  assert_output "0"
+  run grep -c "Config initialized with webserver ports" "${first_start}/FTL.log"
+  assert_output "0"
+  run grep -c "Webserver ports set by environment variable" "${first_start}/FTL.log"
+  assert_output "1"
 }
 
 @test "FTL writes the first pihole.toml when misc.readOnly is set through the environment" {
@@ -1101,6 +1179,31 @@ three.rename.ftl|new-rename.ftl"
   assert_output "1"
   run bash -c "tail -c +$((logsize_swap + 1)) /var/log/pihole/FTL.log | grep -c 'no such table'"
   assert_output "0"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+}
+
+@test "A gravity database whose timestamp changes in place is reloaded each time" {
+  # The update keeps the size of the file, only its modification time tells
+  # FTL to read the timestamp again
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  for round in 1 2; do
+    size_before=$(stat -c%s /etc/pihole/gravity.db)
+    logsize_update=$(stat -c%s /var/log/pihole/FTL.log)
+    printf ".timeout 30000\nUPDATE info SET value = CAST(value AS INTEGER) + 1 WHERE property = 'updated';\n" | ./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db
+    assert_equal "$(stat -c%s /etc/pihole/gravity.db)" "${size_before}"
+    run bash -c "./pihole-FTL wait-for 'Gravity database has been updated, reloading now' /var/log/pihole/FTL.log 5 $logsize_update"
+    assert_success
+  done
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c "kill $(cat /run/pihole-FTL.pid)"
