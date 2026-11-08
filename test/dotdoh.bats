@@ -329,6 +329,32 @@ teardown_file() {
   assert_success
 }
 
+@test "dotdoh-client: the DoQ client closes its connection to the upstream" {
+  # The shim has to see a close with DOQ_NO_ERROR right after the answer, not
+  # run into its idle timeout a minute later
+  wait_for_quic_shim "$SHIM_DOQ_READY" "DoQ" || false
+  local before n i
+  # The close of the previous test's connection may still be on its way: count
+  # only once the number has stayed the same for 0.5 s
+  before=-1
+  for i in $(seq 1 10); do
+    n=$(grep -c '^doq-end 0$' "$SHIM_PAD_LOG" 2>/dev/null || true)
+    n=${n:-0}
+    [ "$n" -eq "$before" ] && break
+    before=$n
+    sleep 0.5
+  done
+  run bash -c "dig +short +tries=1 +time=8 $(proxy_at 5) a.ftl"
+  assert_output --partial "192.168.1.1"
+  for i in $(seq 1 30); do
+    n=$(( $(grep -c '^doq-end 0$' "$SHIM_PAD_LOG" || true) - before ))
+    [ "$n" -ge 1 ] && break
+    sleep 0.1
+  done
+  printf "connections closed: %s\n" "$n"
+  [ "$n" -ge 1 ]
+}
+
 @test "dotdoh-client: many concurrent queries over the DoT proxy all resolve" {
   run run_concurrent 1 25
   assert_success
