@@ -2228,6 +2228,16 @@ enum blocking_status __attribute__((pure)) get_blockingstatus(void)
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
 }
 
+// Enabling drops answers cached and verdicts recorded while blocking was off,
+// they may cover names that are blocked now. Blocked answers are never cached
+static void apply_blockingstatus(const bool enabled)
+{
+	if(enabled)
+		raise(SIGHUP);
+	else
+		log_info("Blocking status is disabled");
+}
+
 // The caller holds lock_config()
 void set_blockingstatus(bool enabled)
 {
@@ -2237,7 +2247,7 @@ void set_blockingstatus(bool enabled)
 
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true, NULL);
-	raise(SIGHUP);
+	apply_blockingstatus(enabled);
 }
 
 const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type)
@@ -2304,10 +2314,9 @@ void replace_config(struct config *newconf)
 	// Unlock shared memory
 	unlock_shm();
 
-	// Drop the cached answers and verdicts of the previous blocking status as
-	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
+	// The CLI only writes pihole.toml, FTL rereads it and applies the change
 	if(blocking_changed && !cli_mode && !dnsmasq_failed)
-		raise(SIGHUP);
+		apply_blockingstatus(config.dns.blocking.active.v.b);
 }
 
 // Set when reread_config() found a config change in progress and left the

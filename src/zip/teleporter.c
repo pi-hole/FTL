@@ -1053,7 +1053,11 @@ bool read_teleporter_zip_from_disk(const char *filename)
 
 	// Output imported files
 	for(cJSON *file = imported_files->child; file != NULL; file = file->next)
-		log_info("Imported %s", file->valuestring);
+	{
+		char *escaped = escape_control_chars(file->valuestring);
+		log_info("Imported %s", escaped != NULL ? escaped : "(unable to display)");
+		free(escaped);
+	}
 
 	return true;
 }

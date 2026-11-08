@@ -1320,7 +1320,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (2) with ID %u in resolveClients(), skipping...", clientID);
+			// Recycled while the lock was released
+			log_debug(DEBUG_RESOLVER, "Client ID %u was recycled while resolving %s, skipping", clientID, ipaddr);
 			skipped++;
 			unlock_shm();
 			continue;

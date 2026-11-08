@@ -559,6 +559,24 @@ class TestLuaServerPages:
             assert location, f"No redirect for {path}:\n{head}"
             assert not location[0].startswith(("//", "/\\")), location[0]
 
+    def test_head_sends_headers_only(self):
+        """HEAD gets the status and headers of GET but no body, both from a
+        Lua page and from the built-in error page."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("/broken_lua", "/does_not_exist.html"):
+            resp = {}
+            for method in ("HEAD", "GET"):
+                raw = _raw_http(f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                "Connection: close\r\n\r\n".encode())
+                head, sep, body = raw.partition(b"\r\n\r\n")
+                assert sep, f"Incomplete response to {method} {path}:\n{raw!r}"
+                lines = [line for line in head.split(b"\r\n")
+                         if not line.lower().startswith(b"date:")]
+                resp[method] = (lines, body)
+            assert resp["HEAD"][0] == resp["GET"][0], path
+            assert resp["HEAD"][1] == b"", f"HEAD {path} sent a body:\n{resp['HEAD'][1]!r}"
+            assert resp["GET"][1], f"GET {path} sent no body"
+
 
 # ---------------------------------------------------------------------------
 # URI control-character / CRLF injection rejection
