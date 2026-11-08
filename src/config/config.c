@@ -926,12 +926,8 @@ void initConfig(struct config *conf)
 	conf->dns.blocking.active.k = "dns.blocking.active";
 	conf->dns.blocking.active.h = "Should FTL block queries?\n\n A temporary status set with a timer is kept in memory only and ends when FTL restarts. If the requested mode is the one this setting already holds, the setting is changed to the opposite mode, which applies once the timer has elapsed.";
 	conf->dns.blocking.active.t = CONF_BOOL;
-	// Not configuration but runtime state, and each node's own: it is what
-	// "Disable blocking for five minutes" writes, and the timer that puts it
-	// back lives in this node's memory rather than in the file. Synchronized,
-	// it would take blocking off machines nobody paused - with no timer to
-	// bring it back - and set_blockingstatus() stamps no change, so the node
-	// the user clicked on is as likely to have the pause pushed back off it
+	// Each node's own, as a timed status lives in this node's memory only:
+	// "Disable blocking" has to reach the same nodes with a timer and without
 	conf->dns.blocking.active.f = FLAG_NO_CLUSTER;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
