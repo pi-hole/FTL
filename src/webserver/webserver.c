@@ -602,10 +602,9 @@ static int begin_request_handler(struct mg_connection *conn)
 // announced rather than the proxy itself, and the query is attributed correctly.
 static int dns_query_plain(struct mg_connection *conn, const struct mg_request_info *ri)
 {
-	// Thread-local rather than on the stack: a CivetWeb worker stack cannot
-	// carry two 64 KiB buffers. Same reason the terminator does it this way.
-	static _Thread_local uint8_t query[DNS_MSG_MAX];
-	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	// Per-thread heap buffers: a CivetWeb worker stack cannot carry two 64 KiB
+	// buffers, and as static TLS they would be taken from every thread's stack
+	static _Thread_local uint8_t *bufs = NULL;
 	ssize_t qlen = -1;
 
 	// Only GET and POST are DoH methods; anything else gets the same 405 and
@@ -626,6 +625,14 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 		mg_send_http_error(conn, 403, "%s", "source not allowed");
 		return 403;
 	}
+
+	uint8_t *query = dotdoh_thread_buf(&bufs, 2 * DNS_MSG_MAX);
+	if(query == NULL)
+	{
+		mg_send_http_error(conn, 503, "%s", "out of memory");
+		return 503;
+	}
+	uint8_t *answer = query + DNS_MSG_MAX;
 
 	if(is_post)
 	{
@@ -663,7 +670,7 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 		const int vlen = mg_get_var(ri->query_string, strlen(ri->query_string),
 		                            "dns", b64, sizeof(b64));
 		if(vlen > 0)
-			qlen = base64url_decode(b64, (size_t)vlen, query, sizeof(query));
+			qlen = base64url_decode(b64, (size_t)vlen, query, DNS_MSG_MAX);
 	}
 
 	if(qlen <= 0)
@@ -673,7 +680,7 @@ static int dns_query_plain(struct mg_connection *conn, const struct mg_request_i
 	}
 
 	const ssize_t alen = dotdoh_server_resolve(ri->remote_addr, NULL, query,
-	                                           (size_t)qlen, answer, sizeof(answer));
+	                                           (size_t)qlen, answer, DNS_MSG_MAX);
 	if(alen <= 0)
 	{
 		mg_send_http_error(conn, 500, "%s", "resolver failed");

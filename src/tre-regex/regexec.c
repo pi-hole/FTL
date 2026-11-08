@@ -137,6 +137,39 @@ tre_have_approx(const regex_t *preg)
   return tnfa->have_approx;
 }
 
+/* Returns 1 if `string' contains the string every match must contain. */
+static int
+tre_match_must(const tre_tnfa_t *tnfa, const unsigned char *string,
+	       ssize_t len)
+{
+  const unsigned char *must = tnfa->must;
+  size_t k = tnfa->must_len, n, i, j;
+
+  /* An anchored match has `must' at its very beginning. */
+  if (tnfa->anchored && tnfa->must_at_start)
+    {
+      for (j = 0; j < k; j++)
+	{
+	  if (len >= 0 ? j >= (size_t)len : string[j] == '\0')
+	    return 0;
+	  if (string[j] != must[j * 2] && string[j] != must[j * 2 + 1])
+	    return 0;
+	}
+      return 1;
+    }
+
+  n = len >= 0 ? (size_t)len : strlen((const char *)string);
+  for (i = 0; i + k <= n; i++)
+    {
+      for (j = 0; j < k; j++)
+	if (string[i + j] != must[j * 2] && string[i + j] != must[j * 2 + 1])
+	  break;
+      if (j == k)
+	return 1;
+    }
+  return 0;
+}
+
 static int
 tre_match(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
@@ -144,6 +177,10 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
+
+  if (tnfa->must != NULL && type == STR_BYTE
+      && !tre_match_must(tnfa, string, len))
+    return REG_NOMATCH;
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
 #ifdef TRE_USE_ALLOCA

@@ -93,6 +93,25 @@ components:
               nullable: true
               description: "No additional data available"
               example: null
+    service_unavailable:
+      type: object
+      description: "Service unavailable (temporarily, try again)"
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "service_unavailable"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Failed to delete DHCP lease"
+            hint:
+              type: string
+              description: "Further details"
+              nullable: true
   headers:
     Location:
       description: Location of created resource

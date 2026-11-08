@@ -138,8 +138,7 @@ int api_history_clients(struct ftl_conn *api)
 	// does. A bad regex is logged and filters nothing, as in get_top_clients()
 	regex_t *regex_clients = NULL;
 	unsigned int N_regex_clients = 0;
-	compile_filter_regex(api, "webserver.api.excludeClients",
-	                     config.webserver.api.excludeClients.v.json,
+	compile_filter_regex(api, &config.webserver.api.excludeClients,
 	                     &regex_clients, &N_regex_clients, NULL);
 
 	// Lock shared memory
