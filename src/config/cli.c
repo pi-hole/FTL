@@ -353,7 +353,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error);
+				char *json_error_escaped = escape_control_chars(json_error);
+				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error_escaped != NULL ? json_error_escaped : "(unable to display)");
+				free(json_error_escaped);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))
@@ -380,6 +382,16 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 	}
 
 	return true;
+}
+
+static void log_unknown_conf_key(const char *key)
+{
+	char *escaped = escape_control_chars(key);
+
+	log_err("Unknown config option %s, did you mean:",
+	        escaped != NULL ? escaped : "(unable to display)");
+
+	free(escaped);
 }
 
 int set_config_from_CLI(const char *key, const char *value, const bool test_only)
@@ -460,7 +472,7 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 	{
 		unsigned int N = 0;
 		char **matches = suggest_closest_conf_key(false, key, &N);
-		log_err("Unknown config option %s, did you mean:", key);
+		log_unknown_conf_key(key);
 		for(unsigned int i = 0; i < N; i++)
 			log_err(" - %s", matches[i]);
 		free(matches);
@@ -628,7 +640,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	{
 		unsigned int N = 0;
 		char **matches = suggest_closest_conf_key(false, key, &N);
-		log_err("Unknown config option %s, did you mean:", key);
+		log_unknown_conf_key(key);
 		for(unsigned int i = 0; i < N; i++)
 			log_err(" - %s", matches[i]);
 		free(matches);

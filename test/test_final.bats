@@ -53,6 +53,7 @@ load 'bats_helper.bash'
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
+  # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   # test_y_cluster.py: 10x pihole.toml writes. That file needs a node with a web
   #   password (an empty pwhash makes FTL serve every request, so its refusal
@@ -75,9 +76,9 @@ load 'bats_helper.bash'
   # set/remove do not write: the in-memory config already matches, so they
   # log "pihole.toml unchanged" - which the next assertion below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "17"
+    assert_line --index 0 "23"
   else
-    [[ ${lines[0]} == "77" ]]
+    [[ ${lines[0]} == "83" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -125,8 +126,9 @@ load 'bats_helper.bash'
       else
         ./pihole-FTL --config dns.blocking.active "${state}" > /dev/null
       fi
-      # The lists are reloaded and the verdicts reset after a change
-      run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+      # Enabling reloads the lists and resets the verdicts, disabling only logs
+      [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+      run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
       results="${results} ${via}-${state}:${status}:$(dig +short +tries=1 +time=2 -b 127.0.0.35 denied.ftl @127.0.0.1)"
     done
   done
@@ -318,16 +320,18 @@ load 'bats_helper.bash'
   run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
   before="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
 
-  # Each change flushes the cache and reloads the lists, the second answer
+  # Only enabling flushes the cache and reloads the lists, the second answer
   # comes from the cache
   results=""
   for state in false true; do
     logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
     curl -s -o /dev/null -X POST 127.0.0.1/api/dns/blocking -d "{\"blocking\":${state}}"
-    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+    [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+    run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
     first="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
     second="$(dig +short +tries=1 +time=2 -b 127.0.0.44 cname-memo-4.ftl @127.0.0.1)"
-    results="${results} ${state}:${status}:${first//$'\n'/,}/${second//$'\n'/,}"
+    flushed="$(tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep -c 'Flushing cache' || true)"
+    results="${results} ${state}:${status}:${flushed}:${first//$'\n'/,}/${second//$'\n'/,}"
   done
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -336,7 +340,7 @@ load 'bats_helper.bash'
 
   printf "blocked: %s, before: %s, results:%s\n" "${blocked}" "${before}" "${results}"
   [[ "${before}" == "${blocked}" ]]
-  [[ "${results}" == " false:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:${blocked}/${blocked}" ]]
+  [[ "${results}" == " false:0:0:memo-target-4.ftl.,192.168.6.7/memo-target-4.ftl.,192.168.6.7 true:0:1:${blocked}/${blocked}" ]]
 }
 
 @test "A blocked answer copied to a duplicate query counts as blocked for both" {
