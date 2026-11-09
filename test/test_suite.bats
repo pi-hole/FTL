@@ -1920,6 +1920,28 @@ except socket.timeout:
   assert_line --index 3 "||xn--ste-sla.com^"
 }
 
+@test "Gravity drops the trailing dot of a list entry, a second one makes it invalid" {
+  # A query never ends in a dot, so an entry stored with one could never match
+  run bash -c 'rm -f /tmp/dots.db && ./pihole-FTL sqlite3 /tmp/dots.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/dots.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'fqdn.example.\ndouble.example..\n||abp.example.^\n||abpdouble.example..^\nfoo.invalid!\nfoo.invalid!bar\n' > /tmp/dots.list
+  run ./pihole-FTL gravity parseList /tmp/dots.list /tmp/dots.db 1
+  assert_success
+  # The sample of invalid entries shows each of them, also one that is the
+  # beginning of another
+  assert_line "        - double.example."
+  assert_line "        - ||abpdouble.example..^"
+  assert_line "        - foo.invalid!"
+  assert_line "        - foo.invalid!bar"
+
+  run bash -c './pihole-FTL sqlite3 /tmp/dots.db "SELECT domain FROM gravity ORDER BY domain;"'
+  rm -f /tmp/dots.db /tmp/dots.list
+  assert_success
+  assert_output "fqdn.example
+||abp.example^"
+}
+
 @test "Non-printable characters in a rejected config value are escaped" {
   # pihole.toml and the CLI are untrusted input, so a value carrying, e.g., an
   # ANSI escape sequence must not be echoed into FTL.log verbatim: it would
