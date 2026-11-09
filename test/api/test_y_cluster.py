@@ -8,11 +8,11 @@ FTL and check what it does with a good signature, a bad one, a replayed one and
 one that arrives too late - and what comes back in the answer.
 
 Switching clustering on restarts FTL, which ends every session and resets what
-the counters in test_api.py expect - hence the `y` in the name. Like the `s` and
-`z` files, this one runs after the tests that need an undisturbed instance.
+the counters in test_api.py expect. This file therefore gets an instance of its
+own, `test/run.sh cluster`, and the full run leaves it out.
 
 Usage:
-    pytest test/api/test_y_cluster.py -v
+    test/run.sh cluster
 """
 
 import base64
@@ -371,8 +371,7 @@ def cluster(api_session):
                      "the signature tests would all skip and this file would report green")
 
     # What a peer must never be handed back. Read rather than planted as a
-    # canary: setting one would be another write for test_final.bats to account
-    # for, and the real hash is a better thing to look for than an invented one
+    # canary: the real hash is a better thing to look for than an invented one
     pwhash = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api/pwhash", timeout=10))
     pwhash = pwhash.get("config", {}).get("webserver", {}).get("api", {}).get("pwhash", "")
 
