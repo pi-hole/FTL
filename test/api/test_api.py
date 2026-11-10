@@ -11,6 +11,7 @@ Usage:
 
 import itertools
 import json
+import os
 import re
 from urllib.parse import quote
 
@@ -655,6 +656,44 @@ class TestURIControlCharRejection:
         status_line = resp.split(b"\r\n", 1)[0]
         assert b" 400 " not in status_line, \
             f"Legitimate .lp request was rejected: {status_line!r}"
+
+
+class TestRequestParsing:
+    """Malformed requests get exactly one clean response."""
+
+    def test_status_line_does_not_echo_request(self):
+        """The status line carries HTTP/1.0 or HTTP/1.1, never bytes taken
+        from a malformed request line."""
+        for request_line, status in ((b"GET /admin/ ", b"400"),
+                                     (b"GET /admin/ HTTP/9.9x", b"505")):
+            raw = _raw_http(request_line + b"\r\nHost: 127.0.0.1\r\n"
+                            b"X-Probe: echoed\r\n\r\n")
+            head = raw.split(b"\r\n\r\n", 1)[0]
+            assert head.startswith(b"HTTP/1.0 " + status + b" "), \
+                f"Unexpected response to {request_line!r}:\n{raw!r}"
+            assert b"X-Probe" not in head, raw
+
+    def test_huge_content_length_is_answered_once(self):
+        """A keep-alive request with a Content-Length close to INT64_MAX gets
+        one response, its header is not parsed a second time."""
+        # Only static files keep the connection open, CI does not install the
+        # dashboard
+        pages = "/var/www/html/admin"
+        created = not os.path.isdir(pages)
+        os.makedirs(pages, exist_ok=True)
+        path = os.path.join(pages, "keepalive.txt")
+        with open(path, "w") as f:
+            f.write("static\n")
+        try:
+            raw = _raw_http(b"GET /admin/keepalive.txt HTTP/1.1\r\n"
+                            b"Host: 127.0.0.1\r\n"
+                            b"Content-Length: 9223372036854775800\r\n\r\n")
+        finally:
+            os.remove(path)
+            if created:
+                os.rmdir(pages)
+        statuses = re.findall(rb"^HTTP/1\.[01] \d{3}", raw, re.MULTILINE)
+        assert statuses == [b"HTTP/1.1 200"], raw
 
 
 # ---------------------------------------------------------------------------
