@@ -1931,6 +1931,10 @@ except socket.timeout:
   assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
   assert_failure 3
 
+  run ./pihole-FTL --config dns.cnameRecords '["a\u001b[2J.example,b.example"]'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("a\x1B[2J.example")'
+  assert_failure 3
+
   run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'
   assert_line --index 0 'Invalid value: dns.revServers[0]: <server> neither a valid domain nor an IPv4 or IPv6 address ("ns\x1B[2Jexample.com")'
   assert_failure 3
