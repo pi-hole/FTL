@@ -32,7 +32,7 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 #v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       -
         name: "Calculate required variables"
         id: variables
@@ -110,18 +110,31 @@ jobs:
     steps:
       -
         name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 #v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       # QEMU should come before Buildx
       -
         name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 #v4.2.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 #v4.4.0
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c #v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 #v4.4.1
       -
         name: Print directory contents
         shell: bash
         run: ls -l
+      -
+        name: Restore ccache
+        # Restored into the build context, where .github/Dockerfile picks it up
+        # through its COPY. Keyed per matrix entry: the platforms compile for
+        # different architectures and the clang entry uses a different compiler,
+        # so none of them can share entries. The restore-keys prefix falls back
+        # to whatever the most recent run of this entry saved.
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.bin_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.bin_name }}-
       -
         name: Build FTL in ftl-build container (QEMU)
         # Creates an image to build FTL and load it into the local Docker daemon
@@ -141,6 +154,28 @@ jobs:
               --tag ftl-builder:local \
               --file .github/Dockerfile .
       -
+        name: Export ccache from ftl-build container (QEMU)
+        # Exported here rather than alongside the other files further down, so a
+        # failing test run does not discard a cache the build just filled. The
+        # restored copy is removed first, as docker cp would otherwise nest the
+        # directory inside it.
+        run: |
+            docker create --platform ${{ matrix.platform }} --name ccache-container ftl-builder:local
+            rm -rf .ccache
+            docker cp ccache-container:/app/.ccache ./.ccache
+            docker rm ccache-container
+      -
+        name: Save ccache
+        # Cache entries are immutable, so the key carries the commit SHA and
+        # every run writes a new entry for GitHub to age out. Pull requests only
+        # run here when they come from a fork, and a fork's token cannot write
+        # caches, so there is nothing to save for them.
+        if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.bin_name }}-${{ github.sha }}
+      -
         name: Test FTL in ftl-build container (QEMU)
         # Uses the ftl-builder image to run tests
         # set STATIC to true for all except clang builds as we do in build.sh
@@ -157,7 +192,7 @@ jobs:
               --env BUILD_OPTS=${{ matrix.build_opts }} \
               --env STATIC=${STATIC} \
               ftl-builder:local \
-              /bin/bash -c "test/arch_test.sh && test/run.sh"
+              /bin/bash -c "test/arch_test.sh && test/run.sh && test/http2_test.sh"
       -
         name: Export FTL files from ftl-build container (QEMU)
         # Create a temporary container to extract the built files
@@ -179,13 +214,13 @@ jobs:
           sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
       -
         name: Upload pihole-FTL binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: ${{ matrix.bin_name }}-binary
           path: '${{ matrix.bin_name }}*'
       -
         name: Generate artifact attestation
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 #v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 #v4.2.2
         # Skip attestation if ACTIONS_ID_TOKEN_REQUEST_URL env variable is not
         # available (e.g., PR originating from a fork)
         if: env.DO_DEPLOY == 'true' && env.ACTIONS_ID_TOKEN_REQUEST_URL != ''
@@ -194,21 +229,21 @@ jobs:
       -
         name: Upload documentation files
         if: matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: pihole-api-docs
           path: 'api-docs.tar.gz'
       -
         name: Upload pihole.toml template
         if: matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
         with:
           name: pihole-toml
           path: 'pihole.toml'
       -
         name: Get binaries built in previous jobs
         if: env.DO_DEPLOY == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         id: download
         with:
           path: ftl_builds/
@@ -217,14 +252,14 @@ jobs:
       -
         name: Get documentation files built in previous jobs
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         with:
           path: ftl_builds/
           name: pihole-api-docs
       -
         name: Get pihole.toml built in previous job
         if: env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 #v8.0.2
         with:
           path: ftl_builds/
           name: pihole-toml
@@ -275,7 +310,7 @@ jobs:
       -
         name: Attach binaries to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b #v3.0.1
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 #v3.0.3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |

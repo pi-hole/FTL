@@ -108,7 +108,7 @@ static int field_found(const char *key,
                        void *user_data)
 {
 	struct upload_data *data = (struct upload_data *)user_data;
-	log_debug(DEBUG_API, "Found field: \"%s\", filename: \"%s\"", key, filename);
+	log_web_debug(DEBUG_API, "Found field: \"%s\", filename: \"%s\"", key, filename);
 
 	// Set all fields to false
 	memset(&data->field, false, sizeof(data->field));
@@ -139,13 +139,13 @@ static int field_found(const char *key,
 static int field_get(const char *key, const char *value, size_t valuelen, void *user_data)
 {
 	struct upload_data *data = (struct upload_data *)user_data;
-	log_debug(DEBUG_API, "Received field: \"%s\" (length %zu bytes)", key, valuelen);
+	log_web_debug(DEBUG_API, "Received field: \"%s\" (length %zu bytes)", key, valuelen);
 
 	if(data->field.file)
 	{
 		if(data->filesize + valuelen > MAXFILESIZE)
 		{
-			log_warn("Uploaded Teleporter file is too large (limit is %u bytes)",
+			log_web(LOG_WARNING, "Uploaded Teleporter file is too large (limit is %u bytes)",
 			         MAXFILESIZE);
 			data->too_large = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
@@ -163,7 +163,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		memcpy(data->data + data->filesize, value, valuelen);
 		// Store the size of the file raw data
 		data->filesize += valuelen;
-		log_debug(DEBUG_API, "Received file (%zu bytes, buffer is now %zu bytes)",
+		log_web_debug(DEBUG_API, "Received file (%zu bytes, buffer is now %zu bytes)",
 		          valuelen, data->filesize);
 	}
 	else if(data->field.sid)
@@ -173,7 +173,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		// overwriting the pointer would drop what was allocated before
 		if(data->sid != NULL)
 		{
-			log_warn("Ignoring repeated SID field in teleporter upload");
+			log_web(LOG_WARNING, "Ignoring repeated SID field in teleporter upload");
 			return MG_FORM_FIELD_HANDLE_GET;
 		}
 
@@ -195,7 +195,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		// As above: do not leak an already parsed object by replacing it
 		if(data->import != NULL)
 		{
-			log_warn("Ignoring repeated import field in teleporter upload");
+			log_web(LOG_WARNING, "Ignoring repeated import field in teleporter upload");
 			return MG_FORM_FIELD_HANDLE_GET;
 		}
 
@@ -204,7 +204,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		cJSON *json = cJSON_ParseWithLengthOpts(value, valuelen, &json_error, false);
 		if(json == NULL)
 		{
-			log_err("Unable to parse JSON data in API request, error at: %.20s", json_error);
+			log_web(LOG_ERR, "Unable to parse JSON data in API request, error at: %.20s", json_error);
 			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
 		}
@@ -212,7 +212,7 @@ static int field_get(const char *key, const char *value, size_t valuelen, void *
 		// Check if the JSON data is an object
 		if(!cJSON_IsObject(json))
 		{
-			log_err("JSON data in API request is not an object");
+			log_web(LOG_ERR, "JSON data in API request is not an object");
 			cJSON_Delete(json);
 			data->invalid_import = true;
 			return MG_FORM_FIELD_HANDLE_ABORT;
@@ -493,7 +493,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	// Check if the JSON object is an array
 	if(!cJSON_IsArray(json))
 	{
-		log_err("import_json_table(%s): JSON object is not an array", file->filename);
+		log_web(LOG_ERR, "import_json_table(%s): JSON object is not an array", file->filename);
 		return false;
 	}
 
@@ -506,7 +506,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	{
 		if(!cJSON_IsObject(json_object))
 		{
-			log_err("import_json_table(%s): JSON array does not contain objects", file->filename);
+			log_web(LOG_ERR, "import_json_table(%s): JSON array does not contain objects", file->filename);
 			return false;
 		}
 
@@ -522,13 +522,13 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 		{
 			if(cJSON_GetObjectItemCaseSensitive(json_object, file->columns[i]) == NULL)
 			{
-				log_err("import_json_table(%s): JSON object does not contain column \"%s\"", file->filename, file->columns[i]);
+				log_web(LOG_ERR, "import_json_table(%s): JSON object does not contain column \"%s\"", file->filename, file->columns[i]);
 				return false;
 			}
 		}
 	}
 
-	log_info("import_json_table(%s): JSON array contains %d entr%s", file->filename, num_entries, num_entries == 1 ? "y" : "ies");
+	log_web(LOG_INFO, "import_json_table(%s): JSON array contains %d entr%s", file->filename, num_entries, num_entries == 1 ? "y" : "ies");
 
 	// Open database connection
 	sqlite3 *db = NULL;
@@ -544,7 +544,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	// Set busy timeout to access the database in a
 	// multi-threaded environment
 	if(sqlite3_busy_handler(db, sqliteBusyCallback, NULL) != SQLITE_OK)
-		log_warn("import_json_table(%s): Unable to set busy handler: %s", file->filename, sqlite3_errmsg(db));
+		log_web(LOG_WARNING, "import_json_table(%s): Unable to set busy handler: %s", file->filename, sqlite3_errmsg(db));
 
 	// Disable foreign key constraints
 	if(sqlite3_exec(db, "PRAGMA foreign_keys = OFF;", NULL, NULL, NULL) != SQLITE_OK)
@@ -566,7 +566,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	if(file->listtype < 0)
 	{
 		// Delete all entries in the table
-		log_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\"", file->filename, file->table_name);
+		log_web_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\"", file->filename, file->table_name);
 		if(dbquery(db, "DELETE FROM \"%s\";", file->table_name) != SQLITE_OK)
 		{
 			log_err("import_json_table(%s): Unable to delete entries from table \"%s\": %s",
@@ -579,7 +579,7 @@ static bool import_json_table(cJSON *json, struct teleporter_files *file)
 	else
 	{
 		// Delete all entries in the table of the same type
-		log_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\" of type %d", file->filename, file->table_name, file->listtype);
+		log_web_debug(DEBUG_API, "import_json_table(%s): Deleting all entries from table \"%s\" of type %d", file->filename, file->table_name, file->listtype);
 		if(dbquery(db, "DELETE FROM \"%s\" WHERE type = %d;", file->table_name, file->listtype) != SQLITE_OK)
 		{
 			log_err("import_json_table(%s): Unable to delete entries from table \"%s\": %s",
@@ -770,7 +770,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 			if(name == NULL || size == NULL)
 				continue;
 
-			log_debug(DEBUG_API, "Found file in TAR archive: \"%s\" (%d bytes)",
+			log_web_debug(DEBUG_API, "Found file in TAR archive: \"%s\" (%d bytes)",
 			          name->valuestring, size->valueint);
 		}
 	}
@@ -792,7 +792,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 			//   boolean and true
 			if(gravity == NULL || !JSON_KEY_TRUE(gravity, teleporter_v5_files[i].table_name))
 			{
-				log_info("Skipping import of \"%s\" as it was not requested for import (JSON: %s, gravity: %s)",
+				log_web(LOG_INFO, "Skipping import of \"%s\" as it was not requested for import (JSON: %s, gravity: %s)",
 				         teleporter_v5_files[i].filename,
 				         data->import != NULL ? "yes" : "no",
 				         gravity != NULL ? "yes" : "no");
@@ -812,12 +812,12 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		}
 		else if(json_error != NULL)
 		{
-			log_err("Unable to parse JSON file \"%s\", error at: %.20s",
+			log_web(LOG_ERR, "Unable to parse JSON file \"%s\", error at: %.20s",
 			        teleporter_v5_files[i].filename, json_error);
 		}
 		else
 		{
-			log_debug(DEBUG_CONFIG, "Unable to find file \"%s\" in TAR archive",
+			log_web_debug(DEBUG_CONFIG, "Unable to find file \"%s\" in TAR archive",
 			          teleporter_v5_files[i].filename);
 		}
 	}
@@ -858,7 +858,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 		if(data->import != NULL && i == 1 && !JSON_KEY_TRUE(data->import, "dhcp_leases"))
 		{
-			log_info("Skipping import of \"%s\" as it was not requested for import",
+			log_web(LOG_INFO, "Skipping import of \"%s\" as it was not requested for import",
 			         extract_files[i].archive_name);
 			continue;
 		}
@@ -866,7 +866,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 		// dhcp.leases and is controlled solely by the flag above)
 		else if(i != 1 && data->import != NULL && !JSON_KEY_TRUE(data->import, "config"))
 		{
-			log_info("Skipping import of \"%s\" as it was not requested for import",
+			log_web(LOG_INFO, "Skipping import of \"%s\" as it was not requested for import",
 			         extract_files[i].archive_name);
 			continue;
 		}
@@ -881,7 +881,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 			}
 
 			// Write file to disk
-			log_info("Writing file \"%s\" (%zu bytes) to \"%s\"",
+			log_web(LOG_INFO, "Writing file \"%s\" (%zu bytes) to \"%s\"",
 			         extract_files[i].archive_name, fileSize, extract_files[i].destination);
 			FILE *fp = fopen(extract_files[i].destination, "wb");
 			if(fp == NULL)
@@ -892,7 +892,7 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 
 			// Restrict permissions to owner read/write only
 			if(fchmod(fileno(fp), S_IRUSR | S_IWUSR) != 0)
-				log_warn("Unable to set permissions on file \"%s\": %s", extract_files[i].destination, strerror(errno));
+				log_web(LOG_WARNING, "Unable to set permissions on file \"%s\": %s", extract_files[i].destination, strerror(errno));
 
 			// Write file to disk
 			if(fwrite(file, fileSize, 1, fp) != 1)
@@ -948,7 +948,9 @@ static int process_received_tar_gz(struct ftl_conn *api, struct upload_data *dat
 	free_upload_data(data);
 
 	// Migrate the config to v6 on a copy of the running config, which
-	// migrate_config_v6() installs once it is complete
+	// migrate_config_v6() installs once it is complete. No other change
+	// of the config may run at the same time
+	lock_config();
 	struct config conf = { 0 };
 	duplicate_config(&conf, &config);
 	migrate_config_v6(&conf);

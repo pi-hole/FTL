@@ -1597,15 +1597,17 @@ lsp_base64_decode(lua_State *L)
 	if (num_args == 1) {
 		text = lua_tolstring(L, 1, &text_len);
 		if (text) {
-			dst = (unsigned char *)mg_malloc_ctx(text_len, ctx);
+			dst_len = text_len + 1;
+			dst = (unsigned char *)mg_malloc_ctx(dst_len, ctx);
 			if (dst) {
-				ret = mg_base64_decode(text, (int)text_len, dst, &dst_len);
+				ret = mg_base64_decode(text, text_len, dst, &dst_len);
 				if (ret != -1) {
 					mg_free(dst);
 					return luaL_error(
 					    L, "illegal character in lsp_base64_decode() call");
 				} else {
-					lua_pushlstring(L, (char *)dst, dst_len);
+					/* dst_len counts the terminating zero */
+					lua_pushlstring(L, (char *)dst, dst_len - 1);
 					mg_free(dst);
 				}
 			} else {
@@ -1984,6 +1986,9 @@ struct lua_websock_data {
 	struct mg_connection *conn[MAX_WORKER_THREADS];
 	pthread_mutex_t ws_mutex;
 };
+#else
+/* used in parameter list of prepare_lua_environment() */
+struct lua_websock_data;
 #endif
 
 
@@ -2711,7 +2716,8 @@ civetweb_open_lua_libs(lua_State *L)
 		luaL_openlibs(L);
 #else
 		// In Lua 5.5 and later has become a macro
-		extern void (luaL_openselectedlibs) (lua_State *L, int load, int preload);
+		extern void(
+		    luaL_openselectedlibs)(lua_State * L, int load, int preload);
 		luaL_openselectedlibs(L, ~0, 0);
 #endif
 	}

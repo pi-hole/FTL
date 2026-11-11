@@ -15,6 +15,8 @@
 */
 
 #include "dnsmasq.h"
+// FTL_is_forward_available()
+#include "dnsmasq_interface.h"
 
 #ifdef HAVE_LOOP
 static ssize_t loop_make_probe(u32 uid);
@@ -33,6 +35,13 @@ void loop_send_probes(void)
      if (strlen(serv->domain) == 0 &&
 	 !(serv->flags & (SERV_FOR_NODOTS)))
        {
+	 /**** Pi-hole modification ****/
+	 /* Same gate as the forward paths: do not send a plaintext loop-detect
+	    probe to an encrypted-upstream tuple the DoT/DoH proxy is not serving
+	    (a loop probe through the proxy is meaningless anyway). */
+	 if (!FTL_is_forward_available(&serv->addr))
+	   continue;
+	 /******************************/
 	 ssize_t len = loop_make_probe(serv->uid);
 	 int fd;
 	 

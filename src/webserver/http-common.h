@@ -75,8 +75,6 @@ int send_json_error_free(struct ftl_conn *api, const int code,
 int send_json_success(struct ftl_conn *api);
 const char *get_http_method_str(const enum http_method method) __attribute__((const));
 
-void http_reread_index_html(void);
-
 // Cookie routines
 bool http_get_cookie_int(struct ftl_conn *api, const char *cookieName, int *i);
 bool http_get_cookie_str(struct ftl_conn *api, const char *cookieName, char *str, size_t str_size);
@@ -99,7 +97,7 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 // Utils
 enum http_method __attribute__((pure)) http_method(struct mg_connection *conn);
 const char* startsWith(const char *path, struct ftl_conn *api);
-void read_and_parse_payload(struct ftl_conn *api);
+bool read_and_parse_payload(struct ftl_conn *api);
 char * __attribute__((malloc)) escape_html(const char *string);
 int check_json_payload(struct ftl_conn *api);
 int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row);

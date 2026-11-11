@@ -94,7 +94,7 @@ int api_dhcp_leases_DELETE(struct ftl_conn *api)
 	}
 
 	// Delete lease
-	log_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
+	log_web_debug(DEBUG_API, "Deleting DHCP lease for address %s", api->item);
 
 	const char *hint = NULL;
 	bool timed_out = false;

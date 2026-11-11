@@ -9,7 +9,9 @@ Usage:
     pytest test/api/test_api.py -v
 """
 
+import itertools
 import json
+import os
 import re
 from urllib.parse import quote
 
@@ -55,6 +57,12 @@ def _j(response, dump=None):
         except OSError:
             pass
     return data
+
+
+def _sort(column, direction):
+    """Query string part sorting /api/queries by a column, as DataTables does"""
+    return (f"&order%5B0%5D%5Bcolumn%5D=0&order%5B0%5D%5Bdir%5D={direction}"
+            f"&columns%5B0%5D%5Bdata%5D={column}")
 
 
 def set_config(api_session, dotted_key, value):
@@ -169,13 +177,13 @@ class TestCORS:
 
 class TestConfigValidationAPIType:
 
-    def test_blockESNI_rejects_float(self, api_session):
+    def test_CNAMEdeepInspect_rejects_float(self, api_session):
         data = _j(api_session.patch(f"{FTL_URL}/api/config",
-                                    json={"config": {"dns": {"blockESNI": 15.5}}}, timeout=20))
+                                    json={"config": {"dns": {"CNAMEdeepInspect": 15.5}}}, timeout=20))
         assert data["error"] == {
             "key": "bad_request",
             "message": "Config item is invalid",
-            "hint": "dns.blockESNI: not of type bool",
+            "hint": "dns.CNAMEdeepInspect: not of type bool",
         }, json.dumps(data, indent=2)
 
     def test_piholePTR_rejects_invalid_option(self, api_session):
@@ -246,6 +254,17 @@ class TestEnvvarProtectedConfig:
             "message": "Config items set via environment variables cannot be changed via the API",
             "hint": "misc.nice",
         }, json.dumps(data, indent=2)
+
+
+class TestConfigFlags:
+
+    def test_write_only_flag(self, api_session):
+        """Write-only items are marked as such in the detailed config."""
+        data = _j(api_session.get(f"{FTL_URL}/api/config/webserver/api?detailed=true", timeout=20))
+        api = data["config"]["webserver"]["api"]
+        assert api["password"]["flags"]["write_only"] is True
+        assert api["totp_secret"]["flags"]["write_only"] is True
+        assert api["max_sessions"]["flags"]["write_only"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +488,26 @@ class TestQueries:
         assert data["queries"] == []
         assert data["recordsFiltered"] == 0, json.dumps(data, indent=2)
 
+    @pytest.mark.parametrize("disk", ("false", "true"))
+    @pytest.mark.parametrize("param, limit", (
+        ("domain", 511), ("client_ip", 511), ("client_name", 511),
+        ("upstream", 255), ("type", 31), ("status", 31), ("reply", 31),
+        ("dnssec", 31), ("columns[3][search][value]", 509),
+        ("columns[4][search][value]", 509)))
+    def test_filter_too_long(self, api_session, param, limit, disk):
+        """A filter value longer than its limit is answered with 400 naming
+        the parameter and the limit, one at the limit is not"""
+        url = f"{FTL_URL}/api/queries"
+        r = api_session.get(url, params={param: "a" * (limit + 1), "disk": disk}, timeout=5)
+        assert r.status_code == 400, r.text
+        assert _j(r)["error"] == {
+            "key": "bad_request",
+            "message": "Requested filter is too long",
+            "hint": f"{param}: at most {limit} bytes",
+        }, r.text
+        r = api_session.get(url, params={param: "a" * limit, "disk": disk}, timeout=5)
+        assert "too long" not in r.text, r.text
+
 
 # ---------------------------------------------------------------------------
 # Lua server pages
@@ -617,6 +656,44 @@ class TestURIControlCharRejection:
         status_line = resp.split(b"\r\n", 1)[0]
         assert b" 400 " not in status_line, \
             f"Legitimate .lp request was rejected: {status_line!r}"
+
+
+class TestRequestParsing:
+    """Malformed requests get exactly one clean response."""
+
+    def test_status_line_does_not_echo_request(self):
+        """The status line carries HTTP/1.0 or HTTP/1.1, never bytes taken
+        from a malformed request line."""
+        for request_line, status in ((b"GET /admin/ ", b"400"),
+                                     (b"GET /admin/ HTTP/9.9x", b"505")):
+            raw = _raw_http(request_line + b"\r\nHost: 127.0.0.1\r\n"
+                            b"X-Probe: echoed\r\n\r\n")
+            head = raw.split(b"\r\n\r\n", 1)[0]
+            assert head.startswith(b"HTTP/1.0 " + status + b" "), \
+                f"Unexpected response to {request_line!r}:\n{raw!r}"
+            assert b"X-Probe" not in head, raw
+
+    def test_huge_content_length_is_answered_once(self):
+        """A keep-alive request with a Content-Length close to INT64_MAX gets
+        one response, its header is not parsed a second time."""
+        # Only static files keep the connection open, CI does not install the
+        # dashboard
+        pages = "/var/www/html/admin"
+        created = not os.path.isdir(pages)
+        os.makedirs(pages, exist_ok=True)
+        path = os.path.join(pages, "keepalive.txt")
+        with open(path, "w") as f:
+            f.write("static\n")
+        try:
+            raw = _raw_http(b"GET /admin/keepalive.txt HTTP/1.1\r\n"
+                            b"Host: 127.0.0.1\r\n"
+                            b"Content-Length: 9223372036854775800\r\n\r\n")
+        finally:
+            os.remove(path)
+            if created:
+                os.rmdir(pages)
+        statuses = re.findall(rb"^HTTP/1\.[01] \d{3}", raw, re.MULTILINE)
+        assert statuses == [b"HTTP/1.1 200"], raw
 
 
 # ---------------------------------------------------------------------------
@@ -1350,7 +1427,7 @@ class TestConfigGet:
         assert "debug" in config
         assert "database" in config
         assert config["dns"]["CNAMEdeepInspect"] is True
-        assert config["dns"]["blockESNI"] is True
+        assert config["dns"]["EDNS0ECS"] is True
 
     def test_config_element(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/config/dns/upstreams", timeout=5))
@@ -1537,6 +1614,79 @@ class TestQueriesAdditional:
         assert "127.0.0.1" in s["client_ip"]
         assert "A" in s["type"]
         assert "AAAA" in s["type"]
+
+
+@pytest.fixture(scope="class")
+def no_excluded_clients(api_session):
+    """The test config excludes a client, which makes every query log request
+    count its matches. Without it, a sorted request without a filter takes
+    the number of queries from shared memory"""
+    url = f"{FTL_URL}/api/config/webserver/api/excludeClients"
+    excluded = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeClients"]
+    set_config(api_session, "webserver.api.excludeClients", [])
+    yield
+    set_config(api_session, "webserver.api.excludeClients", excluded)
+
+
+@pytest.mark.usefixtures("no_excluded_clients")
+class TestQueriesSorted:
+
+    @pytest.mark.parametrize("filters", ["", "&client_ip=127.0.0.1"])
+    @pytest.mark.parametrize("column", ["status", "type", "reply"])
+    def test_queries_sorted_pages(self, api_session, column, filters):
+        """Sorted by a column with many equal keys, equal keys come in ID order
+        in the direction of the sort, and pages hold every query once. A page
+        in the back half of the result is read from the other end if it ends
+        more than 10000 rows in, as one of 10000 rows does from any start but 0"""
+        key = (lambda q: q["reply"]["type"]) if column == "reply" else (lambda q: q[column])
+        order = {}
+        for direction in ("asc", "desc"):
+            sort = _sort(column, direction) + filters
+            whole = _j(api_session.get(f"{FTL_URL}/api/queries?length=10000{sort}", timeout=5))
+            rows, total = whole["queries"], whole["recordsTotal"]
+            ids, n = [q["id"] for q in rows], len(rows)
+            assert whole["recordsFiltered"] == n
+            assert n < total if filters else n == total
+            # Equal keys are next to each other, in ID order in the direction
+            # of the sort
+            runs = [(k, [q["id"] for q in g]) for k, g in itertools.groupby(rows, key)]
+            assert len({k for k, _ in runs}) == len(runs) < n
+            for _, run in runs:
+                assert run == sorted(run, reverse=direction == "desc")
+
+            # Pages of 7 rows from the front, and the rest from a few starts
+            # in one page of 10000 rows, which is read from the other end
+            url = f"{FTL_URL}/api/queries?cursor={whole['cursor']}{sort}"
+            pages = [_j(api_session.get(f"{url}&start={start}&length=7", timeout=5))
+                     for start in range(0, n + 7, 7)]
+            assert [q["id"] for p in pages for q in p["queries"]] == ids
+            for start in (1, 7, n // 2, n - 1, n):
+                pages.append(_j(api_session.get(f"{url}&start={start}&length=10000", timeout=5)))
+                assert [q["id"] for q in pages[-1]["queries"]] == ids[start:], start
+            if filters:
+                assert {p["recordsFiltered"] for p in pages} == {n}
+            order[direction] = ids
+        # The order is total, one direction is the other one backwards
+        assert order["asc"] == order["desc"][::-1]
+
+    def test_queries_time_range(self, api_session):
+        """from is inclusive and until exclusive. Sorted by time, equal times
+        come in ID order in the direction of the sort"""
+        # Times as printed. With 15 digits a time can be a ULP off the stored
+        # one, so the range starts and ends at times printed with more
+        r = api_session.get(f"{FTL_URL}/api/queries?length=10000", timeout=5)
+        whole = r.json(parse_float=str)
+        times = sorted({q["time"] for q in whole["queries"] if len(q["time"]) > 16}, key=float)
+        begin, end = times[len(times) // 3], times[2 * len(times) // 3]
+        inside = [q for q in whole["queries"] if float(begin) <= float(q["time"]) < float(end)]
+        by_time = [q["id"] for q in sorted(inside, key=lambda q: (float(q["time"]), q["id"]))]
+        url = (f"{FTL_URL}/api/queries?length=10000&cursor={whole['cursor']}"
+               f"&from={begin}&until={end}")
+        for sort, ids in (("", [q["id"] for q in inside]), (_sort("time", "asc"), by_time),
+                          (_sort("time", "desc"), by_time[::-1])):
+            data = _j(api_session.get(url + sort, timeout=5))
+            assert [q["id"] for q in data["queries"]] == ids, sort
+            assert data["recordsFiltered"] == len(ids) > 0
 
 
 # ---------------------------------------------------------------------------

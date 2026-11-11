@@ -868,30 +868,30 @@ class TestConfigPatchRoundTrip:
 
     def test_patch_bool_config_round_trip(self, api_session):
         """PATCH a boolean config value, verify, then restore."""
-        url = f"{FTL_URL}/api/config/dns/blockESNI"
+        url = f"{FTL_URL}/api/config/dns/CNAMEdeepInspect"
 
         # Read original
         original = _j(api_session.get(url, timeout=5))
-        orig_val = original["config"]["dns"]["blockESNI"]
+        orig_val = original["config"]["dns"]["CNAMEdeepInspect"]
 
         # Change to opposite
         new_val = not orig_val
         r = api_session.patch(url,
-                              json={"config": {"dns": {"blockESNI": new_val}}},
+                              json={"config": {"dns": {"CNAMEdeepInspect": new_val}}},
                               timeout=20)
         assert r.status_code == 200, f"PATCH failed: {r.status_code} {r.text}"
-        assert _j(r)["config"]["dns"]["blockESNI"] == new_val
+        assert _j(r)["config"]["dns"]["CNAMEdeepInspect"] == new_val
 
         # Verify via GET
         data = _j(api_session.get(url, timeout=5))
-        assert data["config"]["dns"]["blockESNI"] == new_val
+        assert data["config"]["dns"]["CNAMEdeepInspect"] == new_val
 
         # Restore
         r = api_session.patch(url,
-                              json={"config": {"dns": {"blockESNI": orig_val}}},
+                              json={"config": {"dns": {"CNAMEdeepInspect": orig_val}}},
                               timeout=20)
         assert r.status_code == 200
-        assert _j(r)["config"]["dns"]["blockESNI"] == orig_val
+        assert _j(r)["config"]["dns"]["CNAMEdeepInspect"] == orig_val
 
     def test_patch_integer_config_round_trip(self, api_session):
         """PATCH an integer config value, verify, then restore."""
@@ -919,6 +919,106 @@ class TestConfigPatchRoundTrip:
                               timeout=20)
         assert r.status_code == 200
         assert _j(r)["config"]["dns"]["blockTTL"] == orig_val
+
+
+# ---------------------------------------------------------------------------
+# POST several domains in one request
+# ---------------------------------------------------------------------------
+
+class TestBatchAddDomains:
+
+    def test_post_multiple_domains(self, api_session):
+        """All items of a batch add land in one transaction and all survive."""
+        domains = [f"_pytest-batch-{i}.example.com" for i in range(5)]
+        url = f"{FTL_URL}/api/domains/deny/exact"
+
+        r = api_session.post(url,
+                             json={"domain": domains, "comment": "pytest batch",
+                                   "groups": [0], "enabled": True},
+                             timeout=20)
+        assert r.status_code in (200, 201), f"POST failed: {r.status_code} {r.text}"
+
+        # Every item is reported as a success, none as an error
+        processed = _j(r)["processed"]
+        assert processed["errors"] == [], f"Unexpected errors: {processed['errors']}"
+        assert sorted(s["item"] for s in processed["success"]) == sorted(domains)
+
+        # And every one of them is actually readable back
+        present = {d["domain"] for d in _j(api_session.get(url, timeout=5))["domains"]}
+        for domain in domains:
+            assert domain in present, f"{domain} missing after batch POST"
+
+        # Clean up so the seed counts other tests assert stay intact
+        for domain in domains:
+            r = api_session.delete(f"{url}/{domain}", timeout=10)
+            assert r.status_code == 204, \
+                f"Cleanup of {domain} failed: {r.status_code} {r.text}"
+
+
+# ---------------------------------------------------------------------------
+# Group assignments that cannot be applied
+# ---------------------------------------------------------------------------
+
+class TestGroupAssignmentErrors:
+
+    URL = f"{FTL_URL}/api/domains/deny/exact"
+
+    def _get(self, api_session, domain):
+        r = api_session.get(f"{self.URL}/{domain}", timeout=5)
+        if r.status_code == 404:
+            return None
+        domains = _j(r).get("domains", [])
+        return domains[0] if domains else None
+
+    def test_post_with_unknown_group_leaves_nothing(self, api_session):
+        """An item whose group links fail is not added at all."""
+        domain = "_pytest-badgroup-post.example.com"
+        r = api_session.post(self.URL,
+                             json={"domain": domain, "groups": [0, 99999]},
+                             timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert self._get(api_session, domain) is None, \
+            f"{domain} was stored by a failed POST"
+
+    def test_put_with_unknown_group_keeps_row(self, api_session):
+        """A failed PUT leaves the row and its group links as they were."""
+        domain = "_pytest-badgroup-put.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"comment": "orig", "groups": [0]},
+                            timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"comment": "changed", "groups": [0, 99999]},
+                            timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["comment"] == "orig"
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
+
+    @pytest.mark.parametrize("groups", [None, ["0"], 0, {"id": 0}])
+    def test_groups_must_be_array_of_ids(self, api_session, groups):
+        """Anything but an array of group IDs is rejected before writing."""
+        domain = "_pytest-badgroup-type.example.com"
+        url = f"{self.URL}/{domain}"
+        r = api_session.put(url, json={"groups": [0]}, timeout=10)
+        assert r.status_code in (200, 201), f"PUT failed: {r.status_code} {r.text}"
+
+        r = api_session.put(url, json={"groups": groups}, timeout=10)
+        assert r.status_code == 400, \
+            f"Expected 400, got {r.status_code} {r.text}"
+        assert r.json()["error"]["key"] == "bad_request"
+        row = self._get(api_session, domain)
+        assert row is not None
+        assert row["groups"] == [0]
+
+        r = api_session.delete(url, timeout=10)
+        assert r.status_code == 204
 
 
 # ---------------------------------------------------------------------------

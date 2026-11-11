@@ -198,7 +198,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			// contain NUL bytes
 			if(sending && mg_send_chunk(api->conn, buf, (unsigned int)nread) < 0)
 			{
-				log_debug(DEBUG_API, "Client does not take the command output anymore");
+				log_web_debug(DEBUG_API, "Client does not take the command output anymore");
 				sending = false;
 			}
 		}
@@ -233,7 +233,7 @@ static int run_and_stream_command(struct ftl_conn *api, const char *path, const 
 			        WCOREDUMP(status) ? "(core dumped)" : "");
 		}
 
-		log_debug(DEBUG_API, "Gravity return code: %d", code);
+		log_web_debug(DEBUG_API, "Gravity return code: %d", code);
 
 		// Close the reading end of the pipe
 		close(pipefd[0]);
@@ -308,7 +308,7 @@ int api_action_flush_logs(struct ftl_conn *api)
 		                       "Flushing the logs is not allowed",
 		                       "Check setting webserver.api.allow_destructive");
 
-	log_info("Received API request to flush the logs");
+	log_web(LOG_INFO, "Received API request to flush the logs");
 
 	// Flush the logs
 	if(flush_dnsmasq_log())
@@ -328,7 +328,7 @@ int api_action_flush_network(struct ftl_conn *api)
 		                       "Flushing the network tables is not allowed",
 		                       "Check setting webserver.api.allow_destructive");
 
-	log_info("Received API request to flush the network tables");
+	log_web(LOG_INFO, "Received API request to flush the network tables");
 
 	// Flush the network tables
 	if(flush_network_table())

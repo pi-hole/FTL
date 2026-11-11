@@ -19,7 +19,6 @@
 #include "log.h"
 #include "dnsmasq_interface.h"
 #include "main.h"
-#include "files.h"
 /************************************/
 
 #ifdef __ANDROID__
@@ -105,22 +104,10 @@ int log_start(struct passwd *ent_pw, int errfd)
 
   if (log_to_file && !log_stderr && ent_pw && ent_pw->pw_uid != 0)
     {
-      struct stat ls, ps;
-      int own_file = 0;
+      struct stat ls;
       
       /* Only mess with permissions for regular files, not (eg) /dev/null */
       if (fstat(log_fd, &ls) == 0 && S_ISREG(ls.st_mode))
-	{
-	  /* Pi-hole modification: the path comes from the pihole-owned config,
-	     so only touch a file in our own directories and never a link target */
-	  own_file = in_pihole_dir(daemon->log_file) && lstat(daemon->log_file, &ps) == 0 &&
-	    S_ISREG(ps.st_mode) && ps.st_dev == ls.st_dev && ps.st_ino == ls.st_ino &&
-	    ls.st_nlink == 1;
-	  if (!own_file)
-	    log_warn("Not changing ownership of %s, it is not a regular file in /etc/pihole or /var/log/pihole",
-		     daemon->log_file);
-	}
-      if (own_file)
 	{
 	  /* If we're running as root and going to change uid later,
 	     change the ownership here so that the file is always owned by
@@ -151,11 +138,8 @@ int log_reopen(char *log_file)
       
       /* NOTE: umask is set to 022 by the time this gets called */
       
-      /* Pi-hole modification: as root, refuse a symbolic link as the log file,
-	 the pihole user owns the directory it is in */
       if (log_file)
-	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND|(geteuid() == 0 ? O_NOFOLLOW : 0),
-		      S_IRUSR|S_IWUSR|S_IRGRP);
+	log_fd = open(log_file, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR|S_IRGRP);
       else
 	{
 #if defined(HAVE_SOLARIS_NETWORK) || defined(__ANDROID__)
@@ -346,10 +330,13 @@ void my_syslog(int priority, const char *format, ...)
   va_start(ap, format);
   len = vsnprintf(buffer, MAX_MESSAGE, format, ap) + 1u; /* include zero-terminator */
   va_end(ap);
-  FTL_dnsmasq_log(buffer, len > MAX_MESSAGE ? MAX_MESSAGE : len);
-  /*******************************************************************************/
+  FTL_dnsmasq_log(buffer, priority, func, len > MAX_MESSAGE ? MAX_MESSAGE : len);
 
-  if (echo_stderr) 
+  /* Pi-hole: FTL owns pihole.log.  Bypass dnsmasq's file-write path
+     and syslog fallback entirely.
+     Keep echo_stderr so dnsmasq --test errors reach stderr (captured
+     by test_dnsmasq_config() in src/config/dnsmasq_config.c). */
+  if (echo_stderr)
     {
       fprintf(stderr, "dnsmasq%s: ", func);
       va_start(ap, format);
@@ -358,18 +345,8 @@ void my_syslog(int priority, const char *format, ...)
       fputc('\n', stderr);
     }
 
-  /* Pi-hole diagnosis system */
-  if(priority == LOG_WARNING)
-    {
-      char *message;
-      va_start(ap, format);
-      if(vasprintf(&message, format, ap))
-        {
-          dnsmasq_diagnosis_warning(message);
-          free(message);
-        }
-      va_end(ap);
-    }
+  return;
+  /*******************************************************************************/
 
   if (log_fd == -1)
     {

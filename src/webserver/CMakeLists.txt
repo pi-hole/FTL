@@ -14,6 +14,8 @@ set(sources
         json_macros.h
         lua_web.c
         lua_web.h
+        terminator.c
+        terminator.h
         webserver.c
         webserver.h
         x509.c

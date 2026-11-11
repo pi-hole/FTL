@@ -308,7 +308,7 @@ enum totp_status verifyTOTP(const uint32_t incode)
 				continue;
 			}
 			const char *which = i == -1 ? "previous" : i == 0 ? "current" : "next";
-			log_debug(DEBUG_API, "2FA code from %s time step is valid", which);
+			log_web_debug(DEBUG_API, "2FA code from %s time step is valid", which);
 			last_counter = counter;
 			pthread_mutex_unlock(&totp_lock);
 			return TOTP_CORRECT;
@@ -317,7 +317,7 @@ enum totp_status verifyTOTP(const uint32_t incode)
 
 	if(reused)
 	{
-		log_warn("2FA code has already been used, please wait %lu seconds",
+		log_web(LOG_WARNING, "2FA code has already been used, please wait %lu seconds",
 		         (unsigned long)(RFC6238_X - (now % RFC6238_X)));
 		pthread_mutex_unlock(&totp_lock);
 		return TOTP_REUSED;

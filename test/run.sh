@@ -82,6 +82,34 @@ if ! bash test/pdns/setup.sh; then
   exit 1
 fi
 
+# Start the DoT/DoH encrypted-upstream test shim (terminates TLS with the repo
+# test certificate and forwards to the local recursor). See test/dotdoh.bats.
+# Match the exact shim invocation so pkill cannot hit an unrelated process
+# (e.g. an editor) that merely has "dotdoh_shim.py" somewhere in its argv.
+SHIM_PATTERN="python3 test/dotdoh_shim.py"
+# Kill any stale instance first so its ports (8853/8443) are free.
+pkill -f "${SHIM_PATTERN}" 2>/dev/null || true
+# Record decrypted query lengths so dotdoh.bats can confirm FTL padded them.
+export SHIM_PAD_LOG="/tmp/dotdoh_pad.log"
+rm -f "${SHIM_PAD_LOG}"
+# The shim touches this marker once its optional HTTP/3 listener is up; dotdoh.bats
+# skips the DoH3 test when it is absent. Clear any stale marker to avoid a false ready.
+export SHIM_H3_READY="/tmp/dotdoh_h3_ready"
+rm -f "${SHIM_H3_READY}"
+# Same marker for the shim's DoQ (QUIC) listener, waited on by dotdoh.bats.
+export SHIM_DOQ_READY="/tmp/dotdoh_doq_ready"
+rm -f "${SHIM_DOQ_READY}"
+# Capture the shim's own output so a failure to bring up the HTTP/3 listener
+# (aioquic missing, or an aioquic error) is visible to dotdoh.bats, which dumps
+# this on the DoH3 test failure instead of leaving the reason on the console.
+export SHIM_LOG="/tmp/dotdoh_shim.log"
+rm -f "${SHIM_LOG}"
+python3 test/dotdoh_shim.py >"${SHIM_LOG}" 2>&1 &
+DOTDOH_SHIM_PID=$!
+# Stop the shim even if the script exits early (e.g. FTL fails to start below),
+# so a leftover process cannot hold ports 8853/8443 and make the next run flaky.
+trap 'kill "${DOTDOH_SHIM_PID}" 2>/dev/null; pkill -f "${SHIM_PATTERN}" 2>/dev/null' EXIT
+
 # Set restrictive umask
 OLDUMASK=$(umask)
 umask 0022
@@ -156,6 +184,58 @@ else
   echo "Skipping pytest API tests (too slow on ${CI_ARCH})"
 fi
 
+# Encrypted-upstream (DoT/DoH) end-to-end tests. Run after pytest: switching the
+# upstream restarts FTL, which would otherwise perturb the query statistics the
+# API tests assert on. test_final still counts this file's config writes below.
+# Skip on riscv64 - the emulated runner is far too slow for the encrypted
+# transports: every DoT/DoH/DoQ query carries a TLS or QUIC handshake, and the
+# QUIC ones time out long before they complete under emulation.
+if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+  $BATS -p "test/dotdoh.bats"
+  DOTDOH_RET=$?
+  if [ $DOTDOH_RET != 0 ]; then
+    RET=$DOTDOH_RET
+  fi
+else
+  echo "Skipping encrypted-upstream tests (too slow on ${CI_ARCH})"
+fi
+
+# Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
+# queries add to the query statistics the API tests assert on.
+if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+  $BATS -p "test/dotdoh_server.bats"
+  DOTDOH_SERVER_RET=$?
+  if [ $DOTDOH_SERVER_RET != 0 ]; then
+    RET=$DOTDOH_SERVER_RET
+  fi
+else
+  echo "Skipping inbound encrypted-DNS tests (too slow on ${CI_ARCH})"
+fi
+
+# webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
+# restarts FTL.
+$BATS -p "test/webserver_acl.bats"
+WEBSERVER_ACL_RET=$?
+if [ $WEBSERVER_ACL_RET != 0 ]; then
+  RET=$WEBSERVER_ACL_RET
+fi
+
+# webserver.port combinations for the TLS terminator. Also after pytest: every
+# port change restarts FTL.
+$BATS -p "test/webserver_tls_ports.bats"
+WEBSERVER_TLS_PORTS_RET=$?
+if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
+  RET=$WEBSERVER_TLS_PORTS_RET
+fi
+
+# Restart tests. After pytest and the DoT/DoH suites, as the restarts perturb
+# the query statistics they assert on.
+$BATS -p "test/restart.bats"
+RESTART_RET=$?
+if [ $RESTART_RET != 0 ]; then
+  RET=$RESTART_RET
+fi
+
 # Run final BATS suite — log validation and FTL termination
 # This runs after both test_suite.bats and pytest to catch any
 # unexpected log messages from the entire run, then terminates FTL.
@@ -205,6 +285,10 @@ rm /home/pihole/pihole-FTL
 # Stop local powerDNS resolver
 killall pdns_server
 killall pdns_recursor
+
+# Stop the DoT/DoH test shim (same narrow pattern as at startup)
+[ -n "${DOTDOH_SHIM_PID}" ] && kill "${DOTDOH_SHIM_PID}" 2>/dev/null
+pkill -f "${SHIM_PATTERN}" 2>/dev/null || true
 
 # Exit with return code of bats tests
 exit $RET

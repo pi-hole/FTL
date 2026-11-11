@@ -164,8 +164,8 @@ static bool request(int fd, const char *server, struct addrinfo *saddr, struct n
 }
 
 // Display NTP time in human-readable format
-// This function is similar to get_timestr() in src/log.c but differs in that it
-// includes microseconds whereas get_timestr() only includes milliseconds
+// This function is similar to get_timestr() in src/log.c but always prints
+// microseconds, where get_timestr() does so only when debug.extra is set
 static void format_NTP_time(char time_str[TIMESTR_SIZE], const uint64_t ntp_time)
 {
 	struct timeval client_time;

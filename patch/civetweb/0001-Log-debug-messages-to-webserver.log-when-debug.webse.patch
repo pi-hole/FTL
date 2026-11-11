@@ -2,7 +2,7 @@ diff --git a/src/webserver/civetweb/civetweb.c b/src/webserver/civetweb/civetweb
 index 3df8eab9..9b0c6308 100644
 --- a/src/webserver/civetweb/civetweb.c
 +++ b/src/webserver/civetweb/civetweb.c
-@@ -239,9 +239,10 @@ static void DEBUG_TRACE_FUNC(const char *func,
+@@ -239,9 +239,9 @@ static void DEBUG_TRACE_FUNC(const char *func,
  #endif
  
  #else
@@ -10,8 +10,7 @@ index 3df8eab9..9b0c6308 100644
  #define DEBUG_TRACE(fmt, ...)                                                  \
 -	do {                                                                       \
 -	} while (0)
-+	if(debug_flags[DEBUG_WEBSERVER]) {\
-+		log_web("DEBUG: " fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__); }
++		log_web_debug(DEBUG_WEBSERVER, fmt " (%s:%d)", ##__VA_ARGS__, short_path(__FILE__), __LINE__);
  #endif /* DEBUG */
  #endif /* DEBUG_TRACE */
  

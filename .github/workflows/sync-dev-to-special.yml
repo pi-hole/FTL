@@ -1,0 +1,22 @@
+name: Sync Development to Special
+
+on:
+  push:
+    branches:
+      - development
+
+jobs:
+  sync-branches:
+    runs-on: ubuntu-latest
+    name: Syncing branches
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+      - name: Opening pull request
+        # development is pushed far more often than master, so a sync PR is
+        # frequently already open (or the branches are already in sync). In
+        # either case gh pr create exits non-zero, which we tolerate here so
+        # the workflow doesn't go red.
+        run: gh pr create -B special/CI_development -H development --title 'Sync development into special/CI_development' --body 'Created by Github action' --label 'internal' || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

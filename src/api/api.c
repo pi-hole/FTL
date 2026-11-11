@@ -104,7 +104,6 @@ static struct {
 	{ "/api/action/gravity",                    "",                           api_action_gravity,                    { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/restartdns",                 "",                           api_action_restartDNS,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/logs",                 "",                           api_action_flush_logs,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
-	{ "/api/action/flush/arp",                  "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/action/flush/network",              "",                           api_action_flush_network,              { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/padd",                              "",                           api_padd,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/docs",                              "",                           api_docs,                              { API_PARSE_JSON, 0                         }, false, HTTP_GET },
@@ -154,7 +153,7 @@ int api_handler(struct mg_connection *conn, void *ignored)
 		{ API_FLAG_NONE, 0 }
 	};
 
-	log_debug(DEBUG_API, "Requested API URI: %s -> %s %s ? %s (Content-Type %s)",
+	log_web_debug(DEBUG_API, "Requested API URI: %s -> %s %s ? %s (Content-Type %s)",
 	          api.request->remote_addr,
 	          api.request->request_method,
 	          api.request->local_uri_raw,
@@ -191,9 +190,10 @@ int api_handler(struct mg_connection *conn, void *ignored)
 
 			if(api_request[i].opts.flags & API_PARSE_JSON)
 			{
-				// Allocate memory for the payload
-				api.payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
-				if(!api.payload.raw)
+				// Read and try to parse payload. The buffer is
+				// allocated in there, and only for a request that
+				// actually carries a body
+				if(!read_and_parse_payload(&api))
 				{
 					log_crit("Cannot handle API request %s %s: %s",
 							api.request->request_method,
@@ -206,9 +206,6 @@ int api_handler(struct mg_connection *conn, void *ignored)
 					                      NULL);
 					break;
 				}
-
-				// Read and try to parse payload
-				read_and_parse_payload(&api);
 			}
 
 			// Verify requesting client is allowed to see this resource
@@ -219,13 +216,13 @@ int api_handler(struct mg_connection *conn, void *ignored)
 			}
 
 			// Call the API function and get the return code
-			log_debug(DEBUG_API, "Processing %s %s in %s",
+			log_web_debug(DEBUG_API, "Processing %s %s in %s",
 			          api.request->request_method,
 			          api.request->local_uri_raw,
 			          api_request[i].uri);
 			handler_ran = true;
 			ret = api_request[i].func(&api);
-			log_debug(DEBUG_API, "Done");
+			log_web_debug(DEBUG_API, "Done");
 			break;
 		}
 	}

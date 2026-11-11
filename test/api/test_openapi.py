@@ -103,6 +103,34 @@ class TestEndpointResponses:
 class TestTeleporter:
     """Teleporter export/import round-trip via API."""
 
+    def test_teleporter_export_entry_names(self, ftl):
+        """Exported archives must use the canonical etc/pihole/... entry names.
+
+        The names are independent of PIHOLE_INSTALL_DIR and of the runtime
+        files.gravity / files.database values, so that archives stay portable
+        between differently configured installations and the import side
+        (which matches fixed names) keeps accepting them.
+        """
+        import io
+        import zipfile
+
+        archive = ftl.GET("/api/teleporter", [], "application/zip",
+                          AuthenticationMethods.HEADER)
+        assert archive is not None, \
+            "Teleporter export failed:\n" + \
+            "\n".join(f"  - {e}" for e in ftl.errors)
+
+        names = zipfile.ZipFile(io.BytesIO(archive)).namelist()
+        for expected in ("etc/pihole/pihole.toml", "etc/pihole/gravity.db",
+                         "etc/pihole/pihole-FTL.db"):
+            assert expected in names, \
+                f"Teleporter archive does not contain {expected}:\n" + \
+                "\n".join(f"  - {n}" for n in names)
+        leases = [n for n in names if n.endswith("dhcp.leases")]
+        assert leases in ([], ["etc/pihole/dhcp.leases"]), \
+            f"Teleporter archive stores DHCP leases under {leases}, " \
+            "expected etc/pihole/dhcp.leases"
+
     def test_teleporter_v5_domainlist_groups(self, ftl):
         """A v5 archive keeps the group assignments of all four domain lists.
 

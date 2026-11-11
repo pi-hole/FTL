@@ -58,7 +58,7 @@
 // timer_elapsed_msec()
 #include "timers.h"
 
-#define VERSIONS_FILE "/etc/pihole/versions"
+#define VERSIONS_FILE PIHOLE_INSTALL_DIR "/versions"
 
 int api_info_client(struct ftl_conn *api)
 {
@@ -154,7 +154,7 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_ITEM_TO_OBJECT(owner, "group", group);
 	JSON_ADD_ITEM_TO_OBJECT(json, "owner", owner);
 
-	// Add number of queries and earliest timestamp in in-memory database
+	// Add number of queries and earliest timestamp in memory
 	double earliest_timestamp_mem = 0.0;
 	uint64_t queries_in_database = 0;
 	get_db_info(false, &queries_in_database, &earliest_timestamp_mem);
@@ -293,7 +293,7 @@ static int read_hwmon_sensors(struct ftl_conn *api,
 	FILE *f_value = fopen(value_path, "r");
 	if(f_value == NULL)
 	{
-		log_warn("Cannot open %s: %s", value_path, strerror(errno));
+		log_web(LOG_WARNING, "Cannot open %s: %s", value_path, strerror(errno));
 		return 0;
 	}
 
@@ -401,7 +401,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 	if(hwmon_dir == NULL)
 	{
 		// Nothing to read here, leave array empty
-		log_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
+		log_web_debug(DEBUG_API, "Cannot open %s: %s", dirname, strerror(errno));
 		return 0;
 	}
 
@@ -465,7 +465,7 @@ static int get_hwmon_sensors(struct ftl_conn *api, cJSON *sensors)
 		DIR *sensor_dir = opendir(dirpath);
 		if(sensor_dir == NULL)
 		{
-			log_warn("Cannot open %s: %s", dirpath, strerror(errno));
+			log_web(LOG_WARNING, "Cannot open %s: %s", dirpath, strerror(errno));
 			continue;
 		}
 		struct dirent *dircontent_sensor = NULL;
@@ -586,7 +586,7 @@ static int get_ftl_obj(struct ftl_conn *api, cJSON *ftl)
 	const int db_allowed_regex_enabled = counters->database.domains.allowed.regex.enabled;
 	const int db_denied_regex_total = counters->database.domains.denied.regex.total;
 	const int db_denied_regex_enabled = counters->database.domains.denied.regex.enabled;
-	const int clients_total = counters->clients;
+	const int clients_total = counters->clients_total;
 	const int privacylevel = config.misc.privacylevel.v.privacy_level;
 	const double qps = get_qps();
 
@@ -1049,7 +1049,7 @@ static int api_info_messages_DELETE(struct ftl_conn *api)
 		char *endptr = NULL;
 		long int idval = strtol(token, &endptr, 10);
 		if(errno != 0 || endptr == token || *endptr != '\0' || idval < 0)
-			log_warn("API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
+			log_web(LOG_WARNING, "API: URI error - skipping invalid ID in path (%s): %s", api->action_path, token);
 		else
 			cJSON_AddNumberToArray(ids, idval);
 

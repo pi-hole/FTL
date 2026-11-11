@@ -282,11 +282,6 @@ const char *readFTLlegacy(struct config *conf)
 	if(buffer != NULL && sscanf(buffer, "%u", &unum) == 1 && unum > 0 && unum <= 300)
 		conf->misc.delay_startup.v.ui = unum;
 
-	// BLOCK_ESNI
-	// defaults to: true
-	buffer = parseFTLconf(fp, "BLOCK_ESNI");
-	parseBool(buffer, &conf->dns.blockESNI.v.b);
-
 	// WEBROOT
 	getLockedPath(fp, "WEBROOT", &conf->webserver.paths.webroot);
 
@@ -663,7 +658,6 @@ static void getLockedPath(FILE *fp, const char *option, struct conf_item *item)
 	if(cli_mode || !(item->f & FLAG_API_READ_ONLY))
 	{
 		item->v.s = path;
-		item->t = CONF_STRING_ALLOCATED;
 		return;
 	}
 

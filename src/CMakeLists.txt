@@ -34,7 +34,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption. It is needed for the .recover SQLite3 command.
 # SQLITE_ENABLE_DBSTAT_VTAB: Enables the dbstat virtual table. It is needed for the .diskused SQLite3 command.
 # SQLITE_TEMP_STORE=1: This option sets the default value for the temp_store pragma to 1. This means that temporary tables and indices are always stored on disk. This is the default setting.
-# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (_memdb, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
+# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (the query database, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
 # SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
 # SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
 # HAVE_MALLOC_H + HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
@@ -48,7 +48,6 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 
 # Code hardening and debugging improvements
 # -fstack-protector-strong: The program will be resistant to having its stack overflowed
-# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 # -Wl,-z,relro: reduces the possible areas of memory in a program that can be used by an attacker that performs a successful memory corruption exploit
 # -Wl,-z,now: When combined with RELRO above, this further reduces the regions of memory available to memory corruption attacks
 # -g3: More debugging information
@@ -61,7 +60,7 @@ set(SQLITE_DEFINES "-DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 -D
 # -Wl,-z,relro: Read-only segments after relocation
 # -fno-common: Emit globals without explicit initializer from `.bss` to `.data`. This causes GCC to reject multiple definitions of global variables. This is the new default from GCC-10 on.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "-fstack-protector-strong -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3 -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
+    set(HARDENING_FLAGS "-fstack-protector-strong -Wl,-z,relro,-z,now -fexceptions -funwind-tables -fasynchronous-unwind-tables -Wl,-z,defs -Wl,-z,now -Wl,-z,relro -fno-common")
     set(DEBUG_FLAGS "-rdynamic -fno-omit-frame-pointer")
 endif()
 
@@ -209,20 +208,53 @@ if(STATIC)
 else()
     message(STATUS "Compiling dynamically linked executable")
 endif()
-# -pie -fPIE: (Dynamic) position independent executable
-
+# Position-independent executable (image ASLR). -fPIE compiles the objects
+# position-independent; the executable is then linked PIE via -pie (dynamic
+# build) or -static-pie (static build, set on the link line below). A plain
+# -static silently overrides -pie and yields a non-PIE binary with a fixed load
+# address, so the static build - the one we actually ship - must use -static-pie.
 if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie -fPIE")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -fPIE")
+    if(NOT STATIC)
+        set(HARDENING_FLAGS "${HARDENING_FLAGS} -pie")
+    endif()
+endif()
+
+# Emit each function/variable in its own section so the linker can drop the
+# unreferenced ones at link time (-Wl,--gc-sections). Combined with the static
+# libraries built with the same flags (see the ftl-build image), this strips dead
+# code - including large unused parts of OpenSSL - from the shipped binary.
+if (CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(HARDENING_FLAGS "${HARDENING_FLAGS} -ffunction-sections -fdata-sections")
+    add_link_options(-Wl,--gc-sections)
 endif()
 
 # -FILE_OFFSET_BITS=64: used by stat(). Avoids problems with files > 2 GB on 32bit machines
 # We define HAVE_POLL_H as this is needed for the musl builds to succeed
 set(CMAKE_C_FLAGS "-std=c17 -pipe ${WARN_FLAGS} -D_FILE_OFFSET_BITS=64 ${HARDENING_FLAGS} ${DEBUG_FLAGS} ${CMAKE_C_FLAGS} -DHAVE_POLL_H ${SQLITE_DEFINES}")
 
+# -Wp,-D_FORTIFY_SOURCE=3 and -O1 or higher: This causes certain unsafe glibc functions to be replaced with their safer counterparts. _FORTIFY_SOURCE requires -O1 or higher to build. We may have to undefine _FORTIFY_SOURCE to avoid a warning about the redefinition of this macro
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELEASE} -g3")
-set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG -Wp,-U_FORTIFY_SOURCE -Wp,-D_FORTIFY_SOURCE=3")
+
+# We ship with debug information so crash backtraces resolve to file:line, which
+# makes DWARF the largest part of the binary. Compressing it is lossless as gdb
+# and addr2line decompress transparently, and the link option is what also
+# covers the statically linked libraries we do not compile ourselves. zstd
+# compresses marginally better but needs binutils >= 2.40 to be read back.
+include(CheckCSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-g -gz=zlib")
+set(CMAKE_REQUIRED_LINK_OPTIONS "-Wl,--compress-debug-sections=zlib")
+check_c_source_compiles("int main(void) { return 0; }" HAVE_COMPRESSED_DEBUG_SECTIONS)
+unset(CMAKE_REQUIRED_FLAGS)
+unset(CMAKE_REQUIRED_LINK_OPTIONS)
+if(HAVE_COMPRESSED_DEBUG_SECTIONS)
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -gz=zlib")
+    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -gz=zlib")
+    add_link_options(-Wl,--compress-debug-sections=zlib)
+endif()
 
 set(sources
         args.c
@@ -252,6 +284,8 @@ set(sources
         main.c
         main.h
         metrics.h
+        name-history.c
+        name-history.h
         overTime.c
         overTime.h
         procps.c
@@ -304,11 +338,12 @@ add_executable(pihole-FTL
         $<TARGET_OBJECTS:config>
         $<TARGET_OBJECTS:tools>
         $<TARGET_OBJECTS:ntp>
+        $<TARGET_OBJECTS:dotdoh>
         )
 if(STATIC)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_START_STATIC ON)
     set_target_properties(pihole-FTL PROPERTIES LINK_SEARCH_END_STATIC ON)
-    target_link_libraries(pihole-FTL -static-libgcc -static)
+    target_link_libraries(pihole-FTL -static-libgcc -static-pie)
     set(LIBRARY_SUFFIX "${CMAKE_STATIC_LIBRARY_SUFFIX}")
 else()
     find_library(LIBMATH m)
@@ -374,6 +409,7 @@ add_subdirectory(syscalls)
 add_subdirectory(config)
 add_subdirectory(tools)
 add_subdirectory(ntp)
+add_subdirectory(dotdoh)
 
 # Standalone regression harness for the in-memory tar parser (zip/tar.c).
 # It #includes tar.c directly to reach the file-internal helpers, stubs the
@@ -401,6 +437,29 @@ if(BUILD_TAR_REGRESSION)
     if(TAR_REGRESSION_SANITIZE)
         target_compile_options(tar_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(tar_regression PRIVATE -fsanitize=address,undefined)
+    endif()
+endif()
+
+# Standalone regression harness for the dotdoh leaf units (URI parser and
+# DoT/DoH framing). It #includes the self-contained implementation .c files
+# directly; no object dependencies are needed. The "dotdoh regression
+# harness" bats test runs the resulting binary. Deliberately NOT given the
+# strict EXTRAWARN/-Werror flags applied to FTL code.
+#
+# Only built on request: `./build.sh test` enables it for local runs and the
+# CI Dockerfile passes -DBUILD_DOTDOH_REGRESSION=ON at build time.
+option(BUILD_DOTDOH_REGRESSION "Build the dotdoh regression test harness" OFF)
+if(BUILD_DOTDOH_REGRESSION)
+    add_executable(dotdoh_regression
+            ${PROJECT_SOURCE_DIR}/test/dotdoh_regression.c)
+    target_include_directories(dotdoh_regression PRIVATE ${PROJECT_SOURCE_DIR}/src)
+
+    # Optional ASan/UBSan instrumentation for local runs:
+    #   ./build.sh "-DDOTDOH_REGRESSION_SANITIZE=ON" test
+    option(DOTDOH_REGRESSION_SANITIZE "Build the dotdoh regression test with ASan/UBSan" OFF)
+    if(DOTDOH_REGRESSION_SANITIZE)
+        target_compile_options(dotdoh_regression PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(dotdoh_regression PRIVATE -fsanitize=address,undefined)
     endif()
 endif()
 
@@ -511,6 +570,10 @@ check_include_file("sys/random.h" HAVE_RANDOM_H)
 if(HAVE_RANDOM_H)
     target_compile_definitions(config PRIVATE USE_GETRANDOM)
     target_compile_definitions(core PRIVATE USE_GETRANDOM)
+    target_compile_definitions(dotdoh PRIVATE USE_GETRANDOM)
+    if(TARGET dotdoh_regression)
+        target_compile_definitions(dotdoh_regression PRIVATE USE_GETRANDOM)
+    endif()
 endif()
 
 # <unwind.h> is part of GCC's libgcc — available on ALL targets (musl+glibc, static+dynamic)
@@ -583,23 +646,72 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "..." FORCE)
 endif()
 
-option(USE_MBED_TLS "Build FTL with TLS support, if available" ON)
+option(USE_TLS "Build FTL with TLS support, if available" ON)
 
-find_library(LIBMBEDCRYPTO NAMES lmbedcrypto${LIBRARY_SUFFIX} mbedcrypto)
-find_library(LIBMBEDX509 NAMES lmbedx509${LIBRARY_SUFFIX} mbedx509)
-find_library(LIBMBEDTLS NAMES lmbedtls${LIBRARY_SUFFIX} mbedtls)
-if(LIBMBEDCRYPTO AND LIBMBEDX509 AND LIBMBEDTLS AND USE_MBED_TLS)
-    # Enable TLS support in civetweb if mbedTLS is selected and available
+find_library(LIBSSL NAMES libssl${LIBRARY_SUFFIX} ssl)
+find_library(LIBCRYPTO NAMES libcrypto${LIBRARY_SUFFIX} crypto)
+if(LIBSSL AND LIBCRYPTO AND USE_TLS)
+    # OpenSSL is used by the TLS terminator, the x509 certificate handling and
+    # the dotdoh client. civetweb itself is always built without TLS (NO_SSL,
+    # set in its own CMakeLists) since the terminator does TLS termination now.
     message(STATUS "Building FTL with TLS support: YES")
-    target_compile_definitions(core PRIVATE HAVE_MBEDTLS)
-    target_compile_definitions(civetweb PRIVATE USE_MBEDTLS)
-    target_compile_definitions(webserver PRIVATE HAVE_MBEDTLS)
-    # Link against the mbedTLS libraries, the order is important (!)
-    target_link_libraries(pihole-FTL ${LIBMBEDTLS} ${LIBMBEDX509} ${LIBMBEDCRYPTO})
+    target_compile_definitions(core PRIVATE HAVE_TLS)
+    target_compile_definitions(webserver PRIVATE HAVE_TLS)
+    target_compile_definitions(dotdoh PRIVATE HAVE_TLS)
+    # Link against OpenSSL, the order is important (libssl depends on libcrypto)
+    target_link_libraries(pihole-FTL ${LIBSSL} ${LIBCRYPTO})
+
+    # HTTP/2 for the TLS terminator (nghttp2). Optional: without it the
+    # terminator negotiates HTTP/1.1 only.
+    find_library(LIBNGHTTP2 NAMES libnghttp2${LIBRARY_SUFFIX} nghttp2)
+    if(LIBNGHTTP2)
+        message(STATUS "Building FTL with HTTP/2 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP2)
+        # The dotdoh client auto-negotiates HTTP/2 (DoH2) on https:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP2)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP2})
+    else()
+        message(STATUS "Building FTL with HTTP/2 support: NO (nghttp2 not found)")
+    endif()
+
+    # HTTP/3 for the TLS terminator (OpenSSL QUIC + nghttp3). Requires nghttp3
+    # AND OpenSSL >= 4.0, which provides SSL_get_peer_addr() (the per-connection
+    # QUIC peer getter used to forward the real client IP). Against an older
+    # OpenSSL such as 3.5.x, HTTP/3 and QUIC are disabled at build time and the
+    # terminator serves HTTP/1.1 and (if built) HTTP/2 only.
+    include(CheckCSourceCompiles)
+    check_c_source_compiles("
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER < 0x40000000L
+#error OpenSSL < 4.0 has no QUIC peer-address API
+#endif
+int main(void) { return 0; }
+" OPENSSL_HAS_QUIC_PEER_ADDR)
+
+    # DoQ (RFC 9250) rides on OpenSSL's QUIC alone - it carries DNS directly on
+    # QUIC streams, so unlike DoH3 it needs no HTTP/3 library. Gate it on the
+    # OpenSSL version only, so a build without nghttp3 still speaks DoQ.
+    if(OPENSSL_HAS_QUIC_PEER_ADDR)
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: YES")
+        target_compile_definitions(dotdoh PRIVATE HAVE_QUIC)
+    else()
+        message(STATUS "Building FTL with DoQ (DNS-over-QUIC) support: NO (OpenSSL < 4.0)")
+    endif()
+
+    find_library(LIBNGHTTP3 NAMES libnghttp3${LIBRARY_SUFFIX} nghttp3)
+    if(LIBNGHTTP3 AND OPENSSL_HAS_QUIC_PEER_ADDR)
+        message(STATUS "Building FTL with HTTP/3 support: YES")
+        target_compile_definitions(webserver PRIVATE HAVE_HTTP3)
+        # The dotdoh client speaks DoH3 (HTTP/3 over QUIC) on h3:// upstreams.
+        target_compile_definitions(dotdoh PRIVATE HAVE_HTTP3)
+        target_link_libraries(pihole-FTL ${LIBNGHTTP3})
+    elseif(LIBNGHTTP3)
+        message(STATUS "Building FTL with HTTP/3 support: NO (OpenSSL < 4.0 lacks the QUIC peer-address API)")
+    else()
+        message(STATUS "Building FTL with HTTP/3 support: NO (nghttp3 not found)")
+    endif()
 else()
-    # Disable TLS support in civetweb if mbedTLS is not selected or not available
     message(STATUS "Building FTL with TLS support: NO")
-    target_compile_definitions(civetweb PRIVATE NO_SSL)
 endif()
 
 # After finishing building the FTL binary, we append the sha256sum of the binary
@@ -613,12 +725,9 @@ add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to 
         )
 
 ######### Installation target ############
-# Install the binary
+# Install the binary ...
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-find_program(SETCAP setcap)
-# After installing the binary, we set the capabilities on the binary ...
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 # ... and verify the binary integrity
 install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

@@ -52,7 +52,7 @@
 // sufficient access to the memory (ptrace, swapfile) would also have access to
 // the password file. Leaking the password after exit is not a concern as a new
 // password is generated on every start.
-#define CLI_PW_FILE "/etc/pihole/cli_pw"
+#define CLI_PW_FILE PIHOLE_INSTALL_DIR "/cli_pw"
 static char *cli_password = NULL;
 
 // Convert RAW data into hex representation
@@ -560,6 +560,7 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 			}
 			unlock_config();
 		}
+
 		free(supplied);
 
 		// Successful logins do not count against rate-limiting

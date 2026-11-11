@@ -33,7 +33,7 @@
 #include <sys/resource.h>
 // free_regex()
 #include "regex_r.h"
-// close_memory_database()
+// close_query_database()
 #include "database/query-table.h"
 // http_terminate()
 #include "webserver/webserver.h"
@@ -45,8 +45,8 @@
 #include "config/env.h"
 // parse_proc_stat()
 #include "procps.h"
-// destroy_entropy()
-#include "webserver/x509.h"
+// dotdoh_cleanup()
+#include "dotdoh/proxy.h"
 
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
@@ -351,9 +351,9 @@ static void terminate_threads(void)
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 
-	// Abort a long-running statement on the in-memory database (the initial
+	// Abort a long-running statement on the query database (the initial
 	// query import) so its thread can see the flag above and return
-	interrupt_memdb();
+	interrupt_import();
 
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
@@ -460,6 +460,13 @@ void cleanup(const int ret)
 		log_debug(DEBUG_ANY, "Terminating: Stopping threads");
 		terminate_threads();
 
+		// Tear down the encrypted-upstream proxy. Runs after the worker thread
+		// has joined, so freeing its pooled connections and the shared SSL_CTX
+		// cannot race the poll loop. This also releases the OpenSSL context on a
+		// clean exit, so it does not surface as a leak under valgrind.
+		log_debug(DEBUG_ANY, "Terminating: Stopping encrypted-upstream proxy");
+		dotdoh_cleanup();
+
 		// Close database connection
 		lock_shm();
 		log_debug(DEBUG_ANY, "Terminating: Closing gravity database");
@@ -487,9 +494,9 @@ void cleanup(const int ret)
 	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
 
-	// Close memory database
-	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
-	close_memory_database();
+	// Close query database
+	log_debug(DEBUG_ANY, "Terminating: Closing query database");
+	close_query_database();
 
 	// Free environment variables
 	log_debug(DEBUG_ANY, "Terminating: Freeing environment variables");
@@ -517,10 +524,6 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
-
-	// Finally, free log config memory
-	if(config.files.log.ftl.t == CONF_STRING_ALLOCATED)
-		free(config.files.log.ftl.v.s);
 }
 
 // Count the CPUs present in the system. musl's get_nprocs_conf() returns the
@@ -580,7 +583,7 @@ void calc_cpu_usage(const unsigned int interval)
 
 	// Calculate the total CPU usage
 	const double cpu_time = parse_proc_stat();
-	
+
 	// Calculate the CPU usage since the last call to this function
 	static double last_cpu_time = 0.0f;
 	total_cpu_usage = 100.0 * (cpu_time - last_cpu_time) / interval / norm_factor;

@@ -154,8 +154,8 @@ int api_stats_summary(struct ftl_conn *api)
 	const int cached = get_cached_count();
 	const int total = counters->queries;
 	const int num_gravity = counters->database.gravity;
-	const int num_clients = counters->clients;
-	const int num_domains = counters->domains;
+	const int num_clients = counters->clients_total;
+	const int num_domains = counters->domains_total;
 
 	// Count clients that have been active within the most recent 24 hours
 	unsigned int activeclients = get_active_clients();
@@ -216,7 +216,7 @@ cJSON *get_top_domains(struct ftl_conn *api, const int count,
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS)
 	{
-		log_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
+		log_web_debug(DEBUG_API, "Not returning top domains: Privacy level is set to %i",
 		          config.misc.privacylevel.v.privacy_level);
 
 		// Minimum structure is
@@ -412,7 +412,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 	// Exit before processing any data if requested via config setting
 	if(config.misc.privacylevel.v.privacy_level >= PRIVACY_HIDE_DOMAINS_CLIENTS)
 	{
-		log_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
+		log_web_debug(DEBUG_API, "Not returning top clients: Privacy level is set to %i",
 		          config.misc.privacylevel.v.privacy_level);
 
 		// Minimum structure is
@@ -464,7 +464,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		// Skip invalid clients and also those managed by alias clients
 		if(client == NULL || (!client->flags.aliasclient && client->aliasclient_id >= 0))
 		{
-			log_debug(DEBUG_API, "Skipping client %u because %s", clientID,
+			log_web_debug(DEBUG_API, "Skipping client %u because %s", clientID,
 			          client == NULL ? "it is invalid" : "it is an alias client");
 			continue;
 		}
@@ -472,7 +472,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		// Skip recycled clients
 		if(client->ippos == 0)
 		{
-			log_debug(DEBUG_API, "Skipping client %u because it is recycled", clientID);
+			log_web_debug(DEBUG_API, "Skipping client %u because it is recycled", clientID);
 			continue;
 		}
 
@@ -480,7 +480,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		// Hidden client, probably due to privacy level. Skip this in the top lists
 		if(strcmp(client_ip, HIDDEN_CLIENT) == 0)
 		{
-			log_debug(DEBUG_API, "Skipping client %u because it is hidden", clientID);
+			log_web_debug(DEBUG_API, "Skipping client %u because it is hidden", clientID);
 			continue;
 		}
 
@@ -534,7 +534,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 		}
 	}
 
-	log_debug(DEBUG_API, "Found %u clients (heap selected from %u)", heap_size, clients);
+	log_web_debug(DEBUG_API, "Found %u clients (heap selected from %u)", heap_size, clients);
 
 	// Unlock shared memory
 	unlock_shm();
@@ -556,7 +556,7 @@ cJSON *get_top_clients(struct ftl_conn *api, const int count,
 
 		if(top_clients[i].count < 1)
 		{
-			log_debug(DEBUG_API, "Skipping client %s because it has no queries", client_ip);
+			log_web_debug(DEBUG_API, "Skipping client %s because it has no queries", client_ip);
 			continue;
 		}
 

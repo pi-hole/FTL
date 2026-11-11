@@ -106,9 +106,9 @@ int send_json_error_free(struct ftl_conn *api, const int code,
 	if(code < 200 || code == 204 || code == 304)
 	{
 		if(hint != NULL)
-			log_warn("API: %s (key: %s, hint: %s)", message, key, hint);
+			log_web(LOG_WARNING, "API: %s (key: %s, hint: %s)", message, key, hint);
 		else
-			log_warn("API: %s (key: %s)", message, key);
+			log_web(LOG_WARNING, "API: %s (key: %s)", message, key);
 
 		return send_http_code(api, NULL, code, "");
 	}
@@ -125,17 +125,17 @@ int send_json_error_free(struct ftl_conn *api, const int code,
 		if(code >= 500 || code == 429)
 		{
 			if(hint != NULL)
-				log_warn("API: %s (key: %s, hint: %s)", message, key, hint);
+				log_web(LOG_WARNING, "API: %s (key: %s, hint: %s)", message, key, hint);
 			else
-				log_warn("API: %s (key: %s)", message, key);
+				log_web(LOG_WARNING, "API: %s (key: %s)", message, key);
 		}
 		else if(hint != NULL)
 		{
-			log_debug(DEBUG_API, "API: %s (key: %s, hint: %s)", message, key, hint);
+			log_web_debug(DEBUG_API, "API: %s (key: %s, hint: %s)", message, key, hint);
 		}
 		else
 		{
-			log_debug(DEBUG_API, "API: %s (key: %s)", message, key);
+			log_web_debug(DEBUG_API, "API: %s (key: %s)", message, key);
 		}
 	}
 
@@ -188,7 +188,7 @@ bool get_bool_var(const char *source, const char *var, bool *boolean)
 		return true;
 	}
 	// else: error
-	log_warn("Cannot parse parameter %s in query string \"%s\": \"%s\" is neither \"true\" nor \"false\"", var, source, buffer);
+	log_web(LOG_WARNING, "Cannot parse parameter %s in query string \"%s\": \"%s\" is neither \"true\" nor \"false\"", var, source, buffer);
 	return false;
 }
 
@@ -318,7 +318,7 @@ bool get_int_var(const char *source, const char *var, int *num)
 	// We don't log an error here if msg == NULL, because it's perfectly valid
 	// for a parameter to be missing
 	if(!result && msg != NULL)
-		log_warn("Cannot parse integer parameter %s in query string \"%s\": %s", var, source, msg);
+		log_web(LOG_WARNING, "Cannot parse integer parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
 
@@ -353,7 +353,7 @@ bool get_uint_var(const char *source, const char *var, unsigned int *num)
 	// We don't log an error here if msg == NULL, because it's perfectly valid
 	// for a parameter to be missing
 	if(!result && msg != NULL)
-		log_warn("Cannot parse unsigned integer parameter %s in query string \"%s\": %s", var, source, msg);
+		log_web(LOG_WARNING, "Cannot parse unsigned integer parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
 
@@ -407,7 +407,7 @@ bool get_double_var(const char *source, const char *var, double *num)
 	// We don't log an error here if msg == NULL, because it's perfectly valid
 	// for a parameter to be missing
 	if(!result && msg != NULL)
-		log_warn("Cannot parse double parameter %s in query string \"%s\": %s", var, source, msg);
+		log_web(LOG_WARNING, "Cannot parse double parameter %s in query string \"%s\": %s", var, source, msg);
 	return result;
 }
 
@@ -423,7 +423,7 @@ int get_string_var(const char *source, const char *var, char *dest, size_t dest_
 	char *tempbuf = calloc(dest_len, sizeof(char));
 	if(!tempbuf)
 	{
-		log_err("get_string_var: Out of memory");
+		log_web(LOG_ERR, "get_string_var: Out of memory");
 		return -1;
 	}
 
@@ -556,18 +556,45 @@ const char * __attribute__((const)) get_http_method_str(const enum http_method m
 	}
 }
 
-void read_and_parse_payload(struct ftl_conn *api)
+// Does this request carry a body at all? civetweb leaves content_length at -1
+// both for a request that announced no length and for a chunked one, so the
+// encoding header has to be read as well - the same test civetweb makes before
+// it sets is_chunked, and it has already rejected any other encoding with a 400
+static bool payload_expected(struct ftl_conn *api)
 {
-	// Defense in depth: never operate on an unallocated payload buffer
-	if(api->payload.raw == NULL)
-		return;
+	if(api->request->content_length > 0)
+		return true;
 
-	// Read payload
-	api->payload.size = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	const char *encoding = mg_get_header(api->conn, "Transfer-Encoding");
+	return encoding != NULL && strcasecmp(encoding, "identity") != 0;
+}
+
+bool read_and_parse_payload(struct ftl_conn *api)
+{
+	// Most requests are bodyless - every GET a dashboard polls - and those
+	// need no buffer at all
+	if(!payload_expected(api))
+		return true;
+
+	api->payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	if(api->payload.raw == NULL)
+		return false;
+
+	// Read payload. mg_read() reports a read error as a negative number,
+	// which must not reach the unsigned payload size - it would wrap and
+	// read as a payload too large to handle
+	const int nread = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	if (nread < 0)
+	{
+		log_web_debug(DEBUG_API, "Error reading payload");
+		return true;
+	}
+
+	api->payload.size = (long unsigned int)nread;
 	if (api->payload.size < 1)
 	{
-		log_debug(DEBUG_API, "Received no payload");
-		return;
+		log_web_debug(DEBUG_API, "Received no payload");
+		return true;
 	}
 	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
 	{
@@ -575,12 +602,12 @@ void read_and_parse_payload(struct ftl_conn *api)
 		// truncated the payload. The only reasonable thing to do here is to
 		// discard the payload altogether. This runs before authentication,
 		// so it is logged at debug level only.
-		log_debug(DEBUG_API, "API: Received too large payload - DISCARDING");
-		return;
+		log_web_debug(DEBUG_API, "API: Received too large payload - DISCARDING");
+		return true;
 	}
 
 	// Debug output of received payload (if enabled)
-	log_debug(DEBUG_API, "Received payload with size: %lu", api->payload.size);
+	log_web_debug(DEBUG_API, "Received payload with size: %lu", api->payload.size);
 
 	// Terminate string
 	api->payload.raw[api->payload.size] = '\0';
@@ -590,6 +617,8 @@ void read_and_parse_payload(struct ftl_conn *api)
 
 	// Try to parse possibly existing JSON payload
 	api->payload.json = cJSON_ParseWithOpts(api->payload.raw, &api->payload.json_error, 0);
+
+	return true;
 }
 
 // Escape a string to mask HTML special characters, the resulting string is
@@ -694,7 +723,7 @@ int parse_groupIDs(struct ftl_conn *api, tablerow *table, cJSON *row)
 		// Error parsing group_ids, substitute empty array
 		// Note: This should never happen as the database's aggregate
 		//       function should always return a valid JSON array
-		log_err("Error parsing group_ids, error at: %.20s", json_error);
+		log_web(LOG_ERR, "Error parsing group_ids, error at: %.20s", json_error);
 		JSON_ADD_ITEM_TO_OBJECT(row, "groups", JSON_NEW_ARRAY());
 	}
 	else

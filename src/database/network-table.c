@@ -2155,11 +2155,10 @@ int getAliasclientIDfromIP(sqlite3 *db, const char *ipaddr)
 	bool success = false;
 	sqlite3_stmt *stmt = NULL;
 	int aliasclient_id = DB_FAILED;
-	const char *querystr = "SELECT aliasclient_id FROM network WHERE id = "
+	const char *querystr = "SELECT aliasclient_id FROM network "
+	                       "WHERE aliasclient_id IS NOT NULL AND id = "
 	                       "(SELECT network_id FROM network_addresses "
-	                       "WHERE ip = ? "
-	                             "AND aliasclient_id IS NOT NULL "
-	                       "GROUP BY ip HAVING max(lastSeen));";
+	                       "WHERE ip = ? GROUP BY ip HAVING max(lastSeen));";
 	int rc = sqlite3_prepare_v2(db, querystr, -1, &stmt, NULL);
 	if(rc != SQLITE_OK)
 	{
@@ -2385,7 +2384,8 @@ getNameFromIP_end:
 }
 
 // Get most recently seen host name of device identified by MAC address
-bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
+// db may be NULL, in which case a connection is opened just for this lookup
+bool getNameFromMAC(sqlite3 *db, const char *client, char hostn[MAXDOMAINLEN])
 {
 	bool got_name = false;
 
@@ -2400,12 +2400,18 @@ bool getNameFromMAC(const char *client, char hostn[MAXDOMAINLEN])
 		return false;
 	}
 
-	// Open pihole-FTL.db database file
-	sqlite3 *db = NULL;
-	if((db = dbopen(false, false)) == NULL)
+	// Open pihole-FTL.db database file if needed
+	bool db_opened = false;
+	if(db == NULL)
 	{
-		log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
-		return false;
+		if((db = dbopen(false, false)) == NULL)
+		{
+			log_warn("getNameFromMAC(\"%s\") - Failed to open DB", client);
+			return false;
+		}
+
+		// Successful
+		db_opened = true;
 	}
 
 	// Check for a host name associated with the given client as MAC address
@@ -2464,11 +2470,13 @@ getNameFromMAC_end:
 	if(!got_name)
 		checkFTLDBrc(rc);
 
-	// Finalize statement and close database handle
+	// Finalize statement and close database handle (if opened)
 	if(stmt != NULL)
 		sqlite3_finalize(stmt);
 
-	dbclose(&db);
+	if(db_opened)
+		dbclose(&db);
+
 	return got_name;
 }
 

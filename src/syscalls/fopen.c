@@ -11,8 +11,6 @@
 #include "FTL.h"
 //#include "syscalls.h" is implicitly done in FTL.h
 #include "log.h"
-// open()
-#include <fcntl.h>
 
 #undef fopen
 FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *mode, const char *file, const char *func, const int line)
@@ -42,46 +40,5 @@ FILE * __attribute__ ((__malloc__)) FTLfopen(const char *pathname, const char *m
 	errno = _errno;
 
 	// Return file pointer
-	return file_ptr;
-}
-
-// Open one of FTL's own log files. Unlike FTLfopen(), a failure is not logged:
-// the warning would be written to FTL.log, which is opened for that again, so a
-// log file that cannot be opened would recurse until the stack runs out. The
-// callers in log.c handle a failed open themselves
-FILE * __attribute__ ((__malloc__)) FTLfopen_nowarn(const char *pathname, const char *mode)
-{
-	// As root, refuse a symbolic link as the log file, as the pihole user owns
-	// the log directory. These are the two modes log.c uses
-	int flags = -1;
-	if(geteuid() == 0)
-	{
-		if(strcmp(mode, "a+") == 0)
-			flags = O_RDWR | O_CREAT | O_APPEND | O_NOFOLLOW;
-		else if(strcmp(mode, "w") == 0)
-			flags = O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW;
-	}
-
-	FILE *file_ptr = 0;
-	do
-	{
-		// Reset errno before trying to open
-		errno = 0;
-		if(flags == -1)
-			file_ptr = fopen(pathname, mode);
-		else
-		{
-			const int fd = open(pathname, flags, 0666);
-			if(fd >= 0 && (file_ptr = fdopen(fd, mode)) == NULL)
-			{
-				const int _errno = errno;
-				close(fd);
-				errno = _errno;
-			}
-		}
-	}
-	// Try again if the call was interrupted by an incoming signal
-	while(file_ptr == NULL && errno == EINTR);
-
 	return file_ptr;
 }
