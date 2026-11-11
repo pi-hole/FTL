@@ -1075,7 +1075,7 @@ bool __attribute__((nonnull(1,3))) write_dnsmasq_config(struct config *conf, enu
 	return true;
 }
 
-bool read_legacy_dhcp_static_config(void)
+bool read_legacy_dhcp_static_config(struct config *conf)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_STATIC_LEASES;
@@ -1091,9 +1091,9 @@ bool read_legacy_dhcp_static_config(void)
 	}
 
 	// Clear out config.dhcp.hosts array if it exists
-	if(config.dhcp.hosts.v.json != NULL)
-		cJSON_Delete(config.dhcp.hosts.v.json);
-	config.dhcp.hosts.v.json = cJSON_CreateArray();
+	if(conf->dhcp.hosts.v.json != NULL)
+		cJSON_Delete(conf->dhcp.hosts.v.json);
+	conf->dhcp.hosts.v.json = cJSON_CreateArray();
 
 	// Read file line by line
 	char *linebuffer = NULL;
@@ -1120,10 +1120,10 @@ bool read_legacy_dhcp_static_config(void)
 
 		// Add entry to config.dhcp.hosts
 		cJSON *item = cJSON_CreateString(value);
-		cJSON_AddItemToArray(config.dhcp.hosts.v.json, item);
+		cJSON_AddItemToArray(conf->dhcp.hosts.v.json, item);
 
 		log_debug(DEBUG_CONFIG, DNSMASQ_STATIC_LEASES": Setting %s[%u] = %s\n",
-		          config.dhcp.hosts.k, j++, item->valuestring);
+		          conf->dhcp.hosts.k, j++, item->valuestring);
 	}
 
 	// Free allocated memory
@@ -1140,7 +1140,7 @@ bool read_legacy_dhcp_static_config(void)
 }
 
 
-bool read_legacy_cnames_config(void)
+bool read_legacy_cnames_config(struct config *conf)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CNAMES;
@@ -1156,9 +1156,9 @@ bool read_legacy_cnames_config(void)
 	}
 
 	// Clear out config.dns.cnameRecords array if it exists
-	if(config.dns.cnameRecords.v.json != NULL)
-		cJSON_Delete(config.dns.cnameRecords.v.json);
-	config.dns.cnameRecords.v.json = cJSON_CreateArray();
+	if(conf->dns.cnameRecords.v.json != NULL)
+		cJSON_Delete(conf->dns.cnameRecords.v.json);
+	conf->dns.cnameRecords.v.json = cJSON_CreateArray();
 
 	// Read file line by line
 	char *linebuffer = NULL;
@@ -1185,10 +1185,10 @@ bool read_legacy_cnames_config(void)
 
 		// Add entry to config.dns.cnameRecords
 		cJSON *item = cJSON_CreateString(value);
-		cJSON_AddItemToArray(config.dns.cnameRecords.v.json, item);
+		cJSON_AddItemToArray(conf->dns.cnameRecords.v.json, item);
 
 		log_debug(DEBUG_CONFIG, DNSMASQ_CNAMES": Setting %s[%u] = %s\n",
-		          config.dns.cnameRecords.k, j++, item->valuestring);
+		          conf->dns.cnameRecords.k, j++, item->valuestring);
 	}
 
 	// Free allocated memory
@@ -1204,7 +1204,7 @@ bool read_legacy_cnames_config(void)
 	return true;
 }
 
-bool read_legacy_custom_hosts_config(void)
+bool read_legacy_custom_hosts_config(struct config *conf)
 {
 	// Check if file exists, if not, there is nothing to do
 	const char *path = DNSMASQ_CUSTOM_LIST_LEGACY;
@@ -1221,9 +1221,9 @@ bool read_legacy_custom_hosts_config(void)
 	}
 
 	// Clear out config.dns.hosts array if it exists
-	if(config.dns.hosts.v.json != NULL)
-		cJSON_Delete(config.dns.hosts.v.json);
-	config.dns.hosts.v.json = cJSON_CreateArray();
+	if(conf->dns.hosts.v.json != NULL)
+		cJSON_Delete(conf->dns.hosts.v.json);
+	conf->dns.hosts.v.json = cJSON_CreateArray();
 
 	// Read file line by line
 	char *linebuffer = NULL;
@@ -1253,7 +1253,7 @@ bool read_legacy_custom_hosts_config(void)
 
 		// Add entry to config.dns.hosts
 		cJSON *item = cJSON_CreateString(linebuffer);
-		cJSON_AddItemToArray(config.dns.hosts.v.json, item);
+		cJSON_AddItemToArray(conf->dns.hosts.v.json, item);
 	}
 
 	// Free allocated memory
