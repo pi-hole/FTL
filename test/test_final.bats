@@ -696,6 +696,71 @@ first_start_stop() {
   refute_output
 }
 
+@test "Queries recorded at misc.privacylevel 3 are not stored after the level is lowered" {
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A privacy-maximum.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  # Queries move into the in-memory database once per second
+  sleep 2
+
+  # Raising the level does not restart FTL. Every query from the next full
+  # second on is recorded in maximum privacy mode
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":3}}}"'
+  assert_output "200"
+  level3=$(( $(date +%s) + 1 ))
+  sleep 2
+  total_before=$(curl -s 127.0.0.1/api/stats/summary | jq '.queries.total')
+  for i in 1 2 3; do
+    dig A privacy-maximum.ftl @127.0.0.1 +tries=1 +time=2 > /dev/null
+  done
+  total_after=$(curl -s 127.0.0.1/api/stats/summary | jq '.queries.total')
+  sleep 2
+
+  # Lowering the level restarts FTL. The stopping instance exports the queries
+  # that may still receive a reply with the lowered level in place
+  logsize_lower=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'curl -s -o /dev/null -w "%{http_code}" -X PATCH http://127.0.0.1/api/config -H "Content-Type: application/json" -d "{\"config\":{\"misc\":{\"privacylevel\":0}}}"'
+  assert_output "200"
+  run bash -c "./pihole-FTL wait-for 'queries from the long-term database' /var/log/pihole/FTL.log 30 $logsize_lower"
+  assert_success
+  for i in $(seq 1 30); do
+    if dig A privacy-maximum.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+
+  # They are counted, but none of them is on disk
+  run bash -c "./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db \"SELECT (SELECT COUNT(*) FROM queries WHERE domain = 'privacy-maximum.ftl'), (SELECT COUNT(*) FROM queries WHERE timestamp >= ${level3} AND domain = 'hidden');\""
+  printf "counted at level 3: %s, named and hidden on disk: %s\n" "$((total_after - total_before))" "${lines[0]}"
+  IFS='|' read -r named hidden <<< "${lines[0]}"
+  [[ $((total_after - total_before)) -ge 3 ]]
+  [[ ${named} -ge 1 ]]
+  [[ ${hidden} == 0 ]]
+
+  tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.privacylevel3.log
+  run bash -c 'grep "WARNING:" /tmp/FTL.privacylevel3.log | grep -v -E "CAP_NET_ADMIN|CAP_NET_RAW|CAP_SYS_NICE|CAP_IPC_LOCK|CAP_CHOWN|CAP_NET_BIND_SERVICE|CAP_SYS_TIME|FTLCONF_|(negative DS reply without NS record received for ([a-z0-9-]+\.)*(ftl|icloud\.com|apple-dns\.net|in-addr\.arpa|ip6\.arpa),)|(nameserver 127.0.0.1 refused to do a recursive query)"'
+  refute_output
+  run bash -c 'grep "ERROR: " /tmp/FTL.privacylevel3.log | grep -v -E "(index\.html)|(Failed to create shared memory object)|(FTLCONF_debug_api is not a boolean)|(FTLCONF_files_pcap)|(Failed to set|adjust time during NTP sync: Insufficient permissions)|(nlrequest error)|(Failed to read ARP cache)"'
+  refute_output
+  run bash -c 'grep "CRIT:" /tmp/FTL.privacylevel3.log | grep -v "CRIT: pihole-FTL is already running"'
+  refute_output
+}
+
 @test "A query stored with type 100 (DNS type 0) is imported into shared memory" {
   # Unmapped query types are stored as 100 + the DNS type, so 100 is a query
   # of type 0, written like this by older versions. It shows as TYPE0
