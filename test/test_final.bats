@@ -599,6 +599,11 @@ first_start_stop() {
     assert_equal "$(stat -c%s /etc/pihole/gravity.db)" "${size_before}"
     run bash -c "./pihole-FTL wait-for 'Gravity database has been updated, reloading now' /var/log/pihole/FTL.log 5 $logsize_update"
     assert_success
+    # The reload follows in the database thread and reads the timestamp again
+    # when it opens the database. Let it finish before the next update, or the
+    # reload reads that one as well, and FTL never sees it as a change
+    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_update"
+    assert_success
   done
 
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
