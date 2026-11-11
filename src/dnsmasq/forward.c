@@ -2513,7 +2513,7 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
   unsigned char *pheader;
   unsigned int mark = 0;
   int have_mark = 0;
-  int first, last, filtered, do_stale = 0;
+  int first, last, filtered, do_stale = 0, closed = 0;
       
   /************ Pi-hole modification ************/
   bool piholeblocked = false;
@@ -2886,8 +2886,16 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	    }
 	}
 
+      /* Fresh data is in the cache now. Go on with the queries the client
+	 had already sent, if the connection is still open. */
       if (do_stale)
-	break;
+	{
+	  if (closed)
+	    break;
+	  do_stale = 0;
+	  daemon->log_source_addr = &peer_addr;
+	  continue;
+	}
       
       /* In case of local answer or no connections made. */
       if (m == 0 && !piholeblocked) // Pi-hole modified to ensure we don't provide local answers when dropping the reply
@@ -2936,19 +2944,27 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
       /* If we answered with stale data, this process will now try and get fresh data into
 	 the cache and cannot therefore accept new queries. Close the incoming
 	 connection to signal that to the client. Then set do_stale and loop round
-	 once more to try and get fresh data, after which we exit. */
+	 once more to try and get fresh data, after which we exit. A client which
+	 has already sent its next query is waiting for the answer and would lose
+	 it, so keep the connection open then and answer it after the refresh. */
       if (stale)
 	{
-	  shutdown(confd, SHUT_RDWR);
-	  close(confd);
+	  char c;
+	  
+	  if (recv(confd, &c, 1, MSG_PEEK | MSG_DONTWAIT) != 1)
+	    {
+	      shutdown(confd, SHUT_RDWR);
+	      close(confd);
+	      closed = 1;
+	    }
 	  do_stale = 1;
 	  /* Don't mark the query with the source when refreshing stale data. */
 	  daemon->log_source_addr = NULL;
 	}
     }
   
-/* If we ran once to get fresh data, confd is already closed. */
-  if (!do_stale)
+/* If we ran once to get fresh data, confd may be closed already. */
+  if (!closed)
     {
       shutdown(confd, SHUT_RDWR);
       close(confd);

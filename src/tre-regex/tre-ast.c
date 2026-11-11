@@ -33,7 +33,7 @@ tre_ast_new_node(tre_mem_t mem, tre_ast_type_t type, size_t size)
 }
 
 tre_ast_node_t *
-tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max, int position)
+tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max)
 {
   tre_ast_node_t *node;
   tre_literal_t *lit;
@@ -44,7 +44,7 @@ tre_ast_new_literal(tre_mem_t mem, int code_min, int code_max, int position)
   lit = node->obj;
   lit->code_min = code_min;
   lit->code_max = code_max;
-  lit->position = position;
+  lit->position = -1;
 
   return node;
 }
@@ -80,6 +80,22 @@ tre_ast_new_union(tre_mem_t mem, tre_ast_node_t *left, tre_ast_node_t *right)
   ((tre_union_t *)node->obj)->left = left;
   ((tre_union_t *)node->obj)->right = right;
   node->num_submatches = left->num_submatches + right->num_submatches;
+
+  return node;
+}
+
+/* Like tre_ast_new_union(), for alternatives which each match a single
+   character and can therefore share one position. */
+tre_ast_node_t *
+tre_ast_new_char_union(tre_mem_t mem, tre_ast_node_t *left,
+		       tre_ast_node_t *right)
+{
+  tre_ast_node_t *node;
+
+  node = tre_ast_new_union(mem, left, right);
+  if (node == NULL)
+    return NULL;
+  ((tre_union_t *)node->obj)->single_position = 1;
 
   return node;
 }

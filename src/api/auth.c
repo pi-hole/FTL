@@ -857,8 +857,22 @@ int api_auth(struct ftl_conn *api)
 	return send_api_auth_status(api, user_id, now);
 }
 
+// App sessions without webserver.api.app_sudo and CLI sessions may end only
+// their own session (DELETE /api/auth), not see or end anyone else's
+static bool is_limited_session(const struct ftl_conn *api)
+{
+	return api->session.used &&
+	       (api->session.cli || (api->session.app && !config.webserver.api.app_sudo.v.b));
+}
+
 int api_auth_sessions(struct ftl_conn *api)
 {
+	if(is_limited_session(api))
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to list sessions",
+		                       "App sessions without webserver.api.app_sudo and CLI sessions cannot list sessions");
+
 	// Get session object
 	cJSON *json = JSON_NEW_OBJECT();
 	get_all_sessions(api, json);
@@ -867,6 +881,12 @@ int api_auth_sessions(struct ftl_conn *api)
 
 int api_auth_session_delete(struct ftl_conn *api)
 {
+	if(is_limited_session(api))
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to delete session",
+		                       "App sessions without webserver.api.app_sudo and CLI sessions cannot delete sessions");
+
 	// Get user ID
 	int uid;
 	if(sscanf(api->item, "%i", &uid) != 1)

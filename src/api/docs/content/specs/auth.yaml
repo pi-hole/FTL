@@ -188,6 +188,17 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden (app session without `webserver.api.app_sudo`, or CLI session)
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  limited_session:
+                    $ref: 'auth.yaml#/components/examples/errors/sessions_forbidden'
     totp:
       get:
         summary: Suggest new TOTP credentials
@@ -254,6 +265,17 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '403':
+            description: Forbidden (app session without `webserver.api.app_sudo`, or CLI session)
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/forbidden'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  limited_session:
+                    $ref: 'auth.yaml#/components/examples/errors/session_delete_forbidden'
     app:
       get:
         summary: Create new application password
@@ -587,6 +609,22 @@ components:
             key: "bad_request"
             message: "Session ID not in use"
             hint: null
+          took: 0.003
+      sessions_forbidden:
+        summary: Forbidden (limited session)
+        value:
+          error:
+            key: "forbidden"
+            message: "Unable to list sessions"
+            hint: "App sessions without webserver.api.app_sudo and CLI sessions cannot list sessions"
+          took: 0.003
+      session_delete_forbidden:
+        summary: Forbidden (limited session)
+        value:
+          error:
+            key: "forbidden"
+            message: "Unable to delete session"
+            hint: "App sessions without webserver.api.app_sudo and CLI sessions cannot delete sessions"
           took: 0.003
       totp_invalid:
         summary: 2FA token invalid

@@ -343,6 +343,50 @@ class TestDomainSearch:
         assert search["results"]["total"] > 0, \
             f"Expected partial matches for 'gravity':\n{json.dumps(data, indent=2)}"
 
+    def test_partial_matching_abp_subdomain(self, api_session):
+        """Partial matching must resolve ABP-style entries like exact matching.
+
+        The gravity table stores "||special.gravity.ftl^", which a plain
+        substring search for a subdomain of it cannot find.
+        """
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert search["results"]["gravity"] == {"allow": 0, "block": 1}, \
+            json.dumps(data, indent=2)
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_antigravity_subdomain(self, api_session):
+        """ABP-style antigravity entries are found for subdomains, too."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/sub.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_leading_dot(self, api_session):
+        """A leading dot is stripped from the ABP patterns, so the pattern
+        built from the full term is no substring hit and must be looked up."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+        data = _j(api_session.get(f"{FTL_URL}/api/search/.antigravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["@@||antigravity.ftl^"], \
+            json.dumps(data, indent=2)
+
+    def test_partial_matching_abp_no_duplicates(self, api_session):
+        """The substring hit and the generated ABP pattern must not both count."""
+        data = _j(api_session.get(f"{FTL_URL}/api/search/special.gravity.ftl",
+                                  params={"partial": "true"}, timeout=5))
+        search = data["search"]
+        assert [g["domain"] for g in search["gravity"]] == ["||special.gravity.ftl^"], \
+            json.dumps(data, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # History
@@ -476,6 +520,24 @@ class TestLuaServerPages:
                         if line.lower().startswith("location:")]
             assert location, f"No redirect for {path}:\n{head}"
             assert not location[0].startswith(("//", "/\\")), location[0]
+
+    def test_head_sends_headers_only(self):
+        """HEAD gets the status and headers of GET but no body, both from a
+        Lua page and from the built-in error page."""
+        # Relies on webserver.serve_all being on, set by the backtrace test above
+        for path in ("/broken_lua", "/does_not_exist.html"):
+            resp = {}
+            for method in ("HEAD", "GET"):
+                raw = _raw_http(f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                "Connection: close\r\n\r\n".encode())
+                head, sep, body = raw.partition(b"\r\n\r\n")
+                assert sep, f"Incomplete response to {method} {path}:\n{raw!r}"
+                lines = [line for line in head.split(b"\r\n")
+                         if not line.lower().startswith(b"date:")]
+                resp[method] = (lines, body)
+            assert resp["HEAD"][0] == resp["GET"][0], path
+            assert resp["HEAD"][1] == b"", f"HEAD {path} sent a body:\n{resp['HEAD'][1]!r}"
+            assert resp["GET"][1], f"GET {path} sent no body"
 
 
 # ---------------------------------------------------------------------------

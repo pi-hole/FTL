@@ -197,10 +197,12 @@ class TestTeleporter:
     def test_teleporter_v5_setupvars_replaces_arrays(self, ftl):
         """A v5 setupVars.conf replaces the config arrays it sets.
 
-        The import migrates into the running config. After two imports, the
+        The import migrates a copy of the running config. After two imports, the
         upstreams, reverse servers and excluded domains have to hold the
         archive's entries once, not the live ones plus a copy per import.
-        excludeClients, which the archive does not set, keeps its value.
+        excludeClients, which the archive does not set, keeps its value. The
+        exclude entry that is no valid regex is dropped, and the settings of
+        pihole-FTL.conf end up in the installed config as well.
         test_teleporter_import below restores pihole.toml from the ZIP
         exported earlier.
         """
@@ -216,9 +218,11 @@ class TestTeleporter:
                               b"REV_SERVER_CIDR=192.168.0.0/16\n"
                               b"REV_SERVER_TARGET=192.168.0.1\n"
                               b"REV_SERVER_DOMAIN=lan\n"
-                              b"API_EXCLUDE_DOMAINS=excluded.example\n",
+                              b"API_EXCLUDE_DOMAINS=excluded.example,foo(bar\n",
             # The config migration warns if there is no legacy file to read
-            "pihole-FTL.conf": b"# v5 import test\n",
+            "pihole-FTL.conf": b"# v5 import test\n"
+                               b"DEBUG_QUERIES=true\n"
+                               b"BLOCKINGMODE=NXDOMAIN\n",
         }
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
@@ -265,6 +269,10 @@ class TestTeleporter:
         assert config["dns"]["revServers"] == ["true,192.168.0.0/16,192.168.0.1,lan"]
         assert config["webserver"]["api"]["excludeDomains"] == ["^excluded\\.example$"]
         assert config["webserver"]["api"]["excludeClients"] == exclude_clients
+        # The legacy reader clears every debug flag the archive does not set
+        assert config["debug"]["queries"] is True
+        assert config["debug"]["gc"] is False
+        assert config["dns"]["blocking"]["mode"] == "NX"
 
     def test_teleporter_import(self, openapi, ftl):
         """Re-import the teleporter ZIP archive exported during response tests.

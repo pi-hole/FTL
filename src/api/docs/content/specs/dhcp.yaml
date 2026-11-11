@@ -68,6 +68,17 @@ components:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
                     - $ref: 'common.yaml#/components/schemas/took'
+          '503':
+            description: The resolver did not remove the lease in time, the request can be repeated
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'common.yaml#/components/errors/service_unavailable'
+                    - $ref: 'common.yaml#/components/schemas/took'
+                examples:
+                  timeout:
+                    $ref: 'dhcp.yaml#/components/examples/errors/service_unavailable/timeout'
   schemas:
     leases:
       type: object
@@ -117,6 +128,15 @@ components:
               message: "Failed to delete DHCP lease"
               hint: "DHCP is not enabled"
             took: 0.003
+      service_unavailable:
+        timeout:
+          summary: The resolver did not remove the lease in time
+          value:
+            error:
+              key: "service_unavailable"
+              message: "Failed to delete DHCP lease"
+              hint: "timed out waiting for the resolver to remove the lease"
+            took: 5.002
   parameters:
     ip:
       in: path

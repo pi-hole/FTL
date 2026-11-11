@@ -29,9 +29,80 @@
 #include "version.h"
 // sanitize_dns_hosts()
 #include "config/validator.h"
+// restart_ftl()
+#include "signals.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
+
+// dnsmasq forks a TCP worker for every TCP connection and does not exec it. A
+// worker forked while a config write has pihole.toml.lock open inherits the
+// descriptor, and as an flock belongs to the open file description, the lock
+// would stay held after the writer closed its own copy, until the worker exits
+// (up to CHILD_LIFETIME). The fork handlers close the descriptor in the child.
+// install_lock_fd_mutex only covers opening and closing, so a fork never sees
+// a descriptor that is open but not recorded yet, or recorded but closed, and
+// dnsmasq never waits for a whole config write. install_lock_writer lets only
+// one thread at a time have the lock file open
+static int install_lock_fd = -1;
+static pthread_mutex_t install_lock_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t install_lock_writer = PTHREAD_MUTEX_INITIALIZER;
+
+static void install_lock_atfork_prepare(void)
+{
+	pthread_mutex_lock(&install_lock_fd_mutex);
+}
+
+static void install_lock_atfork_parent(void)
+{
+	pthread_mutex_unlock(&install_lock_fd_mutex);
+}
+
+static void install_lock_atfork_child(void)
+{
+	if(install_lock_fd >= 0)
+		close(install_lock_fd);
+	install_lock_fd = -1;
+	pthread_mutex_unlock(&install_lock_fd_mutex);
+}
+
+static void register_install_lock_atfork(void)
+{
+	pthread_atfork(install_lock_atfork_prepare,
+	               install_lock_atfork_parent,
+	               install_lock_atfork_child);
+}
+
+// Open the lock that serialises writing and installing pihole.toml
+static int open_install_lock(void)
+{
+	// Registered once, on the first write. Registering twice would make the
+	// prepare handler lock the mutex twice
+	static pthread_once_t atfork_once = PTHREAD_ONCE_INIT;
+	pthread_once(&atfork_once, register_install_lock_atfork);
+
+	pthread_mutex_lock(&install_lock_writer);
+	pthread_mutex_lock(&install_lock_fd_mutex);
+
+	// flock() needs no write access on a local file system, which is what
+	// lets members of the pihole group take the lock. NFS emulates it and
+	// wants a writable descriptor for an exclusive lock
+	int fd = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
+	              S_IRUSR | S_IWUSR | S_IRGRP);
+	if(fd < 0 && errno == EACCES)
+		fd = open(GLOBALTOMLPATH".lock", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+	const int open_errno = errno;
+	install_lock_fd = fd;
+
+	pthread_mutex_unlock(&install_lock_fd_mutex);
+
+	// Nothing to serialise against without the lock file
+	if(fd < 0)
+		pthread_mutex_unlock(&install_lock_writer);
+
+	errno = open_errno;
+	return fd;
+}
 
 // Release the lock that serialises writing and installing pihole.toml
 static void release_install_lock(int *fd)
@@ -40,22 +111,25 @@ static void release_install_lock(int *fd)
 		return;
 
 	// Closing the descriptor releases the flock
+	pthread_mutex_lock(&install_lock_fd_mutex);
 	close(*fd);
+	install_lock_fd = -1;
+	pthread_mutex_unlock(&install_lock_fd_mutex);
+	pthread_mutex_unlock(&install_lock_writer);
 	*fd = -1;
 }
 
-bool writeFTLtoml(const bool verbose, FILE *fp)
+static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 {
-	// Return early without writing if we are in config read-only mode
-	if(config.misc.readOnly.v.b)
+	// Read-only mode keeps an existing file as it is. A missing one is still
+	// written, pihole-FTL --config and the Teleporter need it
+	if(config.misc.readOnly.v.b && file_exists(GLOBALTOMLPATH))
 	{
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 
-		// We need to (re-)calculate the checksum here as it'd otherwise
-		// be outdated (in non-read-only mode, it's calculated at the
-		// end of this function)
-		if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
-			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+		// An edit of the file must still reach the running config
+		if(fp == NULL)
+			*restart = merge_config_file();
 		return true;
 	}
 
@@ -68,13 +142,7 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	const bool opened = fp == NULL;
 	if(opened)
 	{
-		// flock() needs no write access on a local file system, which is
-		// what lets members of the pihole group take the lock. NFS emulates
-		// it and wants a writable descriptor for an exclusive lock
-		install_lock = open(GLOBALTOMLPATH".lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
-		                    S_IRUSR | S_IWUSR | S_IRGRP);
-		if(install_lock < 0 && errno == EACCES)
-			install_lock = open(GLOBALTOMLPATH".lock", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		install_lock = open_install_lock();
 		if(install_lock >= 0 && geteuid() == 0)
 			chown_pihole(GLOBALTOMLPATH".lock", NULL);
 		if(install_lock < 0)
@@ -84,8 +152,19 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		{
 			log_warn("Cannot lock %s (%s), writing the config unserialised",
 			         GLOBALTOMLPATH".lock", strerror(errno));
-			close(install_lock);
-			install_lock = -1;
+			release_install_lock(&install_lock);
+		}
+	}
+
+	// Never overwrite a change another process made since we last read or
+	// wrote the file. Under the install lock, nobody can make another one
+	if(opened)
+	{
+		*restart = merge_config_file();
+		if(config.misc.readOnly.v.b && file_exists(GLOBALTOMLPATH))
+		{
+			release_install_lock(&install_lock);
+			return true;
 		}
 	}
 
@@ -295,7 +374,18 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 
 	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+	remember_config(&config);
 
 	release_install_lock(&install_lock);
 	return true;
+}
+
+bool writeFTLtoml(const bool verbose, FILE *fp)
+{
+	// Restart only once the change at hand is written and the lock is released
+	bool restart = false;
+	const bool ok = write_config_file(verbose, fp, &restart);
+	if(restart)
+		restart_ftl("pihole.toml change");
+	return ok;
 }

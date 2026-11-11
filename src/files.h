@@ -23,6 +23,10 @@
 #define BACKUP_DIR "/etc/pihole/config_backups"
 
 bool in_pihole_dir(const char *path);
+
+// Scratch space handed to getpwnam_r()/getgrgid_r() and friends
+#define PWBUF_SIZE 2048
+
 bool chmod_file(const char *filename, const mode_t mode);
 bool file_exists(const char *filename);
 bool file_readable(const char *filename);

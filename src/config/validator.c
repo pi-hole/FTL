@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+#include <errno.h>
+#include <limits.h>
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -22,6 +24,23 @@
 bool __attribute__((const)) validate_stub(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	return true;
+}
+
+static void set_error(char err[VALIDATOR_ERRBUF_LEN], const char *key, const int i,
+                      const char *reason, const char *value, const char *detail)
+{
+	char *escaped = escape_control_chars(value);
+
+	if(i >= 0)
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: %s (\"%s\")%s%s", key, i,
+		         reason, escaped != NULL ? escaped : "(unable to display)",
+		         detail != NULL ? ": " : "", detail != NULL ? detail : "");
+	else
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: %s (\"%s\")%s%s", key, reason,
+		         escaped != NULL ? escaped : "(unable to display)",
+		         detail != NULL ? ": " : "", detail != NULL ? detail : "");
+
+	free(escaped);
 }
 
 // Validate the dns.hosts array
@@ -80,8 +99,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 
 		if(!ip || !*ip)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: found no first element (\"%s\")",
-			         key, i, item->valuestring);
+			set_error(err, key, i, "found no first element", item->valuestring, NULL);
 			free(str);
 			return false;
 		}
@@ -91,8 +109,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		struct in6_addr addr6;
 		if(inet_pton(AF_INET, ip, &addr) != 1 && inet_pton(AF_INET6, ip, &addr6) != 1)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: neither a valid IPv4 nor IPv6 address (\"%s\")",
-			         key, i, ip);
+			set_error(err, key, i, "neither a valid IPv4 nor IPv6 address", ip, NULL);
 			free(str);
 			return false;
 		}
@@ -121,8 +138,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 
 			if(!valid_domain(host, strlen(host), false))
 			{
-				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
-				         key, i, host);
+				set_error(err, key, i, "invalid hostname", host, NULL);
 				free(str);
 				return false;
 			}
@@ -132,8 +148,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// Check if there is at least one hostname in this record
 		if(hosts < 1)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have at least one hostname (\"%s\")",
-			         key, i, item->valuestring);
+			set_error(err, key, i, "entry does not have at least one hostname", item->valuestring, NULL);
 			free(str);
 			return false;
 		}
@@ -142,6 +157,51 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 	}
 
 	return true;
+}
+
+// dnsmasq ends a line at a # that starts it or follows whitespace
+static void cut_comment(char *s)
+{
+	for(char *c = s; *c != '\0'; c++)
+	{
+		if(*c == '#' && (c == s || isspace((unsigned char)c[-1])))
+		{
+			*c = '\0';
+			return;
+		}
+	}
+}
+
+// Reduce a dns.cnameRecords entry in place to what dnsmasq needs to see: no
+// comment and no whitespace around the commas. dnsmasq turns whitespace in front
+// of a comma into an additional CNAME for the root name.
+void normalize_cname(char *s)
+{
+	cut_comment(s);
+
+	size_t w = 0;
+	for(char *p = s; ; )
+	{
+		char *comma = strchr(p, ',');
+		size_t len = comma != NULL ? (size_t)(comma - p) : strlen(p);
+		while(len > 0 && isspace((unsigned char)*p))
+		{
+			p++;
+			len--;
+		}
+		while(len > 0 && isspace((unsigned char)p[len - 1]))
+			len--;
+
+		if(w > 0)
+			s[w++] = ',';
+		memmove(s + w, p, len);
+		w += len;
+
+		if(comma == NULL)
+			break;
+		p = comma + 1;
+	}
+	s[w] = '\0';
 }
 
 // Validate the dns.cnames array
@@ -172,6 +232,12 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// Check if it's in the form "<cname>,[<cnameX>,]<target>[,<TTL>]"
 		// <cnameX> is optional and may be repeated
 		char *str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
 		char *tmp = str, *s = NULL;
 		unsigned int j = 0;
 
@@ -208,6 +274,48 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				return false;
 			}
 		}
+
+		// Every alias and the target have to be valid domains. As in dnsmasq,
+		// spaces around the commas are ignored, and the last of at least
+		// three elements is the TTL if it is a number
+		str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
+		tmp = str;
+		for(unsigned int k = 0; (s = strsep(&tmp, ",")) != NULL; k++)
+		{
+			while(isspace((unsigned char)*s))
+				s++;
+			size_t slen = strlen(s);
+			while(slen > 0 && isspace((unsigned char)s[slen - 1]))
+				s[--slen] = '\0';
+
+			if(k == j - 1 && j > 2 && slen > 0 && strspn(s, "0123456789") == slen)
+			{
+				// The TTL has to fit into an int
+				errno = 0;
+				const unsigned long ttl = strtoul(s, NULL, 10);
+				if(errno != 0 || ttl > INT_MAX)
+				{
+					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid TTL (\"%s\")", key, i, s);
+					free(str);
+					return false;
+				}
+				break;
+			}
+
+			if(!valid_domain(s, slen, false))
+			{
+				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid domain (\"%s\")", key, i, s);
+				free(str);
+				return false;
+			}
+		}
+		free(str);
 	}
 
 	return true;
@@ -220,7 +328,7 @@ bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDA
 	// Check if domain is valid
 	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid domain", val->s, NULL);
 		return false;
 	}
 
@@ -240,7 +348,7 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	// Check if there is an IP and no tail
 	if(!ip || !*ip || tail)
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IP in CIDR notation (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid IP in CIDR notation", val->s, NULL);
 		free(str);
 		return false;
 	}
@@ -251,7 +359,7 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	int ip4 = 0, ip6 = 0;
 	if(((ip4 = inet_pton(AF_INET, ip, &addr)) != 1) && ((ip6 = inet_pton(AF_INET6, ip, &addr6)) != 1))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 nor IPv6 address (\"%s\")", key, ip);
+		set_error(err, key, -1, "not a valid IPv4 nor IPv6 address", ip, NULL);
 		free(str);
 		return false;
 	}
@@ -268,13 +376,13 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 		int cidr_int = atoi(cidr);
 		if(ip4 && (cidr_int < 0 || cidr_int > 32))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 CIDR (\"%s\")", key, cidr);
+			set_error(err, key, -1, "not a valid IPv4 CIDR", cidr, NULL);
 			free(str);
 			return false;
 		}
 		else if(ip6 && (cidr_int < 0 || cidr_int > 128))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv6 CIDR (\"%s\")", key, cidr);
+			set_error(err, key, -1, "not a valid IPv6 CIDR", cidr, NULL);
 			free(str);
 			return false;
 		}
@@ -308,7 +416,7 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	// Check if domain is valid
 	if(!valid_domain(val->s, strlen(val->s), false))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid domain", val->s, NULL);
 		return false;
 	}
 
@@ -372,7 +480,7 @@ bool validate_urlpath_two_slash(union conf_value *val, const char *key, char err
 	// Check if the path starts and ends with a slash
 	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: file path does not start and end with a slash (\"%s\")", key, val->s);
+		set_error(err, key, -1, "file path does not start and end with a slash", val->s, NULL);
 		return false;
 	}
 
@@ -776,8 +884,10 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 		if(!validate_regex(item->valuestring, errbuf))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a valid regex (\"%s\"): %s",
-			         key, i, item->valuestring, errbuf);
+			char *escaped_errbuf = escape_control_chars(errbuf);
+			set_error(err, key, i, "not a valid regex", item->valuestring,
+			          escaped_errbuf != NULL ? escaped_errbuf : errbuf);
+			free(escaped_errbuf);
 			return false;
 		}
 	}
@@ -833,7 +943,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(strcmp(s, "true") != 0 && strcmp(s, "false") != 0)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <enabled> not a boolean (\"%s\")", key, i, s);
+					set_error(err, key, i, "<enabled> not a boolean", s, NULL);
 					free(str);
 					return false;
 				}
@@ -858,7 +968,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				const bool ipv6 = inet_pton(AF_INET6, ip, &addr6) == 1;
 				if(!ipv4 && !ipv6)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <ip-address> neither a valid IPv4 nor IPv6 address (\"%s\")", key, i, ip);
+					set_error(err, key, i, "<ip-address> neither a valid IPv4 nor IPv6 address", ip, NULL);
 					free(str);
 					return false;
 				}
@@ -875,8 +985,11 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 					const int prefix_int = atoi(prefix);
 					if(prefix_int < 0 || (ipv4 && prefix_int > 32) || (ipv6 && prefix_int > 128))
 					{
-						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> not a valid %sprefix length (\"%s\")",
-						         key, i, ipv4 ? "IPv4 " : ipv6 ? "IPv6 " : "", prefix);
+						char reason[64] = { 0 };
+						snprintf(reason, sizeof(reason),
+						         "<prefix-len> not a valid %sprefix length",
+						         ipv4 ? "IPv4 " : ipv6 ? "IPv6 " : "");
+						set_error(err, key, i, reason, prefix, NULL);
 						free(str);
 						return false;
 					}
@@ -904,7 +1017,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				// Check if server is valid
 				if(!server_ipv4 && !server_ipv6 && !server_domain)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <server> neither a valid domain nor an IPv4 or IPv6 address (\"%s\")", key, i, server);
+					set_error(err, key, i, "<server> neither a valid domain nor an IPv4 or IPv6 address", server, NULL);
 					free(str);
 					return false;
 				}
@@ -921,7 +1034,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 					const int port_int = atoi(port);
 					if(port_int < 0 || port_int > 65535)
 					{
-						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: server <port> not a valid port (\"%s\")", key, i, port);
+						set_error(err, key, i, "server <port> not a valid port", port, NULL);
 						free(str);
 						return false;
 					}
@@ -932,7 +1045,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(!valid_domain(s, strlen(s), false))
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
+					set_error(err, key, i, "specified <domain> not a valid domain", s, NULL);
 					free(str);
 					return false;
 				}

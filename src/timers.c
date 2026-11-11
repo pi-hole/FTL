@@ -113,6 +113,7 @@ void *timer(void *val)
 	{
 		// Hold the lock across the tick so a new timer set through the API
 		// is neither overwritten by the decrement nor discarded on expiry
+		bool expired = false, target_status = true;
 		pthread_mutex_lock(&timer_lock);
 		if(timer_delay > 0)
 		{
@@ -123,13 +124,28 @@ void *timer(void *val)
 		}
 		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
-			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
-			          timer_target_status ? "enabled" : "disabled");
-
-			set_blockingstatus(timer_target_status);
-			timer_delay = -1.0;
+			// The API takes the config lock before timer_lock, so only
+			// try it here and retry on the next tick while a config
+			// change is in progress
+			if(trylock_config())
+			{
+				expired = true;
+				target_status = timer_target_status;
+				timer_delay = -1.0;
+			}
 		}
 		pthread_mutex_unlock(&timer_lock);
+
+		// Writing the config takes the SHM lock, which the API holds while
+		// it reads the timer, so timer_lock must not be held here. The
+		// config lock keeps the API from setting a new timer meanwhile
+		if(expired)
+		{
+			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
+			          target_status ? "enabled" : "disabled");
+			set_blockingstatus(target_status);
+			unlock_config();
+		}
 		thread_sleepms(TIMER, SLEEPING_TIME * 1000);
 	}
 

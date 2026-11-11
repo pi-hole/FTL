@@ -116,9 +116,14 @@ int api_info_database(struct ftl_conn *api)
 	JSON_ADD_NUMBER_TO_OBJECT(json, "ctime", st.st_ctime); // Time of last status change (owner or mode change, etc.)
 
 	// Get owner details
+	// The reentrant lookups are required as this runs on a webserver worker
+	// thread: getpwuid()/getgrgid() share one buffer between all threads
+	char pwbuf[PWBUF_SIZE];
+	struct passwd pwstore, *pw = NULL;
+	getpwuid_r(st.st_uid, &pwstore, pwbuf, sizeof(pwbuf), &pw);
+
 	cJSON *user = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(user, "uid", st.st_uid); // UID
-	const struct passwd *pw = getpwuid(st.st_uid);
 	if(pw != NULL)
 	{
 		JSON_COPY_STR_TO_OBJECT(user, "name", pw->pw_name); // User name
@@ -130,9 +135,12 @@ int api_info_database(struct ftl_conn *api)
 		JSON_ADD_NULL_TO_OBJECT(user, "info");
 	}
 
+	char grbuf[PWBUF_SIZE];
+	struct group grstore, *gr = NULL;
+	getgrgid_r(st.st_gid, &grstore, grbuf, sizeof(grbuf), &gr);
+
 	cJSON *group = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(group, "gid", st.st_gid); // GID
-	const struct group *gr = getgrgid(st.st_gid);
 	if(gr != NULL)
 	{
 		JSON_COPY_STR_TO_OBJECT(group, "name", gr->gr_name); // Group name
@@ -177,6 +185,9 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	struct sysinfo info;
 	if(sysinfo(&info) != 0)
 		return send_json_error(api, 500, "error", strerror(errno), NULL);
+	double loadavg[3] = { 0.0 };
+	if(get_load_averages(loadavg) != 0)
+		return send_json_error(api, 500, "error", "Cannot read the load averages", NULL);
 
 	// Seconds since boot
 	JSON_ADD_NUMBER_TO_OBJECT(system, "uptime", info.uptime);
@@ -235,16 +246,13 @@ int get_system_obj(struct ftl_conn *api, cJSON *system)
 	// Averaged total CPU usage in percent
 	JSON_ADD_NUMBER_TO_OBJECT(cpu, "%cpu", get_total_cpu_percentage());
 
-	// 1, 5, and 15 minute load averages (we need to convert them)
+	// 1, 5, and 15 minute load averages
 	cJSON *raw = JSON_NEW_ARRAY();
 	cJSON *percent = JSON_NEW_ARRAY();
-	float load_f[3] = { 0.f };
-	const float f_load = 1.f / (1 << SI_LOAD_SHIFT);
 	for(unsigned int i = 0; i < 3; i++)
 	{
-		load_f[i] = f_load * info.loads[i];
-		JSON_ADD_NUMBER_TO_ARRAY(raw, load_f[i]);
-		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.f*load_f[i]/nprocs));
+		JSON_ADD_NUMBER_TO_ARRAY(raw, loadavg[i]);
+		JSON_ADD_NUMBER_TO_ARRAY(percent, (100.0*loadavg[i]/nprocs));
 	}
 
 	// Averaged CPU usage in percent
@@ -1083,7 +1091,7 @@ int api_info_messages(struct ftl_conn *api)
 int api_info_metrics(struct ftl_conn *api)
 {
 	struct metrics metrics = { 0 };
-	get_dnsmasq_metrics(&metrics);
+	copy_dnsmasq_metrics(&metrics);
 	cJSON *cache = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", metrics.dns.cache.size);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", metrics.dns.cache.inserted);

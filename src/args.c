@@ -30,6 +30,8 @@
 #include "log.h"
 // global variable killed
 #include "signals.h"
+// dnsmasq_failed
+#include "daemon.h"
 // regex_speedtest()
 #include "regex_r.h"
 // init_shmem()
@@ -219,6 +221,23 @@ static bool strStartsWithIgnoreCase(const char *input, const char *start)
 	return strncasecmp(input, start, strlen(start)) == 0;
 }
 
+// Takes a stdio lock and crashes, see the "crash-thread" subcommand
+static void *crash_holding_lock(void *arg)
+{
+	(void)arg;
+	FILE *fp = fopen("/dev/null", "r");
+	if(fp != NULL)
+		flockfile(fp);
+	void *addr = mmap(NULL, 4096u, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if(addr != MAP_FAILED)
+	{
+		volatile char *ptr = (volatile char *)addr;
+		*ptr = 'x'; // Write to PROT_NONE page - SIGSEGV SEGV_ACCERR
+	}
+	raise(SIGSEGV);
+	return NULL;
+}
+
 void parse_args(int argc, char *argv[])
 {
 	bool quiet = false;
@@ -276,6 +295,23 @@ void parse_args(int argc, char *argv[])
 			*ptr = 'x'; // Write to PROT_NONE page — SIGSEGV SEGV_ACCERR
 		}
 		raise(SIGSEGV); // Fallback: mmap should never fail in practice
+		exit(EXIT_FAILURE);
+	}
+
+	// Crash a thread while it holds a stdio lock, like a thread crashing
+	// inside getgrgid() does. exit() then waits for that lock forever (on
+	// musl), so the crash watchdog has to end this process
+	if(argc == 2 && strcmp(argv[1], "crash-thread") == 0)
+	{
+		cli_mode = true;
+		log_ctrl(false, true);
+		// There is no dnsmasq to stop here, see terminate()
+		dnsmasq_failed = true;
+		start_crash_watchdog();
+		handle_signals();
+		pthread_t tid;
+		if(pthread_create(&tid, NULL, crash_holding_lock, NULL) == 0)
+			pthread_join(tid, NULL);
 		exit(EXIT_FAILURE);
 	}
 
@@ -743,7 +779,7 @@ void parse_args(int argc, char *argv[])
 	{
 		cli_mode = true;
 		log_ctrl(false, true);
-		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
+		exit(migrate_config_v6(&config) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Get name of the default gateway
@@ -1549,9 +1585,22 @@ void suggest_complete(const int argc, char *argv[])
 	{
 		getLogFilePath(false);
 		initConfig(&config);
-		if(argc == 5)
+
+		// Check if -t or -q was specified
+		const bool test_value = strcmp(argv[4], "-t") == 0;
+		const bool quiet_value = strcmp(argv[4], "-q") == 0;
+		const bool flag_value = test_value || quiet_value;
+		const int config_arg = flag_value ? 5 : 4;
+
+		if(argc == config_arg + 1)
 		{
-			// pihole-FTL --config ...
+			// suggest --config -t / -q (mutually exclusive, the first applies to setting only & the latter to querying only)
+			if(!flag_value && (strlen(last_word) == 0 || strStartsWith("-q", last_word)))
+				puts("-q");
+			if(!flag_value && (strlen(last_word) == 0 || strStartsWith("-t", last_word)))
+				puts("-t");
+
+			// Completing --config [-t] <key>
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
@@ -1561,15 +1610,18 @@ void suggest_complete(const int argc, char *argv[])
 					puts(conf_item->k);
 			}
 		}
-		else if(argc == 6)
+		// -q (suppress errors) only applies to querying values, not setting them
+		else if(argc == config_arg + 2 && !quiet_value)
 		{
-			// pihole-FTL --config <some key> ...
+			// pihole-FTL --config [-t] <key> <value>
+			// Suggest values for the specific key provided in argv[config_arg]
+			const char *key = argv[config_arg];
 			for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 			{
 				struct conf_item *conf_item = get_conf_item(&config, i);
 				if(!conf_item)
 					continue;
-				if(strcmp(conf_item->k, argv[4]) == 0)
+				if(strcmp(conf_item->k, key) == 0)
 				{
 					// See if we can suggest a value
 					switch(conf_item->t)
@@ -1577,7 +1629,7 @@ void suggest_complete(const int argc, char *argv[])
 						case CONF_BOOL:
 						case CONF_ALL_DEBUG_BOOL:
 						{
-							// pihole-FTL --config <boolean option>> ...
+							// pihole-FTL --config <boolean option> ...
 							const char *options[] = {
 								"true", "false"
 							};
@@ -1737,11 +1789,17 @@ void suggest_complete(const int argc, char *argv[])
 							break;
 
 						case CONF_ENUM_PRIVACY_LEVEL:
+						{
 							// This enum is in reality a numeric value
-							printf("%d\n", (int)conf_item->d.privacy_level);
-							break;
+							char privacy_level[12];
+							snprintf(privacy_level, sizeof(privacy_level), "%d", (int)conf_item->d.privacy_level);
 
-							case CONF_PASSWORD:
+							if(strlen(last_word) == 0 || strStartsWith(privacy_level, last_word))
+								puts(privacy_level);
+							break;
+						}
+
+						case CONF_PASSWORD:
 							// No suggestions
 							break;
 
@@ -1749,18 +1807,21 @@ void suggest_complete(const int argc, char *argv[])
 						{
 							char ip[INET_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET, &conf_item->d.in_addr.s_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 
 						case CONF_STRUCT_IN6_ADDR:
 						{
 							char ip[INET6_ADDRSTRLEN] = { 0 };
 							inet_ntop(AF_INET6, &conf_item->d.in6_addr, ip, sizeof(ip));
-							printf("%s\n", ip);
+							if(strStartsWith(ip, last_word) || strlen(last_word) == 0)
+								puts(ip);
+							break;
 						}
-						break;
 					}
+					break;
 				}
 			}
 		}

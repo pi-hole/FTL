@@ -26,4 +26,7 @@ patch -p1 < patch/civetweb/0001-Expose-bound-to-addresses-from-CivetWeb-to-the-f
 echo "Applying patch 0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch"
 patch -p1 < patch/civetweb/0001-Increase-niceness-of-all-civetweb-threads-as-DNS-ope.patch
 
+echo "Applying patch 0001-Match-IPv4-ACL-entries-against-IPv4-mapped-clients.patch"
+patch -p1 < patch/civetweb/0001-Match-IPv4-ACL-entries-against-IPv4-mapped-clients.patch
+
 echo "ALL PATCHES APPLIED OKAY"

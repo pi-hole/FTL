@@ -81,15 +81,17 @@ int main (int argc, char *argv[])
 	// We configure real-time signals later (after dnsmasq has forked)
 	handle_signals();
 
+	// Check if another FTL process is already running. This comes before
+	// reading the config, which rewrites pihole.toml, dnsmasq.conf and
+	// custom.list, the files a running instance uses and reloads
+	if(another_FTL())
+		return EXIT_FAILURE;
+
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
 	// settings are present and have a valid value
 	if(readFTLconf(&config, true))
 		log_info("Parsed config file "GLOBALTOMLPATH" successfully");
-
-	// Check if another FTL process is already running
-	if(another_FTL())
-		return EXIT_FAILURE;
 
 	// Set process priority
 	set_nice();
@@ -189,7 +191,10 @@ int main (int argc, char *argv[])
 		// inside its periodic export on the shared in-memory connection
 		// or the daily cleanup, which locks the disk file. Let it return
 		// before the final export touches either
-		if(!join_db_thread(DB_THREAD_JOIN_TIMEOUT))
+		crash_watchdog_progress();
+		const bool joined = join_db_thread(DB_THREAD_JOIN_TIMEOUT);
+		crash_watchdog_progress();
+		if(!joined)
 			log_warn("Database thread still busy after %d seconds, exporting anyway",
 			         DB_THREAD_JOIN_TIMEOUT);
 
@@ -197,6 +202,7 @@ int main (int argc, char *argv[])
 			log_info("Finished final database update");
 		else
 			log_err("Final database update failed");
+		crash_watchdog_progress();
 	}
 
 	cleanup(exit_code);

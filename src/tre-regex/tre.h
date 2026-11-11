@@ -1,13 +1,12 @@
 /*
-  tre.h - TRE public API definitions
-
-  This software is released under a BSD-style license.
-  See the file LICENSE for details and copyright.
-
-*/
+ * tre.h - TRE public API definitions
+ *
+ * This software is released under a BSD-style license.
+ * See the file LICENSE for details and copyright.
+ */
 
 #ifndef TRE_H
-#define TRE_H 1
+#define TRE_H
 
 #include "tre-config.h"
 
@@ -67,7 +66,7 @@ typedef int reg_errcode_t;
 #endif
 
 /* Extra tre_regcomp() return error codes. */
-#define REG_BADMAX REG_BADPAT
+#define REG_BADMAX REG_BADBR
 
 /* Extra tre_regcomp() flags. */
 #ifndef REG_BASIC
@@ -332,6 +331,7 @@ tre_have_approx(const regex_t *preg);
 #ifdef __cplusplus
 }
 #endif
-#endif				/* TRE_H */
+
+#endif /* TRE_H */
 
 /* EOF */
