@@ -2244,6 +2244,49 @@ setup() {
   assert_line --partial --index 0 '"no password set"'
 }
 
+@test "CLI: Password change survives an API write before FTL rereads pihole.toml" {
+  # The PATCH reaches FTL before the housekeeper notices the CLI's write in
+  # (almost) every round, three rounds make missing the window negligible
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config webserver.api.password RACE_PW0'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  for i in 1 2 3; do
+    sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW$((i-1))\"}" | jq -r .session.sid)"
+    [[ -n "${sid}" && "${sid}" != "null" ]] || fail "Login with RACE_PW$((i-1)) failed"
+
+    ./pihole-FTL --config webserver.api.password "RACE_PW${i}" > /dev/null
+    boxed=$([[ $((i % 2)) -eq 1 ]] && echo false || echo true)
+    patch="{\"config\":{\"webserver\":{\"interface\":{\"boxed\":${boxed}}}}}"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${sid}" -d "${patch}")"
+    sleep 2
+
+    # The CLI's password is in effect and the session from before is gone
+    new_sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW${i}\"}" | jq -r .session.sid)"
+    [[ -n "${new_sid}" && "${new_sid}" != "null" ]] || fail "Password set via the CLI was lost (round ${i})"
+    run bash -c "curl -s -H 'X-FTL-SID: ${sid}' 127.0.0.1/api/auth | jq .session.valid"
+    assert_line --index 0 "false"
+
+    # FTL rereading the file first refuses the PATCH, repeat it so every
+    # round writes pihole.toml the same number of times
+    if [[ "${code}" != "200" ]]; then
+      curl -s -o /dev/null -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${new_sid}" -d "${patch}"
+    fi
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "./pihole-FTL --config webserver.api.password \"\""
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c 'curl -s 127.0.0.1/api/auth'
+  assert_line --partial --index 0 '"no password set"'
+  run bash -c 'curl -s -X PATCH 127.0.0.1/api/config -d "{\"config\":{\"webserver\":{\"interface\":{\"boxed\":true}}}}" | jq .config.webserver.interface.boxed'
+  assert_line --index 0 "true"
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request

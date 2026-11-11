@@ -33,11 +33,13 @@ load 'bats_helper.bash'
   # BATS:   2x pihole.toml writes (webserver.interface.boxed PATCH + restore around a TCP worker fork)
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
+  # BATS:   4x pihole.toml writes (CLI password vs. API PATCH race, three rounds + restore)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains DEL character PATCH + restore)
   # pytest: 2x pihole.toml writes (dns/blocking disable + enable)
+  # pytest: 2x pihole.toml writes (dns/blocking disable with timer + expiry)
   # pytest: 4x pihole.toml writes (config PATCH round-trips: bool + int, change + restore each)
   # pytest: 2x pihole.toml writes (auth stress test password set + remove)
   # pytest: 2x pihole.toml writes (TOTP stress test secret set + remove)
@@ -51,9 +53,9 @@ load 'bats_helper.bash'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "4"
+      assert_line --index 0 "8"
   else
-    [[ ${lines[0]} == "44" ]]
+    [[ ${lines[0]} == "50" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

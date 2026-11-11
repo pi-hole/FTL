@@ -104,7 +104,10 @@ static int set_blocking(struct ftl_conn *api)
 
 	// Return GET property as result of POST/PUT/PATCH action
 	// if no error happened above
-	return get_blocking(api);
+	lock_shm();
+	const int status = get_blocking(api);
+	unlock_shm();
+	return status;
 }
 
 int api_dns_blocking(struct ftl_conn *api)
@@ -118,10 +121,10 @@ int api_dns_blocking(struct ftl_conn *api)
 	}
 	else if(api->method == HTTP_POST)
 	{
+		// set_blocking() takes the SHM lock itself: writing pihole.toml
+		// may install a config, which needs it
 		lock_config();
-		lock_shm();
 		const int ret = set_blocking(api);
-		unlock_shm();
 		unlock_config();
 		return ret;
 	}

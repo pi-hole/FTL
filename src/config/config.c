@@ -2057,6 +2057,12 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// First, read the environment
 	getEnvVars();
 
+	// Taken before reading so a change made meanwhile is not mistaken for
+	// what we read
+	uint8_t checksum[SHA256_DIGEST_SIZE] = { 0 };
+	if(file_exists(GLOBALTOMLPATH))
+		sha256sum(GLOBALTOMLPATH, checksum, false);
+
 	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
@@ -2066,6 +2072,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		toml_datum_t toml = { 0 };
 		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false, NULL))
 		{
+			// What a later write compares pihole.toml against
+			memcpy(last_checksum, checksum, SHA256_DIGEST_SIZE);
+			remember_config(conf);
+
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
 			// about options deviating from the default are present
@@ -2258,6 +2268,124 @@ void replace_config(struct config *newconf)
 		raise(SIGHUP);
 }
 
+// The configuration pihole.toml held when FTL last read or wrote it
+static struct config last_seen = { 0 };
+static bool have_last_seen = false;
+
+void remember_config(struct config *conf)
+{
+	if(have_last_seen)
+		free_config(&last_seen, false);
+	duplicate_config(&last_seen, conf);
+	have_last_seen = true;
+}
+
+// Take in whatever changed in pihole.toml since it was last read or written,
+// keeping the running config's values for the items the file left alone.
+// Outside read-only mode the caller holds the install lock, so no other writer
+// can get in between. An item changed on both sides keeps the value the CLI
+// set: the file's in the daemon, our own in the CLI. Returns true if FTL needs
+// to restart
+bool merge_config_file(void)
+{
+	// Without a snapshot (pihole-FTL migrate v6) the config written is the
+	// one meant to replace the file
+	if(!have_last_seen)
+		return false;
+
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!file_exists(GLOBALTOMLPATH) ||
+	   !sha256sum(GLOBALTOMLPATH, checksum, false) ||
+	   memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
+		return false;
+	memcpy(last_checksum, checksum, SHA256_DIGEST_SIZE);
+
+	if(cli_mode)
+	{
+		log_debug(DEBUG_CONFIG, "pihole.toml changed since it was read, merging");
+	}
+	else
+		log_info("Reloading config due to pihole.toml change");
+
+	struct config fileconf;
+	duplicate_config(&fileconf, &config);
+	bool restart = false;
+	toml_datum_t toml = { 0 };
+	if(readFTLtoml(NULL, &fileconf, toml, !cli_mode, &restart, 0, false, NULL))
+	{
+		struct config merged, ours;
+		duplicate_config(&merged, &fileconf);
+		duplicate_config(&ours, &config);
+		struct config *base = &last_seen;
+		bool invalidate_sessions = false, rewrite_hosts = false;
+		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		{
+			struct conf_item *file_item = get_conf_item(&fileconf, i);
+			struct conf_item *base_item = get_conf_item(base, i);
+			struct conf_item *our_item = get_conf_item(&ours, i);
+			struct conf_item *new_item = get_conf_item(&merged, i);
+			if(file_item->f & FLAG_PSEUDO_ITEM ||
+			   compare_config_item(file_item->t, &file_item->v, &base_item->v) ||
+			   (cli_mode && !compare_config_item(our_item->t, &our_item->v, &base_item->v)))
+			{
+				// Keep our value, the file's is freed with ours below
+				const struct conf_item tmp = *new_item;
+				*new_item = *our_item;
+				*our_item = tmp;
+				continue;
+			}
+
+			struct conf_item *cur_item = get_conf_item(&config, i);
+			if(compare_config_item(new_item->t, &new_item->v, &cur_item->v))
+				continue;
+
+			log_debug(DEBUG_CONFIG, "%s CHANGED", new_item->k);
+			if(new_item->f & FLAG_RESTART_FTL)
+			{
+				log_info("Restarting FTL due to change of %s", new_item->k);
+				restart = true;
+			}
+			if(new_item->f & FLAG_INVALIDATE_SESSIONS)
+				invalidate_sessions = true;
+			if(new_item == &merged.dns.hosts)
+				rewrite_hosts = true;
+		}
+		free_config(&ours, false);
+
+		if(merged.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
+		{
+			log_info("Privacy level was reduced, restarting FTL");
+			restart = true;
+		}
+
+		// The file as read is what the next change is compared against
+		if(have_last_seen)
+			free_config(&last_seen, false);
+		memcpy(&last_seen, &fileconf, sizeof(last_seen));
+		have_last_seen = true;
+
+		replace_config(&merged);
+		if(!cli_mode && invalidate_sessions)
+			delete_all_sessions();
+		if(!cli_mode && rewrite_hosts)
+			write_custom_list();
+	}
+	else
+	{
+		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
+		free_config(&fileconf, false);
+		restart = false;
+	}
+
+	// readFTLtoml() set the debug flags from the file alone
+	if(cli_mode)
+		clear_debug_flags();
+	else
+		set_debug_flags(&config);
+
+	return restart && !cli_mode;
+}
+
 // Set when reread_config() found a config change in progress and left the
 // reread to the housekeeper thread
 static _Atomic bool reread_deferred = false;
@@ -2295,47 +2423,9 @@ void reread_config(void)
 		return;
 	}
 
-	log_info("Reloading config due to pihole.toml change");
-	struct config conf_copy;
-	duplicate_config(&conf_copy, &config);
-
-	// Read TOML config file
-	bool restart = false;
-	toml_datum_t toml = { 0 };
-	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false, NULL))
-	{
-		// Install new configuration
-		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
-
-		// Check if the web pwhash has changed. If so, we invalidate
-		// all currently active web interface sessions
-		if(conf_copy.webserver.api.pwhash.v.s != NULL &&
-		   config.webserver.api.pwhash.v.s != NULL &&
-		   strcmp(conf_copy.webserver.api.pwhash.v.s, config.webserver.api.pwhash.v.s) != 0)
-			delete_all_sessions();
-
-		// Check if privacy level was reduced. If so, we need to restart FTL
-		if(conf_copy.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
-		{
-			log_info("Privacy level was reduced, restarting FTL");
-			// We need to restart FTL
-			restart = true;
-		}
-
-		// Replace config struct used by FTL by newly loaded
-		// configuration. This swaps the pointers and frees
-		// the old config structure altogether
-		replace_config(&conf_copy);
-	}
-	else
-	{
-		// New configuration is invalid, restore old one
-		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
-		free_config(&conf_copy, false);
-	}
-
-	// Write the config file back to disk to ensure that all options and
-	// comments about options deviating from the default are present
+	// writeFTLtoml() takes the change in before writing the file back to
+	// ensure that all options and comments about options deviating from the
+	// default are present
 	writeFTLtoml(true, NULL);
 
 	// We do not write the dnsmasq config file here as this is done on every
@@ -2346,10 +2436,6 @@ void reread_config(void)
 	write_custom_list();
 
 	unlock_config();
-
-	// If we need to restart FTL, we do so now
-	if(restart)
-		restart_ftl("pihole.toml change");
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to

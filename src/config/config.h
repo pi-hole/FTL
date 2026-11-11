@@ -409,6 +409,8 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+void remember_config(struct config *conf);
+bool merge_config_file(void);
 bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default
