@@ -1428,6 +1428,10 @@ void crash_watchdog_progress(void)
 // the process that is to be watched
 void start_crash_watchdog(void)
 {
+	// The watchdog may only write to FTL.log after cleanup() freed the
+	// configured path
+	prepare_log_ftl_raw();
+
 	if(sem_init(&crash_sem, 0, 0) != 0)
 	{
 		log_warn("Cannot initialize crash watchdog: %s", strerror(errno));
