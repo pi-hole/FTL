@@ -80,10 +80,12 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 	}
 
 	// Build minimal api struct to check authentication
-	struct ftl_conn api = { 0 };
-	api.conn = conn;
-	api.request = req_info;
-	api.now = double_time();
+	struct ftl_conn api = {
+		.conn = conn,
+		.request = req_info,
+		.method = http_method(conn),
+		.now = double_time()
+	};
 
 	// Check if the request is for the API under <webhome>api
 	// (it is posted at /api)
@@ -129,6 +131,14 @@ int request_handler(struct mg_connection *conn, void *cbdata)
 
 	// Every LUA page except admin/login requires authentication
 	const int authorized = check_client_auth(&api, false) != API_AUTH_UNAUTHORIZED;
+
+	// Without a password there is nothing to log in with, say why instead
+	if(!authorized && config.webserver.api.pwhash.v.s[0] == '\0')
+	{
+		mg_send_http_error(conn, 403, "%s", no_password_hint);
+		return 403;
+	}
+
 	if(!login)
 	{
 		// This is not the login page - check if the user is authenticated

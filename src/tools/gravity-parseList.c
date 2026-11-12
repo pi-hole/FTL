@@ -13,6 +13,8 @@
 #include "database/sqlite3.h"
 // idn2_to_ascii_8z()
 #include <idn2.h>
+// strncasecmp()
+#include <strings.h>
 
 // A list of items of common local hostnames not to report as unusable
 // Some lists (i.e StevenBlack's) contain these as they are supposed to be used as HOST files
@@ -223,12 +225,18 @@ static void print_escaped(const char *str, const ssize_t len)
 }
 
 int gravity_parseList(const char *infile, const char *outfile, const char *adlistIDstr,
-                      const bool checkOnly, const bool antigravity)
+                      const bool checkOnly, const bool antigravity, const char *source_url)
 {
 	const char *info = cli_info();
 	const char *tick = cli_tick();
 	const char *cross = cli_cross();
 	const char *over = cli_over();
+
+	// A local (file://) source must never have its parsed non-domain lines
+	// echoed back: the sample is returned to the caller over the API and would
+	// expose the contents of any file the pihole user can read. Match the
+	// scheme itself, case-insensitively, so no spelling of it slips through.
+	const bool local_source = source_url != NULL && strncasecmp(source_url, "file:", 5) == 0;
 
 	// Open input file
 	FILE *fpin = fopen(infile, "r");
@@ -562,7 +570,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 					}
 					// Add the domain to invalid_domains_list only
 					// if the list contains < MAX_INVALID_DOMAINS
-					if(invalid_domains_list_len < MAX_INVALID_DOMAINS)
+					// (never for a local file:// source, see above)
+					if(!local_source && invalid_domains_list_len < MAX_INVALID_DOMAINS)
 					{
 						// Check if we have this domain already
 						bool found = false;

@@ -22,12 +22,6 @@
 #define TIMESTR_SIZE 128
 
 // Credit: https://stackoverflow.com/a/75116514
-#define LEFT(str, w) \
-    ({int m = w + strlen(str); m % 2 ? (m + 1) / 2 : m / 2;})
-#define RIGHT(str, w) \
-({ int m = w - strlen(str); m % 2 ? (m - 1) / 2 : m / 2; })
-#define STR_CENTER(str, width) \
-    LEFT(str, width), str, RIGHT(str, width), ""
 #define FPRINTF_CENTER(fp, width, start, fmt, end, ...) ({ \
     int n = snprintf(NULL, 0, fmt, __VA_ARGS__);     \
     int m = width - n;                               \
@@ -88,6 +82,7 @@ void FTL_log_helper(const unsigned int n, ...);
 void _log_web(const int priority, const enum debug_flag flag, const char *format, ...) __attribute__ ((format (printf, 3, 4)));
 
 char *escape_string(const char *input) __attribute__ ((malloc));
+char *escape_control_chars(const char *input) __attribute__ ((malloc));
 char *escape_data(const char *src_buf, size_t src_sz) __attribute__((malloc));
 
 const char *short_path(const char *full_path) __attribute__ ((pure));
@@ -97,13 +92,15 @@ const char *short_path(const char *full_path) __attribute__ ((pure));
 
 // How many messages do we keep in memory (FIFO message buffer)?
 // This number multiplied by MAX_MSG_FIFO (see above) gives the total buffer size
-// Defaults to 512 [512 * 256 above = use 128 KB of memory for the log]
-#define LOG_SIZE 515u
+// [512 * 260 = 130 KB per log]. A power of two, so the ring continues seamlessly
+// when the 32-bit message counter wraps
+#define LOG_SIZE 512u
 
 void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const char *prio, const size_t length);
 
 bool flush_dnsmasq_log(void);
 int is_log_fd(const int fd);
+void log_ftl_raw(const char *msg, const size_t len);
 
 typedef struct {
 	struct {

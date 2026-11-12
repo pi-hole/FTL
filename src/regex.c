@@ -142,6 +142,129 @@ unsigned int __attribute__((pure)) get_num_regex(const enum regex_type regexid)
 #define FTL_REGEX_SEP ";"
 /* Compile regular expressions into data structures that can be used with
    regexec() to match against a string */
+// Detect a repetition quantifier at p and whether it is unbounded (*, +,
+// {n,}, {,}). Sets *adv to the number of characters the quantifier occupies
+// (0 if there is none).
+static bool regex_quant_unbounded(const char *p, size_t *adv)
+{
+	if(*p == '*' || *p == '+')
+	{
+		*adv = 1;
+		return true;
+	}
+	if(*p == '?')
+	{
+		*adv = 1;
+		return false;
+	}
+	if(*p == '{')
+	{
+		const char *q = p + 1;
+		bool comma = false, upper = false;
+		for(; *q != '\0' && *q != '}'; q++)
+		{
+			if(*q == ',')
+				comma = true;
+			else if(comma && *q >= '0' && *q <= '9')
+				upper = true;
+		}
+		if(*q != '}')
+		{
+			// Malformed; let regcomp report it.
+			*adv = 0;
+			return false;
+		}
+		*adv = (size_t)(q - p) + 1;
+		// A comma without an upper bound makes the repetition unbounded.
+		return comma && !upper;
+	}
+	*adv = 0;
+	return false;
+}
+
+// TRE's backtracking matcher, used whenever a pattern carries a back-reference,
+// can loop without consuming input when a back-reference sits inside an
+// unbounded repetition. In FTL that matcher runs in the DNS path under the SHM
+// lock, so reject such a pattern at compile time rather than risk a stall.
+static bool regex_backref_in_unbounded_repeat(const char *re)
+{
+	size_t ngroups = 0;
+	for(const char *c = re; *c != '\0'; c++)
+		if(*c == '(')
+			ngroups++;
+
+	bool *has_backref = ngroups > 0 ? calloc(ngroups, sizeof(bool)) : NULL;
+	if(ngroups > 0 && has_backref == NULL)
+		return false;
+
+	bool found = false;
+	size_t depth = 0;
+	const char *p = re;
+	while(*p != '\0' && !found)
+	{
+		if(*p == '\\')
+		{
+			if(p[1] == '\0')
+			{
+				p++;
+				continue;
+			}
+			if(p[1] >= '1' && p[1] <= '9')
+			{
+				if(depth > 0 && depth <= ngroups)
+					has_backref[depth - 1] = true;
+				size_t adv = 0;
+				if(regex_quant_unbounded(p + 2, &adv))
+					found = true;
+				p += 2 + adv;
+				continue;
+			}
+			p += 2;
+			continue;
+		}
+		if(*p == '[')
+		{
+			// Skip a bracket expression; its contents are all literal.
+			p++;
+			if(*p == '^')
+				p++;
+			if(*p == ']')
+				p++;
+			while(*p != '\0' && *p != ']')
+				p++;
+			if(*p == ']')
+				p++;
+			continue;
+		}
+		if(*p == '(')
+		{
+			if(depth < ngroups)
+				has_backref[depth] = false;
+			depth++;
+			p++;
+			continue;
+		}
+		if(*p == ')' && depth > 0)
+		{
+			depth--;
+			bool grp = depth < ngroups ? has_backref[depth] : false;
+			size_t adv = 0;
+			bool unb = regex_quant_unbounded(p + 1, &adv);
+			if(grp && unb)
+				found = true;
+			else if(grp && depth > 0)
+				has_backref[depth - 1] = true;
+			p += 1 + adv;
+			continue;
+		}
+		p++;
+	}
+
+	if(has_backref != NULL)
+		free(has_backref);
+	return found;
+}
+
 bool compile_regex(const char *regexin, regexData *regex, char **message)
 {
 	// Extract possible Pi-hole extensions
@@ -171,6 +294,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				if(regex->ext.query_type != 0)
 				{
 					*message = strdup("Overwriting previous querytype setting (multiple \"querytype=...\" found)");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -215,6 +340,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown querytype \"%s\"", extra) < 1)
 							log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -301,6 +428,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 						comma++;
 
 						// Copy domain name into buffer
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						regex->ext.cname_target = strdup(comma);
 						if(regex->ext.cname_target == NULL)
 						{
@@ -314,6 +443,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 					{
 						if(asprintf(message, "Missing domain name for CNAME reply") < 1)
 							log_err("Memory allocation failed in compile_regex()");
+						if(regex->ext.cname_target != NULL)
+							free(regex->ext.cname_target);
 						free(buf);
 						free(rgxbuf);
 						return false;
@@ -323,6 +454,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 				{
 					if(asprintf(message, "Unknown reply type \"%s\"", extra) < 1)
 						log_err("Memory allocation failed in compile_regex()");
+					if(regex->ext.cname_target != NULL)
+						free(regex->ext.cname_target);
 					free(buf);
 					free(rgxbuf);
 					return false;
@@ -336,6 +469,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 			{
 				if(asprintf(message, "Invalid regex option \"%s\"", part) < 1)
 					log_err("Memory allocation failed in compile_regex()");
+				if(regex->ext.cname_target != NULL)
+					free(regex->ext.cname_target);
 				free(buf);
 				free(rgxbuf);
 				return false;
@@ -349,6 +484,18 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		strcpy(rgxbuf, regexin);
 	}
 
+	// Reject back-references inside an unbounded repetition before compiling;
+	// such a pattern can hang TRE's backtracking matcher on the DNS path.
+	if(regex_backref_in_unbounded_repeat(rgxbuf))
+	{
+		*message = strdup("Back-reference inside an unbounded repetition is not supported");
+		regex->available = false;
+		if(regex->ext.cname_target != NULL)
+			free(regex->ext.cname_target);
+		free(rgxbuf);
+		return false;
+	}
+
 	// We use the extended RegEx flavor (ERE) and specify that matching should
 	// always be case INsensitive
 	const int errcode = regcomp(&regex->regex, rgxbuf, REG_EXTENDED | REG_ICASE | REG_NOSUB);
@@ -358,6 +505,8 @@ bool compile_regex(const char *regexin, regexData *regex, char **message)
 		(void) regerror (errcode, &regex->regex, regex_msg, sizeof(regex_msg));
 		*message = strdup(regex_msg);
 		regex->available = false;
+		if(regex->ext.cname_target != NULL)
+			free(regex->ext.cname_target);
 		free(rgxbuf);
 		return false;
 	}
@@ -674,10 +823,9 @@ void free_regex(void)
 		// Loop over entries with this regex type
 		for(unsigned int index = 0; index < oldcount; index++)
 		{
-			if(!regex[index].available)
-				continue;
-
-			regfree(&regex[index].regex);
+			// Only a successfully compiled regex has to be freed
+			if(regex[index].available)
+				regfree(&regex[index].regex);
 
 			// Also free buffered regex strings
 			if(regex[index].string != NULL)

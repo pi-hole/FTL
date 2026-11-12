@@ -88,7 +88,7 @@ static void reopen_log_fd(struct log_fd *log)
 	if(log->fd != -1)
 		close(log->fd);
 	if(log->path != NULL)
-		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		log->fd = open(log->path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 	else
 		log->fd = -1;
 }
@@ -96,6 +96,16 @@ static void reopen_log_fd(struct log_fd *log)
 // The logger writes with the raw write(2): FTLwrite() reports its failures
 // through the logger, which would re-enter here under the lock already held
 #undef write
+
+// Append to FTL.log without its lock, for a caller that cannot wait on
+// other threads (the crash watchdog)
+void log_ftl_raw(const char *msg, const size_t len)
+{
+	if(ftl_log.fd == -1)
+		return;
+	const ssize_t ret = write(ftl_log.fd, msg, len);
+	(void)ret;
+}
 
 // Writer-preferenced per-file lock: only the fd for this specific log is
 // held, so writes to different files never contend.  The reopen flag is
@@ -175,7 +185,7 @@ void open_log_fds(bool ftl)
 		if(config.files.log.ftl.v.s != NULL)
 		{
 			set_log_path(&ftl_log, config.files.log.ftl.v.s);
-			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+			ftl_log.fd = open(ftl_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 			if(ftl_log.fd == -1)
 			{
 				printf("ERROR: Opening of FTL log (%s) failed: %s\nUsing syslog instead!\n",
@@ -192,7 +202,7 @@ void open_log_fds(bool ftl)
 		set_log_path(&webserver_log, config.files.log.webserver.v.s);
 		if(webserver_log.fd >= 0)
 			close(webserver_log.fd);
-		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		webserver_log.fd = open(webserver_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(webserver_log.fd == -1)
 		{
 			log_warn("webserver.log is unavailable (%s); warnings are still relayed to the FTL log",
@@ -207,11 +217,11 @@ void open_log_fds(bool ftl)
 		set_log_path(&dnsmasq_log, config.files.log.dnsmasq.v.s);
 		if(dnsmasq_log.fd >= 0)
 			close(dnsmasq_log.fd);
-		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP);
+		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
 		if(dnsmasq_log.fd == -1)
 		{
-			// misc.hide_dnsmasq_warn only hides dnsmasq warnings from the web
-			// diagnosis table; it does not affect how they are logged here
+			// misc.hide_dnsmasq_warn hides dnsmasq warnings from FTL.log and
+			// the web diagnosis, not from pihole.log or syslog
 			log_warn("pihole.log is unavailable (%s); dnsmasq warnings are relayed to syslog",
 			         strerror(errno));
 		}
@@ -742,8 +752,8 @@ void log_counter_info(void)
 	log_info(" -> Forwarded DNS queries: %u", get_forwarded_count());
 	log_info(" -> Blocked DNS queries: %u", get_blocked_count());
 	log_info(" -> Unknown DNS queries: %u", counters->status[QUERY_UNKNOWN]);
-	log_info(" -> Unique domains: %u", counters->domains);
-	log_info(" -> Unique clients: %u", counters->clients);
+	log_info(" -> Unique domains: %u", counters->domains_total);
+	log_info(" -> Unique clients: %u", counters->clients_total);
 	log_info(" -> DNS cache records: %u", counters->dns_cache_size);
 	log_info(" -> Known forward destinations: %u", counters->upstreams);
 }
@@ -821,11 +831,39 @@ const char __attribute__ ((const)) *get_ordinal_suffix(unsigned int number)
 	// For example: 2nd, 7th, 20th, 23rd, 52nd, 135th, 301st BUT 311th (covered above)
 }
 
+static size_t utf8_seq_len(const char *p, const size_t avail)
+{
+	const unsigned char c = (unsigned char)p[0];
+	const size_t n = c >= 0xC2 && c <= 0xDF ? 1 :
+	                 c >= 0xE0 && c <= 0xEF ? 2 :
+	                 c >= 0xF0 && c <= 0xF4 ? 3 : 0;
+
+	if(n == 0 || avail < n + 1u)
+		return 0;
+
+	const unsigned char lo = c == 0xE0 ? 0xA0u : c == 0xF0 ? 0x90u : 0x80u;
+	const unsigned char hi = c == 0xED ? 0x9Fu : c == 0xF4 ? 0x8Fu : 0xBFu;
+	const unsigned char first = (unsigned char)p[1];
+
+	if(c == 0xC2 && first <= 0x9Fu)
+		return 0;
+
+	if(first < lo || first > hi)
+		return 0;
+
+	for(size_t i = 2; i <= n; i++)
+		if(((unsigned char)p[i] & 0xC0u) != 0x80u)
+			return 0;
+
+	return n + 1u;
+}
+
 // Converts a buffer of specified length to ASCII representation as it was a C
 // string literal. Returns how much bytes from source was processed
 // Inspired by https://stackoverflow.com/a/56123950
 static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
-                                       char *dst_str, size_t dst_sz)
+                                       char *dst_str, size_t dst_sz,
+                                       const bool keep_utf8)
 {
 	const char *src = src_buf;
 	char *dst = dst_str;
@@ -846,13 +884,34 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 		if (dst > dst_str + dst_sz - 5)
 			break;
 
-		if (isprint(*src))
+		if(keep_utf8 && ((unsigned char)*src & 0x80u) != 0u)
 		{
-			// The printable characters are:
-			// ! " # $ % & ' ( ) * + , - . / 0 1 2 3 4 5 6 7 8 9 : ;
-			// < = > ? @ A B C D E F G H I J K L M N O P Q R S T U V
-			// W X Y Z [ \ ] ^ _ ` a b c d e f g h i j k l m n o p q
-			// r s t u v w x y z { | } ~
+			const size_t seq = utf8_seq_len(src, (src_buf + src_sz) - src);
+			if(seq > 1)
+			{
+				memcpy(dst, src, seq);
+				dst += seq;
+				src += seq;
+			}
+			else
+			{
+				sprintf(dst, "\\x%02X", (unsigned char)*src);
+				dst += 4;
+				src++;
+			}
+			continue;
+		}
+
+		// backslash matches isprint(), but escape it to distinguish a literal \n from a newline
+		if(*src == '\\')
+		{
+			*dst++ = '\\';
+			*dst++ = '\\';
+			src++;
+		}
+		else if(keep_utf8 ? ((unsigned char)*src >= 0x20u && *src != 0x7F)
+		             : isprint((unsigned char)*src))
+		{
 			*dst++ = *src++;
 		}
 		else
@@ -860,10 +919,6 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 			// Handle special characters
 			switch(*src)
 			{
-				case '\\':
-					*dst++ = '\\';
-					*dst++ = '\\';
-					break;
 				case '\n':
 					*dst++ = '\\';
 					*dst++ = 'n';
@@ -896,6 +951,52 @@ static int binbuf_to_escaped_C_literal(const char *src_buf, size_t src_sz,
 }
 
 /**
+ * @brief Escapes binary data to be printable as a C string literal.
+ *
+ * This function allocates a new string and converts the input buffer into an escaped
+ * C string literal, suitable for safe printing or logging. Each character in the source
+ * buffer may be escaped, so the output buffer is allocated with enough space for the
+ * worst-case scenario (every character is escaped as \xNN).
+ *
+ * @param src_buf Pointer to the source buffer to escape.
+ * @param src_sz  Size of the source buffer in bytes.
+ * @return Pointer to the newly allocated escaped string, or NULL on allocation or conversion failure.
+ *         The returned string must be freed by the caller.
+ */
+static char * __attribute__((malloc)) escape_buf(const char *src_buf, size_t src_sz,
+                                                 const bool keep_utf8)
+{
+	// Allocate memory for the escaped string
+	char *escaped_str = malloc(src_sz * 4 + 1); // Worst case: every char is escaped
+	if(!escaped_str)
+		return NULL;
+
+	// Convert buffer to escaped C literal
+	const int processed = binbuf_to_escaped_C_literal(src_buf, src_sz, escaped_str,
+	                                                  src_sz * 4 + 1, keep_utf8);
+	if(processed < 0)
+	{
+		free(escaped_str);
+		return NULL;
+	}
+
+	return escaped_str;
+}
+
+/**
+ * @brief Escapes binary data to be printable as a C string literal.
+ *
+ * @param src_buf Pointer to the source buffer to escape.
+ * @param src_sz  Size of the source buffer in bytes.
+ * @return Pointer to the newly allocated escaped string, or NULL on allocation or conversion failure.
+ *         The returned string must be freed by the caller.
+ */
+char * __attribute__((malloc)) escape_data(const char *src_buf, size_t src_sz)
+{
+	return escape_buf(src_buf, src_sz, false);
+}
+
+/**
  * @brief Escapes a given input string into a C-style escaped string literal.
  *
  * This function takes an input string and returns a newly allocated string
@@ -914,35 +1015,13 @@ char * __attribute__ ((malloc)) escape_string(const char *input)
 	return input == NULL ? NULL : escape_data(input, strlen(input));
 }
 
-/**
- * @brief Escapes binary data to be printable as a C string literal.
- *
- * This function allocates a new string and converts the input buffer into an escaped
- * C string literal, suitable for safe printing or logging. Each character in the source
- * buffer may be escaped, so the output buffer is allocated with enough space for the
- * worst-case scenario (every character is escaped as \xNN).
- *
- * @param src_buf Pointer to the source buffer to escape.
- * @param src_sz  Size of the source buffer in bytes.
- * @return Pointer to the newly allocated escaped string, or NULL on allocation or conversion failure.
- *         The returned string must be freed by the caller.
- */
-char * __attribute__((malloc)) escape_data(const char *src_buf, size_t src_sz)
+char * __attribute__ ((malloc)) escape_control_chars(const char *input)
 {
-	// Allocate memory for the escaped string
-	char *escaped_str = malloc(src_sz * 4 + 1); // Worst case: every char is escaped
-	if(!escaped_str)
+	if(input == NULL)
 		return NULL;
-
-	// Convert buffer to escaped C literal
-	const int processed = binbuf_to_escaped_C_literal(src_buf, src_sz, escaped_str, src_sz * 4 + 1);
-	if(processed < 0)
-	{
-		free(escaped_str);
-		return NULL;
-	}
-
-	return escaped_str;
+	if(input[0] == '\0')
+		return strdup("");
+	return escape_buf(input, strlen(input), true);
 }
 
 const char * __attribute__ ((pure)) short_path(const char *full_path)
@@ -986,16 +1065,9 @@ void add_to_fifo_buffer(const enum fifo_logs which, const char *payload, const c
 	if(payload == NULL || length == 0)
 		return;
 
-	unsigned int idx = fifo_log->logs[which].next_id++;
-	if(idx >= LOG_SIZE)
-	{
-		// Log is full, move everything one slot forward to make space for a new record at the end
-		// This pruges the oldest message from the list (it is overwritten by the second message)
-		memmove(&fifo_log->logs[which].message[0][0], &fifo_log->logs[which].message[1][0], (LOG_SIZE - 1u) * MAX_MSG_FIFO);
-		memmove(&fifo_log->logs[which].prio[0], &fifo_log->logs[which].prio[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].prio[0]));
-		memmove(&fifo_log->logs[which].timestamp[0], &fifo_log->logs[which].timestamp[1], (LOG_SIZE - 1u) * sizeof(fifo_log->logs[which].timestamp[0]));
-		idx = LOG_SIZE - 1u;
-	}
+	// Ring buffer: message number n goes into slot n % LOG_SIZE, so a full
+	// log overwrites its oldest message without moving the others
+	const unsigned int idx = fifo_log->logs[which].next_id++ % LOG_SIZE;
 
 	// Copy string
 	// We need to use the pre-allocated buffer in shared memory as we share

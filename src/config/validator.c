@@ -9,6 +9,8 @@
 *  Please see LICENSE file for your rights under this license. */
 
 #include "validator.h"
+#include <errno.h>
+#include <limits.h>
 #include "log.h"
 // valid_domain()
 #include "tools/gravity-parseList.h"
@@ -16,12 +18,31 @@
 #include "regex_r.h"
 // parse_upstream_uri()
 #include "dotdoh/upstream_uri.h"
+// PATH_MAX
+#include <limits.h>
 
 // Stub validator for config types that need to dedicated validation as they can
 // be tested by their type only (e.g., integers, strings, booleans, enums, etc.)
 bool __attribute__((const)) validate_stub(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	return true;
+}
+
+static void set_error(char err[VALIDATOR_ERRBUF_LEN], const char *key, const int i,
+                      const char *reason, const char *value, const char *detail)
+{
+	char *escaped = escape_control_chars(value);
+
+	if(i >= 0)
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: %s (\"%s\")%s%s", key, i,
+		         reason, escaped != NULL ? escaped : "(unable to display)",
+		         detail != NULL ? ": " : "", detail != NULL ? detail : "");
+	else
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: %s (\"%s\")%s%s", key, reason,
+		         escaped != NULL ? escaped : "(unable to display)",
+		         detail != NULL ? ": " : "", detail != NULL ? detail : "");
+
+	free(escaped);
 }
 
 // Validate the dns.hosts array
@@ -80,8 +101,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 
 		if(!ip || !*ip)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: found no first element (\"%s\")",
-			         key, i, item->valuestring);
+			set_error(err, key, i, "found no first element", item->valuestring, NULL);
 			free(str);
 			return false;
 		}
@@ -91,8 +111,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		struct in6_addr addr6;
 		if(inet_pton(AF_INET, ip, &addr) != 1 && inet_pton(AF_INET6, ip, &addr6) != 1)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: neither a valid IPv4 nor IPv6 address (\"%s\")",
-			         key, i, ip);
+			set_error(err, key, i, "neither a valid IPv4 nor IPv6 address", ip, NULL);
 			free(str);
 			return false;
 		}
@@ -121,8 +140,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 
 			if(!valid_domain(host, strlen(host), false))
 			{
-				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid hostname (\"%s\")",
-				         key, i, host);
+				set_error(err, key, i, "invalid hostname", host, NULL);
 				free(str);
 				return false;
 			}
@@ -132,8 +150,7 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// Check if there is at least one hostname in this record
 		if(hosts < 1)
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: entry does not have at least one hostname (\"%s\")",
-			         key, i, item->valuestring);
+			set_error(err, key, i, "entry does not have at least one hostname", item->valuestring, NULL);
 			free(str);
 			return false;
 		}
@@ -142,6 +159,51 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 	}
 
 	return true;
+}
+
+// dnsmasq ends a line at a # that starts it or follows whitespace
+static void cut_comment(char *s)
+{
+	for(char *c = s; *c != '\0'; c++)
+	{
+		if(*c == '#' && (c == s || isspace((unsigned char)c[-1])))
+		{
+			*c = '\0';
+			return;
+		}
+	}
+}
+
+// Reduce a dns.cnameRecords entry in place to what dnsmasq needs to see: no
+// comment and no whitespace around the commas. dnsmasq turns whitespace in front
+// of a comma into an additional CNAME for the root name.
+void normalize_cname(char *s)
+{
+	cut_comment(s);
+
+	size_t w = 0;
+	for(char *p = s; ; )
+	{
+		char *comma = strchr(p, ',');
+		size_t len = comma != NULL ? (size_t)(comma - p) : strlen(p);
+		while(len > 0 && isspace((unsigned char)*p))
+		{
+			p++;
+			len--;
+		}
+		while(len > 0 && isspace((unsigned char)p[len - 1]))
+			len--;
+
+		if(w > 0)
+			s[w++] = ',';
+		memmove(s + w, p, len);
+		w += len;
+
+		if(comma == NULL)
+			break;
+		p = comma + 1;
+	}
+	s[w] = '\0';
 }
 
 // Validate the dns.cnames array
@@ -172,6 +234,12 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 		// Check if it's in the form "<cname>,[<cnameX>,]<target>[,<TTL>]"
 		// <cnameX> is optional and may be repeated
 		char *str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
 		char *tmp = str, *s = NULL;
 		unsigned int j = 0;
 
@@ -208,6 +276,48 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				return false;
 			}
 		}
+
+		// Every alias and the target have to be valid domains. As in dnsmasq,
+		// spaces around the commas are ignored, and the last of at least
+		// three elements is the TTL if it is a number
+		str = strdup(item->valuestring);
+		if(str == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: out of memory", key, i);
+			return false;
+		}
+		cut_comment(str);
+		tmp = str;
+		for(unsigned int k = 0; (s = strsep(&tmp, ",")) != NULL; k++)
+		{
+			while(isspace((unsigned char)*s))
+				s++;
+			size_t slen = strlen(s);
+			while(slen > 0 && isspace((unsigned char)s[slen - 1]))
+				s[--slen] = '\0';
+
+			if(k == j - 1 && j > 2 && slen > 0 && strspn(s, "0123456789") == slen)
+			{
+				// The TTL has to fit into an int
+				errno = 0;
+				const unsigned long ttl = strtoul(s, NULL, 10);
+				if(errno != 0 || ttl > INT_MAX)
+				{
+					set_error(err, key, i, "invalid TTL", s, NULL);
+					free(str);
+					return false;
+				}
+				break;
+			}
+
+			if(!valid_domain(s, slen, false))
+			{
+				set_error(err, key, i, "invalid domain", s, NULL);
+				free(str);
+				return false;
+			}
+		}
+		free(str);
 	}
 
 	return true;
@@ -220,7 +330,7 @@ bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDA
 	// Check if domain is valid
 	if(strlen(val->s)!=0 && !valid_domain(val->s, strlen(val->s), false))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid domain", val->s, NULL);
 		return false;
 	}
 
@@ -240,7 +350,7 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	// Check if there is an IP and no tail
 	if(!ip || !*ip || tail)
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IP in CIDR notation (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid IP in CIDR notation", val->s, NULL);
 		free(str);
 		return false;
 	}
@@ -251,7 +361,7 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 	int ip4 = 0, ip6 = 0;
 	if(((ip4 = inet_pton(AF_INET, ip, &addr)) != 1) && ((ip6 = inet_pton(AF_INET6, ip, &addr6)) != 1))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 nor IPv6 address (\"%s\")", key, ip);
+		set_error(err, key, -1, "not a valid IPv4 nor IPv6 address", ip, NULL);
 		free(str);
 		return false;
 	}
@@ -265,22 +375,50 @@ bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ER
 			free(str);
 			return false;
 		}
-		int cidr_int = atoi(cidr);
+		// Digits only, anything else is rejected by the range checks below
+		const size_t cidr_len = strlen(cidr);
+		const int cidr_int = (cidr_len <= 3 && strspn(cidr, "0123456789") == cidr_len) ? atoi(cidr) : -1;
 		if(ip4 && (cidr_int < 0 || cidr_int > 32))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv4 CIDR (\"%s\")", key, cidr);
+			set_error(err, key, -1, "not a valid IPv4 CIDR", cidr, NULL);
 			free(str);
 			return false;
 		}
 		else if(ip6 && (cidr_int < 0 || cidr_int > 128))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid IPv6 CIDR (\"%s\")", key, cidr);
+			set_error(err, key, -1, "not a valid IPv6 CIDR", cidr, NULL);
 			free(str);
 			return false;
 		}
 	}
 
 	free(str);
+	return true;
+}
+
+bool validate_cidr_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	if(!cJSON_IsArray(val->json))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not an array", key);
+		return false;
+	}
+
+	int i = 0;
+	for(cJSON *item = val->json->child; item != NULL; item = item->next, i++)
+	{
+		char ikey[128];
+		snprintf(ikey, sizeof(ikey), "%s[%d]", key, i);
+		if(!cJSON_IsString(item) || item->valuestring == NULL)
+		{
+			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a string", ikey);
+			return false;
+		}
+		union conf_value v = { .s = item->valuestring };
+		if(!validate_cidr(&v, ikey, err))
+			return false;
+	}
+
 	return true;
 }
 
@@ -308,16 +446,24 @@ bool validate_domain(union conf_value *val, const char *key, char err[VALIDATOR_
 	// Check if domain is valid
 	if(!valid_domain(val->s, strlen(val->s), false))
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: not a valid domain (\"%s\")", key, val->s);
+		set_error(err, key, -1, "not a valid domain", val->s, NULL);
 		return false;
 	}
 
 	return true;
 }
 
-// Validate file path
+// Validate file path (empty rejected)
 bool validate_filepath(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
+	// An empty path does not name a file. SQLite would even open it as a
+	// private temporary database and lose everything written to it
+	if(strlen(val->s) == 0)
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must not be empty", key);
+		return false;
+	}
+
 	// Accept every printable ASCII character. The range is not widened beyond
 	// it because these paths are handed out as JSON, which has to be UTF-8, and
 	// are written into the generated dnsmasq config, where a control character
@@ -364,7 +510,7 @@ bool validate_urlpath_two_slash(union conf_value *val, const char *key, char err
 	// Check if the path starts and ends with a slash
 	if(strlen(val->s) < 1 || val->s[0] != '/' || val->s[strlen(val->s) - 1] != '/')
 	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: file path does not start and end with a slash (\"%s\")", key, val->s);
+		set_error(err, key, -1, "file path does not start and end with a slash", val->s, NULL);
 		return false;
 	}
 
@@ -443,10 +589,9 @@ static bool paths_overlap(const char *a, const size_t alen, const char *b)
 // same directory differently - "/." and "//etc/pihole" name the root and the
 // configuration directory just as well as "/" and "/etc/pihole" do.
 //
-// Resolution is lexical, so a symbolic link still points where it points. That
-// is deliberate: realpath() needs the path to exist, which would stop a
-// directory from being configured before it is created, and planting a link in
-// the first place already requires access to the host.
+// Resolution is lexical, so a symbolic link still points where it points: a
+// directory has to be configurable before it exists. Where it does exist,
+// resolve_path() below follows the links as well.
 //
 // Returns the length written, or 0 if the path is not absolute or does not fit,
 // which callers treat as "reject" rather than "skip the check".
@@ -505,6 +650,57 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 	return o;
 }
 
+// Where a path exists, follow its symbolic links and return the target in the
+// same normalized spelling, so a comparison can be repeated on what the name
+// actually leads to. Not every link needs access to the host to plant it: the
+// kernel provides /proc/self/root, which leads to "/" for any process.
+//
+// Returns 0 if the path does not exist or the target does not fit, which
+// callers treat as "nothing to follow": the lexical check stands on its own.
+static size_t resolve_path(const char *path, char *out, const size_t outlen)
+{
+	char resolved[PATH_MAX];
+	if(realpath(path, resolved) == NULL)
+		return 0;
+
+	return normalize_path(resolved, out, outlen);
+}
+
+// Whether the document root stays clear of "/" and of Pi-hole's configuration
+// directory, both as written and where its links lead. On success, norm and
+// real hold the two spellings (rlen is 0 if the path does not exist yet) for
+// the caller's further checks.
+static bool webroot_confined(const char *key, const char *webroot,
+                             char norm[NORMALIZED_PATH_LEN], size_t *nlen,
+                             char real[NORMALIZED_PATH_LEN], size_t *rlen,
+                             char err[VALIDATOR_ERRBUF_LEN])
+{
+	*nlen = normalize_path(webroot, norm, NORMALIZED_PATH_LEN);
+	if(*nlen == 0 || *nlen == 1 || paths_overlap(norm, *nlen, CONFIG_DIR))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, CONFIG_DIR);
+		return false;
+	}
+
+	// The configuration directory may be reached through a link as well
+	char confdir[NORMALIZED_PATH_LEN];
+	if(resolve_path(CONFIG_DIR, confdir, sizeof(confdir)) == 0)
+		strcpy(confdir, CONFIG_DIR);
+
+	*rlen = resolve_path(webroot, real, NORMALIZED_PATH_LEN);
+	if(*rlen == 1 || (*rlen > 0 && paths_overlap(real, *rlen, confdir)))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN,
+		         "%s: \"%s\" resolves to \"%s\", which must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
+		         key, webroot, real, CONFIG_DIR);
+		return false;
+	}
+
+	return true;
+}
+
 // The files Pi-hole writes and therefore must keep out of the document root.
 // Their content follows from what clients send - logged requests, resolved
 // names, imported settings - so serving them hands that straight back out, and a
@@ -513,7 +709,7 @@ static size_t normalize_path(const char *path, char *out, const size_t outlen)
 // in the same file.
 #define WRITTEN_FILES(conf) { \
 	&(conf).files.log.ftl, &(conf).files.log.dnsmasq, &(conf).files.log.webserver, \
-	&(conf).files.database, &(conf).files.tmp_db, &(conf).files.gravity, \
+	&(conf).files.database, &(conf).files.gravity, \
 	&(conf).files.gravity_tmp, &(conf).files.pcap, &(conf).webserver.tls.cert }
 
 // Check the path relationships of a complete configuration.
@@ -539,15 +735,15 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 		return false;
 	}
 
-	char wnorm[NORMALIZED_PATH_LEN];
-	const size_t wlen = normalize_path(webroot, wnorm, sizeof(wnorm));
-	if(wlen == 0 || wlen == 1 || paths_overlap(wnorm, wlen, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         conf->webserver.paths.webroot.k, CONFIG_DIR);
+	char wnorm[NORMALIZED_PATH_LEN], wreal[NORMALIZED_PATH_LEN];
+	size_t wlen, wrlen;
+	if(!webroot_confined(conf->webserver.paths.webroot.k, webroot,
+	                     wnorm, &wlen, wreal, &wrlen, err))
 		return false;
-	}
+
+	// Compare where the names lead once they exist, not only how they are
+	// written: a document root linked to the log directory spans the log
+	const char *weff = wrlen > 0 ? wreal : wnorm;
 
 	struct conf_item *written[] = WRITTEN_FILES(*conf);
 	for(size_t i = 0; i < ArraySize(written); i++)
@@ -567,9 +763,12 @@ bool validate_config_paths(struct config *conf, char err[VALIDATOR_ERRBUF_LEN],
 			return false;
 		}
 
-		char pnorm[NORMALIZED_PATH_LEN];
-		if(normalize_path(path, pnorm, sizeof(pnorm)) == 0 ||
-		   paths_overlap(wnorm, wlen, pnorm))
+		char pnorm[NORMALIZED_PATH_LEN], preal[NORMALIZED_PATH_LEN];
+		const size_t plen = normalize_path(path, pnorm, sizeof(pnorm));
+		const char *peff = resolve_path(path, preal, sizeof(preal)) > 0 ? preal : pnorm;
+		if(plen == 0 ||
+		   paths_overlap(wnorm, wlen, pnorm) ||
+		   paths_overlap(weff, strlen(weff), peff))
 		{
 			snprintf(err, VALIDATOR_ERRBUF_LEN,
 			         "%s (\"%s\") must not be inside %s (\"%s\")",
@@ -606,18 +805,9 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 		return false;
 	}
 
-	char norm[NORMALIZED_PATH_LEN];
-	const size_t len = normalize_path(val->s, norm, sizeof(norm));
-
-	if(len == 0 || len == 1 || paths_overlap(norm, len, CONFIG_DIR))
-	{
-		snprintf(err, VALIDATOR_ERRBUF_LEN,
-		         "%s: must not be \"/\" or overlap Pi-hole's configuration directory (\"%s\")",
-		         key, CONFIG_DIR);
-		return false;
-	}
-
-	return true;
+	char norm[NORMALIZED_PATH_LEN], real[NORMALIZED_PATH_LEN];
+	size_t nlen, rlen;
+	return webroot_confined(key, val->s, norm, &nlen, real, &rlen, err);
 }
 
 // Validate a single regular expression
@@ -667,8 +857,10 @@ bool validate_regex_array(union conf_value *val, const char *key, char err[VALID
 		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
 		if(!validate_regex(item->valuestring, errbuf))
 		{
-			snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: not a valid regex (\"%s\"): %s",
-			         key, i, item->valuestring, errbuf);
+			char *escaped_errbuf = escape_control_chars(errbuf);
+			set_error(err, key, i, "not a valid regex", item->valuestring,
+			          escaped_errbuf != NULL ? escaped_errbuf : errbuf);
+			free(escaped_errbuf);
 			return false;
 		}
 	}
@@ -724,7 +916,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(strcmp(s, "true") != 0 && strcmp(s, "false") != 0)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <enabled> not a boolean (\"%s\")", key, i, s);
+					set_error(err, key, i, "<enabled> not a boolean", s, NULL);
 					free(str);
 					return false;
 				}
@@ -749,7 +941,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				const bool ipv6 = inet_pton(AF_INET6, ip, &addr6) == 1;
 				if(!ipv4 && !ipv6)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <ip-address> neither a valid IPv4 nor IPv6 address (\"%s\")", key, i, ip);
+					set_error(err, key, i, "<ip-address> neither a valid IPv4 nor IPv6 address", ip, NULL);
 					free(str);
 					return false;
 				}
@@ -766,8 +958,11 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 					const int prefix_int = atoi(prefix);
 					if(prefix_int < 0 || (ipv4 && prefix_int > 32) || (ipv6 && prefix_int > 128))
 					{
-						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <prefix-len> not a valid %sprefix length (\"%s\")",
-						         key, i, ipv4 ? "IPv4 " : ipv6 ? "IPv6 " : "", prefix);
+						char reason[64] = { 0 };
+						snprintf(reason, sizeof(reason),
+						         "<prefix-len> not a valid %sprefix length",
+						         ipv4 ? "IPv4 " : ipv6 ? "IPv6 " : "");
+						set_error(err, key, i, reason, prefix, NULL);
 						free(str);
 						return false;
 					}
@@ -795,7 +990,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 				// Check if server is valid
 				if(!server_ipv4 && !server_ipv6 && !server_domain)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: <server> neither a valid domain nor an IPv4 or IPv6 address (\"%s\")", key, i, server);
+					set_error(err, key, i, "<server> neither a valid domain nor an IPv4 or IPv6 address", server, NULL);
 					free(str);
 					return false;
 				}
@@ -812,7 +1007,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 					const int port_int = atoi(port);
 					if(port_int < 0 || port_int > 65535)
 					{
-						snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: server <port> not a valid port (\"%s\")", key, i, port);
+						set_error(err, key, i, "server <port> not a valid port", port, NULL);
 						free(str);
 						return false;
 					}
@@ -823,7 +1018,7 @@ bool validate_dns_revServers(union conf_value *val, const char *key, char err[VA
 			{
 				if(!valid_domain(s, strlen(s), false))
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: specified <domain> not a valid domain (\"%s\")", key, i, s);
+					set_error(err, key, i, "specified <domain> not a valid domain", s, NULL);
 					free(str);
 					return false;
 				}
@@ -871,6 +1066,19 @@ bool validate_ui_min_1(union conf_value *val, const char *key, char err[VALIDATO
 	if(val->ui < 1)
 	{
 		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: cannot be lower than 1", key);
+		return false;
+	}
+
+	return true;
+}
+
+bool validate_dns_fastRetry(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
+{
+	// dnsmasq rejects intervals below 50 ms outright, and an interval
+	// beyond the forwarding timeout would never fire a retransmission
+	if(val->ui != 0 && (val->ui < 50 || val->ui > 10000))
+	{
+		snprintf(err, VALIDATOR_ERRBUF_LEN, "%s: must be 0 (disabled) or between 50 and 10000", key);
 		return false;
 	}
 
@@ -1078,8 +1286,9 @@ bool validate_str_no_newline(union conf_value *val, const char *key, char err[VA
 
 // Validator for dns.upstreams. Enforces the same array/string/newline rules as
 // validate_array_no_newline() and, in addition, requires every encrypted entry
-// (tls:// or https://) to parse as a valid encrypted-upstream URI. Plaintext
-// entries are left untouched - dnsmasq validates those itself.
+// (tls://, https://, h3://, doq:// or quic://) to parse as a valid encrypted-
+// upstream URI. Plaintext entries are left untouched - dnsmasq validates those
+// itself.
 bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN])
 {
 	if(!validate_array_no_newline(val, key, err))
@@ -1093,11 +1302,12 @@ bool validate_upstreams(union conf_value *val, const char *key, char err[VALIDAT
 			continue;
 
 		// Anything carrying a URI scheme ("://") must be a supported encrypted
-		// upstream (tls:// or https://) that parses cleanly. A plaintext server
-		// specification handled downstream by dnsmasq never contains "://", so
-		// an entry that does but is not a valid encrypted URI (e.g. http://,
-		// ftp:// or a malformed tls://) is rejected here rather than being
-		// written into dnsmasq.conf and breaking DNS startup.
+		// upstream (tls://, https://, h3://, doq:// or quic://) that parses
+		// cleanly. A plaintext server specification handled downstream by
+		// dnsmasq never contains "://", so an entry that does but is not a valid
+		// encrypted URI (e.g. http://, ftp:// or a malformed tls://) is rejected
+		// here rather than being written into dnsmasq.conf and breaking DNS
+		// startup.
 		if(strstr(s, "://") != NULL)
 		{
 			struct upstream_uri u;

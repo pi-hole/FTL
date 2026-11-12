@@ -34,7 +34,6 @@
 // _Atomic
 #include <stdatomic.h>
 
-bool DBdeleteoldqueries = false;
 static _Atomic bool DBerror = false;
 static _Atomic int dbopen_cnt = 0; // Number of times the database has been opened
 
@@ -87,18 +86,6 @@ int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *f
 
 void _dbclose(sqlite3 **db, const char *func, const int line, const char *file)
 {
-	// The shared in-memory connection is owned by close_memory_database() and
-	// its prepared statements live as long as FTL does. Closing it here would
-	// finalize them behind the back of whoever cached them, so return before
-	// both the NULL assignment and the counter below: the handle stays valid
-	// for its owner, and it never went through dbopen() to be counted
-	if(db != NULL && is_memdb(*db))
-	{
-		log_err("dbclose() called on the in-memory database in %s() (%s:%i)",
-		        func, short_path(file), line);
-		return;
-	}
-
 	if(config.debug.database.v.b)
 		log_debug(DEBUG_DATABASE, "Closing FTL database in %s() (%s:%i)", func, short_path(file), line);
 
@@ -195,7 +182,7 @@ sqlite3* _dbopen(const bool readonly, const bool create, const char *func, const
 	// threaded — every caller (civetweb worker, database thread) opens,
 	// uses, and closes the connection within one function scope, so the
 	// serialized-mode per-API-call mutex is pure overhead. The long-lived
-	// shared connections (_memdb in query-table.c, gravity_db) keep the
+	// shared connections (querydb in query-table.c, gravity_db) keep the
 	// default serialized mode because they are touched from multiple
 	// threads.
 	int flags = readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE;
@@ -799,18 +786,16 @@ void db_init(void)
 	}
 
 	/* * * * * * * * * * * * * IMPORTANT * * * * * * * * * * * * *
-	 * If you add a new database version, check if the in-memory
-	 * schema needs to be update as well (always recreated from
-	 * scratch on every FTL (re)start). Also, ensure to update the
-	 * MEMDB_VERSION in src/database/query-table.h as well as the
+	 * If you add a new database version, ensure to update the
+	 * FTL_DB_VERSION in src/database/query-table.h as well as the
 	 * expected database schema in the CI tests.
 	 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 	// Last check after all migrations, if this happens, it will cause the
 	// CI to fail the tests
-	if(dbversion != MEMDB_VERSION)
+	if(dbversion != FTL_DB_VERSION)
 	{
-		log_err("Expected query database version %d but found %d, database not available", MEMDB_VERSION, dbversion);
+		log_err("Expected query database version %d but found %d, database not available", FTL_DB_VERSION, dbversion);
 		dbclose(&db);
 		DBerror = true;
 		return;
@@ -1216,21 +1201,19 @@ const char *get_sqlite3_version(void)
 }
 
 /**
- * get_row_count - Get the row count of an in-memory SQLite table.
+ * get_row_count - Get the row count of a table of the on-disk database.
  *
- * Uses the shared in-memory connection or opens a transient read-only one
- * (dbopen(true, false)), prepares and executes a "SELECT COUNT(*) FROM
- * <table>;" query for the given table name, and returns the number of rows in
- * that table. Only a connection opened here is closed again.
- * 
+ * Opens a transient read-only connection (dbopen(true, false)), prepares and
+ * executes a "SELECT COUNT(*) FROM <table>;" query for the given table name,
+ * and returns the number of rows in that table.
+ *
  * @param table_name The name of the table to get the size of.
- * @param memory If true, use the in-memory database; if false, use the on-disk database.
  * @return The number of rows in the table, or -2 if the database could not be opened,
  *         or -3 if the SQL statement could not be prepared (e.g. invalid table name).
  */
-int64_t get_row_count(const char *table_name, const bool memory)
+int64_t get_row_count(const char *table_name)
 {
-	sqlite3 *db = memory ? get_memdb() : dbopen(true, false);
+	sqlite3 *db = dbopen(true, false);
 	if(!db)
 		return -2;
 
@@ -1239,11 +1222,10 @@ int64_t get_row_count(const char *table_name, const bool memory)
 	char * const query = sqlite3_mprintf(sql, table_name);
 	if(sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK)
 	{
-		log_err("Failed to prepare statement to get size of in-memory table %s: %s",
+		log_err("Failed to prepare statement to get size of table %s: %s",
 		        table_name, sqlite3_errmsg(db));
 		sqlite3_free(query);
-		if(!memory)
-			dbclose(&db);
+		dbclose(&db);
 		return -3;
 	}
 	sqlite3_free(query);
@@ -1255,12 +1237,11 @@ int64_t get_row_count(const char *table_name, const bool memory)
 	}
 	else
 	{
-		log_err("Failed to step statement to get size of in-memory table %s: %s",
+		log_err("Failed to step statement to get size of table %s: %s",
 		        table_name, sqlite3_errmsg(db));
 	}
 
 	sqlite3_finalize(stmt);
-	if(!memory)
-		dbclose(&db);
+	dbclose(&db);
 	return size;
 }

@@ -100,13 +100,13 @@ void poll_listen(int fd, short event)
 	 {
 	   /* Array too small. Extend. */
 	   struct pollfd *new;
+	   nfds_t newsize = (arrsize == 0) ? 64 : arrsize * 2;
 
-	   arrsize = (arrsize == 0) ? 64 : arrsize * 2;
-
-	   if (!(new = whine_realloc(pollfds, arrsize * sizeof(struct pollfd))))
+	   if (!(new = whine_realloc(pollfds, newsize * sizeof(struct pollfd))))
 	     return;
 
 	   pollfds = new;
+	   arrsize = newsize;
 	 }
 
        memmove(&pollfds[i+1], &pollfds[i], (nfds - i) * sizeof(struct pollfd));

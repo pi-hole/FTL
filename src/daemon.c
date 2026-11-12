@@ -22,6 +22,8 @@
 #include <sys/utsname.h>
 // killed
 #include "signals.h"
+// PWBUF_SIZE
+#include "files.h"
 // forked
 #include "main.h"
 // sysinfo()
@@ -31,7 +33,7 @@
 #include <sys/resource.h>
 // free_regex()
 #include "regex_r.h"
-// close_memory_database()
+// close_query_database()
 #include "database/query-table.h"
 // http_terminate()
 #include "webserver/webserver.h"
@@ -49,7 +51,8 @@
 pthread_t threads[THREADS_MAX] = { 0 };
 bool resolver_ready = false;
 bool dnsmasq_failed = false;
-volatile sig_atomic_t gravity_running = 0;
+// Set while a gravity run started through the API is in flight, at most one is
+atomic_bool gravity_running = false;
 volatile sig_atomic_t want_terminate = 0;
 
 void go_daemon(void)
@@ -181,7 +184,7 @@ static void removePID(void)
  * @brief Retrieves the username of the effective user ID of the calling process.
  *
  * This function uses the `geteuid()` function to get the effective user ID (EUID) of the calling process
- * and then searches the user database for an entry with a matching UID using the `getpwuid()` function.
+ * and then searches the user database for an entry with a matching UID using the `getpwuid_r()` function.
  * If a matching entry is found, the username is returned. If no matching entry is found, the UID is
  * returned as a string. If an error occurs during the lookup, a warning is logged.
  *
@@ -191,11 +194,14 @@ static void removePID(void)
 char *getUserName(void)
 {
 	char *name;
-	// the getpwuid() function shall search the user database for an entry with a matching uid
-	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid() function
+	// the getpwuid_r() function shall search the user database for an entry with a matching uid
+	// the geteuid() function shall return the effective user ID of the calling process - this is used as the search criteria for the getpwuid_r() function
 	const uid_t euid = geteuid();
-	errno = 0;
-	const struct passwd *pw = getpwuid(euid);
+	// Reentrant, the crash report calls this while another thread may be
+	// inside getpwuid()
+	char buf[PWBUF_SIZE];
+	struct passwd pwd, *pw = NULL;
+	const int ret = getpwuid_r(euid, &pwd, buf, sizeof(buf), &pw);
 	if(pw)
 	{
 		// If the user is found, we return the username
@@ -204,8 +210,8 @@ char *getUserName(void)
 	else
 	{
 		// If there was an error, we log it
-		if(errno != 0)
-			log_warn("getpwuid(%u) failed: %s", euid, strerror(errno));
+		if(ret != 0)
+			log_warn("getpwuid_r(%u) failed: %s", euid, strerror(ret));
 
 		// If the user is not found, we return the UID as string
 		if(asprintf(&name, "%u", euid) < 0)
@@ -345,15 +351,16 @@ static void terminate_threads(void)
 	// Terminate threads before closing database connections and finishing shared memory
 	killed = true;
 
-	// Abort a long-running statement on the in-memory database (the initial
+	// Abort a long-running statement on the query database (the initial
 	// query import) so its thread can see the flag above and return
-	interrupt_memdb();
+	interrupt_import();
 
 	// Try to join threads to ensure cancellation has succeeded
 	log_info("Waiting for threads to join");
 	bool all_joined = true;
 	for(int i = 0; i < THREADS_MAX; i++)
 	{
+		crash_watchdog_progress();
 		log_debug(DEBUG_EXTRA, "Joining %s thread (%d)", thread_names[i], i);
 		// Skip threads that have never been started or which are already stopped
 		if(threads[i] == 0)
@@ -480,15 +487,16 @@ void cleanup(const int ret)
 	// while civetweb worker threads were still handling requests against it,
 	// since mg_stop() only runs inside http_terminate()
 	log_debug(DEBUG_ANY, "Terminating: Stopping HTTP server");
+	crash_watchdog_progress();
 	http_terminate();
 
 	// Terminate API
 	log_debug(DEBUG_ANY, "Terminating: Stopping API");
 	free_api();
 
-	// Close memory database
-	log_debug(DEBUG_ANY, "Terminating: Closing memory database");
-	close_memory_database();
+	// Close query database
+	log_debug(DEBUG_ANY, "Terminating: Closing query database");
+	close_query_database();
 
 	// Free environment variables
 	log_debug(DEBUG_ANY, "Terminating: Freeing environment variables");
@@ -516,6 +524,46 @@ void cleanup(const int ret)
 		log_info("########## FTL terminated after%s (internal restart)! ##########", buffer);
 	else
 		log_info("########## FTL terminated after%s (code %i)! ##########", buffer, ret);
+}
+
+// Count the CPUs present in the system. musl's get_nprocs_conf() returns the
+// size of our CPU affinity mask, which is a container's share of the host
+int get_present_cpus(void)
+{
+	FILE *fp = fopen("/sys/devices/system/cpu/present", "r");
+	if(fp == NULL)
+		return get_nprocs_conf();
+
+	// The file holds a list of ranges, e.g., "0-3" or "0,2-5"
+	int cpus = 0, first = 0, last = 0;
+	char sep = ',';
+	while(sep == ',' && fscanf(fp, "%d", &first) == 1)
+	{
+		last = first;
+		if((sep = fgetc(fp)) == '-' && fscanf(fp, "%d", &last) == 1)
+			sep = fgetc(fp);
+		if(last >= first)
+			cpus += last - first + 1;
+	}
+	fclose(fp);
+
+	return cpus > 0 ? cpus : get_nprocs_conf();
+}
+
+// Read the load averages from /proc/loadavg rather than sysinfo(), as only
+// the former is virtualized for containers, e.g., by LXCFS
+int get_load_averages(double load[3])
+{
+	FILE *f = fopen("/proc/loadavg", "r");
+	if(f != NULL)
+	{
+		const int count = fscanf(f, "%lf %lf %lf", &load[0], &load[1], &load[2]);
+		fclose(f);
+		if(count == 3)
+			return 0;
+	}
+
+	return getloadavg(load, 3) == 3 ? 0 : -1;
 }
 
 static float ftl_cpu_usage = 0.0f;

@@ -54,7 +54,7 @@ void gravityDB_finalizeTable(void);
 int gravityDB_count(const enum gravity_tables list, const bool total);
 void check_inaccessible_adlists(void);
 void check_restored_gravity(void);
-bool gravity_updated(void);
+bool gravity_updated(const bool check_timestamp);
 
 cJSON *gen_abp_patterns(const char *domain);
 

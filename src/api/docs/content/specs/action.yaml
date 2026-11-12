@@ -10,7 +10,7 @@ components:
           - Actions
         operationId: "action_gravity"
         description: |
-          Update Pi-hole's adlists by running `pihole -g`. The output of the process is streamed with chunked encoding. Use the optional `color` query parameter to include ANSI color escape codes in the output.
+          Update Pi-hole's adlists by running `pihole -g`. The output of the process is streamed with chunked encoding. Use the optional `color` query parameter to include ANSI color escape codes in the output. Only one run can be in progress at a time, a request while one is running is refused with 409.
         responses:
           '200':
             description: OK
@@ -66,6 +66,14 @@ components:
                 schema:
                   allOf:
                     - $ref: 'common.yaml#/components/errors/unauthorized'
+                    - $ref: 'common.yaml#/components/schemas/took'
+          '409':
+            description: Conflict
+            content:
+              application/json:
+                schema:
+                  allOf:
+                    - $ref: 'action.yaml#/components/errors/gravity_running'
                     - $ref: 'common.yaml#/components/schemas/took'
     restartdns:
       post:
@@ -200,3 +208,24 @@ components:
               nullable: true
               description: "No additional data available"
               example: "Check setting webserver.api.allow_destructive"
+    gravity_running:
+      description: |
+        Another gravity run is still in progress.
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Machine-readable error type"
+              example: "gravity_running"
+            message:
+              type: string
+              description: "Human-readable error message"
+              example: "Gravity is already running"
+            hint:
+              type: string
+              nullable: true
+              description: "No additional data available"
+              example: null

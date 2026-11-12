@@ -31,7 +31,6 @@ enum counters_table_props {
 
 void db_init(void);
 int db_get_int(sqlite3* db, const enum ftl_table_props ID);
-int db_get_FTL_property(sqlite3* db, const enum ftl_table_props ID);
 bool db_set_FTL_property(sqlite3* db, const enum ftl_table_props ID, const int value);
 
 /// Execute a formatted SQL query and get the return code
@@ -45,7 +44,6 @@ void _dbclose(sqlite3 **db, const char *func, const int line, const char *file);
 #define dbclose_handle(db) _dbclose_handle(db, __FUNCTION__, __LINE__, __FILE__)
 int _dbclose_handle(sqlite3 *db, const char *func, const int line, const char *file);
 
-void piholeFTLDB_reopen(void);
 int db_query_int(sqlite3 *db, const char *querystr);
 int db_query_int_int(sqlite3 *db, const char* querystr, const int arg);
 int db_query_int_str(sqlite3 *db, const char* querystr, const char *arg);
@@ -57,9 +55,7 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg);
 bool db_set_counter(sqlite3 *db, const enum counters_table_props ID, const int value);
 bool db_update_disk_counter(sqlite3 *db, const enum counters_table_props ID, const int change);
 const char *get_sqlite3_version(void);
-int64_t get_row_count(const char *table_name, const bool memory);
-
-extern bool DBdeleteoldqueries;
+int64_t get_row_count(const char *table_name);
 
 // Return if FTL's database is known to be broken
 // We abort execution of all database-related activities in this case
@@ -80,17 +76,6 @@ extern const char *sqlite3ErrName(int rc);
 		else\
 			log_err("%s() failed!", __FUNCTION__);\
 		return false;\
-	}\
-}
-
-#define SQL_void(db, ...) {\
-	int ret;\
-	if((ret = dbquery(db, __VA_ARGS__)) != SQLITE_OK) {\
-		if(ret == SQLITE_BUSY)\
-			log_warn("Database busy in %s()!", __FUNCTION__);\
-		else\
-			log_err("%s() failed!", __FUNCTION__);\
-		return;\
 	}\
 }
 

@@ -28,6 +28,7 @@ typedef struct {
 	bool valid :1;
 	bool private_client_set :1; // real client from EDNS0_OPTION_PIHOLE_CLIENT
 	bool private_dest_set :1;   // client-facing local address from EDNS0_OPTION_PIHOLE_DEST
+	int id;
 	char client[ADDRSTRLEN];
 	// Deliberately separate from client[] (which the ECS parser writes): an
 	// external client could otherwise inject this option to overwrite the ECS
@@ -39,7 +40,7 @@ typedef struct {
 	int ede;
 } ednsData;
 
-ednsData *getEDNS(void);
+ednsData *getEDNS(const int id);
 void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
                              unsigned char *pheader, const size_t plen);
 
