@@ -36,14 +36,26 @@ static bool ftl_log_available = true;
 static const char *process = "";
 bool debug_flags[DEBUG_MAX] = { false };
 
+// Path of FTL.log for log_ftl_raw(). A copy, because cleanup() frees the
+// configured path before a hanging exit() may still need it
+static char ftl_log_raw_path[PATH_MAX] = "";
+
+// Remember where log_ftl_raw() writes to. The path does not change while FTL
+// runs, so this is called once, before anything could need it
+void prepare_log_ftl_raw(void)
+{
+	if(config.files.log.ftl.v.s != NULL)
+		strncpy(ftl_log_raw_path, config.files.log.ftl.v.s, sizeof(ftl_log_raw_path) - 1);
+}
+
 // Append to FTL.log without any lock or allocation, for a caller that cannot
 // wait on other threads (the crash watchdog). Not in CLI mode, which does not
 // log to FTL.log
 void log_ftl_raw(const char *msg, const size_t len)
 {
-	if(!print_log || config.files.log.ftl.v.s == NULL)
+	if(!print_log || ftl_log_raw_path[0] == '\0')
 		return;
-	const int fd = open(config.files.log.ftl.v.s, O_WRONLY|O_APPEND|O_CLOEXEC|O_NOFOLLOW);
+	const int fd = open(ftl_log_raw_path, O_WRONLY|O_APPEND|O_CLOEXEC|O_NOFOLLOW);
 	if(fd == -1)
 		return;
 	// libc's write(): FTLwrite() logs a failure, which may wait for a lock
