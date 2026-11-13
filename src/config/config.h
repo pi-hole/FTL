@@ -414,6 +414,7 @@ void free_config_path(char **paths);
 bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __attribute__ ((pure));
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
+char *copy_config_string(char *const *str) __attribute__((malloc));
 void reread_config(void);
 bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);

@@ -151,16 +151,24 @@ static bool dot_server_init(void)
 	if(g_ready)
 		return true;
 
-	const char *cert = config.webserver.tls.cert.v.s;
-	if(cert == NULL || cert[0] == '\0' || access(cert, R_OK) != 0)
+	// A private copy, a config change frees the string while we use it
+	char *cert = copy_config_string(&config.webserver.tls.cert.v.s);
+	if(cert == NULL || access(cert, R_OK) != 0)
+	{
+		free(cert);
 		return false; // not written yet; the caller retries
+	}
 
 	g_ctx = dot_build_ctx(cert);
 	if(g_ctx == NULL)
+	{
+		free(cert);
 		return false;
+	}
 
 	struct stat st;
 	g_cert_mtime = stat(cert, &st) == 0 ? st.st_mtime : 0;
+	free(cert);
 	g_ready = true;
 	return true;
 }
@@ -171,21 +179,28 @@ static bool dot_server_init(void)
 // reference to the old context and release it when they close.
 static void dot_reload_cert_if_changed(void)
 {
-	const char *cert = config.webserver.tls.cert.v.s;
-	if(cert == NULL || cert[0] == '\0')
+	char *cert = copy_config_string(&config.webserver.tls.cert.v.s);
+	if(cert == NULL)
 		return;
 	struct stat st;
 	if(stat(cert, &st) != 0 || st.st_mtime == g_cert_mtime)
+	{
+		free(cert);
 		return;
+	}
 
 	SSL_CTX *nctx = dot_build_ctx(cert);
 	if(nctx == NULL)
+	{
+		free(cert);
 		return; // keep serving the current context; retry on the next change
+	}
 
 	SSL_CTX_free(g_ctx);
 	g_ctx = nctx;
 	g_cert_mtime = st.st_mtime;
 	log_info("dotdoh: reloaded DoT certificate from %s", cert);
+	free(cert);
 }
 
 // Monotonic seconds for connection deadlines: immune to wall-clock steps

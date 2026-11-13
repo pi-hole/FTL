@@ -534,16 +534,22 @@ static int listeners_open(void)
 // a multi-day event, so this is rare.
 static void doq_reload_cert_if_changed(void)
 {
-	const char *cert = config.webserver.tls.cert.v.s;
-	if(cert == NULL || cert[0] == '\0')
+	char *cert = copy_config_string(&config.webserver.tls.cert.v.s);
+	if(cert == NULL)
 		return;
 	struct stat st;
 	if(stat(cert, &st) != 0 || st.st_mtime == g_cert_mtime)
+	{
+		free(cert);
 		return;
+	}
 
 	SSL_CTX *nctx = doq_build_ctx(cert);
 	if(nctx == NULL)
+	{
+		free(cert);
 		return; // keep serving the current context; retry on the next change
+	}
 
 	SSL_CTX *octx = g_ctx;
 	g_ctx = nctx;
@@ -566,6 +572,7 @@ static void doq_reload_cert_if_changed(void)
 		log_err("dotdoh: DoQ could not rebind after a certificate change");
 	else
 		log_info("dotdoh: reloaded DoQ certificate from %s", cert);
+	free(cert);
 }
 
 // Release a stream slot. The QUIC stream object is freed even when our FIN is
@@ -1304,17 +1311,20 @@ void *dotdoh_doq_thread(void *val)
 	bool waited = false;
 	for(;;)
 	{
-		const char *cert = config.webserver.tls.cert.v.s;
-		if(cert != NULL && cert[0] != '\0' && access(cert, R_OK) == 0)
+		// A private copy, a config change frees the string while we use it
+		char *cert = copy_config_string(&config.webserver.tls.cert.v.s);
+		if(cert != NULL && access(cert, R_OK) == 0)
 		{
 			g_ctx = doq_build_ctx(cert);
 			if(g_ctx != NULL)
 			{
 				struct stat st;
 				g_cert_mtime = stat(cert, &st) == 0 ? st.st_mtime : 0;
+				free(cert);
 				break;
 			}
 		}
+		free(cert);
 		if(killed)
 			return NULL;
 		if(!waited)

@@ -2306,6 +2306,16 @@ void replace_config(struct config *newconf)
 		apply_blockingstatus(before);
 }
 
+// Private copy of a live config string, NULL if it is unset or empty. Taken
+// under the SHM lock, as replace_config() frees the previous strings under it
+char *copy_config_string(char *const *str)
+{
+	lock_shm();
+	char *copy = *str != NULL && (*str)[0] != '\0' ? strdup(*str) : NULL;
+	unlock_shm();
+	return copy;
+}
+
 // Set when reread_config() found a config change in progress and left the
 // reread to the housekeeper thread
 static _Atomic bool reread_deferred = false;
