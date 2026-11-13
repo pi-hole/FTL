@@ -17,6 +17,7 @@
 bool validate_stub(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]) __attribute__((const));
 bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+void normalize_cname(char *s);
 bool validate_dns_domain(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_cidr(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_cidr_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
@@ -34,6 +35,7 @@ bool validate_webroot(union conf_value *val, const char *key, char err[VALIDATOR
 bool validate_regex_array(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_dns_revServers(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_1(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
+bool validate_dns_fastRetry(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_ui_min_7_or_0(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 bool validate_max_history(union conf_value *val, const char *key, char err[VALIDATOR_ERRBUF_LEN]);
 void sanitize_dns_hosts(union conf_value *val);

@@ -433,6 +433,56 @@ static int loopback_connect(void)
 	return fd;
 }
 
+// One dotdoh_thread_buf() allocation, chained per thread for the key destructor
+struct thread_buf {
+	struct thread_buf *next;
+	uint8_t **slot;
+};
+static pthread_key_t thread_buf_key;
+static pthread_once_t thread_buf_once = PTHREAD_ONCE_INIT;
+static bool thread_buf_key_ok = false;
+
+static void thread_buf_release(void *head)
+{
+	struct thread_buf *b = head;
+	while(b != NULL)
+	{
+		struct thread_buf *next = b->next;
+		*b->slot = NULL;
+		free(b);
+		b = next;
+	}
+}
+
+static void thread_buf_key_init(void)
+{
+	thread_buf_key_ok = pthread_key_create(&thread_buf_key, thread_buf_release) == 0;
+}
+
+uint8_t *dotdoh_thread_buf(uint8_t **slot, const size_t size)
+{
+	if(*slot != NULL)
+		return *slot;
+
+	pthread_once(&thread_buf_once, thread_buf_key_init);
+	if(!thread_buf_key_ok)
+		return NULL;
+
+	struct thread_buf *b = calloc(1, sizeof(*b) + size);
+	if(b == NULL)
+		return NULL;
+	b->next = pthread_getspecific(thread_buf_key);
+	b->slot = slot;
+	if(pthread_setspecific(thread_buf_key, b) != 0)
+	{
+		free(b);
+		return NULL;
+	}
+
+	*slot = (uint8_t *)(b + 1);
+	return *slot;
+}
+
 // Resolve the decrypted query through dnsmasq by handing it to our own DNS
 // listener over loopback TCP: dnsmasq accepts it as an ordinary TCP DNS query,
 // so nothing unsafe (a direct tcp_request()/fork) happens from the calling DoH
@@ -449,8 +499,11 @@ ssize_t dotdoh_server_resolve(const char *client, const char *dest,
 	// trusted only when the query source is loopback; see the EDNS parser and
 	// FTL_new_query). Off-stack (a musl thread stack is only 128 KiB, so a 64 KiB
 	// frame on it would erase most of the safety margin).
-	static _Thread_local uint8_t framed[2 + DNS_MSG_MAX];
-	const ssize_t flen = dotdoh_prepare_query(query, qlen, client, dest, framed, sizeof(framed));
+	static _Thread_local uint8_t *framed_buf = NULL;
+	uint8_t *framed = dotdoh_thread_buf(&framed_buf, 2 + DNS_MSG_MAX);
+	if(framed == NULL)
+		return -1;
+	const ssize_t flen = dotdoh_prepare_query(query, qlen, client, dest, framed, 2 + DNS_MSG_MAX);
 	if(flen < 0)
 		return flen;
 

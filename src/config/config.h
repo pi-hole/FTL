@@ -143,6 +143,7 @@ struct enum_options {
 struct config {
 	struct {
 		struct conf_item upstreams;
+		struct conf_item fastRetry;
 		struct conf_item CNAMEdeepInspect;
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
@@ -422,7 +423,8 @@ bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 
 void init_config_mutex(void);
-enum blocking_status get_blockingstatus(void) __attribute__((pure));
+enum blocking_status get_blockingstatus(void);
+void apply_blockingstatus(const enum blocking_status before);
 void set_blockingstatus(bool enabled);
 
 // Add enum items with descriptions

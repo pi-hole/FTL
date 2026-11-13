@@ -502,7 +502,7 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
  
        state->fqdn_flags &= ~0x04;
 
-       if (len != 0 && len < 255)
+       if (len >= 1 && len < 255)
 	 {
 	   unsigned char *pp, *op = opt6_ptr(opt, 1);
 	   char *pq = daemon->dhcp_buff;

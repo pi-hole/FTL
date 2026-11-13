@@ -10,6 +10,10 @@
 # supported CodeQL languages.
 #
 name: "CodeQL Advanced"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   nettleversion: 3.10.2
   mbedtlsversion: 4.0.0
@@ -22,6 +26,8 @@ on:
   schedule:
     - cron: '45 10 * * 6'
 
+permissions: {}
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -33,14 +39,14 @@ jobs:
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     permissions:
       # required for all workflows
-      security-events: write
+      security-events: write # to upload code scanning results
 
       # required to fetch internal or private CodeQL packs
-      packages: read
+      packages: read # to read CodeQL packs
 
       # only required for workflows in private repositories
-      actions: read
-      contents: read
+      actions: read # to read workflow run information
+      contents: read # to read the repository contents
 
     strategy:
       fail-fast: false
@@ -59,6 +65,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Install dependencies
       run: |
@@ -87,7 +95,7 @@ jobs:
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 #v4.39.1
+      uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 #v4.39.3
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
@@ -110,14 +118,14 @@ jobs:
         ./build.sh
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 #v4.39.1
+      uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 #v4.39.3
       with:
         category: "/language:${{matrix.language}}"
         upload: failure-only # upload only in case of failure, otherwise upload later after filtering
         output: codeql-results
     
     - name: Filter SARIF
-      uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 #v1.1.0.1.1
+      uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 #v1.1
       with:
         # filter out third-party dependencies
         patterns: |
@@ -136,7 +144,7 @@ jobs:
         output: codeql-results/cpp.sarif
 
     - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 #v4.39.1
+      uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 #v4.39.3
       with:
         sarif_file: codeql-results/cpp.sarif
 
