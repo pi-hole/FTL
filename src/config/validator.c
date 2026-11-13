@@ -307,7 +307,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 				const unsigned long ttl = strtoul(s, NULL, 10);
 				if(errno != 0 || ttl > INT_MAX)
 				{
-					snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid TTL (\"%s\")", key, i, s);
+					set_error(err, key, i, "invalid TTL", s, NULL);
 					free(str);
 					return false;
 				}
@@ -316,7 +316,7 @@ bool validate_dns_cnames(union conf_value *val, const char *key, char err[VALIDA
 
 			if(!valid_domain(s, slen, false))
 			{
-				snprintf(err, VALIDATOR_ERRBUF_LEN, "%s[%d]: invalid domain (\"%s\")", key, i, s);
+				set_error(err, key, i, "invalid domain", s, NULL);
 				free(str);
 				return false;
 			}
