@@ -1544,7 +1544,9 @@
   #
   # Allowed values are:
   #     Array of valid dnsmasq config line options
-  dnsmasq_lines = []
+  dnsmasq_lines = [
+    "address=/address-null.ftl/0.0.0.0"
+  ] ### CHANGED, default = []
 
   # Log additional information about queries and replies to pihole.log
   #
@@ -1880,8 +1882,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 175 total entries out of which 115 entries are default
-# --> 60 entries are modified
+# 175 total entries out of which 114 entries are default
+# --> 61 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

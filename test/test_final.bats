@@ -358,6 +358,35 @@ for s in socks:
   assert_output "2"
 }
 
+@test "An upstream's blocking page answered from the cache counts as blocked for every client" {
+  # The first client gets the answers from upstream (or from the cache, if an
+  # earlier test left them there), the second one certainly from the cache.
+  # umbrella-multi.ftl mixes the blocking page with other addresses
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  for client in 127.0.0.54 127.0.0.55; do
+    dig +short +tries=1 +time=2 -b "${client}" A umbrella-multi.ftl @127.0.0.1 > /dev/null
+    dig +short +tries=1 +time=2 -b "${client}" AAAA umbrella.ftl @127.0.0.1 > /dev/null
+  done
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  [[ "${log}" == *"DEBUG_QUERIES: **** got cache reply: umbrella-multi.ftl is "* ]]
+
+  for client in 127.0.0.54 127.0.0.55; do
+    run bash -c "curl -s '127.0.0.1/api/queries?client_ip=${client}' | jq -r '[.queries[] | .domain + \" \" + .type + \" \" + .status] | sort | .[]'"
+    printf "%s:\n%s\n" "${client}" "${output}"
+    assert_line --index 0 "umbrella-multi.ftl A EXTERNAL_BLOCKED_IP"
+    assert_line --index 1 "umbrella.ftl AAAA EXTERNAL_BLOCKED_IP"
+  done
+
+  # An address=/.../0.0.0.0 line in the config (test/pihole.toml) is not an
+  # upstream's answer, also not the second time it is given
+  dig +short +tries=1 +time=2 -b 127.0.0.56 A address-null.ftl @127.0.0.1 > /dev/null
+  run bash -c "dig +short +tries=1 +time=2 -b 127.0.0.56 A address-null.ftl @127.0.0.1"
+  assert_output "0.0.0.0"
+  run bash -c "curl -s '127.0.0.1/api/queries?client_ip=127.0.0.56' | jq -r '.queries[] | .domain + \" \" + .status'"
+  assert_output "address-null.ftl CACHE
+address-null.ftl CACHE"
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
@@ -1146,6 +1175,11 @@ three.rename.ftl|new-rename.ftl"
     printf ".timeout 30000\nUPDATE info SET value = CAST(value AS INTEGER) + 1 WHERE property = 'updated';\n" | ./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db
     assert_equal "$(stat -c%s /etc/pihole/gravity.db)" "${size_before}"
     run bash -c "./pihole-FTL wait-for 'Gravity database has been updated, reloading now' /var/log/pihole/FTL.log 5 $logsize_update"
+    assert_success
+    # The reload follows in the database thread and reads the timestamp again
+    # when it opens the database. Let it finish before the next update, or the
+    # reload reads that one as well, and FTL never sees it as a change
+    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_update"
     assert_success
   done
 
