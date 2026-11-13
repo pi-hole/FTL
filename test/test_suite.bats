@@ -1230,6 +1230,21 @@ setup() {
   assert_success
 }
 
+@test "Regex Test 62: Approximate matching, one error in each adjacent scope: MATCH" {
+  run bash -c './pihole-FTL regex-test "gogle-facebok.com" "(google){~1}(-facebook){~1}"'
+  assert_success
+}
+
+@test "Regex Test 63: Approximate matching, two errors in one adjacent scope: NO MATCH" {
+  run bash -c './pihole-FTL regex-test "google-facebk.com" "(google){~1}(-facebook){~1}"'
+  assert_failure 2
+}
+
+@test "Regex Test 64: Approximate matching, one error in each repetition: MATCH" {
+  run bash -c './pihole-FTL regex-test "axax" "^((ab){~1}){2}$"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/" "https://pi.hole:9443/api/"'

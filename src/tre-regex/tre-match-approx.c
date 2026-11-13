@@ -125,13 +125,16 @@ tre_set_params(tre_tnfa_approx_reach_t *reach,
   int value;
 
   /* If depth is increased reset costs and counters to zero for the
-     new levels. */
+     new levels.  Parameters on a transition that stays on the same
+     level mean it left one parameter scope and entered the next, as
+     between `(a){~1}(b){~1}', so that level starts anew as well. */
   value = pa[TRE_PARAM_DEPTH];
   assert(value <= TRE_M_MAX_DEPTH);
-  if (value > reach->depth)
+  if (value > 0 && value >= reach->depth)
     {
       int i, j;
-      for (i = reach->depth + 1; i <= value; i++)
+      for (i = value > reach->depth ? reach->depth + 1 : value;
+	   i <= value; i++)
 	for (j = 0; j < TRE_M_LAST; j++)
 	  reach->costs[i][j] = 0;
     }
@@ -623,11 +626,6 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		  reach_next[dest_id].tags[i] = tmp_tags[i];
 
 		reach_next[dest_id].depth = reach_p->depth;
-		reach_next[dest_id].params = reach_p->params;
-		if (trans->params)
-		  tre_set_params(&reach_next[dest_id], trans->params,
-				 default_params);
-
 		memcpy(&reach_next[dest_id].costs,
 		       reach_p->costs,
 		       sizeof(reach_p->costs[0][0])
@@ -641,6 +639,13 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		    reach_next[dest_id].costs[0][TRE_M_NUM_DEL]++;
 		    reach_next[dest_id].costs[0][TRE_M_NUM_ERR]++;
 		  }
+
+		/* The deletion is charged to the source scope; the
+		   parameters may then reset the levels being entered. */
+		reach_next[dest_id].params = reach_p->params;
+		if (trans->params)
+		  tre_set_params(&reach_next[dest_id], trans->params,
+				 default_params);
 
 		if (trans->state == tnfa->final
 		    && (match_eo < 0
@@ -813,12 +818,6 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		reach_next[dest_id].tags[i] = tmp_tags[i];
 	      reach_next[dest_id].depth = reach[id].depth;
 
-	      /* Set parameters. */
-	      reach_next[dest_id].params = reach[id].params;
-	      if (trans->params)
-		tre_set_params(&reach_next[dest_id], trans->params,
-			       default_params);
-
 	      /* Set the costs after this transition. */
 	      memcpy(&reach_next[dest_id].costs,
 		     reach[id].costs,
@@ -833,6 +832,14 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		  reach_next[dest_id].costs[0][TRE_M_NUM_SUBST] += err;
 		  reach_next[dest_id].costs[0][TRE_M_NUM_ERR] += err;
 		}
+
+	      /* Set parameters.  The character is charged to the source
+		 scope; the parameters may then reset the levels being
+		 entered. */
+	      reach_next[dest_id].params = reach[id].params;
+	      if (trans->params)
+		tre_set_params(&reach_next[dest_id], trans->params,
+			       default_params);
 
 	      if (trans->state == tnfa->final
 		  && (match_eo < 0
