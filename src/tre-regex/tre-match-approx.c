@@ -622,12 +622,12 @@ tre_tnfa_run_approx(const tre_tnfa_t *tnfa, const void *string, ssize_t len,
 		for (i = 0; i < num_tags; i++)
 		  reach_next[dest_id].tags[i] = tmp_tags[i];
 
+		reach_next[dest_id].depth = reach_p->depth;
 		reach_next[dest_id].params = reach_p->params;
 		if (trans->params)
 		  tre_set_params(&reach_next[dest_id], trans->params,
 				 default_params);
 
-		reach_next[dest_id].depth = reach_p->depth;
 		memcpy(&reach_next[dest_id].costs,
 		       reach_p->costs,
 		       sizeof(reach_p->costs[0][0])

@@ -1225,6 +1225,11 @@ setup() {
   assert_success
 }
 
+@test "Regex Test 61: Approximate matching, deletion entering a nested scope: MATCH" {
+  run bash -c './pihole-FTL regex-test "a" "^(ab(c){~1}){~1}$"'
+  assert_success
+}
+
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
   assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/" "https://pi.hole:9443/api/"'
