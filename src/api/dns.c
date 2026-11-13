@@ -119,9 +119,7 @@ int api_dns_blocking(struct ftl_conn *api)
 		// set_blocking() takes the SHM lock itself: writing pihole.toml
 		// may install a config, which needs it
 		lock_config();
-		lock_shm();
 		const int ret = set_blocking(api);
-		unlock_shm();
 		unlock_config();
 		return ret;
 	}
