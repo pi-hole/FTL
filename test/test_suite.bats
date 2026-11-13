@@ -1756,6 +1756,13 @@ setup() {
   assert_line --partial --index 1 "WARNING:     - FTLCONF_dns_upstreams"
 }
 
+@test "Secret environmental variable is used without a warning" {
+  # Its own log file and an unused port, as in the PTR resolver test above
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/secret_env.log FTLCONF_dns_port=5399 FTLCONF_webserver_api_password=secret ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "FTLCONF_webserver_api_password is used"
+  refute_output --partial "Trying to free NULL pointer"
+}
+
 @test "cJSON_GetErrorPtr and cJSON_InitHooks are never used (for thread-safety reasons)" {
   # cJSON_GetErrorPtr() is not thread-safe but can be replaces by cJSON_ParseWithOpts()
   # cJSON_InitHooks() is only thread-safe if used before any other cJSON function in a thread
