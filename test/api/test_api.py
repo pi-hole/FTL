@@ -13,6 +13,7 @@ import itertools
 import json
 import os
 import re
+import time
 from urllib.parse import quote
 
 import pytest
@@ -1010,36 +1011,21 @@ class TestStatsDatabase:
             assert key in data, f"Missing key '{key}' in database summary"
 
     def test_database_top_domains_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/top_domains?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "top_domains")
         assert "domains" in data
         assert isinstance(data["domains"], list)
         assert data["total_queries"] == summary["sum_queries"]
         assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_top_clients_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/top_clients?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "top_clients")
         assert "clients" in data
         assert isinstance(data["clients"], list)
         assert data["total_queries"] == summary["sum_queries"]
         assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_upstreams_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/upstreams?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "upstreams")
         assert "upstreams" in data
         assert isinstance(data["upstreams"], list)
         # Same status sets as the in-memory endpoint: every stored query is
@@ -1054,13 +1040,25 @@ class TestStatsDatabase:
         for u in real:
             assert not u["ip"].isdigit(), json.dumps(u, indent=2)
 
+    @staticmethod
+    def _with_summary(api_session, endpoint):
+        # FTL stores queries in the background, so retry until the summary is
+        # the same before and after the request
+        def get(name):
+            return _j(api_session.get(
+                f"{FTL_URL}/api/stats/database/{name}?from=1&until=9999999999",
+                timeout=5))
+        for _ in range(5):
+            before = get("summary")
+            data = get(endpoint)
+            summary = get("summary")
+            if before == summary:
+                return data, summary
+            time.sleep(1)
+        pytest.fail(f"Database kept changing while reading {endpoint}")
+
     def test_database_query_types_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "query_types")
         assert "types" in data
         assert isinstance(data["types"], dict)
         # Every stored query has exactly one type, OTHER included
