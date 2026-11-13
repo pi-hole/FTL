@@ -80,8 +80,11 @@ static bool valid_idn(const char *domain, const size_t len, const bool fqdn_only
 	}
 
 	// Hand out a copy of our own so that the caller frees this and the ABP
-	// pattern built below the same way
-	const bool valid = valid_domain(ascii, strlen(ascii), fqdn_only);
+	// pattern built below the same way. A name to be stored must not end in
+	// a dot, which the conversion can produce from e.g. U+3002
+	const size_t ascii_len = strlen(ascii);
+	const bool valid = valid_domain(ascii, ascii_len, fqdn_only) &&
+	                   (punycode == NULL || ascii[ascii_len - 1] != '.');
 	if(valid && punycode != NULL)
 		*punycode = strdup(ascii);
 	idn2_free(ascii);
@@ -166,7 +169,8 @@ inline bool __attribute__((pure)) valid_domain(const char *domain, const size_t 
 }
 
 // Validate ABP domain name. As with check_domain(), punycode receives the
-// converted pattern when the name inside it is internationalized
+// pattern to store when it differs from the line, i.e. when the name inside
+// it is internationalized or ended in a dot
 static bool valid_abp_domain(const char *line, const size_t len, const bool antigravity, char **punycode)
 {
 	*punycode = NULL;
@@ -185,16 +189,28 @@ static bool valid_abp_domain(const char *line, const size_t len, const bool anti
 	if(line[len-1] != '^')
 		return false;
 
-	// Domain must be valid
-	char *ascii = NULL;
-	if(!check_domain(line + prefix_len, len - prefix_len - 1, false, &ascii))
+	// A trailing dot (FQDN) is dropped as for exact domains, a query never
+	// carries it. A second one makes the name invalid
+	const char *name = line + prefix_len;
+	size_t name_len = len - prefix_len - 1;
+	const bool fqdn = name_len > 0 && name[name_len - 1] == '.';
+	if(fqdn)
+		name_len--;
+	if(name_len > 0 && name[name_len - 1] == '.')
 		return false;
 
-	if(ascii == NULL)
+	// Domain must be valid
+	char *ascii = NULL;
+	if(!check_domain(name, name_len, false, &ascii))
+		return false;
+
+	if(ascii == NULL && !fqdn)
 		return true;
 
-	// Rebuild the pattern around the converted name
-	const int ret = asprintf(punycode, "%s%s^", prefix, ascii);
+	// Rebuild the pattern around the converted or shortened name
+	const int ret = ascii != NULL ?
+		asprintf(punycode, "%s%s^", prefix, ascii) :
+		asprintf(punycode, "%s%.*s^", prefix, (int)name_len, name);
 	free(ascii);
 
 	// asprintf() leaves the pointer undefined when it fails
@@ -432,7 +448,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 		char *token = strtok_r(line, " \t", &saveptr);
 		while(token != NULL)
 		{
-			// Set for an internationalized name, freed at next_domain
+			// Set for a converted or shortened name, freed at next_domain
 			char *punycode = NULL;
 
 			// Skip empty tokens
@@ -460,10 +476,12 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 					goto next_domain;
 			}
 
-			// Remove trailing dot (convert FQDN to domain)
+			// Remove trailing dot (convert FQDN to domain). A name still
+			// ending in a dot after that is invalid, it could never match
 			size_t token_len = strlen(token);
 			if(token[token_len - 1] == '.')
 				token[--token_len] = '\0';
+			const bool trailing_dot = token_len > 0 && token[token_len - 1] == '.';
 
 			// Skip empty tokens
 			if(token[0] == '\0')
@@ -475,6 +493,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 			// Validate line
 			if(line[0] != (antigravity ? '@' : '|') &&  // <- Not an ABP-style match
+			   !trailing_dot &&
 			   check_domain(token, token_len, true, &punycode))
 			{
 				// Exact match found
@@ -582,7 +601,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 								break;
 
 							// Compare against the current domain
-							if(memcmp(invalid_domains_list[i], token, min((ssize_t)token_len, invalid_domains_list_lengths[i])) == 0)
+							if(invalid_domains_list_lengths[i] == (ssize_t)token_len &&
+							   memcmp(invalid_domains_list[i], token, token_len) == 0)
 							{
 								found = true;
 								break;
@@ -613,7 +633,7 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 				}
 			}
 next_domain:
-			// Only set for an internationalized name
+			// Only set for a converted or shortened name
 			if(punycode != NULL)
 				free(punycode);
 			token = strtok_r(NULL, " \t", &saveptr);

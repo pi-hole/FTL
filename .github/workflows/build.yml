@@ -1,9 +1,6 @@
 name: Build, Test, Deploy
 
-permissions:
-  id-token: write
-  contents: write # needed for softprops/action-gh-release
-  attestations: write
+permissions: {}
 
 on:
   push:
@@ -14,8 +11,13 @@ on:
     types: [published]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   smoke-tests:
+    name: smoke-tests
     if: |
       github.event_name == 'push'
       || github.event_name == 'release'
@@ -29,15 +31,19 @@ jobs:
       DO_DEPLOY: ${{ steps.variables.outputs.DO_DEPLOY }}
 
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # to checkout the repository
     steps:
       -
         name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          persist-credentials: false
       -
         name: "Calculate required variables"
         id: variables
         run: |
-          GIT_TAG=${{ github.event.release.tag_name }}
+          GIT_TAG=${GITHUB_EVENT_RELEASE_TAG_NAME}
           # If GIT_TAG is set then GIT BRANCH should be "master", else set it from GITHUB_REF
           GIT_BRANCH=$([ -n "${GIT_TAG}" ] && echo "master" || echo "${GITHUB_REF#refs/*/}")
           # Branch names may contain slashes (e.g.
@@ -53,7 +59,10 @@ jobs:
           echo "GIT_BRANCH=${GIT_BRANCH}" >> $GITHUB_OUTPUT
           echo "GIT_TAG=${GIT_TAG}" >> $GITHUB_OUTPUT
           echo "OUTPUT_DIR=${GIT_TAG:-${GIT_BRANCH}}" >> $GITHUB_OUTPUT
-          echo "DO_DEPLOY=${{ github.event_name != 'pull_request' && secrets.SSH_KEY != '' && github.actor != 'dependabot[bot]' }}" >> $GITHUB_OUTPUT
+          echo "DO_DEPLOY=${DO_DEPLOY_VALUE}" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          DO_DEPLOY_VALUE: ${{ github.event_name != 'pull_request' && secrets.SSH_KEY != '' && github.actor != 'dependabot[bot]' }}
       -
         name: "Check git branch name depth"
         env:
@@ -67,7 +76,7 @@ jobs:
           [[ $FAIL == 1 ]] && exit 1 || echo "Branch name depth check passed."
         shell: bash
 
-  build-test-deploy:
+  build-test-deploy: # zizmor: ignore[anonymous-definition] a name would change the required status check names
     needs: smoke-tests
     strategy:
       fail-fast: false
@@ -102,6 +111,10 @@ jobs:
             runner: ubuntu-24.04-arm
             build_opts: ""
     runs-on: ${{ matrix.runner }}
+    permissions:
+      id-token: write # to request an OIDC token
+      contents: write # needed for softprops/action-gh-release
+      attestations: write # to create build provenance attestations
     env:
       CI_ARCH: ${{ matrix.platform }}
       GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
@@ -111,6 +124,8 @@ jobs:
       -
         name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          persist-credentials: false
       # QEMU should come before Buildx
       -
         name: Set up QEMU
@@ -159,8 +174,10 @@ jobs:
         # failing test run does not discard a cache the build just filled. The
         # restored copy is removed first, as docker cp would otherwise nest the
         # directory inside it.
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-            docker create --platform ${{ matrix.platform }} --name ccache-container ftl-builder:local
+            docker create --platform "${PLATFORM}" --name ccache-container ftl-builder:local
             rm -rf .ccache
             docker cp ccache-container:/app/.ccache ./.ccache
             docker rm ccache-container
@@ -196,8 +213,10 @@ jobs:
       -
         name: Export FTL files from ftl-build container (QEMU)
         # Create a temporary container to extract the built files
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-            docker create --platform ${{ matrix.platform }} --name temp-container ftl-builder:local
+            docker create --platform "${PLATFORM}" --name temp-container ftl-builder:local
             docker cp temp-container:/pihole-FTL ./pihole-FTL
             docker cp temp-container:/api-docs.tar.gz ./api-docs.tar.gz
             docker cp temp-container:/pihole.toml ./pihole.toml
@@ -209,9 +228,11 @@ jobs:
       -
         name: "Generate checksum file"
         shell: bash
+        env:
+          BIN_NAME: ${{ matrix.bin_name }}
         run: |
-          mv pihole-FTL "${{ matrix.bin_name }}"
-          sha1sum pihole-FTL-* > ${{ matrix.bin_name }}.sha1
+          mv pihole-FTL "${BIN_NAME}"
+          sha1sum pihole-FTL-* > "${BIN_NAME}.sha1"
       -
         name: Upload pihole-FTL binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 #v7.0.2
@@ -308,7 +329,7 @@ jobs:
         run: |
           bash ./deploy.sh
       -
-        name: Attach binaries to release
+        name: Attach binaries to release # zizmor: ignore[superfluous-actions] the action handles the asset glob and upload
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 #v3.0.3
         with:
@@ -322,7 +343,7 @@ jobs:
           git clone https://github.com/pi-hole/docs.git docs-repo
           python3 tools/pihole_toml_to_markdown.py ftl_builds/pihole.toml docs-repo/docs/ftldns/configfile.md
       -
-        name: Create Pull Request to pi-hole/docs
+        name: Create Pull Request to pi-hole/docs # zizmor: ignore[superfluous-actions] the action handles the branch, commit and PR creation
         if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 #v8.1.1
         with:
