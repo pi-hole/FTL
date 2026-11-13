@@ -434,6 +434,10 @@
   [dns.blocking]
     # Should FTL block queries?
     #
+    # A temporary status set with a timer is kept in memory only and ends when FTL
+    # restarts. If the requested mode is the one this setting already holds, the setting
+    # is changed to the opposite mode, which applies once the timer has elapsed.
+    #
     # Allowed values are:
     #     true or false
     active = true
@@ -1509,7 +1513,9 @@
   #
   # Allowed values are:
   #     Array of valid dnsmasq config line options
-  dnsmasq_lines = []
+  dnsmasq_lines = [
+    "address=/address-null.ftl/0.0.0.0"
+  ] ### CHANGED, default = []
 
   # Log additional information about queries and replies to pihole.log
   #
@@ -1551,7 +1557,8 @@
   # By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the
   # FTL log file. These warnings can be useful to identify misconfigurations or problems
   # with the DNS server. However, some warnings may be harmless and can be ignored in
-  # certain setups. Enabling this setting will hide all dnsmasq warnings.
+  # certain setups. Enabling this setting hides them in the FTL log file, the dnsmasq
+  # log is left untouched.
   #
   # Allowed values are:
   #     true or false
@@ -1563,8 +1570,8 @@
   # closed by remote server) to the FTL log file. These warnings can be useful to
   # identify intermittent network problems or general problem with upstream servers.
   # However, in some setups, these warnings may be expected (e.g. due to low-quality
-  # Internet connectivity) and cannot be fixed. Enabling this setting will hide all
-  # connection warnings.
+  # Internet connectivity) and cannot be fixed. Enabling this setting hides them in the
+  # FTL log file, the dnsmasq log is left untouched.
   #
   # Allowed values are:
   #     true or false
@@ -1844,8 +1851,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 173 total entries out of which 113 entries are default
-# --> 60 entries are modified
+# 173 total entries out of which 112 entries are default
+# --> 61 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

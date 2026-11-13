@@ -29,6 +29,8 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// get_temp_blockingstatus()
+#include "timers.h"
 // validation functions
 #include "config/validator.h"
 // getEnvVars()
@@ -729,7 +731,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
-	conf->dns.blocking.active.h = "Should FTL block queries?";
+	conf->dns.blocking.active.h = "Should FTL block queries?\n\n A temporary status set with a timer is kept in memory only and ends when FTL restarts. If the requested mode is the one this setting already holds, the setting is changed to the opposite mode, which applies once the timer has elapsed.";
 	conf->dns.blocking.active.t = CONF_BOOL;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
@@ -1527,13 +1529,13 @@ void initConfig(struct config *conf)
 	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
 
 	conf->misc.hide_dnsmasq_warn.k = "misc.hide_dnsmasq_warn";
-	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide all dnsmasq warnings.";
+	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting hides them in the FTL log file, the dnsmasq log is left untouched.";
 	conf->misc.hide_dnsmasq_warn.t = CONF_BOOL;
 	conf->misc.hide_dnsmasq_warn.d.b = false;
 	conf->misc.hide_dnsmasq_warn.c = validate_stub; // Only type-based checking
 
 	conf->misc.hide_connection_error.k = "misc.hide_connection_error";
-	conf->misc.hide_connection_error.h = "Should FTL hide network connection errors?\n\n By default, FTL reports network connection errors (e.g., Connection prematurely closed by remote server) to the FTL log file. These warnings can be useful to identify intermittent network problems or general problem with upstream servers. However, in some setups, these warnings may be expected (e.g. due to low-quality Internet connectivity) and cannot be fixed. Enabling this setting will hide all connection warnings.";
+	conf->misc.hide_connection_error.h = "Should FTL hide network connection errors?\n\n By default, FTL reports network connection errors (e.g., Connection prematurely closed by remote server) to the FTL log file. These warnings can be useful to identify intermittent network problems or general problem with upstream servers. However, in some setups, these warnings may be expected (e.g. due to low-quality Internet connectivity) and cannot be fixed. Enabling this setting hides them in the FTL log file, the dnsmasq log is left untouched.";
 	conf->misc.hide_connection_error.t = CONF_BOOL;
 	conf->misc.hide_connection_error.d.b = false;
 	conf->misc.hide_connection_error.c = validate_stub; // Only type-based checking
@@ -2201,12 +2203,32 @@ bool getLogFilePath(bool try_read)
 	return true;
 }
 
-enum blocking_status __attribute__((pure)) get_blockingstatus(void)
+enum blocking_status get_blockingstatus(void)
 {
 	if(dnsmasq_failed)
 		return DNS_FAILED;
 
+	// A temporary status (set with a timer) overrides the configured one
+	const int temp = get_temp_blockingstatus();
+	if(temp >= 0)
+		return temp ? BLOCKING_ENABLED : BLOCKING_DISABLED;
+
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
+}
+
+// Act only when the effective status changed, a temporary one masks the setting.
+// Enabling drops answers cached and verdicts recorded while blocking was off,
+// they may cover names that are blocked now. Blocked answers are never cached
+void apply_blockingstatus(const enum blocking_status before)
+{
+	const enum blocking_status now = get_blockingstatus();
+	if(now == before)
+		return;
+
+	if(now == BLOCKING_ENABLED)
+		raise(SIGHUP);
+	else if(now == BLOCKING_DISABLED)
+		log_info("Blocking status is disabled");
 }
 
 // The caller holds lock_config()
@@ -2216,9 +2238,10 @@ void set_blockingstatus(bool enabled)
 	if(dnsmasq_failed)
 		return;
 
+	const enum blocking_status before = get_blockingstatus();
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true, NULL);
-	raise(SIGHUP);
+	apply_blockingstatus(before);
 }
 
 const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type)
@@ -2270,7 +2293,7 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
-	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+	const enum blocking_status before = get_blockingstatus();
 
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
@@ -2285,10 +2308,9 @@ void replace_config(struct config *newconf)
 	// Unlock shared memory
 	unlock_shm();
 
-	// Drop the cached answers and verdicts of the previous blocking status as
-	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
-	if(blocking_changed && !cli_mode && !dnsmasq_failed)
-		raise(SIGHUP);
+	// The CLI only writes pihole.toml, FTL rereads it and applies the change
+	if(!cli_mode)
+		apply_blockingstatus(before);
 }
 
 // Set when reread_config() found a config change in progress and left the

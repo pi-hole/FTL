@@ -115,7 +115,7 @@ setup() {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
   assert_line --index 1 ""
@@ -1576,7 +1576,7 @@ except socket.timeout:
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   refute_output
-  
+
 }
 
 @test "Pi-hole use interface-dependent replies for pi.hole" {
@@ -1659,7 +1659,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
 
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
- 
+
   # Wait for change to become effective
   run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
@@ -1950,6 +1950,102 @@ except socket.timeout:
   assert_line --index 3 "||xn--ste-sla.com^"
 }
 
+@test "Gravity drops the trailing dot of a list entry, a second one makes it invalid" {
+  # A query never ends in a dot, so an entry stored with one could never match
+  run bash -c 'rm -f /tmp/dots.db && ./pihole-FTL sqlite3 /tmp/dots.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/dots.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'fqdn.example.\ndouble.example..\n||abp.example.^\n||abpdouble.example..^\nfoo.invalid!\nfoo.invalid!bar\n' > /tmp/dots.list
+  run ./pihole-FTL gravity parseList /tmp/dots.list /tmp/dots.db 1
+  assert_success
+  # The sample of invalid entries shows each of them, also one that is the
+  # beginning of another
+  assert_line "        - double.example."
+  assert_line "        - ||abpdouble.example..^"
+  assert_line "        - foo.invalid!"
+  assert_line "        - foo.invalid!bar"
+
+  run bash -c './pihole-FTL sqlite3 /tmp/dots.db "SELECT domain FROM gravity ORDER BY domain;"'
+  rm -f /tmp/dots.db /tmp/dots.list
+  assert_success
+  assert_output "fqdn.example
+||abp.example^"
+}
+
+@test "Non-printable characters in a rejected config value are escaped" {
+  # pihole.toml and the CLI are untrusted input, so a value carrying, e.g., an
+  # ANSI escape sequence must not be echoed into FTL.log verbatim: it would
+  # garble the terminal of whoever reads the log. Array items arrive as JSON
+  # ("\u001b"), string items straight from argv (a real ESC byte).
+  esc=$(printf '%b' '\033[2J')
+
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 \u001b[2J\u001bx.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.cnameRecords '["a\u001b[2J.example,b.example"]'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("a\x1B[2J.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'
+  assert_line --index 0 'Invalid value: dns.revServers[0]: <server> neither a valid domain nor an IPv4 or IPv6 address ("ns\x1B[2Jexample.com")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.api.excludeClients '["\u001b[2J[[["]'
+  assert_line --index 0 'Invalid value: webserver.api.excludeClients[0]: not a valid regex ("\x1B[2J[[["): Missing '\'']'\'''
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.domain.name "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: dns.domain.name: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.domain "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: webserver.domain: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.paths.webhome "${esc}no-slashes"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: file path does not start and end with a slash ("\x1B[2Jno-slashes")'
+  assert_failure 3
+
+  # Only control characters are escaped, a well-formed UTF-8 sequence is left
+  # alone so the domain the user typed stays readable. This one spans the C1
+  # byte range (F0 9F 98 80), which escaping naively would break apart.
+  run ./pihole-FTL --config dns.hosts '[ "1.2.3.4 😀.example" ]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("😀.example")'
+  assert_failure 3
+
+  # A byte that is not part of a well-formed sequence is escaped all the same,
+  # even though it is not an ASCII control character: 0x9B is CSI on a terminal
+  # reading Latin-1.
+  c1=$(printf '%b' '\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x9B[2J.example")'
+  assert_failure 3
+
+  # The same C1 control encoded as a valid UTF-8 sequence (U+009B = C2 9B)
+  # must not pass through verbatim either: a terminal that decodes UTF-8 before
+  # interpreting controls would still act on it. Both bytes get escaped.
+  c1utf8=$(printf '%b' '\302\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1utf8}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\xC2\x9B[2J.example")'
+  assert_failure 3
+
+  # An unknown option name is echoed back as well
+  run ./pihole-FTL --config "${esc}not-an-option"
+  assert_line --index 0 "Unknown config option \x1B[2Jnot-an-option, did you mean:"
+  assert_failure 4
+
+  # JSON parse errors must escape control characters too
+  run ./pihole-FTL --config dns.hosts "$(printf 'x\033[2J')"
+  assert_line --index 0 'Config setting dns.hosts is invalid: not valid JSON, error at: x\x1B[2J'
+  assert_failure 2
+
+  # A backslash is escaped as well and does not swallow the rest of the value
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 a\\b.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("a\\b.example")'
+  assert_failure 3
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   # URL paths reject what the webserver would see percent-decoded in some checks only
   run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
@@ -2104,6 +2200,35 @@ except socket.timeout:
   assert_failure 3
 }
 
+@test "Config validation: --config -t does not require write permission" {
+  # Invalid values are rejected, even as nobody in read-only mode
+  run su nobody -s /bin/sh -c \
+    'FTLCONF_misc_readOnly=true ./pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --partial 'Invalid value: ntp.sync.count: cannot be lower than 1'
+  assert_failure 3
+
+  # Valid values can be tested without write permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config -t ntp.sync.count 42'
+  assert_equal "${lines[-1]}" '42'
+  assert_success
+
+  # Applying changes still requires permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config ntp.sync.count 42'
+  assert_line --partial "Permission error: User nobody is not allowed to edit Pi-hole's config"
+  assert_failure
+
+  # Read-only mode prevents changes
+  run env FTLCONF_misc_readOnly=true ./pihole-FTL --config ntp.sync.count 42
+  assert_line --partial 'Config is in read-only mode, changes are not allowed (misc.readOnly = true)'
+  assert_failure
+
+  # No changes were applied
+  run ./pihole-FTL --config ntp.sync.count
+  assert_line --index 0 '8'
+}
+
 @test "Config validation: a document root that resolves to the root is rejected" {
   # Lexically /proc/self/root is a directory of its own, but it is a link
   # the kernel plants to /, so it has to be judged by where it leads
@@ -2159,7 +2284,7 @@ except socket.timeout:
   assert_line --index 0 '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]'
 }
 
-@test "DNS hosts sanitization: Comments are handled correctly" { 
+@test "DNS hosts sanitization: Comments are handled correctly" {
   # Set dns.hosts with entries containing comments
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
@@ -2558,6 +2683,22 @@ except socket.timeout:
   run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
   assert_line --index 0 "true"
   assert_line --index 1 ""
+  # adding -t (test a value) yields the same completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.networking t'
+  assert_line --index 0 "true"
+  assert_line --index 1 ""
+  # adding -q (quiet query) yields the same key completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  # -q is only for querying a value, so no value is suggested
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.networking t'
+  assert_output ""
 }
 
 

@@ -58,7 +58,8 @@ typedef struct {
 	// them out
 	unsigned int queries_maxprivacy;
 	unsigned int upstreams;
-	// Array lengths (recycled slots are reused) and the totals ever added
+	// Array lengths (recycled slots are reused) and the number of clients
+	// and domains in use
 	unsigned int clients;
 	unsigned int domains;
 	unsigned int clients_total;

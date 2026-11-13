@@ -450,8 +450,11 @@ static bool write_dnsmasq_config_unlocked(struct config *conf, enum dnsmasq_writ
 				// nothing and only add failover delay.
 				if(enc >= DOTDOH_MAX_UPSTREAMS)
 				{
+					char *escaped = escape_control_chars(server->valuestring);
 					log_warn("Ignoring encrypted upstream '%s': at most %d are supported",
-					         server->valuestring, DOTDOH_MAX_UPSTREAMS);
+					         escaped != NULL ? escaped : "(unable to display)",
+					         DOTDOH_MAX_UPSTREAMS);
+					free(escaped);
 					continue;
 				}
 				// Settle on a tuple that actually binds (redrawing on a collision) so
@@ -635,14 +638,20 @@ static bool write_dnsmasq_config_unlocked(struct config *conf, enum dnsmasq_writ
 		   strcmp(active, "true") != 0 &&
 		   strcmp(active, "1") != 0)
 		{
-			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s", revServer->valuestring);
+			char *escaped = escape_control_chars(revServer->valuestring);
+			log_debug(DEBUG_CONFIG, "Skipping inactive reverse server: %s",
+			          escaped != NULL ? escaped : "(unable to display)");
+			free(escaped);
 			free(copy);
 			continue;
 		}
 
 		if(active == NULL || cidr == NULL || target == NULL)
 		{
-			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", idx, revServer->valuestring);
+			char *escaped = escape_control_chars(revServer->valuestring);
+			log_err("Skipped invalid dns.revServers[%u]: %s (not fully defined)", idx,
+			        escaped != NULL ? escaped : "(unable to display)");
+			free(escaped);
 			free(copy);
 			continue;
 		}
