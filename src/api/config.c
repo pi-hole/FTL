@@ -746,8 +746,12 @@ static int api_config_get(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "detailed", &detailed);
 	}
 
+	// A concurrent change frees the strings of the config it replaces. The
+	// JSON holds copies, so only building it needs the lock, not sending it
 	cJSON *json = JSON_NEW_OBJECT();
+	lock_config();
 	get_json_config(api, json, detailed);
+	unlock_config();
 
 	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
