@@ -422,6 +422,10 @@
   [dns.blocking]
     # Should FTL block queries?
     #
+    # A temporary status set with a timer is kept in memory only and ends when FTL
+    # restarts. If the requested mode is the one this setting already holds, the setting
+    # is changed to the opposite mode, which applies once the timer has elapsed.
+    #
     # Allowed values are:
     #     true or false
     active = true
@@ -1497,7 +1501,9 @@
   #
   # Allowed values are:
   #     Array of valid dnsmasq config line options
-  dnsmasq_lines = []
+  dnsmasq_lines = [
+    "address=/address-null.ftl/0.0.0.0"
+  ] ### CHANGED, default = []
 
   # Log additional information about queries and replies to pihole.log
   #
@@ -1833,8 +1839,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 172 total entries out of which 112 entries are default
-# --> 60 entries are modified
+# 172 total entries out of which 111 entries are default
+# --> 61 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

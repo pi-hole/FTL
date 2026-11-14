@@ -71,6 +71,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const double now, const char *file, const int line);
 static bool FTL_check_blocking(const char *domainstr, queriesData *query, clientsData *client, domainsData *domain, DNSCacheData *dns_cache);
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status);
+static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char *file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char *arg, const int id, const char *file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line);
@@ -2790,7 +2791,7 @@ void FTL_dnsmasq_reload(void)
 	check_capabilities();
 
 	// Report blocking mode
-	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
+	log_info("Blocking status is %s", get_blocking_status_str(get_blockingstatus()));
 
 	// Set resolver as ready
 	resolver_ready = true;
@@ -2943,6 +2944,26 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 		else
 			log_debug(DEBUG_FLAGS, "***** Unknown cache query");
+	}
+
+	// An answer from the cache may carry an upstream's blocking page address
+	// (e.g. Cisco Umbrella), and FTL_check_reply() only sees answers coming
+	// from upstream. Check every cached address of the queried name, not only
+	// the first one. F_FORWARD without F_CONFIG, F_HOSTS and F_DHCP marks data
+	// that came from upstream: address=/.../ lines, local records and DHCP
+	// names carry one of those. Addresses of a CNAME target are left to
+	// FTL_CNAME(), which checks the target against the lists of this client
+	if(cached && addr != NULL && name != NULL && (flags & (F_IPV4 | F_IPV6)) &&
+	   (flags & F_FORWARD) && !(flags & (F_CONFIG | F_HOSTS | F_DHCP)) &&
+	   !is_blocked(query->status))
+	{
+		domainsData *qdomain = getDomain(query->domainID, true);
+		if(qdomain != NULL && strcasecmp(name, getstr(qdomain->domainpos)) == 0)
+		{
+			const enum query_status new_status = detect_blocked_IP(flags, addr);
+			if(new_status != QUERY_UNKNOWN)
+				query_blocked(query, qdomain, getClient(query->clientID, true), new_status);
+		}
 	}
 
 	// Is this a stale reply?

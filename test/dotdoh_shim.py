@@ -360,7 +360,7 @@ try:
     from aioquic.h3.connection import H3Connection
     from aioquic.h3.events import DataReceived, HeadersReceived
     from aioquic.quic.configuration import QuicConfiguration
-    from aioquic.quic.events import ProtocolNegotiated, StreamDataReceived
+    from aioquic.quic.events import ConnectionTerminated, ProtocolNegotiated, StreamDataReceived
     HAVE_AIOQUIC = True
     AIOQUIC_IMPORT_ERROR = None
 except Exception as exc:
@@ -452,8 +452,17 @@ def start_doq_listener():
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self._bufs = {}
+            # Acknowledge 20 ms after receipt (aioquic waits 1 ms), still below
+            # the advertised max_ack_delay of 25 ms. The answer then leaves
+            # before the ACK of the query, so a client that closes only once
+            # its query is acknowledged and frees the connection right after
+            # loses its close every time, not just when the backend is slow
+            self._quic._ack_delay = 0.02
 
         def quic_event_received(self, event):
+            if isinstance(event, ConnectionTerminated):
+                self._note_end(event)
+                return
             if not isinstance(event, StreamDataReceived):
                 return
             # Unidirectional client streams (id & 0x2) carry no DoQ query.
@@ -474,6 +483,16 @@ def start_doq_listener():
             if len(buf) < 2 + qlen:
                 return
             self._reply(event.stream_id, bytes(buf[2:2 + qlen]))
+
+        def _note_end(self, event):
+            # Record how each connection ended: "doq-end 0" for a close with
+            # DOQ_NO_ERROR, "doq-end 1 Idle timeout" for one nobody closed
+            if not PAD_LOG:
+                return
+            reason = " " + event.reason_phrase if event.reason_phrase else ""
+            with _pad_lock:
+                with open(PAD_LOG, "a") as fh:
+                    fh.write("doq-end %d%s\n" % (event.error_code, reason))
 
         def _reply(self, stream_id, query):
             note_proto("doq", "DoQ")
