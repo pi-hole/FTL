@@ -286,8 +286,11 @@ setup() {
 }
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
+  logsize_dnsmasq=$(stat -c%s /var/log/pihole/pihole.log)
   run bash -c "dig A use-application-dns.net @127.0.0.1"
   assert_output --partial "status: NXDOMAIN"
+  run bash -c "./pihole-FTL wait-for 'Mozilla canary domain use-application-dns.net is NXDOMAIN' /var/log/pihole/pihole.log 5 $logsize_dnsmasq"
+  assert_success
   run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
   assert_line --index 0 "1"
 }
