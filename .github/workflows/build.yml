@@ -331,7 +331,7 @@ jobs:
       -
         name: Attach binaries to release # zizmor: ignore[superfluous-actions] the action handles the asset glob and upload
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 #v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 #v3.0.4
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
@@ -345,7 +345,7 @@ jobs:
       -
         name: Create Pull Request to pi-hole/docs # zizmor: ignore[superfluous-actions] the action handles the branch, commit and PR creation
         if: env.GIT_BRANCH == 'master' && env.DO_DEPLOY == 'true' && matrix.bin_name == 'pihole-FTL-amd64'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 #v8.1.1
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 #v8.1.3
         with:
           token: ${{ secrets.PRALOR_PULL_REQUESTS }}
           commit-message: "docs: update pihole.toml documentation"
