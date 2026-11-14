@@ -1561,6 +1561,17 @@ static unsigned split_terminator_ports(const char *cfg, char *backend, size_t ba
 
 	return n_tls;
 }
+
+// Private copy of webserver.tls.cert (or NULL if unset), to be freed by the
+// caller. replace_config() frees the config strings under the SHM lock
+static char *tls_cert_path(void)
+{
+	lock_shm();
+	const char *path = config.webserver.tls.cert.v.s;
+	char *cert = path != NULL && path[0] != '\0' ? strdup(path) : NULL;
+	unlock_shm();
+	return cert;
+}
 #endif /* HAVE_TLS */
 
 // webserver.trustedProxies in the syntax of CivetWeb's access_control_list, or
@@ -1763,38 +1774,36 @@ void http_init(void)
 #ifdef HAVE_TLS
 	// Ensure the TLS certificate exists and matches the configured domain. The
 	// terminator (not CivetWeb) uses it; no ssl_certificate option is passed.
-	if(tls_used &&
-	   config.webserver.tls.cert.v.s != NULL &&
-	   strlen(config.webserver.tls.cert.v.s) > 0)
+	char *cert = tls_used ? tls_cert_path() : NULL;
+	if(cert != NULL)
 	{
 		// Try to generate certificate if not present
-		if(!file_readable(config.webserver.tls.cert.v.s))
+		if(!file_readable(cert))
 		{
-			if(generate_certificate(config.webserver.tls.cert.v.s, false, config.webserver.domain.v.s, config.webserver.tls.validity.v.ui))
+			if(generate_certificate(cert, false, config.webserver.domain.v.s, config.webserver.tls.validity.v.ui))
 			{
 				log_web(LOG_INFO, "Created SSL/TLS certificate for %s at %s",
-				         config.webserver.domain.v.s, config.webserver.tls.cert.v.s);
+				         config.webserver.domain.v.s, cert);
 			}
 			else
 			{
-				log_err("Generation of SSL/TLS certificate %s failed!",
-				        config.webserver.tls.cert.v.s);
+				log_err("Generation of SSL/TLS certificate %s failed!", cert);
 			}
 		}
 
 		// Check if the certificate is readable (we may have just created it)
-		if(file_readable(config.webserver.tls.cert.v.s))
+		if(file_readable(cert))
 		{
-			if(read_certificate(config.webserver.tls.cert.v.s, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
+			if(read_certificate(cert, config.webserver.domain.v.s, false) != CERT_DOMAIN_MATCH)
 			{
-				log_certificate_domain_mismatch(config.webserver.tls.cert.v.s, config.webserver.domain.v.s);
+				log_certificate_domain_mismatch(cert, config.webserver.domain.v.s);
 			}
 		}
 		else
 		{
-			log_err("Webserver SSL/TLS certificate %s not found or not readable!",
-			        config.webserver.tls.cert.v.s);
+			log_err("Webserver SSL/TLS certificate %s not found or not readable!", cert);
 		}
+		free(cert);
 	}
 
 	// When the front terminator is active it reaches this loopback backend behind
@@ -2026,11 +2035,7 @@ void http_init(void)
 			log_err("Could not determine the CivetWeb loopback backend port; TLS will not be available");
 		else
 		{
-			// Pass a copy that a concurrent replace_config() cannot free
-			lock_shm();
-			const char *path = config.webserver.tls.cert.v.s;
-			char *cert = path != NULL ? strdup(path) : NULL;
-			unlock_shm();
+			cert = tls_cert_path();
 			if(cert == NULL || !terminator_start(tls_listeners, n_tls_listeners, backend_port, cert))
 			{
 				bool mandatory = false;
@@ -2255,18 +2260,19 @@ void *webserver_thread(void *val)
 	{
 		// Check if the certificate is about to expire soon
 		// We check only if HTTPS is enabled (https_port > 0)
-		const enum cert_check status = https_port == 0 ?
+		char *cert = https_port == 0 ? NULL : tls_cert_path();
+		const enum cert_check status = cert == NULL ?
 			CERT_NOT_IN_USE :
-			cert_currently_valid(config.webserver.tls.cert.v.s, 2);
+			cert_currently_valid(cert, 2);
 
 		if(status == CERT_EXPIRES_SOON &&
 		   config.webserver.tls.validity.v.ui > 0)
 		{
-			if(is_pihole_certificate(config.webserver.tls.cert.v.s))
+			if(is_pihole_certificate(cert))
 			{
 				log_web(LOG_INFO, "TLS certificate at %s is about to expire soon, generating new one",
-				         config.webserver.tls.cert.v.s);
-				if(generate_certificate(config.webserver.tls.cert.v.s, false,
+				         cert);
+				if(generate_certificate(cert, false,
 				             config.webserver.domain.v.s,
 				             config.webserver.tls.validity.v.ui))
 				{
@@ -2283,15 +2289,16 @@ void *webserver_thread(void *val)
 					// is untouched, so keep serving with it instead of
 					// restarting into a broken/missing certificate.
 					log_err("Failed to renew TLS certificate at %s, keeping the existing one",
-					        config.webserver.tls.cert.v.s);
+					        cert);
 				}
 			}
 			else
 			{
 				log_err("TLS certificate at %s is about to expire soon, but it is not a Pi-hole certificate. Please renew it manually!",
-				        config.webserver.tls.cert.v.s);
+				        cert);
 			}
 		}
+		free(cert);
 
 		// Idle for 1 day (24 hours), sleeping in 1-hour intervals
 		// so the thread is not permanently marked as idle (#2818)
