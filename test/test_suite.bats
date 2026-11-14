@@ -287,7 +287,7 @@ setup() {
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
   run bash -c "dig A use-application-dns.net @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
   run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
   assert_line --index 0 "1"
 }
@@ -399,22 +399,22 @@ setup() {
 
 @test "DNSSEC: SECURE domain is resolved" {
   run bash -c "dig A a.dnssec @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "DNSSEC: BOGUS domain is rejected" {
   run bash -c "dig A a.bogus @127.0.0.1"
-  assert_line --partial --index 3 "status: SERVFAIL"
+  assert_output --partial "status: SERVFAIL"
 }
 
 @test "Special domain: NXDOMAIN is returned" {
   run bash -c "dig A mask.icloud.com @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Special domain: Record is returned when explicitly allowed" {
   run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 # NXRA + RA unset cannot be tested with PowerDNS as upstream provider
@@ -425,9 +425,9 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -451,7 +451,7 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
 
   # Get number of lines in the log after the test
@@ -475,9 +475,9 @@ setup() {
 
   # Run test
   run bash -c "dig AAAA null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+AAAA[[:space:]]+::"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
 
   # Get number of lines in the log after the test
@@ -611,7 +611,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -635,7 +635,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -1097,17 +1097,17 @@ setup() {
 
 @test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
   run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
   run bash -c 'dig A regex-NODATA @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
   run bash -c 'dig A regex-REFUSED @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
@@ -1164,28 +1164,28 @@ setup() {
 
 @test "Regex Test 52: Option \";querytype=ANY,HTTPS,SVCB;reply=refused\" working as expected (ONLY matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig AAAA regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig SVCB regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig HTTPS regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig ANY regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 53: Option \";querytype=!ANY,HTTPS,SVCB;reply=refused\" working as expected (NOT matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig AAAA regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig SVCB regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig HTTPS regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
