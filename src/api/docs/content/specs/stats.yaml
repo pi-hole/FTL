@@ -559,7 +559,7 @@ components:
               example: 10
             total:
               type: integer
-              description: Total number of clients seen by FTL
+              description: Number of clients FTL knows, active or not
               example: 22
         gravity:
           type: object

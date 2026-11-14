@@ -29,6 +29,8 @@
 
 // dot_frame/dot_deframe (RFC 9250 reuses the DoT framing), DNS_MSG_MAX, DNS_HEADER_LEN
 #include "framing.h"
+// dotdoh_thread_buf()
+#include "server.h"
 // edns_remove_option()
 #include "edns_pad.h"
 // shared QUIC socket/handshake/timer plumbing
@@ -167,11 +169,14 @@ static ssize_t doq_exchange_on_conn(SSL *conn, int fd, const uint8_t *query, siz
                                     uint8_t *answer, size_t answer_sz, uint64_t deadline)
 {
 	// Framing and receive buffers: 64 KiB each is too much for a worker's thread
-	// stack, so keep one set per worker thread (as the proxy does).
-	static _Thread_local uint8_t sendbuf[2 + DNS_MSG_MAX];
-	static _Thread_local uint8_t recvbuf[2 + DNS_MSG_MAX];
+	// stack, so keep one heap set per worker thread (as the proxy does).
+	static _Thread_local uint8_t *bufs = NULL;
+	uint8_t *sendbuf = dotdoh_thread_buf(&bufs, 2 * (2 + DNS_MSG_MAX));
+	if(sendbuf == NULL)
+		return -1;
+	uint8_t *recvbuf = sendbuf + 2 + DNS_MSG_MAX;
 
-	ssize_t flen = dot_frame(query, qlen, sendbuf, sizeof(sendbuf));
+	ssize_t flen = dot_frame(query, qlen, sendbuf, 2 + DNS_MSG_MAX);
 	if(flen < 0)
 		return -1;
 
@@ -203,7 +208,7 @@ static ssize_t doq_exchange_on_conn(SSL *conn, int fd, const uint8_t *query, siz
 	if(doq_send_query(conn, stream, fd, sendbuf, (size_t)flen, deadline))
 	{
 		const ssize_t alen = doq_read_answer(conn, stream, fd, recvbuf,
-		                                     sizeof(recvbuf), &off, deadline);
+		                                     2 + DNS_MSG_MAX, &off, deadline);
 		// A DNS message shorter than the 12-byte header cannot carry the ID we
 		// have to restore, so it is malformed by definition.
 		if(alen >= DNS_HEADER_LEN && (size_t)alen <= answer_sz)
@@ -297,10 +302,14 @@ ssize_t doq_pool_exchange(struct doq_pool *p, const uint8_t *query, size_t qlen,
 	pthread_mutex_unlock(&p->lock);
 
 	// Best-effort immediate close so the upstream does not wait on us; do not
-	// block the worker flushing it. No args means the default application error
-	// code 0, which is DOQ_NO_ERROR.
-	SSL_shutdown_ex(conn, SSL_SHUTDOWN_FLAG_RAPID | SSL_SHUTDOWN_FLAG_NO_BLOCK,
-	                NULL, 0);
+	// block the worker flushing it. Without the stream flush OpenSSL sends the
+	// CONNECTION_CLOSE from within this call; with it, the close would wait
+	// until the upstream acknowledged our query, and SSL_free() below would
+	// discard it.
+	// No args means the default application error code 0, which is
+	// DOQ_NO_ERROR.
+	SSL_shutdown_ex(conn, SSL_SHUTDOWN_FLAG_RAPID | SSL_SHUTDOWN_FLAG_NO_BLOCK |
+	                SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH, NULL, 0);
 	SSL_free(conn); // frees the datagram BIO and closes the UDP fd
 	return rv;
 }

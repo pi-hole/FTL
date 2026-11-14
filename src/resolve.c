@@ -31,8 +31,6 @@
 #include "events.h"
 // resolve_regex_cnames()
 #include "regex_r.h"
-// statis_assert()
-#include <assert.h>
 #include <poll.h>
 #include <time.h>
 // TCP_MAX_QUERIES
@@ -54,7 +52,7 @@ static unsigned char *nameFromDNS(unsigned char *reader, unsigned char *buffer, 
 
 // Avoid "error: packed attribute causes inefficient alignment for ..." on ARM32
 // builds due to the use of __attribute__((packed)) in the following structs
-// Their correct size is ensured for each by check_struct_sizes() below
+// Their correct size is enforced for each by the _Static_assert below
 _Pragma("GCC diagnostic push")
 _Pragma("GCC diagnostic ignored \"-Wattributes\"")
 
@@ -98,15 +96,10 @@ struct R_DATA
 } __attribute__((packed));
 _Pragma("GCC diagnostic pop")
 
-static bool check_struct_sizes(void)
-{
-	// Check sizes of structs
-	assert(sizeof(struct DNS_HEADER) == 12);
-	assert(sizeof(struct QUESTION) == 4);
-	assert(sizeof(struct R_DATA) == 10);
-
-	return true;
-}
+// Wire-format sizes, checked at compile time as assert() is gone with NDEBUG
+_Static_assert(sizeof(struct DNS_HEADER) == 12, "DNS_HEADER must be 12 bytes");
+_Static_assert(sizeof(struct QUESTION) == 4, "QUESTION must be 4 bytes");
+_Static_assert(sizeof(struct R_DATA) == 10, "R_DATA must be 10 bytes");
 
 // Pointers to resource record contents
 struct RES_RECORD
@@ -1327,7 +1320,18 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (2) with ID %u in resolveClients(), skipping...", clientID);
+			// Recycled while the lock was released
+			log_debug(DEBUG_RESOLVER, "Client ID %u was recycled while resolving %s, skipping", clientID, ipaddr);
+			skipped++;
+			unlock_shm();
+			continue;
+		}
+
+		// The slot may have been recycled and handed to another client
+		// while the lock was released, the name belongs to ipaddr only
+		if(client->ippos != ippos)
+		{
+			log_debug(DEBUG_RESOLVER, "Client ID %u no longer is %s, skipping the result", clientID, ipaddr);
 			skipped++;
 			unlock_shm();
 			continue;
@@ -1495,13 +1499,6 @@ void *DNSclient_thread(void *val)
 {
 	// Set thread name
 	prctl(PR_SET_NAME, thread_names[DNSclient], 0, 0, 0);
-
-	// Test struct sizes
-	if(!check_struct_sizes())
-	{
-		log_err("Struct sizes do not match expected sizes, aborting resolver thread");
-		return NULL;
-	}
 
 	// Initial delay until we first try to resolve anything
 	thread_sleepms(DNSclient, 2000);
