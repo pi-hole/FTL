@@ -30,6 +30,13 @@
 #include "config/password.h"
 // main_pid()
 #include "signals.h"
+// CLUSTER_MAX_CLOCK_OFFSET
+#include "cluster/cluster.h"
+// cluster_sync_lock()
+#include "cluster/sync.h"
+// CLUSTER_HDR_FROM
+#include "cluster/auth.h"
+#include <math.h>
 
 static struct {
 	const char *name;
@@ -45,6 +52,7 @@ static struct {
 	{ "webserver", "HTTP/API", "Webserver and API settings" },
 	{ "files", "Files", "File locations" },
 	{ "misc", "Misc", "Miscellaneous settings" },
+	{ "cluster", "Cluster", "Cluster settings" },
 	{ "debug", "Debug", "Debug settings" }
 };
 
@@ -226,314 +234,17 @@ cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 	}
 }
 
-static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct config *newconf)
-{
-	if(conf_item == NULL || elem == NULL)
-	{
-		log_web_debug(DEBUG_CONFIG, "getJSONvalue(%p, %p) called with invalid arguments, skipping",
-		          conf_item, elem);
-		return "invalid arguments";
-	}
-	switch(conf_item->t)
-	{
-		case CONF_BOOL:
-		{
-			// Check type
-			if(!cJSON_IsBool(elem))
-				return "not of type bool";
-			// Set item
-			conf_item->v.b = elem->valueint;
-			log_web_debug(DEBUG_CONFIG, "%s = %s", conf_item->k, conf_item->v.b ? "true" : "false");
-			break;
-		}
-		case CONF_ALL_DEBUG_BOOL:
-		{
-			// Check type
-			if(!cJSON_IsBool(elem))
-				return "not of type bool";
-			// Set item
-			conf_item->v.b = elem->valueint;
-			set_all_debug(newconf, elem->valueint);
-			log_web_debug(DEBUG_CONFIG, "%s = %s (this affects all debug items)", conf_item->k, conf_item->v.b ? "true" : "false");
-			break;
-		}
-		case CONF_INT:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < INT_MIN || elem->valuedouble > INT_MAX)
-				return "not of type integer";
-			// Set item
-			conf_item->v.i = elem->valueint;
-			log_web_debug(DEBUG_CONFIG, "%s = %i", conf_item->k, conf_item->v.i);
-			break;
-		}
-		case CONF_UINT:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < 0 || elem->valuedouble > UINT_MAX)
-				return "not of type unsigned integer";
-			// Set item
-			conf_item->v.ui = elem->valuedouble;
-			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.ui);
-			break;
-		}
-		case CONF_UINT16:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < 0 || elem->valuedouble > UINT16_MAX)
-				return "not of type unsigned integer (16bit)";
-			// Set item
-			conf_item->v.u16 = elem->valuedouble;
-			log_web_debug(DEBUG_CONFIG, "%s = %u", conf_item->k, conf_item->v.u16);
-			break;
-		}
-		case CONF_LONG:
-		{
-			// 1. Check it is a number
-			// 2. Check the number is within the allowed range for the given data type
-			if(!cJSON_IsNumber(elem) ||
-			   elem->valuedouble < (double)LONG_MIN || elem->valuedouble > (double)LONG_MAX)
-				return "not of type long";
-			// Set item
-			conf_item->v.l = elem->valuedouble;
-			log_web_debug(DEBUG_CONFIG, "%s = %li", conf_item->k, conf_item->v.l);
-			break;
-		}
-		case CONF_DOUBLE:
-		{
-			// Check it is a number
-			if(!cJSON_IsNumber(elem))
-				return "not a number";
-			// Set item
-			conf_item->v.d = elem->valuedouble;
-			log_web_debug(DEBUG_CONFIG, "%s = %f", conf_item->k, conf_item->v.d);
-			break;
-		}
-		case CONF_STRING:
-		case CONF_STRING_ALLOCATED:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			// Free previously allocated memory (if applicable)
-			if(conf_item->t == CONF_STRING_ALLOCATED)
-				free(conf_item->v.s);
-			// Set item
-			conf_item->v.s = strdup(elem->valuestring);
-			conf_item->t = CONF_STRING_ALLOCATED; // allocated now
-			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k,
-			              is_secret_conf_item(conf_item) ? "(hidden)" : conf_item->v.s);
-			break;
-		}
-		case CONF_PASSWORD:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			if(strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
-			{
-				// Check if password is unchanged (default value set by PASSWORD_VALUE)
-				log_web_debug(DEBUG_CONFIG, "Not setting %s (password unchanged)", conf_item->k);
-				break;
-			}
 
-			if(!set_and_check_password(conf_item, elem->valuestring))
-				return "password hash verification failed";
-
-			break;
-		}
-		case CONF_ENUM_PTR_TYPE:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int ptr_type = get_ptr_type_val(elem->valuestring);
-			if(ptr_type == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.ptr_type = ptr_type;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.ptr_type);
-			break;
-		}
-		case CONF_ENUM_BUSY_TYPE:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int busy_reply = get_busy_reply_val(elem->valuestring);
-			if(busy_reply == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.busy_reply = busy_reply;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.busy_reply);
-			break;
-		}
-		case CONF_ENUM_BLOCKING_MODE:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int blocking_mode = get_blocking_mode_val(elem->valuestring);
-			if(blocking_mode == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.blocking_mode = blocking_mode;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
-			break;
-		}
-		case CONF_ENUM_REFRESH_HOSTNAMES:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int refresh_hostnames = get_refresh_hostnames_val(elem->valuestring);
-			if(refresh_hostnames == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.refresh_hostnames = refresh_hostnames;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.refresh_hostnames );
-			break;
-		}
-		case CONF_ENUM_LISTENING_MODE:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int listeningMode = get_listeningMode_val(elem->valuestring);
-			if(listeningMode == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.listeningMode = listeningMode;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.listeningMode);
-			break;
-		}
-		case CONF_ENUM_WEB_THEME:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int web_theme = get_web_theme_val(elem->valuestring);
-			if(web_theme == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.web_theme = web_theme;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.web_theme);
-			break;
-		}
-		case CONF_ENUM_TEMP_UNIT:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int temp_unit = get_temp_unit_val(elem->valuestring);
-			if(temp_unit == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.temp_unit = temp_unit;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.temp_unit);
-			break;
-		}
-		case CONF_ENUM_BLOCKING_EDNS_MODE:
-		{
-			// Check type
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			const int edns_mode = get_edns_mode_val(elem->valuestring);
-			if(edns_mode == -1)
-				return "invalid option";
-			// Set item
-			conf_item->v.edns_mode = edns_mode;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.edns_mode);
-			break;
-		}
-		case CONF_ENUM_PRIVACY_LEVEL:
-		{
-			// Check type
-			int value;
-			if(cJSON_IsNumber(elem))
-				value = elem->valueint;
-			else if(cJSON_IsString(elem) && sscanf(elem->valuestring, "%i", &value) == 1)
-				; // value imported into variable
-			else
-				return "not of type integer";
-			// Check allowed interval
-			if(value < PRIVACY_SHOW_ALL || value > PRIVACY_MAXIMUM)
-				return "not within valid range";
-			// Set item
-			conf_item->v.i = value;
-			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.i);
-			break;
-		}
-		case CONF_STRUCT_IN_ADDR:
-		{
-			struct in_addr addr4 = { 0 };
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			if(strlen(elem->valuestring) == 0)
-			{
-				// Special case: empty string -> 0.0.0.0
-				conf_item->v.in_addr.s_addr = INADDR_ANY;
-			}
-			else if(inet_pton(AF_INET, elem->valuestring, &addr4))
-			{
-				// Set item
-				memcpy(&conf_item->v.in_addr, &addr4, sizeof(addr4));
-			}
-			else
-				return "not a valid IPv4 address";
-			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
-			break;
-		}
-		case CONF_STRUCT_IN6_ADDR:
-		{
-			struct in6_addr addr6 = { 0 };
-			if(!cJSON_IsString(elem))
-				return "not of type string";
-			if(strlen(elem->valuestring) == 0)
-			{
-				// Special case: empty string -> ::
-				memcpy(&conf_item->v.in6_addr, &in6addr_any, sizeof(in6addr_any));
-			}
-			else if(!inet_pton(AF_INET6, elem->valuestring, &addr6))
-				return "not a valid IPv6 address";
-			// Set item
-			memcpy(&conf_item->v.in6_addr, &addr6, sizeof(addr6));
-			log_web_debug(DEBUG_CONFIG, "%s = \"%s\"", conf_item->k, elem->valuestring);
-			break;
-		}
-		case CONF_JSON_STRING_ARRAY:
-		{
-			if(!cJSON_IsArray(elem))
-				return "not of type array";
-			unsigned int i = 0;
-			for(const cJSON *item = elem != NULL ? elem->child : NULL; item != NULL; item = item->next, i++)
-			{
-				if(!cJSON_IsString(item))
-					return "array has invalid elements";
-				log_web_debug(DEBUG_CONFIG, "%s[%u] = \"%s\"", conf_item->k, i, item->valuestring);
-			}
-			// If we reach this point, all elements are valid. Free the
-			// previous array (duplicated by duplicate_config into newconf)
-			// before overwriting it, otherwise it leaks.
-			if(conf_item->v.json != NULL)
-				cJSON_Delete(conf_item->v.json);
-			conf_item->v.json = cJSON_Duplicate(elem, true);
-		}
-	}
-	return NULL;
-}
-
-int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
+// Assembles /config. With cluster set, this is what one node hands to another:
+// the same document, minus the items that never leave a node - the ones flagged
+// as such, and the ones this node could not change even if a peer asked it to
+int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed, const bool cluster,
+                    const bool encrypted)
 {
 	// App sessions without app_sudo may not change the configuration, so they
-	// do not get the password hashes either
-	const bool read_only = api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b;
+	// do not get the password hashes either. The cluster thread builds its
+	// document without a connection
+	const bool read_only = api != NULL && api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b;
 
 	// Create root config object
 	cJSON *config_j = JSON_NEW_OBJECT();
@@ -541,7 +252,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 	// Does the user request only a subset of /config?
 	char **requested_path = NULL;
 	unsigned int min_level = 0;
-	if(api->item != NULL && strlen(api->item) > 0)
+	if(api != NULL && api->item != NULL && strlen(api->item) > 0)
 	{
 		requested_path = gen_config_path(api->item, '/');
 		min_level = config_path_depth(requested_path);
@@ -553,6 +264,17 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 	{
 		// Get pointer to memory location of this conf_item
 		struct conf_item *conf_item = get_conf_item(&config, i);
+
+		if(cluster && !cluster_syncable(conf_item))
+			continue;
+
+		// A credential is only worth as much as the connection it
+		// travels over. The nodes sign what they send, so nobody can
+		// change it - but on a plain connection anybody on the path can
+		// read it, and a password hash read once is a password hash for
+		// good
+		if(cluster && !encrypted && conf_item->f & FLAG_CREDENTIAL)
+			continue;
 
 		// Get path depth
 		unsigned int level = config_path_depth(conf_item->p);
@@ -651,8 +373,10 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 		else
 		{
 			// Special case: write-only values, and secrets for sessions
-			// that may not change the configuration
-			if((conf_item->f & FLAG_WRITE_ONLY) || (read_only && is_secret_conf_item(conf_item)))
+			// that may not change the configuration. A peer that is meant
+			// to end up with the same credential needs the value
+			if(((conf_item->f & FLAG_WRITE_ONLY) && !(cluster && encrypted)) ||
+			   (read_only && is_secret_conf_item(conf_item)))
 				JSON_REF_STR_IN_OBJECT(parent, conf_item->p[level - 1], PASSWORD_VALUE);
 			else
 			{
@@ -735,7 +459,7 @@ int get_json_config(struct ftl_conn *api, cJSON *json, const bool detailed)
 	return 0;
 }
 
-static int api_config_get(struct ftl_conn *api)
+static int api_config_get(struct ftl_conn *api, const bool refused)
 {
 	// Parse query string parameters
 	bool detailed = false;
@@ -745,16 +469,166 @@ static int api_config_get(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "detailed", &detailed);
 	}
 
+	// A peer is answered without the document: nobody reads it, it would carry
+	// this node's password hashes, and it grows with dns.hosts beyond what
+	// the peer reads an answer up to
+	const bool from_cluster = api->session.used && api->session.cluster;
 	cJSON *json = JSON_NEW_OBJECT();
-	get_json_config(api, json, detailed);
+	if(!from_cluster)
+		get_json_config(api, json, detailed, false, false);
+
+	// ...and whether the push was taken, so the peer does not believe it
+	// caught up a node holding a newer configuration
+	if(from_cluster && api->method == HTTP_PATCH)
+		JSON_ADD_BOOL_TO_OBJECT(json, "taken", !refused);
 
 	// Build and return JSON response
 	JSON_SEND_OBJECT(json);
 }
 
+// A configuration handed to us by a peer, and what came of it
+struct cluster_push {
+	bool encrypted;
+	cJSON *conf;
+	// When the peer says each item was changed, zero for one it did not date
+	double changed[CONFIG_ELEMENTS];
+	// ...and the same for the items this node took, zero for the others
+	double taken[CONFIG_ELEMENTS];
+	// ...and the ones it kept its own value of, and why
+	char refused[512];
+	unsigned int num_refused;
+};
+
+// Whether the peer sent another value than the one this node holds
+static bool push_differs(const struct cluster_push *push, const unsigned int i)
+{
+	struct conf_item *item = get_conf_item(&config, i);
+	cJSON *elem = push->conf;
+	const unsigned int level = config_path_depth(item->p);
+	for(unsigned int j = 0; j < level && elem != NULL; j++)
+		elem = cJSON_GetObjectItem(elem, item->p[j]);
+	if(elem == NULL)
+		return false;
+
+	cJSON *ours = addJSONConfValue(item->t, &item->v);
+	const bool same = cJSON_Compare(ours, elem, true);
+	cJSON_Delete(ours);
+
+	return !same;
+}
+
+// Collected as "key (why), ...", cut short with an ellipsis rather than mid-word
+static void note_refused(struct cluster_push *push, const struct conf_item *item, const char *why)
+{
+	push->num_refused++;
+
+	const size_t used = strlen(push->refused);
+	char entry[sizeof(push->refused)] = "";
+	snprintf(entry, sizeof(entry), "%s%s (%s)", used > 0 ? ", " : "", item->k, why);
+
+	// Six bytes are always kept back, so the ellipsis always fits
+	if(used + strlen(entry) + 6 > sizeof(push->refused))
+	{
+		if(used < 3 || strcmp(push->refused + used - 3, "...") != 0)
+			strcat(push->refused, used > 0 ? ", ..." : "...");
+		return;
+	}
+	strcat(push->refused, entry);
+}
+
+// Which items a configuration handed to us by a peer may touch
+static bool syncable_item(const struct conf_item *item, void *ctx)
+{
+	struct cluster_push *push = ctx;
+	const unsigned int i = (unsigned int)(item - get_conf_item(&config, 0));
+
+	// Refused here as well as left out there: a credential that arrived over
+	// a plain connection has already been read by whoever was listening, and
+	// taking it would spread it to the rest of the cluster
+	if(item->f & FLAG_CREDENTIAL && !push->encrypted)
+		return false;
+
+	if(!cluster_syncable(item))
+	{
+		if(config_env_pinned(item) && push_differs(push, i))
+			note_refused(push, item, "set through an environment variable");
+		return false;
+	}
+
+	// ...and only one this node holds an older version of. The same stamp is
+	// the version this node holds already, unless both are starting points
+	const double theirs = push->changed[i], ours = cluster_item_changed(i);
+	if(!(theirs > ours) && !(theirs > 0.0 && !(theirs < ours) && theirs <= CLUSTER_BASELINE_STAMP))
+	{
+		if(push_differs(push, i))
+			note_refused(push, item, theirs > 0.0 ? "not newer than this node's" : "not dated");
+		return false;
+	}
+
+	push->taken[i] = theirs;
+	return true;
+}
+
+static void refused_item(const struct conf_item *item, const char *why, void *ctx)
+{
+	struct cluster_push *push = ctx;
+	push->taken[item - get_conf_item(&config, 0)] = 0.0;
+	note_refused(push, item, why);
+}
+
+// Who handed us a push, by name where a member answers to its identity
+static void push_sender(struct ftl_conn *api, char *out, const size_t outlen)
+{
+	const char *from = mg_get_header(api->conn, CLUSTER_HDR_FROM);
+	snprintf(out, outlen, "%s", from != NULL ? from : "a peer");
+
+	cluster_lock();
+	const struct cluster_state *state = cluster_state();
+	for(unsigned int i = 0; from != NULL && i < state->num_peers; i++)
+		if(strcmp(state->peers[i].id, from) == 0 && strlen(state->peers[i].name) > 0)
+			snprintf(out, outlen, "%s", state->peers[i].name);
+	cluster_unlock();
+}
+
+// Said once per push, and kept for the status until the next one
+static void report_refused(struct ftl_conn *api, const struct cluster_push *push)
+{
+	if(push->num_refused > 0)
+	{
+		char sender[CLUSTER_STRLEN] = "";
+		push_sender(api, sender, sizeof(sender));
+		log_info("cluster: kept this node's value of %u item%s %s pushed: %s",
+		         push->num_refused, push->num_refused == 1 ? "" : "s", sender, push->refused);
+	}
+	cluster_note_refused(push->refused);
+}
+
+// When the peer says each item was changed. False when one of them is not a
+// time any comparison could use: not a number, before the epoch, or from the
+// future would sit above every real change forever
+static bool push_stamps(const cJSON *stamps, double changed[CONFIG_ELEMENTS])
+{
+	if(stamps != NULL && !cJSON_IsObject(stamps))
+		return false;
+
+	const double latest = double_time() + CLUSTER_MAX_CLOCK_OFFSET;
+	for(const cJSON *stamp = stamps != NULL ? stamps->child : NULL; stamp != NULL; stamp = stamp->next)
+	{
+		if(!cJSON_IsNumber(stamp) || !isfinite(stamp->valuedouble) ||
+		   stamp->valuedouble < 0.0 || stamp->valuedouble > latest)
+			return false;
+
+		const int i = stamp->string != NULL ? cluster_item_index(stamp->string) : -1;
+		if(i >= 0)
+			changed[i] = stamp->valuedouble;
+	}
+
+	return true;
+}
+
 // Sets *send_config when the caller is to answer with the full config, which it
-// does after releasing the config lock
-static int api_config_patch(struct ftl_conn *api, bool *send_config)
+// does after releasing the config lock, and *refused for a peer's older push
+static int api_config_patch(struct ftl_conn *api, bool *send_config, bool *refused)
 {
 	// Is there a payload with valid JSON data?
 	const int ret = check_json_payload(api);
@@ -788,227 +662,154 @@ static int api_config_patch(struct ftl_conn *api, bool *send_config)
 		get_bool_var(api->request->query_string, "restart", &restart);
 	}
 
-	// Read all known config items
-	bool config_changed = false;
-	bool privacy_level_decreased = false;
-	bool invalidate_sessions = false;
-	bool dnsmasq_changed = false;
-	bool rewrite_hosts = false;
+	// A push from another node of the cluster carries every item of that
+	// node's configuration this node lacks, each with the time it was
+	// changed at, rather than the one item a user changed. Two things
+	// follow. The items that never travel are dropped here as well as at
+	// the sender, so a peer that sends them anyway - which no FTL does -
+	// gets nowhere. And a single item this node refuses, one pinned through
+	// its environment or rejected by a validator, must not throw away the
+	// rest of the document, so the push is not applied strictly
+	const bool from_cluster = api->session.used && api->session.cluster;
+
+	// A peer says when each item it is handing us was changed, and on which
+	// node that happened is beside the point - this node holds those items
+	// afterwards and passes the same answer on
+	struct cluster_push push = { .encrypted = api->request->is_ssl, .conf = conf };
+	if(from_cluster && !push_stamps(cJSON_GetObjectItem(api->payload.json, "changed"), push.changed))
+	{
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Cluster push carries an unusable timestamp",
+		                       NULL);
+	}
+
+	// One writer at a time from here to the install below, so two saves
+	// arriving together cannot each take a copy of the configuration before
+	// the other and install it over the top. The stamps are judged inside
+	// it: the writer we just waited for may have installed something newer
+	// than this push while we queued
+	cluster_sync_lock();
+
 	struct config newconf;
 	duplicate_config(&newconf, &config);
-	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+
+	struct config_apply applied = { 0 };
+	if(!config_apply_json(&newconf, conf, from_cluster ? syncable_item : NULL,
+	                      from_cluster ? refused_item : NULL, &push, !from_cluster, &applied))
 	{
-		// Get pointer to memory location of this conf_item (copy)
-		struct conf_item *new_item = get_conf_item(&newconf, i);
+		free_config(&newconf, false);
+		cluster_sync_unlock();
 
-		// Get path depth
-		unsigned int level = config_path_depth(new_item->p);
-
-		cJSON *elem = conf;
-		// Parse tree of properties and get the individual JSON elements
-		for(unsigned int j = 0; j < level; j++)
-			elem = cJSON_GetObjectItem(elem, new_item->p[j]);
-
-		// Check if this element is present - it doesn't have to be!
-		if(elem == NULL)
-		{
-			log_web_debug(DEBUG_CONFIG, "%s not in JSON payload", new_item->k);
-			continue;
-		}
-
-		if(new_item->f & FLAG_API_CLI_READ_ONLY && cJSON_IsBool(elem) && elem->valueint == 1)
-		{
-			char *key = strdup(new_item->k);
-			free_config(&newconf, false);
+		if(applied.failure == CONFIG_APPLY_READ_ONLY)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, not via the API",
-			                            key, true, true);
-		}
+			                            strdup(applied.failed_key), true, true);
 
-		// Check if this is a write-only config item with the placeholder value
-		if(new_item->f & FLAG_WRITE_ONLY && cJSON_IsString(elem) &&
-		   strcmp(elem->valuestring, PASSWORD_VALUE) == 0)
-		{
-			log_web_debug(DEBUG_CONFIG, "%s is write-only with place-holder, skipping", new_item->k);
-			continue;
-		}
-
-		// Try to set value and report error on failure
-		const char *response = getJSONvalue(new_item, elem, &newconf);
-		if(response != NULL)
-		{
-			char *hint = calloc(strlen(new_item->k) + strlen(response) + 3, sizeof(char));
-			if(hint == NULL)
-			{
-				free_config(&newconf, false);
-				return send_json_error(api, 500,
-				                       "internal_error",
-				                       "Failed to allocate memory for hint",
-				                       NULL);
-			}
-			strcpy(hint, new_item->k);
-			strcat(hint, ": ");
-			strcat(hint, response);
-			free_config(&newconf, false);
-			return send_json_error_free(api, 400,
-			                            "bad_request",
-			                            "Config item is invalid",
-			                            hint, true, true);
-		}
-
-		// Get pointer to memory location of this conf_item (global)
-		struct conf_item *conf_item = get_conf_item(&config, i);
-
-		// Options that hand code to something Pi-hole then runs are not
-		// settable from a web session, see FLAG_API_READ_ONLY.
-		//
-		// Only an actual change is refused. A client sending the whole
-		// configuration back, as the web interface does, mentions every option
-		// including this one, and rejecting it for that alone would make every
-		// save fail.
-		if(new_item->f & FLAG_API_READ_ONLY && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
-		{
-			char *key = strdup(new_item->k);
-			free_config(&newconf, false);
+		if(applied.failure == CONFIG_APPLY_API_READ_ONLY)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
-			                            key, true, true);
-		}
+			                            strdup(applied.failed_key), true, true);
 
-		// Config items that are set via environment variables cannot be changed
-		// via the API
-		if(new_item->f & FLAG_ENV_VAR && !compare_config_item(conf_item->t, &new_item->v, &conf_item->v))
-		{
-			char *key = strdup(new_item->k);
-			free_config(&newconf, false);
+		if(applied.failure == CONFIG_APPLY_ENV_VAR)
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
-			                            key, true, true);
-		}
+			                            strdup(applied.failed_key), true, true);
 
-		// Skip processing if value didn't change compared to current value
-		if((conf_item->t != CONF_PASSWORD && compare_config_item(conf_item->t, &new_item->v, &conf_item->v)) ||
-		   (conf_item->t == CONF_PASSWORD && strcmp(elem->valuestring, PASSWORD_VALUE) == 0))
-		{
-			log_web_debug(DEBUG_CONFIG, "Config item %s: Unchanged", conf_item->k);
-			continue;
-		}
-		log_web_debug(DEBUG_CONFIG, "Config item %s: Changed <-------------", conf_item->k);
-
-		// Memorize that at least one config item actually changed
-		config_changed = true;
-
-		// If we reach this point, a valid setting was found and changed
-
-		// Validate new value (if validation function is defined)
-		char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-		if(!conf_item->c(&new_item->v, new_item->k, errbuf))
-		{
-			free_config(&newconf, false);
+		if(applied.failure == CONFIG_APPLY_VALIDATION)
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Config item validation failed",
-			                       errbuf);
-		}
+			                       applied.error);
 
-		// Check if this item requires a config-rewrite + restart of dnsmasq
-		if(conf_item->f & FLAG_RESTART_FTL)
-			dnsmasq_changed = true;
+		char *hint = calloc(strlen(applied.failed_key) + strlen(applied.error) + 3, sizeof(char));
+		if(hint == NULL)
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "Failed to allocate memory for hint",
+			                       NULL);
+		strcpy(hint, applied.failed_key);
+		strcat(hint, ": ");
+		strcat(hint, applied.error);
 
-		// Check if this item requires rewriting the HOSTS file
-		if(conf_item == &config.dns.hosts)
-			rewrite_hosts = true;
-
-		// If the privacy level was decreased, we need to restart
-		if(new_item == &newconf.misc.privacylevel &&
-		   new_item->v.privacy_level < conf_item->v.privacy_level)
-			privacy_level_decreased = true;
-
-		// Check if this item changed the password, if so, we need to
-		// invalidate all currently active sessions. Only note it here:
-		// a later item in this same request can still be rejected, and
-		// so can the dnsmasq test below, and this candidate config is
-		// then thrown away - logging everyone out for a change that
-		// never happened
-		if(conf_item->f & FLAG_INVALIDATE_SESSIONS)
-			invalidate_sessions = true;
+		return send_json_error_free(api, 400,
+		                            "bad_request",
+		                            "Config item is invalid",
+		                            hint, true, true);
 	}
 
-	// Process new config only when at least one value changed
-	if(config_changed)
+	char errbuf[ERRBUF_SIZE] = { 0 };
+	bool written = true;
+	const bool installed = config_install(&newconf, &applied, from_cluster,
+	                                      from_cluster ? push.taken : NULL, errbuf, &written);
+	cluster_sync_unlock();
+
+	if(!installed)
 	{
-		// Reject a configuration whose paths conflict with each other. The
-		// per-item validators above only see one value at a time, so a request
-		// changing several of them at once has to be checked as a whole. This
-		// runs before the dnsmasq config is generated, as that installs the
-		// generated file as a side effect of testing it.
+		// The whole push, as the configuration it makes is not usable here
+		if(from_cluster)
 		{
-			char errbuf[VALIDATOR_ERRBUF_LEN] = { 0 };
-			if(!validate_config_paths(&newconf, errbuf, NULL))
-			{
-				free_config(&newconf, false);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Invalid configuration",
-				                       errbuf);
-			}
+			snprintf(push.refused, sizeof(push.refused), "everything (%s)", errbuf);
+			push.num_refused = 1;
+			report_refused(api, &push);
 		}
+		return send_json_error(api, 400,
+		                       "bad_request",
+		                       "Invalid configuration",
+		                       errbuf);
+	}
 
-		// Request restart of FTL
-		if(dnsmasq_changed)
+	// Only now that the candidate is the live configuration: the dnsmasq
+	// test inside config_install() can still reject it, and that must not
+	// log everyone out for a change that never happened
+	if(applied.invalidate_sessions)
+		delete_all_sessions();
+
+	if(applied.changed)
+	{
+		// A change of a peer's does not restart this node right away: the
+		// same document reaches every node within the same moment, and
+		// restarting all of them together leaves the network without a
+		// resolver. The cluster thread spaces them out instead
+		if(from_cluster && (applied.dnsmasq_changed || applied.privacy_decreased))
+			cluster_restart_later("cluster: config synchronized");
+		else if(applied.dnsmasq_changed)
 		{
-			char errbuf[ERRBUF_SIZE] = { 0 };
-			if(write_dnsmasq_config(&newconf, DNSMASQ_TEST_INSTALL, errbuf))
-			{
-				api->ftl.restart_reason = "dnsmasq config changed";
-				api->ftl.restart = restart;
-			}
-			else
-			{
-				free_config(&newconf, false);
-				return send_json_error(api, 400,
-				                       "bad_request",
-				                       "Invalid configuration",
-				                       errbuf);
-			}
+			api->ftl.restart_reason = "dnsmasq config changed";
+			api->ftl.restart = restart;
 		}
-
-		// Install new configuration
-		replace_config(&newconf);
-
-		// The candidate is the live config now, so the side effects noted
-		// while walking the items can be applied. Doing either earlier
-		// meant a request rejected further down - by a later item, or by
-		// the dnsmasq test above - still logged every session out, or
-		// still left api->ftl.restart set for api.c to act on although
-		// free_config() had thrown the candidate away
-		if(privacy_level_decreased)
+		else if(applied.privacy_decreased)
 		{
 			api->ftl.restart_reason = "Privacy level decreased";
 			api->ftl.restart = true;
 		}
-
-		if(invalidate_sessions)
-			delete_all_sessions();
-
-		// Reload debug levels
-		set_debug_flags(&config);
-
-		// Store changed configuration to disk
-		writeFTLtoml(true, NULL);
-
-		// Rewrite HOSTS file if required
-		if(rewrite_hosts)
-			write_custom_list();
 	}
 	else
-	{
-		// Nothing changed, merely release copied config memory
-		free_config(&newconf, false);
 		log_web(LOG_INFO, "No config changes detected");
+
+	// A peer is told when this node held newer versions of everything it
+	// dated, so it does not believe it caught this node up
+	if(from_cluster)
+	{
+		bool dated = false, taken = false;
+		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		{
+			dated |= push.changed[i] > 0.0;
+			taken |= push.taken[i] > 0.0;
+		}
+		*refused = dated && !taken;
+		report_refused(api, &push);
+
+		// Not in pihole.toml, so not this node's after a restart. Answered
+		// as a failure, which the peer tries again later
+		if(!written)
+			return send_json_error(api, 500,
+			                       "internal_error",
+			                       "The configuration could not be written",
+			                       NULL);
 	}
 
 	// The full config is returned by the caller
@@ -1084,6 +885,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 	bool rewrite_hosts = false;
 	bool found = false;
 	struct config newconf;
+	// One writer at a time, as in the PATCH above: a cluster push and a
+	// list edit arriving together would otherwise each install a copy
+	// taken before the other
+	cluster_sync_lock();
 	duplicate_config(&newconf, &config);
 	for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
 	{
@@ -1135,6 +940,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			free_config(&newconf, false);
 			free_config_path(requested_path);
+			cluster_sync_unlock();
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Item too long",
@@ -1151,6 +957,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			char *key = strdup(new_item->k);
 			free_config(&newconf, false);
 			free_config_path(requested_path);
+			cluster_sync_unlock();
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "Config items set via environment variables cannot be changed via the API",
@@ -1164,6 +971,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			char *key = strdup(new_item->k);
 			free_config(&newconf, false);
 			free_config_path(requested_path);
+			cluster_sync_unlock();
 			return send_json_error_free(api, 400,
 			                            "bad_request",
 			                            "This config option can only be set in pihole.toml, through an environment variable or using pihole-FTL --config, not via the API",
@@ -1208,8 +1016,22 @@ static int api_config_put_delete(struct ftl_conn *api)
 			}
 			else
 			{
-				// Add new item to array
-				JSON_COPY_STR_TO_ARRAY(new_item->v.json, new_item_str);
+				// Add new item to array. Built here rather than
+				// through JSON_COPY_STR_TO_ARRAY, which returns
+				// from inside the macro when the allocation
+				// fails - past the unlock this handler owes
+				cJSON *entry = cJSON_CreateString(new_item_str);
+				if(entry == NULL || !cJSON_AddItemToArray(new_item->v.json, entry))
+				{
+					cJSON_Delete(entry);
+					free_config(&newconf, false);
+					free_config_path(requested_path);
+					cluster_sync_unlock();
+					return send_json_error(api, 500,
+					                       "internal_error",
+					                       "Failed to add item to array",
+					                       NULL);
+				}
 				found = true;
 			}
 		}
@@ -1238,6 +1060,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 			{
 				free_config(&newconf, false);
 				free_config_path(requested_path);
+				cluster_sync_unlock();
 				return send_json_error(api, 400,
 				                       "bad_request",
 				                       "Invalid value",
@@ -1263,6 +1086,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	if(!found)
 	{
 		free_config(&newconf, false);
+		cluster_sync_unlock();
 		cJSON *json = JSON_NEW_OBJECT();
 		JSON_SEND_OBJECT_CODE(json, 404);
 	}
@@ -1271,6 +1095,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 	if(message != NULL)
 	{
 		free_config(&newconf, false);
+		cluster_sync_unlock();
 		return send_json_error(api, 400,
 		                       "bad_request",
 		                       message,
@@ -1285,6 +1110,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		if(!validate_config_paths(&newconf, pathbuf, NULL))
 		{
 			free_config(&newconf, false);
+			cluster_sync_unlock();
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid configuration",
@@ -1308,6 +1134,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 		{
 			// The new config did not work
 			free_config(&newconf, false);
+			cluster_sync_unlock();
 			return send_json_error(api, 400,
 			                       "bad_request",
 			                       "Invalid configuration",
@@ -1321,8 +1148,10 @@ static int api_config_put_delete(struct ftl_conn *api)
 	// Reload debug levels
 	set_debug_flags(&config);
 
-	// Store changed configuration to disk
-	writeFTLtoml(true, NULL);
+	// Store changed configuration to disk, and stamp it only once it is there
+	if(config_write())
+		config_stamp_local_change();
+	cluster_sync_unlock();
 
 	// Rewrite HOSTS file if required
 	if(rewrite_hosts)
@@ -1347,7 +1176,7 @@ static int api_config_put_delete(struct ftl_conn *api)
 int api_config(struct ftl_conn *api)
 {
 	if(api->method == HTTP_GET)
-		return api_config_get(api);
+		return api_config_get(api, false);
 
 	// Check if this is an app session and reject the request if app sudo
 	// mode is disabled
@@ -1376,11 +1205,11 @@ int api_config(struct ftl_conn *api)
 	{
 		// Serializing and sending the full config can be slow with a slow
 		// client, so it happens after the lock is released
-		bool send_config = false;
+		bool send_config = false, refused = false;
 		lock_config();
-		const int ret = api_config_patch(api, &send_config);
+		const int ret = api_config_patch(api, &send_config, &refused);
 		unlock_config();
-		return send_config ? api_config_get(api) : ret;
+		return send_config ? api_config_get(api, refused) : ret;
 	}
 	else if(api->method == HTTP_PUT || api->method == HTTP_DELETE)
 	{

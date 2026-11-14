@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Usage: test/run.sh [cluster]
+# Runs the full suite except test/api/test_y_cluster.py, which "cluster" runs
+# on its own
+
 # Skip tests on targets not supporting them
 if [[ ${TEST} == "false" ]]; then
   echo "Skipping tests (CI_ARCH: ${CI_ARCH})!"
@@ -159,92 +163,110 @@ if [ -z "$BATS" ]; then
   export BATS_LIB_PATH
 fi
 
-# Run BATS test suite (includes DNS, regex, CLI, config tests;
-# FTL remains running for the pytest API tests afterwards)
-echo "Running BATS test suite..."
-$BATS -p "test/test_suite.bats"
-RET=$?
+if [[ "${1}" == "cluster" ]]; then
+  # Switching clustering on restarts FTL, which would reset what the other
+  # tests count, so the cluster tests get an instance of their own
+  echo "Running pytest cluster tests..."
+  python3 -m pytest test/api/test_y_cluster.py -v
+  RET=$?
 
-# Trigger network table update (PARSE_NEIGHBOR_CACHE) so mock-hwaddr
-# devices like ip-127.0.0.1 exist before pytest checks them.
-# RT signal offset 5 maps to PARSE_NEIGHBOR_CACHE in signals.c.
-kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)" 2>/dev/null
-sleep 2
-
-# Run pytest API tests (FTL is still running — BATS no longer terminates it)
-# Skip on riscv64 — the emulated runner is too slow for the full API suite
-if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
-  echo "Running pytest API tests..."
-  python3 -m pytest test/api/ -v
-  PYTEST_RET=$?
-  if [[ $PYTEST_RET != 0 ]]; then
-    RET=$PYTEST_RET
+  # Only the log checks of test_final.bats, the rest asserts on the full run
+  $BATS -p --filter '^No .*messages in FTL\.log' "test/test_final.bats"
+  FINAL_RET=$?
+  if [[ $FINAL_RET != 0 ]]; then
+    RET=$FINAL_RET
   fi
-else
-  echo "Skipping pytest API tests (too slow on ${CI_ARCH})"
-fi
 
-# Encrypted-upstream (DoT/DoH) end-to-end tests. Run after pytest: switching the
-# upstream restarts FTL, which would otherwise perturb the query statistics the
-# API tests assert on. test_final still counts this file's config writes below.
-# Skip on riscv64 - the emulated runner is far too slow for the encrypted
-# transports: every DoT/DoH/DoQ query carries a TLS or QUIC handshake, and the
-# QUIC ones time out long before they complete under emulation.
-if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
-  $BATS -p "test/dotdoh.bats"
-  DOTDOH_RET=$?
-  if [ $DOTDOH_RET != 0 ]; then
-    RET=$DOTDOH_RET
+  # test_final.bats terminates FTL in the full run
+  kill "$(cat /run/pihole-FTL.pid)"
+else
+  # Run BATS test suite (includes DNS, regex, CLI, config tests;
+  # FTL remains running for the pytest API tests afterwards)
+  echo "Running BATS test suite..."
+  $BATS -p "test/test_suite.bats"
+  RET=$?
+
+  # Trigger network table update (PARSE_NEIGHBOR_CACHE) so mock-hwaddr
+  # devices like ip-127.0.0.1 exist before pytest checks them.
+  # RT signal offset 5 maps to PARSE_NEIGHBOR_CACHE in signals.c.
+  kill -SIGRTMIN+5 "$(cat /run/pihole-FTL.pid)" 2>/dev/null
+  sleep 2
+
+  # Run pytest API tests (FTL is still running — BATS no longer terminates it)
+  # Skip on riscv64 — the emulated runner is too slow for the full API suite
+  if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+    echo "Running pytest API tests..."
+    python3 -m pytest test/api/ -v --ignore=test/api/test_y_cluster.py
+    PYTEST_RET=$?
+    if [[ $PYTEST_RET != 0 ]]; then
+      RET=$PYTEST_RET
+    fi
+  else
+    echo "Skipping pytest API tests (too slow on ${CI_ARCH})"
   fi
-else
-  echo "Skipping encrypted-upstream tests (too slow on ${CI_ARCH})"
-fi
 
-# Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
-# queries add to the query statistics the API tests assert on.
-if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
-  $BATS -p "test/dotdoh_server.bats"
-  DOTDOH_SERVER_RET=$?
-  if [ $DOTDOH_SERVER_RET != 0 ]; then
-    RET=$DOTDOH_SERVER_RET
+  # Encrypted-upstream (DoT/DoH) end-to-end tests. Run after pytest: switching the
+  # upstream restarts FTL, which would otherwise perturb the query statistics the
+  # API tests assert on. test_final still counts this file's config writes below.
+  # Skip on riscv64 - the emulated runner is far too slow for the encrypted
+  # transports: every DoT/DoH/DoQ query carries a TLS or QUIC handshake, and the
+  # QUIC ones time out long before they complete under emulation.
+  if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+    $BATS -p "test/dotdoh.bats"
+    DOTDOH_RET=$?
+    if [ $DOTDOH_RET != 0 ]; then
+      RET=$DOTDOH_RET
+    fi
+  else
+    echo "Skipping encrypted-upstream tests (too slow on ${CI_ARCH})"
   fi
-else
-  echo "Skipping inbound encrypted-DNS tests (too slow on ${CI_ARCH})"
-fi
 
-# webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
-# restarts FTL.
-$BATS -p "test/webserver_acl.bats"
-WEBSERVER_ACL_RET=$?
-if [ $WEBSERVER_ACL_RET != 0 ]; then
-  RET=$WEBSERVER_ACL_RET
-fi
+  # Inbound (server-side) DoT/DoH end-to-end tests. Also after pytest: the DoH/DoT
+  # queries add to the query statistics the API tests assert on.
+  if [[ "${CI_ARCH}" != "linux/riscv64" ]]; then
+    $BATS -p "test/dotdoh_server.bats"
+    DOTDOH_SERVER_RET=$?
+    if [ $DOTDOH_SERVER_RET != 0 ]; then
+      RET=$DOTDOH_SERVER_RET
+    fi
+  else
+    echo "Skipping inbound encrypted-DNS tests (too slow on ${CI_ARCH})"
+  fi
 
-# webserver.port combinations for the TLS terminator. Also after pytest: every
-# port change restarts FTL.
-$BATS -p "test/webserver_tls_ports.bats"
-WEBSERVER_TLS_PORTS_RET=$?
-if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
-  RET=$WEBSERVER_TLS_PORTS_RET
-fi
+  # webserver.acl tests for the TLS terminator. Also after pytest: every ACL change
+  # restarts FTL.
+  $BATS -p "test/webserver_acl.bats"
+  WEBSERVER_ACL_RET=$?
+  if [ $WEBSERVER_ACL_RET != 0 ]; then
+    RET=$WEBSERVER_ACL_RET
+  fi
 
-# Restart tests. After pytest and the DoT/DoH suites, as the restarts perturb
-# the query statistics they assert on.
-$BATS -p "test/restart.bats"
-RESTART_RET=$?
-if [ $RESTART_RET != 0 ]; then
-  RET=$RESTART_RET
-fi
+  # webserver.port combinations for the TLS terminator. Also after pytest: every
+  # port change restarts FTL.
+  $BATS -p "test/webserver_tls_ports.bats"
+  WEBSERVER_TLS_PORTS_RET=$?
+  if [ $WEBSERVER_TLS_PORTS_RET != 0 ]; then
+    RET=$WEBSERVER_TLS_PORTS_RET
+  fi
 
-# Run final BATS suite — log validation and FTL termination
-# This runs after both test_suite.bats and pytest to catch any
-# unexpected log messages from the entire run, then terminates FTL.
-echo ""
-echo "Running final log validation..."
-$BATS -p "test/test_final.bats"
-FINAL_RET=$?
-if [[ $FINAL_RET != 0 ]]; then
-  RET=$FINAL_RET
+  # Restart tests. After pytest and the DoT/DoH suites, as the restarts perturb
+  # the query statistics they assert on.
+  $BATS -p "test/restart.bats"
+  RESTART_RET=$?
+  if [ $RESTART_RET != 0 ]; then
+    RET=$RESTART_RET
+  fi
+
+  # Run final BATS suite — log validation and FTL termination
+  # This runs after both test_suite.bats and pytest to catch any
+  # unexpected log messages from the entire run, then terminates FTL.
+  echo ""
+  echo "Running final log validation..."
+  $BATS -p "test/test_final.bats"
+  FINAL_RET=$?
+  if [[ $FINAL_RET != 0 ]]; then
+    RET=$FINAL_RET
+  fi
 fi
 
 curl_to_tricorder() {

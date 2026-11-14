@@ -1,0 +1,86 @@
+/* Pi-hole: A black hole for Internet advertisements
+*  (c) 2026 Pi-hole, LLC (https://pi-hole.net)
+*  Network-wide ad blocking via your own hardware.
+*
+*  FTL Engine
+*  Cluster DHCP failover prototypes
+*
+*  This file is copyright under the latest version of the EUPL.
+*  Please see LICENSE file for your rights under this license. */
+
+#ifndef CLUSTER_DHCP_H
+#define CLUSTER_DHCP_H
+
+#include "FTL.h"
+#include "cluster/cluster.h"
+
+// Is any node of the cluster able to serve DHCP at all?
+
+// Decide who serves DHCP and act on the outcome. Fills owner with the name of
+// the node that should be serving - which may well be a peer - and returns
+// whether that node is this one
+// What a round decided: who serves DHCP, whether this node has to change what
+// it is doing, and where the address the clients use belongs
+// How many consecutive rounds a decision has to hold before DHCP - and the
+// address that follows it - moves. One missed answer must not move either, and
+// a number of rounds is not something anybody has ever needed to tune
+#define CLUSTER_DHCP_ACTIVATE_ROUNDS 2u
+#define CLUSTER_DHCP_DEACTIVATE_ROUNDS 3u
+
+struct cluster_intent {
+	char owner[CLUSTER_STRLEN];
+	bool serve;        // this node should be handing out leases
+	bool change_dhcp;  // ...and that differs from what it is doing now
+	bool hold_vip;     // the virtual IP address belongs here
+};
+
+void cluster_dhcp_round(struct cluster_peer *peers, const unsigned int num_peers,
+                        const bool member, const bool leader_is_us,
+                        struct cluster_intent *intent);
+bool cluster_dhcp_apply(const struct cluster_intent *intent);
+
+// Did the last round ask FTL to restart? Nothing else should happen then: the
+// configuration has just been replaced and the daemon is on its way out
+bool cluster_dhcp_capable(void);
+bool cluster_dhcp_configured(void);
+
+// Whether this node would answer on an address the cluster places on it. Not
+// pure: it takes the configuration lock and asks the kernel about the interface
+bool cluster_vip_capable(void);
+
+// Whether placing the address has ever failed on this node
+
+// Tell the VIP code whether another node is holding the address, so a node that
+// has failed to place it can stand aside in what it publishes rather than only
+// in what it decides
+void cluster_vip_note_holder(const bool somebody_else_holds_it);
+bool cluster_dhcp_restarting(void) __attribute__ ((pure));
+
+// Whether this node and another one both serve DHCP or hold the address
+void cluster_conflicts(bool *dhcp, bool *vip);
+// ...and whether it sees enough of the cluster to take either
+bool cluster_quorum(void) __attribute__ ((pure));
+void cluster_dhcp_takeover_state(double *until, unsigned int *failures);
+void cluster_dhcp_restore_takeover(const double until, const unsigned int failures);
+
+// Claim or release the virtual IP address depending on whether this node is
+// the one clients should be talking to
+void cluster_vip_round(bool mine);
+
+// Give the virtual IP address up when FTL stops
+void cluster_vip_shutdown(void);
+void cluster_shutdown(const bool restart);
+
+// Hold a persisted dhcp.active back at start-up until the cluster was asked
+struct config;
+void cluster_dhcp_startup(struct config *conf);
+// ...whether that is still the case, which pihole.toml is written around
+bool cluster_dhcp_held_back(void) __attribute__ ((pure));
+// ...applied to a value read from pihole.toml again
+void cluster_dhcp_reread(bool *active);
+// ...and ended by a value set through the API, true if it was in force
+bool cluster_dhcp_release(void);
+// ...and given up when the cluster thread does not run
+void cluster_dhcp_not_running(void);
+
+#endif // CLUSTER_DHCP_H
