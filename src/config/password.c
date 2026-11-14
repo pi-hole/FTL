@@ -529,27 +529,43 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 	{
 		// Legacy password
 		char *supplied = double_sha256_password(password);
-		const bool result = strcmp(pwhash, supplied) == 0;
-		free(supplied);
+		bool result = strcmp(pwhash, supplied) == 0;
 
-		// Upgrade double-hashed password to BALLOON hash
-		if(result)
+		// Upgrade double-hashed password to BALLOON hash. Only logins do,
+		// the other callers check a new hash or already hold the config lock
+		if(result && rate_limiting)
 		{
-			char *new_hash = create_password(password);
+			lock_config();
+			char *new_hash = NULL;
+			// A reread may have replaced the hash just verified meanwhile
+			if(strcmp(config.webserver.api.pwhash.v.s, supplied) != 0)
+				result = false;
+			else
+				new_hash = create_password(password);
 			if(new_hash != NULL)
 			{
 				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+				char *upgraded = strdup(new_hash);
 				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
 					free(config.webserver.api.pwhash.v.s);
 				config.webserver.api.pwhash.v.s = new_hash;
 				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
 				writeFTLtoml(true, NULL);
-			}
 
-			// Successful logins do not count against rate-limiting
-			if(rate_limiting)
-				refund_password_attempt();
+				// Writing took in a password set through the CLI meanwhile,
+				// the one just verified is no longer valid
+				if(upgraded == NULL || strcmp(config.webserver.api.pwhash.v.s, upgraded) != 0)
+					result = false;
+				free(upgraded);
+			}
+			unlock_config();
 		}
+
+		free(supplied);
+
+		// Successful logins do not count against rate-limiting
+		if(result && rate_limiting)
+			refund_password_attempt();
 
 		return result ? PASSWORD_CORRECT : PASSWORD_INCORRECT;
 	}

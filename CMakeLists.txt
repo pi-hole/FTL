@@ -17,7 +17,6 @@ set(CMAKE_C_STANDARD 17)
 project(PIHOLE_FTL C)
 
 set(DNSMASQ_VERSION pi-hole-v2.93+42)
-
 # Base directory holding Pi-hole's configuration and state (pihole.toml,
 # dnsmasq.conf, the databases, ...). Packagers can relocate the whole tree with
 #   cmake -DPIHOLE_INSTALL_DIR=/opt/pihole/etc ...
@@ -39,5 +38,6 @@ if(PIHOLE_INSTALL_DIR MATCHES "%")
     message(FATAL_ERROR "PIHOLE_INSTALL_DIR must not contain a percent sign, got \"${PIHOLE_INSTALL_DIR}\"")
 endif()
 add_compile_definitions(PIHOLE_INSTALL_DIR="${PIHOLE_INSTALL_DIR}")
+
 
 add_subdirectory(src)

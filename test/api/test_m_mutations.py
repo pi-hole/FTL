@@ -14,9 +14,12 @@ Usage:
 """
 
 import json
+import threading
+import time
 from urllib.parse import quote
 
 import pytest
+import requests
 
 FTL_URL = "http://127.0.0.1"
 
@@ -824,6 +827,36 @@ class TestDNSBlockingToggle:
         # Verify via GET
         data = _j(api_session.get(f"{FTL_URL}/api/dns/blocking", timeout=5))
         assert data["blocking"] == "enabled"
+
+    def test_timer_expiry_while_polling(self, api_session):
+        """A blocking timer expiring while the status is polled does not hang FTL."""
+        headers = dict(api_session.headers)
+        stop = threading.Event()
+        errors = []
+
+        def poll():
+            while not stop.is_set():
+                try:
+                    requests.get(f"{FTL_URL}/api/dns/blocking", headers=headers, timeout=5)
+                except requests.RequestException as e:
+                    errors.append(e)
+                    return
+
+        r = api_session.post(f"{FTL_URL}/api/dns/blocking",
+                             json={"blocking": False, "timer": 1}, timeout=10)
+        assert r.status_code == 200, f"Disable failed: {r.status_code} {r.text}"
+        pollers = [threading.Thread(target=poll) for _ in range(8)]
+        for t in pollers:
+            t.start()
+        time.sleep(3)
+        stop.set()
+        for t in pollers:
+            t.join(timeout=10)
+
+        assert not errors, f"Polling the blocking status failed: {errors[0]}"
+        data = _j(api_session.get(f"{FTL_URL}/api/dns/blocking", timeout=5))
+        assert data["blocking"] == "enabled"
+        assert data["timer"] is None
 
 
 # ===========================================================================
