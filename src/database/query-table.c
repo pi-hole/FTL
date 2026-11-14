@@ -562,7 +562,7 @@ void get_db_info(const bool disk, uint64_t *count, double *earliest_timestamp)
 
 	lock_shm();
 	if(count != NULL)
-		*count = counters->queries - counters->queries_maxprivacy;
+		*count = counters->queries - counters->queries_maxprivacy - counters->hidden_queries;
 	if(earliest_timestamp != NULL)
 	{
 		// No query is older than the first one by more than the disorder.
@@ -1196,8 +1196,8 @@ void DB_read_queries(void)
 
 		// Obtain IDs only after filtering which queries we want to keep
 		const int timeidx = getOverTimeID(queryTimeStamp);
-		const int domainID = findDomainID(domainname, true);
-		const int clientID = findClientID(clientIP, true, false, queryTimeStamp);
+		const int domainID = findDomainID(domainname, true, false);
+		const int clientID = findClientID(clientIP, true, false, queryTimeStamp, false);
 
 		// The query keeps the client name it was stored with
 		const char *clientName = (const char *)sqlite3_column_text(stmt, 13);
@@ -1249,7 +1249,7 @@ void DB_read_queries(void)
 		client->lastQuery = queryTimeStamp;
 
 		// Update client's overTime data structure
-		change_clientcount(client, 0, 0, timeidx, 1);
+		change_clientcount(client, 0, 0, timeidx, 1, false);
 
 		// Get domain pointer
 		domainsData *domain = getDomain(domainID, true);
@@ -1267,7 +1267,7 @@ void DB_read_queries(void)
 				// Add domain to FTL's memory but do not count it. Seeing a
 				// domain in the middle of a CNAME trajectory does not mean
 				// it was queried intentionally.
-				const int CNAMEdomainID = findDomainID(CNAMEdomain, false);
+				const int CNAMEdomainID = findDomainID(CNAMEdomain, false, false);
 				query->CNAME_domainID = CNAMEdomainID;
 
 				// Get domain pointer and update lastQuery timer
@@ -1304,7 +1304,7 @@ void DB_read_queries(void)
 				query->flags.blocked = true;
 				// Get domain pointer
 				domain->blockedcount++;
-				change_clientcount(client, 0, 1, -1, 0);
+				change_clientcount(client, 0, 1, -1, 0, false);
 				break;
 
 			case QUERY_FORWARDED: // Forwarded
@@ -1864,9 +1864,9 @@ static void free_export_run(struct export_run *run)
 // Store the queries that are ready on disk, in one transaction - either
 // periodically (final = false) or at shutdown (final = true). A query is
 // ready once it is older than REPLY_TIMEOUT, so it can still complete, at
-// shutdown at once. Queries recorded at the maximum privacy level are not
-// stored. The queries are taken from shared memory in chunks, and the disk is
-// written without the SHM lock
+// shutdown at once. Queries recorded at the maximum privacy level or hidden by
+// dns.ignoreLocalhost are not stored. The queries are taken from shared memory
+// in chunks, and the disk is written without the SHM lock
 static bool store_ready_queries(const bool final)
 {
 	// Only try to export to database if it is known to not be broken
@@ -1923,7 +1923,8 @@ static bool store_ready_queries(const bool final)
 		while(n < EXPORT_CHUNK && pos - removed < (unsigned int)counters->queries)
 		{
 			const queriesData *query = getQuery(pos - removed, true);
-			if(query != NULL && query->db > run.maxid && query->privacylevel < PRIVACY_MAXIMUM)
+			if(query != NULL && query->db > run.maxid && query->privacylevel < PRIVACY_MAXIMUM &&
+			   !query->flags.hidden)
 			{
 				if(!final && query->timestamp >= now - REPLY_TIMEOUT && query->timestamp <= now + 1.0)
 				{
