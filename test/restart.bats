@@ -125,3 +125,23 @@ wait_for_blocking() {
   run set_blocking '{"blocking":true}'
   assert_output --partial '"blocking":"enabled","timer":null'
 }
+
+@test "A config change while FTL starts does not break the TLS certificate" {
+  # Each change restarts FTL, the next one arrives while the new process loads
+  # the certificate and installs the changed config at the same time
+  before=$(stat -c%s "$FTL_LOG")
+  for value in true false true false; do
+    logsize=$(stat -c%s "$FTL_LOG")
+    run ./pihole-FTL --config dns.expandHosts "$value"
+    assert_success
+    run ./pihole-FTL wait-for "Parsed config file /etc/pihole/pihole.toml successfully" "$FTL_LOG" 30 "$logsize"
+    assert_success
+  done
+  run ./pihole-FTL wait-for "dotdoh: DoQ server listening" "$FTL_LOG" 30 "$logsize"
+  assert_success
+  run ./pihole-FTL wait-for "dotdoh: DoT server listening" "$FTL_LOG" 30 "$logsize"
+  assert_success
+
+  run bash -c "tail -c +$((before + 1)) $FTL_LOG | grep -cE 'dotdoh: could not load|Terminator: loading' || true"
+  assert_output "0"
+}
