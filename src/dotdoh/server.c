@@ -43,6 +43,8 @@ unsigned int dnsmasq_max_tcp_children(void) __attribute__ ((pure));
 #include "edns_pad.h"
 // get_gateway_name(), MAXIFACESTRLEN
 #include "tools/netlink.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 #include "FTL.h"
 
 
@@ -69,10 +71,27 @@ static void resolve_gateway_iface(void)
 	get_gateway_name(resolved_iface);
 }
 
+char *dotdoh_cert_path(void)
+{
+	lock_shm();
+	const char *cert = config.webserver.tls.cert.v.s;
+	char *copy = cert != NULL && cert[0] != '\0' ? strdup(cert) : NULL;
+	unlock_shm();
+	return copy;
+}
+
 bool dotdoh_source_allowed(const char *client_ip)
 {
 	const enum listening_mode mode = config.dns.listeningMode.v.listeningMode;
-	const char *iface = config.dns.interface.v.s;
+
+	// replace_config() frees the config strings under the SHM lock, so copy it
+	// under the same lock
+	char iface_conf[MAXIFACESTRLEN];
+	lock_shm();
+	const char *conf_iface = config.dns.interface.v.s;
+	snprintf(iface_conf, sizeof(iface_conf), "%s", conf_iface != NULL ? conf_iface : "");
+	unlock_shm();
+	const char *iface = iface_conf;
 
 	// SINGLE/BIND scope to one interface; with an empty dns.interface dnsmasq binds
 	// to the default gateway's interface (see get_gateway_name() in
