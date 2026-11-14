@@ -15,6 +15,8 @@
 #include "config/config.h"
 // generate_password()
 #include "config/password.h"
+// writeFTLtoml()
+#include "config/toml_writer.h"
 // lock_shm(), unlock_shm()
 #include "shmem.h"
 
@@ -429,6 +431,98 @@ int generateAppPw(struct ftl_conn *api)
 	// Send JSON response
 	cJSON *json = cJSON_CreateObject();
 	JSON_ADD_ITEM_TO_OBJECT(json, "app", tjson);
+	JSON_SEND_OBJECT(json);
+}
+
+int generatePrometheusToken(struct ftl_conn *api)
+{
+	// A new token is a config change, so the restrictions of the config
+	// PATCH endpoint apply
+	if(api->session.used && api->session.app && !config.webserver.api.app_sudo.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current app session is not allowed to modify Pi-hole config settings (webserver.api.app_sudo is false)");
+
+	if(api->session.used && api->session.cli)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "Unable to change configuration (read-only)",
+		                       "The current CLI session is not allowed to modify Pi-hole config settings");
+
+	if(config.misc.readOnly.v.b)
+		return send_json_error(api, 403,
+		                       "forbidden",
+		                       "The config is currently in read-only mode",
+		                       NULL);
+
+	// An environment variable always wins over the stored hash, so a token
+	// generated here could never authenticate. Refuse like the config PATCH
+	// endpoint does.
+	if(config.webserver.api.prometheus.token.f & FLAG_ENV_VAR)
+		return send_json_error(api,
+		                       400,
+		                       "bad_request",
+		                       "Config items set via environment variables cannot be changed via the API",
+		                       config.webserver.api.prometheus.token.k);
+
+	// Generate a random 256 bit token for the Prometheus endpoint. We reuse
+	// generate_password() (without requesting the slow balloon hash) purely
+	// to obtain a base64-encoded, cryptographically secure random string.
+	char *token = NULL;
+	if(!generate_password(&token, NULL))
+	{
+		return send_json_error(api,
+		                       500,
+		                       "internal_error",
+		                       "Failed to generate Prometheus token",
+		                       "Check FTL.log for details");
+	}
+
+	// Compute the SHA-256 hash that is stored in
+	// webserver.api.prometheus.token. The raw token itself is never stored by
+	// FTL - it is returned to the caller here exactly once.
+	char *hash = sha256_hex(token);
+	if(hash == NULL)
+	{
+		free(token);
+		return send_json_error(api,
+		                       500,
+		                       "internal_error",
+		                       "Failed to hash Prometheus token",
+		                       "Check FTL.log for details");
+	}
+
+	// Create JSON object with the raw token (shown exactly once) and its hash
+	cJSON *tjson = cJSON_CreateObject();
+	JSON_COPY_STR_TO_OBJECT(tjson, "token", token);
+	JSON_COPY_STR_TO_OBJECT(tjson, "hash", hash);
+	free(token);
+	token = NULL;
+
+	// Store the hash in the configuration immediately, replacing (and thereby
+	// invalidating) any previously configured token. Ownership of 'hash' is
+	// transferred to the config item here. To disable the endpoint again, the
+	// operator sets webserver.api.prometheus.token back to an empty string.
+	// Like every other config change, this holds lock_config() from the copy
+	// until the file is written, so a concurrent PATCH cannot install a copy
+	// holding the previous token
+	lock_config();
+	struct config newconf;
+	duplicate_config(&newconf, &config);
+	struct conf_item *new_item = &newconf.webserver.api.prometheus.token;
+	if(new_item->t == CONF_STRING_ALLOCATED)
+		free(new_item->v.s);
+	new_item->v.s = hash;
+	new_item->t = CONF_STRING_ALLOCATED;
+	hash = NULL;
+	replace_config(&newconf);
+	writeFTLtoml(true, NULL);
+	unlock_config();
+
+	// Send JSON response
+	cJSON *json = cJSON_CreateObject();
+	JSON_ADD_ITEM_TO_OBJECT(json, "prometheus", tjson);
 	JSON_SEND_OBJECT(json);
 }
 
