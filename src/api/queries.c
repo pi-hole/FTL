@@ -27,6 +27,7 @@
 // lock_shm(), unlock_shm()
 #include "shmem.h"
 
+
 int api_queries_suggestions(struct ftl_conn *api)
 {
 	// Does the user request a custom number of records to be included?
@@ -996,6 +997,7 @@ int api_queries(struct ftl_conn *api)
 			cJSON_Delete(queries);
 		return ret;
 	}
+
 
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);

@@ -138,6 +138,7 @@ static size_t pihole_suffix_len = 0;
 static size_t hostname_suffix_len = 0;
 static size_t hostname_len = 0;
 static const char *cname_target = NULL;
+static void refresh_dnsmasq_metrics(void);
 
 // FTL DNS cache hit/miss counters.
 // A "hit" means the (domain, client, query-type) tuple was already in FTL's
@@ -283,6 +284,11 @@ const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD "
 
 void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line)
 {
+	// dnsmasq's main thread passes through here on every UDP query (TCP
+	// queries are answered in forked workers), which makes it the place to
+	// walk the cache for the API
+	refresh_dnsmasq_metrics();
+
 	// Extract filename from path
 	const char *path = short_path(file);
 	if(config.debug.flags.v.b)
@@ -4714,6 +4720,72 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
+
+// get_dnsmasq_metrics() walks dnsmasq's cache hash table, which rehash()
+// replaces and frees on dnsmasq's main thread whenever a hosts source grows.
+// The walk therefore only runs on that thread, and the API threads copy what
+// it left here, at most a second old while queries come in. It is declared
+// here rather than in metrics.h so that nothing else can call it
+void get_dnsmasq_metrics(struct metrics *ci);
+static struct metrics dnsmasq_metrics = { 0 };
+static pthread_mutex_t dnsmasq_metrics_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void refresh_dnsmasq_metrics(void)
+{
+	// The time check comes first, it is cheaper than gettid() below
+	static time_t last_check = 0;
+	const time_t now = time(NULL);
+	if(now == last_check)
+		return;
+	last_check = now;
+
+	// Only dnsmasq's main thread in the main process: its thread ID is the
+	// process ID. TCP workers are forked copies whose metrics nobody reads
+	if(gettid() != main_pid())
+		return;
+
+	struct metrics metrics;
+	get_dnsmasq_metrics(&metrics);
+
+	pthread_mutex_lock(&dnsmasq_metrics_lock);
+	memcpy(&dnsmasq_metrics, &metrics, sizeof(dnsmasq_metrics));
+	pthread_mutex_unlock(&dnsmasq_metrics_lock);
+}
+
+void copy_dnsmasq_metrics(struct metrics *metrics)
+{
+	// The cache content (per type, expired, immortal) comes from the last walk
+	pthread_mutex_lock(&dnsmasq_metrics_lock);
+	memcpy(metrics, &dnsmasq_metrics, sizeof(*metrics));
+	pthread_mutex_unlock(&dnsmasq_metrics_lock);
+
+	// The counters are plain integers that need no walk, they are read live
+	// the same way get_dnsmasq_metrics() reads them
+	metrics->dns.cache.size = daemon->cachesize;
+	metrics->dns.cache.inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+	metrics->dns.cache.live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+	metrics->dns.local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
+	metrics->dns.stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
+	metrics->dns.auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
+	metrics->dns.unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
+	metrics->dns.forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
+	metrics->dhcp.bootp = daemon->metrics[METRIC_BOOTP];
+	metrics->dhcp.pxe = daemon->metrics[METRIC_PXE];
+	metrics->dhcp.ack = daemon->metrics[METRIC_DHCPACK];
+	metrics->dhcp.decline = daemon->metrics[METRIC_DHCPDECLINE];
+	metrics->dhcp.discover = daemon->metrics[METRIC_DHCPDISCOVER];
+	metrics->dhcp.inform = daemon->metrics[METRIC_DHCPINFORM];
+	metrics->dhcp.nak = daemon->metrics[METRIC_DHCPNAK];
+	metrics->dhcp.offer = daemon->metrics[METRIC_DHCPOFFER];
+	metrics->dhcp.release = daemon->metrics[METRIC_DHCPRELEASE];
+	metrics->dhcp.request = daemon->metrics[METRIC_DHCPREQUEST];
+	metrics->dhcp.noanswer = daemon->metrics[METRIC_NOANSWER];
+	metrics->dhcp.leases.allocated_4 = daemon->metrics[METRIC_LEASES_ALLOCATED_4];
+	metrics->dhcp.leases.pruned_4 = daemon->metrics[METRIC_LEASES_PRUNED_4];
+	metrics->dhcp.leases.allocated_6 = daemon->metrics[METRIC_LEASES_ALLOCATED_6];
+	metrics->dhcp.leases.pruned_6 = daemon->metrics[METRIC_LEASES_PRUNED_6];
+}
+
 // Fail-closed forwarding gate: for one of our DoT/DoH loopback tuples, return
 // false unless the proxy actually armed it, so dnsmasq skips it (fails over)
 // instead of leaking the plaintext query to a tuple we do not own. Anything else
@@ -4726,6 +4798,7 @@ bool FTL_is_forward_available(const union mysockaddr *addr)
 	if((a >> 24) != 127)
 		return true; // not 127.0.0.0/8: a real upstream, never gated
 	return dotdoh_forward_available(a, ntohs(addr->in.sin_port));
+
 }
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)

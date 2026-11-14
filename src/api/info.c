@@ -1091,7 +1091,7 @@ int api_info_messages(struct ftl_conn *api)
 int api_info_metrics(struct ftl_conn *api)
 {
 	struct metrics metrics = { 0 };
-	get_dnsmasq_metrics(&metrics);
+	copy_dnsmasq_metrics(&metrics);
 	cJSON *cache = JSON_NEW_OBJECT();
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "size", metrics.dns.cache.size);
 	JSON_ADD_NUMBER_TO_OBJECT(cache, "inserted", metrics.dns.cache.inserted);

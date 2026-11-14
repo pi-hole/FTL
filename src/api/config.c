@@ -126,6 +126,7 @@ static struct {
 		.dot = { "tls://one.one.one.one@1.1.1.1", "tls://one.one.one.one@[2606:4700:4700::1111]" },
 		.doh = { "https://cloudflare-dns.com@1.1.1.1/dns-query", "https://cloudflare-dns.com@[2606:4700:4700::1111]/dns-query" }
 	}
+
 };
 
 // The following functions are used to create the JSON output
