@@ -123,7 +123,7 @@ jobs:
         category: "/language:${{matrix.language}}"
         upload: failure-only # upload only in case of failure, otherwise upload later after filtering
         output: codeql-results
-    
+
     - name: Filter SARIF
       uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 #v1.1
       with:
@@ -139,7 +139,7 @@ jobs:
           -src/database/sqlite3.h
           -src/zip/miniz/*
           -src/lua/*
-          +src/lua/ftl_*  
+          +src/lua/ftl_*
         input: codeql-results/cpp.sarif
         output: codeql-results/cpp.sarif
 

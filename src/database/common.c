@@ -841,7 +841,7 @@ bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int v
 	// UPSERT is a clause added to INSERT that causes the INSERT to behave
 	// as an UPDATE or a no-op if the INSERT would violate a uniqueness
 	// constraint. UPSERT is not standard SQL. UPSERT in SQLite follows the
-	// syntax established by PostgreSQL, with generalizations. 
+	// syntax established by PostgreSQL, with generalizations.
 	SQL_bool(db, "INSERT INTO ftl (id, value) VALUES ( %u, %d ) ON CONFLICT (id) DO UPDATE SET value=%d;", ID, value, value);
 	return true;
 }
