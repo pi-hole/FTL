@@ -100,7 +100,7 @@ static void heap_sift_down(struct top_entries *heap, const unsigned int size, un
 }
 
 // Check whether a string matches any of the compiled exclude filters
-static bool matches_filter(const regex_t *regex, const unsigned int N_regex, const char *str)
+bool matches_filter(const regex_t *regex, const unsigned int N_regex, const char *str)
 {
 	if(str == NULL)
 		return false;
