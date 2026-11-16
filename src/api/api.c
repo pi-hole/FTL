@@ -34,6 +34,10 @@ static struct {
 	//                                                                                                               flags             fifo ID
 	// Note: The order of appearance matters here, more specific URIs have to
 	// appear *before* less specific URIs: 1. "/a/b/c", 2. "/a/b", 3. "/a"
+	// Note: The list endpoints accept PUT and DELETE without the item in the
+	// URI as well, naming it in "?item=" instead. The more specific row above
+	// is what serves such a request, the methods are repeated on the row
+	// without arguments so /api/endpoints reports the URI actually usable.
 	{ "/api/auth/sessions",                     "",                           api_auth_sessions,                     { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/auth/session",                      "/{id}",                      api_auth_session_delete,               { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },
 	{ "/api/auth/app",                          "",                           generateAppPw,                         { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
@@ -42,19 +46,19 @@ static struct {
 	{ "/api/dns/blocking",                      "",                           api_dns_blocking,                      { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/clients/_suggestions",              "",                           api_client_suggestions,                { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/clients",                           "/{client}",                  api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
-	{ "/api/clients",                           "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/clients",                           "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/clients:batchDelete",               "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },
 	{ "/api/domains",                           "/{type}/{kind}/{domain}",    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
-	{ "/api/domains",                           "/{type}/{kind}",             api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/domains",                           "/{type}/{kind}",             api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/domains",                           "/{type}",                    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/domains",                           "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/domains:batchDelete",               "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },
 	{ "/api/search",                            "/{domain}",                  api_search,                            { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/groups",                            "/{name}",                    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
-	{ "/api/groups",                            "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/groups",                            "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/groups:batchDelete",                "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },
 	{ "/api/lists",                             "/{list}",                    api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_PUT | HTTP_DELETE },
-	{ "/api/lists",                             "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST },
+	{ "/api/lists",                             "",                           api_list,                              { API_PARSE_JSON, 0                         }, true,  HTTP_GET | HTTP_POST | HTTP_PUT | HTTP_DELETE },
 	{ "/api/lists:batchDelete",                 "",                           api_list,                              { API_PARSE_JSON | API_BATCHDELETE, 0       }, true,  HTTP_POST },
 	{ "/api/info/client",                       "",                           api_info_client,                       { API_PARSE_JSON, 0                         }, false, HTTP_GET },
 	{ "/api/info/login",                        "",                           api_info_login,                        { API_PARSE_JSON, 0                         }, false, HTTP_GET },
