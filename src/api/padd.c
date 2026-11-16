@@ -38,7 +38,7 @@ int api_padd(struct ftl_conn *api)
 	// Lock shared memory
 	lock_shm();
 
-	const int total = counters->queries;
+	const int total = get_visible_query_count();
 	const int blocked = get_blocked_count();
 	const unsigned int active_clients = get_active_clients();
 	const int num_gravity = counters->database.gravity;
@@ -51,7 +51,7 @@ int api_padd(struct ftl_conn *api)
 		for(int queryID = counters->queries - 1; queryID >= 0 ; queryID--)
 		{
 			const queriesData *query = getQuery(queryID, true);
-			if(query == NULL)
+			if(query == NULL || query->flags.hidden)
 				continue;
 
 			if(query->flags.blocked)

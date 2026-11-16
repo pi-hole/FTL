@@ -830,8 +830,9 @@ static bool add_FTL_clients_to_network_table(sqlite3 *db, const enum arp_status 
 			continue;
 		}
 
-		// Silently skip alias-clients - they do not really exist
-		if(client->flags.aliasclient)
+		// Silently skip alias-clients - they do not really exist - and
+		// clients only hidden queries have counted
+		if(client->flags.aliasclient || client->flags.hidden_only)
 		{
 			unlock_shm();
 			continue;
@@ -1439,7 +1440,7 @@ void parse_neighbor_cache(sqlite3 *db)
 					//              is unknown (only DNS requesting clients
 					//              do this), the now value is ignored
 					lock_shm();
-					int clientID = findClientID(ip, false, false, 0.0);
+					int clientID = findClientID(ip, false, false, 0.0, false);
 					unlock_shm();
 					if(clientID >= 0 && clientID < clients)
 						client_status[clientID] = CLIENT_ARP_INCOMPLETE;
@@ -1476,7 +1477,7 @@ void parse_neighbor_cache(sqlite3 *db)
 			//              is unknown (only DNS requesting clients
 			//              do this), the now value is ignored
 			lock_shm();
-			const int clientID = findClientID(ip, false, false, 0.0);
+			const int clientID = findClientID(ip, false, false, 0.0, false);
 
 			// Set default values for a new device, may be updated
 			// below if the client is known to pihole-FTL
