@@ -78,7 +78,7 @@ function loginout(){
 		const password = document.getElementById('loginpw').value;
 		postData('../auth', {password})
 		.then(data => {
-			if(data.session.valid === true) {
+			if(data.session?.valid === true) {
 				loginOk(data.session.sid);
 			} else {
 				loginFail();
@@ -90,7 +90,7 @@ function loginout(){
 		});
 	} else {
 		deleteData('../auth')
-		.then(logoutOk())
+		.then(() => logoutOk())
 		.catch((error) => {
 			loginFail();
 			console.error('Error:', error);
@@ -106,15 +106,16 @@ function setStyle(style) {
 
 function setTheme(theme) {
 	const docEl = document.getElementById('thedoc');
-	docEl.setAttribute('theme', theme);
+	docEl.setAttribute('color-scheme', theme);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
 	const docEl = document.getElementById('thedoc');
 
 	docEl.addEventListener('after-try', (event) => {
-		console.log(event.detail.response);
-		if(event.detail.response.status === 401) {
+		// The response is missing when the request failed before one arrived
+		console.log(event.detail.response ?? event.detail.err);
+		if(event.detail.response?.status === 401) {
 			loginFail();
 		}
 	});
