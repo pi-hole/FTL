@@ -15,6 +15,8 @@ set(sources
         tar.h
         teleporter.c
         teleporter.h
+        teleporter_crypt.c
+        teleporter_crypt.h
         )
 
 add_library(zip OBJECT ${sources})
