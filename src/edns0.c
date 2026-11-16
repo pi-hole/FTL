@@ -285,15 +285,15 @@ void FTL_parse_pseudoheaders(const unsigned char *msg, const size_t msglen,
 	unsigned char *p = pheader;
 
 // RFC 6891                   EDNS(0) Extensions                   6.1.2.  Wire Format
-// 
+//
 //    An OPT RR has a fixed part and a variable set of options expressed as
 //    {attribute, value} pairs.  The fixed part holds some DNS metadata,
 //    and also a small collection of basic extension elements that we
 //    expect to be so popular that it would be a waste of wire space to
 //    encode them as {attribute, value} pairs.
-// 
+//
 //    The fixed part of an OPT RR is structured as follows:
-// 
+//
 //        +------------+--------------+------------------------------+
 //        | Field Name | Field Type   | Description                  |
 //        +------------+--------------+------------------------------+

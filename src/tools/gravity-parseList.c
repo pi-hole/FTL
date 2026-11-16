@@ -43,7 +43,7 @@ static const unsigned char valid_domain_char[256] = {
 	['-'] = 1, ['.'] = 1, ['_'] = 1,
 };
 
-// Fast test for string containing specified character in 
+// Fast test for string containing specified character in
 // selected range from start of string
 static inline bool string_has_within(const char *s, const char character, const int maxlen)
 {

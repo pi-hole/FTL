@@ -1,0 +1,21 @@
+{
+  "Version": "v4.0.2",
+  "Verbose": false,
+  "Format": "",
+  "Debug": false,
+  "IgnoreDefaults": false,
+  "SpacesAfterTabs": false,
+  "NoColor": false,
+  "Exclude": [],
+  "AllowedContentTypes": [],
+  "PassedFiles": [],
+  "Disable": {
+    "Charset": false,
+    "EndOfLine": false,
+    "Indentation": true,
+    "IndentSize": true,
+    "InsertFinalNewline": false,
+    "MaxLineLength": true,
+    "TrimTrailingWhitespace": false
+  }
+}

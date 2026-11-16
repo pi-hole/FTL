@@ -235,13 +235,13 @@ static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);
-		
+
 		// Sanitize dns.hosts entries before writing them to TOML
 		if(conf_item == &config.dns.hosts)
 		{
 			sanitize_dns_hosts(&conf_item->v);
 		}
-		
+
 		writeTOMLvalue(fp, level-1, conf_item->t, &conf_item->v);
 
 		// Compare with default value and add a comment on difference
