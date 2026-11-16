@@ -25,13 +25,13 @@ Certificate:
                 ASN1 OID: secp384r1
                 NIST CURVE: P-384
         X509v3 extensions:
-            X509v3 Subject Key Identifier: 
+            X509v3 Subject Key Identifier:
                 87:89:46:C1:F5:F4:19:F7:4B:57:39:24:1C:2B:A8:C4:39:1D:89:89
-            X509v3 Authority Key Identifier: 
+            X509v3 Authority Key Identifier:
                 51:E3:2B:67:A2:FE:89:14:A2:71:44:98:6E:89:AA:73:F8:0F:6A:29
-            X509v3 Basic Constraints: 
+            X509v3 Basic Constraints:
                 CA:FALSE
-            X509v3 Subject Alternative Name: 
+            X509v3 Subject Alternative Name:
                 DNS:pi.hole
     Signature Algorithm: ecdsa-with-SHA256
     Signature Value:

@@ -463,7 +463,7 @@ static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
 // Perform a name lookup by sending a packet to ourselves
 static bool ngethostbyname(const int sock, const bool tcp,
                            char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
-{	
+{
 	// Initialize request DNS header
 	struct DNS_HEADER dns = { 0 };
 	// Random query ID. This has to be unpredictable, as an off-path
