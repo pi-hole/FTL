@@ -71,19 +71,29 @@
 
 // Cap concurrent QUIC connections so a flood cannot exhaust memory.
 #define DOQ_MAX_CONNS 64
-// Cap concurrent connections from a single source IP so one client cannot hold
-// every connection slot.
+// Cap concurrent connections from a single source IP so one address cannot hold
+// every connection slot (a host with several addresses still can).
 #define DOQ_MAX_CONNS_PER_IP 16
 // Cap in-flight queries across all connections. Each holds ~192 KiB of pooled
 // I/O buffers plus one loopback socket to dnsmasq, so this - not the connection
 // count - is what bounds the listener's footprint and its load on dnsmasq.
 #define DOQ_MAX_STREAMS 32
 // Most concurrent streams all connections from one source IP may hold
-// together, so that one client cannot take every slot of DOQ_MAX_STREAMS, the
+// together, so that one address cannot take every slot of DOQ_MAX_STREAMS, the
 // way DoT leaves half of its connection slots to other clients. A stream beyond
-// a cap is accepted once a slot frees; until then it waits in OpenSSL, whose
-// stream limit and flow control bound what a client can queue there.
+// a cap is accepted once a slot frees; until then it waits in OpenSSL.
 #define DOQ_MAX_STREAMS_PER_SOURCE (DOQ_MAX_STREAMS / 2)
+// Most streams that may wait for a slot, from one source IP and across all
+// connections; a stream beyond them is reset with DOQ_EXCESSIVE_LOAD. A
+// waiting stream keeps the data the client sent on it in OpenSSL, 7 to 20 KB
+// for a query, so these keep the waiting queries to a few MB. Streams that
+// carry more are bounded only by OpenSSL's flow control, 768 KB per
+// connection. While the stream slots of an address are taken, up to 48 more of
+// its queries wait. As with the connection slots it takes four addresses to
+// fill the waiting slots, so the queries of other clients still wait for a
+// slot when two addresses hold all of those in flight.
+#define DOQ_MAX_WAITING_PER_SOURCE 48
+#define DOQ_MAX_WAITING (4 * DOQ_MAX_WAITING_PER_SOURCE)
 // Wall-clock budgets for one query, swept on each poll wake-up: the first
 // bounds the read phase and the second, armed once the query has been read,
 // the resolve+write phase, so neither a slow-drip stream nor a hung resolve can
@@ -174,6 +184,7 @@ struct doq_conn {
 	SSL *ssl;                      // OpenSSL QUIC connection object
 	int nstreams;                  // streams currently attached to this conn
 	unsigned int ntaken;           // streams taken from the accept queue, see DOQ_MAX_CONN_STREAMS
+	size_t waiting;                // streams waiting for a slot, see conns_limit_waiting()
 	bool retiring;                 // takes no new stream, closed once none is left
 	bool closing;                  // CONNECTION_CLOSE initiated, see doq_close_conn()
 	uint64_t close_code;           // DoQ error code the connection is closed with
@@ -1129,21 +1140,35 @@ static int drive_stream(struct doq_stream *s)
 	}
 }
 
+// Take the oldest stream from the connection's accept queue, or NULL. Every
+// stream taken counts against DOQ_MAX_CONN_STREAMS, and c->waiting counts
+// streams at the head of the queue.
+static SSL *conn_take_stream(struct doq_conn *c)
+{
+	SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
+	if(st == NULL)
+		return NULL;
+	if(c->waiting > 0)
+		c->waiting--;
+	// Past its stream budget it answers what is in flight and then closes
+	if(++c->ntaken >= DOQ_MAX_CONN_STREAMS)
+		c->retiring = true;
+	return st;
+}
+
 // Accept every QUIC stream the client has opened on this connection. Only
 // client-initiated bidirectional streams carry queries; a unidirectional stream
 // is not part of DoQ, so it is reset rather than served. Streams beyond the
-// stream caps stay queued in OpenSSL until a slot frees, and those a retiring
-// or closing connection does not accept end with the connection.
+// stream caps stay queued in OpenSSL until a slot frees (see
+// conns_limit_waiting()), and those a retiring or closing connection does not
+// accept end with the connection.
 static void conn_accept_streams(struct doq_conn *c)
 {
 	while(!c->closing && !c->retiring && conn_has_room(c))
 	{
-		SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
+		SSL *st = conn_take_stream(c);
 		if(st == NULL)
 			break;
-		// Past its stream budget it answers what is in flight and then closes
-		if(++c->ntaken >= DOQ_MAX_CONN_STREAMS)
-			c->retiring = true;
 		if((SSL_get_stream_type(st) & SSL_STREAM_TYPE_WRITE) == 0)
 		{
 			// A receive-only (unidirectional) stream cannot carry a response.
@@ -1157,6 +1182,85 @@ static void conn_accept_streams(struct doq_conn *c)
 		c->idle_deadline = doq_now() + DOQ_CONN_IDLE_TIMEOUT_S;
 		if(drive_stream(s) < 0)
 			stream_free(s);
+	}
+}
+
+// Bound the streams left waiting for a slot by DOQ_MAX_WAITING_PER_SOURCE and
+// DOQ_MAX_WAITING. Of the streams that arrived on a connection since the last
+// pass, as many as fit stay waiting and the others are reset with
+// DOQ_EXCESSIVE_LOAD. OpenSSL hands out only the head of the queue, so the
+// streams reset are the connection's oldest waiting ones; the caps keep the
+// number of waiting streams, not which ones wait. Connections are visited in
+// the order of the accept pass.
+//
+// A reset returns a stream credit to the client, so it counts against
+// DOQ_MAX_CONN_STREAMS, and a connection that would need more resets than that
+// leaves is closed with DOQ_EXCESSIVE_LOAD instead. A retiring connection,
+// which takes no streams any more, is closed with DOQ_NO_ERROR once its client
+// queues more than the caps allow, so that the client opens a new connection;
+// its queries in flight are lost with it. Without these closes the streams
+// beyond the caps would keep their data in OpenSSL until the connection is
+// gone.
+static void conns_limit_waiting(const int first)
+{
+	size_t queued[DOQ_MAX_CONNS];
+	size_t all = 0;
+	for(int i = 0; i < DOQ_MAX_CONNS; i++)
+	{
+		struct doq_conn *c = &g_conns[i];
+		queued[i] = c->used && !c->closing ? SSL_get_accept_stream_queue_len(c->ssl) : 0;
+		if(c->waiting > queued[i])
+			c->waiting = queued[i];
+		all += c->waiting;
+	}
+	for(int k = 0; k < DOQ_MAX_CONNS; k++)
+	{
+		const int i = (first + k) % DOQ_MAX_CONNS;
+		struct doq_conn *c = &g_conns[i];
+		if(queued[i] == c->waiting)
+			continue;
+		size_t same_src = 0;
+		for(int j = 0; j < DOQ_MAX_CONNS; j++)
+			if(g_conns[j].used && strcmp(g_conns[j].client, c->client) == 0)
+				same_src += g_conns[j].waiting;
+		size_t room = all < DOQ_MAX_WAITING ? DOQ_MAX_WAITING - all : 0;
+		const size_t src_room = same_src < DOQ_MAX_WAITING_PER_SOURCE ?
+		                        DOQ_MAX_WAITING_PER_SOURCE - same_src : 0;
+		if(src_room < room)
+			room = src_room;
+		const size_t arrived = queued[i] - c->waiting;
+		const size_t excess = arrived > room ? arrived - room : 0;
+		if(excess == 0)
+		{
+			c->waiting += arrived;
+			all += arrived;
+			continue;
+		}
+		if(c->retiring || c->ntaken + excess > DOQ_MAX_CONN_STREAMS)
+		{
+			log_debug(DEBUG_TLS, "dotdoh: DoQ streams waiting for a slot at the limit, closing a connection from %s",
+			          c->client);
+			all -= c->waiting;
+			c->waiting = 0;
+			doq_close_conn(c, c->retiring ? DOQ_NO_ERROR : DOQ_EXCESSIVE_LOAD);
+			continue;
+		}
+		log_debug(DEBUG_TLS, "dotdoh: DoQ streams waiting for a slot at the limit, resetting %zu from %s",
+		          excess, c->client);
+		const size_t was = c->waiting;
+		size_t reset = 0;
+		while(reset < excess)
+		{
+			SSL *st = conn_take_stream(c);
+			if(st == NULL)
+				break;
+			const bool bidi = (SSL_get_stream_type(st) & SSL_STREAM_TYPE_WRITE) != 0;
+			doq_reset_stream(st, bidi ? DOQ_EXCESSIVE_LOAD : DOQ_PROTOCOL_ERROR);
+			SSL_free(st);
+			reset++;
+		}
+		c->waiting = queued[i] - reset;
+		all += c->waiting - was;
 	}
 }
 
@@ -1176,6 +1280,7 @@ static void conns_accept_streams(void)
 			started = i;
 		conn_accept_streams(&g_conns[i]);
 	}
+	conns_limit_waiting(first);
 	if(started >= 0)
 		first = (started + 1) % DOQ_MAX_CONNS;
 }
