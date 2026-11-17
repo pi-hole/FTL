@@ -777,6 +777,43 @@ def doq_waiting_all(host, port, qname, holders, waiters, count):
             c.close()
 
 
+def doq_drain(host, port, qname, source, expected_ip, budget):
+    """On one connection, ask budget - 16 queries, at most 8 at a time, then
+    open 15 streams that send only one byte and ask one more query, which
+    makes budget streams taken. Then ask 8 more queries, which have to wait
+    while the 15 streams hold their slots until their read deadline. Returns
+    whether the query that made budget was answered, how many of the 8 were
+    answered within 1 s of sending them and how many before the connection
+    ended (within 10 s), and the close code it ended with."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        sent, inflight = 0, []
+        end = time.monotonic() + 60
+        while (sent < budget - 16 or inflight) and c.closed is None and time.monotonic() < end:
+            while sent < budget - 16 and len(inflight) < 8:
+                inflight.append(c.send(framed))
+                sent += 1
+            c.pump()
+            inflight = [s for s in inflight if not c.done(s)]
+        for _ in range(15):
+            c.send(b"\x00", fin=False)
+        last = c.send(framed)
+        c.wait(lambda: c.done(last), 1)
+        c.wait(lambda: False, 0.3)
+        sids = [c.send(framed) for _ in range(8)]
+        c.wait(lambda: False, 1)
+        early = sum(1 for s in sids if s in c.answers)
+        c.wait(lambda: False, 10)
+        for s in sids:
+            if s in c.answers:
+                validate(c.answers[s], expected_ip)
+        return last in c.answers, early, sum(1 for s in sids if s in c.answers), c.closed
+    finally:
+        c.close()
+
+
 def doq_cycle(host, port, source):
     """Keep 100 streams that send only one byte open on one connection, opening
     a new one for every one reset, for at most 10 s. Returns the close code the
@@ -1085,6 +1122,14 @@ def main():
         early = doq_waiting_all(host, int(port), domain, holders.split(","),
                                 waiters.split(","), int(count))
         print("reset at once per address %s" % early)
+    elif cmd == "doqdrain":
+        # A connection that reaches its stream budget answers the queries that
+        # queued while its last ones were in flight before it closes
+        _, _, host, port, domain, source, expected_ip, budget = sys.argv[:8]
+        last, early, before, closed = doq_drain(host, int(port), domain, source,
+                                                expected_ip, int(budget))
+        print("last answered %s, 8 queued: %d answered at once, %d before the close, closed %s"
+              % (last, early, before, closed))
     elif cmd == "doqcycle":
         # A client that opens a new stream for every one reset gets a bounded
         # number of resets before the connection is closed

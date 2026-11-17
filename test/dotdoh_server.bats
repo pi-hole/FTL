@@ -289,11 +289,25 @@ setup_file() {
 @test "dotdoh-server: a DoQ connection retires after taking 1000 streams" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # 1100 queries with up to 8 in flight on one connection: the first 1000
-  # (DOQ_MAX_CONN_STREAMS) are answered, then the connection is closed with
-  # DOQ_NO_ERROR (0x0) and the queries the client sent after those are lost
-  # with it. Update the numbers here when the constant changes.
+  # (DOQ_MAX_CONN_STREAMS) are answered, then the up to 8 queued when those are
+  # done, and then the connection is closed with DOQ_NO_ERROR (0x0). Update
+  # the numbers here when the constant changes.
   run python3 test/dotdoh_query.py doqpipeline 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 1100 8
-  assert_output "answered 1000 reset 0 closed 0"
+  assert_output --regexp '^answered 100[0-8] reset 0 closed 0$'
+}
+
+@test "dotdoh-server: a retiring DoQ connection answers the queries queued meanwhile" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.36 asks 984 queries on one connection, opens 15 streams that never
+  # deliver their query and asks one more query, the 1000th stream taken
+  # (DOQ_MAX_CONN_STREAMS), so the connection retires. 8 more queries wait
+  # while the 15 streams hold their slots until their read deadline
+  # (DOQ_READ_TIMEOUT_S) and are answered after that, before the connection is
+  # closed with DOQ_NO_ERROR (0x0). None is answered at once, which a
+  # connection that retired one stream too late would do. Update the numbers
+  # here when these constants change.
+  run python3 test/dotdoh_query.py doqdrain 127.0.0.1 853 "$DOMAIN" 127.0.0.36 "$EXPECT_IP" 1000
+  assert_output "last answered True, 8 queued: 0 answered at once, 8 before the close, closed 0"
 }
 
 @test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {

@@ -102,10 +102,12 @@
 #define DOQ_READ_TIMEOUT_S 3
 #define DOQ_QUERY_TIMEOUT_S 10
 // Absolute cap on a whole connection's lifetime, independent of activity. When
-// it runs out the connection accepts no new stream and is closed with
-// DOQ_NO_ERROR once the queries in flight are answered, so the client learns
-// about it from the connection close, not from a lost query. Together with the
-// stream caps, the idle cap and DOQ_MAX_CONN_STREAMS this bounds a connection.
+// it runs out the connection retires: it takes no new stream, answers the
+// queries in flight and, once, those the client sent while it waited for them,
+// and is then closed with DOQ_NO_ERROR, so the client learns about it from the
+// connection close rather than from a lost query (see doq_reap()). Together
+// with the stream caps, the idle cap and DOQ_MAX_CONN_STREAMS this bounds a
+// connection.
 #define DOQ_CONN_MAX_LIFETIME_S 120
 // Most streams a connection takes from its accept queue, answered or not,
 // before it retires as at the end of its lifetime. OpenSSL keeps about 340
@@ -185,7 +187,10 @@ struct doq_conn {
 	int nstreams;                  // streams currently attached to this conn
 	unsigned int ntaken;           // streams taken from the accept queue, see DOQ_MAX_CONN_STREAMS
 	size_t waiting;                // streams waiting for a slot, see conns_limit_waiting()
-	bool retiring;                 // takes no new stream, closed once none is left
+	bool retiring;                 // past its lifetime or stream budget, see doq_reap()
+	bool retire_drain;             // retiring, takes the streams that queued meanwhile
+	size_t retire_left;            // streams of those it has not taken yet
+	time_t retire_by;              // takes none of them after this
 	bool closing;                  // CONNECTION_CLOSE initiated, see doq_close_conn()
 	uint64_t close_code;           // DoQ error code the connection is closed with
 	uint64_t close_deadline;       // monotonic ms by which a closing conn is freed
@@ -1140,9 +1145,20 @@ static int drive_stream(struct doq_stream *s)
 	}
 }
 
+// Retire a connection, see doq_reap(). The streams that queued while it
+// answers its last queries are taken only until the slowest of those could
+// have ended, so a retiring connection is closed within twice that.
+static void conn_retire(struct doq_conn *c)
+{
+	if(c->retiring)
+		return;
+	c->retiring = true;
+	c->retire_by = doq_now() + DOQ_READ_TIMEOUT_S + DOQ_QUERY_TIMEOUT_S;
+}
+
 // Take the oldest stream from the connection's accept queue, or NULL. Every
-// stream taken counts against DOQ_MAX_CONN_STREAMS, and c->waiting counts
-// streams at the head of the queue.
+// stream taken counts against DOQ_MAX_CONN_STREAMS, and c->waiting and
+// c->retire_left count streams at the head of the queue.
 static SSL *conn_take_stream(struct doq_conn *c)
 {
 	SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
@@ -1150,9 +1166,11 @@ static SSL *conn_take_stream(struct doq_conn *c)
 		return NULL;
 	if(c->waiting > 0)
 		c->waiting--;
+	if(c->retire_left > 0)
+		c->retire_left--;
 	// Past its stream budget it answers what is in flight and then closes
 	if(++c->ntaken >= DOQ_MAX_CONN_STREAMS)
-		c->retiring = true;
+		conn_retire(c);
 	return st;
 }
 
@@ -1164,7 +1182,7 @@ static SSL *conn_take_stream(struct doq_conn *c)
 // accept end with the connection.
 static void conn_accept_streams(struct doq_conn *c)
 {
-	while(!c->closing && !c->retiring && conn_has_room(c))
+	while(!c->closing && (!c->retiring || c->retire_left > 0) && conn_has_room(c))
 	{
 		SSL *st = conn_take_stream(c);
 		if(st == NULL)
@@ -1389,11 +1407,27 @@ static void doq_reap(void)
 		                  SSL_get_accept_stream_queue_len(c->ssl) == 0;
 		// Past its lifetime it answers what is in flight and then closes
 		if(now >= c->hard_deadline)
-			c->retiring = true;
+			conn_retire(c);
+		if(c->retiring && now >= c->retire_by)
+			c->retire_left = 0;
 		if(closed)
 			conn_free(c);
-		else if(idle || (c->retiring && c->nstreams == 0))
+		else if(idle)
 			doq_close_conn(c, DOQ_NO_ERROR);
+		else if(c->retiring && c->nstreams == 0)
+		{
+			// The client went on sending queries while the last ones were
+			// answered. Those already queued now are taken and answered as
+			// well, once; streams that queue after them end with the close.
+			const size_t queued = SSL_get_accept_stream_queue_len(c->ssl);
+			if(!c->retire_drain && queued > 0 && now < c->retire_by)
+			{
+				c->retire_drain = true;
+				c->retire_left = queued;
+			}
+			else if(c->retire_left == 0 || queued == 0)
+				doq_close_conn(c, DOQ_NO_ERROR);
+		}
 	}
 }
 
