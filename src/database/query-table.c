@@ -279,8 +279,9 @@ void init_query_database(void)
 		runGC(time(NULL), NULL, false);
 
 		// Try to import queries from long-term database if available
-		// Skip if we are not supposed to load queries from disk
-		if(config.database.DBimport.v.b)
+		// Skip if we are not supposed to load queries from disk or if
+		// flushing the message table found the database broken
+		if(config.database.DBimport.v.b && !FTLDBerror())
 			count_queries_on_disk();
 	}
 	else
@@ -1005,6 +1006,34 @@ bool create_addinfo_table(sqlite3 *db)
 	return true;
 }
 
+// Release the slots count_queries_on_disk() reserved for queries that were not
+// imported. The queries that arrived during the import move down so the array
+// has no gaps the GC or the export would trip over
+static void release_import_slots(const size_t imported_queries)
+{
+	if((int)imported_queries >= counted_queries)
+		return;
+
+	lock_shm();
+	const unsigned int gap = counted_queries - imported_queries;
+	for(unsigned int i = counted_queries; i < counters->queries; i++)
+	{
+		queriesData *src = getQuery(i, false);
+		queriesData *dst = getQuery(i - gap, false);
+		if(src == NULL || dst == NULL)
+			break;
+		*dst = *src;
+		memset(src, 0, sizeof(*src));
+	}
+	counters->queries -= gap;
+	// The moved queries are not exported yet
+	export_pos -= gap;
+
+	// Invalidate the query ID cache since the indices shifted
+	queryIDMap_clear();
+	unlock_shm();
+}
+
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
@@ -1030,7 +1059,13 @@ void DB_read_queries(void)
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
 	if(FTLDBerror() || killed || querydb == NULL)
+	{
+		// The slots reserved for the import would stay empty. Shared memory is
+		// left alone once FTL is terminating
+		if(!killed)
+			release_import_slots(0);
 		return;
+	}
 
 	// The rows on disk, for disk=true and /api/info/database, also when the
 	// import below fails
@@ -1053,6 +1088,7 @@ void DB_read_queries(void)
 	if( rc != SQLITE_OK )
 	{
 		log_err("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		release_import_slots(0);
 		return;
 	}
 	if((rc = sqlite3_bind_int64(stmt, 1, import_min_id)) != SQLITE_OK ||
@@ -1061,6 +1097,7 @@ void DB_read_queries(void)
 	{
 		log_err("DB_read_queries() - Failed to bind the window: %s", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
+		release_import_slots(0);
 		return;
 	}
 
@@ -1363,27 +1400,8 @@ void DB_read_queries(void)
 		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu",
 		         config.files.database.v.s, counted_queries, imported_queries);
 
-		// Slots reserved for rows skipped above are still empty. Move
-		// the queries that arrived during the import down so the array
-		// has no gaps the GC or the export would trip over
-		lock_shm();
-		const unsigned int gap = counted_queries - imported_queries;
-		for(unsigned int i = counted_queries; i < counters->queries; i++)
-		{
-			queriesData *src = getQuery(i, false);
-			queriesData *dst = getQuery(i - gap, false);
-			if(src == NULL || dst == NULL)
-				break;
-			*dst = *src;
-			memset(src, 0, sizeof(*src));
-		}
-		counters->queries -= gap;
-		// The moved queries are not exported yet
-		export_pos -= gap;
-
-		// Invalidate the query ID cache since the indices shifted
-		queryIDMap_clear();
-		unlock_shm();
+		// Slots reserved for rows skipped above are still empty
+		release_import_slots(imported_queries);
 	}
 
 	// Finalize SQLite3 statement
