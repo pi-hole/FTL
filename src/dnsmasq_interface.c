@@ -1135,7 +1135,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime
-	const unsigned int timeidx = getOverTimeID(querytimestamp);
+	const int timeidx = getOverTimeID(querytimestamp);
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
