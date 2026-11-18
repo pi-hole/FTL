@@ -344,7 +344,7 @@ static bool try_enqueue(struct log_record *rec)
 	// the queue is full, WARNING/ERROR after a bounded retry and CRIT/beyond
 	// after a longer retry, so the daemon threads never block on logging.
 	const unsigned int max_retries = rec->priority <= LOG_CRIT     ? 1000u :
-	                                 rec->priority <= LOG_WARNING  ? 100u  : 0u;
+	                                 rec->priority <= LOG_WARNING  ? 100u  : 10u;
 
 	unsigned int retries = 0;
 	log_ring_counter_t claimed;
