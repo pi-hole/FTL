@@ -120,7 +120,13 @@ int main (int argc, char *argv[])
 	// reading the config, which rewrites pihole.toml, dnsmasq.conf and
 	// custom.list, the files a running instance uses and reloads
 	if(another_FTL())
+	{
+		// Drain the (asynchronous) logger so the "already running" message
+		// and any other records produced during this short-lived invocation
+		// actually reach FTL.log before the process exits.
+		logger_shutdown();
 		return EXIT_FAILURE;
+	}
 
 	// Process pihole.toml configuration file
 	// The file is rewritten after parsing to ensure that all
