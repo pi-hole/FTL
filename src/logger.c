@@ -854,10 +854,9 @@ static void logger_dnsmasq_line(struct log_record *rec)
 }
 
 // ---- Dispatch -----------------------------------------------------------------
-// Relay a record into the SHM FIFO.  This thread is the sole FIFO writer
-// (every producer goes through the ring), so no lock is taken here: locking
-// would let the thread re-enter a mutex it already holds whenever a lock- or
-// timing-debug line produced below loops back through the queue.
+// Relay a record into the in-memory FIFO (API /logs).  The logger thread is
+// the only writer; we still take the shared-memory lock so readers (API)
+// cannot observe a partially updated entry.
 static void logger_fifo(struct log_record *rec, const char *prio)
 {
 	size_t flen = rec->len + 1u;  // include zero-terminator
@@ -872,9 +871,9 @@ static void logger_fifo(struct log_record *rec, const char *prio)
 		case LOG_SOURCE_WEBSERVER: which = FIFO_WEBSERVER; break;
 	}
 
-	// Store the record's production timestamp (same double epoch-seconds
-	// representation that double_time() yields for the synchronous path)
+	lock_shm();
 	add_to_fifo_buffer(which, rec->message, prio, flen, rec->ts);
+	unlock_shm();
 }
 
 static void logger_dispatch(struct log_record *rec)
@@ -921,21 +920,17 @@ static void logger_drain(void)
 // ---- Flush ------------------------------------------------------------------
 static void logger_do_flush(void)
 {
-	// Drain everything enqueued so far, then clear the in-memory dnsmasq FIFO
-	// and truncate pihole.log so an API flush empties exactly the records
-	// produced before the request was posted.
+	// Drain everything enqueued so far (and flush sinks), then clear the
+	// in-memory dnsmasq FIFO and truncate pihole.log so an API flush empties
+	// exactly the records produced before the request was posted.
 	logger_drain();
 
-	sink_flush(&sink_ftl);
-	sink_flush(&sink_webserver);
-	sink_flush(&sink_dnsmasq);
-
 	int trunc_err = 0;
-	// Clear the dnsmasq FIFO.  Same single-writer argument as logger_fifo():
-	// no other thread appends to the FIFO, so no lock is required.
+	lock_shm();
 	if(fifo_log)
 		memset(&fifo_log->logs[FIFO_DNSMASQ], 0,
 		       sizeof(fifo_log->logs[FIFO_DNSMASQ]));
+	unlock_shm();
 
 	if(sink_dnsmasq.fd < 0)
 		trunc_err = -1;                              // no log file open
@@ -1186,6 +1181,10 @@ void logger_reconfigure(void)
 
 int logger_flush(void)
 {
+	// Nothing will process the request if the logger thread is not running.
+	if(!atomic_load_explicit(&thread_running, memory_order_acquire))
+		return -1;
+
 	pthread_mutex_lock(&flush_mutex);
 
 	// Request + wait, generating a new request id so concurrent calls each

@@ -17,12 +17,17 @@
 #include "config/config.h"
 // main_pid()
 #include "signals.h"
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
 // fifologData is allocated in shared memory for cross-fork compatibility
 int api_logs(struct ftl_conn *api)
 {
 	// The buffer is a ring holding the last LOG_SIZE messages, message number
-	// n is in slot n % LOG_SIZE
+	// n is in slot n % LOG_SIZE.  The logger thread updates it under the
+	// shared-memory lock, so take the lock to read a consistent snapshot.
+	lock_shm();
+
 	const unsigned int next_id = fifo_log->logs[api->opts.which].next_id;
 	unsigned int first = next_id > LOG_SIZE ? next_id - LOG_SIZE : 0u;
 	if(api->request->query_string != NULL)
@@ -52,6 +57,9 @@ int api_logs(struct ftl_conn *api)
 		JSON_REF_STR_IN_OBJECT(entry, "prio", fifo_log->logs[api->opts.which].prio[i]);
 		JSON_ADD_ITEM_TO_ARRAY(log, entry);
 	}
+
+	unlock_shm();
+
 	JSON_ADD_ITEM_TO_OBJECT(json, "log", log);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "nextID", next_id);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "pid", main_pid());

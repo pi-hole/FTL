@@ -821,8 +821,11 @@ bool flush_dnsmasq_log(void)
 	// pihole.log file is modified outside the usual append path.
 	const int trunc_err = logger_flush();
 
-	// Clean internal datastructure
+	// Clean internal datastructure. runGC(..., true) expects the caller to
+	// hold the shared-memory lock.
+	lock_shm();
 	runGC(time(NULL), NULL, true);
+	unlock_shm();
 
 	// Flush last 24 hours of on-disk database
 	if(!delete_recent_queries_from_db(mintime - 86400.0))
