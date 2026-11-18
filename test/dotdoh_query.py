@@ -729,17 +729,25 @@ def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0
 
 def proxy_request(host, port, client_ip, source, req, pad=0, drip=0.0, ssl=True):
     """Send req from address source behind a PROXY v2 header announcing
-    client_ip, over TLS unless ssl is False. Returns (HTTP status, lowercased response headers,
-    body). pad adds another TLV of that many bytes, drip sends the header after
-    its fixed 16 bytes one byte per drip seconds. A connection closed without
-    an answer reports status "none"."""
-    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    client_ip (IPv4 or IPv6), over TLS unless ssl is False. Returns (HTTP
+    status, lowercased response headers, body). pad adds another TLV of that
+    many bytes, drip sends the header after its fixed 16 bytes one byte per
+    drip seconds. A connection closed without an answer reports status "none"."""
+    if ":" in client_ip:
+        # TCP over IPv6, an IPv4 destination as ::ffff:a.b.c.d
+        dest = host if ":" in host else "::ffff:" + host
+        family = 0x21
+        addrs = (socket.inet_pton(socket.AF_INET6, client_ip) + socket.inet_pton(socket.AF_INET6, dest) +
+                 struct.pack("!HH", 40000, port))
+    else:
+        family = 0x11
+        addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
     # PP2_TYPE_SSL (client=SSL or plain, verify=0)
     tlvs = bytes([0x20, 0x00, 0x05, 0x01 if ssl else 0x00, 0, 0, 0, 0])
     if pad:
         tlvs += bytes([0xE1]) + struct.pack("!H", pad) + bytes(pad)
     body = addrs + tlvs
-    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, family]) + struct.pack("!H", len(body)) + body
     resp = b""
     with socket.create_connection((host, port), timeout=5, source_address=(source, 0)) as s:
         try:
