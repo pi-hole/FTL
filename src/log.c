@@ -8,6 +8,8 @@
 *  This file is copyright under the latest version of the EUPL.
 *  Please see LICENSE file for your rights under this license. */
 
+// struct sockaddr_un, included before FTL.h redefines strlen()
+#include <sys/un.h>
 #include "FTL.h"
 #include "version.h"
 // is_fork()
@@ -45,6 +47,9 @@ struct log_fd {
 static struct log_fd ftl_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd webserver_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
 static struct log_fd dnsmasq_log = { .fd = -1, .lock = PTHREAD_MUTEX_INITIALIZER };
+// files.log.dnsmasq is empty: dnsmasq lines go to syslog instead of pihole.log
+static bool dnsmasq_log_syslog = false;
+static int dnsmasq_syslog_fd = -1;
 
 // dnsmasq forks per TCP query while FTL threads may be mid-write; without
 // atfork handling the child would inherit a locked log mutex and hang on the
@@ -72,7 +77,8 @@ static void log_atfork_child(void)
 // dnsmasq closing it during initialization
 int __attribute__((pure)) is_log_fd(const int fd)
 {
-	return fd == ftl_log.fd || fd == webserver_log.fd || fd == dnsmasq_log.fd;
+	return fd == ftl_log.fd || fd == webserver_log.fd || fd == dnsmasq_log.fd ||
+	       fd == dnsmasq_syslog_fd;
 }
 
 // Reopen the log if requested.  Must be called with log->lock held.
@@ -174,6 +180,70 @@ static void set_log_path(struct log_fd *log, const char *path)
 	log->path = path != NULL ? strdup(path) : NULL;
 }
 
+// Without pihole.log, send a dnsmasq line to syslog in the format dnsmasq
+// itself sends: at daemon facility, tagged dnsmasq[pid], dnsmasq-dhcp[pid], ...
+// The socket is non-blocking, so a line is dropped rather than waited for when
+// syslog cannot keep up. Returns false if pihole.log is used
+bool FTL_syslog_dnsmasq(const int priority, const char *func, const char *message)
+{
+	if(!dnsmasq_log_syslog)
+		return false;
+
+	// dnsmasq may read errno after logging
+	const int saved_errno = errno;
+
+	time_t now = time(NULL);
+	char ctime_buf[26];
+	const char *ctime_str = ctime_r(&now, ctime_buf);
+	if(ctime_str == NULL)
+		ctime_str = "Thu Jan  1 00:00:00 1970\n";
+
+	// Cut at the length dnsmasq uses for its own syslog lines
+	char line[1024];
+	int len = snprintf(line, sizeof(line), "<%d>%.15s dnsmasq%s[%d]: %s", LOG_DAEMON | priority,
+	                   ctime_str + 4, func ? func : "", getpid(), message ? message : "");
+	if(len < 0)
+	{
+		errno = saved_errno;
+		return true;
+	}
+	if(len >= (int)sizeof(line))
+		len = sizeof(line) - 1;
+
+	// Under the pihole.log lock, which the atfork handlers already cover
+	pthread_mutex_lock(&dnsmasq_log.lock);
+	for(unsigned int attempt = 0; attempt < 2; attempt++)
+	{
+		if(dnsmasq_syslog_fd == -1)
+		{
+			dnsmasq_syslog_fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+			const struct sockaddr_un addr = { .sun_family = AF_UNIX, .sun_path = "/dev/log" };
+			if(dnsmasq_syslog_fd != -1 &&
+			   connect(dnsmasq_syslog_fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1)
+			{
+				close(dnsmasq_syslog_fd);
+				dnsmasq_syslog_fd = -1;
+			}
+			if(dnsmasq_syslog_fd == -1)
+				break;
+		}
+
+		if(send(dnsmasq_syslog_fd, line, len, MSG_NOSIGNAL) != -1)
+			break;
+
+		// Reconnect once if the syslog daemon was restarted, drop the line
+		// otherwise (EAGAIN: syslog is not keeping up)
+		if(errno != ECONNREFUSED && errno != ENOTCONN && errno != ENOENT)
+			break;
+		close(dnsmasq_syslog_fd);
+		dnsmasq_syslog_fd = -1;
+	}
+	pthread_mutex_unlock(&dnsmasq_log.lock);
+
+	errno = saved_errno;
+	return true;
+}
+
 // Open cached log fds from config paths.
 // open_log_fds(true):  open FTL.log only (called early, before full config)
 // open_log_fds(false): open webserver.log + pihole.log (called after config)
@@ -212,13 +282,16 @@ void open_log_fds(bool ftl)
 
 	// pihole.log (dnsmasq) - FTL owns this file from now on.  A stray "-"
 	// sentinel (previously selected stderr) is healed by the config migration.
+	// An empty path writes no pihole.log, every dnsmasq line goes to syslog
 	if(config.files.log.dnsmasq.v.s != NULL)
 	{
-		set_log_path(&dnsmasq_log, config.files.log.dnsmasq.v.s);
+		const bool no_file = config.files.log.dnsmasq.v.s[0] == '\0';
+		dnsmasq_log_syslog = no_file;
+		set_log_path(&dnsmasq_log, no_file ? NULL : config.files.log.dnsmasq.v.s);
 		if(dnsmasq_log.fd >= 0)
 			close(dnsmasq_log.fd);
-		dnsmasq_log.fd = open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
-		if(dnsmasq_log.fd == -1)
+		dnsmasq_log.fd = no_file ? -1 : open(dnsmasq_log.path, O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW, S_IRUSR|S_IWUSR|S_IRGRP);
+		if(dnsmasq_log.fd == -1 && !no_file)
 		{
 			// misc.hide_dnsmasq_warn hides dnsmasq warnings from FTL.log and
 			// the web diagnosis, not from pihole.log or syslog
@@ -1116,7 +1189,9 @@ bool flush_dnsmasq_log(void)
 	// fd still points at.
 	reopen_log_fd(&dnsmasq_log);
 
-	if(dnsmasq_log.fd == -1)
+	if(dnsmasq_log.path == NULL)
+		trunc_err = 0;           // files.log.dnsmasq is empty, no pihole.log
+	else if(dnsmasq_log.fd == -1)
 		trunc_err = -1;          // no log file open
 	else if(ftruncate(dnsmasq_log.fd, 0) == -1)
 		trunc_err = errno;       // the fd stays usable for future writes
