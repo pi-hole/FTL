@@ -131,14 +131,20 @@ void dotdoh_fd_track(const int fd)
 	atomic_fetch_or(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], 1u << ((unsigned)fd % TRACKED_FD_BITS));
 }
 
+void dotdoh_fd_untrack(const int fd)
+{
+	if(fd < 0 || fd >= TRACKED_FD_MAX)
+		return;
+	atomic_fetch_and(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], ~(1u << ((unsigned)fd % TRACKED_FD_BITS)));
+}
+
 void dotdoh_fd_close(const int fd)
 {
 	if(fd < 0)
 		return;
 	// Send FIN even if a forked worker still holds a copy of this socket
 	shutdown(fd, SHUT_RDWR);
-	if(fd < TRACKED_FD_MAX)
-		atomic_fetch_and(&tracked_fds[(unsigned)fd / TRACKED_FD_BITS], ~(1u << ((unsigned)fd % TRACKED_FD_BITS)));
+	dotdoh_fd_untrack(fd);
 	close(fd);
 }
 

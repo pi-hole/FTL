@@ -113,6 +113,9 @@ uint8_t *dotdoh_thread_buf(uint8_t **slot, size_t size);
 // untracks it.
 void dotdoh_fd_track(int fd);
 void dotdoh_fd_close(int fd);
+// Stop tracking fd without closing it, for a socket its owner closes itself
+// (e.g. listening sockets that CivetWeb closes in mg_stop())
+void dotdoh_fd_untrack(int fd);
 // Close every tracked socket except keep_fd; only called in a forked TCP worker
 void dotdoh_fd_close_inherited(int keep_fd);
 

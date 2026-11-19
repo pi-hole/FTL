@@ -4277,6 +4277,7 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 		names[nq] = listeners[i].addr;
 		fill_bind_addr(&quic_addrs[nq], listeners[i].addr, listeners[i].port);
 		quic_v6only[nq] = addr_is_v6_literal(listeners[i].addr);
+		dotdoh_fd_track(fd);
 		quic_fds[nq++] = fd;
 	}
 	if(nq == 0)
@@ -4315,6 +4316,7 @@ static void terminator_quic_start(const struct terminator_listener *listeners, u
 		{
 			SSL_free(quic_listeners[i]);
 			quic_listeners[i] = NULL;
+			dotdoh_fd_untrack(quic_fds[i]);
 			close(quic_fds[i]);
 		}
 		n_quic_fds = 0;
@@ -4367,7 +4369,10 @@ static void terminator_quic_stop(void)
 		if(h3_wake_fd >= 0) { close(h3_wake_fd); h3_wake_fd = -1; }
 	}
 	for(unsigned i = 0; i < n_quic_fds; i++)
+	{
+		dotdoh_fd_untrack(quic_fds[i]);
 		close(quic_fds[i]);
+	}
 	n_quic_fds = 0;
 	if(quic_ctx != NULL)
 	{
@@ -4677,6 +4682,8 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 		if(fd < 0)
 			continue; // bind_listener() already said why
 		bound[n_listen_fds] = i;
+		// A forked dnsmasq TCP worker must not keep the port bound (#3368)
+		dotdoh_fd_track(fd);
 		listen_fds[n_listen_fds++] = fd;
 	}
 	if(n_listen_fds == 0)
@@ -4693,7 +4700,10 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 		log_err("Terminator: failed to start accept thread: %s", strerror(errno));
 		running = false;
 		for(unsigned i = 0; i < n_listen_fds; i++)
+		{
+			dotdoh_fd_untrack(listen_fds[i]);
 			close(listen_fds[i]);
+		}
 		n_listen_fds = 0;
 		SSL_CTX_free(ssl_ctx);
 		ssl_ctx = NULL;
@@ -4737,7 +4747,10 @@ void terminator_stop(void)
 		accept_tid_valid = false;
 	}
 	for(unsigned i = 0; i < n_listen_fds; i++)
+	{
+		dotdoh_fd_untrack(listen_fds[i]);
 		close(listen_fds[i]);
+	}
 	n_listen_fds = 0;
 	if(ssl_ctx != NULL)
 	{
