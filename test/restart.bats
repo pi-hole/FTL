@@ -125,3 +125,12 @@ wait_for_blocking() {
   run set_blocking '{"blocking":true}'
   assert_output --partial '"blocking":"enabled","timer":null'
 }
+
+@test "The webserver comes back after renewing its certificate while a TCP worker is alive" {
+  # dnsmasq forks a worker for every TCP DNS connection. If it keeps a copy of
+  # the webserver's listening sockets, the restart after the renewal cannot
+  # bind the ports again (#3368)
+  run bash -c "python3 test/webserver_renew_fork.py"
+  printf "%s\n" "${lines[@]}"
+  assert_output "up"
+}

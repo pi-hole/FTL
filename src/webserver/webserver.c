@@ -42,6 +42,8 @@
 #include "signals.h"
 // inet_pton()
 #include <arpa/inet.h>
+// opendir(), readdir(), dirfd()
+#include <dirent.h>
 // isxdigit()
 #include <ctype.h>
 
@@ -959,6 +961,80 @@ static bool find_backend_port(void)
 			backend_port = mgports[i].port;
 
 	return true;
+}
+
+// CivetWeb's listening sockets, tracked so a dnsmasq TCP worker closes them.
+// A worker is forked for every TCP DNS connection and lives for up to
+// CHILD_LIFETIME seconds; if it keeps a copy of these sockets, restarting the
+// webserver (e.g. after renewing the TLS certificate) cannot bind the ports
+// again and fails with EADDRINUSE (#3368).
+#define MAX_WEB_LISTEN_FDS 32
+static int web_listen_fds[MAX_WEB_LISTEN_FDS];
+static unsigned n_web_listen_fds = 0;
+
+static int sockaddr_port(const struct sockaddr_storage *sa)
+{
+	if(sa->ss_family == AF_INET)
+		return ntohs(((const struct sockaddr_in *)sa)->sin_port);
+	if(sa->ss_family == AF_INET6)
+		return ntohs(((const struct sockaddr_in6 *)sa)->sin6_port);
+	return -1;
+}
+
+static void track_webserver_listeners(void)
+{
+	n_web_listen_fds = 0;
+	struct mg_server_port mgports[MAXPORTS] = { 0 };
+	const int ports = mg_get_server_ports(ctx, MAXPORTS, mgports);
+	if(ports < 1)
+		return;
+
+	// CivetWeb does not expose its socket fds, so find the listening TCP
+	// sockets bound to one of its ports among our open fds
+	DIR *dir = opendir("/proc/self/fd");
+	if(dir == NULL)
+	{
+		log_warn("Cannot list open file descriptors: %s", strerror(errno));
+		return;
+	}
+	const struct dirent *de;
+	while((de = readdir(dir)) != NULL && n_web_listen_fds < MAX_WEB_LISTEN_FDS)
+	{
+		char *end = NULL;
+		const long fd = strtol(de->d_name, &end, 10);
+		if(end == de->d_name || *end != '\0' || fd == dirfd(dir))
+			continue;
+
+		int val = 0;
+		socklen_t len = sizeof(val);
+		if(getsockopt((int)fd, SOL_SOCKET, SO_ACCEPTCONN, &val, &len) != 0 || val == 0)
+			continue;
+		len = sizeof(val);
+		if(getsockopt((int)fd, SOL_SOCKET, SO_TYPE, &val, &len) != 0 || val != SOCK_STREAM)
+			continue;
+		struct sockaddr_storage sa = { 0 };
+		len = sizeof(sa);
+		if(getsockname((int)fd, (struct sockaddr *)&sa, &len) != 0)
+			continue;
+		const int port = sockaddr_port(&sa);
+		for(int i = 0; i < ports; i++)
+		{
+			if(mgports[i].port != port)
+				continue;
+			dotdoh_fd_track((int)fd);
+			web_listen_fds[n_web_listen_fds++] = (int)fd;
+			break;
+		}
+	}
+	closedir(dir);
+}
+
+// Untrack before CivetWeb closes them, as their numbers will be reused
+static void untrack_webserver_listeners(void)
+{
+	for(unsigned i = 0; i < n_web_listen_fds; i++)
+		dotdoh_fd_untrack(web_listen_fds[i]);
+	n_web_listen_fds = 0;
 }
 
 // Fill a port table row for a terminator listener from its own bind address
@@ -1947,6 +2023,9 @@ void http_init(void)
 		return;
 	}
 
+	// Keep forked dnsmasq TCP workers from holding the webserver ports
+	track_webserver_listeners();
+
 	// Success: Print used options only if in debug mode
 	if(config.debug.webserver.v.b)
 		print_webserver_opts(true, idx, (const char **)conf_opts);
@@ -2142,6 +2221,7 @@ void http_terminate(void)
 #endif
 
 	/* Stop the server */
+	untrack_webserver_listeners();
 	mg_stop(ctx);
 
 	/* Un-initialize the library */
