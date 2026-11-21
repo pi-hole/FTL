@@ -1217,6 +1217,118 @@ in_port_t __attribute__((pure)) get_https_port(void)
 	return https_port;
 }
 
+unsigned int get_https_ports(in_port_t *ports, const unsigned int max_ports,
+                             const struct in_addr *local_addr_v4,
+                             const struct in6_addr *local_addr_v6,
+                             sa_family_t query_family)
+{
+	// Determine the query's destination address family
+	sa_family_t family = AF_UNSPEC;
+	if(local_addr_v4 != NULL)
+		family = AF_INET;
+	else if(local_addr_v6 != NULL)
+		family = AF_INET6;
+	else
+		family = query_family;
+
+	unsigned int count = 0;
+	for(unsigned int i = 0; i < MAXPORTS && count < max_ports; i++)
+	{
+		if(server_ports[i].port == 0 || server_ports[i].is_redirect ||
+		   !server_ports[i].is_secure || !server_ports[i].is_bound)
+			continue;
+
+		// Advertise ports bound on a wildcard address for the query's
+		// family, or on the specific address the query came in on.
+		bool advertise = false;
+		const bool is_v6 = server_ports[i].protocol == 3;
+		const char *addr = server_ports[i].addr;
+
+		if(!is_v6)
+		{
+			if(family != AF_INET)
+				continue;
+			if(strcmp(addr, "0.0.0.0") == 0 || addr[0] == '\0')
+				advertise = true;
+			else if(local_addr_v4 != NULL)
+			{
+				struct in_addr bound = { 0 };
+				if(inet_pton(AF_INET, addr, &bound) == 1 &&
+				   memcmp(&bound, local_addr_v4, sizeof(bound)) == 0)
+					advertise = true;
+			}
+		}
+		else
+		{
+			if(family != AF_INET6)
+				continue;
+			if(strcmp(addr, "::") == 0 || strcmp(addr, "[::]") == 0 || addr[0] == '\0')
+				advertise = true;
+			else if(local_addr_v6 != NULL)
+			{
+				struct in6_addr bound = { 0 };
+				const char *a = addr;
+				char tmp[INET6_ADDRSTRLEN + 1] = "";
+				if(a[0] == '[')
+				{
+					strncpy(tmp, a + 1, sizeof(tmp) - 1);
+					char *end = strchr(tmp, ']');
+					if(end != NULL)
+						*end = '\0';
+					a = tmp;
+				}
+				if(inet_pton(AF_INET6, a, &bound) == 1 &&
+				   memcmp(&bound, local_addr_v6, sizeof(bound)) == 0)
+					advertise = true;
+			}
+		}
+
+		if(!advertise)
+			continue;
+
+		// Avoid advertising the same port more than once (e.g. IPv4/IPv6)
+		bool duplicate = false;
+		for(unsigned int j = 0; j < count; j++)
+		{
+			if(ports[j] == (in_port_t)server_ports[i].port)
+			{
+				duplicate = true;
+				break;
+			}
+		}
+		if(!duplicate)
+			ports[count++] = (in_port_t)server_ports[i].port;
+	}
+	return count;
+}
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=pure"
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
+bool webserver_http2_active(void)
+{
+#ifdef HAVE_HTTP2
+	return terminator_bound;
+#else
+	return false;
+#endif
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+bool webserver_http3_active(void)
+{
+	return terminator_h3_running();
+}
+
+bool webserver_http3_active_on_port(const in_port_t port)
+{
+	return terminator_h3_running_on_port(port);
+}
+
 #define MAX_URL_LEN 255
 unsigned short get_api_string(char **buf, int *bufflen, const bool domain)
 {

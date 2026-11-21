@@ -41,6 +41,12 @@ bool terminator_start(struct terminator_listener *listeners, unsigned n_listener
 // Stop the terminator and free all resources. Safe to call if never started or already stopped.
 void terminator_stop(void);
 
+// Whether the HTTP/3 (QUIC) listener is currently running
+bool terminator_h3_running(void);
+
+// Whether an HTTP/3 (QUIC) listener is currently running on the given port
+bool terminator_h3_running_on_port(const in_port_t port);
+
 // Hex-encode the per-boot token (generating it if needed) into out, which must
 // hold at least 33 bytes. webserver.c passes it to the loopback CivetWeb backend
 // as "proxy_protocol_secret", the shared secret the backend uses to authenticate

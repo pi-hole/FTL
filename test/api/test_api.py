@@ -32,10 +32,10 @@ FTL_URL = "http://127.0.0.1"
 # DNSSEC-dependent counters below flaky.  If you add or remove queries in
 # test_suite.bats, update these.
 
-TOTAL       = 134
-FORWARDED   = 41
+TOTAL       = 153
+FORWARDED   = 44
 DNSKEY      = 4
-TOP_DOMAIN  = "localhost"
+TOP_DOMAIN  = "_dns.resolver.arpa"
 
 
 # ---------------------------------------------------------------------------
@@ -819,19 +819,19 @@ class TestStatsSummary:
         data = _j(api_session.get(f"{FTL_URL}/api/stats/summary", timeout=5), dump="stats_summary")
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 52
+        assert q["blocked"] == 55
         assert q["forwarded"] == FORWARDED
-        assert q["cached"] == 41
-        assert q["unique_domains"] == 79
+        assert q["cached"] == 54
+        assert q["unique_domains"] == 78
         assert q["status"]["UNKNOWN"] == 0
         assert q["status"]["GRAVITY"] == 7
         assert q["status"]["FORWARDED"] == FORWARDED
-        assert q["status"]["CACHE"] == 41
+        assert q["status"]["CACHE"] == 54
         assert q["status"]["REGEX"] == 21
         assert q["status"]["DENYLIST"] == 5
-        assert q["status"]["SPECIAL_DOMAIN"] == 2
-        assert q["types"]["A"] == 71
-        assert q["types"]["AAAA"] == 19
+        assert q["status"]["SPECIAL_DOMAIN"] == 5
+        assert q["types"]["A"] == 77
+        assert q["types"]["AAAA"] == 21
 
         assert data["clients"]["active"] == 11
         assert data["clients"]["total"] == 11
@@ -852,7 +852,7 @@ class TestStatsTopDomains:
         assert counts == sorted(counts, reverse=True), \
             f"Not sorted descending: {counts}"
         assert data["total_queries"] == TOTAL
-        assert data["blocked_queries"] == 52
+        assert data["blocked_queries"] == 55
 
     def test_top_domains_blocked(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/top_domains?blocked=true", timeout=5))
@@ -950,11 +950,11 @@ class TestStatsUpstreams:
         assert data["forwarded_queries"] == FORWARDED
 
         blocklist = next(u for u in upstreams if u["ip"] == "blocklist")
-        assert blocklist["count"] == 52
+        assert blocklist["count"] == 55
         assert blocklist["port"] == -1
 
         cache = next(u for u in upstreams if u["ip"] == "cache")
-        assert cache["count"] == 41
+        assert cache["count"] == 54
         assert cache["port"] == -1
 
 
@@ -967,9 +967,9 @@ class TestStatsQueryTypes:
     def test_query_types(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/query_types", timeout=5), dump="query_types")
         assert data["types"] == {
-            "A": 71, "AAAA": 19, "ANY": 3, "SRV": 1, "SOA": 0,
-            "PTR": 8, "TXT": 11, "NAPTR": 1, "MX": 1, "DS": 6,
-            "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 3, "HTTPS": 3,
+            "A": 77, "AAAA": 21, "ANY": 3, "SRV": 1, "SOA": 0,
+            "PTR": 8, "TXT": 12, "NAPTR": 1, "MX": 1, "DS": 7,
+            "RRSIG": 0, "DNSKEY": DNSKEY, "NS": 0, "SVCB": 12, "HTTPS": 3,
             "OTHER": 1,
         }, json.dumps(data, indent=2)
 
@@ -982,7 +982,7 @@ class TestStatsRecentBlocked:
 
     def test_recent_blocked(self, api_session):
         data = _j(api_session.get(f"{FTL_URL}/api/stats/recent_blocked", timeout=5))
-        assert "denied.ftl" in data["blocked"], json.dumps(data, indent=2)
+        assert "foo.resolver.arpa" in data["blocked"], json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1389,7 +1389,7 @@ class TestPADD:
         assert data["top_client"] == "127.0.0.1"
         q = data["queries"]
         assert q["total"] == TOTAL, json.dumps(data, indent=2)
-        assert q["blocked"] == 52
+        assert q["blocked"] == 55
         cache = data["cache"]
         assert cache["size"] == 10000
 

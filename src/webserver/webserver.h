@@ -25,6 +25,10 @@ void get_all_supported_ciphersuites(void);
 
 int ftl_http_redirect(struct mg_connection *conn, const int code, const char *format, ...) __attribute__((format(printf, 3, 4), nonnull(1, 3)));
 in_port_t get_https_port(void) __attribute__((pure));
+unsigned int get_https_ports(in_port_t *ports, unsigned int max_ports,
+                             const struct in_addr *local_addr_v4,
+                             const struct in6_addr *local_addr_v6,
+                             sa_family_t query_family);
 // Whether webserver.acl admits the client address sa (true when no ACL is set).
 // An IPv4-mapped IPv6 address is matched as the IPv4 address it carries
 bool webserver_acl_allows(const struct sockaddr_storage *sa);
@@ -37,5 +41,10 @@ char *get_api_uri(void) __attribute__((pure));
 // can report them.
 bool webserver_have_http2(void) __attribute__((const));
 bool webserver_have_http3(void) __attribute__((const));
+
+// Runtime listener state: whether HTTP/2 or HTTP/3 is actually being served
+bool webserver_http2_active(void);
+bool webserver_http3_active(void);
+bool webserver_http3_active_on_port(const in_port_t port);
 
 #endif // WEBSERVER_H

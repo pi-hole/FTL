@@ -1067,6 +1067,40 @@ int __attribute__ ((pure)) get_blocking_mode_val(const char *blocking_mode)
 	return -1;
 }
 
+const char * __attribute__ ((const)) get_designated_resolver_mode_str(const enum designated_resolver_mode mode)
+{
+	switch (mode)
+	{
+		case DESIGNATED_RESOLVER_FORWARD:
+			return "FORWARD";
+		case DESIGNATED_RESOLVER_BLOCK:
+			return "BLOCK";
+		case DESIGNATED_RESOLVER_SYNTHESIZE:
+			return "SYNTHESIZE";
+		case DESIGNATED_RESOLVER_MAX:
+		default:
+			return "N/A";
+	}
+}
+
+int __attribute__ ((pure)) get_designated_resolver_mode_val(const char *mode)
+{
+	if(strcasecmp(mode, "FORWARD") == 0)
+		return DESIGNATED_RESOLVER_FORWARD;
+	else if(strcasecmp(mode, "BLOCK") == 0)
+		return DESIGNATED_RESOLVER_BLOCK;
+	else if(strcasecmp(mode, "SYNTHESIZE") == 0)
+		return DESIGNATED_RESOLVER_SYNTHESIZE;
+	// Accept legacy boolean values with the same mapping as the TOML migration
+	else if(strcasecmp(mode, "true") == 0)
+		return DESIGNATED_RESOLVER_BLOCK;
+	else if(strcasecmp(mode, "false") == 0)
+		return DESIGNATED_RESOLVER_FORWARD;
+
+	// Invalid value
+	return -1;
+}
+
 const char * __attribute__ ((const)) get_blocking_status_str(const enum blocking_status blocking)
 {
 	switch(blocking)

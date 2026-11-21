@@ -855,6 +855,13 @@ static void dot_accept_all(int lfd)
 	}
 }
 
+static bool dot_running = false;
+
+bool __attribute__((pure)) dotdoh_dot_running(void)
+{
+	return dot_running;
+}
+
 void *dotdoh_dot_thread(void *val)
 {
 	(void)val;
@@ -897,6 +904,7 @@ void *dotdoh_dot_thread(void *val)
 		return NULL;
 	}
 	log_info("dotdoh: DoT server listening on port %d", DOT_PORT);
+	dot_running = true;
 
 	time_t last_cert_check = dot_now();
 	while(!killed)
@@ -968,6 +976,7 @@ void *dotdoh_dot_thread(void *val)
 				conn_free(&g_conns[i]);
 			}
 	}
+	dot_running = false;
 
 	for(int i = 0; i < DOT_MAX_CONNS; i++)
 		if(g_conns[i].used)
@@ -997,6 +1006,11 @@ void *dotdoh_dot_thread(void *val)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
 #endif
+bool dotdoh_dot_running(void)
+{
+	return false;
+}
+
 void *dotdoh_dot_thread(void *val)
 {
 	(void)val;

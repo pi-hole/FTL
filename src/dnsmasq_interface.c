@@ -61,6 +61,9 @@
 // init_api_sessions()
 #include "api/api.h"
 
+// RRTYPEs not defined in dnsmasq/dns-protocol.h
+#define T_SVCB 64
+
 // Public prototypes (defined in this file, called from other translation units)
 void FTL_dump_cache_stats(void);
 
@@ -101,6 +104,9 @@ static struct in6_addr pihole_dest_v6;
 // upstream reply (a later event-loop iteration), so the CNAME cache path only
 // trusts the hint when it is for the query currently being answered.
 static int pihole_dest_id = -1;
+// Source address family of the current query, used as a fallback when the local
+// destination address is not known (plain Do53)
+static sa_family_t pihole_query_family = AF_UNSPEC;
 
 // Whether a query source address is loopback (127.0.0.0/8 or ::1). The private
 // client/dest attribution options are trusted only from a loopback source, as
@@ -384,6 +390,17 @@ static void unset_blocking_metadata(void)
 	force_next_DNS_reply = REPLY_UNKNOWN;
 	last_regex_idx = -1;
 	cacheStatus = QUERY_UNKNOWN;
+}
+
+static inline bool is_resolver_arpa_zone(const char *domain)
+{
+	const size_t len = strlen(domain);
+	const size_t zonelen = sizeof("resolver.arpa") - 1;
+	// >= rather than >, so the zone apex resolver.arpa itself is matched,
+	// and a label boundary, so notresolver.arpa is not mistaken for part of the zone
+	return len >= zonelen &&
+	       strcasecmp(&domain[len - zonelen], "resolver.arpa") == 0 &&
+	       (len == zonelen || domain[len - zonelen - 1] == '.');
 }
 
 // This is inspired by make_local_answer()
@@ -805,8 +822,260 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
 	}
 
+	// Synthesize SVCB records for _dns.resolver.arpa (RFC 9462 DDR) when
+	// Pi-hole's own encrypted DNS services are enabled. This turns the
+	// otherwise NODATA "no designated resolver" answer into a real
+	// discovery response advertising DoH/DoT/DoQ.
+	// Determine local destination address for SVCB advertisement filtering
+	union all_addr local_dest_v4 = {{ 0 }};
+	bool have_local_v4 = false;
+	if(pihole_dest_v4_set && pihole_dest_id == (int)daemon->log_display_id)
+	{
+		have_local_v4 = true;
+		memcpy(&local_dest_v4.addr4, &pihole_dest_v4, sizeof(local_dest_v4.addr4));
+	}
+	const struct in6_addr *local_dest_v6 =
+		(pihole_dest_v6_set && pihole_dest_id == (int)daemon->log_display_id) ?
+		&pihole_dest_v6 : NULL;
+
+	// For plain Do53, the destination address is not carried by EDNS. If there
+	// is exactly one DNS listener for the query family bound to a specific
+	// address, use it as a best-effort fallback.
+	if(!have_local_v4 && local_dest_v6 == NULL)
+	{
+		const struct in_addr *v4_candidate = NULL;
+		const struct in6_addr *v6_candidate = NULL;
+		unsigned int v4_count = 0, v6_count = 0;
+		for(struct listener *l = daemon->listeners; l != NULL; l = l->next)
+		{
+			if(l->fd < 0 && l->tcpfd < 0)
+				continue;
+			if(l->addr.sa.sa_family == AF_INET)
+			{
+				if(l->addr.in.sin_addr.s_addr == INADDR_ANY)
+					continue;
+				v4_candidate = &l->addr.in.sin_addr;
+				v4_count++;
+			}
+			else if(l->addr.sa.sa_family == AF_INET6)
+			{
+				if(IN6_IS_ADDR_UNSPECIFIED(&l->addr.in6.sin6_addr))
+					continue;
+				v6_candidate = &l->addr.in6.sin6_addr;
+				v6_count++;
+			}
+		}
+		if(pihole_query_family == AF_INET && v4_count == 1)
+		{
+			memcpy(&local_dest_v4.addr4, v4_candidate, sizeof(local_dest_v4.addr4));
+			have_local_v4 = true;
+		}
+		else if(pihole_query_family == AF_INET6 && v6_count == 1)
+		{
+			local_dest_v6 = v6_candidate;
+		}
+	}
+
+	in_port_t https_ports[8];
+	const unsigned int n_https_ports = dotdoh_doh_enabled() ?
+		get_https_ports(https_ports, 8,
+		                have_local_v4 ? &local_dest_v4.addr4 : NULL,
+		                local_dest_v6,
+		                pihole_query_family) : 0;
+	const enum designated_resolver_mode dr_mode = config.dns.specialDomains.designatedResolver.v.designated_resolver_mode;
+	const bool is_resolver_arpa = dr_mode == DESIGNATED_RESOLVER_SYNTHESIZE &&
+	                              is_resolver_arpa_zone(name);
+	const bool is_ddr_name = strcasecmp(name, "_dns.resolver.arpa") == 0;
+	if(is_resolver_arpa && is_ddr_name && qtype == T_SVCB &&
+	   (n_https_ports > 0 || dotdoh_dot_running() || dotdoh_doq_running()))
+	{
+		// Encode the configured webserver domain in DNS wire format
+		unsigned char target_enc[256];
+		size_t tlen = 0;
+		bool target_valid = true;
+		const char *label = config.webserver.domain.v.s;
+		while(*label != '\0')
+		{
+			const char *dot = strchr(label, '.');
+			const size_t llen = dot ? (size_t)(dot - label) : strlen(label);
+			// DNS wire names are at most 255 octets including the root label
+			if(tlen + 1 + llen + 1 > 255)
+			{
+				target_valid = false;
+				break;
+			}
+			target_enc[tlen++] = (unsigned char)llen;
+			memcpy(target_enc + tlen, label, llen);
+			tlen += llen;
+			if(dot == NULL)
+				break;
+			label = dot + 1;
+		}
+		if(target_valid)
+		{
+			if(tlen + 1 > 255)
+				target_valid = false;
+			else
+				target_enc[tlen++] = 0;
+		}
+
+		if(!target_valid)
+		{
+			log_debug(DEBUG_QUERIES, "Skipping _dns.resolver.arpa SVCB synthesis: webserver.domain is too long to encode");
+		}
+		else
+		{
+		// Reserve room for an OPT RR so an EDNS client can get OPT/EDE
+		char *rr_limit = limit - 160;
+		if(rr_limit < (char*)p)
+			rr_limit = (char*)p;
+
+		// DoH
+		for(unsigned int i = 0; i < n_https_ports; i++)
+		{
+			const in_port_t doh_port = https_ports[i];
+			unsigned char rdata[512];
+			size_t pos = 0;
+			// priority = 3
+			rdata[pos++] = 0;
+			rdata[pos++] = 3;
+			memcpy(rdata + pos, target_enc, tlen);
+			pos += tlen;
+			// alpn (key 1): advertise HTTP versions actually being served
+			const bool have_h2 = webserver_http2_active();
+			const bool have_h3 = webserver_http3_active_on_port(doh_port);
+			unsigned char alpn[16];
+			size_t alpn_len = 0;
+			if(have_h2)
+			{
+				alpn[alpn_len++] = 2;
+				alpn[alpn_len++] = 'h';
+				alpn[alpn_len++] = '2';
+			}
+			if(have_h3)
+			{
+				alpn[alpn_len++] = 2;
+				alpn[alpn_len++] = 'h';
+				alpn[alpn_len++] = '3';
+			}
+			if(alpn_len == 0)
+			{
+				// HTTPS port is bound but no h2/h3 listener is active; DoH is
+				// still reachable over HTTP/1.1.
+				static const unsigned char h1[] = { 8, 'h','t','t','p','/','1','.','1' };
+				memcpy(alpn, h1, sizeof(h1));
+				alpn_len = sizeof(h1);
+			}
+			rdata[pos++] = 0;
+			rdata[pos++] = 1;
+			rdata[pos++] = (alpn_len >> 8) & 0xff;
+			rdata[pos++] = alpn_len & 0xff;
+			memcpy(rdata + pos, alpn, alpn_len);
+			pos += alpn_len;
+			// port (key 3)
+			rdata[pos++] = 0;
+			rdata[pos++] = 3;
+			rdata[pos++] = 0;
+			rdata[pos++] = 2;
+			rdata[pos++] = (doh_port >> 8) & 0xff;
+			rdata[pos++] = doh_port & 0xff;
+			// dohpath (key 7)
+			const char *path = "/dns-query{?dns}";
+			size_t plen = strlen(path);
+			rdata[pos++] = 0;
+			rdata[pos++] = 7;
+			rdata[pos++] = (plen >> 8) & 0xff;
+			rdata[pos++] = plen & 0xff;
+			memcpy(rdata + pos, path, plen);
+			pos += plen;
+
+			if(add_resource_record(header, rr_limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL, T_SVCB, C_IN, (char*)"t",
+			                       (int)pos, (char*)rdata))
+				header->ancount = htons(ntohs(header->ancount) + 1);
+		}
+
+		// DoT
+		if(dotdoh_dot_running())
+		{
+			unsigned char rdata[512];
+			size_t pos = 0;
+			// priority = 2
+			rdata[pos++] = 0;
+			rdata[pos++] = 2;
+			memcpy(rdata + pos, target_enc, tlen);
+			pos += tlen;
+			// alpn (key 1): dot
+			rdata[pos++] = 0;
+			rdata[pos++] = 1;
+			rdata[pos++] = 0;
+			rdata[pos++] = 4;
+			rdata[pos++] = 3;
+			rdata[pos++] = 'd';
+			rdata[pos++] = 'o';
+			rdata[pos++] = 't';
+			// port (key 3)
+			rdata[pos++] = 0;
+			rdata[pos++] = 3;
+			rdata[pos++] = 0;
+			rdata[pos++] = 2;
+			rdata[pos++] = (DOT_PORT >> 8) & 0xff;
+			rdata[pos++] = DOT_PORT & 0xff;
+
+			if(add_resource_record(header, rr_limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL, T_SVCB, C_IN, (char*)"t",
+			                       (int)pos, (char*)rdata))
+				header->ancount = htons(ntohs(header->ancount) + 1);
+		}
+
+		// DoQ
+		if(dotdoh_doq_running())
+		{
+			unsigned char rdata[512];
+			size_t pos = 0;
+			// priority = 1
+			rdata[pos++] = 0;
+			rdata[pos++] = 1;
+			memcpy(rdata + pos, target_enc, tlen);
+			pos += tlen;
+			// alpn (key 1): doq
+			rdata[pos++] = 0;
+			rdata[pos++] = 1;
+			rdata[pos++] = 0;
+			rdata[pos++] = 4;
+			rdata[pos++] = 3;
+			rdata[pos++] = 'd';
+			rdata[pos++] = 'o';
+			rdata[pos++] = 'q';
+			// port (key 3)
+			rdata[pos++] = 0;
+			rdata[pos++] = 3;
+			rdata[pos++] = 0;
+			rdata[pos++] = 2;
+			rdata[pos++] = (DOQ_PORT >> 8) & 0xff;
+			rdata[pos++] = DOQ_PORT & 0xff;
+
+			if(add_resource_record(header, rr_limit, &trunc, sizeof(struct dns_header),
+			                       &p, daemon->local_ttl, NULL, T_SVCB, C_IN, (char*)"t",
+			                       (int)pos, (char*)rdata))
+				header->ancount = htons(ntohs(header->ancount) + 1);
+		}
+
+		// Log synthesized SVCB answer as an answer
+		if(ntohs(header->ancount) > 0)
+		{
+			force_next_DNS_reply = REPLY_BLOB;
+			blockingreason = "<not set>";
+			ednsData *edns = getEDNS(ntohs(header->id));
+			if(edns != NULL)
+				edns->ede = EDE_SYNTHESIZED;
+			log_query(flags & ~(F_NEG | F_NXDOMAIN | F_RCODE), name, NULL, (char*)"SVCB", 0);
+		}
+		}
+	}
+
 	// Log empty replies
-	if(!(flags & (F_IPV4 | F_IPV6)))
+	if(!(flags & (F_IPV4 | F_IPV6)) && ntohs(header->ancount) == 0)
 	{
 		if(flags == 0)
 		{
@@ -927,6 +1196,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	// client actually connected to rather than the loopback forward's.
 	pihole_dest_v4_set = pihole_dest_v6_set = false;
 	pihole_dest_id = -1;
+	pihole_query_family = (addr != NULL) ? (sa_family_t)addr->sa.sa_family : AF_UNSPEC;
 
 	// If domain is "pi.hole" or the local hostname we skip analyzing this query
 	// and, instead, immediately reply with the IP address - these queries are not further analyzed
@@ -1971,21 +2241,12 @@ static bool special_domain(const queriesData *query, const char *domain)
 	// Resolvers, it SHOULD return NODATA for queries to the "resolver.arpa"
 	// zone, to provide a consistent and accurate signal to clients that it
 	// does not have a Designated Resolver.
-	if(config.dns.specialDomains.designatedResolver.v.b)
+	if(config.dns.specialDomains.designatedResolver.v.designated_resolver_mode != DESIGNATED_RESOLVER_FORWARD &&
+	   is_resolver_arpa_zone(domain))
 	{
-		const size_t len = strlen(domain);
-		const size_t zonelen = sizeof("resolver.arpa") - 1;
-		// >= rather than >, so the zone apex resolver.arpa itself is
-		// answered instead of being forwarded, and a label boundary,
-		// so notresolver.arpa is not mistaken for part of the zone
-		if(len >= zonelen &&
-		   strcmp(&domain[len - zonelen], "resolver.arpa") == 0 &&
-		   (len == zonelen || domain[len - zonelen - 1] == '.'))
-		{
-			blockingreason = "Designated Resolver domain";
-			force_next_DNS_reply = REPLY_NODATA;
-			return true;
-		}
+		blockingreason = "Designated Resolver domain";
+		force_next_DNS_reply = REPLY_NODATA;
+		return true;
 	}
 
 	return false;
@@ -2201,6 +2462,32 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			break;
 
 		case QUERY_SPECIAL_DOMAIN:
+		{
+			const enum designated_resolver_mode dr_mode = config.dns.specialDomains.designatedResolver.v.designated_resolver_mode;
+			const bool is_resolver_arpa_name = is_resolver_arpa_zone(domainstr);
+			if(is_resolver_arpa_name)
+			{
+				if(dr_mode == DESIGNATED_RESOLVER_FORWARD)
+				{
+					// Config changed to FORWARD; clear stale special-domain cache
+					// and run the usual checks
+					dns_cache->blocking_status = QUERY_UNKNOWN;
+					dns_cache->force_reply = REPLY_UNKNOWN;
+					cacheStatus = QUERY_UNKNOWN;
+					log_debug(DEBUG_QUERIES, "Designated resolver domain (forward, cache): %s", domainstr);
+					break;
+				}
+				if(dr_mode == DESIGNATED_RESOLVER_SYNTHESIZE)
+				{
+					blockingreason = "Designated Resolver domain";
+					force_next_DNS_reply = REPLY_NODATA;
+					dns_cache->force_reply = REPLY_NODATA;
+					dns_cache->blocking_status = QUERY_CACHE;
+					cacheStatus = QUERY_CACHE;
+					log_debug(DEBUG_QUERIES, "Designated resolver domain (synthesize, cache): %s", domainstr);
+					return true;
+				}
+			}
 			// Known as a special domain, we return this result early, skipping
 			// all the lengthy tests below
 			blockingreason = "special domain";
@@ -2209,6 +2496,7 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 			force_next_DNS_reply = dns_cache->force_reply;
 			query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
 			return true;
+		}
 
 		case QUERY_EXTERNAL_BLOCKED_IP:
 		case QUERY_EXTERNAL_BLOCKED_NULL:
@@ -2270,13 +2558,41 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 		}
 
 		case QUERY_CACHE:
-		case QUERY_FORWARDED:
-		case QUERY_RETRIED:
-		case QUERY_RETRIED_DNSSEC:
-		case QUERY_IN_PROGRESS:
-		case QUERY_DBBUSY:
-		case QUERY_CACHE_STALE:
-		case QUERY_STATUS_MAX:
+		{
+			const enum designated_resolver_mode dr_mode = config.dns.specialDomains.designatedResolver.v.designated_resolver_mode;
+			const bool is_resolver_arpa = is_resolver_arpa_zone(domainstr);
+			if(is_resolver_arpa && dr_mode != DESIGNATED_RESOLVER_FORWARD)
+			{
+				if(dr_mode == DESIGNATED_RESOLVER_SYNTHESIZE)
+				{
+					blockingreason = "Designated Resolver domain";
+					force_next_DNS_reply = REPLY_NODATA;
+					dns_cache->force_reply = REPLY_NODATA;
+					cacheStatus = QUERY_CACHE;
+					log_debug(DEBUG_QUERIES, "Designated resolver domain (synthesize, cache): %s", domainstr);
+					return true;
+				}
+
+				// BLOCK mode: own the zone with NODATA/EDE 15
+				dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
+				cacheStatus = QUERY_SPECIAL_DOMAIN;
+				blockingreason = "Designated Resolver domain";
+				force_next_DNS_reply = REPLY_NODATA;
+				dns_cache->force_reply = REPLY_NODATA;
+				query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
+				log_debug(DEBUG_QUERIES, "Designated resolver domain (block, cache): %s", domainstr);
+				return true;
+			}
+			if(is_resolver_arpa && dr_mode == DESIGNATED_RESOLVER_FORWARD)
+			{
+				// Config changed to FORWARD; clear stale cache and run the usual checks
+				dns_cache->blocking_status = QUERY_UNKNOWN;
+				dns_cache->force_reply = REPLY_UNKNOWN;
+				cacheStatus = QUERY_UNKNOWN;
+				log_debug(DEBUG_QUERIES, "Designated resolver domain (forward, cache): %s", domainstr);
+				break;
+			}
+
 			// Known as not to be blocked, possibly even explicitly
 			// allowed - we return this result early, skipping all
 			// the lengthy tests below
@@ -2287,6 +2603,62 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 				query->flags.allowed = true;
 
 			return false;
+		}
+		case QUERY_FORWARDED:
+		case QUERY_RETRIED:
+		case QUERY_RETRIED_DNSSEC:
+		case QUERY_IN_PROGRESS:
+		case QUERY_DBBUSY:
+		case QUERY_CACHE_STALE:
+		case QUERY_STATUS_MAX:
+		{
+			// Apply the current designated-resolver mode to cached
+			// resolver.arpa names so a mode change takes effect without
+			// restarting FTL.
+			const enum designated_resolver_mode dr_mode =
+				config.dns.specialDomains.designatedResolver.v.designated_resolver_mode;
+			if(is_resolver_arpa_zone(domainstr))
+			{
+				if(dr_mode != DESIGNATED_RESOLVER_FORWARD)
+				{
+					blockingreason = "Designated Resolver domain";
+					force_next_DNS_reply = REPLY_NODATA;
+					dns_cache->force_reply = REPLY_NODATA;
+					if(dr_mode == DESIGNATED_RESOLVER_SYNTHESIZE)
+					{
+						dns_cache->blocking_status = QUERY_CACHE;
+						cacheStatus = QUERY_CACHE;
+						log_debug(DEBUG_QUERIES, "Designated resolver domain (synthesize, cache): %s", domainstr);
+						return true;
+					}
+
+					// BLOCK mode: own the zone with NODATA/EDE 15
+					dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
+					cacheStatus = QUERY_SPECIAL_DOMAIN;
+					query_blocked(query, domain, client, QUERY_SPECIAL_DOMAIN);
+					log_debug(DEBUG_QUERIES, "Designated resolver domain (block, cache): %s", domainstr);
+					return true;
+				}
+
+				// Config changed to FORWARD; clear stale cache and run the usual checks
+				dns_cache->blocking_status = QUERY_UNKNOWN;
+				dns_cache->force_reply = REPLY_UNKNOWN;
+				cacheStatus = QUERY_UNKNOWN;
+				log_debug(DEBUG_QUERIES, "Designated resolver domain (forward, cache): %s", domainstr);
+				break;
+			}
+
+			// Known as not to be blocked, possibly even explicitly
+			// allowed - we return this result early, skipping all
+			// the lengthy tests below
+			log_debug(DEBUG_QUERIES, "%s is known as not to be blocked%s", domainstr,
+			          dns_cache->flags.allowed ? " (allowed)" : "");
+
+			if(dns_cache->flags.allowed)
+				query->flags.allowed = true;
+
+			return false;
+		}
 	}
 
 	// Skip all checks and continue if we hit already at least one allowlist in the chain
@@ -2320,6 +2692,22 @@ static bool FTL_check_blocking(const char *domainstr, queriesData *query, client
 	// Check if this is a special domain
 	if(!query->flags.allowed && special_domain(query, domainstr))
 	{
+		const enum designated_resolver_mode dr_mode = config.dns.specialDomains.designatedResolver.v.designated_resolver_mode;
+		const bool is_resolver_arpa = dr_mode != DESIGNATED_RESOLVER_FORWARD &&
+		                              is_resolver_arpa_zone(domainstr);
+
+		if(is_resolver_arpa && dr_mode == DESIGNATED_RESOLVER_SYNTHESIZE)
+		{
+			// Own the resolver.arpa zone: NODATA with EDE 29, and synthesize
+			// SVCB records when encrypted DNS services are running.
+			dns_cache->blocking_status = QUERY_CACHE;
+			cacheStatus = dns_cache->blocking_status;
+			dns_cache->force_reply = REPLY_NODATA;
+			force_next_DNS_reply = REPLY_NODATA;
+			log_debug(DEBUG_QUERIES, "Designated resolver domain (synthesize): %s", domainstr);
+			return true;
+		}
+
 		// Set DNS cache properties
 		dns_cache->blocking_status = QUERY_SPECIAL_DOMAIN;
 		cacheStatus = dns_cache->blocking_status;

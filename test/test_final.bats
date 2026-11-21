@@ -34,6 +34,7 @@ load 'bats_helper.bash'
   # BATS:   2x pihole.toml writes (CLI password set/remove processes)
   # BATS:   1x pihole.toml write (invalid dns.hosts entry removed on reload)
   # BATS:   4x pihole.toml writes (CLI password vs. API PATCH race, three rounds + restore)
+  # BATS:   1x pihole.toml write (dns.specialDomains.designatedResolver mode changes)
   # pytest: 3x pihole.toml writes (password, app_pwhash, serve_all via API)
   # pytest: 2x pihole.toml writes (dns/hosts config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
@@ -59,14 +60,15 @@ load 'bats_helper.bash'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
   # slow), leaving the dns.reply.host PATCH, the boxed PATCH + restore, the
-  # removed dns.hosts entry, the CLI password race and webserver_acl.bats.
+  # removed dns.hosts entry, the CLI password race, the
+  # dns.specialDomains.designatedResolver mode changes and webserver_acl.bats.
   # The CLI password set/remove do not write: the in-memory config already
   # matches, so they log "pihole.toml unchanged" - which the next assertion
   # below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "31"
+    assert_line --index 0 "32"
   else
-    [[ ${lines[0]} == "78" ]]
+    [[ ${lines[0]} == "79" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

@@ -421,6 +421,9 @@ void writeTOMLvalue(FILE * fp, const int indent, const enum conf_type t, union c
 		case CONF_ENUM_TEMP_UNIT:
 			printTOMLstring(fp, get_temp_unit_str(v->temp_unit), toml);
 			break;
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+			printTOMLstring(fp, get_designated_resolver_mode_str(v->designated_resolver_mode), toml);
+			break;
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
 			printTOMLstring(fp, get_edns_mode_str(v->edns_mode), toml);
 			break;
@@ -667,6 +670,28 @@ void readTOMLvalue(struct conf_item *conf_item, const char* key, toml_datum_t to
 					conf_item->v.blocking_mode = blocking_mode;
 				else
 					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else
+				log_absent_or_wrong_type(val, conf_item, "string");
+			break;
+		}
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+		{
+			toml_datum_t val = toml_table_find(toml, key);
+			if(val.type == TOML_STRING)
+			{
+				const int mode = get_designated_resolver_mode_val(val.u.s);
+				if(mode != -1)
+					conf_item->v.designated_resolver_mode = mode;
+				else
+					log_warn("Config setting %s is invalid, allowed options are: %s", conf_item->k, conf_item->h);
+			}
+			else if(val.type == TOML_BOOLEAN)
+			{
+				// Accept legacy boolean values without warning; migration
+				// logs the upgrade separately.
+				conf_item->v.designated_resolver_mode = val.u.boolean ?
+					DESIGNATED_RESOLVER_BLOCK : DESIGNATED_RESOLVER_FORWARD;
 			}
 			else
 				log_absent_or_wrong_type(val, conf_item, "string");

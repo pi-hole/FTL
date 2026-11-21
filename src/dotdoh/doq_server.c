@@ -1593,6 +1593,13 @@ static void doq_reap(void)
 	}
 }
 
+static bool doq_running = false;
+
+bool __attribute__((pure)) dotdoh_doq_running(void)
+{
+	return doq_running;
+}
+
 void *dotdoh_doq_thread(void *val)
 {
 	(void)val;
@@ -1645,6 +1652,7 @@ void *dotdoh_doq_thread(void *val)
 		return NULL;
 	}
 	log_info("dotdoh: DoQ server listening on UDP port %d", DOQ_PORT);
+	doq_running = true;
 
 	time_t last_cert_check = doq_now();
 	while(!killed)
@@ -1765,6 +1773,7 @@ void *dotdoh_doq_thread(void *val)
 		// Streams that waited for a slot freed above
 		conns_accept_streams();
 	}
+	doq_running = false;
 
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		if(g_streams[i].used)
@@ -1805,6 +1814,11 @@ void *dotdoh_doq_thread(void *val)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
 #endif
+bool dotdoh_doq_running(void)
+{
+	return false;
+}
+
 void *dotdoh_doq_thread(void *val)
 {
 	(void)val;

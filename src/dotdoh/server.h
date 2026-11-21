@@ -134,4 +134,8 @@ void *dotdoh_dot_thread(void *val);
 // listener uses, one non-blocking state machine per in-flight query.
 void *dotdoh_doq_thread(void *val);
 
+// Whether the inbound DoT/DoQ listener is currently running and serving queries
+bool dotdoh_dot_running(void);
+bool dotdoh_doq_running(void);
+
 #endif // DOTDOH_SERVER_H
