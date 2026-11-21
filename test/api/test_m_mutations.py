@@ -1086,3 +1086,43 @@ class TestRegexArrayValidation:
         r = api_session.get(f"{FTL_URL}/api/domains/deny/regex", timeout=5)
         assert r.status_code == 200, \
             f"FTL did not answer after a rejected regex array: {r.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# Config array size limit (tomlc17 ARRAY_MAX)
+# ---------------------------------------------------------------------------
+
+class TestConfigArrayLimit:
+    """Oversized CONF_JSON_STRING_ARRAY values must be rejected before they are
+    written to pihole.toml, because tomlc17 refuses to read arrays larger than
+    its ARRAY_MAX back."""
+
+    OVERSIZED = [f"example{i}.invalid" for i in range((1 << 14) + 1)]
+
+    def test_patch_rejects_oversized_array(self, api_session):
+        url = f"{FTL_URL}/api/config/webserver/api/excludeDomains?restart=false"
+        before = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeDomains"]
+
+        r = api_session.patch(url,
+                              json={"config": {"webserver": {"api": {"excludeDomains": self.OVERSIZED}}}},
+                              timeout=20)
+        assert r.status_code == 400, f"Expected 400, got {r.status_code} {r.text}"
+        hint = _j(r)["error"].get("hint", "")
+        assert "array too large" in hint, f"Unexpected hint: {hint}"
+
+        after = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeDomains"]
+        assert after == before
+
+    def test_put_rejects_oversized_array(self, api_session):
+        url = f"{FTL_URL}/api/config/webserver/api/excludeDomains?restart=false"
+        before = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeDomains"]
+
+        r = api_session.put(url,
+                            json=[{"item": "example.invalid"}] + self.OVERSIZED,
+                            timeout=20)
+        assert r.status_code == 400, f"Expected 400, got {r.status_code} {r.text}"
+        hint = _j(r)["error"].get("hint", "")
+        assert "array too large" in hint, f"Unexpected hint: {hint}"
+
+        after = _j(api_session.get(url, timeout=5))["config"]["webserver"]["api"]["excludeDomains"]
+        assert after == before

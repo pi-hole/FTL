@@ -291,3 +291,27 @@ def test_v5_archive_locked_item_is_not_carried_over(ftl, line, dotted):
         response = _import(ftl, _replace(toml_before, "hosts", "[]"))
         assert "error" not in response, f"restoring the configuration failed: {response}"
         _wait_for_restart(pos)
+
+
+# ---------------------------------------------------------------------------
+# tomlc17 parser robustness
+# ---------------------------------------------------------------------------
+
+TOMLC17_PARSE_ERRORS = [
+    # tomlc17 ARRAY_MAX is 16384
+    ("hosts", "[" + ", ".join(['"127.0.0.1 h%d.invalid"' % i for i in range((1 << 14) + 1)]) + "]",
+     "oversized-array"),
+    # tomlc17 LITBUF_SIZE is 120; a number literal that fills it is rejected
+    ("blockTTL", "1" * 200, "number-too-long"),
+]
+
+
+@pytest.mark.parametrize("key,value,case", TOMLC17_PARSE_ERRORS,
+                         ids=[c[2] for c in TOMLC17_PARSE_ERRORS])
+def test_tomlc17_parse_robustness_is_refused(ftl, key, value, case):
+    """Malformed/oversized TOML rejected by tomlc17 must not be imported."""
+    before = _current_toml()
+    response = _import(ftl, _replace(before, key, value))
+
+    assert "error" in response, f"{case}: archive was accepted, response: {response}"
+    assert _current_toml() == before, f"{case}: configuration was modified by a refused import"
