@@ -47,6 +47,8 @@
 #include <string.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+// struct sockaddr_un
+#include <sys/un.h>
 // struct sockaddr_in
 #include <netinet/in.h>
 // char *inet_ntoa(struct in_addr in)
