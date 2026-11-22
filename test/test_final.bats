@@ -283,6 +283,20 @@ for s in socks:
   [[ "${statuses}" == '["FORWARDED","IN_PROGRESS"]' ]]
 }
 
+@test "The EDE of an upstream reply is recorded, with and without records" {
+  run bash -c "dig A ede-answer.ftl @127.0.0.1 +short"
+  assert_output "192.0.2.18"
+  run bash -c "dig A ede-nxdomain.ftl @127.0.0.1 | grep -c 'status: NXDOMAIN'"
+  assert_output "1"
+
+  # Queries move into the in-memory database once per second
+  sleep 2
+  run bash -c "curl -s '127.0.0.1/api/queries?domain=ede-answer.ftl' | jq -c '[.queries[].ede.code]'"
+  assert_output "[18]"
+  run bash -c "curl -s '127.0.0.1/api/queries?domain=ede-nxdomain.ftl' | jq -c '[.queries[].ede.code]'"
+  assert_output "[18]"
+}
+
 @test "Setting ntp.sync.interval to 0 disables the NTP sync right away" {
   # FTL restarts and does not start the sync at all, instead of a sync that
   # is already running going on without any pause between the rounds

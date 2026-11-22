@@ -2,6 +2,8 @@ refused_ede15 = newDN("refused.ede15.ftl")
 nxdomain_ede15 = newDN("nxdomain.ede15.ftl")
 null_ede15 = newDN("null.ede15.ftl")
 slow_blocked = newDN("slow-blocked.ftl")
+ede_answer = newDN("ede-answer.ftl")
+ede_nxdomain = newDN("ede-nxdomain.ftl")
 
 
 -- this hook is called before doing any resolving
@@ -33,6 +35,20 @@ function preresolve(dq)
                 -- Add a NULL RR to the response
                 dq:addAnswer(pdns.A, "0.0.0.0")
                 dq:addAnswer(pdns.AAAA, "::")
+                return true
+        end
+
+        if dq.qname == ede_answer then
+                pdnslog("Answering with an address and EDE 18 for "..dq.qname:toString())
+                dq.extendedErrorCode = 18
+                dq:addAnswer(pdns.A, "192.0.2.18")
+                return true
+        end
+
+        if dq.qname == ede_nxdomain then
+                pdnslog("Answering NXDOMAIN with EDE 18 for "..dq.qname:toString())
+                dq.extendedErrorCode = 18
+                dq.rcode = pdns.NXDOMAIN
                 return true
         end
 
