@@ -10,7 +10,8 @@
 #ifndef SETUPVARS_H
 #define SETUPVARS_H
 
-void importsetupVarsConf(void);
+struct config;
+void importsetupVarsConf(struct config *conf);
 char *read_setupVarsconf(const char * key);
 void getSetupVarsArray(const char * input);
 void clearSetupVarsArray(void);

@@ -126,6 +126,7 @@ static struct {
 		.dot = { "tls://one.one.one.one@1.1.1.1", "tls://one.one.one.one@[2606:4700:4700::1111]" },
 		.doh = { "https://cloudflare-dns.com@1.1.1.1/dns-query", "https://cloudflare-dns.com@[2606:4700:4700::1111]/dns-query" }
 	}
+
 };
 
 // The following functions are used to create the JSON output
@@ -745,8 +746,12 @@ static int api_config_get(struct ftl_conn *api)
 		get_bool_var(api->request->query_string, "detailed", &detailed);
 	}
 
+	// A concurrent change frees the strings of the config it replaces. The
+	// JSON holds copies, so only building it needs the lock, not sending it
 	cJSON *json = JSON_NEW_OBJECT();
+	lock_config();
 	get_json_config(api, json, detailed);
+	unlock_config();
 
 	// Build and return JSON response
 	JSON_SEND_OBJECT(json);

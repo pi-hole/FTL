@@ -618,6 +618,31 @@ def doq_connect(host, port, source=None):
     return c
 
 
+def doq_refused(host, port, sources, count, last):
+    """Open count connections from each address in sources, then one more from
+    last, and keep all of them pumped until 3 s after the last one's handshake.
+    Returns how many of the first ones are still open then, and the close code
+    the last one ended with (None if it did not end)."""
+    kept, c = [], None
+    try:
+        for source in sources:
+            for _ in range(count):
+                kept.append(doq_connect(host, port, source))
+        c = DoqConn(host, port, last)
+        end = time.monotonic() + 10
+        while not c.handshaked and c.closed is None and time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        return sum(1 for k in kept if k.closed is None), c.closed
+    finally:
+        for k in kept + ([c] if c is not None else []):
+            k.close()
+
+
 def doq_busy_error(host, port, qname, source, count):
     """Ask count queries one after the other on one connection, then one more
     whose answer is lost on the way and so not acknowledged, and then one with a
@@ -964,6 +989,14 @@ def main():
         _, _, host, port, alpn, source = sys.argv[:6]
         doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
+    elif cmd == "doqrefused":
+        # A connection beyond the connection caps learns that it was refused.
+        # <sources> is a comma-separated list, [last] defaults to its first one
+        _, _, host, port, sources, count = sys.argv[:6]
+        sources = sources.split(",")
+        last = sys.argv[6] if len(sys.argv) > 6 else sources[0]
+        kept, closed = doq_refused(host, int(port), sources, int(count), last)
+        print("kept %d open, closed %s" % (kept, closed))
     elif cmd == "doqbusyerror":
         # A protocol error on a connection with an answer not acknowledged yet
         # must still reach the client as a connection close with that code
