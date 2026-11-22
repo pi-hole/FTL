@@ -51,7 +51,7 @@ load 'bats_helper.bash'
   # dotdoh.bats: 2x pihole.toml writes (encrypted setup + plaintext teardown)
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
-  # webserver_acl.bats: 6x pihole.toml writes (three ACLs + restore, proxy ACL + restore)
+  # webserver_acl.bats: 10x pihole.toml writes (five ACLs + restore, two proxy ACLs + restore each)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
@@ -64,9 +64,9 @@ load 'bats_helper.bash'
   # matches, so they log "pihole.toml unchanged" - which the next assertion
   # below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "27"
+    assert_line --index 0 "31"
   else
-    [[ ${lines[0]} == "74" ]]
+    [[ ${lines[0]} == "78" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -717,6 +717,88 @@ first_start_stop() {
   assert_output "2"
   run grep -c "checksum of /etc/pihole/pihole.toml" "${first_start}/FTL.log"
   assert_output "0"
+}
+
+@test "An empty files.log.dnsmasq is kept and no pihole.log is written" {
+  # The log flush below deletes the queries of the last 24 hours
+  for f in /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm; do
+    if [[ -e "${f}" ]]; then cp -p "${f}" "${f}.logempty"; fi
+  done
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.logempty
+  cp -p /etc/pihole/dnsmasq.conf /tmp/dnsmasq.conf.logempty
+  mv /var/log/pihole/pihole.log /var/log/pihole/pihole.log.kept
+  sed -i 's|^    dnsmasq = "/var/log/pihole/pihole.log"$|    dnsmasq = ""|' /etc/pihole/pihole.toml
+  # Receive what FTL sends to syslog, unless a syslog daemon listens already
+  syslog_file=""
+  if [[ ! -e /dev/log && ! -L /dev/log ]]; then
+    syslog_file=/tmp/syslog.logempty
+    : > "${syslog_file}"
+    python3 -c 'import os, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+s.bind("/dev/log")
+os.chmod("/dev/log", 0o666)
+with open(sys.argv[1], "ab", buffering=0) as f:
+    while True:
+        f.write(s.recv(65536) + b"\n")' "${syslog_file}" > /dev/null 2>&1 3>&- &
+    syslog_pid=$!
+    for i in $(seq 1 50); do
+      [[ -S /dev/log ]] && break
+      sleep 0.1
+    done
+  fi
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  # The cache size makes dnsmasq warn at startup
+  su pihole -s /bin/sh -c "FTLCONF_dns_cache_size=20000 /home/pihole/pihole-FTL" || true
+  ./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 "$logsize_restart" > /dev/null || true
+  for i in $(seq 1 30); do
+    if dig A a.ftl @127.0.0.1 +tries=1 +time=1 > /dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  reply="$(dig A a.ftl @127.0.0.1 +short +tries=1 +time=2 || true)"
+  value="$(curl -s -m 5 http://127.0.0.1/api/config/files/log/dnsmasq | jq -c '.config.files.log.dnsmasq' || true)"
+  logs="$(curl -s -m 5 http://127.0.0.1/api/logs/dnsmasq | jq -c '[.file, any(.log[]; .message | test("query\\[A\\] a\\.ftl from 127\\.0\\.0\\.1$"))]' || true)"
+  flushed="$(curl -s -m 5 -X POST http://127.0.0.1/api/action/flush/logs | jq -r '.status' || true)"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill "$(cat /run/pihole-FTL.pid)" || true
+  ./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 "$logsize_before" > /dev/null || true
+  kept="$(grep -c -E '^    dnsmasq = ""( ###|$)' /etc/pihole/pihole.toml || true)"
+  written="$([[ -e /var/log/pihole/pihole.log ]] && echo yes || echo no)"
+  problems="$(tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log | grep -E "(WARNING|ERROR): .*(files\.log\.dnsmasq|pihole\.log|truncate|Not changing ownership)" || true)"
+  syslog_query="none"
+  syslog_warning="none"
+  if [[ -n "${syslog_file}" ]]; then
+    kill "${syslog_pid}" || true
+    rm -f /dev/log
+    # Daemon facility, info level, tagged as dnsmasq tags its own lines. With
+    # misc.extraLogging, a serial number and the client come first
+    syslog_query="$(grep -a -c -E '^<30>.{16}dnsmasq\[[0-9]+\]: .*query\[A\] a\.ftl from 127\.0\.0\.1$' "${syslog_file}" || true)"
+    syslog_warning="$(grep -a -c -E '^<28>.{16}dnsmasq\[[0-9]+\]: cache size greater than 10000 ' "${syslog_file}" || true)"
+    rm -f "${syslog_file}"
+  fi
+
+  # Put the suite's config, database and pihole.log back before checking anything
+  mv /tmp/pihole.toml.logempty /etc/pihole/pihole.toml
+  mv /tmp/dnsmasq.conf.logempty /etc/pihole/dnsmasq.conf
+  rm -f /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm
+  for f in /etc/pihole/pihole-FTL.db /etc/pihole/pihole-FTL.db-wal /etc/pihole/pihole-FTL.db-shm; do
+    if [[ -e "${f}.logempty" ]]; then mv "${f}.logempty" "${f}"; fi
+  done
+  rm -f /var/log/pihole/pihole.log
+  mv /var/log/pihole/pihole.log.kept /var/log/pihole/pihole.log
+
+  printf "reply: %s, value: %s, logs: %s, flush: %s, kept: %s, pihole.log written: %s, syslog query/warning lines: %s/%s\n" "${reply}" "${value}" "${logs}" "${flushed}" "${kept}" "${written}" "${syslog_query}" "${syslog_warning}"
+  [[ "${reply}" == "192.168.1.1" ]]
+  [[ "${value}" == '""' ]]
+  [[ "${logs}" == '["",true]' ]]
+  [[ "${flushed}" == "success" ]]
+  [[ "${kept}" == "1" ]]
+  [[ "${written}" == "no" ]]
+  [[ -z "${syslog_file}" || ${syslog_query} -ge 1 ]]
+  [[ -z "${syslog_file}" || ${syslog_warning} -ge 1 ]]
+  assert_equal "${problems}" ""
 }
 
 @test "Queries older than database.maxDBdays are deleted in the first nightly window after the start" {
