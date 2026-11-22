@@ -1217,14 +1217,15 @@ void DB_read_queries(void)
 		if(sqlite3_column_bytes(stmt, 6) > 0 &&
 		   (buffer = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
-			// Get IP address and port of upstream destination
-			char serv_addr[INET6_ADDRSTRLEN + 16] = { 0 };
+			// Get the upstream and its port. If there is no port in the
+			// database, the whole string is the upstream on the default port
+			char serv_addr[FORWARD_UPSTREAM_MAX];
 			unsigned int serv_port = 53;
-			// We limit the number of bytes written into the serv_addr buffer
-			// to prevent buffer overflows. If there is no port available in
-			// the database, we skip extracting them and use the default port
-			sscanf(buffer, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
-			serv_addr[INET6_ADDRSTRLEN + 15] = '\0';
+			if(!split_forward_string(buffer, serv_addr, sizeof(serv_addr), &serv_port))
+			{
+				strncpy(serv_addr, buffer, sizeof(serv_addr) - 1);
+				serv_addr[sizeof(serv_addr) - 1] = '\0';
+			}
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
@@ -1544,6 +1545,19 @@ static const char *room_copy(struct export_run *run, const char *str)
 	return copy;
 }
 
+// Write the forward string of an upstream, "<upstream>#<port>", into the room
+// of the chunk, NULL if it does not fit. The caller holds the SHM lock
+static const char *room_copy_forward(struct export_run *run, const char *upstream, const in_port_t port)
+{
+	const size_t left = EXPORT_ROOM - run->used;
+	char *copy = run->room + run->used;
+	const int len = snprintf(copy, left, "%s#%u", upstream, (unsigned int)port);
+	if(len < 0 || (size_t)len >= left)
+		return NULL;
+	run->used += (size_t)len + 1;
+	return copy;
+}
+
 // The ID of a row found earlier in this run for the entry with these strings,
 // 0 if none
 static int __attribute__((pure)) found_id(const struct found_row *rows, const unsigned int n,
@@ -1631,13 +1645,9 @@ static bool take_query(const queriesData *query, struct export_row *r, struct ex
 		r->upstream_at.pos2 = upstream->port;
 		r->upstream_db_id = upstream->flags.in_database ? upstream->db_id :
 		                    found_id(run->upstreams, run->n_upstreams, r->upstreamID, &r->upstream_at);
-		if(r->upstream_db_id == 0)
-		{
-			char forward[64];
-			const int len = snprintf(forward, sizeof(forward), "%s#%u", getstr(upstream->ippos), upstream->port);
-			if(len > 0 && (size_t)len < sizeof(forward) && (r->upstream = room_copy(run, forward)) == NULL)
-				return false;
-		}
+		if(r->upstream_db_id == 0 &&
+		   (r->upstream = room_copy_forward(run, getstr(upstream->ippos), upstream->port)) == NULL)
+			return false;
 	}
 
 	// ADDINFO - the domain of a CNAME that caused a block, otherwise the

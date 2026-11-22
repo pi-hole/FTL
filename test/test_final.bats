@@ -1396,6 +1396,75 @@ three.rename.ftl|new-rename.ftl"
   refute_output
 }
 
+@test "An encrypted upstream keeps its URI through the long-term database" {
+  # An encrypted upstream is recorded by its dns.upstreams URI, which gives
+  # the port after a '#' and can be longer than an IP address. A query sent
+  # to it through the shim of dotdoh.bats is stored as "<URI>#<port>", comes
+  # back as the same upstream after a restart, and the long-term statistics
+  # show the URI and the port. This runs on a copy of the database without
+  # other queries. The environment variables end up in pihole.toml, so FTL is
+  # stopped and pihole.toml restored before anything is checked
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.upstream-uri
+  db=/etc/pihole/upstream-uri.db
+  uri="https://pi.hole@127.0.0.1#8443/dns-query/a-path-that-makes-the-uri-long"
+  rm -f "${db}" "${db}-journal" "${db}-wal" "${db}-shm"
+  run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" ".backup ${db}"
+  assert_success
+  run ./pihole-FTL sqlite3 "${db}" "DELETE FROM query_storage;"
+  assert_success
+  chown pihole:pihole "${db}"
+  start_uri_ftl() {
+    local logsize
+    logsize=$(stat -c%s /var/log/pihole/FTL.log)
+    su pihole -s /bin/sh -c "FTLCONF_files_database=${db} FTLCONF_dns_upstreams='${uri}' FTLCONF_dns_upstreamCA=$(pwd)/test/test_ca.crt /home/pihole/pihole-FTL" || return 1
+    ./pihole-FTL wait-for 'dotdoh: DoH upstream pi.hole armed' /var/log/pihole/FTL.log 30 "${logsize}" > /dev/null || return 1
+    ./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 "${logsize}" > /dev/null || return 1
+    ./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 "${logsize}" > /dev/null
+  }
+  stop_uri_ftl() {
+    local logsize
+    logsize=$(stat -c%s /var/log/pihole/FTL.log)
+    kill "$(cat /run/pihole-FTL.pid)" || return 1
+    ./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 "${logsize}" > /dev/null
+  }
+  # The upstream statistics also count the DNSSEC queries for the zone, the
+  # query log has the A queries of this test
+  upstreams() {
+    curl -s 127.0.0.1/api/stats/upstreams | jq -c '[.upstreams[] | select(.ip | startswith("https://")) | [.ip, .port]]' || true
+  }
+  query_log() {
+    curl -s '127.0.0.1/api/queries?domain=*.upstream-uri.dnssec' | jq -c '[.queries[] | [.domain, .type, .upstream]]' || true
+  }
+
+  started=0; stopped=0
+  start_uri_ftl && started=$((started + 1))
+  dig A first.upstream-uri.dnssec @127.0.0.1 +tries=1 +time=10 > /dev/null || true
+  first=$(upstreams)
+  first_log=$(query_log)
+  stop_uri_ftl && stopped=$((stopped + 1))
+  stored=$(./pihole-FTL sqlite3 "${db}" "SELECT IFNULL(forward, 'NULL') FROM queries WHERE domain = 'first.upstream-uri.dnssec';" || true)
+
+  start_uri_ftl && started=$((started + 1))
+  dig A second.upstream-uri.dnssec @127.0.0.1 +tries=1 +time=10 > /dev/null || true
+  second=$(upstreams)
+  second_log=$(query_log)
+  long_term=$(curl -s "127.0.0.1/api/stats/database/upstreams?from=$(( $(date +%s) - 3600 ))&until=$(( $(date +%s) + 60 ))" | jq -c '[.upstreams[] | select(.ip | startswith("https://")) | [.ip, .port]]' || true)
+  stop_uri_ftl && stopped=$((stopped + 1))
+  rm -f "${db}" "${db}-journal" "${db}-wal" "${db}-shm"
+  cp -p /tmp/pihole.toml.upstream-uri /etc/pihole/pihole.toml
+
+  printf "started: %s, stopped: %s\nbefore the restart: %s %s\nstored: %s\nafter the restart: %s %s\nlong-term: %s\n" \
+         "${started}" "${stopped}" "${first}" "${first_log}" "${stored}" "${second}" "${second_log}" "${long_term}"
+  assert_equal "${started}" "2"
+  assert_equal "${stopped}" "2"
+  assert_equal "${first}" "[[\"${uri}\",8443]]"
+  assert_equal "${first_log}" "[[\"first.upstream-uri.dnssec\",\"A\",\"${uri}#8443\"]]"
+  assert_equal "${stored}" "${uri}#8443"
+  assert_equal "${second}" "[[\"${uri}\",8443]]"
+  assert_equal "${second_log}" "[[\"second.upstream-uri.dnssec\",\"A\",\"${uri}#8443\"],[\"first.upstream-uri.dnssec\",\"A\",\"${uri}#8443\"]]"
+  assert_equal "${long_term}" "[[\"${uri}\",8443]]"
+}
+
 @test "Rows the history import skips leave nothing behind in shared memory" {
   # One row for each check that makes the import skip a row, next to two rows
   # it imports, type 0 being the lowest mapped type. A domain or client ID
