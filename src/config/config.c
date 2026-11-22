@@ -801,7 +801,7 @@ void initConfig(struct config *conf)
 	conf->dns.listeningMode.c = validate_stub; // Only type-based checking
 
 	conf->dns.queryLogging.k = "dns.queryLogging";
-	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log";
+	conf->dns.queryLogging.h = "Log DNS queries and replies to pihole.log, or to syslog if files.log.dnsmasq is empty";
 	conf->dns.queryLogging.t = CONF_BOOL;
 	conf->dns.queryLogging.f = FLAG_RESTART_FTL;
 	conf->dns.queryLogging.d.b = true;
@@ -1135,7 +1135,7 @@ void initConfig(struct config *conf)
 	conf->dhcp.rapidCommit.c = validate_stub; // Only type-based checking
 
 	conf->dhcp.logging.k = "dhcp.logging";
-	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below.";
+	conf->dhcp.logging.h = "Enable logging for DHCP. This will log all relevant DHCP-related activity, including, e.g., all the options sent to DHCP clients and the tags used to determine them (if any). This can be useful for debugging DHCP issues. The generated output is saved to the file specified by files.log.dnsmasq below, or sent to syslog if it is empty.";
 	conf->dhcp.logging.t = CONF_BOOL;
 	conf->dhcp.logging.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->dhcp.logging.d.b = false;
@@ -1736,12 +1736,12 @@ void initConfig(struct config *conf)
 	// conf->files.log.ftl is set in a separate function (getLogFilePath)
 
 	conf->files.log.dnsmasq.k = "files.log.dnsmasq";
-	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server";
+	conf->files.log.dnsmasq.h = "The log file used by the embedded dnsmasq DNS server\n\n Setting this to an empty string disables pihole.log. Everything dnsmasq logs, including queries and DHCP activity, then goes to syslog.";
 	conf->files.log.dnsmasq.a = cJSON_CreateStringReference("Any writable file");
 	conf->files.log.dnsmasq.t = CONF_STRING;
 	conf->files.log.dnsmasq.f = FLAG_RESTART_FTL | FLAG_NO_CLUSTER;
 	conf->files.log.dnsmasq.d.s = (char*)"/var/log/pihole/pihole.log";
-	conf->files.log.dnsmasq.c = validate_filepath;
+	conf->files.log.dnsmasq.c = validate_filepath_empty;
 
 	conf->files.log.webserver.k = "files.log.webserver";
 	conf->files.log.webserver.h = "The log file used by the webserver";

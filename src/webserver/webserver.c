@@ -464,9 +464,24 @@ static int acl_match_net(const char *ptr, const size_t len, const struct sockadd
 			struct in6_addr net6;
 			if(*p == '\0' && colons >= 2)
 			{
+				const bool valid = inet_pton(AF_INET6, ad, &net6) == 1;
+
+				// ::ffff:a.b.c.d/96 and longer prefixes are IPv4 entries
+				if(valid && IN6_IS_ADDR_V4MAPPED(&net6) && slash >= 96)
+				{
+					if(sa->ss_family != AF_INET)
+						return 0;
+					const uint32_t ip = ntohl(((const struct sockaddr_in *)sa)->sin_addr.s_addr);
+					const uint8_t *v4net = net6.s6_addr + 12;
+					const uint32_t net = ((uint32_t)v4net[0] << 24) | ((uint32_t)v4net[1] << 16) |
+					                     ((uint32_t)v4net[2] << 8) | (uint32_t)v4net[3];
+					const uint32_t mask = slash > 96 ? (0xFFFFFFFFu << (128 - slash)) : 0;
+					return (ip & mask) == net;
+				}
+
 				if(sa->ss_family != AF_INET6)
 					return 0;
-				if(inet_pton(AF_INET6, ad, &net6) == 1)
+				if(valid)
 				{
 					const uint8_t *ip6 = ((const struct sockaddr_in6 *)sa)->sin6_addr.s6_addr;
 					for(unsigned int i = 0; i < 16; i++)
@@ -497,6 +512,20 @@ bool webserver_acl_allows(const struct sockaddr_storage *sa)
 		return true;
 	if(web_acl == NULL)
 		return false;
+
+	// A dual-stack socket or a PROXY header reports IPv4 clients as
+	// ::ffff:a.b.c.d, match them as the IPv4 clients they are
+	struct sockaddr_storage v4;
+	const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)sa;
+	if(sa->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
+	{
+		struct sockaddr_in *s4 = (struct sockaddr_in *)&v4;
+		memset(&v4, 0, sizeof(v4));
+		s4->sin_family = AF_INET;
+		s4->sin_port = s6->sin6_port;
+		memcpy(&s4->sin_addr, s6->sin6_addr.s6_addr + 12, 4);
+		sa = &v4;
+	}
 
 	int allowed = '-';
 	const char *list = web_acl;
