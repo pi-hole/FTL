@@ -1464,6 +1464,73 @@ three.rename.ftl|new-rename.ftl"
   assert_equal "${upstreams}" "New upstream server: 10.0.201.54:53"
 }
 
+@test "A history import that cannot run leaves no reserved slots behind" {
+  # The import reserves a slot for each query it counts on disk. A damaged
+  # message table is found before the count, which is skipped then. A damaged
+  # session table is found after it, before the database thread imports, and
+  # the reserved slots are released. Either way every query in memory has one
+  # status and one reply type. This runs on copies of the database with 50
+  # queries in the history window. The environment variable ends up in
+  # pihole.toml, so FTL is stopped and pihole.toml restored before anything
+  # is checked
+  cp -p /etc/pihole/pihole.toml /tmp/pihole.toml.import-broken
+  db=/etc/pihole/import-broken.db
+  now=$(date +%s)
+  results=()
+  for table in message session; do
+    rm -f "${db}" "${db}-journal" "${db}-wal" "${db}-shm"
+    run ./pihole-FTL sqlite3 /etc/pihole/pihole-FTL.db ".timeout 5000" ".backup ${db}"
+    assert_success
+    run ./pihole-FTL sqlite3 "${db}" "PRAGMA journal_mode = DELETE; DELETE FROM query_storage; DELETE FROM aliasclient;
+      INSERT OR IGNORE INTO domain_by_id (domain) VALUES ('reserved.import-broken.ftl');
+      INSERT OR IGNORE INTO client_by_id (ip, name) VALUES ('10.0.202.1', '');
+      WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 50)
+      INSERT INTO query_storage (timestamp, type, status, domain, client)
+        SELECT $((now - 60)), 1, 3, d.id, c.id FROM n, domain_by_id d, client_by_id c
+        WHERE d.domain = 'reserved.import-broken.ftl' AND c.ip = '10.0.202.1' AND c.name = '';"
+    assert_success
+    # An invalid page type at the root page of the table
+    page_size=$(./pihole-FTL sqlite3 "${db}" "PRAGMA page_size;")
+    root=$(./pihole-FTL sqlite3 "${db}" "SELECT rootpage FROM sqlite_master WHERE type = 'table' AND name = '${table}';")
+    printf '\xff' | dd of="${db}" bs=1 seek=$(( (root - 1) * page_size )) conv=notrunc status=none
+    chown pihole:pihole "${db}"
+
+    logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+    started=0
+    su pihole -s /bin/sh -c "FTLCONF_files_database=${db} /home/pihole/pihole-FTL" &&
+      ./pihole-FTL wait-for ' -> Known forward destinations' /var/log/pihole/FTL.log 30 "${logsize_restart}" > /dev/null &&
+      ./pihole-FTL wait-for 'Web server ports:' /var/log/pihole/FTL.log 30 "${logsize_restart}" > /dev/null &&
+      started=1
+    sums=$(curl -s 127.0.0.1/api/stats/summary | jq -c '[.queries.total, ([.queries.status[]] | add), ([.queries.replies[]] | add)]' || true)
+
+    logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+    kill "$(cat /run/pihole-FTL.pid)" || true
+    stopped=0
+    ./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 "${logsize_before}" > /dev/null || stopped=$?
+    rm -f "${db}" "${db}-journal" "${db}-wal" "${db}-shm"
+    cp -p /tmp/pihole.toml.import-broken /etc/pihole/pihole.toml
+
+    tail -c +$((logsize_restart + 1)) /var/log/pihole/FTL.log > /tmp/FTL.import-broken.log
+    damaged=$(grep -c "is damaged and cannot be used" /tmp/FTL.import-broken.log || true)
+    counted=$(grep -c "count_queries_on_disk(): Going to import 50 queries" /tmp/FTL.import-broken.log || true)
+    results+=("${table} ${started} ${stopped} ${damaged} ${counted} ${sums:-none}")
+  done
+
+  printf "table, started, stopped, damaged, counted, total/status/reply sums: %s\n" "${results[@]}"
+  for result in "${results[@]}"; do
+    read -r table started stopped damaged counted sums <<< "${result}"
+    assert_equal "${started}" "1"
+    assert_equal "${stopped}" "0"
+    [[ ${damaged} -ge 1 ]]
+    if [[ "${table}" == "message" ]]; then
+      assert_equal "${counted}" "0"
+    else
+      assert_equal "${counted}" "1"
+    fi
+    assert_equal "$(jq 'unique | length' <<< "${sums}")" "1"
+  done
+}
+
 @test "Queries keep the client name they were made with, in memory, on disk and after a restart" {
   # The test configuration resolves no client names. This instance resolves
   # 127.0.0.20 through dns.hosts, which names it old-name.ftl after its first
