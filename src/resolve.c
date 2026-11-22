@@ -463,7 +463,7 @@ static bool validate_udp_ptr_response(uint8_t *buf, const size_t response_len,
 // Perform a name lookup by sending a packet to ourselves
 static bool ngethostbyname(const int sock, const bool tcp,
                            char hostn[MAXDOMAINLEN], const char *host, const char *ipaddr, bool *truncated)
-{	
+{
 	// Initialize request DNS header
 	struct DNS_HEADER dns = { 0 };
 	// Random query ID. This has to be unpredictable, as an off-path
@@ -1320,7 +1320,8 @@ static void resolveClients(const bool onlynew, const bool force_refreshing)
 		client = getClient(clientID, true);
 		if(client == NULL)
 		{
-			log_warn("Unable to get client pointer (2) with ID %u in resolveClients(), skipping...", clientID);
+			// Recycled while the lock was released
+			log_debug(DEBUG_RESOLVER, "Client ID %u was recycled while resolving %s, skipping", clientID, ipaddr);
 			skipped++;
 			unlock_shm();
 			continue;

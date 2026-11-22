@@ -302,10 +302,14 @@ ssize_t doq_pool_exchange(struct doq_pool *p, const uint8_t *query, size_t qlen,
 	pthread_mutex_unlock(&p->lock);
 
 	// Best-effort immediate close so the upstream does not wait on us; do not
-	// block the worker flushing it. No args means the default application error
-	// code 0, which is DOQ_NO_ERROR.
-	SSL_shutdown_ex(conn, SSL_SHUTDOWN_FLAG_RAPID | SSL_SHUTDOWN_FLAG_NO_BLOCK,
-	                NULL, 0);
+	// block the worker flushing it. Without the stream flush OpenSSL sends the
+	// CONNECTION_CLOSE from within this call; with it, the close would wait
+	// until the upstream acknowledged our query, and SSL_free() below would
+	// discard it.
+	// No args means the default application error code 0, which is
+	// DOQ_NO_ERROR.
+	SSL_shutdown_ex(conn, SSL_SHUTDOWN_FLAG_RAPID | SSL_SHUTDOWN_FLAG_NO_BLOCK |
+	                SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH, NULL, 0);
 	SSL_free(conn); // frees the datagram BIO and closes the UDP fd
 	return rv;
 }

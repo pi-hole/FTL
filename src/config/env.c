@@ -23,7 +23,7 @@
 #include <limits.h>
 // openFTLtoml()
 #include "config/toml_helper.h"
-// escape_json()
+// escape_control_chars()
 #include "webserver/http-common.h"
 struct env_item
 {
@@ -58,11 +58,14 @@ void getEnvVars(void)
 			char *saveptr = NULL;
 			char *key = strtok_r(env_copy, "=", &saveptr);
 
+			char *escaped_key = escape_control_chars(key);
+			const char *name = escaped_key != NULL ? escaped_key : "(unable to display)";
+
 			// Log warning if value is missing
 			char *value;
 			if(strlen(*env) <= strlen(key) + 1)
 			{
-				log_warn("Environment variable %s has no value, substituting with empty string", key);
+				log_warn("Environment variable %s has no value, substituting with empty string", name);
 				value = (char*)"";
 			}
 			else
@@ -71,7 +74,12 @@ void getEnvVars(void)
 				// the '=') is the value
 				value = *env + strlen(key) + 1;
 			}
-			log_debug(DEBUG_CONFIG, "ENV \"%s\" = \"%s\"", key, value);
+
+			char *escaped_value = escape_control_chars(value);
+			log_debug(DEBUG_CONFIG, "ENV \"%s\" = \"%s\"", name,
+			          escaped_value != NULL ? escaped_value : "(unable to display)");
+			free(escaped_value);
+			free(escaped_key);
 
 			// Add to list
 			struct env_item *new_item = calloc(1, sizeof(struct env_item));
@@ -87,6 +95,49 @@ void getEnvVars(void)
 		}
 	}
 
+}
+
+static void log_env_item(struct env_item *item)
+{
+	char *escaped = escape_control_chars(item->key);
+	const char *key = escaped != NULL ? escaped : "(unable to display)";
+
+	if(item->used)
+	{
+		if(item->valid)
+			log_info("   %s %s is used", cli_tick(), key);
+		else
+		{
+			if(item->error != NULL)
+				log_err("  %s %s %s, using default instead",
+					cli_cross(), key, item->error);
+			else
+				log_err("  %s %s is invalid, using default instead",
+				        cli_cross(), key);
+
+			if(item->error_allocated)
+			{
+				free(item->error);
+				item->error = NULL;
+				item->error_allocated = false;
+			}
+		}
+
+		free(escaped);
+		return;
+	}
+
+	// else: print warning
+	unsigned int N = 0;
+	char **matches = suggest_closest_conf_key(true, item->key, &N);
+
+	// Print the closest matches
+	log_warn("%s %s is unknown, did you mean any of these?", cli_qst(), key);
+	for(size_t i = 0; i < N; ++i)
+		log_warn("    - %s", matches[i]);
+
+	free(matches);
+	free(escaped);
 }
 
 void printFTLenv(void)
@@ -114,40 +165,7 @@ void printFTLenv(void)
 
 	// Iterate over all known FTLCONF environment variables
 	for(struct env_item *item = env_list; item != NULL; item = item->next)
-	{
-		if(item->used)
-		{
-			if(item->valid)
-				log_info("   %s %s is used", cli_tick(), item->key);
-			else
-			{
-				if(item->error != NULL)
-					log_err("  %s %s %s, using default instead",
-						cli_cross(), item->key, item->error);
-				else
-					log_err("  %s %s is invalid, using default instead",
-					        cli_cross(), item->key);
-
-				if(item->error_allocated)
-				{
-					free(item->error);
-					item->error = NULL;
-					item->error_allocated = false;
-				}
-			}
-
-			continue;
-		}
-		// else: print warning
-		unsigned int N = 0;
-		char **matches = suggest_closest_conf_key(true, item->key, &N);
-
-		// Print the closest matches
-		log_warn("%s %s is unknown, did you mean any of these?", cli_qst(), item->key);
-		for(size_t i = 0; i < N; ++i)
-			log_warn("    - %s", matches[i]);
-		free(matches);
-	}
+		log_env_item(item);
 }
 
 static struct env_item *__attribute__((pure)) getFTLenv(const char *key)
@@ -198,11 +216,11 @@ static void invalid_enum_item(const char *envvar, struct conf_item *conf_item, s
 		cJSON_AddItemToArray(allowed_items, cJSON_Duplicate(sub_item, true));
 	}
 	char *allowed_values = cJSON_PrintUnformatted(allowed_items);
-	char *escaped_value = escape_json(envvar);
+	char *escaped_value = escape_control_chars(envvar);
 
 	// Build the error message. Mark it as allocated so printFTLenv()
 	// actually frees it again instead of leaking it on every reload.
-	if(asprintf(&item->error, "= %s is invalid, allowed options are: %s",
+	if(asprintf(&item->error, "= \"%s\" is invalid, allowed options are: %s",
 	            escaped_value ? escaped_value : "(null)",
 	            allowed_values ? allowed_values : "(null)") > 0)
 		item->error_allocated = true;
@@ -259,8 +277,10 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	// else: We found an environment variable with the given key
 	const char *envvar = item != NULL ? item->value : NULL;
 
+	char *escaped_envvar = is_secret_conf_item(conf_item) ? NULL : escape_control_chars(envvar);
 	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e,
-	          is_secret_conf_item(conf_item) ? "(hidden)" : envvar);
+	          is_secret_conf_item(conf_item) ? "(hidden)" : (escaped_envvar ? escaped_envvar : "(unable to display)"));
+	free(escaped_envvar);
 
 	// Snapshot the previous value and type before the type switch commits
 	// the new value into conf_item->v. If the validator below rejects the

@@ -210,13 +210,13 @@ do { \
 
 // Variables memorizing the parent gravity database connection and prepared
 // statements to avoid valgrind warnings about memory leaks
-static sqlite3 *parent_gravity_db = NULL;
-static sqlite3_stmt *parent_gravity_shared_stmt = NULL;
-static sqlite3_stmt *parent_antigravity_shared_stmt = NULL;
-static sqlite3_stmt *parent_allowlist_shared_stmt = NULL;
-static sqlite3_stmt *parent_denylist_shared_stmt = NULL;
-static sqlite3_stmt *parent_regex_deny_groups_stmt = NULL;
-static sqlite3_stmt *parent_regex_allow_groups_stmt = NULL;
+static sqlite3 *parent_gravity_db __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_gravity_shared_stmt __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_antigravity_shared_stmt __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_allowlist_shared_stmt __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_denylist_shared_stmt __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_regex_deny_groups_stmt __attribute__((unused)) = NULL;
+static sqlite3_stmt *parent_regex_allow_groups_stmt __attribute__((unused)) = NULL;
 
 // Private prototypes
 static bool gravityDB_open(void);
@@ -2490,7 +2490,12 @@ static bool delFromTable(sqlite3 *db, const enum gravity_list_type listtype, con
 		{
 			log_debug(DEBUG_API, "SQL: %s", querystr);
 			if(item_idx > 0)
-				log_debug(DEBUG_API, "     :item = \"%s\"", item->valuestring);
+			{
+				char *escaped = escape_control_chars(item->valuestring);
+				log_debug(DEBUG_API, "     :item = \"%s\"",
+				          escaped != NULL ? escaped : "(unable to display)");
+				free(escaped);
+			}
 			if(type_idx > 0)
 				log_debug(DEBUG_API, "     :type = %i", cJSON_IsNumber(type) ? type->valueint : -1);
 		}

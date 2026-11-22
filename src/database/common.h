@@ -57,6 +57,11 @@ bool db_update_disk_counter(sqlite3 *db, const enum counters_table_props ID, con
 const char *get_sqlite3_version(void);
 int64_t get_row_count(const char *table_name);
 
+// Room for the upstream part of a forward string of the database. Encrypted
+// upstreams are recorded by their dns.upstreams URI
+#define FORWARD_UPSTREAM_MAX 512
+bool split_forward_string(const char *forward, char *upstream, const size_t size, unsigned int *port);
+
 // Return if FTL's database is known to be broken
 // We abort execution of all database-related activities in this case
 bool FTLDBerror(void) __attribute__ ((pure));

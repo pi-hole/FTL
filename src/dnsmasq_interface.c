@@ -71,6 +71,7 @@ static void _query_set_reply(const unsigned int flags, const enum reply_type rep
                              const double now, const char *file, const int line);
 static bool FTL_check_blocking(const char *domainstr, queriesData *query, clientsData *client, domainsData *domain, DNSCacheData *dns_cache);
 static void query_blocked(queriesData *query, domainsData *domain, clientsData *client, const enum query_status new_status);
+static enum query_status detect_blocked_IP(const unsigned short flags, const union all_addr *addr);
 static void FTL_forwarded(const unsigned int flags, const char *name, const union all_addr *addr, unsigned short port, const int id, const char *file, const int line);
 static void FTL_reply(const unsigned int flags, const char *name, const union all_addr *addr, const char *arg, const int id, const char *file, const int line);
 static void FTL_upstream_error(const union all_addr *addr, const unsigned int flags, const int id, const char *file, const int line);
@@ -137,6 +138,7 @@ static size_t pihole_suffix_len = 0;
 static size_t hostname_suffix_len = 0;
 static size_t hostname_len = 0;
 static const char *cname_target = NULL;
+static void refresh_dnsmasq_metrics(void);
 
 // FTL DNS cache hit/miss counters.
 // A "hit" means the (domain, client, query-type) tuple was already in FTL's
@@ -282,6 +284,11 @@ const char *flagnames[] = {"F_IMMORTAL ", "F_NAMEP ", "F_REVERSE ", "F_FORWARD "
 
 void FTL_hook(unsigned int flags, const char *name, const union all_addr *addr, char *arg, int id, unsigned short type, const char *file, const int line)
 {
+	// dnsmasq's main thread passes through here on every UDP query (TCP
+	// queries are answered in forked workers), which makes it the place to
+	// walk the cache for the API
+	refresh_dnsmasq_metrics();
+
 	// Extract filename from path
 	const char *path = short_path(file);
 	if(config.debug.flags.v.b)
@@ -1128,7 +1135,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime
-	const unsigned int timeidx = getOverTimeID(querytimestamp);
+	const int timeidx = getOverTimeID(querytimestamp);
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -2790,7 +2797,7 @@ void FTL_dnsmasq_reload(void)
 	check_capabilities();
 
 	// Report blocking mode
-	log_info("Blocking status is %s", config.dns.blocking.active.v.b ? "enabled" : "disabled");
+	log_info("Blocking status is %s", get_blocking_status_str(get_blockingstatus()));
 
 	// Set resolver as ready
 	resolver_ready = true;
@@ -2943,6 +2950,26 @@ static void FTL_reply(const unsigned int flags, const char *name, const union al
 		}
 		else
 			log_debug(DEBUG_FLAGS, "***** Unknown cache query");
+	}
+
+	// An answer from the cache may carry an upstream's blocking page address
+	// (e.g. Cisco Umbrella), and FTL_check_reply() only sees answers coming
+	// from upstream. Check every cached address of the queried name, not only
+	// the first one. F_FORWARD without F_CONFIG, F_HOSTS and F_DHCP marks data
+	// that came from upstream: address=/.../ lines, local records and DHCP
+	// names carry one of those. Addresses of a CNAME target are left to
+	// FTL_CNAME(), which checks the target against the lists of this client
+	if(cached && addr != NULL && name != NULL && (flags & (F_IPV4 | F_IPV6)) &&
+	   (flags & F_FORWARD) && !(flags & (F_CONFIG | F_HOSTS | F_DHCP)) &&
+	   !is_blocked(query->status))
+	{
+		domainsData *qdomain = getDomain(query->domainID, true);
+		if(qdomain != NULL && strcasecmp(name, getstr(qdomain->domainpos)) == 0)
+		{
+			const enum query_status new_status = detect_blocked_IP(flags, addr);
+			if(new_status != QUERY_UNKNOWN)
+				query_blocked(query, qdomain, getClient(query->clientID, true), new_status);
+		}
 	}
 
 	// Is this a stale reply?
@@ -4693,6 +4720,72 @@ void get_dnsmasq_metrics_obj(cJSON *json)
 		cJSON_AddNumberToObject(json, get_metric_name(i), daemon->metrics[i]);
 }
 
+
+// get_dnsmasq_metrics() walks dnsmasq's cache hash table, which rehash()
+// replaces and frees on dnsmasq's main thread whenever a hosts source grows.
+// The walk therefore only runs on that thread, and the API threads copy what
+// it left here, at most a second old while queries come in. It is declared
+// here rather than in metrics.h so that nothing else can call it
+void get_dnsmasq_metrics(struct metrics *ci);
+static struct metrics dnsmasq_metrics = { 0 };
+static pthread_mutex_t dnsmasq_metrics_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void refresh_dnsmasq_metrics(void)
+{
+	// The time check comes first, it is cheaper than gettid() below
+	static time_t last_check = 0;
+	const time_t now = time(NULL);
+	if(now == last_check)
+		return;
+	last_check = now;
+
+	// Only dnsmasq's main thread in the main process: its thread ID is the
+	// process ID. TCP workers are forked copies whose metrics nobody reads
+	if(gettid() != main_pid())
+		return;
+
+	struct metrics metrics;
+	get_dnsmasq_metrics(&metrics);
+
+	pthread_mutex_lock(&dnsmasq_metrics_lock);
+	memcpy(&dnsmasq_metrics, &metrics, sizeof(dnsmasq_metrics));
+	pthread_mutex_unlock(&dnsmasq_metrics_lock);
+}
+
+void copy_dnsmasq_metrics(struct metrics *metrics)
+{
+	// The cache content (per type, expired, immortal) comes from the last walk
+	pthread_mutex_lock(&dnsmasq_metrics_lock);
+	memcpy(metrics, &dnsmasq_metrics, sizeof(*metrics));
+	pthread_mutex_unlock(&dnsmasq_metrics_lock);
+
+	// The counters are plain integers that need no walk, they are read live
+	// the same way get_dnsmasq_metrics() reads them
+	metrics->dns.cache.size = daemon->cachesize;
+	metrics->dns.cache.inserted = daemon->metrics[METRIC_DNS_CACHE_INSERTED];
+	metrics->dns.cache.live_freed = daemon->metrics[METRIC_DNS_CACHE_LIVE_FREED];
+	metrics->dns.local_answered = daemon->metrics[METRIC_DNS_LOCAL_ANSWERED];
+	metrics->dns.stale_answered = daemon->metrics[METRIC_DNS_STALE_ANSWERED];
+	metrics->dns.auth_answered = daemon->metrics[METRIC_DNS_AUTH_ANSWERED];
+	metrics->dns.unanswered_queries = daemon->metrics[METRIC_DNS_UNANSWERED_QUERY];
+	metrics->dns.forwarded_queries = daemon->metrics[METRIC_DNS_QUERIES_FORWARDED];
+	metrics->dhcp.bootp = daemon->metrics[METRIC_BOOTP];
+	metrics->dhcp.pxe = daemon->metrics[METRIC_PXE];
+	metrics->dhcp.ack = daemon->metrics[METRIC_DHCPACK];
+	metrics->dhcp.decline = daemon->metrics[METRIC_DHCPDECLINE];
+	metrics->dhcp.discover = daemon->metrics[METRIC_DHCPDISCOVER];
+	metrics->dhcp.inform = daemon->metrics[METRIC_DHCPINFORM];
+	metrics->dhcp.nak = daemon->metrics[METRIC_DHCPNAK];
+	metrics->dhcp.offer = daemon->metrics[METRIC_DHCPOFFER];
+	metrics->dhcp.release = daemon->metrics[METRIC_DHCPRELEASE];
+	metrics->dhcp.request = daemon->metrics[METRIC_DHCPREQUEST];
+	metrics->dhcp.noanswer = daemon->metrics[METRIC_NOANSWER];
+	metrics->dhcp.leases.allocated_4 = daemon->metrics[METRIC_LEASES_ALLOCATED_4];
+	metrics->dhcp.leases.pruned_4 = daemon->metrics[METRIC_LEASES_PRUNED_4];
+	metrics->dhcp.leases.allocated_6 = daemon->metrics[METRIC_LEASES_ALLOCATED_6];
+	metrics->dhcp.leases.pruned_6 = daemon->metrics[METRIC_LEASES_PRUNED_6];
+}
+
 // Fail-closed forwarding gate: for one of our DoT/DoH loopback tuples, return
 // false unless the proxy actually armed it, so dnsmasq skips it (fails over)
 // instead of leaking the plaintext query to a tuple we do not own. Anything else
@@ -4705,6 +4798,7 @@ bool FTL_is_forward_available(const union mysockaddr *addr)
 	if((a >> 24) != 127)
 		return true; // not 127.0.0.0/8: a real upstream, never gated
 	return dotdoh_forward_available(a, ntohs(addr->in.sin_port));
+
 }
 
 void FTL_connection_error(const char *reason, const union mysockaddr *addr, const char where)
