@@ -99,7 +99,7 @@ void initOverTime(void)
 }
 
 bool warned_about_hwclock = false;
-unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
+int _getOverTimeID(time_t timestamp, const char *file, const int line)
 {
 	// Center timestamp in OVERTIME_INTERVAL
 	timestamp -= timestamp % OVERTIME_INTERVAL;
@@ -108,16 +108,21 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 	// Get timestamp of first interval
 	const time_t firstTimestamp = overTime[0].timestamp;
 
+	// The slot of this timestamp has already been moved out of the window.
+	// Checked before the division below, which rounds towards zero: the slot
+	// timestamps are not always aligned to OVERTIME_INTERVAL
+	if(timestamp < firstTimestamp)
+	{
+		log_debug(DEBUG_OVERTIME, "getOverTimeID(%lu): -1, before the first slot (%lu)",
+		          (unsigned long)timestamp, (unsigned long)firstTimestamp);
+		return -1;
+	}
+
 	// Compute overTime ID
 	const int id = (int) ((timestamp - firstTimestamp) / OVERTIME_INTERVAL);
 
 	// Check bounds manually
-	if(id < 0)
-	{
-		// Return first timestamp in case negative timestamp was determined
-		return 0;
-	}
-	else if((unsigned int)id == OVERTIME_SLOTS)
+	if((unsigned int)id == OVERTIME_SLOTS)
 	{
 		// Possible race-collision (moving of the timeslots is just about to
 		// happen), silently add to the last bin because this is the correct
@@ -150,7 +155,7 @@ unsigned int _getOverTimeID(time_t timestamp, const char *file, const int line)
 	// Debug output
 	log_debug(DEBUG_OVERTIME, "getOverTimeID(%lu): %i", (unsigned long)timestamp, id);
 
-	return (unsigned int) id;
+	return id;
 }
 
 // This routine is called by garbage collection to rearrange the overTime structure for the next hour
