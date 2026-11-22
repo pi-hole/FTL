@@ -39,7 +39,6 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains DEL character PATCH + restore)
   # pytest: 2x pihole.toml writes (dns/blocking disable + enable)
-  # pytest: 2x pihole.toml writes (dns/blocking disable with timer + expiry)
   # pytest: 4x pihole.toml writes (config PATCH round-trips: bool + int, change + restore each)
   # pytest: 2x pihole.toml writes (auth stress test password set + remove)
   # pytest: 2x pihole.toml writes (TOTP stress test secret set + remove)
@@ -49,13 +48,14 @@ load 'bats_helper.bash'
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
+  # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "8"
+      assert_line --index 0 "14"
   else
-    [[ ${lines[0]} == "50" ]]
+    [[ ${lines[0]} == "54" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -99,8 +99,9 @@ load 'bats_helper.bash'
       else
         ./pihole-FTL --config dns.blocking.active "${state}" > /dev/null
       fi
-      # The lists are reloaded and the verdicts reset after a change
-      run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+      # Enabling reloads the lists and resets the verdicts, disabling only logs
+      [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+      run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
       results="${results} ${via}-${state}:${status}:$(dig +short +tries=1 +time=2 -b 127.0.0.35 denied.ftl @127.0.0.1)"
     done
   done
