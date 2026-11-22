@@ -254,6 +254,28 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: DoQ closes a connection beyond the per-source connection cap" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.11 opens 16 connections (DOQ_MAX_CONNS_PER_IP), which all stay
+  # open, and a 17th, which is refused with DOQ_EXCESSIVE_LOAD (0x4). The
+  # refused connection is kept until its handshake is complete, so the close
+  # goes out in a 1-RTT packet that carries the DoQ code; an Initial-level close
+  # would arrive as APPLICATION_ERROR (0xc) or not be readable at all.
+  run python3 test/dotdoh_query.py doqrefused 127.0.0.1 853 127.0.0.11 16
+  assert_output "kept 16 open, closed 4"
+}
+
+@test "dotdoh-server: DoQ closes a connection beyond the listener's connection cap" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.25 to 127.0.0.28 open 16 connections each, all 64 of the listener
+  # (DOQ_MAX_CONNS), which all stay open, and 127.0.0.29 opens one more, which
+  # is refused with DOQ_EXCESSIVE_LOAD (0x4). Update the numbers here when
+  # these constants change.
+  run python3 test/dotdoh_query.py doqrefused 127.0.0.1 853 \
+    127.0.0.25,127.0.0.26,127.0.0.27,127.0.0.28 16 127.0.0.29
+  assert_output "kept 64 open, closed 4"
+}
+
 @test "dotdoh-server: a DoQ query over IPv6 resolves" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   ipv6_loopback_available || skip "IPv6 loopback not available in this environment"

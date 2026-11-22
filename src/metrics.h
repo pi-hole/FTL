@@ -88,7 +88,10 @@ struct metrics
 	} dhcp;
 };
 
-void get_dnsmasq_metrics(struct metrics *ci);
+// get_dnsmasq_metrics() walks dnsmasq's cache and may only run on dnsmasq's
+// main thread, src/dnsmasq_interface.c declares it. Every other thread uses
+// this copy of its last walk
+void copy_dnsmasq_metrics(struct metrics *metrics);
 
 void get_dnsmasq_metrics_obj(cJSON *json);
 

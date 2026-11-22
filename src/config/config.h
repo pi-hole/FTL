@@ -429,7 +429,7 @@ extern struct config config;
 void initConfig(struct config *conf);
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
-bool migrate_config_v6(void);
+bool migrate_config_v6(struct config *conf);
 bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
@@ -529,6 +529,8 @@ bool config_write(void);
 void config_stamp_baseline(const bool which[CONFIG_ELEMENTS]);
 void config_stamp_cluster_change(const double changed[CONFIG_ELEMENTS]);
 void reread_config(void);
+void remember_config(struct config *conf);
+bool merge_config_file(void);
 bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default

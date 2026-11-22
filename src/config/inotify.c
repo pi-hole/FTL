@@ -253,7 +253,7 @@ bool wait_for_string_in_file(const char *filename, const char *string, unsigned 
 		fclose(file);
 		return true;
 	}
-	
+
 	// Use inotify to wait for new lines appended to the file
 	// Create inotify instance (non-blocking)
 	const int fd = inotify_init1(IN_NONBLOCK);

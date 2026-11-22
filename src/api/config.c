@@ -134,6 +134,7 @@ static struct {
 		.dot = { "tls://one.one.one.one@1.1.1.1", "tls://one.one.one.one@[2606:4700:4700::1111]" },
 		.doh = { "https://cloudflare-dns.com@1.1.1.1/dns-query", "https://cloudflare-dns.com@[2606:4700:4700::1111]/dns-query" }
 	}
+
 };
 
 // The following functions are used to create the JSON output
@@ -475,7 +476,13 @@ static int api_config_get(struct ftl_conn *api, const bool refused)
 	const bool from_cluster = api->session.used && api->session.cluster;
 	cJSON *json = JSON_NEW_OBJECT();
 	if(!from_cluster)
+	{
+		// A concurrent change frees the strings of the config it replaces. The
+		// JSON holds copies, so only building it needs the lock, not sending it
+		lock_config();
 		get_json_config(api, json, detailed, false, false);
+		unlock_config();
+	}
 
 	// ...and whether the push was taken, so the peer does not believe it
 	// caught up a node holding a newer configuration

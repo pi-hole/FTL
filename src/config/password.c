@@ -461,19 +461,15 @@ static void refund_password_attempt(void)
 
 // Replace a stored SHA256^2 hash with a BALLOON one. Called from the login path
 // only, which holds no lock: this frees the string the cluster thread reads to
-// build the credential fingerprint, so it needs the one the API writers take
-static void upgrade_stored_password(const char *password)
+// build the credential fingerprint, so it needs the one the API writers take.
+// Returns false when the password just verified is no longer the stored one
+static bool upgrade_stored_password(const char *password)
 {
 	char *legacy = double_sha256_password(password);
 	if(legacy == NULL)
-		return;
+		return false;
 
 	char *new_hash = create_password(password);
-	if(new_hash == NULL)
-	{
-		free(legacy);
-		return;
-	}
 
 	// lock_shm(), not the sync lock. The string being freed and replaced is a
 	// live configuration value, and the thread that walks those to build the
@@ -486,20 +482,22 @@ static void upgrade_stored_password(const char *password)
 	cluster_sync_lock();
 	lock_shm();
 
-	// A password set here or taken from a peer since the login was checked
-	// is newer than this one and stays
+	// A password set here, taken from a peer or reread from pihole.toml since
+	// the login was checked is newer than this one: it stays, and the login
+	// is refused
 	const bool unchanged = config.webserver.api.pwhash.v.s != NULL &&
 	                       strcmp(config.webserver.api.pwhash.v.s, legacy) == 0;
 	free(legacy);
-	if(!unchanged)
+	if(!unchanged || new_hash == NULL)
 	{
 		unlock_shm();
 		cluster_sync_unlock();
 		free(new_hash);
-		return;
+		return unchanged;
 	}
 
 	log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+	char *upgraded = strdup(new_hash);
 	if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
 		free(config.webserver.api.pwhash.v.s);
 	config.webserver.api.pwhash.v.s = new_hash;
@@ -513,10 +511,20 @@ static void upgrade_stored_password(const char *password)
 	// login - and only where the file took it, since a stamp for a hash that
 	// is not on disk is the same difference pointed the other way
 	const bool saved = config_write();
+
+	// Writing took in a password set through the CLI meanwhile: the one just
+	// verified is no longer valid, and the new one is a change, not a rewrite
+	const bool valid = upgraded != NULL && config.webserver.api.pwhash.v.s != NULL &&
+	                   strcmp(config.webserver.api.pwhash.v.s, upgraded) == 0;
+	free(upgraded);
 	cluster_sync_unlock();
 
-	if(saved)
+	if(saved && valid)
 		config_stamp_rewrite();
+	else if(saved)
+		config_stamp_local_change();
+
+	return valid;
 }
 
 enum password_result verify_login(const char *password)
@@ -533,8 +541,8 @@ enum password_result verify_login(const char *password)
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
 
 	// ...and the rewrite here, where no lock is held yet
-	if(legacy)
-		upgrade_stored_password(password);
+	if(legacy && !upgrade_stored_password(password))
+		pw = PASSWORD_INCORRECT;
 
 	// Check if an application password is set and if it matches. The check
 	// above already counted this attempt against the rate limit, so this one

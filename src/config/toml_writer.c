@@ -31,6 +31,8 @@
 #include "config/validator.h"
 // cluster_dhcp_held_back()
 #include "cluster/dhcp.h"
+// restart_ftl()
+#include "signals.h"
 
 // defined in config/config.c
 extern uint8_t last_checksum[SHA256_DIGEST_SIZE];
@@ -119,7 +121,7 @@ static void release_install_lock(int *fd)
 	*fd = -1;
 }
 
-bool writeFTLtoml(const bool verbose, FILE *fp)
+static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 {
 	// Read-only mode keeps an existing file as it is. A missing one is still
 	// written, pihole-FTL --config and the Teleporter need it
@@ -127,11 +129,9 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 	{
 		log_debug(DEBUG_CONFIG, "Config file is read-only, not writing");
 
-		// We need to (re-)calculate the checksum here as it'd otherwise
-		// be outdated (in non-read-only mode, it's calculated at the
-		// end of this function)
-		if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
-			log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+		// An edit of the file must still reach the running config
+		if(fp == NULL)
+			*restart = merge_config_file();
 		return true;
 	}
 
@@ -155,6 +155,18 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 			log_warn("Cannot lock %s (%s), writing the config unserialised",
 			         GLOBALTOMLPATH".lock", strerror(errno));
 			release_install_lock(&install_lock);
+		}
+	}
+
+	// Never overwrite a change another process made since we last read or
+	// wrote the file. Under the install lock, nobody can make another one
+	if(opened)
+	{
+		*restart = merge_config_file();
+		if(config.misc.readOnly.v.b && file_exists(GLOBALTOMLPATH))
+		{
+			release_install_lock(&install_lock);
+			return true;
 		}
 	}
 
@@ -225,13 +237,13 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 		// Write value
 		indentTOML(fp, level-1);
 		fprintf(fp, "%s = ", conf_item->p[level-1]);
-		
+
 		// Sanitize dns.hosts entries before writing them to TOML
 		if(conf_item == &config.dns.hosts)
 		{
 			sanitize_dns_hosts(&conf_item->v);
 		}
-		
+
 		// DHCP held back for the cluster is off in the running configuration
 		// only, the file keeps what was set
 		union conf_value value = conf_item->v;
@@ -370,7 +382,18 @@ bool writeFTLtoml(const bool verbose, FILE *fp)
 
 	if(!sha256sum(GLOBALTOMLPATH, last_checksum, false))
 		log_err("Unable to create checksum of %s", GLOBALTOMLPATH);
+	remember_config(&config);
 
 	release_install_lock(&install_lock);
 	return true;
+}
+
+bool writeFTLtoml(const bool verbose, FILE *fp)
+{
+	// Restart only once the change at hand is written and the lock is released
+	bool restart = false;
+	const bool ok = write_config_file(verbose, fp, &restart);
+	if(restart)
+		restart_ftl("pihole.toml change");
+	return ok;
 }
