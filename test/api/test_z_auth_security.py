@@ -15,7 +15,8 @@ the order-dependent workflow in test_z_auth.py:
    same code can no longer be reused.
 
 3. A legacy password hash is still upgraded at login once the stored hash
-   is compared under the lock.
+   is compared under the lock, and the login is refused when pihole.toml
+   holds another password by the time the upgraded hash is written.
 
 Usage:
     pytest test/api/test_z_auth_security.py -v
@@ -24,6 +25,7 @@ Usage:
 import base64
 import hashlib
 import hmac
+import os
 import time
 import warnings
 
@@ -41,6 +43,8 @@ except ImportError:  # pragma: no cover - fallback for bundled urllib3
 
 FTL_URL = "http://127.0.0.1"
 FTL_URL_TLS = "https://127.0.0.1"
+PIHOLE_TOML = "/etc/pihole/pihole.toml"
+FTL_LOG = "/var/log/pihole/FTL.log"
 PASSWORD = "sec-regress-pw"
 # Valid base32 TOTP secret (same shape as the stress-test suite)
 TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
@@ -208,6 +212,7 @@ class TestLegacyPasswordUpgrade:
     BALLOON one, but only while the stored hash is still that legacy one."""
 
     OLD = "legacy-old-pw"
+    NEW = "legacy-new-pw"
 
     @staticmethod
     def _patch(api, sid):
@@ -215,10 +220,14 @@ class TestLegacyPasswordUpgrade:
                               json={"config": {"webserver": {"api": api}}},
                               headers={"X-FTL-SID": sid}, timeout=20)
 
+    @staticmethod
+    def _legacy(pw):
+        return hashlib.sha256(hashlib.sha256(pw.encode()).hexdigest().encode()).hexdigest()
+
     def test_legacy_hash_is_upgraded_at_login(self):
         sid = _admin_sid()
         assert sid, "could not obtain an admin session"
-        legacy = hashlib.sha256(hashlib.sha256(self.OLD.encode()).hexdigest().encode()).hexdigest()
+        legacy = self._legacy(self.OLD)
         assert self._patch({"pwhash": legacy}, sid).status_code == 200
 
         time.sleep(1.1)
@@ -233,3 +242,43 @@ class TestLegacyPasswordUpgrade:
             assert pwhash.startswith("$BALLOON-SHA256$"), pwhash
         finally:
             self._patch({"password": PASSWORD}, sid)
+
+    def test_legacy_login_is_refused_once_the_file_holds_another_password(self):
+        """Writing the upgraded hash takes in what changed in pihole.toml. A
+        password set there meanwhile replaces the one just verified, so the
+        login with it is refused."""
+        sid = _admin_sid()
+        assert sid, "could not obtain an admin session"
+        old, new = self._legacy(self.OLD), self._legacy(self.NEW)
+        assert self._patch({"pwhash": old}, sid).status_code == 200
+
+        # Rewritten in place and kept open, so the watcher does not reread the
+        # file before the login's own write finds the change
+        with open(PIHOLE_TOML, "rb") as f:
+            offset = f.read().index(old.encode())
+        with open(FTL_LOG, "rb") as f:
+            log_start = f.seek(0, 2)
+        fd = os.open(PIHOLE_TOML, os.O_WRONLY)
+        try:
+            os.pwrite(fd, new.encode(), offset)
+            time.sleep(1.1)
+            refused = _login_rate_limited(self.OLD).json().get("session", {})
+        finally:
+            os.close(fd)
+
+        with open(FTL_LOG, "rb") as f:
+            f.seek(log_start)
+            log = f.read().decode(errors="replace")
+
+        # Restored before anything is asserted, teardown_module logs in with it
+        time.sleep(1.1)
+        session = _login_rate_limited(self.NEW).json().get("session", {})
+        sid = session.get("sid") if session.get("valid") else refused.get("sid")
+        if sid:
+            self._patch({"password": PASSWORD}, sid)
+
+        assert refused.get("valid") is False, refused
+        assert "Upgrading password from SHA256^2 to BALLOON-SHA256" in log, \
+            "the login did not reach the upgrade"
+        assert not [line for line in log.splitlines() if "ERROR" in line and "lock" in line], log
+        assert session.get("valid") is True, session
