@@ -100,7 +100,7 @@ teardown_file() {
   # No terminator, so CivetWeb itself trusts the PROXY v2 header of a reverse
   # proxy in webserver.trustedProxies. The proxy connects from 127.0.0.4, which
   # the ACL admits, and only the announced 127.0.0.3 may pass
-  local port acl before i allowed refused
+  local port acl before i allowed refused mapped
   port=$(curl -s http://127.0.0.1/api/config/webserver/port | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["port"])')
   acl=$(curl -s http://127.0.0.1/api/config/webserver/acl | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["acl"])')
   before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -113,6 +113,8 @@ teardown_file() {
   done
   allowed=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.3 127.0.0.4)
   refused=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.5 127.0.0.4)
+  # A dual-stack proxy announces IPv4 clients as ::ffff:a.b.c.d
+  mapped=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login ::ffff:127.0.0.3 127.0.0.4)
 
   before=$(stat -c%s /var/log/pihole/FTL.log)
   # Put back the previous ACL too, teardown_file clears it
@@ -122,4 +124,55 @@ teardown_file() {
 
   [[ "$allowed" == "HTTP 200" ]]
   [[ "$refused" == "HTTP 403" ]]
+  [[ "$mapped" == "HTTP 200" ]]
+}
+
+@test "webserver.acl: an [::ffff:a.b.c.d] deny entry refuses that IPv4 client over HTTPS too" {
+  set_acl "+127.0.0.0/8,-[::ffff:127.0.0.2]" 127.0.0.1
+  run status_from 127.0.0.2 http://127.0.0.1/api/auth
+  assert_output "000"
+  run status_from 127.0.0.2 --http1.1 $TLS https://pi.hole/api/auth
+  assert_output "403"
+  run status_from 127.0.0.2 --http2 $TLS https://pi.hole/api/auth
+  assert_output "403"
+  run status_from 127.0.0.1 --http1.1 $TLS https://pi.hole/api/auth
+  assert_output "200"
+}
+
+@test "webserver.acl: an [::ffff:a.b.c.d]/126 allow entry admits that IPv4 subnet over HTTPS too" {
+  set_acl "+127.0.0.1,+[::ffff:127.0.0.0]/126,-127.0.0.2" 127.0.0.1
+  run status_from 127.0.0.3 http://127.0.0.1/api/auth
+  assert_output "200"
+  run status_from 127.0.0.3 --http1.1 $TLS https://pi.hole/api/auth
+  assert_output "200"
+  run status_from 127.0.0.3 --http2 $TLS https://pi.hole/api/auth
+  assert_output "200"
+  run status_from 127.0.0.2 --http1.1 $TLS https://pi.hole/api/auth
+  assert_output "403"
+}
+
+@test "webserver.acl: an IPv4 deny entry refuses the ::ffff:a.b.c.d client a trusted proxy announces" {
+  # The proxy at 127.0.0.4 announces its IPv4 clients as IPv4-mapped, as a
+  # dual-stack proxy does. The IPv4 deny entry has to win over [::]/0
+  local port acl before mapped_denied v4_denied mapped_allowed v6_allowed
+  port=$(curl -s http://127.0.0.1/api/config/webserver/port | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["port"])')
+  acl=$(curl -s http://127.0.0.1/api/config/webserver/acl | python3 -c 'import json,sys; print(json.load(sys.stdin)["config"]["webserver"]["acl"])')
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  curl -s -o /dev/null --max-time 10 -X PATCH "http://127.0.0.1/api/config" -H "Content-Type: application/json" \
+       -d '{"config":{"webserver":{"port":"80o","acl":"+127.0.0.0/8,+[::]/0,-127.0.0.5"}}}' || true
+  ./pihole-FTL wait-for "Web server ports:" /var/log/pihole/FTL.log 30 "$before"
+  mapped_denied=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login ::ffff:127.0.0.5 127.0.0.4)
+  v4_denied=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 127.0.0.5 127.0.0.4)
+  mapped_allowed=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login ::ffff:127.0.0.3 127.0.0.4)
+  v6_allowed=$(python3 test/dotdoh_query.py proxyget 127.0.0.1 80 /api/info/login 2001:db8::1 127.0.0.4)
+
+  before=$(stat -c%s /var/log/pihole/FTL.log)
+  python3 -c 'import json,sys; print(json.dumps({"config":{"webserver":{"port":sys.argv[1],"acl":sys.argv[2]}}}))' "$port" "$acl" |
+    curl -s -o /dev/null --max-time 10 -X PATCH "http://127.0.0.1/api/config" -H "Content-Type: application/json" -d @- || true
+  ./pihole-FTL wait-for "TLS terminator listening" /var/log/pihole/FTL.log 30 "$before"
+
+  [[ "$mapped_denied" == "HTTP 403" ]]
+  [[ "$v4_denied" == "HTTP 403" ]]
+  [[ "$mapped_allowed" == "HTTP 200" ]]
+  [[ "$v6_allowed" == "HTTP 200" ]]
 }

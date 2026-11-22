@@ -759,24 +759,13 @@ static void sockaddr_numeric(const struct sockaddr_storage *ss, char *out, size_
 	}
 }
 
-// Check the real client against webserver.acl before serving it. A v4-mapped
-// peer is checked as IPv4, the form its PROXY header announces to the backend.
-// DoH follows dns.listeningMode instead: a client the ACL refuses is still let
-// through when DoH would serve it, and every other request it sends gets a 403
-// from begin_request_handler(), which sees the client through the PROXY header
+// Check the real client against webserver.acl before serving it. DoH follows
+// dns.listeningMode instead: a client the ACL refuses is still let through
+// when DoH would serve it, and every other request it sends gets a 403 from
+// begin_request_handler(), which sees the client through the PROXY header
 static bool client_acl_allows(const struct sockaddr_storage *peer, const char *proto)
 {
-	struct sockaddr_storage ss = *peer;
-	const struct sockaddr_in6 *s6 = (const struct sockaddr_in6 *)peer;
-	if(peer->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&s6->sin6_addr))
-	{
-		struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
-		memset(&ss, 0, sizeof(ss));
-		s4->sin_family = AF_INET;
-		s4->sin_port = s6->sin6_port;
-		memcpy(&s4->sin_addr, s6->sin6_addr.s6_addr + 12, 4);
-	}
-	if(webserver_acl_allows(&ss))
+	if(webserver_acl_allows(peer))
 		return true;
 
 	char client[INET6_ADDRSTRLEN] = "";

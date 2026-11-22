@@ -225,7 +225,7 @@
   #       for advanced users only, support for this option may be limited.
   listeningMode = "LOCAL"
 
-  # Log DNS queries and replies to pihole.log
+  # Log DNS queries and replies to pihole.log, or to syslog if files.log.dnsmasq is empty
   #
   # Allowed values are:
   #     true or false
@@ -701,7 +701,7 @@
   # Enable logging for DHCP. This will log all relevant DHCP-related activity, including,
   # e.g., all the options sent to DHCP clients and the tags used to determine them (if
   # any). This can be useful for debugging DHCP issues. The generated output is saved to
-  # the file specified by files.log.dnsmasq below.
+  # the file specified by files.log.dnsmasq below, or sent to syslog if it is empty.
   #
   # Allowed values are:
   #     true or false
@@ -1420,6 +1420,9 @@
     ftl = "/var/log/pihole/FTL.log"
 
     # The log file used by the embedded dnsmasq DNS server
+    #
+    # Setting this to an empty string disables pihole.log. Everything dnsmasq logs,
+    # including queries and DHCP activity, then goes to syslog.
     #
     # Allowed values are:
     #     Any writable file
