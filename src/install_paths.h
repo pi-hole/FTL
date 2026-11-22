@@ -20,4 +20,8 @@
 #define PIHOLE_INSTALL_DIR "/etc/pihole"
 #endif
 
+#ifndef PIHOLE_SCRIPT
+#define PIHOLE_SCRIPT "/usr/local/bin/pihole"
+#endif
+
 #endif // INSTALL_PATHS_H
