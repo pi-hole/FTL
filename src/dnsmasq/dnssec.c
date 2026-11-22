@@ -487,7 +487,6 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
       int i, wire_len, sig_len;
       const struct nettle_hash *hash;
       void *ctx;
-      char *name_start;
       u32 nsigttl, ttl, orig_ttl;
 
       failflags &= ~DNSSEC_FAIL_NOSIG;
@@ -583,13 +582,13 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 	  if (!extract_name(header, plen, &p, name, EXTR_NAME_EXTRACT, 10)) 
 	    return STAT_BOGUS;
 
-	  name_start = name;
-	  
 	  /* if more labels than in RRsig name, hash *.<no labels in rrsig labels field>  4035 5.3.2 */
 	  /* If the name is already the wildcard, we're not going to change it. */
 	  if (labels < name_labels &&
-	      !(name_labels - labels == 1 && name_start[0] == '*' && name_start[1] == '.'))
+	      !(name_labels - labels == 1 && name[0] == '*' && name[1] == '.'))
 	    {
+	      char *name_start = name;
+
 	      for (j = name_labels - labels; j != 0; j--)
 		{
 		  while (*name_start != '.' && *name_start != 0)
@@ -602,11 +601,13 @@ static int validate_rrset(time_t now, struct dns_header *header, size_t plen, in
 		*wildcard_offset_out = name_start - name + 1;
 	      
 	      name_start--;
-	      *name_start = '*';	      
+	      *name_start = '*';
+	      /* move our name to the start of the buffer to avoid pathalogical cases over-running the end in to_wire(). */
+	      memmove(name, name_start, strlen(name_start) + 1);	      
 	    }
-	  
-	  wire_len = to_wire(name_start);
-	  hash->update(ctx, (unsigned int)wire_len, (unsigned char *)name_start);
+
+	  wire_len = to_wire(name);
+	  hash->update(ctx, (unsigned int)wire_len, (unsigned char *)name);
 	  hash->update(ctx, 4, p); /* class and type */
 	  hash->update(ctx, 4, (unsigned char *)&nsigttl);
 
@@ -1701,11 +1702,13 @@ static int prove_non_existence_nsec3(struct dns_header *header, size_t plen, uns
       
       wildcard--;
       *wildcard = '*';
+      /* move our name to the start of the buffer to avoid pathalogical cases over-running the end in to_wire(). */
+      memmove(name, wildcard, strlen(wildcard) + 1);
       
       if (dec_counter(validate_counter, NULL))
 	return DNSSEC_FAIL_WORK;
       
-      if ((digest_len = hash_name(wildcard, &digest, hash, salt, salt_len, iterations)) == 0)
+      if ((digest_len = hash_name(name, &digest, hash, salt, salt_len, iterations)) == 0)
 	return DNSSEC_FAIL_NONSEC;
       
       if (!check_nsec3_coverage(header, plen, digest_len, digest, type, workspace1, workspace2, nsecs, nsec_count, NULL, 1))

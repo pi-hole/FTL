@@ -5049,7 +5049,7 @@ err:
 	    new->target = target;
 	    new->ttl = ttl;
 
-	    for (arg += arglen+1; *arg && isspace((unsigned char)*arg); arg++);
+	    for (arg += arglen+1; arg != last && (!*arg || isspace((unsigned char)*arg)); arg++);
 	  }
       
 	break;

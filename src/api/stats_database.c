@@ -842,8 +842,8 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		if(id < 0 || id > max_id || counts[id] == 0)
 			continue;
 		const char *upstream = (char*)sqlite3_column_text(stmt, 1);
-		// A broken row can carry a NULL upstream, which neither sscanf()
-		// nor the JSON output below would survive
+		// A broken row can carry a NULL upstream, which neither
+		// split_forward_string() nor the JSON output below would survive
 		if(upstream == NULL)
 			upstream = "";
 		const int count = counts[id];
@@ -852,10 +852,9 @@ int api_stats_database_upstreams(struct ftl_conn *api)
 		// Needs a signed data type here as -1 means: no port applicable
 		int port = -1;
 		unsigned int parsed_port = 0;
-		char buffer[512] =  { 0 };
-		if(sscanf(upstream, "%511[^#]#%u", buffer, &parsed_port) == 2)
+		char buffer[FORWARD_UPSTREAM_MAX];
+		if(split_forward_string(upstream, buffer, sizeof(buffer), &parsed_port))
 		{
-			buffer[sizeof(buffer)-1] = '\0';
 			port = (int)parsed_port;
 			JSON_COPY_STR_TO_OBJECT(item, "ip", buffer);
 		}

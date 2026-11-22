@@ -29,6 +29,8 @@
 #include "api/api.h"
 // exit_code
 #include "signals.h"
+// get_temp_blockingstatus()
+#include "timers.h"
 // validation functions
 #include "config/validator.h"
 // getEnvVars()
@@ -451,6 +453,14 @@ void initConfig(struct config *conf)
 	conf->dns.upstreams.f = FLAG_RESTART_FTL;
 	conf->dns.upstreams.c = validate_upstreams;
 
+	conf->dns.fastRetry.k = "dns.fastRetry";
+	conf->dns.fastRetry.h = "Retransmission interval (in milliseconds) for unanswered upstream queries. This is disabled by default (0).\n\n Pi-hole forwards a query and then waits for the reply. If either the query or the reply is lost on the way, nothing happens until the client gives up and asks again. Repetitions of a query that is still in flight are attached to the running query instead of being forwarded again, so a client cannot recover such a loss on its own either - only Pi-hole can, by asking upstream once more.\n\n When enabled, the first retransmission is sent after the configured number of milliseconds, the interval doubles for every further attempt, and retransmissions stop as soon as the query is answered or has timed out. Note that DNSSEC validation enables retransmission independently of this setting because an unanswered query would otherwise stall the whole validation chain.";
+	conf->dns.fastRetry.a = cJSON_CreateStringReference("0 to disable retransmission, or an integer value between 50 and 10000 (milliseconds)");
+	conf->dns.fastRetry.t = CONF_UINT;
+	conf->dns.fastRetry.f = FLAG_RESTART_FTL;
+	conf->dns.fastRetry.d.ui = 0u;
+	conf->dns.fastRetry.c = validate_dns_fastRetry;
+
 	conf->dns.CNAMEdeepInspect.k = "dns.CNAMEdeepInspect";
 	conf->dns.CNAMEdeepInspect.h = "Use this option to control deep CNAME inspection. Disabling it might be beneficial for very low-end devices";
 	conf->dns.CNAMEdeepInspect.t = CONF_BOOL;
@@ -714,7 +724,7 @@ void initConfig(struct config *conf)
 
 	// sub-struct dns.blocking
 	conf->dns.blocking.active.k = "dns.blocking.active";
-	conf->dns.blocking.active.h = "Should FTL block queries?";
+	conf->dns.blocking.active.h = "Should FTL block queries?\n\n A temporary status set with a timer is kept in memory only and ends when FTL restarts. If the requested mode is the one this setting already holds, the setting is changed to the opposite mode, which applies once the timer has elapsed.";
 	conf->dns.blocking.active.t = CONF_BOOL;
 	conf->dns.blocking.active.d.b = true;
 	conf->dns.blocking.active.c = validate_stub; // Only type-based checking
@@ -1128,7 +1138,7 @@ void initConfig(struct config *conf)
 	conf->webserver.trustedProxies.c = validate_cidr_array;
 
 	conf->webserver.acl.k = "webserver.acl";
-	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
+	conf->webserver.acl.h = "Webserver access control list (ACL) allowing for restrictions to be put on the list of IP addresses which have access to the web server. The ACL is a comma separated list of IP subnets, where each subnet is prepended by either a - or a + sign. A plus sign means allow, where a minus sign means deny.\n\n If a subnet mask is omitted, such as -1.2.3.4, this means to deny only that single IP address. If this value is not set (empty string), all accesses are allowed. Otherwise, the default setting is to deny all accesses. On each request the full list is traversed, and the last (!) match wins. IPv6 addresses may be specified in CIDR-form [a:b::c]/64. IPv4 clients are matched as IPv4 also on a dual-stack port (\"+80\"), and [::ffff:a.b.c.d] is the same entry as a.b.c.d.\n\n DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS queries if dns.doh is enabled and dns.listeningMode allows it, all its other requests are refused.\n\n Example 1: \"+127.0.0.1,+[::1]\" ---> deny all access, except from 127.0.0.1 and ::1\n\n Example 2: \"+192.168.0.0/16\" ---> deny all accesses, except from the 192.168.0.0/16 subnet\n\n Example 3: \"+[::]/0\" ---> allow only IPv6 access.";
 	conf->webserver.acl.a = cJSON_CreateStringReference("A valid ACL");
 	conf->webserver.acl.f = FLAG_RESTART_FTL;
 	conf->webserver.acl.t = CONF_STRING;
@@ -1512,13 +1522,13 @@ void initConfig(struct config *conf)
 	conf->misc.normalizeCPU.c = validate_stub; // Only type-based checking
 
 	conf->misc.hide_dnsmasq_warn.k = "misc.hide_dnsmasq_warn";
-	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting will hide all dnsmasq warnings.";
+	conf->misc.hide_dnsmasq_warn.h = "Should FTL hide warnings coming from dnsmasq?\n\n By default, FTL reports warnings coming from the embedded dnsmasq DNS server to the FTL log file. These warnings can be useful to identify misconfigurations or problems with the DNS server. However, some warnings may be harmless and can be ignored in certain setups. Enabling this setting hides them in the FTL log file, the dnsmasq log is left untouched.";
 	conf->misc.hide_dnsmasq_warn.t = CONF_BOOL;
 	conf->misc.hide_dnsmasq_warn.d.b = false;
 	conf->misc.hide_dnsmasq_warn.c = validate_stub; // Only type-based checking
 
 	conf->misc.hide_connection_error.k = "misc.hide_connection_error";
-	conf->misc.hide_connection_error.h = "Should FTL hide network connection errors?\n\n By default, FTL reports network connection errors (e.g., Connection prematurely closed by remote server) to the FTL log file. These warnings can be useful to identify intermittent network problems or general problem with upstream servers. However, in some setups, these warnings may be expected (e.g. due to low-quality Internet connectivity) and cannot be fixed. Enabling this setting will hide all connection warnings.";
+	conf->misc.hide_connection_error.h = "Should FTL hide network connection errors?\n\n By default, FTL reports network connection errors (e.g., Connection prematurely closed by remote server) to the FTL log file. These warnings can be useful to identify intermittent network problems or general problem with upstream servers. However, in some setups, these warnings may be expected (e.g. due to low-quality Internet connectivity) and cannot be fixed. Enabling this setting hides them in the FTL log file, the dnsmasq log is left untouched.";
 	conf->misc.hide_connection_error.t = CONF_BOOL;
 	conf->misc.hide_connection_error.d.b = false;
 	conf->misc.hide_connection_error.c = validate_stub; // Only type-based checking
@@ -1952,16 +1962,22 @@ bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_E
 
 
 /**
- * @brief Determine and set default webserver ports if not imported from setupVars.conf.
+ * @brief Determine and set default webserver ports if neither imported from
+ * setupVars.conf nor set by an environment variable.
  *
  * @param conf Pointer to the configuration structure.
  */
 static void get_web_port(struct config *conf)
 {
 	// Determine default webserver ports if not imported from setupVars.conf
-	if(config.webserver.port.f & FLAG_CONF_IMPORTED)
+	if(conf->webserver.port.f & FLAG_CONF_IMPORTED)
 	{
 		log_info("Webserver ports already imported from legacy config files, skipping default port detection");
+		return;
+	}
+	if(conf->webserver.port.f & FLAG_ENV_VAR)
+	{
+		log_info("Webserver ports set by environment variable, skipping default port detection");
 		return;
 	}
 
@@ -1998,7 +2014,7 @@ static void get_web_port(struct config *conf)
 	         http_port, https_port, have_ipv6 ? "enabled" : "disabled");
 }
 
-bool migrate_config_v6(void)
+bool migrate_config_v6(struct config *conf)
 {
 	// Check if MIGRATION_TARGET_V6 exists and is a directory
 	// Ideally, this directory should be created by the installer but users
@@ -2010,13 +2026,13 @@ bool migrate_config_v6(void)
 	log_info("Migrating config to Pi-hole v6.0 format");
 
 	// Initialize config with default values
-	initConfig(&config);
+	initConfig(conf);
 
 	// If no previous config file could be read, we are likely either running
 	// for the first time or we are upgrading from a version prior to v6.0
 	// In this case, we try to read the legacy config files
 	const char *path = "";
-	if((path = readFTLlegacy(&config)) != NULL)
+	if((path = readFTLlegacy(conf)) != NULL)
 	{
 		const char *target = MIGRATION_TARGET_V6"/pihole-FTL.conf";
 		log_info("Moving %s to %s", path, target);
@@ -2028,17 +2044,17 @@ bool migrate_config_v6(void)
 
 	// Import bits and pieces from legacy config files
 	// setupVars.conf
-	importsetupVarsConf();
+	importsetupVarsConf(conf);
 	// 04-pihole-static-dhcp.conf
-	read_legacy_dhcp_static_config();
+	read_legacy_dhcp_static_config(conf);
 	// 05-pihole-custom-cname.conf
-	read_legacy_cnames_config();
+	read_legacy_cnames_config(conf);
 	// custom.list
-	read_legacy_custom_hosts_config();
+	read_legacy_custom_hosts_config(conf);
 
 	// Determine and set default webserver ports if not imported from
 	// setupVars.conf
-	get_web_port(&config);
+	get_web_port(conf);
 
 	// Hold the migrated values to the same rules every other way of setting
 	// them obeys. The legacy file is not necessarily one we wrote: it can be
@@ -2046,7 +2062,13 @@ bool migrate_config_v6(void)
 	// configuration that would otherwise run no validator at all. Migrating
 	// must not fail outright, though - it also runs for genuine upgrades - so
 	// an offending value is reset to its default and the reason is logged.
-	validate_config(&config, true, NULL);
+	validate_config(conf, true, NULL);
+
+	// A Teleporter import migrates a copy while the API and resolver threads
+	// keep reading the running config. The finished copy replaces it here the
+	// same way every other config change does
+	if(conf != &config)
+		replace_config(conf);
 
 	// Initialize the TOML config file
 	writeFTLtoml(true, NULL);
@@ -2065,6 +2087,12 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	// First, read the environment
 	getEnvVars();
 
+	// Taken before reading so a change made meanwhile is not mistaken for
+	// what we read
+	uint8_t checksum[SHA256_DIGEST_SIZE] = { 0 };
+	if(file_exists(GLOBALTOMLPATH))
+		sha256sum(GLOBALTOMLPATH, checksum, false);
+
 	// Try to read TOML config file
 	// If we cannot parse /etc/pihole.toml (due to missing or invalid syntax),
 	// we try to read the rotated files in /etc/pihole/config_backup starting at
@@ -2074,6 +2102,10 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 		toml_datum_t toml = { 0 };
 		if(readFTLtoml(NULL, conf, toml, rewrite, NULL, i, false, NULL))
 		{
+			// What a later write compares pihole.toml against
+			memcpy(last_checksum, checksum, SHA256_DIGEST_SIZE);
+			remember_config(conf);
+
 			// If successful, we write the config file back to disk
 			// to ensure that all options are present and comments
 			// about options deviating from the default are present
@@ -2108,17 +2140,20 @@ bool readFTLconf(struct config *conf, const bool rewrite)
 	if(file_exists(GLOBALTOMLPATH))
 	{
 		const char new_name[] = GLOBALTOMLPATH ".broken";
+		log_warn("%s could not be read or parsed, moving it to %s", GLOBALTOMLPATH, new_name);
 		rotate_files(new_name, NULL);
 		rename(GLOBALTOMLPATH, new_name);
 	}
 
-	// Determine and set default webserver ports if not imported from
-	// setupVars.conf
+	// Environment variables override the defaults as they override the
+	// values of a config file
+	applyEnvVars(conf);
+
+	// Determine and set default webserver ports if neither imported from
+	// setupVars.conf nor set by an environment variable
 	get_web_port(&config);
 
-	// Environment variables override these defaults as they override the
-	// values of a config file, and the result is held to the same rules
-	applyEnvVars(conf);
+	// Hold the result to the rules of a config file
 	validate_config(conf, true, NULL);
 
 	// Open webserver.log and pihole.log now that their paths are known
@@ -2177,12 +2212,32 @@ bool getLogFilePath(bool try_read)
 	return true;
 }
 
-enum blocking_status __attribute__((pure)) get_blockingstatus(void)
+enum blocking_status get_blockingstatus(void)
 {
 	if(dnsmasq_failed)
 		return DNS_FAILED;
 
+	// A temporary status (set with a timer) overrides the configured one
+	const int temp = get_temp_blockingstatus();
+	if(temp >= 0)
+		return temp ? BLOCKING_ENABLED : BLOCKING_DISABLED;
+
 	return config.dns.blocking.active.v.b ? BLOCKING_ENABLED : BLOCKING_DISABLED;
+}
+
+// Act only when the effective status changed, a temporary one masks the setting.
+// Enabling drops answers cached and verdicts recorded while blocking was off,
+// they may cover names that are blocked now. Blocked answers are never cached
+void apply_blockingstatus(const enum blocking_status before)
+{
+	const enum blocking_status now = get_blockingstatus();
+	if(now == before)
+		return;
+
+	if(now == BLOCKING_ENABLED)
+		raise(SIGHUP);
+	else if(now == BLOCKING_DISABLED)
+		log_info("Blocking status is disabled");
 }
 
 // The caller holds lock_config()
@@ -2192,9 +2247,10 @@ void set_blockingstatus(bool enabled)
 	if(dnsmasq_failed)
 		return;
 
+	const enum blocking_status before = get_blockingstatus();
 	config.dns.blocking.active.v.b = enabled;
 	writeFTLtoml(true, NULL);
-	raise(SIGHUP);
+	apply_blockingstatus(before);
 }
 
 const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type)
@@ -2246,7 +2302,7 @@ void replace_config(struct config *newconf)
 	// Lock shared memory
 	lock_shm();
 
-	const bool blocking_changed = newconf->dns.blocking.active.v.b != config.dns.blocking.active.v.b;
+	const enum blocking_status before = get_blockingstatus();
 
 	// Backup old config struct (so we can free it)
 	struct config old_conf;
@@ -2261,10 +2317,127 @@ void replace_config(struct config *newconf)
 	// Unlock shared memory
 	unlock_shm();
 
-	// Drop the cached answers and verdicts of the previous blocking status as
-	// set_blockingstatus() does. The CLI only writes pihole.toml, FTL rereads it
-	if(blocking_changed && !cli_mode && !dnsmasq_failed)
-		raise(SIGHUP);
+	// The CLI only writes pihole.toml, FTL rereads it and applies the change
+	if(!cli_mode)
+		apply_blockingstatus(before);
+}
+
+// The configuration pihole.toml held when FTL last read or wrote it
+static struct config last_seen = { 0 };
+static bool have_last_seen = false;
+
+void remember_config(struct config *conf)
+{
+	if(have_last_seen)
+		free_config(&last_seen, false);
+	duplicate_config(&last_seen, conf);
+	have_last_seen = true;
+}
+
+// Take in whatever changed in pihole.toml since it was last read or written,
+// keeping the running config's values for the items the file left alone.
+// Outside read-only mode the caller holds the install lock, so no other writer
+// can get in between. An item changed on both sides keeps the value the CLI
+// set: the file's in the daemon, our own in the CLI. Returns true if FTL needs
+// to restart
+bool merge_config_file(void)
+{
+	// Without a snapshot (pihole-FTL migrate v6) the config written is the
+	// one meant to replace the file
+	if(!have_last_seen)
+		return false;
+
+	uint8_t checksum[SHA256_DIGEST_SIZE];
+	if(!file_exists(GLOBALTOMLPATH) ||
+	   !sha256sum(GLOBALTOMLPATH, checksum, false) ||
+	   memcmp(checksum, last_checksum, SHA256_DIGEST_SIZE) == 0)
+		return false;
+	memcpy(last_checksum, checksum, SHA256_DIGEST_SIZE);
+
+	if(cli_mode)
+	{
+		log_debug(DEBUG_CONFIG, "pihole.toml changed since it was read, merging");
+	}
+	else
+		log_info("Reloading config due to pihole.toml change");
+
+	struct config fileconf;
+	duplicate_config(&fileconf, &config);
+	bool restart = false;
+	toml_datum_t toml = { 0 };
+	if(readFTLtoml(NULL, &fileconf, toml, !cli_mode, &restart, 0, false, NULL))
+	{
+		struct config merged, ours;
+		duplicate_config(&merged, &fileconf);
+		duplicate_config(&ours, &config);
+		struct config *base = &last_seen;
+		bool invalidate_sessions = false, rewrite_hosts = false;
+		for(unsigned int i = 0; i < CONFIG_ELEMENTS; i++)
+		{
+			struct conf_item *file_item = get_conf_item(&fileconf, i);
+			struct conf_item *base_item = get_conf_item(base, i);
+			struct conf_item *our_item = get_conf_item(&ours, i);
+			struct conf_item *new_item = get_conf_item(&merged, i);
+			if(file_item->f & FLAG_PSEUDO_ITEM ||
+			   compare_config_item(file_item->t, &file_item->v, &base_item->v) ||
+			   (cli_mode && !compare_config_item(our_item->t, &our_item->v, &base_item->v)))
+			{
+				// Keep our value, the file's is freed with ours below
+				const struct conf_item tmp = *new_item;
+				*new_item = *our_item;
+				*our_item = tmp;
+				continue;
+			}
+
+			struct conf_item *cur_item = get_conf_item(&config, i);
+			if(compare_config_item(new_item->t, &new_item->v, &cur_item->v))
+				continue;
+
+			log_debug(DEBUG_CONFIG, "%s CHANGED", new_item->k);
+			if(new_item->f & FLAG_RESTART_FTL)
+			{
+				log_info("Restarting FTL due to change of %s", new_item->k);
+				restart = true;
+			}
+			if(new_item->f & FLAG_INVALIDATE_SESSIONS)
+				invalidate_sessions = true;
+			if(new_item == &merged.dns.hosts)
+				rewrite_hosts = true;
+		}
+		free_config(&ours, false);
+
+		if(merged.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
+		{
+			log_info("Privacy level was reduced, restarting FTL");
+			restart = true;
+		}
+
+		// The file as read is what the next change is compared against
+		if(have_last_seen)
+			free_config(&last_seen, false);
+		memcpy(&last_seen, &fileconf, sizeof(last_seen));
+		have_last_seen = true;
+
+		replace_config(&merged);
+		if(!cli_mode && invalidate_sessions)
+			delete_all_sessions();
+		if(!cli_mode && rewrite_hosts)
+			write_custom_list();
+	}
+	else
+	{
+		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
+		free_config(&fileconf, false);
+		restart = false;
+	}
+
+	// readFTLtoml() set the debug flags from the file alone
+	if(cli_mode)
+		clear_debug_flags();
+	else
+		set_debug_flags(&config);
+
+	return restart && !cli_mode;
 }
 
 // Set when reread_config() found a config change in progress and left the
@@ -2304,47 +2477,9 @@ void reread_config(void)
 		return;
 	}
 
-	log_info("Reloading config due to pihole.toml change");
-	struct config conf_copy;
-	duplicate_config(&conf_copy, &config);
-
-	// Read TOML config file
-	bool restart = false;
-	toml_datum_t toml = { 0 };
-	if(readFTLtoml(&config, &conf_copy, toml, true, &restart, 0, false, NULL))
-	{
-		// Install new configuration
-		log_debug(DEBUG_CONFIG, "Loaded configuration is valid, installing it");
-
-		// Check if the web pwhash has changed. If so, we invalidate
-		// all currently active web interface sessions
-		if(conf_copy.webserver.api.pwhash.v.s != NULL &&
-		   config.webserver.api.pwhash.v.s != NULL &&
-		   strcmp(conf_copy.webserver.api.pwhash.v.s, config.webserver.api.pwhash.v.s) != 0)
-			delete_all_sessions();
-
-		// Check if privacy level was reduced. If so, we need to restart FTL
-		if(conf_copy.misc.privacylevel.v.privacy_level < config.misc.privacylevel.v.privacy_level)
-		{
-			log_info("Privacy level was reduced, restarting FTL");
-			// We need to restart FTL
-			restart = true;
-		}
-
-		// Replace config struct used by FTL by newly loaded
-		// configuration. This swaps the pointers and frees
-		// the old config structure altogether
-		replace_config(&conf_copy);
-	}
-	else
-	{
-		// New configuration is invalid, restore old one
-		log_debug(DEBUG_CONFIG, "Modified config file is invalid, discarding and overwriting with current configuration");
-		free_config(&conf_copy, false);
-	}
-
-	// Write the config file back to disk to ensure that all options and
-	// comments about options deviating from the default are present
+	// writeFTLtoml() takes the change in before writing the file back to
+	// ensure that all options and comments about options deviating from the
+	// default are present
 	writeFTLtoml(true, NULL);
 
 	// We do not write the dnsmasq config file here as this is done on every
@@ -2355,10 +2490,6 @@ void reread_config(void)
 	write_custom_list();
 
 	unlock_config();
-
-	// If we need to restart FTL, we do so now
-	if(restart)
-		restart_ftl("pihole.toml change");
 }
 
 // Very simple test of a port's availability by trying to bind a TCP socket to

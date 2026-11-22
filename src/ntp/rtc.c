@@ -193,22 +193,25 @@ static int open_rtc(void)
 	return -1;
 }
 
-static bool read_rtc(struct tm *tm)
+enum rtc_read_result { RTC_NOT_OPENED, RTC_UNREADABLE, RTC_READ };
+
+static enum rtc_read_result read_rtc(struct tm *tm)
 {
 	// Open the RTC device
 	const int rtc_fd = open_rtc();
 	if(rtc_fd == -1)
-		return false;
+		return RTC_NOT_OPENED;
 
-	// Read the RTC time
+	// Read the RTC time. Many drivers refuse this while the RTC does not hold
+	// a valid time, e.g. after its backup battery ran flat
 	struct rtc_time rtc_tm = { 0 };
 	const int rc = ioctl(rtc_fd, RTC_RD_TIME, &rtc_tm);
 	if(rc == -1)
 	{
-		log_debug(DEBUG_NTP, "ioctl(RTC_RD_NAME) failed: %s",
+		log_debug(DEBUG_NTP, "ioctl(RTC_RD_TIME) failed: %s",
 		          strerror(errno));
 		close(rtc_fd);
-		return false;
+		return RTC_UNREADABLE;
 	}
 
 	// Convert the kernel's struct tm to the standard struct tm
@@ -226,7 +229,7 @@ static bool read_rtc(struct tm *tm)
 	// Close the RTC device
 	close(rtc_fd);
 
-	return true;
+	return RTC_READ;
 }
 
 // Set the Hardware Clock to the broken down time <new_time>.
@@ -288,16 +291,22 @@ bool ntp_sync_rtc(void)
 
 	// Read the current time from the RTC
 	struct tm rtc_time = { 0 };
-	if(!read_rtc(&rtc_time))
+	const enum rtc_read_result rtc_state = read_rtc(&rtc_time);
+	if(rtc_state == RTC_NOT_OPENED)
 	{
-		log_debug(DEBUG_NTP, "Failed to read RTC time");
+		log_debug(DEBUG_NTP, "Cannot open an RTC");
 		return false;
 	}
+
+	// An RTC whose time cannot be read is the one that needs setting most
+	if(rtc_state == RTC_UNREADABLE)
+		log_debug(DEBUG_NTP, "Cannot read the RTC time, setting it");
 
 	// If the RTC time is the same as the current time, we don't need to set
 	// it. We don't use memcmp() here because the tm struct may contain
 	// additional fields that are not filled in by the RTC (e.g. tm_isdst).
-	if(rtc_time.tm_sec  == new_time.tm_sec  &&
+	if(rtc_state == RTC_READ &&
+	   rtc_time.tm_sec  == new_time.tm_sec  &&
 	   rtc_time.tm_min  == new_time.tm_min  &&
 	   rtc_time.tm_hour == new_time.tm_hour &&
 	   rtc_time.tm_mday == new_time.tm_mday &&

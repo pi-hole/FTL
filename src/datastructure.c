@@ -1424,41 +1424,43 @@ void _query_set_status(queriesData *query, const enum query_status new_status, c
 	counters->status[new_status]++;
 	log_debug(DEBUG_STATUS, "status %d set, ID = %d, new count = %u", new_status, query->id, counters->status[new_status]);
 
-	// ... update overTime counters, ...
+	// ... update overTime counters unless the query lies before the over-time
+	// window, ...
 	const int timeidx = getOverTimeID(query->timestamp);
-	if(is_blocked(old_status) && !init)
+	const bool in_window = timeidx > -1;
+	if(in_window && is_blocked(old_status) && !init)
 	{
 		overTime[timeidx].blocked--;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].blocked-- = %d (old_status = %s), ID = %d",
 		          timeidx, overTime[timeidx].blocked, get_query_status_str(old_status), query->id);
 	}
-	if(is_blocked(new_status))
+	if(in_window && is_blocked(new_status))
 	{
 		overTime[timeidx].blocked++;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].blocked++ = %d (new_status = %s), ID = %d",
 		          timeidx, overTime[timeidx].blocked, get_query_status_str(new_status), query->id);
 	}
 
-	if((old_status == QUERY_CACHE || old_status == QUERY_CACHE_STALE) && !init)
+	if(in_window && (old_status == QUERY_CACHE || old_status == QUERY_CACHE_STALE) && !init)
 	{
 		overTime[timeidx].cached--;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].cached-- = %d (old_status = %s), ID = %d",
 		          timeidx, overTime[timeidx].cached, get_query_status_str(old_status), query->id);
 	}
-	if(new_status == QUERY_CACHE || new_status == QUERY_CACHE_STALE)
+	if(in_window && (new_status == QUERY_CACHE || new_status == QUERY_CACHE_STALE))
 	{
 		overTime[timeidx].cached++;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].cached++ = %d (new_status = %s), ID = %d",
 		          timeidx, overTime[timeidx].cached, get_query_status_str(new_status), query->id);
 	}
 
-	if(old_status == QUERY_FORWARDED && !init)
+	if(in_window && old_status == QUERY_FORWARDED && !init)
 	{
 		overTime[timeidx].forwarded--;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].forwarded-- = %d (old_status = %s), ID = %d",
 		          timeidx, overTime[timeidx].forwarded, get_query_status_str(old_status), query->id);
 	}
-	if(new_status == QUERY_FORWARDED)
+	if(in_window && new_status == QUERY_FORWARDED)
 	{
 		overTime[timeidx].forwarded++;
 		log_debug(DEBUG_OVERTIME, "overTime[%d].forwarded++ = %d (new_status = %s), ID = %d",

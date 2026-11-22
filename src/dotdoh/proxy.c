@@ -479,15 +479,18 @@ static size_t dns_truncated_response(const uint8_t *answer, size_t alen,
 // back to the same source. On failure we drop it (see the file header).
 static void handle_udp(struct proxy_up *up)
 {
-	// 64 KiB each - too large for the worker's thread stack, declared
-	// thread-local instead (one set per worker thread).
-	static _Thread_local uint8_t query[DNS_MSG_MAX];
-	static _Thread_local uint8_t answer[DNS_MSG_MAX];
+	// 64 KiB each - too large for the worker's thread stack and for static TLS,
+	// so one heap set per worker thread
+	static _Thread_local uint8_t *bufs = NULL;
+	uint8_t *query = dotdoh_thread_buf(&bufs, 2 * DNS_MSG_MAX);
+	if(query == NULL)
+		return;
+	uint8_t *answer = query + DNS_MSG_MAX;
 	struct sockaddr_in src;
 	socklen_t sl = sizeof(src);
 	// Non-blocking listener: another worker may have taken the datagram, in
 	// which case recvfrom() returns EAGAIN (n < 0) and we simply return.
-	const ssize_t n = recvfrom(up->listener.udp_fd, query, sizeof(query), 0,
+	const ssize_t n = recvfrom(up->listener.udp_fd, query, DNS_MSG_MAX, 0,
 	                           (struct sockaddr *)&src, &sl);
 	if(n <= 0)
 		return;
@@ -506,8 +509,8 @@ static void handle_udp(struct proxy_up *up)
 	// Pad the query to a block boundary (RFC 8467) before it is encrypted, so the
 	// ciphertext size no longer leaks the query. Only this encrypted leg is
 	// padded; the plaintext dnsmasq spoke to us over loopback is left untouched.
-	const size_t qlen = edns_pad_query(query, (size_t)n, sizeof(query));
-	const ssize_t a = up_exchange(up, query, qlen, answer, sizeof(answer));
+	const size_t qlen = edns_pad_query(query, (size_t)n, DNS_MSG_MAX);
+	const ssize_t a = up_exchange(up, query, qlen, answer, DNS_MSG_MAX);
 	if(a < 0)
 		return; // drop -> dnsmasq times out and fails over
 
@@ -648,9 +651,16 @@ static void handle_tcp(struct proxy_up *up)
 	setsockopt(cfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
 	// See handle_udp(): keep these 64 KiB buffers off the thread stack.
-	static _Thread_local uint8_t query[DNS_MSG_MAX];
-	static _Thread_local uint8_t answer[DNS_MSG_MAX];
-	static _Thread_local uint8_t out[2 + DNS_MSG_MAX];
+	static _Thread_local uint8_t *bufs = NULL;
+	uint8_t *query = dotdoh_thread_buf(&bufs, 3 * DNS_MSG_MAX + 2);
+	if(query == NULL)
+	{
+		dotdoh_fd_close(cfd);
+		release_tcp_slot();
+		return;
+	}
+	uint8_t *answer = query + DNS_MSG_MAX;
+	uint8_t *out = answer + DNS_MSG_MAX;
 	// Bound one connection's hold on a worker: any local process can reach the
 	// listener, so cap both total lifetime and query count or a peer could stream
 	// valid queries forever and starve other work. dnsmasq simply reconnects.
@@ -683,8 +693,8 @@ static void handle_tcp(struct proxy_up *up)
 			break;
 
 		// Pad before encrypting (see handle_udp()); the loopback leg stays plain.
-		const size_t plen = edns_pad_query(query, qlen, sizeof(query));
-		const ssize_t a = up_exchange(up, query, plen, answer, sizeof(answer));
+		const size_t plen = edns_pad_query(query, qlen, DNS_MSG_MAX);
+		const ssize_t a = up_exchange(up, query, plen, answer, DNS_MSG_MAX);
 		if(a < 0)
 			break; // drop: closing the connection makes dnsmasq retry/fail over
 

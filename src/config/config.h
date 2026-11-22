@@ -143,6 +143,7 @@ struct enum_options {
 struct config {
 	struct {
 		struct conf_item upstreams;
+		struct conf_item fastRetry;
 		struct conf_item CNAMEdeepInspect;
 		struct conf_item EDNS0ECS;
 		struct conf_item ignoreLocalhost;
@@ -395,7 +396,7 @@ extern struct config config;
 void initConfig(struct config *conf);
 void set_debug_flags(struct config *conf);
 void set_all_debug(struct config *conf, const bool status);
-bool migrate_config_v6(void);
+bool migrate_config_v6(struct config *conf);
 bool readFTLconf(struct config *conf, const bool rewrite);
 bool getLogFilePath(bool try_read);
 struct conf_item *get_conf_item(struct config *conf, const unsigned int n);
@@ -414,6 +415,8 @@ bool check_paths_equal(char **paths1, char **paths2, unsigned int max_level) __a
 const char *get_conf_type_str(const enum conf_type type) __attribute__ ((const));
 void replace_config(struct config *newconf);
 void reread_config(void);
+void remember_config(struct config *conf);
+bool merge_config_file(void);
 bool reread_config_deferred(void);
 bool validate_config(struct config *conf, const bool reset, char err[VALIDATOR_ERRBUF_LEN]);
 // Restore a single config item to its compiled-in default
@@ -422,7 +425,8 @@ bool create_migration_target_v6(void);
 bool create_default_config(const char *filename);
 
 void init_config_mutex(void);
-enum blocking_status get_blockingstatus(void) __attribute__((pure));
+enum blocking_status get_blockingstatus(void);
+void apply_blockingstatus(const enum blocking_status before);
 void set_blockingstatus(bool enabled);
 
 // Add enum items with descriptions

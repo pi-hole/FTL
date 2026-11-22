@@ -183,6 +183,25 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a burst of 30 DoQ queries on one connection is answered in full" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # More than the 16 streams one client may hold at once: the others wait
+  # for a free slot instead of being reset
+  run python3 test/dotdoh_query.py doqmulti 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 30
+  assert_output "OK"
+}
+
+@test "dotdoh-server: a DoQ client holding many streams leaves slots for another one" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.7 opens 32 streams that never deliver their query, as many as the
+  # listener has slots (DOQ_MAX_STREAMS). It gets 16 of them
+  # (DOQ_MAX_STREAMS_PER_SOURCE), so the query from $CLIENT is answered, and
+  # those 16 are reset together with DOQ_INTERNAL_ERROR after the read deadline
+  # (DOQ_READ_TIMEOUT_S). Update the numbers here when these constants change.
+  run python3 test/dotdoh_query.py doqhold 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 127.0.0.7
+  assert_output "other client answered True, 16 held streams reset with codes [1]"
+}
+
 @test "dotdoh-server: the DoQ listener rejects a client not offering the doq ALPN" {
   # QUIC mandates ALPN and RFC 9250 defines exactly one token for DoQ, so a client
   # offering "h3" instead must not be served.
@@ -212,11 +231,49 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: DoQ delivers the connection close on a connection that just answered queries" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # The close waits for the client to acknowledge the last answer, which was
+  # lost once, and then has to be sent rather than freed with the connection
+  run python3 test/dotdoh_query.py doqbusyerror 127.0.0.1 853 "$DOMAIN" "$CLIENT" 10
+  assert_output "closed 2"
+}
+
+@test "dotdoh-server: a DoQ connection keeps serving a pipelining client past 64 queries" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 70 queries with up to 8 in flight on one connection: all answered, none
+  # reset and the connection stays open
+  run python3 test/dotdoh_query.py doqpipeline 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 70 8
+  assert_output "answered 70 reset 0 closed None"
+}
+
 @test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # RFC 9250 Sec. 4.3.2: DOQ_INTERNAL_ERROR (0x1), not DOQ_NO_ERROR
   run python3 test/dotdoh_query.py doqerror 127.0.0.1 853 unattributable "$CLIENT" reset:1
   assert_output "OK"
+}
+
+@test "dotdoh-server: DoQ closes a connection beyond the per-source connection cap" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.11 opens 16 connections (DOQ_MAX_CONNS_PER_IP), which all stay
+  # open, and a 17th, which is refused with DOQ_EXCESSIVE_LOAD (0x4). The
+  # refused connection is kept until its handshake is complete, so the close
+  # goes out in a 1-RTT packet that carries the DoQ code; an Initial-level close
+  # would arrive as APPLICATION_ERROR (0xc) or not be readable at all.
+  run python3 test/dotdoh_query.py doqrefused 127.0.0.1 853 127.0.0.11 16
+  assert_output "kept 16 open, closed 4"
+}
+
+@test "dotdoh-server: DoQ closes a connection beyond the listener's connection cap" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.25 to 127.0.0.28 open 16 connections each, all 64 of the listener
+  # (DOQ_MAX_CONNS), which all stay open, and 127.0.0.29 opens one more, which
+  # is refused with DOQ_EXCESSIVE_LOAD (0x4). Update the numbers here when
+  # these constants change.
+  run python3 test/dotdoh_query.py doqrefused 127.0.0.1 853 \
+    127.0.0.25,127.0.0.26,127.0.0.27,127.0.0.28 16 127.0.0.29
+  assert_output "kept 64 open, closed 4"
 }
 
 @test "dotdoh-server: a DoQ query over IPv6 resolves" {

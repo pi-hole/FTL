@@ -231,18 +231,19 @@ void ls_dir(const char *path)
 			continue;
 		}
 
-		// Get owner's name
-		struct passwd *pwd;
-		char user[256];
-		if ((pwd = getpwuid(st.st_uid)) != NULL)
+		// Get owner's name. The reentrant lookups do not share state with
+		// getpwuid()/getgrgid(), which a crashed thread may have been in
+		struct passwd pwdbuf, *pwd = NULL;
+		char user[256], buf[1024];
+		if (getpwuid_r(st.st_uid, &pwdbuf, buf, sizeof(buf), &pwd) == 0 && pwd != NULL)
 			snprintf(user, sizeof(user), "%s", pwd->pw_name);
 		else
 			snprintf(user, sizeof(user), "%u", st.st_uid);
 
-		struct group *grp;
+		struct group grpbuf, *grp = NULL;
 		char usergroup[256];
 		// Get out group name
-		if ((grp = getgrgid(st.st_gid)) != NULL)
+		if (getgrgid_r(st.st_gid, &grpbuf, buf, sizeof(buf), &grp) == 0 && grp != NULL)
 			snprintf(usergroup, sizeof(usergroup), "%s:%s", user, grp->gr_name);
 		else
 			snprintf(usergroup, sizeof(usergroup), "%s:%u", user, st.st_gid);
@@ -464,19 +465,28 @@ static int copy_file(const char *source, const char *destination)
 // Change ownership of file to pihole user
 bool chown_pihole(const char *path, struct passwd *pwd)
 {
+	// getpwnam() and getgrgid() hand out pointers into a buffer shared by all
+	// threads and grow it as needed, so two threads in here at the same time
+	// corrupt that buffer. Use the reentrant variants with local storage.
+	char pwbuf[PWBUF_SIZE];
+	struct passwd pwstore;
+
 	// Get pihole user's UID and GID if not provided
 	if(pwd == NULL)
 	{
-		pwd = getpwnam("pihole");
+		const int ret = getpwnam_r("pihole", &pwstore, pwbuf, sizeof(pwbuf), &pwd);
 		if(pwd == NULL)
 		{
-			log_warn("chown_pihole(): Failed to get pihole user's UID/GID: %s", strerror(errno));
+			log_warn("chown_pihole(): Failed to get pihole user's UID/GID: %s",
+			         ret == 0 ? "user not found" : strerror(ret));
 			return false;
 		}
 	}
 
 	// Get group name
-	struct group *grp = getgrgid(pwd->pw_gid);
+	char grbuf[PWBUF_SIZE];
+	struct group grstore, *grp = NULL;
+	getgrgid_r(pwd->pw_gid, &grstore, grbuf, sizeof(grbuf), &grp);
 	const char *grp_name = grp != NULL ? grp->gr_name : "<unknown>";
 
 	// Pin the path entry itself, without following a final symbolic link, and

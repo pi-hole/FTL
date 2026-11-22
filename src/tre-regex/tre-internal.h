@@ -254,6 +254,14 @@ struct tnfa {
   tre_submatch_data_t *submatch_data;
   char *firstpos_chars;
   int first_char;
+  /* Every match starts at the beginning of the string. */
+  int anchored;
+  /* A string every match contains, as `must_len' pairs of alternative
+     bytes, or NULL. */
+  unsigned char *must;
+  size_t must_len;
+  /* No character can come before `must' in a match. */
+  int must_at_start;
   unsigned int num_submatches;
   tre_tag_direction_t *tag_directions;
   int *minimal_tags;
