@@ -183,7 +183,7 @@ class TestTeleporter:
         upstreams = ftl.GET("/api/config/dns/upstreams", [], "application/json",
                             AuthenticationMethods.HEADER)["config"]["dns"]["upstreams"]
 
-        with open("/var/log/pihole/FTL.log", "r") as f:
+        with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
             f.seek(0, 2)
             log_pos = f.tell()
 
@@ -206,7 +206,7 @@ class TestTeleporter:
         # Wait for the restarted FTL to serve the API again
         for _ in range(60):
             time.sleep(0.5)
-            with open("/var/log/pihole/FTL.log", "r") as f:
+            with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                 f.seek(log_pos)
                 if "FTL started on" not in f.read():
                     continue
@@ -266,7 +266,7 @@ class TestTeleporter:
         exclude_clients = before["config"]["webserver"]["api"]["excludeClients"]
 
         for n in (1, 2):
-            with open("/var/log/pihole/FTL.log", "r") as f:
+            with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                 f.seek(0, 2)
                 log_pos = f.tell()
 
@@ -279,7 +279,7 @@ class TestTeleporter:
             # Wait for the restarted FTL to serve the API again
             for _ in range(60):
                 time.sleep(0.5)
-                with open("/var/log/pihole/FTL.log", "r") as f:
+                with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                     f.seek(log_pos)
                     if "FTL started on" not in f.read():
                         continue
