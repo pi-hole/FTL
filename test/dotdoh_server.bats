@@ -191,6 +191,14 @@ setup_file() {
   assert_output "OK"
 }
 
+@test "dotdoh-server: a burst of 100 DoQ queries on one connection is answered in full" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # As many as OpenSSL lets a client open on one connection: 16 take a stream
+  # slot and the other 84 wait for one, none is reset
+  run python3 test/dotdoh_query.py doqmulti 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 100
+  assert_output "OK"
+}
+
 @test "dotdoh-server: a DoQ client holding many streams leaves slots for another one" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # 127.0.0.7 opens 32 streams that never deliver their query, as many as the
@@ -200,6 +208,47 @@ setup_file() {
   # (DOQ_READ_TIMEOUT_S). Update the numbers here when these constants change.
   run python3 test/dotdoh_query.py doqhold 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 127.0.0.7
   assert_output "other client answered True, 16 held streams reset with codes [1]"
+}
+
+@test "dotdoh-server: DoQ resets the queries beyond those that may wait for a slot" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.10 holds its 16 stream slots (DOQ_MAX_STREAMS_PER_SOURCE) with
+  # streams that never deliver their query and then asks 120 queries, 60 on the
+  # same connection and 60 on a second one. 100 of them wait
+  # (DOQ_MAX_WAITING_PER_SOURCE, counted over both connections) and are
+  # answered once the held streams reach their read deadline, the other 20 are
+  # reset at once with DOQ_EXCESSIVE_LOAD (0x4). Update the numbers here when
+  # these constants change.
+  run python3 test/dotdoh_query.py doqwaiting 127.0.0.1 853 "$DOMAIN" 127.0.0.10 "$EXPECT_IP" 120
+  assert_output "answered 100, 20 reset at once with codes [4]"
+}
+
+@test "dotdoh-server: DoQ resets the queries beyond the waiting slots of the listener" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.13 and 127.0.0.14 hold all 32 stream slots (DOQ_MAX_STREAMS) with
+  # streams that never deliver their query. Then 127.0.0.15 to 127.0.0.19 ask
+  # 100 queries each, one address after the other: the first four fill the 400
+  # waiting slots (DOQ_MAX_WAITING), and the queries of the fifth are reset at
+  # once. Update the numbers here when these constants change.
+  run python3 test/dotdoh_query.py doqwaitingall 127.0.0.1 853 "$DOMAIN" \
+    127.0.0.13,127.0.0.14 127.0.0.15,127.0.0.16,127.0.0.17,127.0.0.18,127.0.0.19 100
+  assert_output "reset at once per address [0, 0, 0, 0, 100]"
+}
+
+@test "dotdoh-server: DoQ closes a connection that keeps replacing its reset streams" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 127.0.0.12 opens 100 one-byte streams on one connection, so 16 take its
+  # stream slots and 84 wait. It keeps 100 more open on a second connection: 16
+  # of those wait as well (DOQ_MAX_WAITING_PER_SOURCE) and the rest are reset,
+  # and every reset lets it open another. The resets count against
+  # DOQ_MAX_CONN_STREAMS (1000), and once the next round would exceed it the
+  # second connection is closed with DOQ_EXCESSIVE_LOAD (0x4), or with
+  # DOQ_NO_ERROR (0x0) if a round used up the budget exactly and the connection
+  # retired. On a slow runner held streams reach their read deadline first and
+  # their slots take more streams, which leaves fewer resets in the budget.
+  # Update the numbers here when these constants change.
+  run python3 test/dotdoh_query.py doqcycle 127.0.0.1 853 127.0.0.12
+  assert_output --regexp '^closed (0|4) after (8[5-9][0-9]|9[0-9][0-9]|1000) resets$'
 }
 
 @test "dotdoh-server: the DoQ listener rejects a client not offering the doq ALPN" {
