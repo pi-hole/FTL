@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # webserver.port combinations for the TLS terminator: several secure entries,
 # address-scoped and IPv4/IPv6 entries on one port, an optional entry that
-# cannot be bound, and secure entries that are all malformed.
+# cannot be bound, the renewal of the certificate DoT and DoQ use while no
+# secure entry is bound, and secure entries that are all malformed.
 #
 # Changing webserver.port restarts FTL, so this file runs after the pytest API
 # tests.
@@ -48,16 +49,30 @@ ipv6_loopback_available() {
   python3 -c 'import socket; socket.socket(socket.AF_INET6).bind(("::1", 0))' 2>/dev/null
 }
 
+# PATCH webserver.port, webserver.tls.cert, dns.dot and dns.doq together and
+# block until the restart it triggers has logged $4
+set_ports_cert() {  # $1 = webserver.port, $2 = webserver.tls.cert, $3 = dns.dot and dns.doq, $4 = log line
+  LOG_OFFSET=$(stat -c%s /var/log/pihole/FTL.log)
+  python3 -c 'import json,sys; dot = sys.argv[3] == "true"
+print(json.dumps({"config":{"webserver":{"port":sys.argv[1],"tls":{"cert":sys.argv[2]}},"dns":{"dot":dot,"doq":dot}}}))' "$1" "$2" "$3" |
+    curl -s -o /dev/null --max-time 10 -X PATCH "http://127.0.0.1/api/config" -H "Content-Type: application/json" -d @- || true
+  ./pihole-FTL wait-for "$4" /var/log/pihole/FTL.log 60 "$LOG_OFFSET"
+}
+
 setup_file() {
-  # The list test/pihole.toml sets, restored at the end
+  # The list, the certificate and DoT/DoQ as test/pihole.toml sets them,
+  # restored at the end
   ./pihole-FTL --config webserver.port | head -n 1 > "${BATS_FILE_TMPDIR}/ports"
+  ./pihole-FTL --config webserver.tls.cert | head -n 1 > "${BATS_FILE_TMPDIR}/cert"
+  ./pihole-FTL --config dns.dot | head -n 1 > "${BATS_FILE_TMPDIR}/dot"
 }
 
 teardown_file() {
   if [[ -f "${BATS_FILE_TMPDIR}/holder.pid" ]]; then
     kill "$(cat "${BATS_FILE_TMPDIR}/holder.pid")" 2>/dev/null || true
   fi
-  set_ports "$(cat "${BATS_FILE_TMPDIR}/ports")"
+  set_ports_cert "$(cat "${BATS_FILE_TMPDIR}/ports")" "$(cat "${BATS_FILE_TMPDIR}/cert")" "$(cat "${BATS_FILE_TMPDIR}/dot")" "TLS terminator listening"
+  rm -f /etc/pihole/renew.pem /etc/pihole/renew.crt /etc/pihole/renew_ca.crt
 }
 
 @test "webserver.port: every secure entry is served, not only the first" {
@@ -162,6 +177,58 @@ time.sleep(120)' > /dev/null 2>&1 3>&- &
   # The bare entry serves both halves, so neither half is bound on its own
   run bash -c "tail -c +$((LOG_OFFSET + 1)) /var/log/pihole/FTL.log | grep 'Terminator: bind'"
   refute_output
+}
+
+# Write a Pi-hole certificate to /etc/pihole/renew.pem that expires within the
+# two days the renewal check looks ahead
+short_lived_cert() {
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 \
+          -subj "/CN=pi.hole/O=Pi-hole/C=DE" -addext "subjectAltName=DNS:pi.hole" \
+          -keyout "${BATS_FILE_TMPDIR}/renew.key" -out "${BATS_FILE_TMPDIR}/renew.crt" 2> /dev/null
+  cat "${BATS_FILE_TMPDIR}/renew.key" "${BATS_FILE_TMPDIR}/renew.crt" > /etc/pihole/renew.pem
+  chown pihole:pihole /etc/pihole/renew.pem
+  ! openssl x509 -in /etc/pihole/renew.pem -noout -checkend 172800
+}
+
+@test "webserver.port: the certificate DoT and DoQ serve is renewed while no TLS port can be bound" {
+  local web_offset
+  run short_lived_cert
+  assert_success
+  # Another process holds 5443, the only TLS entry, and it is optional
+  python3 -c 'import socket, time
+s = socket.socket(socket.AF_INET6)
+s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+s.bind(("::", 5443))
+s.listen()
+time.sleep(120)' > /dev/null 2>&1 3>&- &
+  echo $! > "${BATS_FILE_TMPDIR}/holder.pid"
+  run bash -c 'for _ in $(seq 1 300); do netstat -ltn | grep -q ":5443 " && exit 0; sleep 0.1; done; exit 1'
+  assert_success
+  # With DoT and DoQ off, only the TLS entries use the certificate
+  web_offset=$(stat -c%s /var/log/pihole/webserver.log)
+  set_ports_cert "80o,[::]:80o,5443os,[::]:5443os" "/etc/pihole/renew.pem" false \
+                 "None of the optional TLS ports could be bound"
+  run ./pihole-FTL wait-for "TLS certificate at /etc/pihole/renew.pem is about to expire soon, generating new one" \
+                            /var/log/pihole/webserver.log 30 "$web_offset"
+  assert_success
+  run ./pihole-FTL wait-for "Done. The new certificate is valid for" /var/log/pihole/webserver.log 30 "$web_offset"
+  assert_success
+  run openssl x509 -in /etc/pihole/renew.pem -noout -checkend 172800
+  assert_success
+  kill "$(cat "${BATS_FILE_TMPDIR}/holder.pid")" 2>/dev/null || true
+  rm -f "${BATS_FILE_TMPDIR}/holder.pid"
+
+  # Without any TLS entry in webserver.port, DoT and DoQ use it
+  run short_lived_cert
+  assert_success
+  web_offset=$(stat -c%s /var/log/pihole/webserver.log)
+  set_ports_cert "80o,[::]:80o" "/etc/pihole/renew.pem" true "Web server ports:"
+  run ./pihole-FTL wait-for "Done. The new certificate is valid for" /var/log/pihole/webserver.log 30 "$web_offset"
+  assert_success
+  run openssl x509 -in /etc/pihole/renew.pem -noout -checkend 172800
+  assert_success
+
+  set_ports_cert "$(cat "${BATS_FILE_TMPDIR}/ports")" "$(cat "${BATS_FILE_TMPDIR}/cert")" "$(cat "${BATS_FILE_TMPDIR}/dot")" "TLS terminator listening"
 }
 
 @test "webserver.port: TLS entries that are all malformed leave the plaintext ports up" {
