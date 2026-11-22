@@ -227,6 +227,31 @@ for s in socks:
   assert_output "1"
 }
 
+@test "A domain inside a cached CNAME chain is blocked for the clients it is denied for" {
+  # cname-mid.ftl -> cname-ok.ftl -> a.ftl, with cname-ok.ftl denied only in
+  # group 2 (client 127.0.0.2). 127.0.0.1 gets the chain into the cache first
+  id="$(./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "INSERT INTO domainlist (type, domain, enabled) VALUES (1, 'cname-ok.ftl', 1) RETURNING id;")"
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "UPDATE domainlist_by_group SET group_id = 2 WHERE domainlist_id = ${id};"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  first="$(dig +short A cname-mid.ftl -b 127.0.0.1 @127.0.0.1)"
+  second="$(dig +short A cname-mid.ftl -b 127.0.0.2 @127.0.0.1)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "DELETE FROM domainlist WHERE id = ${id};"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  printf "first:\n%s\nsecond:\n%s\n" "${first}" "${second}"
+  [[ "${first}" == "cname-ok.ftl."$'\n'"a.ftl."$'\n'* ]]
+  # From the cache, the chain ends at the denied domain, without an address
+  [[ "${second}" == "cname-ok.ftl." ]]
+}
+
 @test "A failed MAC lookup is not repeated right away, and not done for ECS clients" {
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   for name in mac-1 mac-2; do
