@@ -279,8 +279,9 @@ void init_query_database(void)
 		runGC(time(NULL), NULL, false);
 
 		// Try to import queries from long-term database if available
-		// Skip if we are not supposed to load queries from disk
-		if(config.database.DBimport.v.b)
+		// Skip if we are not supposed to load queries from disk or if
+		// flushing the message table found the database broken
+		if(config.database.DBimport.v.b && !FTLDBerror())
 			count_queries_on_disk();
 	}
 	else
@@ -1014,6 +1015,35 @@ bool create_addinfo_table(sqlite3 *db)
 	return true;
 }
 
+// Release the slots count_queries_on_disk() reserved for queries that were not
+// imported. The queries that arrived during the import move down so the array
+// has no gaps the GC or the export would trip over
+static void release_import_slots(const size_t imported_queries)
+{
+	if((int)imported_queries >= counted_queries)
+		return;
+
+	lock_shm();
+	const unsigned int gap = counted_queries - imported_queries;
+	for(unsigned int i = counted_queries; i < counters->queries; i++)
+	{
+		queriesData *src = getQuery(i, false);
+		queriesData *dst = getQuery(i - gap, false);
+		if(src == NULL || dst == NULL)
+			break;
+		*dst = *src;
+		memset(src, 0, sizeof(*src));
+	}
+	counters->queries -= gap;
+	// The moved queries are not exported yet
+	export_pos -= gap;
+	imported_queries_total -= gap;
+
+	// Invalidate the query ID cache since the indices shifted
+	queryIDMap_clear();
+	unlock_shm();
+}
+
 // Get most recent 24 hours data from long-term database
 void DB_read_queries(void)
 {
@@ -1039,7 +1069,13 @@ void DB_read_queries(void)
 	// Only try to import from database if it is known to not be broken and
 	// FTL has not been asked to terminate in the meantime
 	if(FTLDBerror() || killed || querydb == NULL)
+	{
+		// The slots reserved for the import would stay empty. Shared memory is
+		// left alone once FTL is terminating
+		if(!killed)
+			release_import_slots(0);
 		return;
+	}
 
 	// The rows on disk, for disk=true and /api/info/database, also when the
 	// import below fails
@@ -1062,6 +1098,7 @@ void DB_read_queries(void)
 	if( rc != SQLITE_OK )
 	{
 		log_err("DB_read_queries() - SQL error prepare: %s", sqlite3_errstr(rc));
+		release_import_slots(0);
 		return;
 	}
 	if((rc = sqlite3_bind_int64(stmt, 1, import_min_id)) != SQLITE_OK ||
@@ -1070,6 +1107,7 @@ void DB_read_queries(void)
 	{
 		log_err("DB_read_queries() - Failed to bind the window: %s", sqlite3_errstr(rc));
 		sqlite3_finalize(stmt);
+		release_import_slots(0);
 		return;
 	}
 
@@ -1189,14 +1227,15 @@ void DB_read_queries(void)
 		if(sqlite3_column_bytes(stmt, 6) > 0 &&
 		   (buffer = (const char *)sqlite3_column_text(stmt, 6)) != NULL)
 		{
-			// Get IP address and port of upstream destination
-			char serv_addr[INET6_ADDRSTRLEN + 16] = { 0 };
+			// Get the upstream and its port. If there is no port in the
+			// database, the whole string is the upstream on the default port
+			char serv_addr[FORWARD_UPSTREAM_MAX];
 			unsigned int serv_port = 53;
-			// We limit the number of bytes written into the serv_addr buffer
-			// to prevent buffer overflows. If there is no port available in
-			// the database, we skip extracting them and use the default port
-			sscanf(buffer, "%"xstr(INET6_ADDRSTRLEN)"[^#]#%u", serv_addr, &serv_port);
-			serv_addr[INET6_ADDRSTRLEN + 15] = '\0';
+			if(!split_forward_string(buffer, serv_addr, sizeof(serv_addr), &serv_port))
+			{
+				strncpy(serv_addr, buffer, sizeof(serv_addr) - 1);
+				serv_addr[sizeof(serv_addr) - 1] = '\0';
+			}
 			upstreamID = findUpstreamID(serv_addr, (in_port_t)serv_port);
 		}
 
@@ -1372,28 +1411,8 @@ void DB_read_queries(void)
 		log_warn("Database %s has changed during import: Expected to import %i queries, but found only %zu",
 		         config.files.database.v.s, counted_queries, imported_queries);
 
-		// Slots reserved for rows skipped above are still empty. Move
-		// the queries that arrived during the import down so the array
-		// has no gaps the GC or the export would trip over
-		lock_shm();
-		const unsigned int gap = counted_queries - imported_queries;
-		for(unsigned int i = counted_queries; i < counters->queries; i++)
-		{
-			queriesData *src = getQuery(i, false);
-			queriesData *dst = getQuery(i - gap, false);
-			if(src == NULL || dst == NULL)
-				break;
-			*dst = *src;
-			memset(src, 0, sizeof(*src));
-		}
-		counters->queries -= gap;
-		// The moved queries are not exported yet
-		export_pos -= gap;
-		imported_queries_total -= gap;
-
-		// Invalidate the query ID cache since the indices shifted
-		queryIDMap_clear();
-		unlock_shm();
+		// Slots reserved for rows skipped above are still empty
+		release_import_slots(imported_queries);
 	}
 
 	// Finalize SQLite3 statement
@@ -1536,6 +1555,19 @@ static const char *room_copy(struct export_run *run, const char *str)
 	return copy;
 }
 
+// Write the forward string of an upstream, "<upstream>#<port>", into the room
+// of the chunk, NULL if it does not fit. The caller holds the SHM lock
+static const char *room_copy_forward(struct export_run *run, const char *upstream, const in_port_t port)
+{
+	const size_t left = EXPORT_ROOM - run->used;
+	char *copy = run->room + run->used;
+	const int len = snprintf(copy, left, "%s#%u", upstream, (unsigned int)port);
+	if(len < 0 || (size_t)len >= left)
+		return NULL;
+	run->used += (size_t)len + 1;
+	return copy;
+}
+
 // The ID of a row found earlier in this run for the entry with these strings,
 // 0 if none
 static int __attribute__((pure)) found_id(const struct found_row *rows, const unsigned int n,
@@ -1623,13 +1655,9 @@ static bool take_query(const queriesData *query, struct export_row *r, struct ex
 		r->upstream_at.pos2 = upstream->port;
 		r->upstream_db_id = upstream->flags.in_database ? upstream->db_id :
 		                    found_id(run->upstreams, run->n_upstreams, r->upstreamID, &r->upstream_at);
-		if(r->upstream_db_id == 0)
-		{
-			char forward[64];
-			const int len = snprintf(forward, sizeof(forward), "%s#%u", getstr(upstream->ippos), upstream->port);
-			if(len > 0 && (size_t)len < sizeof(forward) && (r->upstream = room_copy(run, forward)) == NULL)
-				return false;
-		}
+		if(r->upstream_db_id == 0 &&
+		   (r->upstream = room_copy_forward(run, getstr(upstream->ippos), upstream->port)) == NULL)
+			return false;
 	}
 
 	// ADDINFO - the domain of a CNAME that caused a block, otherwise the

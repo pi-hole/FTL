@@ -925,7 +925,8 @@
   # IP address. If this value is not set (empty string), all accesses are allowed.
   # Otherwise, the default setting is to deny all accesses. On each request the full
   # list is traversed, and the last (!) match wins. IPv6 addresses may be specified in
-  # CIDR-form [a:b::c]/64.
+  # CIDR-form [a:b::c]/64. IPv4 clients are matched as IPv4 also on a dual-stack port
+  # ("+80"), and [::ffff:a.b.c.d] is the same entry as a.b.c.d.
   #
   # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
   # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS

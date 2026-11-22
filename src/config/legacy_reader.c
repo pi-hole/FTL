@@ -33,9 +33,9 @@ static void releaseConfigMemory(void);
 static char *__attribute__((nonnull(1,2,3), malloc, warn_unused_result)) getPath(FILE* fp, const char *option, char *ptr);
 static void getLockedPath(FILE *fp, const char *option, struct conf_item *item);
 static bool parseBool(const char *option, bool *ptr);
-static void readDebugingSettingsLegacy(FILE *fp);
-static void getBlockingModeLegacy(FILE *fp);
-static void getPrivacyLevelLegacy(FILE *fp);
+static void readDebugingSettingsLegacy(struct config *conf, FILE *fp);
+static void getBlockingModeLegacy(struct config *conf, FILE *fp);
+static void getPrivacyLevelLegacy(struct config *conf, FILE *fp);
 
 static FILE * __attribute__((nonnull(1), malloc, warn_unused_result)) openFTLconf(const char **path)
 {
@@ -180,6 +180,13 @@ const char *readFTLlegacy(struct config *conf)
 	// defaults to: "/etc/pihole/pihole-FTL.db"
 	buffer = parseFTLconf(fp, "DBFILE");
 
+	// The value is replaced below, either by a string of our own or by the
+	// default, which must never be freed
+	if(conf->files.database.t == CONF_STRING_ALLOCATED)
+		free(conf->files.database.v.s);
+	conf->files.database.v.s = NULL;
+	conf->files.database.t = CONF_STRING;
+
 	// Use sscanf() to obtain filename from config file parameter only if buffer != NULL
 	if(buffer != NULL && sscanf(buffer, "%127ms", &conf->files.database.v.s) == 1)
 		conf->files.database.t = CONF_STRING_ALLOCATED;
@@ -193,7 +200,10 @@ const char *readFTLlegacy(struct config *conf)
 	{
 		// Use standard path if path was set to zero but override
 		// MAXDBDAYS=0 to ensure no queries are stored in the database
+		if(conf->files.database.t == CONF_STRING_ALLOCATED)
+			free(conf->files.database.v.s);
 		conf->files.database.v.s = conf->files.database.d.s;
+		conf->files.database.t = CONF_STRING;
 		conf->database.maxDBdays.v.ui = 0;
 	}
 
@@ -219,7 +229,7 @@ const char *readFTLlegacy(struct config *conf)
 	//                       added to the database, no entries visible in the query log and no Top Item Lists
 	// PRIVACY_NOSTATS (4) = Disable any analysis on queries. No counters are available in this mode.
 	// defaults to: PRIVACY_SHOW_ALL
-	getPrivacyLevelLegacy(fp);
+	getPrivacyLevelLegacy(conf, fp);
 
 	// ignoreLocalhost
 	// defaults to: false
@@ -231,7 +241,7 @@ const char *readFTLlegacy(struct config *conf)
 
 	// BLOCKINGMODE
 	// defaults to: MODE_IP
-	getBlockingModeLegacy(fp);
+	getBlockingModeLegacy(conf, fp);
 
 	// ANALYZE_ONLY_A_AND_AAAA
 	// defaults to: false
@@ -592,7 +602,7 @@ const char *readFTLlegacy(struct config *conf)
 	// This option should be the last one as it causes
 	// some rather verbose output into the log when
 	// listing all the enabled/disabled debugging options
-	readDebugingSettingsLegacy(fp);
+	readDebugingSettingsLegacy(conf, fp);
 
 	// Release memory
 	releaseConfigMemory();
@@ -749,7 +759,7 @@ void init_config_mutex(void)
 	pthread_mutexattr_destroy(&lock_attr);
 }
 
-static void getPrivacyLevelLegacy(FILE *fp)
+static void getPrivacyLevelLegacy(struct config *conf, FILE *fp)
 {
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -770,9 +780,9 @@ static void getPrivacyLevelLegacy(FILE *fp)
 		// Check for change and validity of privacy level (set in FTL.h)
 		if(value >= PRIVACY_SHOW_ALL &&
 		   value <= PRIVACY_MAXIMUM &&
-		   value > config.misc.privacylevel.v.privacy_level)
+		   value > conf->misc.privacylevel.v.privacy_level)
 		{
-			config.misc.privacylevel.v.privacy_level = value;
+			conf->misc.privacylevel.v.privacy_level = value;
 		}
 	}
 
@@ -784,10 +794,10 @@ static void getPrivacyLevelLegacy(FILE *fp)
 		fclose(fp);
 }
 
-static void getBlockingModeLegacy(FILE *fp)
+static void getBlockingModeLegacy(struct config *conf, FILE *fp)
 {
 	// (Re-)set default value
-	config.dns.blocking.mode.v.blocking_mode = config.dns.blocking.mode.d.blocking_mode;
+	conf->dns.blocking.mode.v.blocking_mode = conf->dns.blocking.mode.d.blocking_mode;
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -806,15 +816,15 @@ static void getBlockingModeLegacy(FILE *fp)
 	if(buffer != NULL)
 	{
 		if(strcasecmp(buffer, "NXDOMAIN") == 0)
-			config.dns.blocking.mode.v.blocking_mode = MODE_NX;
+			conf->dns.blocking.mode.v.blocking_mode = MODE_NX;
 		else if(strcasecmp(buffer, "NULL") == 0)
-			config.dns.blocking.mode.v.blocking_mode = MODE_NULL;
+			conf->dns.blocking.mode.v.blocking_mode = MODE_NULL;
 		else if(strcasecmp(buffer, "IP-NODATA-AAAA") == 0)
-			config.dns.blocking.mode.v.blocking_mode = MODE_IP_NODATA_AAAA;
+			conf->dns.blocking.mode.v.blocking_mode = MODE_IP_NODATA_AAAA;
 		else if(strcasecmp(buffer, "IP") == 0)
-			config.dns.blocking.mode.v.blocking_mode = MODE_IP;
+			conf->dns.blocking.mode.v.blocking_mode = MODE_IP;
 		else if(strcasecmp(buffer, "NODATA") == 0)
-			config.dns.blocking.mode.v.blocking_mode = MODE_NODATA;
+			conf->dns.blocking.mode.v.blocking_mode = MODE_NODATA;
 		else
 			log_warn("Unknown blocking mode, using NULL as fallback");
 	}
@@ -828,7 +838,7 @@ static void getBlockingModeLegacy(FILE *fp)
 }
 
 // Routine for setting the debug flags in the config struct
-static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
+static void setDebugOption(struct config *conf, FILE* fp, const char* option, enum debug_flag flag)
 {
 	const char *buffer = parseFTLconf(fp, option);
 
@@ -837,7 +847,7 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 		return;
 
 	// The debug config items start at DEBUG_DATABASE, one after DEBUG_NONE
-	struct conf_item *debug = get_debug_item(&config, flag - 1);
+	struct conf_item *debug = get_debug_item(conf, flag - 1);
 
 	// Set bit if value equals "true", clear bit otherwise
 	bool bit = false;
@@ -845,10 +855,10 @@ static void setDebugOption(FILE* fp, const char* option, enum debug_flag flag)
 		debug->v.b = bit;
 }
 
-static void readDebugingSettingsLegacy(FILE *fp)
+static void readDebugingSettingsLegacy(struct config *conf, FILE *fp)
 {
 	// Set default (no debug instructions set)
-	set_all_debug(&config, false);
+	set_all_debug(conf, false);
 
 	// See if we got a file handle, if not we have to open
 	// the config file ourselves
@@ -867,18 +877,18 @@ static void readDebugingSettingsLegacy(FILE *fp)
 	if(debug_all != NULL && parseBool(debug_all, &bit) && bit)
 	{
 		// Set all debug flags if DEBUG_ALL is set to true
-		set_all_debug(&config, true);
+		set_all_debug(conf, true);
 	}
 	else
 	{
 		// Iterate over all debug flags and set them if they are present
 		// in the config file.
 		for(enum debug_flag flag = DEBUG_DATABASE; flag < DEBUG_MAX; flag++)
-			setDebugOption(fp, debugstr(flag), flag);
+			setDebugOption(conf, fp, debugstr(flag), flag);
 	}
 
 	// Parse debug options
-	set_debug_flags(&config);
+	set_debug_flags(conf);
 
 	if(debug_flags[DEBUG_ANY])
 	{

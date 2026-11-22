@@ -20,7 +20,7 @@
 // get_blocked_count(), get_forwarded_count(), get_cached_count(),
 // get_query_type_str(), get_query_status_str(), get_query_reply_str()
 #include "datastructure.h"
-// struct metrics, get_dnsmasq_metrics(), rrtype_name()
+// struct metrics, copy_dnsmasq_metrics(), rrtype_name()
 #include "metrics.h"
 // gravity_last_updated()
 #include "database/gravity-db.h"
@@ -359,7 +359,7 @@ int api_metrics(struct ftl_conn *api)
 
 	// dnsmasq metrics have their own synchronization
 	struct metrics m = { 0 };
-	get_dnsmasq_metrics(&m);
+	copy_dnsmasq_metrics(&m);
 
 	// ---- Build the exposition text without holding any lock ----
 	char *buf = NULL;
