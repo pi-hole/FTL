@@ -927,7 +927,8 @@
   # IP address. If this value is not set (empty string), all accesses are allowed.
   # Otherwise, the default setting is to deny all accesses. On each request the full
   # list is traversed, and the last (!) match wins. IPv6 addresses may be specified in
-  # CIDR-form [a:b::c]/64.
+  # CIDR-form [a:b::c]/64. IPv4 clients are matched as IPv4 also on a dual-stack port
+  # ("+80"), and [::ffff:a.b.c.d] is the same entry as a.b.c.d.
   #
   # DNS-over-HTTPS on the webserver's HTTPS port follows dns.listeningMode instead, like
   # DNS-over-TLS on port 853. A client the ACL refuses can still send DNS-over-HTTPS
@@ -1503,7 +1504,9 @@
   #
   # Allowed values are:
   #     Array of valid dnsmasq config line options
-  dnsmasq_lines = []
+  dnsmasq_lines = [
+    "address=/address-null.ftl/0.0.0.0"
+  ] ### CHANGED, default = []
 
   # Log additional information about queries and replies to pihole.log
   #
@@ -1839,8 +1842,8 @@
   all = true ### CHANGED, default = false
 
 # Configuration statistics:
-# 172 total entries out of which 112 entries are default
-# --> 60 entries are modified
+# 172 total entries out of which 111 entries are default
+# --> 61 entries are modified
 # 3 entries are forced through environment:
 #   - misc.nice
 #   - misc.check.shmem

@@ -11427,12 +11427,17 @@ parse_http_request(char *buf, int len, struct mg_request_info *ri)
 	ri->http_version = buf;
 
 	if (skip_to_end_of_word_and_terminate(&buf, 1) <= 0) {
+		/* The version is not a single word: http_version still points
+		 * into the header buffer, and the error response must not echo
+		 * the request headers that follow it. */
+		ri->http_version = NULL;
 		return -1;
 	}
 
 	/* Check for a valid HTTP version key */
 	if (strncmp(ri->http_version, "HTTP/", 5) != 0) {
 		/* Invalid request */
+		ri->http_version = NULL;
 		return -1;
 	}
 	ri->http_version += 5;
@@ -14439,6 +14444,20 @@ parse_match_net(const struct vec *vec, const union usa *sa, int no_strict)
 {
 	int n;
 	unsigned int a, b, c, d, slash;
+#if defined(USE_IPV6)
+	union usa v4;
+
+	/* A dual-stack socket reports IPv4 clients as ::ffff:a.b.c.d, match
+	 * them as the IPv4 clients they are */
+	if ((sa->sa.sa_family == AF_INET6)
+	    && IN6_IS_ADDR_V4MAPPED(&sa->sin6.sin6_addr)) {
+		memset(&v4, 0, sizeof(v4));
+		v4.sin.sin_family = AF_INET;
+		v4.sin.sin_port = sa->sin6.sin6_port;
+		memcpy(&v4.sin.sin_addr, &sa->sin6.sin6_addr.s6_addr[12], 4);
+		sa = &v4;
+	}
+#endif
 
 	if (sscanf(vec->ptr, "%u.%u.%u.%u/%u%n", &a, &b, &c, &d, &slash, &n)
 	    != 5) { // NOLINT(cert-err34-c) 'sscanf' used to convert a string to an
@@ -14508,12 +14527,30 @@ parse_match_net(const struct vec *vec, const union usa *sa, int no_strict)
 			if ((*p == '\0') && (c >= 2)) {
 				struct sockaddr_in6 sin6;
 				unsigned int i;
+				int valid = mg_inet_pton(AF_INET6, ad, &sin6, sizeof(sin6), 0);
+
+				/* ::ffff:a.b.c.d/96 and longer prefixes are IPv4 entries */
+				if (valid && IN6_IS_ADDR_V4MAPPED(&sin6.sin6_addr)
+				    && (slash >= 96)) {
+					const uint8_t *v4net = &sin6.sin6_addr.s6_addr[12];
+					if (sa->sa.sa_family == AF_INET) {
+						uint32_t ip = ntohl(sa->sin.sin_addr.s_addr);
+						uint32_t net = ((uint32_t)v4net[0] << 24)
+						               | ((uint32_t)v4net[1] << 16)
+						               | ((uint32_t)v4net[2] << 8)
+						               | (uint32_t)v4net[3];
+						uint32_t mask =
+						    (slash > 96) ? (0xFFFFFFFFu << (128 - slash)) : 0;
+						return (ip & mask) == net;
+					}
+					return 0;
+				}
 
 				/* for strict validation, an actual IPv6 argument is needed */
 				if (sa->sa.sa_family != AF_INET6) {
 					return 0;
 				}
-				if (mg_inet_pton(AF_INET6, ad, &sin6, sizeof(sin6), 0)) {
+				if (valid) {
 					/* IPv6 format */
 					for (i = 0; i < 16; i++) {
 						uint8_t ip = sa->sin6.sin6_addr.s6_addr[i];
@@ -16752,7 +16789,7 @@ log_access(const struct mg_connection *conn)
 		            ri->request_uri ? ri->request_uri : "-",
 		            ri->query_string ? "?" : "",
 		            ri->query_string ? ri->query_string : "",
-		            ri->http_version,
+		            ri->http_version ? ri->http_version : "-",
 		            conn->status_code,
 		            conn->num_bytes_sent,
 		            referer,
@@ -20206,14 +20243,16 @@ process_new_connection(struct mg_connection *conn)
 		             && ((conn->is_chunked == 4)
 		                 || (!conn->is_chunked
 		                     && ((conn->consumed_content == conn->content_len)
-		                         || ((conn->request_len + conn->content_len)
-		                             <= conn->data_len))))
+		                         || (conn->content_len
+		                             <= (int64_t)(conn->data_len
+		                                          - conn->request_len)))))
 		             && (conn->protocol_type == PROTOCOL_TYPE_HTTP1);
 
 		if (keep_alive) {
 			/* Discard all buffered data for this request */
 			discard_len =
-			    ((conn->request_len + conn->content_len) < conn->data_len)
+			    (conn->content_len
+			     < (int64_t)(conn->data_len - conn->request_len))
 			        ? (int)(conn->request_len + conn->content_len)
 			        : conn->data_len;
 			conn->data_len -= discard_len;

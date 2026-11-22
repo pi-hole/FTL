@@ -287,7 +287,7 @@ setup() {
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
   run bash -c "dig A use-application-dns.net @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
   run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
   assert_line --index 0 "1"
 }
@@ -399,22 +399,22 @@ setup() {
 
 @test "DNSSEC: SECURE domain is resolved" {
   run bash -c "dig A a.dnssec @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "DNSSEC: BOGUS domain is rejected" {
   run bash -c "dig A a.bogus @127.0.0.1"
-  assert_line --partial --index 3 "status: SERVFAIL"
+  assert_output --partial "status: SERVFAIL"
 }
 
 @test "Special domain: NXDOMAIN is returned" {
   run bash -c "dig A mask.icloud.com @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Special domain: Record is returned when explicitly allowed" {
   run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 # NXRA + RA unset cannot be tested with PowerDNS as upstream provider
@@ -425,9 +425,9 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -451,7 +451,7 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
 
   # Get number of lines in the log after the test
@@ -475,9 +475,9 @@ setup() {
 
   # Run test
   run bash -c "dig AAAA null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+AAAA[[:space:]]+::"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
 
   # Get number of lines in the log after the test
@@ -611,7 +611,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -635,7 +635,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -1097,17 +1097,17 @@ setup() {
 
 @test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
   run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
   run bash -c 'dig A regex-NODATA @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
   run bash -c 'dig A regex-REFUSED @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
@@ -1164,28 +1164,28 @@ setup() {
 
 @test "Regex Test 52: Option \";querytype=ANY,HTTPS,SVCB;reply=refused\" working as expected (ONLY matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig AAAA regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig SVCB regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig HTTPS regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig ANY regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 53: Option \";querytype=!ANY,HTTPS,SVCB;reply=refused\" working as expected (NOT matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig AAAA regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig SVCB regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig HTTPS regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
@@ -1956,6 +1956,28 @@ except socket.timeout:
   assert_line --index 3 "||xn--ste-sla.com^"
 }
 
+@test "Gravity drops the trailing dot of a list entry, a second one makes it invalid" {
+  # A query never ends in a dot, so an entry stored with one could never match
+  run bash -c 'rm -f /tmp/dots.db && ./pihole-FTL sqlite3 /tmp/dots.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/dots.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'fqdn.example.\ndouble.example..\n||abp.example.^\n||abpdouble.example..^\nfoo.invalid!\nfoo.invalid!bar\n' > /tmp/dots.list
+  run ./pihole-FTL gravity parseList /tmp/dots.list /tmp/dots.db 1
+  assert_success
+  # The sample of invalid entries shows each of them, also one that is the
+  # beginning of another
+  assert_line "        - double.example."
+  assert_line "        - ||abpdouble.example..^"
+  assert_line "        - foo.invalid!"
+  assert_line "        - foo.invalid!bar"
+
+  run bash -c './pihole-FTL sqlite3 /tmp/dots.db "SELECT domain FROM gravity ORDER BY domain;"'
+  rm -f /tmp/dots.db /tmp/dots.list
+  assert_success
+  assert_output "fqdn.example
+||abp.example^"
+}
+
 @test "Non-printable characters in a rejected config value are escaped" {
   # pihole.toml and the CLI are untrusted input, so a value carrying, e.g., an
   # ANSI escape sequence must not be echoed into FTL.log verbatim: it would
@@ -1965,6 +1987,10 @@ except socket.timeout:
 
   run ./pihole-FTL --config dns.hosts '["1.2.3.4 \u001b[2J\u001bx.example"]'
   assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.cnameRecords '["a\u001b[2J.example,b.example"]'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("a\x1B[2J.example")'
   assert_failure 3
 
   run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'
@@ -2446,6 +2472,49 @@ except socket.timeout:
   assert_success
 }
 
+@test "CLI: Password change survives an API write before FTL rereads pihole.toml" {
+  # The PATCH reaches FTL before the housekeeper notices the CLI's write in
+  # (almost) every round, three rounds make missing the window negligible
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config webserver.api.password RACE_PW0'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  for i in 1 2 3; do
+    sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW$((i-1))\"}" | jq -r .session.sid)"
+    [[ -n "${sid}" && "${sid}" != "null" ]] || fail "Login with RACE_PW$((i-1)) failed"
+
+    ./pihole-FTL --config webserver.api.password "RACE_PW${i}" > /dev/null
+    boxed=$([[ $((i % 2)) -eq 1 ]] && echo false || echo true)
+    patch="{\"config\":{\"webserver\":{\"interface\":{\"boxed\":${boxed}}}}}"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${sid}" -d "${patch}")"
+    sleep 2
+
+    # The CLI's password is in effect and the session from before is gone
+    new_sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW${i}\"}" | jq -r .session.sid)"
+    [[ -n "${new_sid}" && "${new_sid}" != "null" ]] || fail "Password set via the CLI was lost (round ${i})"
+    run bash -c "curl -s -H 'X-FTL-SID: ${sid}' 127.0.0.1/api/auth | jq .session.valid"
+    assert_line --index 0 "false"
+
+    # FTL rereading the file first refuses the PATCH, repeat it so every
+    # round writes pihole.toml the same number of times
+    if [[ "${code}" != "200" ]]; then
+      curl -s -o /dev/null -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${new_sid}" -d "${patch}"
+    fi
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "./pihole-FTL --config webserver.api.password \"\""
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c 'curl -s 127.0.0.1/api/auth'
+  assert_line --partial --index 0 '"no password set"'
+  run bash -c 'curl -s -X PATCH 127.0.0.1/api/config -d "{\"config\":{\"webserver\":{\"interface\":{\"boxed\":true}}}}" | jq .config.webserver.interface.boxed'
+  assert_line --index 0 "true"
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request
@@ -2585,6 +2654,29 @@ except socket.timeout:
 @test "Internal IP -> name resolution works (TCP IPv6)" {
   run bash -c "./pihole-FTL ptr ::1 tcp | tail -n1"
   assert_line --index 0 "localhost"
+}
+
+@test "Teleporter export and import work with a quote in files.gravity" {
+  cp /etc/pihole/gravity.db "/tmp/grav'ity.db"
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter"
+  assert_success
+  filename="${lines[-1]}"
+  # Import only the database, pihole.toml would be written with the override
+  python3 - "${filename}" <<'EOF'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zin, zipfile.ZipFile(sys.argv[1] + ".db.zip", "w") as zout:
+    for item in zin.infolist():
+        if item.filename != "etc/pihole/pihole.toml":
+            zout.writestr(item, zin.read(item))
+EOF
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter ${filename}.db.zip"
+  assert_output --partial "Replaced table group in /tmp/grav'ity.db"
+  assert_output --partial "Replaced table client_by_group in /tmp/grav'ity.db"
+  assert_line --index -7 "Imported etc/pihole/gravity.db->group"
+  assert_line --index -1 "Imported etc/pihole/gravity.db->client_by_group"
+  refute_output --partial "Imported etc/pihole/pihole.toml"
+  assert_success
+  run bash -c "rm ${filename} ${filename}.db.zip \"/tmp/grav'ity.db\""
 }
 
 @test "Create, verify and re-import Teleporter file via CLI" {

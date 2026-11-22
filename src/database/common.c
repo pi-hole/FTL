@@ -841,7 +841,7 @@ bool db_set_FTL_property(sqlite3 *db, const enum ftl_table_props ID, const int v
 	// UPSERT is a clause added to INSERT that causes the INSERT to behave
 	// as an UPDATE or a no-op if the INSERT would violate a uniqueness
 	// constraint. UPSERT is not standard SQL. UPSERT in SQLite follows the
-	// syntax established by PostgreSQL, with generalizations. 
+	// syntax established by PostgreSQL, with generalizations.
 	SQL_bool(db, "INSERT INTO ftl (id, value) VALUES ( %u, %d ) ON CONFLICT (id) DO UPDATE SET value=%d;", ID, value, value);
 	return true;
 }
@@ -1244,4 +1244,42 @@ int64_t get_row_count(const char *table_name)
 	sqlite3_finalize(stmt);
 	dbclose(&db);
 	return size;
+}
+
+/**
+ * @brief Split a forward string of the database, "<upstream>#<port>", into
+ *        the upstream and the port. The split is at the last '#' as the URI
+ *        of an encrypted upstream can contain a '#' itself, e.g.
+ *        "https://pi.hole@127.0.0.1#8443/dns-query#8443".
+ *
+ * @param forward The forward string
+ * @param upstream Buffer for the upstream, truncated to fit
+ * @param size Size of the upstream buffer
+ * @param port The port
+ * @return true if the string ends in a port, false otherwise. The upstream
+ *         and the port are left untouched then
+ */
+bool split_forward_string(const char *forward, char *upstream, const size_t size, unsigned int *port)
+{
+	const char *hash = strrchr(forward, '#');
+	if(hash == NULL || size == 0)
+		return false;
+
+	// Only digits after the '#', and a valid port
+	unsigned long value = 0;
+	const char *p = hash + 1;
+	do
+	{
+		if(*p < '0' || *p > '9')
+			return false;
+		value = 10*value + (unsigned long)(*p - '0');
+		if(value > 65535)
+			return false;
+	} while(*++p != '\0');
+
+	const size_t len = min((size_t)(hash - forward), size - 1);
+	memcpy(upstream, forward, len);
+	upstream[len] = '\0';
+	*port = (unsigned int)value;
+	return true;
 }
