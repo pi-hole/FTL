@@ -173,6 +173,27 @@ load 'bats_helper.bash'
   [[ "${resets}" == "1" ]]
 }
 
+@test "A query to be dropped gets no reply over TCP either" {
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "INSERT INTO domainlist (type, domain, enabled) VALUES (3, '^drop\.ftl\$;reply=NONE', 1);"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  udp="$(dig +tries=1 +time=2 drop.ftl @127.0.0.1 2>&1 || true)"
+  tcp="$(dig +tcp +tries=1 +time=2 drop.ftl @127.0.0.1 2>&1 || true)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "DELETE FROM domainlist WHERE domain = '^drop\.ftl\$;reply=NONE';"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  printf "UDP:\n%s\nTCP:\n%s\n" "${udp}" "${tcp}"
+  [[ "${udp}" != *"status:"* ]]
+  [[ "${tcp}" != *"status:"* ]]
+}
+
 @test "A blocked answer copied to a duplicate query counts as blocked for both" {
   before="$(grep -c ^ /var/log/pihole/FTL.log)"
   # Two identical queries without EDNS(0) from one client, sent at once. The

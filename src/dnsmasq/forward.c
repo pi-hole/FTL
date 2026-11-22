@@ -2726,6 +2726,10 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 		stale = 0;
 		// Generate DNS packet for reply
 		m = FTL_make_answer(out_header, ((char *) out_header) + 65536, size, ede_data, &ede_len);
+		// A query to be dropped gets no reply, like over UDP, the
+		// connection stays open for the next one
+		if (m == 0)
+		  continue;
 		// The pseudoheader may contain important information such as EDNS0 version important for
 		// some DNS resolvers (such as systemd-resolved) to work properly. We should not discard them.
 		if (have_pseudoheader && m > 0)
