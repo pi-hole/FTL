@@ -836,6 +836,12 @@ static void free_transfer(struct tftp_transfer *transfer)
       close(transfer->file->fd);
       free(transfer->file);
     }
+
+  /* freeing this transfer and then allocating a new one
+     may result in the same memory, but the contents of
+     the transfer is no longer valid to cache. */
+  if (daemon->srv_save == transfer)
+    daemon->srv_save = NULL;
   
   free(transfer);
 }

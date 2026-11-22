@@ -43,4 +43,7 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
+echo "Applying patch 0001-Match-IPv4-ACL-entries-against-IPv4-mapped-clients.patch"
+patch -p1 < patch/civetweb/0001-Match-IPv4-ACL-entries-against-IPv4-mapped-clients.patch
+
 echo "ALL PATCHES APPLIED OKAY"

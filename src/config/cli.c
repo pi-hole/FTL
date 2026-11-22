@@ -353,7 +353,9 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			cJSON *elem = cJSON_ParseWithOpts(value, &json_error, 0);
 			if(elem == NULL)
 			{
-				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error);
+				char *json_error_escaped = escape_control_chars(json_error);
+				log_err("Config setting %s is invalid: not valid JSON, error at: %.20s", conf_item->k, json_error_escaped != NULL ? json_error_escaped : "(unable to display)");
+				free(json_error_escaped);
 				return false;
 			}
 			if(!cJSON_IsArray(elem))
@@ -382,34 +384,48 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 	return true;
 }
 
+static void log_unknown_conf_key(const char *key)
+{
+	char *escaped = escape_control_chars(key);
+
+	log_err("Unknown config option %s, did you mean:",
+	        escaped != NULL ? escaped : "(unable to display)");
+
+	free(escaped);
+}
+
 int set_config_from_CLI(const char *key, const char *value, const bool test_only)
 {
-	// Check if we are either
-	// - root, or
-	// - pihole with CAP_CHOWN capability on the pihole-FTL binary
-	const uid_t euid = geteuid();
-	const struct passwd *current_user = getpwuid(euid);
-	const bool is_root = euid == 0;
-	const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
-	const bool have_chown_cap = check_capability(CAP_CHOWN);
-	if(!is_root && !(is_pihole && have_chown_cap))
+	// Testing whether a config value is valid never writes to the config file
+	if(!test_only)
 	{
-		if(is_pihole)
-			printf("Permission error: CAP_CHOWN is missing on the binary\n");
-		else
-			printf("Permission error: User %s is not allowed to edit Pi-hole's config\n",
-			       current_user != NULL ? current_user->pw_name : "(unknown)");
+		// Check if we are either
+		// - root, or
+		// - pihole with CAP_CHOWN capability on the pihole-FTL binary
+		const uid_t euid = geteuid();
+		const struct passwd *current_user = getpwuid(euid);
+		const bool is_root = euid == 0;
+		const bool is_pihole = current_user != NULL && strcmp(current_user->pw_name, "pihole") == 0;
+		const bool have_chown_cap = check_capability(CAP_CHOWN);
+		if(!is_root && !(is_pihole && have_chown_cap))
+		{
+			if(is_pihole)
+				printf("Permission error: CAP_CHOWN is missing on the binary\n");
+			else
+				printf("Permission error: User %s is not allowed to edit Pi-hole's config\n",
+				       current_user != NULL ? current_user->pw_name : "(unknown)");
 
-		printf("Please run this command using sudo\n\n");
-		return EXIT_FAILURE;
-	}
+			printf("Please run this command using sudo\n\n");
+			return EXIT_FAILURE;
+		}
 
-	// Return early if the user tries to change some settings but the config
-	// is in read-only mode
-	if(config.misc.readOnly.v.b)
-	{
-		printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
-		return EXIT_FAILURE;
+		// Return early if the user tries to change some settings but the config
+		// is in read-only mode
+		if(config.misc.readOnly.v.b)
+		{
+			printf("Config is in read-only mode, changes are not allowed (misc.readOnly = true)\n");
+			return EXIT_FAILURE;
+		}
 	}
 
 	// Identify config option
@@ -456,7 +472,7 @@ int set_config_from_CLI(const char *key, const char *value, const bool test_only
 	{
 		unsigned int N = 0;
 		char **matches = suggest_closest_conf_key(false, key, &N);
-		log_err("Unknown config option %s, did you mean:", key);
+		log_unknown_conf_key(key);
 		for(unsigned int i = 0; i < N; i++)
 			log_err(" - %s", matches[i]);
 		free(matches);
@@ -623,7 +639,7 @@ int get_config_from_CLI(const char *key, const bool quiet)
 	{
 		unsigned int N = 0;
 		char **matches = suggest_closest_conf_key(false, key, &N);
-		log_err("Unknown config option %s, did you mean:", key);
+		log_unknown_conf_key(key);
 		for(unsigned int i = 0; i < N; i++)
 			log_err(" - %s", matches[i]);
 		free(matches);

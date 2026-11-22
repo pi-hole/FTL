@@ -34,5 +34,6 @@ void log_ntp_message(const bool error, const bool server, const char *message);
 void log_verify_message(const char *expected, const char *actual);
 void log_gravity_restored(const char *status);
 void log_teleporter_skipped(const char *key);
+void log_query_database_error(const char *path, const char *error);
 
 #endif //MESSAGETABLE_H

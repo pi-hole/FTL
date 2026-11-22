@@ -25,6 +25,14 @@ setup() {
   assert_output --partial "Binary integrity check: OK"
 }
 
+@test "Static TLS of the binary stays small" {
+  # glibc takes static TLS out of every thread's stack and CivetWeb pins its
+  # threads to 1 MiB, so large _Thread_local buffers break thread creation there
+  tls="$(readelf -lW ./pihole-FTL | awk '$1 == "TLS" { print $6 }')"
+  printf 'PT_TLS MemSiz: %s\n' "${tls:-none}"
+  [[ $(( ${tls:-0} )) -lt $(( 128 * 1024 )) ]]
+}
+
 @test "A leftover world-readable CLI password file is replaced" {
   # test/run.sh leaves a 0666 cli_pw behind before FTL starts and keeps it open
   holder=$(cat /tmp/cli_pw_holder.pid)
@@ -107,7 +115,7 @@ setup() {
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp +short"
   assert_line --index 0 "0.0.0.0"
   assert_line --index 1 ""
-  
+
   run bash -c "dig gravity.ftl @127.0.0.1 +tcp | grep 'EDE: '"
   assert_line --partial --index 0 "EDE: 15 (Blocked): (gravity)"
   assert_line --index 1 ""
@@ -267,7 +275,7 @@ setup() {
 
 @test "Mozilla canary domain is blocked with NXDOMAIN" {
   run bash -c "dig A use-application-dns.net @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
   run bash -c 'grep -c "Mozilla canary domain use-application-dns.net is NXDOMAIN" /var/log/pihole/pihole.log'
   assert_line --index 0 "1"
 }
@@ -379,22 +387,22 @@ setup() {
 
 @test "DNSSEC: SECURE domain is resolved" {
   run bash -c "dig A a.dnssec @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "DNSSEC: BOGUS domain is rejected" {
   run bash -c "dig A a.bogus @127.0.0.1"
-  assert_line --partial --index 3 "status: SERVFAIL"
+  assert_output --partial "status: SERVFAIL"
 }
 
 @test "Special domain: NXDOMAIN is returned" {
   run bash -c "dig A mask.icloud.com @127.0.0.1"
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Special domain: Record is returned when explicitly allowed" {
   run bash -c "dig A mask.icloud.com -b 127.0.0.2 @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 # NXRA + RA unset cannot be tested with PowerDNS as upstream provider
@@ -405,9 +413,9 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -431,7 +439,7 @@ setup() {
 
   # Run test
   run bash -c "dig A null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+A[[:space:]]+0.0.0.0"
 
   # Get number of lines in the log after the test
@@ -455,9 +463,9 @@ setup() {
 
   # Run test
   run bash -c "dig AAAA null.ftl @127.0.0.1"
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   assert_line --regexp "null.ftl.[[:space:]]+2[[:space:]]+IN[[:space:]]+AAAA[[:space:]]+::"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream NULL)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream NULL)"
 
 
   # Get number of lines in the log after the test
@@ -591,7 +599,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -615,7 +623,7 @@ setup() {
 
   # Run test
   run bash -c "dig A nxdomain.ede15.ftl @127.0.0.1"
-  assert_line --partial --index 7 "EDE: 15 (Blocked): (upstream EDE 15)"
+  assert_output --partial "EDE: 15 (Blocked): (upstream EDE 15)"
 
   # Get number of lines in the log after the test
   after="$(grep -c ^ /var/log/pihole/FTL.log)"
@@ -759,7 +767,7 @@ setup() {
   run bash -c './pihole-FTL --config dns.hosts'
   assert_line --index 0 "[ 1.1.1.1 abc-custom.com def-custom.de, 2.2.2.2 äste.com steä.com ]"
   run bash -c './pihole-FTL --config webserver.port'
-  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r"
+  assert_line --index 0 "80o,443os,[::]:80o,[::]:443os,8081r,9443s,192.0.2.1:9444s,44s3,443xs"
 }
 
 @test "'pihole-FTL backtrace' generates a structured backtrace" {
@@ -778,6 +786,16 @@ setup() {
   assert_output --partial "main"
   # The closing marker is present
   assert_output --partial "--- end of backtrace"
+}
+
+@test "A crashed thread cannot keep FTL from exiting" {
+  # The thread crashes holding a stdio lock exit() waits for, the crash
+  # watchdog ends the process after 40 seconds without progress
+  run bash -c 'timeout -k 5 60 ./pihole-FTL crash-thread'
+  printf "%s\n" "${lines[@]}"
+  assert_output --partial "FTL crashed"
+  assert_output --partial "FTL did not shut down after the crash, exiting now"
+  assert_failure 1
 }
 
 @test "'pihole-FTL backtrace' resolves source locations when addr2line is present" {
@@ -1067,17 +1085,17 @@ setup() {
 
 @test "Regex Test 41: Option \"^;reply=NXDOMAIN\" working as expected" {
   run bash -c 'dig A regex-NXDOMAIN @127.0.0.1'
-  assert_line --partial --index 3 "status: NXDOMAIN"
+  assert_output --partial "status: NXDOMAIN"
 }
 
 @test "Regex Test 42: Option \"^;reply=NODATA\" working as expected" {
   run bash -c 'dig A regex-NODATA @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 43: Option \";reply=REFUSED\" working as expected" {
   run bash -c 'dig A regex-REFUSED @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 44: Option \";reply=1.2.3.4\" working as expected" {
@@ -1134,28 +1152,28 @@ setup() {
 
 @test "Regex Test 52: Option \";querytype=ANY,HTTPS,SVCB;reply=refused\" working as expected (ONLY matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig AAAA regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig SVCB regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig HTTPS regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig ANY regex-multiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
 }
 
 @test "Regex Test 53: Option \";querytype=!ANY,HTTPS,SVCB;reply=refused\" working as expected (NOT matching ANY, HTTPS or SVCB queries)" {
   run bash -c 'dig A regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig AAAA regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: REFUSED"
+  assert_output --partial "status: REFUSED"
   run bash -c 'dig SVCB regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig HTTPS regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
   run bash -c 'dig ANY regex-notMultiple.ftl @127.0.0.1'
-  assert_line --partial --index 3 "status: NOERROR"
+  assert_output --partial "status: NOERROR"
 }
 
 @test "Regex Test 54: Approximate matching, independent sibling scopes: MATCH" {
@@ -1197,12 +1215,12 @@ setup() {
 
 @test "API addresses reported correctly by CHAOS TXT domain.api.ftl" {
   run bash -c 'dig CHAOS TXT domain.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/"'
+  assert_line --index 0 '"http://pi.hole:80/api/" "https://pi.hole:443/api/" "https://pi.hole:9443/api/"'
 }
 
 @test "API addresses reported correctly by CHAOS TXT local.api.ftl" {
   run bash -c 'dig CHAOS TXT local.api.ftl +short @127.0.0.1'
-  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/"'
+  assert_line --index 0 '"http://127.0.0.1:80/api/" "https://127.0.0.1:443/api/" "http://[::1]:80/api/" "https://[::1]:443/api/" "https://[::1]:9443/api/"'
 }
 
 @test "API addresses reported by CHAOS TXT api.ftl identical to domain.api.ftl" {
@@ -1521,7 +1539,7 @@ except socket.timeout:
 @test "Check dnsmasq warnings in source code" {
   run bash -c "bash test/dnsmasq_warnings.sh"
   refute_output
-  
+
 }
 
 @test "Pi-hole use interface-dependent replies for pi.hole" {
@@ -1604,7 +1622,7 @@ except socket.timeout:
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
 
   run bash -c './pihole-FTL --config dns.blocking.mode IP'
- 
+
   # Wait for change to become effective
   run bash -c "./pihole-FTL wait-for 'DEBUG_CONFIG: pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
   assert_success
@@ -1890,6 +1908,102 @@ except socket.timeout:
   assert_line --index 3 "||xn--ste-sla.com^"
 }
 
+@test "Gravity drops the trailing dot of a list entry, a second one makes it invalid" {
+  # A query never ends in a dot, so an entry stored with one could never match
+  run bash -c 'rm -f /tmp/dots.db && ./pihole-FTL sqlite3 /tmp/dots.db < test/gravity.db.sql && ./pihole-FTL sqlite3 /tmp/dots.db "DELETE FROM gravity;"'
+  assert_success
+
+  printf 'fqdn.example.\ndouble.example..\n||abp.example.^\n||abpdouble.example..^\nfoo.invalid!\nfoo.invalid!bar\n' > /tmp/dots.list
+  run ./pihole-FTL gravity parseList /tmp/dots.list /tmp/dots.db 1
+  assert_success
+  # The sample of invalid entries shows each of them, also one that is the
+  # beginning of another
+  assert_line "        - double.example."
+  assert_line "        - ||abpdouble.example..^"
+  assert_line "        - foo.invalid!"
+  assert_line "        - foo.invalid!bar"
+
+  run bash -c './pihole-FTL sqlite3 /tmp/dots.db "SELECT domain FROM gravity ORDER BY domain;"'
+  rm -f /tmp/dots.db /tmp/dots.list
+  assert_success
+  assert_output "fqdn.example
+||abp.example^"
+}
+
+@test "Non-printable characters in a rejected config value are escaped" {
+  # pihole.toml and the CLI are untrusted input, so a value carrying, e.g., an
+  # ANSI escape sequence must not be echoed into FTL.log verbatim: it would
+  # garble the terminal of whoever reads the log. Array items arrive as JSON
+  # ("\u001b"), string items straight from argv (a real ESC byte).
+  esc=$(printf '%b' '\033[2J')
+
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 \u001b[2J\u001bx.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.cnameRecords '["a\u001b[2J.example,b.example"]'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("a\x1B[2J.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'
+  assert_line --index 0 'Invalid value: dns.revServers[0]: <server> neither a valid domain nor an IPv4 or IPv6 address ("ns\x1B[2Jexample.com")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.api.excludeClients '["\u001b[2J[[["]'
+  assert_line --index 0 'Invalid value: webserver.api.excludeClients[0]: not a valid regex ("\x1B[2J[[["): Missing '\'']'\'''
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.domain.name "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: dns.domain.name: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.domain "${esc}not-a-domain"
+  assert_line --index 0 'Invalid value: webserver.domain: not a valid domain ("\x1B[2Jnot-a-domain")'
+  assert_failure 3
+
+  run ./pihole-FTL --config webserver.paths.webhome "${esc}no-slashes"
+  assert_line --index 0 'Invalid value: webserver.paths.webhome: file path does not start and end with a slash ("\x1B[2Jno-slashes")'
+  assert_failure 3
+
+  # Only control characters are escaped, a well-formed UTF-8 sequence is left
+  # alone so the domain the user typed stays readable. This one spans the C1
+  # byte range (F0 9F 98 80), which escaping naively would break apart.
+  run ./pihole-FTL --config dns.hosts '[ "1.2.3.4 😀.example" ]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("😀.example")'
+  assert_failure 3
+
+  # A byte that is not part of a well-formed sequence is escaped all the same,
+  # even though it is not an ASCII control character: 0x9B is CSI on a terminal
+  # reading Latin-1.
+  c1=$(printf '%b' '\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x9B[2J.example")'
+  assert_failure 3
+
+  # The same C1 control encoded as a valid UTF-8 sequence (U+009B = C2 9B)
+  # must not pass through verbatim either: a terminal that decodes UTF-8 before
+  # interpreting controls would still act on it. Both bytes get escaped.
+  c1utf8=$(printf '%b' '\302\233')
+  run ./pihole-FTL --config dns.hosts "[ \"1.2.3.4 ${c1utf8}[2J.example\" ]"
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\xC2\x9B[2J.example")'
+  assert_failure 3
+
+  # An unknown option name is echoed back as well
+  run ./pihole-FTL --config "${esc}not-an-option"
+  assert_line --index 0 "Unknown config option \x1B[2Jnot-an-option, did you mean:"
+  assert_failure 4
+
+  # JSON parse errors must escape control characters too
+  run ./pihole-FTL --config dns.hosts "$(printf 'x\033[2J')"
+  assert_line --index 0 'Config setting dns.hosts is invalid: not valid JSON, error at: x\x1B[2J'
+  assert_failure 2
+
+  # A backslash is escaped as well and does not swallow the rest of the value
+  run ./pihole-FTL --config dns.hosts '["1.2.3.4 a\\b.example"]'
+  assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("a\\b.example")'
+  assert_failure 3
+}
+
 @test "Config validation working on the CLI (validator-based checking)" {
   # URL paths reject what the webserver would see percent-decoded in some checks only
   run bash -c "./pihole-FTL --config webserver.paths.webhome '/ad%20min/'"
@@ -1907,6 +2021,34 @@ except socket.timeout:
   run bash -c './pihole-FTL --config dns.hosts "[\"1.1.1.1 cf\",\"8.8.8.8 google\",\"1.2.3.4\"]"'
   assert_line --index 0 'Invalid value: dns.hosts[2]: entry does not have at least one hostname ("1.2.3.4")'
   assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"al!as.example,target.example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("al!as.example")'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("target example")'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target.example,300\",\"alias2.example,ta*rget.example\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[1]: invalid domain ("ta*rget.example")'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config dns.cnameRecords "[\"alias.example,target.example,9999999999999999999999999999999999999\"]"'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid TTL ("9999999999999999999999999999999999999")'
+  assert_failure 3
+
+  # Spaces around the elements are fine, check with -t to leave the config alone
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\" alias.example , target.example , 300 \"]"'
+  assert_success
+
+  # Tabs and a trailing comment are fine as well, dnsmasq reads them the same way
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\"tab.example,\\ttarget.example\", \"comment.example,target.example #note\"]"'
+  assert_success
+
+  # Whitespace in front of a comma must not end up as a CNAME for the root name
+  run bash -c './pihole-FTL --config -t dns.cnameRecords "[\"a.example ,target.example\", \"b.example ,target.example\"]"'
+  assert_success
 
   # No dot follows the last label, but its length is capped just the same
   long_label="$(printf 'a%.0s' {1..64})"
@@ -1937,6 +2079,15 @@ except socket.timeout:
 
   run bash -c './pihole-FTL --config dns.revServers "[\"true,1.1.1.1,def,ghi\"]"'
   assert_line --regexp --index 0 'New dnsmasq configuration is not valid \(.+resolve at line [[:digit:]]+ of /etc/pihole/dnsmasq.conf.temp: "rev-server=1.1.1.1,def"\), config remains unchanged'
+  assert_failure 3
+
+  # dns.fastRetry carries FLAG_RESTART_FTL, so check it with -t
+  run bash -c './pihole-FTL --config -t dns.fastRetry 10'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
+  assert_failure 3
+
+  run bash -c './pihole-FTL --config -t dns.fastRetry 10001'
+  assert_line --index 0 'Invalid value: dns.fastRetry: must be 0 (disabled) or between 50 and 10000'
   assert_failure 3
 
   run bash -c './pihole-FTL --config webserver.api.excludeClients "[\".*\",\"$$$\",\"[[[\"]"'
@@ -2007,17 +2158,33 @@ except socket.timeout:
   assert_failure 3
 }
 
-@test "files.tmp_db cannot name a file Pi-hole keeps" {
-  # database.forceDisk empties files.tmp_db on every start
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole-FTL.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole-FTL.db") must not be the same file as files.database'
+@test "Config validation: --config -t does not require write permission" {
+  # Invalid values are rejected, even as nobody in read-only mode
+  run su nobody -s /bin/sh -c \
+    'FTLCONF_misc_readOnly=true ./pihole-FTL --config -t ntp.sync.count 0'
+  assert_line --partial 'Invalid value: ntp.sync.count: cannot be lower than 1'
   assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole//./gravity.db'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole//./gravity.db") must not be the same file as files.gravity'
-  assert_failure 3
-  run bash -c './pihole-FTL --config -t files.tmp_db /etc/pihole/pihole.toml'
-  assert_line --index 0 'Invalid value: files.tmp_db ("/etc/pihole/pihole.toml") must not be Pi-hole'"'"'s configuration file'
-  assert_failure 3
+
+  # Valid values can be tested without write permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config -t ntp.sync.count 42'
+  assert_equal "${lines[-1]}" '42'
+  assert_success
+
+  # Applying changes still requires permission
+  run su nobody -s /bin/sh -c \
+    './pihole-FTL --config ntp.sync.count 42'
+  assert_line --partial "Permission error: User nobody is not allowed to edit Pi-hole's config"
+  assert_failure
+
+  # Read-only mode prevents changes
+  run env FTLCONF_misc_readOnly=true ./pihole-FTL --config ntp.sync.count 42
+  assert_line --partial 'Config is in read-only mode, changes are not allowed (misc.readOnly = true)'
+  assert_failure
+
+  # No changes were applied
+  run ./pihole-FTL --config ntp.sync.count
+  assert_line --index 0 '8'
 }
 
 @test "Config validation: a document root that resolves to the root is rejected" {
@@ -2044,6 +2211,19 @@ except socket.timeout:
   assert_line --index 0 '/var/www/html'
 }
 
+@test "Fast retry is off by default and accepted by dnsmasq when enabled" {
+  # Disabled by default, so dnsmasq must not see the option at all
+  run bash -c 'grep -c "^fast-dns-retry=" /etc/pihole/dnsmasq.conf'
+  assert_line --index 0 '0'
+
+  # dns.fastRetry carries FLAG_RESTART_FTL, so check it with -t: writing one and
+  # putting it back lets the config watcher restart FTL mid-suite. The generated
+  # fast-dns-retry= line is still handed to dnsmasq for testing this way.
+  run bash -c './pihole-FTL --config -t dns.fastRetry 250'
+  assert_line --index 0 '250'
+  assert_success
+}
+
 @test "DNS hosts sanitization: Whitespace is normalized when saving" {
   # Set dns.hosts with various whitespace formatting issues
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
@@ -2059,7 +2239,7 @@ except socket.timeout:
   assert_line --index 0 '[ 192.168.1.1 host1.local, 10.0.0.1 host2.local host3.local, 127.0.0.1 host4.local host5.local ]'
 }
 
-@test "DNS hosts sanitization: Comments are handled correctly" { 
+@test "DNS hosts sanitization: Comments are handled correctly" {
   # Set dns.hosts with entries containing comments
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   run bash -c './pihole-FTL --config dns.hosts "[\"192.168.1.1   host1.local   # this is a comment with  double spaces\", \"   10.0.0.1\\thost2.local\\t\\t\\t\"]"'
@@ -2244,6 +2424,49 @@ except socket.timeout:
   assert_success
 }
 
+@test "CLI: Password change survives an API write before FTL rereads pihole.toml" {
+  # The PATCH reaches FTL before the housekeeper notices the CLI's write in
+  # (almost) every round, three rounds make missing the window negligible
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config webserver.api.password RACE_PW0'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+
+  for i in 1 2 3; do
+    sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW$((i-1))\"}" | jq -r .session.sid)"
+    [[ -n "${sid}" && "${sid}" != "null" ]] || fail "Login with RACE_PW$((i-1)) failed"
+
+    ./pihole-FTL --config webserver.api.password "RACE_PW${i}" > /dev/null
+    boxed=$([[ $((i % 2)) -eq 1 ]] && echo false || echo true)
+    patch="{\"config\":{\"webserver\":{\"interface\":{\"boxed\":${boxed}}}}}"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${sid}" -d "${patch}")"
+    sleep 2
+
+    # The CLI's password is in effect and the session from before is gone
+    new_sid="$(curl -s -X POST 127.0.0.1/api/auth -d "{\"password\":\"RACE_PW${i}\"}" | jq -r .session.sid)"
+    [[ -n "${new_sid}" && "${new_sid}" != "null" ]] || fail "Password set via the CLI was lost (round ${i})"
+    run bash -c "curl -s -H 'X-FTL-SID: ${sid}' 127.0.0.1/api/auth | jq .session.valid"
+    assert_line --index 0 "false"
+
+    # FTL rereading the file first refuses the PATCH, repeat it so every
+    # round writes pihole.toml the same number of times
+    if [[ "${code}" != "200" ]]; then
+      curl -s -o /dev/null -X PATCH 127.0.0.1/api/config -H "X-FTL-SID: ${new_sid}" -d "${patch}"
+    fi
+  done
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "./pihole-FTL --config webserver.api.password \"\""
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  assert_success
+  run bash -c 'curl -s 127.0.0.1/api/auth'
+  assert_line --partial --index 0 '"no password set"'
+  run bash -c 'curl -s -X PATCH 127.0.0.1/api/config -d "{\"config\":{\"webserver\":{\"interface\":{\"boxed\":true}}}}" | jq .config.webserver.interface.boxed'
+  assert_line --index 0 "true"
+}
+
 @test "Test TLS/SSL server using self-signed certificate" {
   # -s: silent
   # -I: HEAD request
@@ -2385,6 +2608,29 @@ except socket.timeout:
   assert_line --index 0 "localhost"
 }
 
+@test "Teleporter export and import work with a quote in files.gravity" {
+  cp /etc/pihole/gravity.db "/tmp/grav'ity.db"
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter"
+  assert_success
+  filename="${lines[-1]}"
+  # Import only the database, pihole.toml would be written with the override
+  python3 - "${filename}" <<'EOF'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zin, zipfile.ZipFile(sys.argv[1] + ".db.zip", "w") as zout:
+    for item in zin.infolist():
+        if item.filename != "etc/pihole/pihole.toml":
+            zout.writestr(item, zin.read(item))
+EOF
+  run bash -c "FTLCONF_files_gravity=\"/tmp/grav'ity.db\" ./pihole-FTL --teleporter ${filename}.db.zip"
+  assert_output --partial "Replaced table group in /tmp/grav'ity.db"
+  assert_output --partial "Replaced table client_by_group in /tmp/grav'ity.db"
+  assert_line --index -7 "Imported etc/pihole/gravity.db->group"
+  assert_line --index -1 "Imported etc/pihole/gravity.db->client_by_group"
+  refute_output --partial "Imported etc/pihole/pihole.toml"
+  assert_success
+  run bash -c "rm ${filename} ${filename}.db.zip \"/tmp/grav'ity.db\""
+}
+
 @test "Create, verify and re-import Teleporter file via CLI" {
   run bash -c './pihole-FTL --teleporter'
   assert_success
@@ -2420,47 +2666,66 @@ except socket.timeout:
   run bash -c './pihole-FTL --complete pihole-FTL --config debug.networking t'
   assert_line --index 0 "true"
   assert_line --index 1 ""
+  # adding -t (test a value) yields the same completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  run bash -c './pihole-FTL --complete pihole-FTL --config -t debug.networking t'
+  assert_line --index 0 "true"
+  assert_line --index 1 ""
+  # adding -q (quiet query) yields the same key completions
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.ne'
+  assert_line --index 0 "debug.networking"
+  assert_line --index 1 "debug.netlink"
+  assert_line --index 2 ""
+  # -q is only for querying a value, so no value is suggested
+  run bash -c './pihole-FTL --complete pihole-FTL --config -q debug.networking t'
+  assert_output ""
 }
 
 
 @test "Webserver options are logged as expected" {
-  run bash -c 'grep -F "Webserver option 0/16: document_root=/var/www/html" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 0/17: document_root=/var/www/html" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 1/16: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 1/17: error_pages=/var/www/html/admin/" /var/log/pihole/webserver.log'
   assert_success
   # The terminator owns the secure ports; CivetWeb gets the plaintext ports plus its loopback backend.
-  run bash -c 'grep -F "Webserver option 2/16: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 2/17: listening_ports=80o,[::]:80o,8081,127.0.0.1:0" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 3/16: decode_url=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 3/17: decode_url=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 4/16: enable_directory_listing=no" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 4/17: enable_directory_listing=no" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 5/16: num_threads=50" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 5/17: num_threads=50" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 6/16: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 6/17: authentication_domain=pi.hole" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 7/16: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 7/17: additional_header=X-DNS-Prefetch-Control: off\r\nContent-Security-Policy: default-src '"'none'"'; connect-src '"'self'"'; font-src '"'self'"'; frame-ancestors '"'none'"'; img-src '"'self'"' data:; manifest-src '"'self'"'; script-src '"'self'"'; style-src '"'self'"' '"'unsafe-inline'"'; form-action '"'self'"'\r\nX-Frame-Options: DENY\r\nX-XSS-Protection: 0\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: strict-origin-when-cross-origin\r\n" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 8/16: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 8/17: index_files=index.html,index.htm,index.lp" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 9/16: enable_keep_alive=yes" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 9/17: enable_keep_alive=yes" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 10/16: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 10/17: keep_alive_timeout_ms=5000" /var/log/pihole/webserver.log'
   assert_success
   # Nagle disabled so small TLS responses are not delayed on the client's ACK.
-  run bash -c 'grep -F "Webserver option 11/16: tcp_nodelay=1" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 11/17: tcp_nodelay=1" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 12/16: lua_server_page_pattern=**.lp$" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 12/17: lua_server_page_pattern=**.lp$" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 13/16: lua_script_pattern=" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 13/17: lua_script_pattern=" /var/log/pihole/webserver.log'
   assert_success
-  run bash -c 'grep -F "Webserver option 14/16: ssi_pattern=" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 14/17: ssi_pattern=" /var/log/pihole/webserver.log'
   assert_success
   # The terminator's per-boot backend-auth secret; its value is redacted in the log.
-  run bash -c 'grep -F "Webserver option 15/16: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 15/17: proxy_protocol_secret=<per-boot secret>" /var/log/pihole/webserver.log'
+  assert_success
+  # webserver.trustedProxies, IPv4 entries also IPv4-mapped
+  run bash -c 'grep -F "Webserver option 16/17: proxy_protocol_trusted_peers=+127.0.0.4,+[::ffff:127.0.0.4]/128" /var/log/pihole/webserver.log'
   assert_success
   # No ssl_certificate: CivetWeb runs plaintext behind the terminator, which owns the cert.
-  run bash -c 'grep -F "Webserver option 16/16: <END OF OPTIONS>" /var/log/pihole/webserver.log'
+  run bash -c 'grep -F "Webserver option 17/17: <END OF OPTIONS>" /var/log/pihole/webserver.log'
   assert_success
 }
 
@@ -2476,7 +2741,7 @@ except socket.timeout:
   # reader once the busy handler of the write was seen waiting (debug.database
   # is enabled in the test configuration)
   rm -f /tmp/gravity_reader_ready /tmp/gravity_reader_release /tmp/gravity_put_result
-  busy_before="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
   cat > /tmp/gravity_reader.sql << 'SQL'
 BEGIN;
 SELECT count(*) FROM domainlist;
@@ -2495,21 +2760,19 @@ SQL
   reader_ready=no
   [ -f /tmp/gravity_reader_ready ] && reader_ready=yes
 
+  # Release the reader as soon as the write is waiting for it. This is well
+  # within the busy timeout, however long the request took to get there.
+  # The watch starts before the write and reads only what was logged since
+  # this test started
+  ./pihole-FTL wait-for "Database busy - waiting" /var/log/pihole/FTL.log 5 "$logsize_before" > /dev/null 3>&- &
+  waiter=$!
+
   # Write while the reader holds its lock
   curl -s -o /dev/null -w "%{http_code}" -X PUT http://127.0.0.1/api/domains/deny/exact/lockrace.ftl -d '{"comment":"busy handler regression","groups":[0],"enabled":true}' > /tmp/gravity_put_result 2> /dev/null 3>&- &
   put=$!
 
-  # Release the reader as soon as the write is waiting for it. This is well
-  # within the busy timeout, however long the request took to get there
   write_waited=no
-  for _ in $(seq 1 100); do
-    busy_now="$(grep -c "Database busy - waiting" /var/log/pihole/FTL.log || true)"
-    if [ "${busy_now}" -gt "${busy_before}" ]; then
-      write_waited=yes
-      break
-    fi
-    sleep 0.05
-  done
+  wait "${waiter}" && write_waited=yes
   touch /tmp/gravity_reader_release
 
   wait "${put}" || true

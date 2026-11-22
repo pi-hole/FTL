@@ -15,7 +15,7 @@
 #include "datastructure.h"
 // config struct
 #include "config/config.h"
-// get_memdb()
+// get_import_window(), get_db_info()
 #include "database/query-table.h"
 // dbopen(false, ), dbclose()
 #include "database/common.h"
@@ -24,67 +24,9 @@
 #include "gc.h"
 // PRIu64
 #include <inttypes.h>
+// lock_shm(), unlock_shm()
+#include "shmem.h"
 
-#if 0
-static int add_strings_to_array(struct ftl_conn *api, cJSON *array1, cJSON *array2, const char *querystr, const int max_count)
-{
-
-	sqlite3 *memdb = get_memdb();
-	if(memdb == NULL)
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not read from in-memory database",
-		                       NULL);
-	}
-
-	sqlite3_stmt *stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &stmt, NULL);
-	if( rc != SQLITE_OK )
-	{
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not prepare in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Loop through returned rows and add them to the array
-	int counter = 0;
-	while((rc = sqlite3_step(stmt)) == SQLITE_ROW &&
-	      (max_count < 0 || ++counter <= max_count))
-	{
-		const char *array1_str = (const char*)sqlite3_column_text(stmt, 0);
-		if(array1_str != NULL && array1_str[0] != '\0')
-			// Only add non-empty strings
-			JSON_COPY_STR_TO_ARRAY(array1, array1_str);
-		if(array2 != NULL)
-		{
-			// We have a second array to fill (second column in the query)
-			const char *array2_str = (const char*)sqlite3_column_text(stmt, 1);
-			if(array2_str != NULL && array2_str[0] != '\0')
-				// Only add non-empty strings
-				JSON_COPY_STR_TO_ARRAY(array2, array2_str);
-		}
-	}
-
-	// Acceptable return codes are either
-	// - SQLITE_DONE: We read all lines, or
-	// - SQLITE_ROW: We ended reading early because of set limit
-	if( rc != SQLITE_DONE && rc != SQLITE_ROW )
-	{
-		sqlite3_finalize(stmt);
-		return send_json_error(api, 500, // 500 Internal error
-		                       "database_error",
-		                       "Could not step in-memory database",
-		                       sqlite3_errstr(rc));
-	}
-
-	// Finalize SQLite3 statement
-	sqlite3_finalize(stmt);
-
-	return 0;
-}
-#endif
 
 int api_queries_suggestions(struct ftl_conn *api)
 {
@@ -328,11 +270,33 @@ static void search_pattern(char *search, const size_t size)
 	}
 }
 
+// Read the string parameter var into dest of the given size, as
+// get_string_var() does. Returns the length of its value, zero or less when it
+// is absent or empty. A value that does not fit is answered with a 400 naming
+// the parameter (as name) and the limit, the status of that reply goes to *ret
+static int get_filter_var(struct ftl_conn *api, const char *qs, const char *var,
+                          const char *name, char *dest, const size_t size, int *ret)
+{
+	const int len = get_string_var(qs, var, dest, size);
+	if(len == -2)
+	{
+		char hint[64];
+		snprintf(hint, sizeof(hint), "%s: at most %zu bytes", name, size - 1);
+		*ret = send_json_error(api, 400,
+		                       "bad_request",
+		                       "Requested filter is too long",
+		                       hint);
+	}
+	return len;
+}
+
 // Read the request into req. Returns 0, or the status of the error reply it
 // sent. largest_id is the highest query ID a cursor may name
 static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
                                  const sqlite3_int64 largest_id)
 {
+	int ret = 0;
+
 	// We start with the most recent query at the beginning (until the
 	// cursor is changed). We send 100 queries (unless the API is asked for
 	// a different limit)
@@ -354,14 +318,18 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 		req->has_until = get_double_var(qs, "until", &req->until);
 
 		// Domain filtering?
-		if(GET_STR("domain", req->domain, qs) > 0)
+		if(get_filter_var(api, qs, "domain", "domain", req->domain,
+		                  sizeof(req->domain), &ret) > 0)
 		{
 			req->has_domain = true;
 			req->domain_like = is_wildcard(req->domain);
 		}
+		if(ret != 0)
+			return ret;
 
 		// Upstream filtering?
-		if(GET_STR("upstream", req->upstreamname, qs) > 0)
+		if(get_filter_var(api, qs, "upstream", "upstream", req->upstreamname,
+		                  sizeof(req->upstreamname), &ret) > 0)
 		{
 			// If there is a space in the upstream name, truncate
 			// the string to the first space. This is necessary as
@@ -384,20 +352,28 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 				req->upstream_like = is_wildcard(req->upstreamname);
 			}
 		}
+		if(ret != 0)
+			return ret;
 
 		// Client IP filtering?
-		if(GET_STR("client_ip", req->client_ip, qs) > 0)
+		if(get_filter_var(api, qs, "client_ip", "client_ip", req->client_ip,
+		                  sizeof(req->client_ip), &ret) > 0)
 		{
 			req->has_client_ip = true;
 			req->client_ip_like = is_wildcard(req->client_ip);
 		}
+		if(ret != 0)
+			return ret;
 
 		// Client filtering?
-		if(GET_STR("client_name", req->client_name, qs) > 0)
+		if(get_filter_var(api, qs, "client_name", "client_name", req->client_name,
+		                  sizeof(req->client_name), &ret) > 0)
 		{
 			req->has_client_name = true;
 			req->client_name_like = is_wildcard(req->client_name);
 		}
+		if(ret != 0)
+			return ret;
 
 		// DataTables server-side processing protocol
 		// Draw counter: This is used by DataTables to ensure that the
@@ -450,10 +426,11 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 
 		// Query type, status, reply type and DNSSEC status filtering?
 		// Checked below, after the exclusion regexes
-		GET_STR("type", typename, qs);
-		GET_STR("status", statusname, qs);
-		GET_STR("reply", replyname, qs);
-		GET_STR("dnssec", dnssecname, qs);
+		if(get_filter_var(api, qs, "type", "type", typename, sizeof(typename), &ret) == -2 ||
+		   get_filter_var(api, qs, "status", "status", statusname, sizeof(statusname), &ret) == -2 ||
+		   get_filter_var(api, qs, "reply", "reply", replyname, sizeof(replyname), &ret) == -2 ||
+		   get_filter_var(api, qs, "dnssec", "dnssec", dnssecname, sizeof(dnssecname), &ret) == -2)
+			return ret;
 
 		// Sorting?
 		int sort_column = -1;
@@ -486,8 +463,16 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 			char *search = j == 0 ? req->domain_search : req->client_search;
 			char search_col[] = "columns%5BX%5D%5Bsearch%5D%5Bvalue%5D";
 			search_col[10] = '3' + j;
-			if(get_string_var(qs, search_col, search, QLOG_SEARCH_LEN) <= 0)
+			char search_name[] = "columns[X][search][value]";
+			search_name[8] = '3' + j;
+			// Leave room for the two wildcards search_pattern() may add
+			if(get_filter_var(api, qs, search_col, search_name, search,
+			                  QLOG_SEARCH_LEN - 2, &ret) <= 0)
+			{
+				if(ret != 0)
+					return ret;
 				continue;
+			}
 
 			// columns[X][data] is the name of column X
 			char search_col_id[] = "columns%5BX%5D%5Bdata%5D";
@@ -530,15 +515,13 @@ static int parse_queries_request(struct ftl_conn *api, struct qlog_request *req,
 
 	// Regex filtering?
 	int regex_ret = 0;
-	if(compile_filter_regex(api, "webserver.api.excludeDomains",
-	                        config.webserver.api.excludeDomains.v.json,
+	if(compile_filter_regex(api, &config.webserver.api.excludeDomains,
 	                        &req->regex_domains, &req->N_regex_domains, &regex_ret))
 		req->filtering = true;
 	if(regex_ret != 0)
 		return regex_ret;
 
-	if(compile_filter_regex(api, "webserver.api.excludeClients",
-	                        config.webserver.api.excludeClients.v.json,
+	if(compile_filter_regex(api, &config.webserver.api.excludeClients,
 	                        &req->regex_clients, &req->N_regex_clients, &regex_ret))
 		req->filtering = true;
 	if(regex_ret != 0)
@@ -684,15 +667,21 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 	JSON_COPY_STR_TO_OBJECT(item, "domain", row->domain);
 	JSON_COPY_STR_TO_OBJECT(item, "upstream", row->upstream);
 
-	cJSON *reply = JSON_NEW_OBJECT();
-	JSON_REF_STR_IN_OBJECT(reply, "type", get_query_reply_str(row->reply));
-	JSON_ADD_NUMBER_TO_OBJECT(reply, "time", row->reply_time);
-	JSON_ADD_ITEM_TO_OBJECT(item, "reply", reply);
+	// The nested objects are added to item before they are filled, so
+	// deleting item on failure releases them as well. The JSON_* macros
+	// cannot fill them, as they would delete only the nested object
+	cJSON *reply = cJSON_AddObjectToObject(item, "reply");
+	if(reply == NULL ||
+	   !cJSON_AddItemToObject(reply, "type", cJSON_CreateStringReference(get_query_reply_str(row->reply))) ||
+	   cJSON_AddNumberToObject(reply, "time", row->reply_time) == NULL)
+		goto oom;
 
-	cJSON *client = JSON_NEW_OBJECT();
-	JSON_COPY_STR_TO_OBJECT(client, "ip", row->client_ip);
-	JSON_COPY_STR_TO_OBJECT(client, "name", row->client_name);
-	JSON_ADD_ITEM_TO_OBJECT(item, "client", client);
+	cJSON *client = cJSON_AddObjectToObject(item, "client");
+	if(client == NULL ||
+	   cJSON_AddStringToObject(client, "ip", row->client_ip) == NULL ||
+	   (row->client_name != NULL ? cJSON_AddStringToObject(client, "name", row->client_name) :
+	                               cJSON_AddNullToObject(client, "name")) == NULL)
+		goto oom;
 
 	// Add list_id if it exists
 	if(row->has_list_id)
@@ -701,33 +690,44 @@ int add_query_item(struct ftl_conn *api, cJSON *queries, const struct qlog_row *
 		JSON_ADD_NULL_TO_OBJECT(item, "list_id");
 
 	// Add EDE code and text (if applicable)
-	cJSON *ede = JSON_NEW_OBJECT();
-	JSON_ADD_NUMBER_TO_OBJECT(ede, "code", row->ede);
-	if(row->ede > 0)
-		JSON_REF_STR_IN_OBJECT(ede, "text", edestr(row->ede));
-	else
-		JSON_ADD_NULL_TO_OBJECT(ede, "text");
-	JSON_ADD_ITEM_TO_OBJECT(item, "ede", ede);
+	cJSON *ede = cJSON_AddObjectToObject(item, "ede");
+	if(ede == NULL ||
+	   cJSON_AddNumberToObject(ede, "code", row->ede) == NULL ||
+	   !cJSON_AddItemToObject(ede, "text", row->ede > 0 ? cJSON_CreateStringReference(edestr(row->ede)) :
+	                                                      cJSON_CreateNull()))
+		goto oom;
 
 	// Add CNAME information if it exists
 	JSON_COPY_STR_TO_OBJECT(item, "cname", row->cname);
 
 	JSON_ADD_ITEM_TO_ARRAY(queries, item);
 	return 0;
+
+oom:
+	log_err("add_query_item(): Failed to allocate JSON object");
+	cJSON_Delete(item);
+	return send_http_internal_error(api);
 }
 
-// Read the query log from the on-disk database with disk=true, from the
-// in-memory one while the queries are imported, and count the matching
-// queries. Returns 0, or the status of the error reply it sent
+// Read the query log from the on-disk database, with disk=true and while the
+// queries of the history window are still being imported into shared memory,
+// and count the matching queries. Returns 0, or the status of the error reply
+// it sent
 static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req, cJSON *queries,
                             unsigned int *records)
 {
 	// Start building database query string
 	char querystr[QUERYSTRBUFFERLEN] = { 0 };
-	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM %s q %s", QUERYSTR,
-	         req->disk ? "disk.query_storage" : "query_storage", JOINSTR);
+	snprintf(querystr, QUERYSTRBUFFERLEN, "%s FROM query_storage q %s", QUERYSTR, JOINSTR);
 
 	bool where = false;
+	// Until the import is done, the query log in memory is its window
+	double window_from = 0.0, window_until = 0.0;
+	if(!req->disk)
+	{
+		get_import_window(&window_from, &window_until);
+		add_querystr_string(querystr, "timestamp BETWEEN :tswfrom AND ", ":tswuntil", &where);
+	}
 	if(req->has_from)
 		add_querystr_string(querystr, "timestamp>=", ":tsfrom", &where);
 	if(req->has_until)
@@ -769,21 +769,22 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	snprintf(querystr + strpos, QUERYSTRBUFFERLEN - strpos, " ORDER BY %s %s",
 	         sort_column_sql(req->sort), req->sort_desc ? "DESC" : "ASC");
 
-	// Get connection to in-memory database
-	sqlite3 *memdb = get_memdb();
-	if(memdb == NULL)
+	// Each request reads on a connection of its own
+	sqlite3 *db = dbopen(true, false);
+	if(db == NULL)
 	{
 		return send_json_error(api, 500, // 500 Internal error
 		                       "database_error",
-		                       "Could not read from in-memory database",
+		                       "Could not read from the long-term database",
 		                       NULL);
 	}
 
 	// Prepare SQLite3 statement
 	sqlite3_stmt *read_stmt = NULL;
-	int rc = sqlite3_prepare_v2(memdb, querystr, -1, &read_stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, querystr, -1, &read_stmt, NULL);
 	if( rc != SQLITE_OK )
 	{
+		dbclose(&db);
 		return send_json_error(api, 500,
 		                       "internal_error",
 		                       "Internal server error, failed to prepare read SQL query",
@@ -800,6 +801,8 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 	} binds[] = {
 		{ ":tsfrom", false, NULL, req->from, "timestamp:from" },
 		{ ":tsuntil", false, NULL, req->until, "timestamp:until" },
+		{ ":tswfrom", false, NULL, window_from, "window:from" },
+		{ ":tswuntil", false, NULL, window_until, "window:until" },
 		{ ":domain", true, req->domain, 0.0, "domain" },
 		{ ":cip", true, req->client_ip, 0.0, "cip" },
 		{ ":cname", true, req->client_name, 0.0, "client" },
@@ -843,6 +846,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 			snprintf(message, sizeof(message), "Internal server error, failed to bind %s to SQL query",
 			         binds[i].what);
 			sqlite3_finalize(read_stmt);
+			dbclose(&db);
 			return send_json_error(api, 500,
 			                       "internal_error",
 			                       message,
@@ -920,6 +924,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 		if(ret != 0)
 		{
 			sqlite3_finalize(read_stmt);
+			dbclose(&db);
 			return ret;
 		}
 		added++;
@@ -929,6 +934,7 @@ static int queries_from_sql(struct ftl_conn *api, const struct qlog_request *req
 
 	// Finalize statements
 	sqlite3_finalize(read_stmt);
+	dbclose(&db);
 
 	*records = counted;
 	return 0;
@@ -962,14 +968,14 @@ int api_queries(struct ftl_conn *api)
 	if(api->request->query_string != NULL)
 		get_bool_var(api->request->query_string, "disk", &req.disk);
 
-	// The numbers of queries and the highest ID when the request arrived.
-	// Once the import is done, the in-memory query log is read from shared
-	// memory, which also has the queries that are not stored yet
-	sqlite3_int64 largest_db_index, mem_dbnum, disk_dbnum;
-	db_counts(&largest_db_index, &mem_dbnum, &disk_dbnum);
+	// The newest query ID and the numbers of queries when the request
+	// arrived. Once the import is done, the in-memory query log is read from
+	// shared memory, which also has the queries that are not stored yet
+	sqlite3_int64 largest_db_index = 0, mem_dbnum = 0;
+	shm_query_log_counts(&largest_db_index, &mem_dbnum);
+	uint64_t disk_dbnum = 0;
+	get_db_info(true, &disk_dbnum, NULL);
 	const bool from_shm = !req.disk && db_import_done;
-	if(from_shm)
-		shm_query_log_counts(&largest_db_index, &mem_dbnum);
 
 	// Read the request, then the queries it selects
 	unsigned int records = 0;
@@ -992,6 +998,7 @@ int api_queries(struct ftl_conn *api)
 		return ret;
 	}
 
+
 	cJSON *json = JSON_NEW_OBJECT();
 	JSON_ADD_ITEM_TO_OBJECT(json, "queries", queries);
 
@@ -1010,20 +1017,20 @@ int api_queries(struct ftl_conn *api)
 	}
 	else
 	{
-		// Send cursor pointing to the firstID of the data obtained in
-		// this query. This ensures we get a static result by skipping
-		// any newer queries.
-		log_web_debug(DEBUG_API, "Sending cursor %lld (firstID)", get_max_db_idx());
-		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", get_max_db_idx());
+		// Send cursor pointing to the newest query when the request
+		// arrived. This ensures we get a static result by skipping any
+		// newer queries.
+		log_web_debug(DEBUG_API, "Sending cursor %lld (newest)", largest_db_index);
+		JSON_ADD_NUMBER_TO_OBJECT(json, "cursor", largest_db_index);
 	}
 
 	// DataTables specific properties
-	const unsigned long recordsTotal = req.disk ? disk_dbnum : mem_dbnum;
+	const unsigned long recordsTotal = req.disk ? disk_dbnum : (uint64_t)mem_dbnum;
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsTotal", recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "recordsFiltered", req.filtering ? records : recordsTotal);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "draw", req.draw);
 
-	// Add number of queries and earliest timestamp in in-memory database
+	// Add earliest timestamp in memory
 	double earliest_timestamp_mem = 0.0;
 	get_db_info(false, NULL, &earliest_timestamp_mem);
 	JSON_ADD_NUMBER_TO_OBJECT(json, "earliest_timestamp", earliest_timestamp_mem);
@@ -1056,8 +1063,8 @@ void free_filter_regex(regex_t *regex, const unsigned int N_regex)
 // and get_top_clients() return a cJSON object, not a status - would go on to
 // send a second body on the same connection. Those pass NULL, and a failure is
 // logged and treated as "no filtering" instead.
-bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
-                          regex_t **regex, unsigned int *N_regex, int *ret)
+static bool compile_filter_regex_json(struct ftl_conn *api, const char *path, cJSON *json,
+                                      regex_t **regex, unsigned int *N_regex, int *ret)
 {
 	if(ret != NULL)
 		*ret = 0;
@@ -1144,4 +1151,19 @@ bool compile_filter_regex(struct ftl_conn *api, const char *path, cJSON *json,
 	// We are filtering, so we have to continue to step over the
 	// remaining rows to get the correct number of total records
 	return true;
+}
+
+// Compile the regexes of the string array config item into *regex. A config
+// change frees the previous arrays under the SHM lock, so the array is copied
+// under it rather than read from the live config while it may be replaced
+bool compile_filter_regex(struct ftl_conn *api, const struct conf_item *item,
+                          regex_t **regex, unsigned int *N_regex, int *ret)
+{
+	lock_shm();
+	cJSON *json = cJSON_Duplicate(item->v.json, true);
+	unlock_shm();
+
+	const bool filtering = compile_filter_regex_json(api, item->k, json, regex, N_regex, ret);
+	cJSON_Delete(json);
+	return filtering;
 }

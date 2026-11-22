@@ -34,7 +34,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 # SQLITE_ENABLE_DBPAGE_VTAB: Enables the SQLITE_DBPAGE virtual table. Warning: writing to the SQLITE_DBPAGE virtual table can very easily cause unrecoverably database corruption. It is needed for the .recover SQLite3 command.
 # SQLITE_ENABLE_DBSTAT_VTAB: Enables the dbstat virtual table. It is needed for the .diskused SQLite3 command.
 # SQLITE_TEMP_STORE=1: This option sets the default value for the temp_store pragma to 1. This means that temporary tables and indices are always stored on disk. This is the default setting.
-# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (_memdb, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
+# SQLITE_DEFAULT_CACHE_SIZE=4096: Per-connection page cache. Positive value means pages (not kiB), so at the default 4 kiB page size this caps each sqlite3 connection's private cache at ~16 MiB. Previously set to 16384 (= ~64 MiB/conn), which was oversized for FTL's workload: the mmap-backed on-disk query DB lets the kernel page cache cover cold reads for free, and both long-lived handles (the query database, gravity_db) work against small hot sets. 16 MiB is still comfortably larger than either hot set.
 # SQLITE_DEFAULT_SYNCHRONOUS=1: Use normal synchronous mode (default is 2)
 # SQLITE_LIKE_DOESNT_MATCH_BLOBS: This option causes the LIKE operator to only match BLOB values against BLOB values and TEXT values against TEXT values. This compile-time option makes SQLite run more efficiently when processing queries that use the LIKE operator.
 # HAVE_MALLOC_H + HAVE_MALLOC_USABLE_SIZE: This option causes SQLite to try to use the malloc_usable_size() function to obtain the actual size of memory allocations from the underlying malloc() system interface. Applications are encouraged to use HAVE_MALLOC_USABLE_SIZE whenever possible.
@@ -359,38 +359,50 @@ find_library(LIBHOGWEED NAMES libhogweed${LIBRARY_SUFFIX} hogweed HINTS /usr/loc
 find_library(LIBGMP NAMES libgmp${LIBRARY_SUFFIX} gmp)
 find_library(LIBNETTLE NAMES libnettle${LIBRARY_SUFFIX} nettle HINTS /usr/local/lib64)
 
-# for IDN2 we need the idn2 library which in turn depends on the unistring library
+# for IDN2 we need the idn2 library. It in turn depends on the unistring
+# library, but only the static build needs to link unistring directly: a
+# dynamic build gets it transitively through libidn2.so, so it does not need
+# the libunistring development files (headers / unversioned .so) at all.
 find_library(LIBIDN2 NAMES libidn2${LIBRARY_SUFFIX} idn2)
+# unistring is needed directly only for static builds, but we look it up and
+# report its availability in every build for diagnostics.
 find_library(LIBUNISTRING NAMES libunistring${LIBRARY_SUFFIX} unistring)
 
 # Echo library search results to the console
 if(LIBHOGWEED)
     message(STATUS "Found libhogweed: ${LIBHOGWEED}")
 else()
-    message(WARNING "libhogweed not found, DNSSEC support will be disabled")
+    message(FATAL_ERROR "libhogweed not found, but it is required")
 endif()
 if(LIBGMP)
     message(STATUS "Found libgmp: ${LIBGMP}")
 else()
-    message(WARNING "libgmp not found, DNSSEC support will be disabled")
+    message(FATAL_ERROR "libgmp not found, but it is required")
 endif()
 if(LIBNETTLE)
     message(STATUS "Found libnettle: ${LIBNETTLE}")
 else()
-    message(WARNING "libnettle not found, DNSSEC support will be disabled")
+    message(FATAL_ERROR "libnettle not found, but it is required")
 endif()
 if(LIBIDN2)
     message(STATUS "Found libidn2: ${LIBIDN2}")
 else()
-    message(WARNING "libidn2 not found, IDN support will be disabled")
+    message(FATAL_ERROR "libidn2 not found, but it is required")
 endif()
 if(LIBUNISTRING)
     message(STATUS "Found libunistring: ${LIBUNISTRING}")
 else()
-    message(WARNING "libunistring not found, IDN support will be disabled")
+    if(STATIC)
+        message(FATAL_ERROR "libunistring not found, but it is required for static builds")
+    else()
+        message(STATUS "libunistring not found (not required for dynamic builds)")
+    endif()
 endif()
 
-target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2} ${LIBUNISTRING})
+target_link_libraries(pihole-FTL rt Threads::Threads ${LIBHOGWEED} ${LIBGMP} ${LIBNETTLE} ${LIBIDN2})
+if(STATIC)
+    target_link_libraries(pihole-FTL ${LIBUNISTRING})
+endif()
 
 if(LUA_DL STREQUAL "true")
     find_library(LIBDL dl)
@@ -725,12 +737,9 @@ add_custom_command(TARGET pihole-FTL POST_BUILD COMMENT "Appending sha256sum to 
         )
 
 ######### Installation target ############
-# Install the binary
+# Install the binary ...
 install(TARGETS pihole-FTL
         RUNTIME DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
-find_program(SETCAP setcap)
-# After installing the binary, we set the capabilities on the binary ...
-install(CODE "execute_process(COMMAND ${SETCAP} CAP_NET_BIND_SERVICE,CAP_NET_RAW,CAP_NET_ADMIN,CAP_SYS_NICE,CAP_CHOWN,CAP_SYS_TIME+eip \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL)")
 # ... and verify the binary integrity
 install(CODE "execute_process(COMMAND \${CMAKE_INSTALL_PREFIX}/bin/pihole-FTL verify)")

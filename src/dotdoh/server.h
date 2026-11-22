@@ -79,6 +79,16 @@ bool dotdoh_doh_enabled(void) __attribute__((pure));
 ssize_t base64url_decode(const char *in, size_t inlen, uint8_t *out, size_t outcap);
 uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len) __attribute__((pure));
 
+// Upper bound on the base64url "dns" value of a DoH GET, for every front end
+// (ample for a real query, which encodes to a few hundred bytes)
+#define DOH_GET_B64_MAX 8192
+
+// Check a DoH POST before its body is read, so every front end answers alike.
+// ctype is the Content-Type value (NULL if absent) and ctype_count how often the
+// field appeared, blen the announced body length or -1 if none. Returns 0 if the
+// request is acceptable, else the HTTP status to answer with (400, 413 or 415).
+int doh_post_check(const char *ctype, unsigned ctype_count, long long blen) __attribute__((pure));
+
 // Resolve one decrypted DNS query (from client `client`) through dnsmasq over
 // the loopback handoff, injecting the private client option so it is attributed
 // to the real client. `dest` is the local address the client connected to (or
@@ -89,6 +99,11 @@ uint32_t doh_answer_min_ttl(const uint8_t *msg, size_t len) __attribute__((pure)
 ssize_t dotdoh_server_resolve(const char *client, const char *dest,
                               const uint8_t *query, size_t qlen,
                               uint8_t *answer, size_t answer_sz);
+
+// Per-thread heap buffer of `size` bytes kept in the thread-local pointer
+// *slot: allocated on first use, freed at thread exit. Large buffers stay out of
+// static TLS, which glibc takes from every thread's stack. NULL when out of memory.
+uint8_t *dotdoh_thread_buf(uint8_t **slot, size_t size);
 
 // Sockets FTL threads hold on dnsmasq TCP connections (the DoT/DoH loopback
 // handoffs and the connections accepted by the encrypted-upstream proxy). A

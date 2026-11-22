@@ -527,7 +527,7 @@ tre_parse_bracket(tre_parse_ctx_t *ctx, tre_ast_node_t **result)
 	    node = items[j];
 	  else
 	    {
-	      u = tre_ast_new_union(ctx->mem, node, items[j]);
+	      u = tre_ast_new_char_union(ctx->mem, node, items[j]);
 	      if (u == NULL)
 		status = REG_ESPACE;
 	      node = u;
@@ -568,7 +568,7 @@ tre_parse_bracket(tre_parse_ctx_t *ctx, tre_ast_node_t **result)
 	    node = n;
 	  else
 	    {
-	      u = tre_ast_new_union(ctx->mem, node, n);
+	      u = tre_ast_new_char_union(ctx->mem, node, n);
 	      if (u == NULL)
 		status = REG_ESPACE;
 	      node = u;
@@ -1563,7 +1563,7 @@ tre_parse(tre_parse_ctx_t *ctx)
 		  tmp2 = tre_ast_new_literal(ctx->mem, L'\n' + 1, TRE_CHAR_MAX);
 		  if (!tmp2)
 		    return REG_ESPACE;
-		  result = tre_ast_new_union(ctx->mem, tmp1, tmp2);
+		  result = tre_ast_new_char_union(ctx->mem, tmp1, tmp2);
 		  if (!result)
 		    return REG_ESPACE;
 		}
@@ -1692,7 +1692,7 @@ tre_parse(tre_parse_ctx_t *ctx)
 					     tre_tolower(*ctx->re));
 		  if (!tmp2)
 		    return REG_ESPACE;
-		  result = tre_ast_new_union(ctx->mem, tmp1, tmp2);
+		  result = tre_ast_new_char_union(ctx->mem, tmp1, tmp2);
 		  if (!result)
 		    return REG_ESPACE;
 		}

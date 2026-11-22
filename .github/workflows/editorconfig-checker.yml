@@ -1,0 +1,29 @@
+name: EditorConfig
+
+on:
+  pull_request:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: editorconfig-checker
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read # to read the repository contents
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Get editorconfig-checker
+        uses: editorconfig-checker/action-editorconfig-checker@51f63319f592f97930c73d9c46184d20bd206393 #v3.0.0
+
+      - name: Run editorconfig-checker
+        run: editorconfig-checker

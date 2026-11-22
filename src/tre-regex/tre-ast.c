@@ -84,6 +84,22 @@ tre_ast_new_union(tre_mem_t mem, tre_ast_node_t *left, tre_ast_node_t *right)
   return node;
 }
 
+/* Like tre_ast_new_union(), for alternatives which each match a single
+   character and can therefore share one position. */
+tre_ast_node_t *
+tre_ast_new_char_union(tre_mem_t mem, tre_ast_node_t *left,
+		       tre_ast_node_t *right)
+{
+  tre_ast_node_t *node;
+
+  node = tre_ast_new_union(mem, left, right);
+  if (node == NULL)
+    return NULL;
+  ((tre_union_t *)node->obj)->single_position = 1;
+
+  return node;
+}
+
 tre_ast_node_t *
 tre_ast_new_catenation(tre_mem_t mem, tre_ast_node_t *left,
 		       tre_ast_node_t *right)

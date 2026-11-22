@@ -511,10 +511,295 @@ def doq_handshake_rejected(host, port, alpn, source=None, timeout=10.0):
     sys.exit("DoQ: handshake with ALPN %r was accepted, expected refusal" % alpn)
 
 
+class DoqConn:
+    """One DoQ client connection pumped by hand, for the tests that need exact
+    control over when each stream is opened, or several connections at once."""
+
+    def __init__(self, host, port, source=None):
+        QuicConfiguration, QuicConnection, self.events = _doq_import()
+        cfg = QuicConfiguration(is_client=True, alpn_protocols=["doq"])
+        cfg.verify_mode = ssl.CERT_NONE
+        cfg.server_name = "pi.hole"
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        self.sock = socket.socket(family, socket.SOCK_DGRAM)
+        self.sock.setblocking(False)
+        if source:
+            self.sock.bind((source, 0))
+        self.conn = QuicConnection(configuration=cfg)
+        self.conn.connect((host, port), now=time.monotonic())
+        self.handshaked = False
+        self.closed = None  # error code of the connection close, once it ended
+        self.closed_at = None
+        self.bufs = {}
+        self.answers = {}   # stream id -> answer
+        self.resets = {}    # stream id -> application error code
+        self.flush()
+
+    def flush(self):
+        for data, dest in self.conn.datagrams_to_send(now=time.monotonic()):
+            try:
+                self.sock.sendto(data, dest)
+            except OSError:
+                pass
+
+    def pump(self, wait=0.01):
+        if select.select([self.sock], [], [], wait)[0]:
+            while True:
+                try:
+                    data, src = self.sock.recvfrom(65536)
+                except BlockingIOError:
+                    break
+                self.conn.receive_datagram(data, src, now=time.monotonic())
+        timer = self.conn.get_timer()
+        if timer is not None and time.monotonic() >= timer:
+            self.conn.handle_timer(now=time.monotonic())
+        while True:
+            event = self.conn.next_event()
+            if event is None:
+                break
+            if isinstance(event, self.events.HandshakeCompleted):
+                self.handshaked = True
+            elif isinstance(event, self.events.ConnectionTerminated):
+                self.closed = event.error_code
+                self.closed_at = time.monotonic()
+            elif isinstance(event, self.events.StreamReset):
+                self.resets[event.stream_id] = event.error_code
+            elif isinstance(event, self.events.StreamDataReceived):
+                buf = self.bufs.setdefault(event.stream_id, bytearray())
+                buf.extend(event.data)
+                alen = (buf[0] << 8) | buf[1] if len(buf) >= 2 else -1
+                if 0 <= alen <= len(buf) - 2:
+                    self.answers.setdefault(event.stream_id, bytes(buf[2:2 + alen]))
+        self.flush()
+
+    def ignore(self, min_len, timeout):
+        """Drop whatever arrives, as if it was lost on the way, until a datagram
+        of at least min_len bytes was dropped or timeout passed. Returns how
+        many such datagrams were dropped (0 or 1)."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if select.select([self.sock], [], [], end - time.monotonic())[0]:
+                try:
+                    data, _ = self.sock.recvfrom(65536)
+                except BlockingIOError:
+                    continue
+                if len(data) >= min_len:
+                    return 1
+        return 0
+
+    def wait(self, cond, timeout):
+        """Pump until cond() holds, the connection ended or timeout passed."""
+        end = time.monotonic() + timeout
+        while not cond() and self.closed is None and time.monotonic() < end:
+            self.pump()
+        return cond()
+
+    def send(self, data, fin=True):
+        sid = self.conn.get_next_available_stream_id()
+        self.conn.send_stream_data(sid, data, end_stream=fin)
+        self.flush()
+        return sid
+
+    def done(self, sid):
+        return sid in self.answers or sid in self.resets
+
+    def close(self):
+        try:
+            self.conn.close()
+            self.flush()
+        finally:
+            self.sock.close()
+
+
+def doq_connect(host, port, source=None):
+    c = DoqConn(host, port, source)
+    if not c.wait(lambda: c.handshaked, 10):
+        sys.exit("DoQ: no handshake")
+    return c
+
+
+def doq_refused(host, port, sources, count, last):
+    """Open count connections from each address in sources, then one more from
+    last, and keep all of them pumped until 3 s after the last one's handshake.
+    Returns how many of the first ones are still open then, and the close code
+    the last one ended with (None if it did not end)."""
+    kept, c = [], None
+    try:
+        for source in sources:
+            for _ in range(count):
+                kept.append(doq_connect(host, port, source))
+        c = DoqConn(host, port, last)
+        end = time.monotonic() + 10
+        while not c.handshaked and c.closed is None and time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        return sum(1 for k in kept if k.closed is None), c.closed
+    finally:
+        for k in kept + ([c] if c is not None else []):
+            k.close()
+
+
+def doq_busy_error(host, port, qname, source, count):
+    """Ask count queries one after the other on one connection, then one more
+    whose answer is lost on the way and so not acknowledged, and then one with a
+    non-zero Message ID. Returns the close code the connection ended with (None
+    if it did not end within 3 s). Fails if no answer was lost, as the close
+    then does not have to wait for one."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    try:
+        for _ in range(count):
+            sid = c.send(struct.pack("!H", len(query)) + query)
+            c.wait(lambda: c.done(sid), 10)
+        c.send(struct.pack("!H", len(query)) + query)
+        # The answer repeats the query and adds QUIC overhead (header, frame,
+        # 16-byte AEAD tag), so a datagram this large is more than an ACK
+        if c.ignore(2 + len(query) + 32, 5) == 0:
+            sys.exit("DoQ: no answer arrived to be lost")
+        c.send(struct.pack("!H", len(query)) + b"\x12\x34" + query[2:])
+        c.wait(lambda: False, 3)
+        return c.closed
+    finally:
+        c.close()
+
+
+def doq_pipeline(host, port, qname, source, expected_ip, count, window):
+    """Ask count queries on one connection, at most window of them in flight.
+    Returns how many were answered, how many were reset and the close code the
+    connection ended with (None if it did not end within 1 s of the last
+    answer or reset; a close of the server arrives well within that)."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    sent, inflight = 0, []
+    last = time.monotonic()
+    try:
+        while c.closed is None and (sent < count or inflight) and time.monotonic() - last < 3:
+            while sent < count and len(inflight) < window:
+                inflight.append(c.send(framed))
+                sent += 1
+            c.pump()
+            for sid in [s for s in inflight if c.done(s)]:
+                inflight.remove(sid)
+                last = time.monotonic()
+        c.wait(lambda: False, 1 - (time.monotonic() - last))
+        for answer in c.answers.values():
+            validate(answer, expected_ip)
+        closed = c.closed if c.closed is not None and c.closed_at - last <= 1 else None
+        return len(c.answers), len(c.resets), closed
+    finally:
+        c.close()
+
+
+def doq_hold(host, port, qname, source, expected_ip, holder):
+    """From holder, open 16 streams on each of two connections and send only one
+    byte on each, as a client holding stream slots would. Then ask one query
+    from source. Returns whether it was answered within 3 s, and the reset codes
+    of the held streams reset in the first wave: from the first reset, within 8 s
+    of opening them, until 1 s later. The streams FTL accepted in one go share a
+    read deadline, the ones it accepts after that are reset seconds later."""
+    held = []
+    try:
+        for _ in range(2):
+            held.append(doq_connect(host, port, holder))
+            for _ in range(16):
+                held[-1].send(b"\x00", fin=False)
+        start = time.monotonic()
+        while time.monotonic() - start < 0.5:
+            for c in held:
+                c.pump(0.01)
+        v = doq_connect(host, port, source)
+        try:
+            query = b"\x00\x00" + build_query(qname)[2:]
+            sid = v.send(struct.pack("!H", len(query)) + query)
+            answered = v.wait(lambda: sid in v.answers, 3)
+            if answered:
+                validate(v.answers[sid], expected_ip)
+        finally:
+            v.close()
+        while time.monotonic() - start < 8 and not any(c.resets for c in held):
+            for c in held:
+                c.pump(0.01)
+        settle = time.monotonic() + 1
+        while time.monotonic() < settle:
+            for c in held:
+                c.pump(0.01)
+        return answered, [code for c in held for code in c.resets.values()]
+    finally:
+        for c in held:
+            c.close()
+
+
+def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
+    """Plaintext DoH request as a reverse proxy at address source sends it: a
+    PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
+    carries the query as body, any other method as the GET "dns" parameter.
+    Returns (HTTP status, lowercased response headers, body)."""
+    query = build_query(qname)
+    if method == "POST":
+        req = (b"POST /dns-query HTTP/1.1\r\nHost: pi.hole\r\n"
+               b"Content-Type: application/dns-message\r\n"
+               b"Content-Length: " + str(len(query)).encode() + b"\r\n"
+               b"Connection: close\r\n\r\n" + query)
+    else:
+        dns = base64.urlsafe_b64encode(query).rstrip(b"=")
+        req = (method.encode() + b" /dns-query?dns=" + dns + b" HTTP/1.1\r\n"
+               b"Host: pi.hole\r\nConnection: close\r\n\r\n")
+    return proxy_request(host, port, client_ip, source, req, pad, drip, ssl)
+
+
+def proxy_request(host, port, client_ip, source, req, pad=0, drip=0.0, ssl=True):
+    """Send req from address source behind a PROXY v2 header announcing
+    client_ip, over TLS unless ssl is False. Returns (HTTP status, lowercased response headers,
+    body). pad adds another TLV of that many bytes, drip sends the header after
+    its fixed 16 bytes one byte per drip seconds. A connection closed without
+    an answer reports status "none"."""
+    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    # PP2_TYPE_SSL (client=SSL or plain, verify=0)
+    tlvs = bytes([0x20, 0x00, 0x05, 0x01 if ssl else 0x00, 0, 0, 0, 0])
+    if pad:
+        tlvs += bytes([0xE1]) + struct.pack("!H", pad) + bytes(pad)
+    body = addrs + tlvs
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    resp = b""
+    with socket.create_connection((host, port), timeout=5, source_address=(source, 0)) as s:
+        try:
+            if drip:
+                s.sendall(hdr[:16])
+                for i in range(16, len(hdr)):
+                    s.sendall(hdr[i:i + 1])
+                    time.sleep(drip)
+                s.sendall(req)
+            else:
+                s.sendall(hdr + req)
+            while True:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                resp += chunk
+        except OSError:
+            pass
+    if not resp:
+        return "none", {}, b""
+    head, _, payload = resp.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    status = lines[0].split(" ", 2)[1]
+    headers = {}
+    for line in lines[1:]:
+        name, _, value = line.partition(":")
+        headers[name.strip().lower()] = value.strip()
+    return status, headers, payload
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit("usage: dotdoh_query.py <emit|emitqr|emiturl|check|tcpkeep|tcpcross|dot|dotqr|dotmulti|dotgarbage|"
-                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn> ...")
+                 "forge|dotcert|doh3|doq|doqnodata|doqmulti|doqgarbage|doqerror|doqalpn|"
+                 "dohproxy|dohproxyget|dohproxyplain|dohproxypad|dohproxydrip|dohproxyerror|dohproxymethod|proxyget> ...")
     cmd = sys.argv[1]
 
     if cmd == "emit":
@@ -583,6 +868,50 @@ def main():
         _, _, host, port, source, expected_pem = sys.argv[:6]
         dot_peercert(host, int(port), source, expected_pem)
         print("OK")
+    elif cmd in ("dohproxy", "dohproxyget", "dohproxyplain"):
+        # dohproxyget also prints the Cache-Control header of the answer,
+        # dohproxyplain announces a client that did not use TLS
+        _, _, host, port, domain, client_ip, source, expected_ip = sys.argv[:8]
+        method = "GET" if cmd == "dohproxyget" else "POST"
+        status, headers, answer = doh_proxy(host, int(port), domain, client_ip, source, method,
+                                            ssl=cmd != "dohproxyplain")
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
+        if cmd == "dohproxyget":
+            print("cache-control: %s" % headers.get("cache-control", ""))
+    elif cmd in ("dohproxypad", "dohproxydrip"):
+        # dohproxy with another TLV of <arg> bytes, or with the header after its
+        # fixed part dripped one byte per <arg> seconds
+        _, _, host, port, domain, client_ip, source, expected_ip, arg = sys.argv[:10]
+        if cmd == "dohproxypad":
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, source, pad=int(arg))
+        else:
+            status, _, answer = doh_proxy(host, int(port), domain, client_ip, source, drip=float(arg))
+        if status != "200":
+            print("HTTP %s" % status)
+            return
+        validate(answer, expected_ip)
+        print("OK")
+    elif cmd == "proxyget":
+        # Status of a GET of any path behind the PROXY v2 header
+        _, _, host, port, path, client_ip, source = sys.argv[:8]
+        req = ("GET %s HTTP/1.1\r\nHost: pi.hole\r\nConnection: close\r\n\r\n" % path).encode()
+        status, _, _ = proxy_request(host, int(port), client_ip, source, req)
+        print("HTTP %s" % status)
+    elif cmd == "dohproxyerror":
+        # Status, Content-Type and first body line of a refused request
+        _, _, host, port, domain, client_ip, source = sys.argv[:8]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, source)
+        print("HTTP %s type=%s body=%s" % (status, headers.get("content-type", ""),
+                                          body.decode("latin-1").split("\n")[0]))
+    elif cmd == "dohproxymethod":
+        # Status, Allow header and body length of a request with any method
+        _, _, host, port, method, domain, client_ip, source = sys.argv[:9]
+        status, headers, body = doh_proxy(host, int(port), domain, client_ip, source, method)
+        print("HTTP %s allow=%s body=%d" % (status, headers.get("allow", ""), len(body)))
     elif cmd == "doh3":
         _, _, host, port, domain, expected_ip = sys.argv[:6]
         doh3(host, int(port), domain, expected_ip)
@@ -660,6 +989,32 @@ def main():
         _, _, host, port, alpn, source = sys.argv[:6]
         doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
+    elif cmd == "doqrefused":
+        # A connection beyond the connection caps learns that it was refused.
+        # <sources> is a comma-separated list, [last] defaults to its first one
+        _, _, host, port, sources, count = sys.argv[:6]
+        sources = sources.split(",")
+        last = sys.argv[6] if len(sys.argv) > 6 else sources[0]
+        kept, closed = doq_refused(host, int(port), sources, int(count), last)
+        print("kept %d open, closed %s" % (kept, closed))
+    elif cmd == "doqbusyerror":
+        # A protocol error on a connection with an answer not acknowledged yet
+        # must still reach the client as a connection close with that code
+        _, _, host, port, domain, source, count = sys.argv[:7]
+        print("closed %s" % doq_busy_error(host, int(port), domain, source, int(count)))
+    elif cmd == "doqpipeline":
+        # <count> queries on one connection, at most <window> of them in flight
+        _, _, host, port, domain, source, expected_ip, count, window = sys.argv[:9]
+        answered, reset, closed = doq_pipeline(host, int(port), domain, source, expected_ip,
+                                               int(count), int(window))
+        print("answered %d reset %d closed %s" % (answered, reset, closed))
+    elif cmd == "doqhold":
+        # One client holding many streams must leave slots for another, and
+        # streams that never deliver their query must not hold one for long
+        _, _, host, port, domain, source, expected_ip, holder = sys.argv[:8]
+        answered, codes = doq_hold(host, int(port), domain, source, expected_ip, holder)
+        print("other client answered %s, %d held streams reset with codes %s"
+              % (answered, len(codes), sorted(set(codes))))
     else:
         sys.exit("unknown subcommand: %s" % cmd)
 

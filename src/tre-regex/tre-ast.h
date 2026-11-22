@@ -93,6 +93,9 @@ typedef struct {
 typedef struct {
   tre_ast_node_t *left;
   tre_ast_node_t *right;
+  /* If set, the alternatives are single characters which match at the
+     same position, e.g. the items of a bracket expression. */
+  unsigned int single_position:1;
 } tre_union_t;
 
 tre_ast_node_t *
@@ -107,6 +110,10 @@ tre_ast_new_iter(tre_mem_t mem, tre_ast_node_t *arg, int min, int max,
 
 tre_ast_node_t *
 tre_ast_new_union(tre_mem_t mem, tre_ast_node_t *left, tre_ast_node_t *right);
+
+tre_ast_node_t *
+tre_ast_new_char_union(tre_mem_t mem, tre_ast_node_t *left,
+		       tre_ast_node_t *right);
 
 tre_ast_node_t *
 tre_ast_new_catenation(tre_mem_t mem, tre_ast_node_t *left,
