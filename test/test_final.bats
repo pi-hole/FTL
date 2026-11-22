@@ -836,3 +836,35 @@ first_start_stop() {
   run bash -c 'grep "CRIT:" /tmp/FTL.type0.log | grep -v "CRIT: pihole-FTL is already running"'
   refute_output
 }
+
+@test "A TCP query keeps its client when dnsmasq adds an ECS option of its own" {
+  # With a full-length address, add-subnet makes dnsmasq add the same ECS
+  # option to every query. FTL has to see what the client sent, like for UDP
+  saved="$(./pihole-FTL --config misc.dnsmasq_lines)"
+  run ./pihole-FTL --config misc.dnsmasq_lines '["add-subnet=192.0.2.77/32"]'
+  assert_success
+  logsize_restart=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'su pihole -s /bin/sh -c /home/pihole/pihole-FTL'
+  assert_success
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_restart"
+  assert_success
+
+  dig +tries=1 +time=2 A ecs-udp.ftl @127.0.0.1 > /dev/null || true
+  dig +tcp +tries=1 +time=2 A ecs-tcp.ftl @127.0.0.1 > /dev/null || true
+  # Queries move into the in-memory database once per second
+  sleep 2
+  udp="$(curl -s '127.0.0.1/api/queries?domain=ecs-udp.ftl' | jq -c '[.queries[].client.ip]')"
+  tcp="$(curl -s '127.0.0.1/api/queries?domain=ecs-tcp.ftl' | jq -c '[.queries[].client.ip]')"
+
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c "kill $(cat /run/pihole-FTL.pid)"
+  assert_success
+  run bash -c "./pihole-FTL wait-for '########## FTL terminated after' /var/log/pihole/FTL.log 30 $logsize_before"
+  assert_success
+  run ./pihole-FTL --config misc.dnsmasq_lines "${saved}"
+  assert_success
+
+  printf "UDP: %s, TCP: %s\n" "${udp}" "${tcp}"
+  [[ "${udp}" == '["127.0.0.1"]' ]]
+  [[ "${tcp}" == '["127.0.0.1"]' ]]
+}
