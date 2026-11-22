@@ -11,7 +11,9 @@ Usage:
 
 import itertools
 import json
+import os
 import re
+import time
 from urllib.parse import quote
 
 import pytest
@@ -657,6 +659,44 @@ class TestURIControlCharRejection:
             f"Legitimate .lp request was rejected: {status_line!r}"
 
 
+class TestRequestParsing:
+    """Malformed requests get exactly one clean response."""
+
+    def test_status_line_does_not_echo_request(self):
+        """The status line carries HTTP/1.0 or HTTP/1.1, never bytes taken
+        from a malformed request line."""
+        for request_line, status in ((b"GET /admin/ ", b"400"),
+                                     (b"GET /admin/ HTTP/9.9x", b"505")):
+            raw = _raw_http(request_line + b"\r\nHost: 127.0.0.1\r\n"
+                            b"X-Probe: echoed\r\n\r\n")
+            head = raw.split(b"\r\n\r\n", 1)[0]
+            assert head.startswith(b"HTTP/1.0 " + status + b" "), \
+                f"Unexpected response to {request_line!r}:\n{raw!r}"
+            assert b"X-Probe" not in head, raw
+
+    def test_huge_content_length_is_answered_once(self):
+        """A keep-alive request with a Content-Length close to INT64_MAX gets
+        one response, its header is not parsed a second time."""
+        # Only static files keep the connection open, CI does not install the
+        # dashboard
+        pages = "/var/www/html/admin"
+        created = not os.path.isdir(pages)
+        os.makedirs(pages, exist_ok=True)
+        path = os.path.join(pages, "keepalive.txt")
+        with open(path, "w") as f:
+            f.write("static\n")
+        try:
+            raw = _raw_http(b"GET /admin/keepalive.txt HTTP/1.1\r\n"
+                            b"Host: 127.0.0.1\r\n"
+                            b"Content-Length: 9223372036854775800\r\n\r\n")
+        finally:
+            os.remove(path)
+            if created:
+                os.rmdir(pages)
+        statuses = re.findall(rb"^HTTP/1\.[01] \d{3}", raw, re.MULTILINE)
+        assert statuses == [b"HTTP/1.1 200"], raw
+
+
 # ---------------------------------------------------------------------------
 # DNS blocking status
 # ---------------------------------------------------------------------------
@@ -971,36 +1011,21 @@ class TestStatsDatabase:
             assert key in data, f"Missing key '{key}' in database summary"
 
     def test_database_top_domains_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/top_domains?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "top_domains")
         assert "domains" in data
         assert isinstance(data["domains"], list)
         assert data["total_queries"] == summary["sum_queries"]
         assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_top_clients_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/top_clients?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "top_clients")
         assert "clients" in data
         assert isinstance(data["clients"], list)
         assert data["total_queries"] == summary["sum_queries"]
         assert data["blocked_queries"] == summary["sum_blocked"]
 
     def test_database_upstreams_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/upstreams?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "upstreams")
         assert "upstreams" in data
         assert isinstance(data["upstreams"], list)
         # Same status sets as the in-memory endpoint: every stored query is
@@ -1015,13 +1040,25 @@ class TestStatsDatabase:
         for u in real:
             assert not u["ip"].isdigit(), json.dumps(u, indent=2)
 
+    @staticmethod
+    def _with_summary(api_session, endpoint):
+        # FTL stores queries in the background, so retry until the summary is
+        # the same before and after the request
+        def get(name):
+            return _j(api_session.get(
+                f"{FTL_URL}/api/stats/database/{name}?from=1&until=9999999999",
+                timeout=5))
+        for _ in range(5):
+            before = get("summary")
+            data = get(endpoint)
+            summary = get("summary")
+            if before == summary:
+                return data, summary
+            time.sleep(1)
+        pytest.fail(f"Database kept changing while reading {endpoint}")
+
     def test_database_query_types_with_range(self, api_session):
-        data = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/query_types?from=1&until=9999999999",
-            timeout=5))
-        summary = _j(api_session.get(
-            f"{FTL_URL}/api/stats/database/summary?from=1&until=9999999999",
-            timeout=5))
+        data, summary = self._with_summary(api_session, "query_types")
         assert "types" in data
         assert isinstance(data["types"], dict)
         # Every stored query has exactly one type, OTHER included

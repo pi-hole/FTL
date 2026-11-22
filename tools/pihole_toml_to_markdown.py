@@ -12,7 +12,7 @@ def parse_array_items(array_content):
     current_item = ""
     in_quotes = False
     quote_char = None
-    
+
     for char in array_content:
         if char in ('"', "'") and (not in_quotes or quote_char == char):
             if in_quotes and quote_char == char:
@@ -30,12 +30,12 @@ def parse_array_items(array_content):
             current_item = ""
         else:
             current_item += char
-    
+
     # Don't forget the last item
     item = current_item.strip().strip('"').strip("'")
     if item:
         items.append(item)
-    
+
     return items
 
 
@@ -142,7 +142,7 @@ sudo pihole-FTL --config dns.dnssec true
                         match = re.search(r'Example:\s*(.+?)(?:\s*$)', line)
                         if match:
                             example_value = match.group(1).strip()
-                        
+
                         # Check if this is a multi-line example (e.g., array that spans multiple lines)
                         if example_value and example_value.startswith("[") and not example_value.endswith("]"):
                             # Multi-line array example - collect remaining lines
@@ -250,7 +250,7 @@ sudo pihole-FTL --config dns.dnssec true
             documentation.append(f'=== "Environment (Docker Compose)"')
             documentation.append("    ```yaml")
             documentation.append("    environment:")
-            
+
             # Convert TOML-style array to proper YAML format
             if example_display_value.strip().startswith("["):
                 # This is an array - convert to YAML format with pipe syntax
@@ -272,7 +272,7 @@ sudo pihole-FTL --config dns.dnssec true
                 if "\n" in yaml_value:
                     yaml_value = f"|\n        " + "\n        ".join(yaml_value.splitlines())
                 documentation.append(f"      {env_var}: {yaml_value}")
-            
+
             documentation.append("    ```\n")
             comment_buffer = []
 
