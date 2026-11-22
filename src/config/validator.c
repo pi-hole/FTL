@@ -88,11 +88,11 @@ bool validate_dns_hosts(union conf_value *val, const char *key, char err[VALIDAT
 		// Check if it's in the form "IP[ \t]HOSTNAME"
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
-		
+
 		// Strip leading spaces/tabs
 		while(isspace((unsigned char)*tmp))
 			tmp++;
-		
+
 		char *ip = strsep(&tmp, " \t");
 
 		// Skip any extra whitespace/tabs after the IP
@@ -1149,18 +1149,18 @@ void sanitize_dns_hosts(union conf_value *val)
 		// Parse and sanitize the entry
 		char *str = strdup(item->valuestring);
 		char *tmp = str;
-		
+
 		// Strip leading spaces/tabs
 		while(isspace((unsigned char)*tmp))
 			tmp++;
-		
+
 		// If the string is empty or starts with a comment, skip it
 		if(strlen(tmp) == 0 || tmp[0] == '#')
 		{
 			free(str);
 			continue;
 		}
-		
+
 		char *ip = strsep(&tmp, " \t");
 
 		// Skip any extra whitespace/tabs after the IP
@@ -1184,7 +1184,7 @@ void sanitize_dns_hosts(union conf_value *val)
 		}
 		strcpy(sanitized, ip);
 		size_t current_len = strlen(ip);
-		
+
 		// Process hostnames
 		char *host = NULL;
 		while(tmp && (host = strsep(&tmp, " \t")) != NULL)
@@ -1211,7 +1211,7 @@ void sanitize_dns_hosts(union conf_value *val)
 					strcpy(sanitized + current_len, host);
 					current_len += host_len;
 				}
-				
+
 				// Add any remaining content after this comment token
 				if(tmp && strlen(tmp) > 0)
 				{

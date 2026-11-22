@@ -431,6 +431,8 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 
 	// Get minimum timestamp to keep
 	time_t mintime = now;
+	// Start of the over-time window after this run
+	time_t window_start = now;
 	// Index of the first query the export has not stored yet
 	unsigned int keep_from = counters->queries;
 	if(!flush)
@@ -446,6 +448,11 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 		// Keep the queries that may still receive a reply
 		if(mintime > now - REPLY_TIMEOUT)
 			mintime = now - REPLY_TIMEOUT;
+
+		// The over-time window follows this cutoff. A query kept past it for
+		// the export below may lie before the window when it is removed, no
+		// slot is counted down for it then
+		window_start = mintime;
 
 		// Keep the queries the export has not stored yet, but no longer than
 		// a day past the cutoff. Nothing is stored with a broken database,
@@ -610,7 +617,7 @@ void runGC(const time_t now, time_t *lastGCrun, const bool flush)
 	// Determine if overTime memory needs to get moved. A flush keeps the
 	// current window, the removed queries were already subtracted above
 	if(!flush)
-		moveOverTimeMemory(mintime);
+		moveOverTimeMemory(window_start);
 
 	log_debug(DEBUG_GC, "GC removed %u queries (took %.2f ms)", removed, timer_elapsed_msec(GC_TIMER));
 

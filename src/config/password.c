@@ -435,32 +435,6 @@ static void refund_password_attempt(void)
 	pthread_mutex_unlock(&rate_limit_lock);
 }
 
-// Replace a verified SHA256^2 hash by a BALLOON hash. Only called on login,
-// where no config lock is held: the PATCH and reread paths reach
-// verify_password() with the (non-recursive) config lock already taken
-static void upgrade_legacy_password(const char *password)
-{
-	char *new_hash = create_password(password);
-	char *legacy = double_sha256_password(password);
-
-	// The password may have been changed since it was verified
-	lock_config();
-	if(new_hash != NULL && legacy != NULL &&
-	   strcmp(config.webserver.api.pwhash.v.s, legacy) == 0)
-	{
-		log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
-		if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
-			free(config.webserver.api.pwhash.v.s);
-		config.webserver.api.pwhash.v.s = new_hash;
-		config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
-		writeFTLtoml(true, NULL);
-	}
-	else
-		free(new_hash);
-	unlock_config();
-	free(legacy);
-}
-
 enum password_result verify_login(const char *password)
 {
 	// Check if this is the CLI password
@@ -472,9 +446,6 @@ enum password_result verify_login(const char *password)
 
 	enum password_result pw = verify_password(password, config.webserver.api.pwhash.v.s, true);
 	log_debug(DEBUG_API, "Password %s correct", pw == PASSWORD_CORRECT ? "" : "not");
-
-	if(pw == PASSWORD_CORRECT && config.webserver.api.pwhash.v.s[0] != '$')
-		upgrade_legacy_password(password);
 
 	// Check if an application password is set and if it matches. The check
 	// above already counted this attempt against the rate limit, so this one
@@ -558,7 +529,38 @@ enum password_result verify_password(const char *password, const char *pwhash, c
 	{
 		// Legacy password
 		char *supplied = double_sha256_password(password);
-		const bool result = strcmp(pwhash, supplied) == 0;
+		bool result = strcmp(pwhash, supplied) == 0;
+
+		// Upgrade double-hashed password to BALLOON hash. Only logins do,
+		// the other callers check a new hash or already hold the config lock
+		if(result && rate_limiting)
+		{
+			lock_config();
+			char *new_hash = NULL;
+			// A reread may have replaced the hash just verified meanwhile
+			if(strcmp(config.webserver.api.pwhash.v.s, supplied) != 0)
+				result = false;
+			else
+				new_hash = create_password(password);
+			if(new_hash != NULL)
+			{
+				log_info("Upgrading password from SHA256^2 to BALLOON-SHA256");
+				char *upgraded = strdup(new_hash);
+				if(config.webserver.api.pwhash.t == CONF_STRING_ALLOCATED)
+					free(config.webserver.api.pwhash.v.s);
+				config.webserver.api.pwhash.v.s = new_hash;
+				config.webserver.api.pwhash.t = CONF_STRING_ALLOCATED;
+				writeFTLtoml(true, NULL);
+
+				// Writing took in a password set through the CLI meanwhile,
+				// the one just verified is no longer valid
+				if(upgraded == NULL || strcmp(config.webserver.api.pwhash.v.s, upgraded) != 0)
+					result = false;
+				free(upgraded);
+			}
+			unlock_config();
+		}
+
 		free(supplied);
 
 		// Successful logins do not count against rate-limiting

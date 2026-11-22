@@ -107,6 +107,12 @@
 // peer that stops acknowledging gets the close without that flush when this
 // runs out.
 #define DOQ_CLOSE_TIMEOUT_MS 1000
+// Most connections refused by conn_new() that are kept until their handshake
+// is complete, and how long one is kept for that (ms), see conn_refuse(). A
+// refused connection is freed at most DOQ_CLOSE_TIMEOUT_MS after that, and a
+// refusal beyond DOQ_MAX_REFUSED closes the connection at once.
+#define DOQ_MAX_REFUSED 16
+#define DOQ_REFUSE_TIMEOUT_MS 1000
 
 // Per-stream buffers, same layout as the DoT listener: rbuf accumulates the
 // length-prefixed client query, abuf holds the raw answer, wbuf holds the framed
@@ -222,19 +228,19 @@ static void doq_reset_stream(SSL *ssl, uint64_t code)
 	SSL_stream_reset(ssl, &args, sizeof(args));
 }
 
-// Drive the shutdown of a connection with its close code, without blocking.
+// Drive the shutdown of a connection with a close code, without blocking.
 // Unless force is set, OpenSSL first waits for the stream data already written
 // to be acknowledged and then sends the CONNECTION_CLOSE on its own; with force
 // the close goes out right away, from within this call. Returns true once the
 // connection has terminated (its closing period is over).
-static bool doq_shutdown(struct doq_conn *c, bool force)
+static bool doq_shutdown(SSL *ssl, uint64_t code, bool force)
 {
 	SSL_SHUTDOWN_EX_ARGS args;
 	memset(&args, 0, sizeof(args));
-	args.quic_error_code = c->close_code;
+	args.quic_error_code = code;
 	const uint64_t flags = SSL_SHUTDOWN_FLAG_NO_BLOCK |
 	                       (force ? SSL_SHUTDOWN_FLAG_NO_STREAM_FLUSH : 0);
-	return SSL_shutdown_ex(c->ssl, flags, &args, sizeof(args)) == 1;
+	return SSL_shutdown_ex(ssl, flags, &args, sizeof(args)) == 1;
 }
 
 // Close a connection with a DoQ application error code (RFC 9250 Sec. 4.3).
@@ -249,7 +255,7 @@ static void doq_close_conn(struct doq_conn *c, uint64_t code)
 	c->closing = true;
 	c->close_code = code;
 	c->close_deadline = doq_now_ms() + DOQ_CLOSE_TIMEOUT_MS;
-	doq_shutdown(c, false);
+	doq_shutdown(c->ssl, code, false);
 }
 
 // ALPN selection: accept only "doq". QUIC mandates ALPN, so a client offering
@@ -489,6 +495,7 @@ static SSL *doq_make_listener(int fd)
 
 static void stream_free(struct doq_stream *s);
 static void conn_free(struct doq_conn *c);
+static void refused_free_all(void);
 
 // Drop every listener (and its socket). Connections are torn down separately.
 static void listeners_close(void)
@@ -555,6 +562,7 @@ static void doq_reload_cert_if_changed(void)
 	for(int i = 0; i < DOQ_MAX_CONNS; i++)
 		if(g_conns[i].used)
 			conn_free(&g_conns[i]);
+	refused_free_all();
 	listeners_close();
 
 	// The old context is released only after everything that referenced it is
@@ -661,7 +669,7 @@ static void conn_free(struct doq_conn *c)
 		// certificate reload or thread exit) sends its CONNECTION_CLOSE now,
 		// without the flush: SSL_free() would discard it otherwise. The code is
 		// DOQ_NO_ERROR unless an earlier close chose another one.
-		doq_shutdown(c, true);
+		doq_shutdown(c->ssl, c->close_code, true);
 		SSL_free(c->ssl);
 	}
 	memset(c, 0, sizeof(*c));
@@ -740,15 +748,97 @@ static void conn_local_ip(const char *peer, char *out, size_t outlen)
 	close(fd);
 }
 
+// Connections refused by conn_new(), kept until their close has gone out.
+struct doq_refused {
+	SSL *ssl;
+	uint64_t code;      // DoQ error code the connection is closed with
+	bool closing;       // CONNECTION_CLOSE initiated
+	uint64_t deadline;  // monotonic ms by which it is closed, or freed once closing
+};
+static struct doq_refused g_refused[DOQ_MAX_REFUSED];
+
+// Advance a refused connection: close it once its handshake is complete, it
+// ended or its time is up, and free it once the close is done.
+static void refused_drive(struct doq_refused *r)
+{
+	const uint64_t now = doq_now_ms();
+	if(!r->closing)
+	{
+		// 1 once the handshake is complete, 0 once the connection ended, and
+		// below 0 while the handshake is still under way
+		const int hs = SSL_do_handshake(r->ssl);
+		ERR_clear_error();
+		if(hs < 0 && now < r->deadline)
+			return;
+		doq_shutdown(r->ssl, r->code, true);
+		r->closing = true;
+		r->deadline = now + DOQ_CLOSE_TIMEOUT_MS;
+		return;
+	}
+	if(doq_shutdown(r->ssl, r->code, true) || now >= r->deadline)
+	{
+		SSL_free(r->ssl);
+		memset(r, 0, sizeof(*r));
+	}
+}
+
+// Free every refused connection, sending its close now (certificate reload and
+// thread exit).
+static void refused_free_all(void)
+{
+	for(int i = 0; i < DOQ_MAX_REFUSED; i++)
+		if(g_refused[i].ssl != NULL)
+		{
+			doq_shutdown(g_refused[i].ssl, g_refused[i].code, true);
+			SSL_free(g_refused[i].ssl);
+			memset(&g_refused[i], 0, sizeof(g_refused[i]));
+		}
+}
+
+// Refuse an accepted connection. OpenSSL hands it out on the client's first
+// validated Initial, after sending the server's first flight, so the client
+// completes its handshake and believes the connection is up. It learns about
+// the refusal only from a CONNECTION_CLOSE; SSL_free() alone would discard it
+// and leave the client sending queries into a dead connection until its idle
+// timeout. Until the handshake is complete OpenSSL can send the close only in
+// an Initial packet, which a client that has sent its Handshake packet can no
+// longer read (RFC 9001 Sec. 4.9.1), and freeing the connection drops its
+// connection IDs, so the client's next Initial would make OpenSSL accept a
+// second connection for it. The connection is therefore kept until its
+// handshake is complete, at most DOQ_REFUSE_TIMEOUT_MS, and then closed with
+// the DoQ code in a 1-RTT packet (see refused_drive()). When DOQ_MAX_REFUSED
+// connections are kept already, it is closed at once.
+static void conn_refuse(SSL *ssl, uint64_t code)
+{
+	SSL_set_blocking_mode(ssl, 0);
+	for(int i = 0; i < DOQ_MAX_REFUSED; i++)
+		if(g_refused[i].ssl == NULL)
+		{
+			g_refused[i].ssl = ssl;
+			g_refused[i].code = code;
+			g_refused[i].closing = false;
+			g_refused[i].deadline = doq_now_ms() + DOQ_REFUSE_TIMEOUT_MS;
+			refused_drive(&g_refused[i]);
+			return;
+		}
+	// This close can be lost as described above. That only happens while
+	// DOQ_MAX_REFUSED refused connections wait already, which a client
+	// opening connections beyond the caps can bring about.
+	log_debug(DEBUG_TLS, "dotdoh: %d refused DoQ connections kept already, closing one at once",
+	          DOQ_MAX_REFUSED);
+	doq_shutdown(ssl, code, true);
+	SSL_free(ssl);
+}
+
 // Take a connection slot for an accepted QUIC connection. Returns NULL (having
-// freed the connection object) when a cap is hit or the peer is not allowed.
+// refused the connection) when a cap is hit or the peer is not allowed.
 static struct doq_conn *conn_new(SSL *ssl)
 {
 	char client[INET6_ADDRSTRLEN];
 	if(!conn_peer_ip(ssl, client, sizeof(client)))
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ connection without a usable peer address, dropping");
-		SSL_free(ssl);
+		conn_refuse(ssl, DOQ_INTERNAL_ERROR);
 		return NULL;
 	}
 
@@ -757,14 +847,14 @@ static struct doq_conn *conn_new(SSL *ssl)
 	if(!dotdoh_source_allowed(client))
 	{
 		log_debug(DEBUG_TLS, "dotdoh: refused DoQ connection from non-local client %s", client);
-		SSL_free(ssl);
+		conn_refuse(ssl, DOQ_INTERNAL_ERROR);
 		return NULL;
 	}
 	if(g_nconns >= DOQ_MAX_CONNS)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ connection limit (%d) reached, dropping %s",
 		          DOQ_MAX_CONNS, client);
-		SSL_free(ssl);
+		conn_refuse(ssl, DOQ_EXCESSIVE_LOAD);
 		return NULL;
 	}
 	int same_src = 0;
@@ -775,7 +865,7 @@ static struct doq_conn *conn_new(SSL *ssl)
 	{
 		log_debug(DEBUG_TLS, "dotdoh: DoQ per-source limit (%d) reached for %s, dropping",
 		          DOQ_MAX_CONNS_PER_IP, client);
-		SSL_free(ssl);
+		conn_refuse(ssl, DOQ_EXCESSIVE_LOAD);
 		return NULL;
 	}
 	struct doq_conn *c = NULL;
@@ -783,7 +873,7 @@ static struct doq_conn *conn_new(SSL *ssl)
 		if(!g_conns[i].used) { c = &g_conns[i]; break; }
 	if(c == NULL)
 	{
-		SSL_free(ssl);
+		conn_refuse(ssl, DOQ_EXCESSIVE_LOAD);
 		return NULL;
 	}
 
@@ -1178,7 +1268,7 @@ static void listener_accept_all(SSL *listener)
 		SSL *cs = SSL_accept_connection(listener, SSL_ACCEPT_CONNECTION_NO_BLOCK);
 		if(cs == NULL)
 			break;
-		struct doq_conn *c = conn_new(cs); // frees cs on failure
+		struct doq_conn *c = conn_new(cs); // refuses cs on failure
 		if(c != NULL)
 			conn_accept_streams(c);
 	}
@@ -1218,6 +1308,21 @@ static int doq_event_timeout_ms(void)
 				best = (int)left;
 		}
 	}
+	// Wake up for the refused connections too
+	for(int i = 0; i < DOQ_MAX_REFUSED; i++)
+		if(g_refused[i].ssl != NULL)
+		{
+			if(SSL_get_event_timeout(g_refused[i].ssl, &tv, &inf) == 1 && !inf)
+			{
+				const long ms = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+				if(ms < best)
+					best = ms < 0 ? 0 : (int)ms;
+			}
+			const uint64_t left = g_refused[i].deadline > now ?
+			                      g_refused[i].deadline - now : 0;
+			if(left < (uint64_t)best)
+				best = (int)left;
+		}
 	// Wake up for the stream deadlines too
 	for(int i = 0; i < DOQ_MAX_STREAMS; i++)
 		if(g_streams[i].used)
@@ -1264,7 +1369,7 @@ static void doq_reap(void)
 			for(int k = 0; k < DOQ_MAX_STREAMS && c->nstreams > 0; k++)
 				if(g_streams[k].used && g_streams[k].conn == c)
 					stream_free(&g_streams[k]);
-			if(doq_shutdown(c, false) || doq_now_ms() >= c->close_deadline)
+			if(doq_shutdown(c->ssl, c->close_code, false) || doq_now_ms() >= c->close_deadline)
 				conn_free(c);
 			continue;
 		}
@@ -1379,6 +1484,9 @@ void *dotdoh_doq_thread(void *val)
 		for(int i = 0; i < DOQ_MAX_CONNS && !conn_wants_write; i++)
 			if(g_conns[i].used && SSL_net_write_desired(g_conns[i].ssl))
 				conn_wants_write = true;
+		for(int i = 0; i < DOQ_MAX_REFUSED && !conn_wants_write; i++)
+			if(g_refused[i].ssl != NULL && SSL_net_write_desired(g_refused[i].ssl))
+				conn_wants_write = true;
 		if(conn_wants_write)
 			for(nfds_t k = 0; k < n; k++)
 				pfd[k].events |= POLLOUT;
@@ -1409,6 +1517,9 @@ void *dotdoh_doq_thread(void *val)
 		for(int i = 0; i < DOQ_MAX_CONNS; i++)
 			if(g_conns[i].used)
 				SSL_handle_events(g_conns[i].ssl);
+		for(int i = 0; i < DOQ_MAX_REFUSED; i++)
+			if(g_refused[i].ssl != NULL)
+				refused_drive(&g_refused[i]);
 
 		// New connections, then new streams on existing connections.
 		for(int i = 0; i < g_nlisten; i++)
@@ -1455,6 +1566,7 @@ void *dotdoh_doq_thread(void *val)
 	for(int i = 0; i < DOQ_MAX_CONNS; i++)
 		if(g_conns[i].used)
 			conn_free(&g_conns[i]);
+	refused_free_all();
 	// Release the pooled per-stream buffers (kept attached across reuse). Only
 	// slots that actually served a stream have them; guard against NULL as FTL's
 	// free() wrapper warns on a NULL argument.

@@ -17,7 +17,14 @@
 void initOverTime(void);
 
 #define getOverTimeID(timestamp) _getOverTimeID(timestamp, __FILE__, __LINE__)
-unsigned int _getOverTimeID(const time_t timestamp, const char *file, const int line);
+/**
+ * Get the overTime slot of a timestamp
+ *
+ * @param timestamp The timestamp
+ * @return The slot index, -1 for a timestamp before the oldest slot. A
+ *         timestamp past the newest slot counts towards the newest slot
+ */
+int _getOverTimeID(const time_t timestamp, const char *file, const int line);
 
 /**
  * Move the overTime slots so the oldest interval starts with mintime. The time

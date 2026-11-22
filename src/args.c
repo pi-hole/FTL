@@ -839,7 +839,7 @@ void parse_args(int argc, char *argv[])
 	{
 		cli_mode = true;
 		log_ctrl(false, true);
-		exit(migrate_config_v6() ? EXIT_SUCCESS : EXIT_FAILURE);
+		exit(migrate_config_v6(&config) ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
 	// Get name of the default gateway
