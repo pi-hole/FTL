@@ -1510,6 +1510,8 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
     {
       struct frec_src *src, *prev;
       int do_trunc;
+      /* Pi-hole modification */
+      int first_ID = -1;
             
       for (do_trunc = 0, prev = NULL, src = &forward->frec_src; src; prev = src, src = src->next)
 	{
@@ -1554,6 +1556,11 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 		  log_query(F_UPSTREAM, "query", NULL, "duplicate", 0);
 		}
 	    }
+
+	  /* Pi-hole modification: every duplicate gets the reply of the
+	     original, which comes first, whether it fits or not */
+	  if (forward->frec_src.next)
+	    FTL_multiple_replies(src->log_id, &first_ID);
 	}
 
       /* The packet is too big for one or more requestors, send them a truncated answer. */
@@ -1571,9 +1578,6 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 	  daemon->log_display_id = forward->frec_src.log_id;
 	  daemon->log_source_addr = &forward->frec_src.source;
 	  log_query(F_UPSTREAM, NULL, NULL, "truncated", 0);
-	  
-	  /* Pi-hole modification */
-	  int first_ID = -1;
 
 	  /* This gets the name back to the state it was in when we started. */
 	  flip_queryname(header, new, prev, &forward->frec_src);
@@ -1593,8 +1597,6 @@ void return_reply(time_t now, struct frec *forward, struct dns_header *header, s
 #ifdef HAVE_DUMPFILE
 		  dump_packet_udp(DUMP_REPLY, daemon->packet, (size_t)new, NULL, &src->source, src->fd);
 #endif
-		  /* Pi-hole modification */
-		  FTL_multiple_replies(src->log_id, &first_ID);
 		}
 	    }
 	}
