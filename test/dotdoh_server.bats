@@ -247,6 +247,16 @@ setup_file() {
   assert_output "answered 70 reset 0 closed None"
 }
 
+@test "dotdoh-server: a DoQ connection retires after taking 1000 streams" {
+  python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
+  # 1100 queries with up to 8 in flight on one connection: the first 1000
+  # (DOQ_MAX_CONN_STREAMS) are answered, then the connection is closed with
+  # DOQ_NO_ERROR (0x0) and the queries the client sent after those are lost
+  # with it. Update the numbers here when the constant changes.
+  run python3 test/dotdoh_query.py doqpipeline 127.0.0.1 853 "$DOMAIN" "$CLIENT" "$EXPECT_IP" 1100 8
+  assert_output "answered 1000 reset 0 closed 0"
+}
+
 @test "dotdoh-server: DoQ resets the stream of a query it cannot attribute" {
   python3 -c 'import aioquic' 2>/dev/null || skip "aioquic not installed"
   # RFC 9250 Sec. 4.3.2: DOQ_INTERNAL_ERROR (0x1), not DOQ_NO_ERROR

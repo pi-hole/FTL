@@ -95,9 +95,15 @@
 // it runs out the connection accepts no new stream and is closed with
 // DOQ_NO_ERROR once the queries in flight are answered, so the client learns
 // about it from the connection close, not from a lost query. Together with the
-// stream caps and the idle cap this bounds a connection, so unlike DoT there is
-// no cap on the number of queries.
+// stream caps, the idle cap and DOQ_MAX_CONN_STREAMS this bounds a connection.
 #define DOQ_CONN_MAX_LIFETIME_S 120
+// Most streams a connection takes from its accept queue, answered or not,
+// before it retires as at the end of its lifetime. OpenSSL keeps about 340
+// bytes of every stream it handed out until the connection is freed, and each
+// one taken lets the client open another, so this bounds that memory to about
+// 340 KB per connection. A client asking more queries than this in less than
+// DOQ_CONN_MAX_LIFETIME_S opens its next connection sooner.
+#define DOQ_MAX_CONN_STREAMS 1000
 // Idle cap: a connection without an in-flight query is closed after this long,
 // so parked connections do not hold slots.
 #define DOQ_CONN_IDLE_TIMEOUT_S 30
@@ -173,6 +179,7 @@ struct doq_conn {
 	bool used;
 	SSL *ssl;                      // OpenSSL QUIC connection object
 	int nstreams;                  // streams currently attached to this conn
+	unsigned int ntaken;           // streams taken from the accept queue, see DOQ_MAX_CONN_STREAMS
 	bool retiring;                 // takes no new stream, closed once none is left
 	bool closing;                  // CONNECTION_CLOSE initiated, see doq_close_conn()
 	uint64_t close_code;           // DoQ error code the connection is closed with
@@ -1224,6 +1231,9 @@ static void conn_accept_streams(struct doq_conn *c)
 		SSL *st = SSL_accept_stream(c->ssl, SSL_ACCEPT_STREAM_NO_BLOCK);
 		if(st == NULL)
 			break;
+		// Past its stream budget it answers what is in flight and then closes
+		if(++c->ntaken >= DOQ_MAX_CONN_STREAMS)
+			c->retiring = true;
 		if((SSL_get_stream_type(st) & SSL_STREAM_TYPE_WRITE) == 0)
 		{
 			// A receive-only (unidirectional) stream cannot carry a response.
