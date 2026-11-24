@@ -310,8 +310,8 @@ int gravity_parseList(const char *infile, const char *outfile, const char *adlis
 
 	// Prepare SQL statement
 	const char *sql = antigravity ?
-		"INSERT INTO antigravity (domain, adlist_id) VALUES (?, ?);" :
-		"INSERT INTO gravity (domain, adlist_id) VALUES (?, ?);";
+        "INSERT OR IGNORE INTO antigravity (domain, adlist_id) VALUES (?, ?);" :
+        "INSERT OR IGNORE INTO gravity (domain, adlist_id) VALUES (?, ?);";
 	if(!checkOnly && sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
 	{
 		printf("%s  %s Unable to prepare SQL statement to insert domains into database file %s\n",
