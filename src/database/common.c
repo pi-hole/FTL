@@ -371,9 +371,12 @@ void SQLite3LogCallback(void *pArg, int iErrCode, const char *zMsg)
 		return;
 	}
 
-	if(iErrCode == SQLITE_WARNING)
+	// Extended codes like SQLITE_NOTICE_RECOVER_WAL carry the primary code
+	// in their lowest byte
+	const int primary = iErrCode & 0xff;
+	if(primary == SQLITE_WARNING)
 		log_warn("SQLite3: %s (%d)", zMsg, iErrCode);
-	else if(iErrCode == SQLITE_NOTICE || iErrCode == SQLITE_SCHEMA)
+	else if(primary == SQLITE_NOTICE || primary == SQLITE_SCHEMA)
 	{
 		// SQLITE_SCHEMA is returned when the database schema has changed
 		// This is not necessarily an error, as sqlite3_step() will re-prepare
