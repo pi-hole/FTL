@@ -2607,6 +2607,18 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	  expand_buf(bigbuff, 65536 + MAXDNAME + RRFIXEDSZ);
 	  out_header = bigbuff->iov_base;
 	  
+	  //********************** Pi-hole modification **********************//
+	  // add_edns0_config() may add options of dnsmasq's own, FTL reads the
+	  // client's pseudoheader as it arrived, like for UDP
+	  unsigned char *client_pheader = NULL;
+	  size_t client_phlen = 0;
+	  { unsigned char *ph = find_pseudoheader(header, (size_t)size, &client_phlen, NULL, NULL, NULL);
+	    if (ph && (client_pheader = whine_malloc(client_phlen)))
+	      memcpy(client_pheader, ph, client_phlen);
+	    else
+	      client_phlen = 0; }
+	  //******************************************************************//
+
 	  /* Add edns0 pheader to query */
 	  size = add_edns0_config(header, size, daemon->packet_buff_sz, &peer_addr, now, &cacheable);
 
@@ -2624,9 +2636,8 @@ void tcp_request(int confd, time_t now, struct iovec *bigbuff,
 	  daemon->log_source_addr = &peer_addr;
 
 	  //********************** Pi-hole modification **********************//
-	  { size_t phlen = 0;
-	    pheader = find_pseudoheader(header, (size_t)size, &phlen, NULL, NULL, NULL);
-	    FTL_parse_pseudoheaders(pheader, phlen); }
+	  FTL_parse_pseudoheaders(client_pheader, client_phlen);
+	  free(client_pheader);
 	  //******************************************************************//
 	  
 	  if (OPCODE(header) != QUERY)
