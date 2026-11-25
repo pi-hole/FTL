@@ -1751,6 +1751,18 @@ size_t answer_request(struct dns_header *header, char *limit, size_t qlen,
 	else
 	  return 0; /* give up if any cached CNAME in chain can't be used for DNSSEC reasons. */
 	
+	/******** Pi-hole modification ********/
+	// Check every target of a cached chain like one from upstream, a
+	// domain inside it may be blocked for this client but not for the
+	// one the chain was cached for. The reply ends with this CNAME
+	if (FTL_CNAME(cname_target, name, daemon->log_display_id))
+	  {
+	    log_query(F_UPSTREAM, cname_target, NULL, "blocked during CNAME inspection", 0);
+	    ans = 1;
+	    break;
+	  }
+	/**************************************/
+
 	if (qtype == T_CNAME)
 	  break;
 	

@@ -81,6 +81,7 @@ pdnsutil rrset add ftl. cname-5.ftl. CNAME cname-4.ftl.
 pdnsutil rrset add ftl. cname-6.ftl. CNAME cname-5.ftl.
 pdnsutil rrset add ftl. cname-7.ftl. CNAME cname-6.ftl.
 pdnsutil rrset add ftl. cname-ok.ftl. CNAME a.ftl.
+pdnsutil rrset add ftl. cname-mid.ftl. CNAME cname-ok.ftl.
 pdnsutil rrset add ftl. cname-tcp.ftl. CNAME gravity.ftl.
 
 # Create CNAME for SOA test domain
