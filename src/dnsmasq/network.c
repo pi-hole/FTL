@@ -592,6 +592,9 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 	  daemon->interfaces = iface;
 	  return 1;
 	}
+      /************** Pi-hole modification **************/
+      free(iface->slabel);
+      /**************************************************/
       free(iface);
 
     }
@@ -664,6 +667,9 @@ static void clean_interfaces(void)
       {
         *up = iface->next;
         free(iface->name);
+        /************** Pi-hole modification **************/
+        free(iface->slabel);
+        /**************************************************/
         free(iface);
       }
     else
