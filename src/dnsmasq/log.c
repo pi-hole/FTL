@@ -363,7 +363,7 @@ void my_syslog(int priority, const char *format, ...)
     {
       char *message;
       va_start(ap, format);
-      if(vasprintf(&message, format, ap))
+      if(vasprintf(&message, format, ap) > 0)
         {
           dnsmasq_diagnosis_warning(message);
           free(message);
