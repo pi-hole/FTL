@@ -219,6 +219,40 @@ for s in socks:
   assert_success
 }
 
+@test "A regex reply with a CNAME is NOERROR and its records are consistent" {
+  # The question is 225 bytes in wire format and the target 251, so the
+  # CNAME still fits into the 512 bytes of a client without EDNS, the A not
+  l63="$(head -c 63 /dev/zero | tr '\0' a)"
+  long="cname-trunc.${l63}.${l63}.${l63}.$(head -c 15 /dev/zero | tr '\0' d).ftl"
+  target="${l63}.${l63}.${l63}.$(head -c 53 /dev/zero | tr '\0' w).ftl"
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "INSERT INTO domainlist (type, domain, enabled) VALUES (3, '^cname-reply\.ftl\$;reply=CNAME,a.ftl', 1), (3, '^cname-ip\.ftl\$;reply=1.2.3.4;reply=CNAME,cname-target.ftl', 1), (3, '^cname-trunc\.;reply=1.2.3.4;reply=CNAME,${target}', 1);"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  reply="$(dig A cname-reply.ftl @127.0.0.1 2>&1)"
+  ip="$(dig A cname-ip.ftl +noall +answer @127.0.0.1 2>&1)"
+  trunc="$(dig A "${long}" +noedns +ignore @127.0.0.1 2>&1)"
+
+  ./pihole-FTL sqlite3 /etc/pihole/gravity.db ".timeout 5000" "DELETE FROM domainlist WHERE domain LIKE '^cname-%';"
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  kill -SIGRTMIN "$(cat /run/pihole-FTL.pid)"
+  run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 60 ${logsize_before}"
+  assert_success
+
+  printf "%s\n---\n%s\n---\n%s\n" "${reply}" "${ip}" "${trunc}"
+  [[ "${reply}" == *"status: NOERROR"* ]]
+  [[ "${reply}" =~ cname-reply\.ftl\.[[:space:]]+[0-9]+[[:space:]]+IN[[:space:]]+CNAME[[:space:]]+a\.ftl\. ]]
+  # The address belongs to the target, not to the name with the CNAME
+  [[ "${ip}" =~ cname-ip\.ftl\.[[:space:]]+[0-9]+[[:space:]]+IN[[:space:]]+CNAME[[:space:]]+cname-target\.ftl\. ]]
+  [[ "${ip}" =~ cname-target\.ftl\.[[:space:]]+[0-9]+[[:space:]]+IN[[:space:]]+A[[:space:]]+1\.2\.3\.4 ]]
+  # Truncated, the header counts only the CNAME that fit
+  [[ "${trunc}" =~ flags:[a-z\ ]*\ tc ]]
+  [[ "${trunc}" == *"ANSWER: 1,"* ]]
+  [[ "${trunc}" != *"malformed"* ]]
+}
+
 @test "A new client's MAC address is looked up on its first query" {
   # hwlen starts at -1, which must compare below 1 on every architecture
   logsize_before=$(stat -c%s /var/log/pihole/FTL.log)

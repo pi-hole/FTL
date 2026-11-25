@@ -583,8 +583,9 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	// Debug logging
 	print_flags(flags);
 
-	// Setup reply header
-	setup_reply(header, flags, ede_code);
+	// Setup reply header. A CNAME without addresses is a NOERROR reply, too,
+	// setup_reply() would take its flags as nowhere to forward to otherwise
+	setup_reply(header, (flags & F_CNAME) && !(flags & (F_IPV4 | F_IPV6)) ? F_NOERR : (unsigned int)flags, ede_code);
 
 	// Add NEG flag when replying with NXDOMAIN or NODATA. This is necessary
 	// to get proper logging in pihole.log At the same time, we cannot add
@@ -612,6 +613,8 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 	const bool hostn = strcmp(blockingreason, HOSTNAME) == 0;
 
 	int trunc = 0;
+	// Owner of the address records, the CNAME target once there is one
+	int nameoffset = sizeof(struct dns_header);
 	// Add CNAME answer record if requested
 	if(flags & F_CNAME)
 	{
@@ -619,12 +622,14 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 		if(config.debug.queries.v.b)
 			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s CNAME %s\"", name, cname_target);
 
-		// Add CNAME resource record
-		header->ancount = htons(ntohs(header->ancount) + 1);
+		// Add CNAME resource record, count only what fits
 		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
-		                       &p, daemon->local_ttl, NULL,
+		                       &p, daemon->local_ttl, &nameoffset,
 		                       T_CNAME, C_IN, (char*)"d", cname_target))
+		{
+			header->ancount = htons(ntohs(header->ancount) + 1);
 			log_query(flags, name, NULL, (char*)blockingreason, 0);
+		}
 	}
 
 	// Add A answer record if requested
@@ -667,12 +672,14 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s A %s\"", name, ip);
 		}
 
-		// Add A resource record
-		header->ancount = htons(ntohs(header->ancount) + 1);
-		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		// Add A resource record, count only what fits
+		if(add_resource_record(header, limit, &trunc, nameoffset,
 		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_A, C_IN, (char*)"4", &addr.addr4))
+		{
+			header->ancount = htons(ntohs(header->ancount) + 1);
 			log_query(flags & ~F_IPV6, name, &addr, (char*)blockingreason, 0);
+		}
 	}
 
 	// Add AAAA answer record if requested
@@ -714,16 +721,18 @@ size_t _FTL_make_answer(struct dns_header *header, char *limit, const size_t len
 			log_debug(DEBUG_QUERIES, "  Adding RR: \"%s AAAA %s\"", name, ip);
 		}
 
-		// Add AAAA resource record
-		header->ancount = htons(ntohs(header->ancount) + 1);
-		if(add_resource_record(header, limit, &trunc, sizeof(struct dns_header),
+		// Add AAAA resource record, count only what fits
+		if(add_resource_record(header, limit, &trunc, nameoffset,
 		                       &p, hostn ? daemon->local_ttl : config.dns.blockTTL.v.ui,
 		                       NULL, T_AAAA, C_IN, (char*)"6", &addr.addr6))
+		{
+			header->ancount = htons(ntohs(header->ancount) + 1);
 			log_query(flags & ~F_IPV4, name, &addr, (char*)blockingreason, 0);
+		}
 	}
 
-	// Log empty replies
-	if(!(flags & (F_IPV4 | F_IPV6)))
+	// Log empty replies, a CNAME was logged above
+	if(!(flags & (F_IPV4 | F_IPV6 | F_CNAME)))
 	{
 		if(flags == 0)
 		{
