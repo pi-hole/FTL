@@ -39,7 +39,6 @@ load 'bats_helper.bash'
   # pytest: 2x pihole.toml writes (excludeDomains config array PUT + DELETE)
   # pytest: 2x pihole.toml writes (excludeDomains DEL character PATCH + restore)
   # pytest: 2x pihole.toml writes (dns/blocking disable + enable)
-  # pytest: 2x pihole.toml writes (dns/blocking disable with timer + expiry)
   # pytest: 4x pihole.toml writes (config PATCH round-trips: bool + int, change + restore each)
   # pytest: 2x pihole.toml writes (auth stress test password set + remove)
   # pytest: 2x pihole.toml writes (TOTP stress test secret set + remove)
@@ -49,13 +48,14 @@ load 'bats_helper.bash'
   # pytest: 3x pihole.toml writes (v5 Teleporter import migration, restart + ZIP restore)
   # pytest: 4x pihole.toml writes (v5 setupVars.conf import twice, migration + restart each)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
+  # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest is skipped (too slow), so only BATS writes occur
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-      assert_line --index 0 "8"
+      assert_line --index 0 "14"
   else
-    [[ ${lines[0]} == "50" ]]
+    [[ ${lines[0]} == "54" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
@@ -99,8 +99,9 @@ load 'bats_helper.bash'
       else
         ./pihole-FTL --config dns.blocking.active "${state}" > /dev/null
       fi
-      # The lists are reloaded and the verdicts reset after a change
-      run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 10 ${logsize_before}"
+      # Enabling reloads the lists and resets the verdicts, disabling only logs
+      [[ "${state}" == "true" ]] && expect="deny regex for" || expect="Blocking status is disabled"
+      run bash -c "./pihole-FTL wait-for '${expect}' /var/log/pihole/FTL.log 10 ${logsize_before}"
       results="${results} ${via}-${state}:${status}:$(dig +short +tries=1 +time=2 -b 127.0.0.35 denied.ftl @127.0.0.1)"
     done
   done
@@ -170,6 +171,34 @@ load 'bats_helper.bash'
   [[ "${first}" == "${blocked}" ]]
   [[ "${second}" == "192.168.1.3" ]]
   [[ "${resets}" == "1" ]]
+}
+
+@test "A blocked answer copied to a duplicate query counts as blocked for both" {
+  before="$(grep -c ^ /var/log/pihole/FTL.log)"
+  # Two identical queries without EDNS(0) from one client, sent at once. The
+  # recursor holds the answer back (test/pdns/luadns.lua), so dnsmasq attaches
+  # the second query to the first, and the answer is too large for either of
+  # them, so both get a truncated reply through FTL_multiple_replies()
+  run python3 -c '
+import socket, struct
+question = b"\x0cslow-blocked\x03ftl\x00" + struct.pack(">HH", 1, 1)
+socks = []
+for qid in (1, 2):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.52", 0))
+    s.settimeout(10)
+    s.sendto(struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 0) + question, ("127.0.0.1", 53))
+    socks.append(s)
+for s in socks:
+    print("truncated" if s.recv(4096)[2] & 0x02 else "full")'
+  assert_line --index 0 "truncated"
+  assert_line --index 1 "truncated"
+
+  log="$(sed -n "${before},\$p" /var/log/pihole/FTL.log)"
+  [[ "${log}" == *"DEBUG_QUERIES: **** sending reply "* ]]
+  # The original and the duplicate are both blocked by the upstream's answer
+  run bash -c "curl -s '127.0.0.1/api/stats/top_clients?blocked=true&count=1000' | jq '.clients[] | select(.ip == \"127.0.0.52\") | .count'"
+  assert_output "2"
 }
 
 @test "Flushing the logs keeps older history and the overTime window" {
@@ -598,6 +627,11 @@ first_start_stop() {
     printf ".timeout 30000\nUPDATE info SET value = CAST(value AS INTEGER) + 1 WHERE property = 'updated';\n" | ./pihole-FTL sqlite3 -ni /etc/pihole/gravity.db
     assert_equal "$(stat -c%s /etc/pihole/gravity.db)" "${size_before}"
     run bash -c "./pihole-FTL wait-for 'Gravity database has been updated, reloading now' /var/log/pihole/FTL.log 5 $logsize_update"
+    assert_success
+    # The reload follows in the database thread and reads the timestamp again
+    # when it opens the database. Let it finish before the next update, or the
+    # reload reads that one as well, and FTL never sees it as a change
+    run bash -c "./pihole-FTL wait-for 'deny regex for' /var/log/pihole/FTL.log 30 $logsize_update"
     assert_success
   done
 

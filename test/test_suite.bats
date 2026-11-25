@@ -1756,6 +1756,13 @@ setup() {
   assert_line --partial --index 1 "WARNING:     - FTLCONF_dns_upstreams"
 }
 
+@test "Secret environmental variable is used without a warning" {
+  # Its own log file and an unused port, as in the PTR resolver test above
+  run bash -c 'FTLCONF_files_log_ftl=/tmp/secret_env.log FTLCONF_dns_port=5399 FTLCONF_webserver_api_password=secret ./pihole-FTL ptr 127.0.0.1'
+  assert_output --partial "FTLCONF_webserver_api_password is used"
+  refute_output --partial "Trying to free NULL pointer"
+}
+
 @test "cJSON_GetErrorPtr and cJSON_InitHooks are never used (for thread-safety reasons)" {
   # cJSON_GetErrorPtr() is not thread-safe but can be replaces by cJSON_ParseWithOpts()
   # cJSON_InitHooks() is only thread-safe if used before any other cJSON function in a thread
@@ -1914,6 +1921,10 @@ setup() {
 
   run ./pihole-FTL --config dns.hosts '["1.2.3.4 \u001b[2J\u001bx.example"]'
   assert_line --index 0 'Invalid value: dns.hosts[0]: invalid hostname ("\x1B[2J\x1Bx.example")'
+  assert_failure 3
+
+  run ./pihole-FTL --config dns.cnameRecords '["a\u001b[2J.example,b.example"]'
+  assert_line --index 0 'Invalid value: dns.cnameRecords[0]: invalid domain ("a\x1B[2J.example")'
   assert_failure 3
 
   run ./pihole-FTL --config dns.revServers '["true,1.2.3.4,ns\u001b[2Jexample.com"]'

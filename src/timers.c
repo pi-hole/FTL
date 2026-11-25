@@ -13,8 +13,9 @@
 #include "log.h"
 // killed
 #include "signals.h"
-// set_blockingmode()
+// get_blockingstatus(), apply_blockingstatus()
 #include "config/config.h"
+#include <stdatomic.h>
 
 static struct timespec t0[NUMTIMERS];
 
@@ -79,25 +80,46 @@ void sleepms(const int milliseconds)
 	select(0, NULL, NULL, NULL, &tv);
 }
 
-// The timer state is shared between the timer thread and the API workers
+// A temporary blocking status overrides dns.blocking.active until its timer
+// expires. It is kept in memory only, so a restart drops it and the configured
+// status applies again. timer_lock guards the state shared between the timer
+// thread and the API workers
 static pthread_mutex_t timer_lock = PTHREAD_MUTEX_INITIALIZER;
 static double timer_delay = -1.0;
-static bool timer_target_status = true;
+// -1 = no temporary status, else the temporary blocking status
+static _Atomic int temp_status = -1;
 
-void set_blockingmode_timer(double delay, bool target_status)
+int get_temp_blockingstatus(void)
 {
-	pthread_mutex_lock(&timer_lock);
-	timer_delay = delay;
-	timer_target_status = target_status;
-	pthread_mutex_unlock(&timer_lock);
+	return atomic_load(&temp_status);
 }
 
-void get_blockingmode_timer(double *delay, bool *target_status)
+double get_temp_blockingstatus_timer(void)
 {
 	pthread_mutex_lock(&timer_lock);
-	*delay = timer_delay;
-	*target_status = timer_target_status;
+	const double delay = timer_delay;
 	pthread_mutex_unlock(&timer_lock);
+	return delay;
+}
+
+void set_temp_blockingstatus(const bool status, const double delay)
+{
+	const enum blocking_status before = get_blockingstatus();
+	pthread_mutex_lock(&timer_lock);
+	timer_delay = delay;
+	atomic_store(&temp_status, status);
+	pthread_mutex_unlock(&timer_lock);
+	apply_blockingstatus(before);
+}
+
+void clear_temp_blockingstatus(void)
+{
+	const enum blocking_status before = get_blockingstatus();
+	pthread_mutex_lock(&timer_lock);
+	timer_delay = -1.0;
+	atomic_store(&temp_status, -1);
+	pthread_mutex_unlock(&timer_lock);
+	apply_blockingstatus(before);
 }
 
 #define SLEEPING_TIME 0.1 // seconds
@@ -111,41 +133,31 @@ void *timer(void *val)
 	// to the database
 	while(!killed)
 	{
+		const enum blocking_status before = get_blockingstatus();
+		bool expired = false;
 		// Hold the lock across the tick so a new timer set through the API
 		// is neither overwritten by the decrement nor discarded on expiry
-		bool expired = false, target_status = true;
 		pthread_mutex_lock(&timer_lock);
 		if(timer_delay > 0)
 		{
-			log_debug(DEBUG_EXTRA, "Pi-hole will be %s in %.1f seconds...",
-			          timer_target_status ? "enabled" : "disabled", timer_delay);
+			log_debug(DEBUG_EXTRA, "Temporary blocking status ends in %.1f seconds...",
+			          timer_delay);
 
 			timer_delay -= SLEEPING_TIME;
 		}
 		else if(timer_delay <= 0.0 && timer_delay > -1.0)
 		{
-			// The API takes the config lock before timer_lock, so only
-			// try it here and retry on the next tick while a config
-			// change is in progress
-			if(trylock_config())
-			{
-				expired = true;
-				target_status = timer_target_status;
-				timer_delay = -1.0;
-			}
+			log_debug(DEBUG_EXTRA, "Timer expired, blocking status is %s again",
+			          config.dns.blocking.active.v.b ? "enabled" : "disabled");
+
+			timer_delay = -1.0;
+			atomic_store(&temp_status, -1);
+			expired = true;
 		}
 		pthread_mutex_unlock(&timer_lock);
 
-		// Writing the config takes the SHM lock, which the API holds while
-		// it reads the timer, so timer_lock must not be held here. The
-		// config lock keeps the API from setting a new timer meanwhile
 		if(expired)
-		{
-			log_debug(DEBUG_EXTRA, "Timer expired, setting blocking mode to %s",
-			          target_status ? "enabled" : "disabled");
-			set_blockingstatus(target_status);
-			unlock_config();
-		}
+			apply_blockingstatus(before);
 		thread_sleepms(TIMER, SLEEPING_TIME * 1000);
 	}
 

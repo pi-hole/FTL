@@ -280,7 +280,8 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 	char *escaped_envvar = is_secret_conf_item(conf_item) ? NULL : escape_control_chars(envvar);
 	log_debug(DEBUG_CONFIG, "ENV %s = %s", conf_item->e,
 	          is_secret_conf_item(conf_item) ? "(hidden)" : (escaped_envvar ? escaped_envvar : "(unable to display)"));
-	free(escaped_envvar);
+	if(escaped_envvar != NULL)
+		free(escaped_envvar);
 
 	// Snapshot the previous value and type before the type switch commits
 	// the new value into conf_item->v. If the validator below rejects the
