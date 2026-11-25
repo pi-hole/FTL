@@ -1358,10 +1358,6 @@ int main_dnsmasq (int argc, char **argv)
 
 static void sig_handler(int sig)
 {
-  /**** Pi-hole modification ****/
-  send_event(pipewrite, EVENT_SIGNAL, sig, NULL);
-  /******************************/
-
   if (pid == 0)
     {
       /* ignore anything other than TERM during startup
@@ -1420,6 +1416,13 @@ static void sig_handler(int sig)
       /* master process */
       int event, errsave = errno;
       
+      /**** Pi-hole modification ****/
+      // Only here the pipe exists and is the own one, startup, the
+      // helper and TCP workers do not report their signals
+      send_event(pipewrite, EVENT_SIGNAL, sig, NULL);
+      errno = errsave;
+      /******************************/
+
       if (sig == SIGHUP)
 	event = EVENT_RELOAD;
       else if (sig == SIGCHLD)
