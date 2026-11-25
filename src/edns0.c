@@ -58,6 +58,12 @@ ednsData *getEDNS(const int id)
 	return NULL;
 }
 
+// Like getEDNS(), but leaves the data to the next consumer of the same packet
+const ednsData * __attribute__((pure)) peekEDNS(const int id)
+{
+	return edns.valid && edns.id == abs(id) ? &edns : NULL;
+}
+
 void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen)
 {
 	// Drop whatever an earlier packet left behind, even if this one has no

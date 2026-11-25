@@ -3539,8 +3539,9 @@ int _FTL_check_reply(const unsigned int rcode, const unsigned short flags,
                      const union all_addr *addr,
                      const int raw_id, const char *file, const int line)
 {
-	// Get EDE data (if available)
-	const ednsData *edns = getEDNS(raw_id);
+	// Get EDE data (if available). Only look at it, FTL_reply() records the
+	// EDE of the same reply afterwards
+	const ednsData *edns = peekEDNS(raw_id);
 
 	// The query ID is negative if this is a TCP query
 	const int id = raw_id < 0 ? -raw_id : raw_id;

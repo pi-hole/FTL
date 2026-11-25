@@ -22,6 +22,7 @@ typedef struct {
 } ednsData;
 
 ednsData *getEDNS(const int id);
+const ednsData *peekEDNS(const int id) __attribute__((pure));
 void FTL_parse_pseudoheaders(unsigned char *pheader, const size_t plen);
 
 #endif // EDNS0_HEADER
