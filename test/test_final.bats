@@ -201,6 +201,29 @@ for s in socks:
   assert_output "2"
 }
 
+@test "A blocked answer that fits is copied to a duplicate query, too" {
+  # As above, but with EDNS(0), so the answer fits and both get it in full
+  run python3 -c '
+import socket, struct
+question = b"\x03dup\x0cslow-blocked\x03ftl\x00" + struct.pack(">HH", 1, 1)
+opt = b"\x00" + struct.pack(">HHIH", 41, 1232, 0, 0)
+socks = []
+for qid in (1, 2):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("127.0.0.53", 0))
+    s.settimeout(10)
+    s.sendto(struct.pack(">HHHHHH", qid, 0x0100, 1, 0, 0, 1) + question + opt, ("127.0.0.1", 53))
+    socks.append(s)
+for s in socks:
+    print("truncated" if s.recv(4096)[2] & 0x02 else "full")'
+  assert_line --index 0 "full"
+  assert_line --index 1 "full"
+
+  # The duplicate is not left in progress but counts as blocked, too
+  run bash -c "curl -s '127.0.0.1/api/stats/top_clients?blocked=true&count=1000' | jq '.clients[] | select(.ip == \"127.0.0.53\") | .count'"
+  assert_output "2"
+}
+
 @test "Flushing the logs keeps older history and the overTime window" {
   # Runs after the ID 0 check above as the flush deletes the last 24 hours.
   now=$(date +%s)
