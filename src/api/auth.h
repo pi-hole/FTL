@@ -47,6 +47,8 @@ struct session {
 	bool used;
 	bool app;
 	bool cli;
+	bool cluster;
+	long long cluster_seq;     // the sequence the peer signed this request with
 	struct {
 		bool login;
 		bool mixed;

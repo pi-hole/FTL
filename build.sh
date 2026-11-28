@@ -205,6 +205,7 @@ fi
 if [[ -n "${test}" ]]; then
     cd ..
     bash test/run.sh
+    bash test/run.sh cluster
 fi
 
 # Dedicated TLS terminator test. The regular suite exercises the plain HTTP/1.1

@@ -15,6 +15,10 @@
 #include "webserver/json_macros.h"
 // no_password_hint
 #include "api/api.h"
+// cluster_response_signature()
+#include "cluster/auth.h"
+// cluster_node_id()
+#include "cluster/sync.h"
 // UINT_MAX
 #include <limits.h>
 // HUGE_VAL
@@ -55,8 +59,35 @@ char *json_formatter(const cJSON *object)
 int send_http(struct ftl_conn *api, const char *mime_type,
               const char *msg)
 {
-	mg_send_http_ok(api->conn, mime_type, strlen(msg));
-	return mg_write(api->conn, msg, strlen(msg));
+	const size_t len = strlen(msg);
+	send_http_ok_signed(api, mime_type, msg, len);
+	return mg_write(api->conn, msg, len);
+}
+
+// The header block of a successful answer. An answer to a peer of our cluster
+// carries a signature over what it says: the peers decide who runs DHCP and
+// whose lists to take from these answers, so being able to make one up would be
+// enough to move the DHCP server or to hand a node somebody else's blocklists
+void send_http_ok_signed(struct ftl_conn *api, const char *mime_type,
+                         const char *body, const size_t len)
+{
+	char sig[CLUSTER_SIGLEN] = "";
+	if(!cluster_response_signature(api, body, len, sig))
+	{
+		mg_send_http_ok(api->conn, mime_type, (long long)len);
+		return;
+	}
+
+	char lenstr[32] = "";
+	snprintf(lenstr, sizeof(lenstr), "%zu", len);
+
+	mg_response_header_start(api->conn, 200);
+	if(mime_type != NULL)
+		mg_response_header_add(api->conn, "Content-Type", mime_type, -1);
+	mg_response_header_add(api->conn, "Content-Length", lenstr, -1);
+	mg_response_header_add(api->conn, CLUSTER_HDR_SIG, sig, -1);
+	mg_response_header_add(api->conn, CLUSTER_HDR_BY, cluster_node_id(), -1);
+	mg_response_header_send(api->conn);
 }
 
 int send_http_code(struct ftl_conn *api, const char *mime_type,
@@ -576,14 +607,23 @@ bool read_and_parse_payload(struct ftl_conn *api)
 	if(!payload_expected(api))
 		return true;
 
-	api->payload.raw = calloc(MAX_PAYLOAD_BYTES, sizeof(char));
+	// A peer's push carries whole items, and dns.hosts on its own outgrows
+	// what any other request needs. Only a sender that has signed a request
+	// here before gets the larger buffer, as the signature over these bytes
+	// can only be checked once they have all been read
+	const bool cluster_push = api->method == HTTP_PATCH &&
+	                          strcmp(api->request->local_uri_raw, "/api/config") == 0 &&
+	                          cluster_push_plausible(api);
+	const size_t max = cluster_push ? CLUSTER_MAX_PUSH_BYTES : MAX_PAYLOAD_BYTES;
+
+	api->payload.raw = calloc(max, sizeof(char));
 	if(api->payload.raw == NULL)
 		return false;
 
 	// Read payload. mg_read() reports a read error as a negative number,
 	// which must not reach the unsigned payload size - it would wrap and
 	// read as a payload too large to handle
-	const int nread = mg_read(api->conn, api->payload.raw, MAX_PAYLOAD_BYTES - 1);
+	const int nread = mg_read(api->conn, api->payload.raw, max - 1);
 	if (nread < 0)
 	{
 		log_web_debug(DEBUG_API, "Error reading payload");
@@ -596,7 +636,7 @@ bool read_and_parse_payload(struct ftl_conn *api)
 		log_web_debug(DEBUG_API, "Received no payload");
 		return true;
 	}
-	else if (api->payload.size >= MAX_PAYLOAD_BYTES-1)
+	else if (api->payload.size >= max - 1)
 	{
 		// If we reached the upper limit of payload size, we have likely
 		// truncated the payload. The only reasonable thing to do here is to

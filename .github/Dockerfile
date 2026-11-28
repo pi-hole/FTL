@@ -1,4 +1,4 @@
-FROM ghcr.io/pi-hole/ftl-build:v2.25
+FROM ghcr.io/pi-hole/ftl-build:v2.26.1
 
 WORKDIR /app
 

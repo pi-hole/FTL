@@ -76,6 +76,64 @@ jobs:
           [[ $FAIL == 1 ]] && exit 1 || echo "Branch name depth check passed."
         shell: bash
 
+  cluster-tests:
+    name: cluster-tests
+    # The cluster tests need an FTL instance of their own and take several
+    # minutes, so they run once on x86_64, in parallel to the build matrix
+    needs: smoke-tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read # to checkout the repository
+    env:
+      GIT_BRANCH: ${{ needs.smoke-tests.outputs.GIT_BRANCH }}
+      GIT_TAG: ${{ needs.smoke-tests.outputs.GIT_TAG }}
+    steps:
+      -
+        name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          persist-credentials: false
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 #v4.4.1
+      -
+        name: Restore ccache
+        # The amd64 entry of the build matrix compiles exactly this and saves the
+        # cache, so this job only restores it
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+        with:
+          path: .ccache
+          key: ccache-pihole-FTL-amd64-${{ github.sha }}
+          restore-keys: |
+            ccache-pihole-FTL-amd64-
+      -
+        name: Build FTL in ftl-build container
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 #v4.0.0
+        with:
+          max_attempts: 3
+          timeout_minutes: 30
+          command: |
+            docker buildx build \
+              --platform linux/amd64 \
+              --pull \
+              --load \
+              --build-arg "CI_ARCH=linux/amd64" \
+              --build-arg "GIT_BRANCH=${{ env.GIT_BRANCH }}" \
+              --build-arg "GIT_TAG=${{ env.GIT_TAG }}" \
+              --tag ftl-builder:local \
+              --file .github/Dockerfile .
+      -
+        name: Test the cluster in ftl-build container
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 #v4.0.0
+        with:
+          max_attempts: 3
+          timeout_minutes: 20
+          command: |
+            docker run --rm \
+              --platform linux/amd64 \
+              ftl-builder:local \
+              /bin/bash -c "test/run.sh cluster"
+
   build-test-deploy: # zizmor: ignore[anonymous-definition] a name would change the required status check names
     needs: smoke-tests
     strategy:
