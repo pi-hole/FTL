@@ -248,9 +248,9 @@ components:
                         - "block"
                       description: Type of list
                 example:
-                  - item: "https://hosts-file.net/ad_servers.txt"
+                  - item: "https://example.com/adlist.txt"
                     type: "block"
-                  - item: "https://hosts-file.net/ad_servers2.txt"
+                  - item: "https://example.org/adlist.txt"
                     type: "block"
         responses:
           '204':
@@ -311,13 +311,13 @@ components:
     address:
       description: Address of the list
       type: string
-      example: https://hosts-file.net/ad_servers.txt
+      example: https://example.com/adlist.txt
     address_array:
       description: array of list addresses
       type: array
       items:
         type: string
-      example: ["https://hosts-file.net/ad_servers.txt"]
+      example: ["https://example.com/adlist.txt"]
     address_maybe_array:
       type: object
       properties:
@@ -445,16 +445,16 @@ components:
                     type: string
           example:
             success:
-              - item: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-              - item: "https://mirror1.malwaredomains.com/files/justdomains"
+              - item: "https://example.com/adlist.txt"
+              - item: "https://example.org/adlist.txt"
             errors:
-              - item: "https://raw.githubusercontent.com/abc/def/master/hosts"
+              - item: "https://example.net/adlist.txt"
                 error: "The item is already present"
   examples:
     lists:
       value:
         lists:
-          - address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          - address: "https://example.com/adlist.txt"
             comment: "Migrated from @PIHOLE_INSTALL_DIR@/adlists.list"
             groups:
               - 0
@@ -462,7 +462,7 @@ components:
             id: 1
             date_added: 1594670974
             date_modified: 1595279300
-          - address: "https://mirror1.malwaredomains.com/files/justdomains"
+          - address: "https://example.org/adlist.txt"
             comment: "Migrated from @PIHOLE_INSTALL_DIR@/adlists.list"
             groups:
               - 0
@@ -508,7 +508,7 @@ components:
         type: string
       required: true
       description: Address of the list
-      example: https://hosts-file.net/ad_servers.txt
+      example: https://example.com/adlist.txt
     listtype:
       in: query
       name: type
