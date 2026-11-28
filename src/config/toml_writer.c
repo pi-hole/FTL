@@ -29,7 +29,7 @@
 #include "version.h"
 // sanitize_dns_hosts()
 #include "config/validator.h"
-// restart_ftl()
+// request_restart()
 #include "signals.h"
 
 // defined in config/config.c
@@ -382,10 +382,11 @@ static bool write_config_file(const bool verbose, FILE *fp, bool *restart)
 
 bool writeFTLtoml(const bool verbose, FILE *fp)
 {
-	// Restart only once the change at hand is written and the lock is released
+	// Restart only once the change at hand is written and the lock is released.
+	// The file may be written setting by setting, so collect these like API changes
 	bool restart = false;
 	const bool ok = write_config_file(verbose, fp, &restart);
 	if(restart)
-		restart_ftl("pihole.toml change");
+		request_restart("pihole.toml change");
 	return ok;
 }
