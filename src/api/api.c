@@ -98,6 +98,7 @@ static struct {
 	{ "/api/network/devices",                   "",                           api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/network/devices",                   "/{device_id}",               api_network_devices,                   { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },
 	{ "/api/endpoints",                         "",                           api_endpoints,                         { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
+	{ "/api/teleporter/export",                 "",                           api_teleporter_export,                 { API_PARSE_JSON, 0                         }, true,  HTTP_POST },
 	{ "/api/teleporter",                        "",                           api_teleporter,                        { API_FLAG_NONE, 0                          }, true,  HTTP_GET | HTTP_POST },
 	{ "/api/dhcp/leases",                       "",                           api_dhcp_leases_GET,                   { API_PARSE_JSON, 0                         }, true,  HTTP_GET },
 	{ "/api/dhcp/leases",                       "/{ip}",                      api_dhcp_leases_DELETE,                { API_PARSE_JSON, 0                         }, true,  HTTP_DELETE },
