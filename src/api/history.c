@@ -72,8 +72,9 @@ static unsigned int build_client_temparray(int *temparray, const int slot)
 		// Get client pointer
 		const clientsData *client = getClient(clientID, true);
 
-		// Skip invalid (recycled) clients
-		if(client == NULL)
+		// Skip invalid (recycled) clients and those only hidden queries
+		// have counted
+		if(client == NULL || client->flags.hidden_only)
 			continue;
 
 		// If this client is managed by an alias-client, we substitute
