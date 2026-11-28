@@ -1135,7 +1135,7 @@ bool _FTL_new_query(const unsigned int flags, const char *name,
 	}
 
 	// Update overTime
-	const unsigned int timeidx = getOverTimeID(querytimestamp);
+	const int timeidx = getOverTimeID(querytimestamp);
 
 	// Skip rest of the analysis if this query is not of type A or AAAA
 	// but user wants to see only A and AAAA queries (pre-v4.1 behavior)
@@ -4090,8 +4090,8 @@ void FTL_fork_and_bind_sockets(struct passwd *ent_pw, bool dnsmasq_start)
 			if(config.files.log.webserver.v.s != NULL)
 				chown_pihole_own_dir(config.files.log.webserver.v.s, ent_pw);
 
-			// Configured dnsmasq log file (pihole.log)
-			if(config.files.log.dnsmasq.v.s != NULL)
+			// Configured dnsmasq log file (pihole.log), none if it is empty
+			if(config.files.log.dnsmasq.v.s != NULL && config.files.log.dnsmasq.v.s[0] != '\0')
 				chown_pihole_own_dir(config.files.log.dnsmasq.v.s, ent_pw);
 
 			// Configured FTL database file
@@ -4690,15 +4690,20 @@ void FTL_dnsmasq_log(const char *payload, const int priority, const char *func, 
 	// Unlock SHM
 	unlock_shm();
 
+	/* Pi-hole diagnosis system */
+	if(priority == LOG_WARNING)
+		dnsmasq_diagnosis_warning(payload);
+
+	// files.log.dnsmasq is empty: the line goes to syslog, there is no
+	// pihole.log to write
+	if(FTL_syslog_dnsmasq(priority, func, payload))
+		return;
+
 	// Write to pihole.log via shared writer (FTL owns this file now).
 	// If pihole.log is unavailable, fall back to syslog for warnings and
 	// errors so they are not silently lost for the lifetime of the process.
 	if(!FTL_write_dnsmasq_log(payload, func) && priority <= LOG_WARNING)
 		syslog(priority, "%s", payload);
-
-	/* Pi-hole diagnosis system */
-	if(priority == LOG_WARNING)
-		dnsmasq_diagnosis_warning(payload);
 }
 
 static const char *check_dnsmasq_name(const char *name)

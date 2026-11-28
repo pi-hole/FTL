@@ -618,6 +618,31 @@ def doq_connect(host, port, source=None):
     return c
 
 
+def doq_refused(host, port, sources, count, last):
+    """Open count connections from each address in sources, then one more from
+    last, and keep all of them pumped until 3 s after the last one's handshake.
+    Returns how many of the first ones are still open then, and the close code
+    the last one ended with (None if it did not end)."""
+    kept, c = [], None
+    try:
+        for source in sources:
+            for _ in range(count):
+                kept.append(doq_connect(host, port, source))
+        c = DoqConn(host, port, last)
+        end = time.monotonic() + 10
+        while not c.handshaked and c.closed is None and time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        end = time.monotonic() + 3
+        while time.monotonic() < end:
+            for k in kept + [c]:
+                k.pump(0.002)
+        return sum(1 for k in kept if k.closed is None), c.closed
+    finally:
+        for k in kept + ([c] if c is not None else []):
+            k.close()
+
+
 def doq_busy_error(host, port, qname, source, count):
     """Ask count queries one after the other on one connection, then one more
     whose answer is lost on the way and so not acknowledged, and then one with a
@@ -709,6 +734,217 @@ def doq_hold(host, port, qname, source, expected_ip, holder):
             c.close()
 
 
+def doq_pump_all(conns, secs):
+    """Pump every connection in conns for secs seconds."""
+    end = time.monotonic() + secs
+    while time.monotonic() < end:
+        for c in conns:
+            c.pump(0.002)
+
+
+def doq_waiting(host, port, qname, source, expected_ip, count):
+    """Open 16 streams that send only one byte on one connection from source,
+    holding all of its stream slots, then ask count queries, half of them on
+    that connection and half on a second one from source. All of them have to
+    wait for a slot. Returns how many of the queries were answered within 8 s,
+    and the reset codes of those reset within 1 s of sending them, long before
+    the held streams reach their read deadline."""
+    conns = [doq_connect(host, port, source), doq_connect(host, port, source)]
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        for _ in range(16):
+            conns[0].send(b"\x00", fin=False)
+        doq_pump_all(conns, 0.3)
+        sids = [(conns[0], conns[0].send(framed)) for _ in range(count // 2)]
+        doq_pump_all(conns, 0.3)
+        sids += [(conns[1], conns[1].send(framed)) for _ in range(count - count // 2)]
+        doq_pump_all(conns, 1)
+        early = [c.resets[s] for c, s in sids if s in c.resets]
+        end = time.monotonic() + 8
+        while time.monotonic() < end and not all(c.done(s) for c, s in sids):
+            for c in conns:
+                c.pump(0.002)
+        for c, s in sids:
+            if s in c.answers:
+                validate(c.answers[s], expected_ip)
+        return sum(1 for c, s in sids if s in c.answers), early
+    finally:
+        for c in conns:
+            c.close()
+
+
+def doq_waiting_all(host, port, qname, holders, waiters, count):
+    """From each address in holders, open 16 streams that send only one byte,
+    which together take every stream slot of the listener. Then ask count
+    queries from each address in waiters, one address after the other, all of
+    which have to wait for a slot. Returns how many queries of each waiter were
+    reset within 0.3 s of sending them, long before the held streams reach
+    their read deadline."""
+    held = [doq_connect(host, port, h) for h in holders]
+    waiting = [doq_connect(host, port, w) for w in waiters]
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    every = held + waiting
+    try:
+        for c in held:
+            for _ in range(16):
+                c.send(b"\x00", fin=False)
+        doq_pump_all(every, 0.3)
+        early = []
+        for c in waiting:
+            sids = [c.send(framed) for _ in range(count)]
+            doq_pump_all(every, 0.3)
+            early.append(sum(1 for s in sids if s in c.resets))
+        return early
+    finally:
+        for c in every:
+            c.close()
+
+
+def doq_ask_many(c, framed, count):
+    """Ask count queries on connection c, at most 8 at a time."""
+    sent, inflight = 0, []
+    end = time.monotonic() + 60
+    while (sent < count or inflight) and c.closed is None and time.monotonic() < end:
+        while sent < count and len(inflight) < 8:
+            inflight.append(c.send(framed))
+            sent += 1
+        c.pump()
+        inflight = [s for s in inflight if not c.done(s)]
+
+
+def doq_drain(host, port, qname, source, expected_ip, budget):
+    """On one connection, ask budget - 16 queries, at most 8 at a time, then
+    open 15 streams that send only one byte and ask one more query, which
+    makes budget streams taken. Then ask 8 more queries, which have to wait
+    while the 15 streams hold their slots until their read deadline. Returns
+    whether the query that made budget was answered, how many of the 8 were
+    answered within 1 s of sending them and how many before the connection
+    ended (within 10 s), and the close code it ended with."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        doq_ask_many(c, framed, budget - 16)
+        for _ in range(15):
+            c.send(b"\x00", fin=False)
+        last = c.send(framed)
+        c.wait(lambda: c.done(last), 1)
+        c.wait(lambda: False, 0.3)
+        sids = [c.send(framed) for _ in range(8)]
+        c.wait(lambda: False, 1)
+        early = sum(1 for s in sids if s in c.answers)
+        c.wait(lambda: False, 10)
+        for s in sids:
+            if s in c.answers:
+                validate(c.answers[s], expected_ip)
+        return last in c.answers, early, sum(1 for s in sids if s in c.answers), c.closed
+    finally:
+        c.close()
+
+
+def doq_budget_burst(host, port, qname, source, expected_ip, first, count):
+    """On one connection, ask first queries, at most 8 at a time, and then
+    count more at once. Returns how many of those count were answered and how
+    many reset, waiting until all of them are done, the connection ended or
+    20 s passed."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        doq_ask_many(c, framed, first)
+        sids = [c.send(framed) for _ in range(count)]
+        c.wait(lambda: all(c.done(s) for s in sids), 20)
+        for s in sids:
+            if s in c.answers:
+                validate(c.answers[s], expected_ip)
+        return sum(1 for s in sids if s in c.answers), sum(1 for s in sids if s in c.resets)
+    finally:
+        c.close()
+
+
+def doq_retire_queued(host, port, qname, source, expected_ip, budget, count):
+    """On one connection, ask budget - 16 queries, at most 8 at a time, and
+    open 15 streams that send only one byte, which hold all but one stream slot
+    of source until their read deadline. Then ask count queries in a single
+    datagram: the first one makes budget streams taken, and the others have to
+    wait. Returns how many of the count were answered and the close code the
+    connection ended with, within 10 s."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        doq_ask_many(c, framed, budget - 16)
+        for _ in range(15):
+            c.send(b"\x00", fin=False)
+        c.wait(lambda: False, 0.3)
+        sids = []
+        for _ in range(count):
+            sid = c.conn.get_next_available_stream_id()
+            c.conn.send_stream_data(sid, framed, end_stream=True)
+            sids.append(sid)
+        c.flush()
+        c.wait(lambda: False, 10)
+        for s in sids:
+            if s in c.answers:
+                validate(c.answers[s], expected_ip)
+        return sum(1 for s in sids if s in c.answers), c.closed
+    finally:
+        c.close()
+
+
+def doq_retire_flood(host, port, qname, source, budget, count):
+    """On one connection, ask budget - 16 queries, at most 8 at a time, then
+    open 16 streams that send only one byte, which makes budget streams taken
+    and holds every stream slot of source until the read deadline. Then ask
+    count more queries at once. Returns the close code the connection ended
+    with within 1.5 s of sending them, long before the held streams reach their
+    read deadline (None if it did not end by then)."""
+    c = doq_connect(host, port, source)
+    query = b"\x00\x00" + build_query(qname)[2:]
+    framed = struct.pack("!H", len(query)) + query
+    try:
+        doq_ask_many(c, framed, budget - 16)
+        for _ in range(16):
+            c.send(b"\x00", fin=False)
+        c.wait(lambda: False, 0.3)
+        for _ in range(count):
+            c.send(framed)
+        c.wait(lambda: False, 1.5)
+        return c.closed
+    finally:
+        c.close()
+
+
+def doq_cycle(host, port, source):
+    """Open 100 streams that send only one byte on one connection from source.
+    Then keep 100 such streams open on a second connection from source,
+    opening a new one for every one reset, for at most 10 s. Returns the close
+    code the second connection ended with (None if it did not end) and how
+    many of its streams were reset before that."""
+    hold = doq_connect(host, port, source)
+    c = doq_connect(host, port, source)
+    opened = 0
+    try:
+        for _ in range(100):
+            hold.send(b"\x00", fin=False)
+        doq_pump_all([hold, c], 0.3)
+        end = time.monotonic() + 10
+        while c.closed is None and time.monotonic() < end:
+            while opened - len(c.resets) < 100:
+                c.conn.send_stream_data(c.conn.get_next_available_stream_id(), b"\x00",
+                                        end_stream=False)
+                opened += 1
+            c.flush()
+            c.pump(0.001)
+            hold.pump(0)
+        return c.closed, len(c.resets)
+    finally:
+        hold.close()
+        c.close()
+
+
 def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0.0, ssl=True):
     """Plaintext DoH request as a reverse proxy at address source sends it: a
     PROXY v2 header announcing client_ip, over TLS unless ssl is False. POST
@@ -729,17 +965,25 @@ def doh_proxy(host, port, qname, client_ip, source, method="POST", pad=0, drip=0
 
 def proxy_request(host, port, client_ip, source, req, pad=0, drip=0.0, ssl=True):
     """Send req from address source behind a PROXY v2 header announcing
-    client_ip, over TLS unless ssl is False. Returns (HTTP status, lowercased response headers,
-    body). pad adds another TLV of that many bytes, drip sends the header after
-    its fixed 16 bytes one byte per drip seconds. A connection closed without
-    an answer reports status "none"."""
-    addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
+    client_ip (IPv4 or IPv6), over TLS unless ssl is False. Returns (HTTP
+    status, lowercased response headers, body). pad adds another TLV of that
+    many bytes, drip sends the header after its fixed 16 bytes one byte per
+    drip seconds. A connection closed without an answer reports status "none"."""
+    if ":" in client_ip:
+        # TCP over IPv6, an IPv4 destination as ::ffff:a.b.c.d
+        dest = host if ":" in host else "::ffff:" + host
+        family = 0x21
+        addrs = (socket.inet_pton(socket.AF_INET6, client_ip) + socket.inet_pton(socket.AF_INET6, dest) +
+                 struct.pack("!HH", 40000, port))
+    else:
+        family = 0x11
+        addrs = socket.inet_aton(client_ip) + socket.inet_aton(host) + struct.pack("!HH", 40000, port)
     # PP2_TYPE_SSL (client=SSL or plain, verify=0)
     tlvs = bytes([0x20, 0x00, 0x05, 0x01 if ssl else 0x00, 0, 0, 0, 0])
     if pad:
         tlvs += bytes([0xE1]) + struct.pack("!H", pad) + bytes(pad)
     body = addrs + tlvs
-    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, 0x11]) + struct.pack("!H", len(body)) + body
+    hdr = b"\r\n\r\n\x00\r\nQUIT\n" + bytes([0x21, family]) + struct.pack("!H", len(body)) + body
     resp = b""
     with socket.create_connection((host, port), timeout=5, source_address=(source, 0)) as s:
         try:
@@ -964,6 +1208,14 @@ def main():
         _, _, host, port, alpn, source = sys.argv[:6]
         doq_handshake_rejected(host, int(port), alpn, source=source)
         print("OK")
+    elif cmd == "doqrefused":
+        # A connection beyond the connection caps learns that it was refused.
+        # <sources> is a comma-separated list, [last] defaults to its first one
+        _, _, host, port, sources, count = sys.argv[:6]
+        sources = sources.split(",")
+        last = sys.argv[6] if len(sys.argv) > 6 else sources[0]
+        kept, closed = doq_refused(host, int(port), sources, int(count), last)
+        print("kept %d open, closed %s" % (kept, closed))
     elif cmd == "doqbusyerror":
         # A protocol error on a connection with an answer not acknowledged yet
         # must still reach the client as a connection close with that code
@@ -982,6 +1234,52 @@ def main():
         answered, codes = doq_hold(host, int(port), domain, source, expected_ip, holder)
         print("other client answered %s, %d held streams reset with codes %s"
               % (answered, len(codes), sorted(set(codes))))
+    elif cmd == "doqwaiting":
+        # Queries beyond the stream slots of a client wait for one, but only
+        # as many as may wait for a slot; the others are reset right away
+        _, _, host, port, domain, source, expected_ip, count = sys.argv[:8]
+        answered, early = doq_waiting(host, int(port), domain, source, expected_ip, int(count))
+        print("answered %d, %d reset at once with codes %s"
+              % (answered, len(early), sorted(set(early))))
+    elif cmd == "doqwaitingall":
+        # Only as many queries may wait for a slot across all addresses as
+        # the listener allows; the others are reset right away
+        _, _, host, port, domain, holders, waiters, count = sys.argv[:8]
+        early = doq_waiting_all(host, int(port), domain, holders.split(","),
+                                waiters.split(","), int(count))
+        print("reset at once per address %s" % early)
+    elif cmd == "doqdrain":
+        # A connection that reaches its stream budget answers the queries that
+        # queued while its last ones were in flight before it closes
+        _, _, host, port, domain, source, expected_ip, budget = sys.argv[:8]
+        last, early, before, closed = doq_drain(host, int(port), domain, source,
+                                                expected_ip, int(budget))
+        print("last answered %s, 8 queued: %d answered at once, %d before the close, closed %s"
+              % (last, early, before, closed))
+    elif cmd == "doqbudgetburst":
+        # A burst across the stream budget of a connection is answered in full
+        _, _, host, port, domain, source, expected_ip, first, count = sys.argv[:9]
+        answered, reset = doq_budget_burst(host, int(port), domain, source, expected_ip,
+                                           int(first), int(count))
+        print("answered %d of %s, reset %d" % (answered, count, reset))
+    elif cmd == "doqretirequeued":
+        # Streams queued when a connection retires are answered before it closes
+        _, _, host, port, domain, source, expected_ip, budget, count = sys.argv[:9]
+        answered, closed = doq_retire_queued(host, int(port), domain, source, expected_ip,
+                                             int(budget), int(count))
+        print("answered %d of %s, closed %s" % (answered, count, closed))
+    elif cmd == "doqretireflood":
+        # A retiring connection is closed once more queries queue on it than
+        # its last round can take
+        _, _, host, port, domain, source, budget, count = sys.argv[:8]
+        print("closed %s" % doq_retire_flood(host, int(port), domain, source,
+                                             int(budget), int(count)))
+    elif cmd == "doqcycle":
+        # A client that opens a new stream for every one reset gets a bounded
+        # number of resets before the connection is closed
+        _, _, host, port, source = sys.argv[:5]
+        closed, reset = doq_cycle(host, int(port), source)
+        print("closed %s after %d resets" % (closed, reset))
     else:
         sys.exit("unknown subcommand: %s" % cmd)
 

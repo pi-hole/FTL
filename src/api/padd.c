@@ -27,6 +27,26 @@
 // getcpu_percentage()
 #include "daemon.h"
 
+static cJSON *get_host_model(void)
+{
+	static const char *const paths[] = {
+		"/sys/firmware/devicetree/base/model",
+		"/sys/devices/virtual/dmi/id/product_name",
+		"/sys/devices/virtual/dmi/id/board_name"
+	};
+
+	for(size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++)
+	{
+		cJSON *item = read_sys_property(paths[i]);
+		if(cJSON_IsString(item) && item->valuestring != NULL && item->valuestring[0] != '\0')
+			return item;
+
+		cJSON_Delete(item);
+	}
+
+	return cJSON_CreateNull();
+}
+
 int api_padd(struct ftl_conn *api)
 {
 	// Parse parameters
@@ -164,7 +184,7 @@ int api_padd(struct ftl_conn *api)
 	struct utsname un = { 0 };
 	uname(&un);
 	JSON_COPY_STR_TO_OBJECT(json, "node_name", un.nodename);
-	JSON_ADD_ITEM_TO_OBJECT(json, "host_model", read_sys_property("/sys/firmware/devicetree/base/model"));
+	JSON_ADD_ITEM_TO_OBJECT(json, "host_model", get_host_model());
 
 	// Expensive calls, do only if full is requested
 	if(full)
