@@ -54,6 +54,7 @@ load 'bats_helper.bash'
   # webserver_acl.bats: 10x pihole.toml writes (five ACLs + restore, two proxy ACLs + restore each)
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
+  # restart.bats: 2x pihole.toml writes (webserver.tls.cert set + restore around a certificate renewal, skipped on riscv64)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
@@ -66,7 +67,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "31"
   else
-    [[ ${lines[0]} == "78" ]]
+    [[ ${lines[0]} == "80" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
