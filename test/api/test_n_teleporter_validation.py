@@ -43,7 +43,7 @@ STARTED_MARKER = "########## FTL started on"
 def _log_end():
     """Byte offset of the end of FTL.log."""
     try:
-        with open(FTL_LOG, "r") as f:
+        with open(FTL_LOG, "r", errors="replace") as f:
             f.seek(0, 2)
             return f.tell()
     except FileNotFoundError:
@@ -60,7 +60,7 @@ def _wait_for_restart(start_pos, timeout=30, marker=RESTART_MARKER):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with open(FTL_LOG, "r") as f:
+            with open(FTL_LOG, "r", errors="replace") as f:
                 f.seek(start_pos)
                 for line in f:
                     if marker in line:

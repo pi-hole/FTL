@@ -69,14 +69,16 @@ class TestEndpointResponses:
     def test_get_endpoint_responses(self, openapi, ftl):
         """Each GET endpoint's response matches its OpenAPI spec.
 
-        Skips /api/action/* endpoints (would trigger unwanted actions).
-        Reports all failures with the endpoint path for easy identification.
+        Skips /api/action/* endpoints (would trigger unwanted actions) and
+        /api/metrics, which takes a bearer token instead of a session and is
+        tested in test_m_prometheus.py. Reports all failures with the
+        endpoint path for easy identification.
         """
         all_errors = {}
         teleporter_archive = None
 
         for path in openapi.endpoints["get"]:
-            if path.startswith("/api/action"):
+            if path.startswith("/api/action") or path == "/api/metrics":
                 continue
             with ResponseVerifyer(ftl, openapi) as verifyer:
                 errors = verifyer.verify_endpoint(path)
@@ -181,7 +183,7 @@ class TestTeleporter:
         upstreams = ftl.GET("/api/config/dns/upstreams", [], "application/json",
                             AuthenticationMethods.HEADER)["config"]["dns"]["upstreams"]
 
-        with open("/var/log/pihole/FTL.log", "r") as f:
+        with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
             f.seek(0, 2)
             log_pos = f.tell()
 
@@ -204,7 +206,7 @@ class TestTeleporter:
         # Wait for the restarted FTL to serve the API again
         for _ in range(60):
             time.sleep(0.5)
-            with open("/var/log/pihole/FTL.log", "r") as f:
+            with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                 f.seek(log_pos)
                 if "FTL started on" not in f.read():
                     continue
@@ -264,7 +266,7 @@ class TestTeleporter:
         exclude_clients = before["config"]["webserver"]["api"]["excludeClients"]
 
         for n in (1, 2):
-            with open("/var/log/pihole/FTL.log", "r") as f:
+            with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                 f.seek(0, 2)
                 log_pos = f.tell()
 
@@ -277,7 +279,7 @@ class TestTeleporter:
             # Wait for the restarted FTL to serve the API again
             for _ in range(60):
                 time.sleep(0.5)
-                with open("/var/log/pihole/FTL.log", "r") as f:
+                with open("/var/log/pihole/FTL.log", "r", errors="replace") as f:
                     f.seek(log_pos)
                     if "FTL started on" not in f.read():
                         continue

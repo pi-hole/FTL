@@ -55,6 +55,7 @@ load 'bats_helper.bash'
   # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
   # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
+  # pytest: 5x pihole.toml writes (Prometheus token generate + reset, per-entity test token, enable + restore)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
   printf "pihole.toml write count: %s\n" "${lines[0]}"
   # On RISCV64, pytest AND both encrypted-DNS suites are skipped (too
@@ -66,7 +67,7 @@ load 'bats_helper.bash'
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
     assert_line --index 0 "31"
   else
-    [[ ${lines[0]} == "78" ]]
+    [[ ${lines[0]} == "83" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches
