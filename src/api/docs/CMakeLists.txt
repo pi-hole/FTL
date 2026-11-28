@@ -13,7 +13,6 @@ set(sources
         ${CMAKE_CURRENT_BINARY_DIR}/hex/index_css.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/pi-hole_js.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/external/rapidoc-min_js.h
-        ${CMAKE_CURRENT_BINARY_DIR}/hex/external/rapidoc-min_js_map.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/images/logo_svg.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/images/favicon_ico.h
         ${CMAKE_CURRENT_BINARY_DIR}/hex/specs/action_yaml.h
@@ -49,7 +48,7 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/hex/external)
 
 # Compile files from content/ into hex/
 # The assets are embedded GZIP-compressed and handed to the client as such (see
-# docs.c), which keeps roughly 1.2 MB of JavaScript and YAML out of the binary
+# docs.c), which keeps roughly 0.8 MB of JavaScript and YAML out of the binary
 # and saves the same amount of transfer. -n omits the original name and
 # timestamp from the GZIP header, keeping the build reproducible.
 find_program(RESOURCE_COMPILER xxd)
