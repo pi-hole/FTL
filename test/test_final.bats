@@ -52,7 +52,7 @@ load 'bats_helper.bash'
   # dotdoh.bats: 2x pihole.toml writes (debug.dotdoh enable + disable)
   # dotdoh_server.bats: 1x pihole.toml write (reset dns.reply.host force to default)
   # webserver_acl.bats: 10x pihole.toml writes (five ACLs + restore, two proxy ACLs + restore each)
-  # webserver_tls_ports.bats: 7x pihole.toml writes (six port lists + restore)
+  # webserver_tls_ports.bats: 10x pihole.toml writes (eight port lists, two with another certificate, + two restores)
   # restart.bats: 6x pihole.toml writes (blocking disabled permanently + enabled again, three times)
   # pytest: 6x pihole.toml writes (v5 Teleporter import: migration, restart and restoring the config, twice)
   run bash -c 'grep -c "INFO: Config file written to /etc/pihole/pihole.toml" /var/log/pihole/FTL.log'
@@ -64,9 +64,9 @@ load 'bats_helper.bash'
   # matches, so they log "pihole.toml unchanged" - which the next assertion
   # below counts.
   if [[ "${CI_ARCH}" == "linux/riscv64" ]]; then
-    assert_line --index 0 "31"
+    assert_line --index 0 "34"
   else
-    [[ ${lines[0]} == "78" ]]
+    [[ ${lines[0]} == "81" ]]
   fi
   # CLI password set/remove trigger inotify reload but result in
   # "pihole.toml unchanged" as the in-memory config already matches

@@ -1169,8 +1169,7 @@ static bool get_server_ports(void)
 	// no plaintext port to mirror - a TLS-only "443s" config, or only a redirect
 	// plaintext port ("80r,443s") - register it explicitly here. Otherwise
 	// get_server_ports() would report failure (aborting the whole web interface)
-	// or leave https_port at 0, which mis-reports the port in /info and skips
-	// certificate auto-renewal (letting an FTL-generated cert silently expire).
+	// or leave https_port at 0, which mis-reports the port in /info.
 	if(terminator_port > 0 && !mirrored && n < MAXPORTS)
 	{
 		tls_port_row(&server_ports[n], terminator_addr, terminator_port, terminator_bound,
@@ -2257,6 +2256,20 @@ void get_all_supported_ciphersuites(void)
 }
 
 #ifdef HAVE_TLS
+// Whether FTL serves the certificate at cert (webserver.tls.cert): on the TLS
+// ports of webserver.port, also while none of them could be bound, or for DoT
+// and DoQ, which load it independently of the web server
+static bool tls_cert_in_use(const char *cert)
+{
+	if(cert == NULL || cert[0] == '\0')
+		return false;
+
+	// http_init() creates a missing certificate for the TLS ports only, DoT
+	// and DoQ use the file if it is there
+	return terminator_port > 0 ||
+	       ((config.dns.dot.v.b || config.dns.doq.v.b) && file_readable(cert));
+}
+
 void *webserver_thread(void *val)
 {
 	(void)val;
@@ -2272,10 +2285,10 @@ void *webserver_thread(void *val)
 	while(!killed)
 	{
 		// Check if the certificate is about to expire soon
-		// We check only if HTTPS is enabled (https_port > 0)
-		const enum cert_check status = https_port == 0 ?
+		const char *cert = config.webserver.tls.cert.v.s;
+		const enum cert_check status = !tls_cert_in_use(cert) ?
 			CERT_NOT_IN_USE :
-			cert_currently_valid(config.webserver.tls.cert.v.s, 2);
+			cert_currently_valid(cert, 2);
 
 		if(status == CERT_EXPIRES_SOON &&
 		   config.webserver.tls.validity.v.ui > 0)
