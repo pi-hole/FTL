@@ -187,6 +187,8 @@ cJSON *addJSONConfValue(const enum conf_type conf_type, union conf_value *val)
 			return cJSON_CreateStringReference(get_web_theme_str(val->web_theme));
 		case CONF_ENUM_TEMP_UNIT:
 			return cJSON_CreateStringReference(get_temp_unit_str(val->temp_unit));
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+			return cJSON_CreateStringReference(get_designated_resolver_mode_str(val->designated_resolver_mode));
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
 			return cJSON_CreateStringReference(get_edns_mode_str(val->edns_mode));
 		case CONF_STRUCT_IN_ADDR:
@@ -386,6 +388,19 @@ static const char *getJSONvalue(struct conf_item *conf_item, cJSON *elem, struct
 			// Set item
 			conf_item->v.blocking_mode = blocking_mode;
 			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.blocking_mode);
+			break;
+		}
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+		{
+			// Check type
+			if(!cJSON_IsString(elem))
+				return "not of type string";
+			const int mode = get_designated_resolver_mode_val(elem->valuestring);
+			if(mode == -1)
+				return "invalid option";
+			// Set item
+			conf_item->v.designated_resolver_mode = mode;
+			log_web_debug(DEBUG_CONFIG, "%s = %d", conf_item->k, conf_item->v.designated_resolver_mode);
 			break;
 		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:

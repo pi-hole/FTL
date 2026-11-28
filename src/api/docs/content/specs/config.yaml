@@ -402,7 +402,8 @@ components:
                     iCloudPrivateRelay:
                       type: boolean
                     designatedResolver:
-                      type: boolean
+                      type: string
+                      enum: ["FORWARD", "BLOCK", "SYNTHESIZE"]
                 reply:
                   type: object
                   properties:
@@ -984,7 +985,7 @@ components:
             specialDomains:
               mozillaCanary: true
               iCloudPrivateRelay: true
-              designatedResolver: true
+              designatedResolver: "BLOCK"
             reply:
               host:
                 force4: false

@@ -236,6 +236,8 @@ const char *get_refresh_hostnames_str(const enum refresh_hostnames refresh) __at
 int get_refresh_hostnames_val(const char *refresh_hostnames) __attribute__ ((pure));
 const char *get_blocking_mode_str(const enum blocking_mode mode) __attribute__ ((const));
 int get_blocking_mode_val(const char *blocking_mode) __attribute__ ((pure));
+const char *get_designated_resolver_mode_str(const enum designated_resolver_mode mode) __attribute__ ((const));
+int get_designated_resolver_mode_val(const char *mode) __attribute__ ((pure));
 const char * __attribute__ ((const)) get_blocking_status_str(const enum blocking_status blocking);
 const char *get_ptr_type_str(const enum ptr_type piholePTR) __attribute__ ((const));
 int get_ptr_type_val(const char *piholePTR) __attribute__ ((pure));

@@ -70,6 +70,7 @@ union conf_value {
 	enum web_theme web_theme;                   // enum web_theme value
 	enum temp_unit temp_unit;                   // enum temp_unit value
 	enum edns_mode edns_mode;                   // enum edns_mode value
+	enum designated_resolver_mode designated_resolver_mode; // enum designated_resolver_mode value
 	struct in_addr in_addr;                     // struct in_addr value
 	struct in6_addr in6_addr;                   // struct in6_addr value
 	cJSON *json;                                // cJSON * value
@@ -94,6 +95,7 @@ enum conf_type {
 	CONF_ENUM_WEB_THEME,
 	CONF_ENUM_BLOCKING_EDNS_MODE,
 	CONF_ENUM_TEMP_UNIT,
+	CONF_ENUM_DESIGNATED_RESOLVER,
 	CONF_STRUCT_IN_ADDR,
 	CONF_STRUCT_IN6_ADDR,
 	CONF_JSON_STRING_ARRAY,

@@ -90,6 +90,13 @@ enum blocking_mode {
 	MODE_MAX
 } __attribute__ ((packed));
 
+enum designated_resolver_mode {
+	DESIGNATED_RESOLVER_FORWARD = 0,
+	DESIGNATED_RESOLVER_BLOCK,
+	DESIGNATED_RESOLVER_SYNTHESIZE,
+	DESIGNATED_RESOLVER_MAX
+} __attribute__ ((packed));
+
 enum regex_type {
 	REGEX_DENY,
 	REGEX_ALLOW,

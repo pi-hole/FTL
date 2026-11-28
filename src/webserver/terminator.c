@@ -202,6 +202,26 @@ bool terminator_proxy_token_hex(char *out, size_t outsz)
 	return true;
 }
 
+#ifndef HAVE_HTTP3
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
+bool terminator_h3_running(void)
+{
+	return false;
+}
+
+bool terminator_h3_running_on_port(const in_port_t port)
+{
+	(void)port;
+	return false;
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+#endif
+
 // Passed to each detached handler: the client fd plus our own reference to the
 // SSL_CTX, taken while it is live, so terminator_stop() can free the context
 // without racing a handler that has not yet reached SSL_new().
@@ -235,6 +255,19 @@ static unsigned n_quic_fds = 0;
 static pthread_t quic_tid;
 static bool quic_tid_valid = false;
 static volatile bool quic_running = false;
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=pure"
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
+bool terminator_h3_running(void)
+{
+	return quic_running;
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 // Where each QUIC socket is bound, so Alt-Svc on an h2 connection only names
 // the HTTP/3 ports reachable on the address that connection arrived on.
 static struct sockaddr_in6 quic_addrs[TERMINATOR_MAX_LISTENERS];
@@ -242,6 +275,16 @@ static bool quic_v6only[TERMINATOR_MAX_LISTENERS];
 // The OpenSSL QUIC listener on each socket, created before the event loop
 // starts and freed by it
 static SSL *quic_listeners[TERMINATOR_MAX_LISTENERS];
+
+bool terminator_h3_running_on_port(const in_port_t port)
+{
+	if(!quic_running)
+		return false;
+	for(unsigned i = 0; i < n_quic_fds; i++)
+		if(ntohs(quic_addrs[i].sin6_port) == port)
+			return true;
+	return false;
+}
 
 #ifdef HAVE_HTTP2
 // Build the Alt-Svc value for the TCP connection on fd: every HTTP/3 port whose
@@ -4756,5 +4799,23 @@ bool terminator_proxy_token_hex(char *out, size_t outsz)
 		out[0] = '\0';
 	return false;
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=const"
+#endif
+bool terminator_h3_running(void)
+{
+	return false;
+}
+
+bool terminator_h3_running_on_port(const in_port_t port)
+{
+	(void)port;
+	return false;
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif // HAVE_TLS

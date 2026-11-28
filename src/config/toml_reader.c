@@ -184,6 +184,32 @@ static bool migrate_files_log_dnsmasq(struct config *newconf)
 }
 
 
+// Migrate dns.specialDomains.designatedResolver from boolean to enum
+static void migrate_dns_specialDomains_designatedResolver(toml_datum_t toml, struct config *newconf)
+{
+	// Do not override a value forced through an environment variable
+	if(newconf->dns.specialDomains.designatedResolver.f & FLAG_ENV_VAR)
+		return;
+
+	toml_datum_t dns = toml_table_find(toml, "dns");
+	if(dns.type == TOML_TABLE)
+	{
+		toml_datum_t sd = toml_table_find(dns, "specialDomains");
+		if(sd.type == TOML_TABLE)
+		{
+			toml_datum_t dr = toml_table_find(sd, "designatedResolver");
+			if(dr.type == TOML_BOOLEAN)
+			{
+				newconf->dns.specialDomains.designatedResolver.v.designated_resolver_mode =
+					dr.u.boolean ? DESIGNATED_RESOLVER_BLOCK : DESIGNATED_RESOLVER_FORWARD;
+				log_info("Config setting dns.specialDomains.designatedResolver MIGRATED from boolean to enum: %s -> %s",
+				         dr.u.boolean ? "true" : "false",
+				         get_designated_resolver_mode_str(newconf->dns.specialDomains.designatedResolver.v.designated_resolver_mode));
+			}
+		}
+	}
+}
+
 // Migrate config from old to new, returns true if a restart is required to
 // apply the changes
 static bool migrate_config(toml_datum_t toml, struct config *newconf)
@@ -198,6 +224,8 @@ static bool migrate_config(toml_datum_t toml, struct config *newconf)
 	restart |= migrate_webserver_csp(newconf);
 	// Migrate files.log.dnsmasq = "-" to the default path
 	restart |= migrate_files_log_dnsmasq(newconf);
+	// Migrate dns.specialDomains.designatedResolver bool -> enum; no restart needed
+	migrate_dns_specialDomains_designatedResolver(toml, newconf);
 
 	return restart;
 }

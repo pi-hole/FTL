@@ -491,14 +491,32 @@
     #     true or false
     iCloudPrivateRelay = true
 
-    # Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to
-    # prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers?
+    # How Pi-hole should respond to queries in the resolver.arpa zone (Discovery of
+    # Designated Resolvers, RFC 9462, section 4).
     #
-    # This is based on recommendations at the end of RFC 9462, section 4.
+    # The resolver.arpa zone is used by clients to discover designated encrypted DNS
+    # resolvers. Pi-hole can forward these queries to upstream DNS servers (which may lead
+    # to clients bypassing Pi-hole by discovering encrypted resolvers), block the
+    # discovery of encrypted DNS resolvers, or advertise its own encrypted DNS endpoints
+    # when available.
+    #
+    # RFC 9462 Verified Discovery normally requires the Designated Resolver's TLS
+    # certificate to contain the designating resolver's IP address in an iPAddress
+    # subjectAltName (Section 4.2). Pi-hole's generated certificate does not include IP
+    # SANs; some clients may still use the designation opportunistically under the
+    # conditions described in Section 4.3, but automatic verified discovery will generally
+    # not succeed.
     #
     # Allowed values are:
-    #     true or false
-    designatedResolver = true
+    #   - "FORWARD"
+    #       Forward queries to upstream DNS servers (may lead to clients bypassing Pi-hole)
+    #   - "BLOCK"
+    #       Reply to all queries with NODATA and EDE 15 (Blocked)
+    #   - "SYNTHESIZE"
+    #       Reply to all queries with NODATA and EDE 29 (Synthesized), and synthesize
+    #       _dns.resolver.arpa SVCB records when Pi-hole's encrypted DNS endpoints are
+    #       available
+    designatedResolver = "BLOCK"
 
     [dns.reply.host]
       # Use a specific IPv4 address for the Pi-hole host? By default, FTL determines the

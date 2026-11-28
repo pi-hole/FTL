@@ -1838,6 +1838,16 @@ void suggest_complete(const int argc, char *argv[])
 							}
 							break;
 
+						case CONF_ENUM_DESIGNATED_RESOLVER:
+							// Provide matching suggestions
+							for(size_t j = 0; j < DESIGNATED_RESOLVER_MAX; j++)
+							{
+								const char *mode = get_designated_resolver_mode_str(j);
+								if(strStartsWithIgnoreCase(mode, last_word) || strlen(last_word) == 0)
+									puts(mode);
+							}
+							break;
+
 						case CONF_ENUM_REFRESH_HOSTNAMES:
 							// Provide matching suggestions
 							for(size_t j = 0; j < REFRESH_MAX; j++)

@@ -464,6 +464,20 @@ bool __attribute__((nonnull(1,2,3))) readEnvValue(struct conf_item *conf_item, s
 			}
 			break;
 		}
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+		{
+			const int mode = get_designated_resolver_mode_val(envvar);
+			if(mode != -1)
+			{
+				conf_item->v.designated_resolver_mode = mode;
+				item->valid = true;
+			}
+			else
+			{
+				invalid_enum_item(envvar, conf_item, item);
+			}
+			break;
+		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
 			const int refresh_hostnames = get_refresh_hostnames_val(envvar);

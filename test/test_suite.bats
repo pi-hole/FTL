@@ -2821,3 +2821,138 @@ SQL
   [[ "${got}" =~ Received\ ([0-9]+)/([0-9]+) ]]
   [[ ${BASH_REMATCH[1]} -gt 0 && ${BASH_REMATCH[1]} == "${BASH_REMATCH[2]}" ]]
 }
+
+@test "Designated resolver: SYNTHESIZE, BLOCK, FORWARD modes" {
+  # SYNTHESIZE: serves _dns.resolver.arpa with DoH, DoT, and DoQ SVCB records
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver SYNTHESIZE'
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before || true"
+  run bash -c "dig SVCB _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t3 pi.hole. alpn="h2,h3" port=443 key7="/dns-query{?dns}"'
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t3 pi.hole. alpn="h2,h3" port=9443 key7="/dns-query{?dns}"'
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t2 pi.hole. alpn="dot" port=853'
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t1 pi.hole. alpn="doq" port=853'
+  refute_output --partial "port=9444"
+
+  # IPv4-only HTTPS port is not advertised to IPv6 queries
+  run bash -c "dig -6 SVCB _dns.resolver.arpa @::1"
+  assert_output --partial "status: NOERROR"
+  refute_output --partial "port=9443"
+
+  # +noedns must not produce a malformed reply
+  run bash -c "dig +noedns +ignore SVCB _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  refute_output --partial "FORMERR"
+
+  # Case-insensitive DDR name and trailing dot match the same synthesized answer
+  run bash -c "dig SVCB _DNS.RESOLVER.ARPA @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial 'alpn="h2,h3" port=443 key7="/dns-query{?dns}"'
+  assert_output --partial 'alpn="h2,h3" port=9443 key7="/dns-query{?dns}"'
+  assert_output --partial 'alpn="dot" port=853'
+  assert_output --partial 'alpn="doq" port=853'
+  run bash -c "dig SVCB _dns.resolver.arpa. @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t3 pi.hole. alpn="h2,h3" port=443 key7="/dns-query{?dns}"'
+  assert_output --partial $'_dns.resolver.arpa.\t0\tIN\tSVCB\t3 pi.hole. alpn="h2,h3" port=9443 key7="/dns-query{?dns}"'
+
+  # SYNTHESIZE owns the entire resolver.arpa zone
+  run bash -c "dig A resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+
+  # _dns.resolver.arpa exists only as synthesized SVCB; other types are NODATA
+  run bash -c "dig A _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig AAAA _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig TXT _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+
+  # Zone apex and arbitrary subdomains are owned, but no SVCB records are synthesized for them
+  run bash -c "dig SVCB resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig SVCB foo.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig A foo._dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 29"
+  assert_output --partial "ANSWER: 0"
+
+  # BLOCK: NODATA with EDE 15 for the whole resolver.arpa zone
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver BLOCK'
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  run bash -c "dig SVCB _dns.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 15"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig A resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 15"
+  assert_output --partial "ANSWER: 0"
+  run bash -c "dig AAAA foo.resolver.arpa @127.0.0.1"
+  assert_output --partial "status: NOERROR"
+  assert_output --partial "EDE: 15"
+  assert_output --partial "ANSWER: 0"
+
+  # Label boundary prevents unrelated names from matching
+  run bash -c "dig A notresolver.arpa @127.0.0.1"
+  refute_output --partial "EDE: 15"
+  refute_output --partial "EDE: 29"
+
+  # FORWARD: not intercepted by Pi-hole
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver FORWARD'
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  run bash -c "dig SVCB _dns.resolver.arpa @127.0.0.1"
+  refute_output --partial "EDE: 15"
+  refute_output --partial "EDE: 29"
+  run bash -c "grep '_dns.resolver.arpa' /var/log/pihole/pihole.log | grep 'forwarded'"
+  assert_output --partial "forwarded"
+
+  # Label boundary also holds in SYNTHESIZE mode
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver SYNTHESIZE'
+  run bash -c "./pihole-FTL wait-for 'pihole.toml unchanged' /var/log/pihole/FTL.log 5 $logsize_before"
+  run bash -c "dig A notresolver.arpa @127.0.0.1"
+  refute_output --partial "EDE: 15"
+  refute_output --partial "EDE: 29"
+
+  # Boolean in pihole.toml is accepted without warning and migrated on reload
+  logsize_before=$(stat -c%s /var/log/pihole/FTL.log)
+  run bash -c 'sed -i "s/^    designatedResolver = .*/    designatedResolver = true/" /etc/pihole/pihole.toml'
+  run bash -c "./pihole-FTL wait-for 'Reloading config due to pihole.toml change' /var/log/pihole/FTL.log 10 $logsize_before"
+  assert_success
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver'
+  assert_output --partial "BLOCK"
+  run bash -c "tail -c +$((logsize_before + 1)) /var/log/pihole/FTL.log | grep 'Ignoring dns.specialDomains.designatedResolver in pihole.toml: not a valid string' || true"
+  refute_output --partial "Ignoring dns.specialDomains.designatedResolver in pihole.toml: not a valid string"
+
+  # CLI accepts boolean values with the same mapping
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver true'
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver'
+  assert_output --partial "BLOCK"
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver false'
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver'
+  assert_output --partial "FORWARD"
+
+  # Reset to default
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver BLOCK'
+  run bash -c './pihole-FTL --config dns.specialDomains.designatedResolver'
+  assert_output --partial "BLOCK"
+}

@@ -320,6 +320,7 @@ void duplicate_config(struct config *dst, struct config *src)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
 			case CONF_ENUM_BLOCKING_EDNS_MODE:
+			case CONF_ENUM_DESIGNATED_RESOLVER:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -358,6 +359,7 @@ bool compare_config_item(const enum conf_type t, const union conf_value *val1, c
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		case CONF_ENUM_DESIGNATED_RESOLVER:
 		case CONF_STRUCT_IN_ADDR:
 		case CONF_STRUCT_IN6_ADDR:
 		case CONF_ALL_DEBUG_BOOL:
@@ -414,6 +416,7 @@ void free_config(struct config *conf, const bool terminating)
 			case CONF_ENUM_WEB_THEME:
 			case CONF_ENUM_TEMP_UNIT:
 			case CONF_ENUM_BLOCKING_EDNS_MODE:
+			case CONF_ENUM_DESIGNATED_RESOLVER:
 			case CONF_STRUCT_IN_ADDR:
 			case CONF_STRUCT_IN6_ADDR:
 			case CONF_ALL_DEBUG_BOOL:
@@ -775,9 +778,18 @@ void initConfig(struct config *conf)
 	conf->dns.specialDomains.iCloudPrivateRelay.c = validate_stub; // Only type-based checking
 
 	conf->dns.specialDomains.designatedResolver.k = "dns.specialDomains.designatedResolver";
-	conf->dns.specialDomains.designatedResolver.h = "Should Pi-hole always reply with NODATA to all queries to zone resolver.arpa to prevent devices from bypassing Pi-hole using Discovery of Designated Resolvers?\n\n This is based on recommendations at the end of RFC 9462, section 4.";
-	conf->dns.specialDomains.designatedResolver.t = CONF_BOOL;
-	conf->dns.specialDomains.designatedResolver.d.b = true;
+	conf->dns.specialDomains.designatedResolver.h = "How Pi-hole should respond to queries in the resolver.arpa zone (Discovery of Designated Resolvers, RFC 9462, section 4).\n\n The resolver.arpa zone is used by clients to discover designated encrypted DNS resolvers. Pi-hole can forward these queries to upstream DNS servers (which may lead to clients bypassing Pi-hole by discovering encrypted resolvers), block the discovery of encrypted DNS resolvers, or advertise its own encrypted DNS endpoints when available.\n\n RFC 9462 Verified Discovery normally requires the Designated Resolver's TLS certificate to contain the designating resolver's IP address in an iPAddress subjectAltName (Section 4.2). Pi-hole's generated certificate does not include IP SANs; some clients may still use the designation opportunistically under the conditions described in Section 4.3, but automatic verified discovery will generally not succeed.";
+	{
+		struct enum_options designatedResolver[] =
+		{
+			{ get_designated_resolver_mode_str(DESIGNATED_RESOLVER_FORWARD), "Forward queries to upstream DNS servers (may lead to clients bypassing Pi-hole)" },
+			{ get_designated_resolver_mode_str(DESIGNATED_RESOLVER_BLOCK), "Reply to all queries with NODATA and EDE 15 (Blocked)" },
+			{ get_designated_resolver_mode_str(DESIGNATED_RESOLVER_SYNTHESIZE), "Reply to all queries with NODATA and EDE 29 (Synthesized), and synthesize _dns.resolver.arpa SVCB records when Pi-hole's encrypted DNS endpoints are available" }
+		};
+		CONFIG_ADD_ENUM_OPTIONS(conf->dns.specialDomains.designatedResolver.a, designatedResolver);
+	}
+	conf->dns.specialDomains.designatedResolver.t = CONF_ENUM_DESIGNATED_RESOLVER;
+	conf->dns.specialDomains.designatedResolver.d.designated_resolver_mode = DESIGNATED_RESOLVER_BLOCK;
 	conf->dns.specialDomains.designatedResolver.c = validate_stub; // Only type-based checking
 
 	// sub-struct dns.reply_addr
@@ -2281,6 +2293,7 @@ const char * __attribute__ ((const)) get_conf_type_str(const enum conf_type type
 		case CONF_ENUM_WEB_THEME:
 		case CONF_ENUM_TEMP_UNIT:
 		case CONF_ENUM_BLOCKING_EDNS_MODE:
+		case CONF_ENUM_DESIGNATED_RESOLVER:
 			return "enum (string)";
 		case CONF_ENUM_PRIVACY_LEVEL:
 			return "enum (unsigned integer)";

@@ -226,6 +226,21 @@ static bool readStringValue(struct conf_item *conf_item, const char *value, stru
 			}
 			break;
 		}
+		case CONF_ENUM_DESIGNATED_RESOLVER:
+		{
+			const int mode = get_designated_resolver_mode_val(value);
+			if(mode != -1)
+				conf_item->v.designated_resolver_mode = mode;
+			else
+			{
+				char *allowed = NULL;
+				CONFIG_ITEM_ARRAY(conf_item->a, allowed);
+				log_err("Config setting %s is invalid, allowed options are: %s", conf_item->k, allowed);
+				free(allowed);
+				return false;
+			}
+			break;
+		}
 		case CONF_ENUM_REFRESH_HOSTNAMES:
 		{
 			const int refresh_hostnames = get_refresh_hostnames_val(value);
